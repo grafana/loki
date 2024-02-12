@@ -41,9 +41,7 @@ func BuildCredentialsRequest(opts Options) (*cloudcredentialv1.CredentialsReques
 }
 
 func encodeProviderSpec(env *config.ManagedAuthConfig) (*runtime.RawExtension, error) {
-	var (
-		spec runtime.Object
-	)
+	var spec runtime.Object
 
 	switch {
 	case env.AWS != nil:
