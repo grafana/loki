@@ -3,6 +3,7 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -45,8 +46,6 @@ func newLimits() *validation.Overrides {
 }
 
 func TestBloomGateway_StartStopService(t *testing.T) {
-
-	ss := NewNoopStrategy()
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 	limits := newLimits()
@@ -96,7 +95,7 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 			MaxOutstandingPerTenant: 1024,
 		}
 
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -113,8 +112,6 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 
 func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	tenantID := "test"
-
-	ss := NewNoopStrategy()
 	logger := log.NewLogfmtLogger(os.Stderr)
 	reg := prometheus.NewRegistry()
 	limits := newLimits()
@@ -165,7 +162,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("shipper error is propagated", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		now := mktime("2023-10-03 10:00")
@@ -187,7 +184,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			require.NoError(t, err)
 		})
 
-		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 10)
+		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
 
 		// saturate workers
 		// then send additional request
@@ -212,7 +209,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("request cancellation does not result in channel locking", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		now := mktime("2024-01-25 10:00")
@@ -259,7 +256,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("returns unfiltered chunk refs if no filters provided", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -304,7 +301,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("gateway tracks active users", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -344,7 +341,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("use fuse queriers to filter chunks", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		now := mktime("2023-10-03 10:00")
@@ -363,7 +360,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			require.NoError(t, err)
 		})
 
-		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
+		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 10)
 
 		t.Run("no match - return empty response", func(t *testing.T) {
 			inputChunkRefs := groupRefs(t, chunkRefs)
@@ -387,27 +384,37 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 		t.Run("match - return filtered", func(t *testing.T) {
 			inputChunkRefs := groupRefs(t, chunkRefs)
-			// hack to get indexed key for a specific series
-			// the indexed key range for a series is defined as
-			// i * keysPerSeries ... i * keysPerSeries + keysPerSeries - 1
-			// where i is the nth series in a block
-			// fortunately, i is also used as Checksum for the single chunk of a series
-			// see mkBasicSeriesWithBlooms() in pkg/storage/bloom/v1/test_util.go
-			key := inputChunkRefs[0].Refs[0].Checksum*1000 + 500
+			// Hack to get search string for a specific series
+			// see MkBasicSeriesWithBlooms() in pkg/storage/bloom/v1/test_util.go
+			// each series has 1 chunk
+			// each chunk has multiple strings, from int(fp) to int(nextFp)-1
+			x := rand.Intn(len(inputChunkRefs))
+			fp := inputChunkRefs[x].Fingerprint
+			chks := inputChunkRefs[x].Refs
+			line := fmt.Sprintf("%04x:%04x", int(fp), 0) // first line
+
+			t.Log("x=", x, "fp=", fp, "line=", line)
 
 			req := &logproto.FilterChunkRefRequest{
 				From:    now.Add(-8 * time.Hour),
 				Through: now,
 				Refs:    inputChunkRefs,
 				Filters: []syntax.LineFilter{
-					{Ty: labels.MatchEqual, Match: fmt.Sprintf("series %d", key)},
+					{Ty: labels.MatchEqual, Match: line},
 				},
 			}
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 			res, err := gw.FilterChunkRefs(ctx, req)
 			require.NoError(t, err)
+
 			expectedResponse := &logproto.FilterChunkRefResponse{
-				ChunkRefs: inputChunkRefs[:1],
+				ChunkRefs: []*logproto.GroupedChunkRefs{
+					{
+						Fingerprint: fp,
+						Refs:        chks,
+						Tenant:      tenantID,
+					},
+				},
 			}
 			require.Equal(t, expectedResponse, res)
 		})
