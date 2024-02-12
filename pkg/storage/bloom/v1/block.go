@@ -135,6 +135,10 @@ func (bq *BlockQuerier) Schema() (Schema, error) {
 	return bq.block.Schema()
 }
 
+func (bq *BlockQuerier) Reset() error {
+	return bq.series.Seek(0)
+}
+
 func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {
 	return bq.series.Seek(fp)
 }

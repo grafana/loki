@@ -2649,6 +2649,18 @@ ring:
 # CLI flag: -bloom-compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
+# Minimum age of a table before it is considered for compaction.
+# CLI flag: -bloom-compactor.min-compaction-age
+[min_compaction_age: <duration> | default = 24h]
+
+# Maximum age of a table before it is considered for compaction.
+# CLI flag: -bloom-compactor.max-compaction-age
+[max_compaction_age: <duration> | default = 168h]
+
+# Number of workers to run in parallel for compaction.
+# CLI flag: -bloom-compactor.worker-parallelism
+[worker_parallelism: <int> | default = 1]
+
 # Minimum backoff time between retries.
 # CLI flag: -bloom-compactor.compaction-retries-min-backoff
 [compaction_retries_min_backoff: <duration> | default = 10s]
@@ -3127,6 +3139,12 @@ shard_streams:
 # Interval for computing the cache key in the Bloom Gateway.
 # CLI flag: -bloom-gateway.cache-key-interval
 [bloom_gateway_cache_key_interval: <duration> | default = 15m]
+
+# The maximum bloom block size. A value of 0 sets an unlimited size. Default is
+# 200MB. The actual block size might exceed this limit since blooms will be
+# added to blocks until the block exceeds the maximum block size.
+# CLI flag: -bloom-compactor.max-block-size
+[bloom_compactor_max_block_size: <int> | default = 200MB]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata

@@ -3,6 +3,7 @@ package v1
 import (
 	"bytes"
 	"errors"
+	"sort"
 	"testing"
 
 	"github.com/prometheus/common/model"
@@ -48,9 +49,11 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	for _, tc := range []struct {
-		desc   string
-		writer BlockWriter
-		reader BlockReader
+		desc               string
+		writer             BlockWriter
+		reader             BlockReader
+		maxBlockSize       uint64
+		iterHasPendingData bool
 	}{
 		{
 			desc:   "in-memory",
@@ -61,6 +64,14 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 			desc:   "directory",
 			writer: NewDirectoryBlockWriter(tmpDir),
 			reader: NewDirectoryBlockReader(tmpDir),
+		},
+		{
+			desc:   "max block size",
+			writer: NewDirectoryBlockWriter(tmpDir),
+			reader: NewDirectoryBlockReader(tmpDir),
+			// Set max block big enough to fit a bunch of series but not all of them
+			maxBlockSize:       50 << 10,
+			iterHasPendingData: true,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -76,14 +87,27 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 					Schema:         schema,
 					SeriesPageSize: 100,
 					BloomPageSize:  10 << 10,
+					BlockSize:      tc.maxBlockSize,
 				},
 				tc.writer,
 			)
 
 			require.Nil(t, err)
-			itr := NewSliceIter[SeriesWithBloom](data)
+			itr := NewPeekingIter[SeriesWithBloom](NewSliceIter[SeriesWithBloom](data))
 			_, err = builder.BuildFrom(itr)
 			require.Nil(t, err)
+
+			firstPendingSeries, iterHasPendingData := itr.Peek()
+			require.Equal(t, tc.iterHasPendingData, iterHasPendingData)
+
+			processedData := data
+			if iterHasPendingData {
+				lastProcessedIdx := sort.Search(len(data), func(i int) bool {
+					return data[i].Series.Fingerprint >= firstPendingSeries.Series.Fingerprint
+				})
+				processedData = data[:lastProcessedIdx]
+			}
+
 			block := NewBlock(tc.reader)
 			querier := NewBlockQuerier(block)
 
@@ -91,10 +115,11 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 			require.Nil(t, err)
 			require.Equal(t, block.blooms.schema, schema)
 
-			for i := 0; i < len(data); i++ {
+			// Check processed data can be queried
+			for i := 0; i < len(processedData); i++ {
 				require.Equal(t, true, querier.Next(), "on iteration %d with error %v", i, querier.Err())
 				got := querier.At()
-				require.Equal(t, data[i].Series, got.Series)
+				require.Equal(t, processedData[i].Series, got.Series)
 				for _, key := range keys[i] {
 					require.True(t, got.Bloom.Test(key))
 				}
@@ -104,20 +129,22 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 			require.False(t, querier.Next())
 
 			// test seek
-			i := numSeries / 2
-			halfData := data[i:]
-			halfKeys := keys[i:]
-			require.Nil(t, querier.Seek(halfData[0].Series.Fingerprint))
-			for j := 0; j < len(halfData); j++ {
-				require.Equal(t, true, querier.Next(), "on iteration %d", j)
-				got := querier.At()
-				require.Equal(t, halfData[j].Series, got.Series)
-				for _, key := range halfKeys[j] {
-					require.True(t, got.Bloom.Test(key))
+			if !iterHasPendingData {
+				i := numSeries / 2
+				halfData := data[i:]
+				halfKeys := keys[i:]
+				require.NoError(t, querier.Seek(halfData[0].Series.Fingerprint))
+				for j := 0; j < len(halfData); j++ {
+					require.Equal(t, true, querier.Next(), "on iteration %d", j)
+					got := querier.At()
+					require.Equal(t, halfData[j].Series, got.Series)
+					for _, key := range halfKeys[j] {
+						require.True(t, got.Bloom.Test(key))
+					}
+					require.NoError(t, querier.Err())
 				}
-				require.NoError(t, querier.Err())
+				require.False(t, querier.Next())
 			}
-			require.False(t, querier.Next())
 
 		})
 	}
@@ -357,12 +384,12 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 			return nil
 		},
 	)
-	builder, err := NewBlockBuilder(NewBlockOptions(4, 0), writer)
+	builder, err := NewBlockBuilder(DefaultBlockOptions, writer)
 	require.Nil(t, err)
 
 	checksum, err := mb.Build(builder)
 	require.Nil(t, err)
-	require.Equal(t, uint32(0xe306ec6e), checksum)
+	require.Equal(t, uint32(0x30712486), checksum)
 
 	// ensure the new block contains one copy of all the data
 	// by comparing it against an iterator over the source data
