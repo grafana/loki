@@ -293,7 +293,7 @@ func newBatchedLoader(ctx context.Context, work []chunkWork, batchSize int, metr
 
 func (b *batchedLoader) Next() bool {
 	if len(b.batch) > 0 {
-		return b.prepNext()
+		return b.prepNext(false)
 	}
 
 	if len(b.work) == 0 {
@@ -310,11 +310,22 @@ func (b *batchedLoader) Next() bool {
 		b.work = b.work[1:]
 	}
 
+	if len(toFetch) == 0 {
+		return false
+	}
+
 	b.batch, b.err = next.fetcher.FetchChunks(b.ctx, toFetch)
-	return b.prepNext()
+	if b.err != nil {
+		return false
+	}
+
+	return b.prepNext(true)
 }
 
-func (b *batchedLoader) prepNext() bool {
+func (b *batchedLoader) prepNext(checkLen bool) bool {
+	if checkLen && len(b.batch) == 0 {
+		return false
+	}
 	b.cur, b.err = b.format(b.batch[0])
 	b.batch = b.batch[1:]
 	return b.err == nil
