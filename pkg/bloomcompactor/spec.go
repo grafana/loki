@@ -3,6 +3,7 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"time"
 
@@ -39,7 +40,7 @@ func (k Keyspace) Cmp(other Keyspace) v1.BoundsCheck {
 // Store is likely bound within. This allows specifying impls like ShardedStore<Store>
 // to only request the shard-range needed from the existing store.
 type BloomGenerator interface {
-	Generate(ctx context.Context) (skippedBlocks []*v1.Block, results v1.Iterator[*v1.Block], err error)
+	Generate(ctx context.Context) (skippedBlocks []v1.BlockMetadata, toClose []io.Closer, results v1.Iterator[*v1.Block], err error)
 }
 
 // Simple implementation of a BloomGenerator.
@@ -47,9 +48,7 @@ type SimpleBloomGenerator struct {
 	userID      string
 	store       v1.Iterator[*v1.Series]
 	chunkLoader ChunkLoader
-	// TODO(owen-d): blocks need not be all downloaded prior. Consider implementing
-	// as an iterator of iterators, where each iterator is a batch of overlapping blocks.
-	blocks []*bloomshipper.CloseableBlockQuerier
+	blocksIter  v1.CloseableIterator[*bloomshipper.CloseableBlockQuerier]
 
 	// options to build blocks with
 	opts v1.BlockOptions
@@ -71,7 +70,7 @@ func NewSimpleBloomGenerator(
 	opts v1.BlockOptions,
 	store v1.Iterator[*v1.Series],
 	chunkLoader ChunkLoader,
-	blocks []*bloomshipper.CloseableBlockQuerier,
+	blocksIter v1.CloseableIterator[*bloomshipper.CloseableBlockQuerier],
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	metrics *Metrics,
 	logger log.Logger,
@@ -81,7 +80,7 @@ func NewSimpleBloomGenerator(
 		opts:         opts,
 		store:        store,
 		chunkLoader:  chunkLoader,
-		blocks:       blocks,
+		blocksIter:   blocksIter,
 		logger:       log.With(logger, "component", "bloom_generator"),
 		readWriterFn: readWriterFn,
 		metrics:      metrics,
@@ -108,9 +107,15 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 
 }
 
-func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []v1.BlockMetadata, results v1.Iterator[*v1.Block], err error) {
-	blocksMatchingSchema := make([]*bloomshipper.CloseableBlockQuerier, 0, len(s.blocks))
-	for _, block := range s.blocks {
+func (s *SimpleBloomGenerator) Generate(ctx context.Context) ([]v1.BlockMetadata, []io.Closer, v1.Iterator[*v1.Block], error) {
+	skippedBlocks := make([]v1.BlockMetadata, 0)
+	toClose := make([]io.Closer, 0)
+	blocksMatchingSchema := make([]*bloomshipper.CloseableBlockQuerier, 0)
+
+	for s.blocksIter.Next() && s.blocksIter.Err() == nil {
+		block := s.blocksIter.At()
+		toClose = append(toClose, block)
+
 		logger := log.With(s.logger, "block", block.BlockRef)
 		md, err := block.Metadata()
 		schema := md.Options.Schema
@@ -130,11 +135,16 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []v1
 		blocksMatchingSchema = append(blocksMatchingSchema, block)
 	}
 
+	if s.blocksIter.Err() != nil {
+		// should we ignore the error and continue with the blocks we got?
+		return skippedBlocks, toClose, v1.NewSliceIter([]*v1.Block{}), s.blocksIter.Err()
+	}
+
 	level.Debug(s.logger).Log("msg", "generating bloom filters for blocks", "num_blocks", len(blocksMatchingSchema), "skipped_blocks", len(skippedBlocks), "schema", fmt.Sprintf("%+v", s.opts.Schema))
 
 	series := v1.NewPeekingIter(s.store)
 	blockIter := NewLazyBlockBuilderIterator(ctx, s.opts, s.populator(ctx), s.readWriterFn, series, blocksMatchingSchema)
-	return skippedBlocks, blockIter, nil
+	return skippedBlocks, toClose, blockIter, nil
 }
 
 // LazyBlockBuilderIterator is a lazy iterator over blocks that builds

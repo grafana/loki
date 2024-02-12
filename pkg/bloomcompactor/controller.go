@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"sort"
 
 	"github.com/go-kit/log"
@@ -138,20 +139,10 @@ func (s *SimpleBloomController) buildBlocks(
 		for _, gap := range plan.gaps {
 			// Fetch blocks that aren't up to date but are in the desired fingerprint range
 			// to try and accelerate bloom creation
-			seriesItr, preExistingBlocks, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
+			seriesItr, blocksIter, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 				return errors.Wrap(err, "failed to get series and blocks")
-			}
-			// Close all remaining blocks on exit
-			closePreExistingBlocks := func() {
-				var closeErrors multierror.MultiError
-				for _, block := range preExistingBlocks {
-					closeErrors.Add(block.Close())
-				}
-				if err := closeErrors.Err(); err != nil {
-					level.Error(s.logger).Log("msg", "failed to close blocks", "err", err)
-				}
 			}
 
 			gen := NewSimpleBloomGenerator(
@@ -159,24 +150,25 @@ func (s *SimpleBloomController) buildBlocks(
 				blockOpts,
 				seriesItr,
 				s.chunkLoader,
-				preExistingBlocks,
+				blocksIter,
 				s.rwFn,
 				s.metrics,
-				log.With(logger, "tsdb", plan.tsdb.Name(), "ownership", gap, "blocks", len(preExistingBlocks)),
+				log.With(logger, "tsdb", plan.tsdb.Name(), "ownership", gap),
 			)
 
-			_, newBlocks, err := gen.Generate(ctx)
+			_, loaded, newBlocks, err := gen.Generate(ctx)
+
 			if err != nil {
 				// TODO(owen-d): metrics
 				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
-				closePreExistingBlocks()
+				s.closeLoadedBlocks(loaded, blocksIter)
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
 			client, err := s.bloomStore.Client(table.ModelTime())
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get client", "err", err)
-				closePreExistingBlocks()
+				s.closeLoadedBlocks(loaded, blocksIter)
 				return errors.Wrap(err, "failed to get client")
 			}
 
@@ -195,7 +187,7 @@ func (s *SimpleBloomController) buildBlocks(
 					built,
 				); err != nil {
 					level.Error(logger).Log("msg", "failed to write block", "err", err)
-					closePreExistingBlocks()
+					s.closeLoadedBlocks(loaded, blocksIter)
 					return errors.Wrap(err, "failed to write block")
 				}
 			}
@@ -203,12 +195,12 @@ func (s *SimpleBloomController) buildBlocks(
 			if err := newBlocks.Err(); err != nil {
 				// TODO(owen-d): metrics
 				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
-				closePreExistingBlocks()
+				s.closeLoadedBlocks(loaded, blocksIter)
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
 			// Close pre-existing blocks
-			closePreExistingBlocks()
+			s.closeLoadedBlocks(loaded, blocksIter)
 		}
 	}
 
@@ -226,19 +218,49 @@ func (s *SimpleBloomController) loadWorkForGap(
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
-) (v1.CloseableIterator[*v1.Series], []*bloomshipper.CloseableBlockQuerier, error) {
+) (v1.CloseableIterator[*v1.Series], v1.CloseableIterator[*bloomshipper.CloseableBlockQuerier], error) {
 	// load a series iterator for the gap
 	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.bounds)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to load tsdb")
 	}
 
-	blocks, err := s.bloomStore.FetchBlocks(ctx, gap.blocks)
+	// load a blocks iterator for the gap
+	fetcher, err := s.bloomStore.Fetcher(table.ModelTime())
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to get blocks")
+		return nil, nil, errors.Wrap(err, "failed to get fetcher")
 	}
 
-	return seriesItr, blocks, nil
+	blocksIter, err := newBatchedBlockLoader(ctx, fetcher, gap.blocks)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to load blocks")
+	}
+
+	return seriesItr, blocksIter, nil
+}
+
+func (s *SimpleBloomController) closeLoadedBlocks(toClose []io.Closer, it v1.CloseableIterator[*bloomshipper.CloseableBlockQuerier]) {
+	// close loaded blocks
+	var err multierror.MultiError
+	for _, closer := range toClose {
+		err.Add(closer.Close())
+	}
+
+	switch itr := it.(type) {
+	case *batchedBlockLoader:
+		// close remaining loaded blocks from batch
+		err.Add(itr.CloseBatch())
+	default:
+		// close remaining loaded blocks
+		for itr.Next() && itr.Err() == nil {
+			err.Add(itr.At().Close())
+		}
+	}
+
+	// log error
+	if err.Err() != nil {
+		level.Error(s.logger).Log("msg", "failed to close blocks", "err", err)
+	}
 }
 
 type gapWithBlocks struct {

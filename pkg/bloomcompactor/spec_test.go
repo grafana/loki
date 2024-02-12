@@ -71,13 +71,14 @@ func dummyBloomGen(opts v1.BlockOptions, store v1.Iterator[*v1.Series], blocks [
 			BlockQuerier: v1.NewBlockQuerier(b),
 		})
 	}
+	blocksIter := v1.NewCloseableIterator(v1.NewSliceIter(bqs))
 
 	return NewSimpleBloomGenerator(
 		"fake",
 		opts,
 		store,
 		dummyChunkLoader{},
-		bqs,
+		blocksIter,
 		func() (v1.BlockWriter, v1.BlockReader) {
 			indexBuf := bytes.NewBuffer(nil)
 			bloomsBuf := bytes.NewBuffer(nil)
@@ -130,7 +131,7 @@ func TestSimpleBloomGenerator(t *testing.T) {
 			)
 
 			gen := dummyBloomGen(tc.toSchema, storeItr, sourceBlocks)
-			skipped, results, err := gen.Generate(context.Background())
+			skipped, _, results, err := gen.Generate(context.Background())
 			require.Nil(t, err)
 			require.Equal(t, tc.numSkipped, len(skipped))
 
