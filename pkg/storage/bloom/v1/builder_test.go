@@ -133,7 +133,7 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 				i := numSeries / 2
 				halfData := data[i:]
 				halfKeys := keys[i:]
-				require.Nil(t, querier.Seek(halfData[0].Series.Fingerprint))
+				require.NoError(t, querier.Seek(halfData[0].Series.Fingerprint))
 				for j := 0; j < len(halfData); j++ {
 					require.Equal(t, true, querier.Next(), "on iteration %d", j)
 					got := querier.At()
