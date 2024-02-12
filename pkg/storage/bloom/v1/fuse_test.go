@@ -19,9 +19,8 @@ func TestFusedQuerier(t *testing.T) {
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
-	numSeries := 100
-	numKeysPerSeries := 10000
-	data, keys := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+	numSeries := 1000
+	data, keys := MkBasicSeriesWithBlooms(numSeries, 0, 0x0000, 0xffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -37,18 +36,20 @@ func TestFusedQuerier(t *testing.T) {
 	require.Nil(t, err)
 	itr := NewSliceIter[SeriesWithBloom](data)
 	_, err = builder.BuildFrom(itr)
-	require.Nil(t, err)
+	require.NoError(t, err)
+	require.False(t, itr.Next())
 	block := NewBlock(reader)
 	querier := NewBlockQuerier(block)
 
-	nReqs := 10
+	n := 2
+	nReqs := numSeries / n
 	var inputs [][]Request
 	var resChans []chan Output
 	for i := 0; i < nReqs; i++ {
 		ch := make(chan Output)
 		var reqs []Request
-		// find 2 series for each
-		for j := 0; j < 2; j++ {
+		// find n series for each
+		for j := 0; j < n; j++ {
 			idx := numSeries/nReqs*i + j
 			reqs = append(reqs, Request{
 				Fp:       data[idx].Series.Fingerprint,

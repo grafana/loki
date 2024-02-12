@@ -3,6 +3,8 @@ package bloomcompactor
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
 const (
@@ -13,7 +15,10 @@ const (
 	statusFailure = "failure"
 )
 
-type metrics struct {
+type Metrics struct {
+	bloomMetrics *v1.Metrics
+	chunkSize    prometheus.Histogram // uncompressed size of all chunks summed per series
+
 	compactionRunsStarted          prometheus.Counter
 	compactionRunsCompleted        *prometheus.CounterVec
 	compactionRunTime              *prometheus.HistogramVec
@@ -28,8 +33,14 @@ type metrics struct {
 	compactorRunning               prometheus.Gauge
 }
 
-func newMetrics(r prometheus.Registerer) *metrics {
-	m := metrics{
+func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
+	m := Metrics{
+		bloomMetrics: bloomMetrics,
+		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:    "bloom_chunk_series_size",
+			Help:    "Uncompressed size of chunks in a series",
+			Buckets: prometheus.ExponentialBucketsRange(1024, 1073741824, 10),
+		}),
 		compactionRunsStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
