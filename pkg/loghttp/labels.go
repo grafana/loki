@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/buger/jsonparser"
 	"github.com/gorilla/mux"
+	"github.com/grafana/jsonparser"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
