@@ -4,7 +4,7 @@ COPY . .
 RUN touch loki-build-image/.uptodate && mkdir /build
 RUN make clean && make BUILD_IN_CONTAINER=false loki
 
-FROM  registry.ci.openshift.org/ocp/4.16:base
+FROM  registry.ci.openshift.org/ocp/4.16:base-rhel9
 LABEL io.k8s.display-name="OpenShift Loki" \
       io.k8s.description="Horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by Prometheus." \
       io.openshift.tags="grafana,prometheus,monitoring" \
