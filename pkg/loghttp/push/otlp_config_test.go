@@ -19,7 +19,7 @@ func TestUnmarshalOTLPConfig(t *testing.T) {
 			name: "only resource_attributes set",
 			yamlConfig: []byte(`
 resource_attributes:
-  attributes:
+  attributes_config:
     - action: index_label
       regex: foo`),
 			expectedCfg: OTLPConfig{
@@ -39,7 +39,7 @@ resource_attributes:
 			yamlConfig: []byte(`
 resource_attributes:
   ignore_defaults: true
-  attributes:
+  attributes_config:
     - action: index_label
       regex: foo`),
 			expectedCfg: OTLPConfig{
@@ -82,7 +82,7 @@ scope_attributes:
 			name: "all 3 set",
 			yamlConfig: []byte(`
 resource_attributes:
-  attributes:
+  attributes_config:
     - action: index_label
       regex: foo
 scope_attributes:

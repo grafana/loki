@@ -2327,27 +2327,26 @@ bloom_shipper:
     [max_tasks_enqueued_per_tenant: <int> | default = 10000]
 
   blocks_cache:
-    # Whether embedded cache is enabled.
-    # CLI flag: -blocks-cache.enabled
+    # Cache for bloom blocks. Whether embedded cache is enabled.
+    # CLI flag: -bloom.blocks-cache.enabled
     [enabled: <boolean> | default = false]
 
-    # Maximum memory size of the cache in MB.
-    # CLI flag: -blocks-cache.max-size-mb
+    # Cache for bloom blocks. Maximum memory size of the cache in MB.
+    # CLI flag: -bloom.blocks-cache.max-size-mb
     [max_size_mb: <int> | default = 100]
 
-    # Maximum number of entries in the cache.
-    # CLI flag: -blocks-cache.max-size-items
+    # Cache for bloom blocks. Maximum number of entries in the cache.
+    # CLI flag: -bloom.blocks-cache.max-size-items
     [max_size_items: <int> | default = 0]
 
-    # The time to live for items in the cache before they get purged.
-    # CLI flag: -blocks-cache.ttl
-    [ttl: <duration> | default = 0s]
+    # Cache for bloom blocks. The time to live for items in the cache before
+    # they get purged.
+    # CLI flag: -bloom.blocks-cache.ttl
+    [ttl: <duration> | default = 24h]
 
-    # During this period the process waits until the directory becomes not used
-    # and only after this it will be deleted. If the timeout is reached, the
-    # directory is force deleted.
-    # CLI flag: -blocks-cache.remove-directory-graceful-period
-    [remove_directory_graceful_period: <duration> | default = 5m]
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is: bloom.metas-cache
+  [metas_cache: <cache_config>]
 ```
 
 ### chunk_store_config
@@ -2642,13 +2641,26 @@ ring:
 # CLI flag: -bloom-compactor.enabled
 [enabled: <boolean> | default = false]
 
-# Directory where files can be downloaded for compaction.
-# CLI flag: -bloom-compactor.working-directory
-[working_directory: <string> | default = ""]
-
 # Interval at which to re-run the compaction operation.
 # CLI flag: -bloom-compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
+
+# How many index periods (days) to wait before compacting a table. This can be
+# used to lower cost by not re-writing data to object storage too frequently
+# since recent data changes more often.
+# CLI flag: -bloom-compactor.min-table-compaction-period
+[min_table_compaction_period: <int> | default = 1]
+
+# How many index periods (days) to wait before compacting a table. This can be
+# used to lower cost by not trying to compact older data which doesn't change.
+# This can be optimized by aligning it with the maximum
+# `reject_old_samples_max_age` setting of any tenant.
+# CLI flag: -bloom-compactor.max-table-compaction-period
+[max_table_compaction_period: <int> | default = 7]
+
+# Number of workers to run in parallel for compaction.
+# CLI flag: -bloom-compactor.worker-parallelism
+[worker_parallelism: <int> | default = 1]
 
 # Minimum backoff time between retries.
 # CLI flag: -bloom-compactor.compaction-retries-min-backoff
@@ -3129,6 +3141,12 @@ shard_streams:
 # CLI flag: -bloom-gateway.cache-key-interval
 [bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
+# The maximum bloom block size. A value of 0 sets an unlimited size. Default is
+# 200MB. The actual block size might exceed this limit since blooms will be
+# added to blocks until the block exceeds the maximum block size.
+# CLI flag: -bloom-compactor.max-block-size
+[bloom_compactor_max_block_size: <int> | default = 200MB]
+
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
 [allow_structured_metadata: <boolean> | default = false]
@@ -3143,14 +3161,22 @@ shard_streams:
 
 # OTLP log ingestion configurations
 otlp_config:
+  # Configuration for resource attributes to store them as index labels or
+  # Structured Metadata or drop them altogether
   resource_attributes:
-    [ignore_defaults: <boolean>]
+    # Configure whether to ignore the default list of resource attributes to be
+    # stored as index labels and only use the given resource attributes config
+    [ignore_defaults: <boolean> | default = false]
 
-    [attributes: <list of AttributesConfigs>]
+    [attributes_config: <list of attributes_configs>]
 
-  [scope_attributes: <list of AttributesConfigs>]
+  # Configuration for scope attributes to store them as Structured Metadata or
+  # drop them altogether
+  [scope_attributes: <list of attributes_configs>]
 
-  [log_attributes: <list of AttributesConfigs>]
+  # Configuration for log attributes to store them as Structured Metadata or
+  # drop them altogether
+  [log_attributes: <list of attributes_configs>]
 ```
 
 ### frontend_worker
@@ -4346,6 +4372,7 @@ The TLS configuration.
 The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bloom-gateway-client.cache`
+- `bloom.metas-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
 - `frontend.label-results-cache`
@@ -4577,7 +4604,7 @@ chunks:
   [tags: <map of string to string>]
 
 # How many shards will be created. Only used if schema is v10 or greater.
-[row_shards: <int>]
+[row_shards: <int> | default = 16]
 ```
 
 ### aws_storage_config
@@ -5292,6 +5319,24 @@ Named store from this example can be used by setting object_store to store-1 in 
 [cos: <map of string to cos_storage_config>]
 ```
 
+### attributes_config
+
+Define actions for matching OpenTelemetry (OTEL) attributes.
+
+```yaml
+# Configures action to take on matching attributes. It allows one of
+# [structured_metadata, drop] for all attribute types. It additionally allows
+# index_label action for resource attributes
+[action: <string> | default = ""]
+
+# List of attributes to configure how to store them or drop them altogether
+[attributes: <list of strings>]
+
+# Regex to choose attributes to configure how to store them or drop them
+# altogether
+[regex: <Regexp>]
+```
+
 ## Runtime Configuration file
 
 Loki has a concept of "runtime config" file, which is simply a file that is reloaded while Loki is running. It is used by some Loki components to allow operator to change some aspects of Loki configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
@@ -5345,7 +5390,8 @@ place in the `limits_config` section:
 configure a runtime configuration file:
 
     ```
-    runtime_config: overrides.yaml
+    runtime_config:
+      file: overrides.yaml
     ```
 
     In the `overrides.yaml` file, add `unordered_writes` for each tenant

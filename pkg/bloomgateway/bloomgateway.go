@@ -23,13 +23,15 @@ of line filter expressions.
 			             |
 			      bloomgateway.Gateway
 			             |
-			       queue.RequestQueue
+		       queue.RequestQueue
 			             |
-			       bloomgateway.Worker
+		       bloomgateway.Worker
 			             |
-			      bloomshipper.Shipper
+		     bloomgateway.Processor
 			             |
-	     bloomshipper.BloomFileClient
+	         bloomshipper.Store
+			             |
+	         bloomshipper.Client
 			             |
 			        ObjectClient
 			             |
@@ -56,9 +58,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/util"
@@ -169,11 +173,9 @@ type Gateway struct {
 	workerMetrics *workerMetrics
 	queueMetrics  *queue.Metrics
 
-	queue        *queue.RequestQueue
-	activeUsers  *util.ActiveUsersCleanupService
-	bloomShipper bloomshipper.Interface
-
-	sharding ShardingStrategy
+	queue       *queue.RequestQueue
+	activeUsers *util.ActiveUsersCleanupService
+	bloomStore  bloomshipper.Store
 
 	pendingTasks *pendingTasks
 
@@ -192,36 +194,45 @@ func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
 }
 
 // New returns a new instance of the Bloom Gateway.
-func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, overrides Limits, shardingStrategy ShardingStrategy, cm storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
+func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, overrides Limits, cm storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
 	g := &Gateway{
 		cfg:          cfg,
 		logger:       logger,
 		metrics:      newMetrics(reg, constants.Loki, metricsSubsystem),
-		sharding:     shardingStrategy,
 		pendingTasks: makePendingTasks(pendingTasksInitialCap),
 		workerConfig: workerConfig{
-			maxWaitTime: 200 * time.Millisecond,
-			maxItems:    100,
+			maxItems: 100,
 		},
 		workerMetrics: newWorkerMetrics(reg, constants.Loki, metricsSubsystem),
 		queueMetrics:  queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
 	}
+	var err error
 
-	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{100}, g.queueMetrics)
+	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{0}, g.queueMetrics)
 	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
 
-	client, err := bloomshipper.NewBloomClient(schemaCfg.Configs, storageCfg, cm)
-	if err != nil {
-		return nil, err
+	var metasCache cache.Cache
+	mcCfg := storageCfg.BloomShipperConfig.MetasCache
+	if cache.IsCacheConfigured(mcCfg) {
+		metasCache, err = cache.New(mcCfg, reg, logger, stats.BloomMetasCache, constants.Loki)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	bloomShipper, err := bloomshipper.NewShipper(client, storageCfg.BloomShipperConfig, overrides, logger, reg)
+	var blocksCache cache.TypedCache[string, bloomshipper.BlockDirectory]
+	bcCfg := storageCfg.BloomShipperConfig.BlocksCache
+	if bcCfg.IsEnabled() {
+		blocksCache = bloomshipper.NewBlocksCache(bcCfg, reg, logger)
+	}
+
+	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, metasCache, blocksCache, logger)
 	if err != nil {
 		return nil, err
 	}
 
 	// We need to keep a reference to be able to call Stop() on shutdown of the gateway.
-	g.bloomShipper = bloomShipper
+	g.bloomStore = store
 
 	if err := g.initServices(); err != nil {
 		return nil, err
@@ -236,7 +247,7 @@ func (g *Gateway) initServices() error {
 	svcs := []services.Service{g.queue, g.activeUsers}
 	for i := 0; i < g.cfg.WorkerConcurrency; i++ {
 		id := fmt.Sprintf("bloom-query-worker-%d", i)
-		w := newWorker(id, g.workerConfig, g.queue, g.bloomShipper, g.pendingTasks, g.logger, g.workerMetrics)
+		w := newWorker(id, g.workerConfig, g.queue, g.bloomStore, g.pendingTasks, g.logger, g.workerMetrics)
 		svcs = append(svcs, w)
 	}
 	g.serviceMngr, err = services.NewManager(svcs...)
@@ -288,7 +299,7 @@ func (g *Gateway) running(ctx context.Context) error {
 }
 
 func (g *Gateway) stopping(_ error) error {
-	g.bloomShipper.Stop()
+	g.bloomStore.Stop()
 	return services.StopManagerAndAwaitStopped(context.Background(), g.serviceMngr)
 }
 
@@ -298,6 +309,8 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	if err != nil {
 		return nil, err
 	}
+
+	logger := log.With(g.logger, "tenant", tenantID)
 
 	// start time == end time --> empty response
 	if req.From.Equal(req.Through) {
@@ -327,79 +340,60 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return req.Refs[i].Fingerprint < req.Refs[j].Fingerprint
 	})
 
-	var expectedResponses int
-	seriesWithBloomsPerDay := partitionRequest(req)
+	var numSeries int
+	seriesByDay := partitionRequest(req)
 
 	// no tasks --> empty response
-	if len(seriesWithBloomsPerDay) == 0 {
+	if len(seriesByDay) == 0 {
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: []*logproto.GroupedChunkRefs{},
 		}, nil
 	}
 
-	tasks := make([]Task, 0, len(seriesWithBloomsPerDay))
-	for _, seriesWithBounds := range seriesWithBloomsPerDay {
-		task, err := NewTask(tenantID, seriesWithBounds, req.Filters)
+	tasks := make([]Task, 0, len(seriesByDay))
+	for _, seriesWithBounds := range seriesByDay {
+		task, err := NewTask(ctx, tenantID, seriesWithBounds, req.Filters)
 		if err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, task)
-		expectedResponses += len(seriesWithBounds.series)
+		numSeries += len(seriesWithBounds.series)
 	}
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
 
-	errCh := make(chan error, 1)
-	resCh := make(chan v1.Output, 1)
-
+	// Ideally we could use an unbuffered channel here, but since we return the
+	// request on the first error, there can be cases where the request context
+	// is not done yet and the consumeTask() function wants to send to the
+	// tasksCh, but nobody reads from it any more.
+	tasksCh := make(chan Task, len(tasks))
 	for _, task := range tasks {
-		level.Info(g.logger).Log("msg", "enqueue task", "task", task.ID, "day", task.day, "series", len(task.series))
+		task := task
+		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "day", task.day, "series", len(task.series))
 		g.queue.Enqueue(tenantID, []string{}, task, func() {
 			// When enqueuing, we also add the task to the pending tasks
 			g.pendingTasks.Add(task.ID, task)
 		})
-
-		// Forward responses or error to the main channels
-		// TODO(chaudum): Refactor to make tasks cancelable
-		go func(t Task) {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case err := <-t.ErrCh:
-					if ctx.Err() != nil {
-						level.Warn(g.logger).Log("msg", "received err from channel, but context is already done", "err", ctx.Err())
-						return
-					}
-					errCh <- err
-				case res := <-t.ResCh:
-					level.Debug(g.logger).Log("msg", "got partial result", "task", t.ID, "tenant", tenantID, "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
-					if ctx.Err() != nil {
-						level.Warn(g.logger).Log("msg", "received res from channel, but context is already done", "err", ctx.Err())
-						return
-					}
-					resCh <- res
-				}
-			}
-		}(task)
+		go consumeTask(ctx, task, tasksCh, logger)
 	}
 
-	responses := responsesPool.Get(expectedResponses)
+	responses := responsesPool.Get(numSeries)
 	defer responsesPool.Put(responses)
+	remaining := len(tasks)
 
 outer:
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, errors.Wrap(ctx.Err(), "waiting for results")
-		case err := <-errCh:
-			return nil, errors.Wrap(err, "waiting for results")
-		case res := <-resCh:
-			responses = append(responses, res)
-			// log line is helpful for debugging tests
-			level.Debug(g.logger).Log("msg", "got partial result", "progress", fmt.Sprintf("%d/%d", len(responses), expectedResponses))
-			// wait for all parts of the full response
-			if len(responses) == expectedResponses {
+			return nil, errors.Wrap(ctx.Err(), "request failed")
+		case task := <-tasksCh:
+			level.Info(logger).Log("msg", "task done", "task", task.ID, "err", task.Err())
+			if task.Err() != nil {
+				return nil, errors.Wrap(task.Err(), "request failed")
+			}
+			responses = append(responses, task.responses...)
+			remaining--
+			if remaining == 0 {
 				break outer
 			}
 		}
@@ -415,8 +409,36 @@ outer:
 	g.metrics.addUnfilteredCount(numChunksUnfiltered)
 	g.metrics.addFilteredCount(len(req.Refs))
 
-	level.Debug(g.logger).Log("msg", "return filtered chunk refs", "unfiltered", numChunksUnfiltered, "filtered", len(req.Refs))
+	level.Info(logger).Log("msg", "return filtered chunk refs", "unfiltered", numChunksUnfiltered, "filtered", len(req.Refs))
 	return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
+}
+
+// consumeTask receives v1.Output yielded from the block querier on the task's
+// result channel and stores them on the task.
+// In case the context task is done, it drains the remaining items until the
+// task is closed by the worker.
+// Once the tasks is closed, it will send the task with the results from the
+// block querier to the supplied task channel.
+func consumeTask(ctx context.Context, task Task, tasksCh chan<- Task, logger log.Logger) {
+	logger = log.With(logger, "task", task.ID)
+
+	for res := range task.resCh {
+		select {
+		case <-ctx.Done():
+			level.Debug(logger).Log("msg", "drop partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
+		default:
+			level.Debug(logger).Log("msg", "accept partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
+			task.responses = append(task.responses, res)
+		}
+	}
+
+	select {
+	case <-ctx.Done():
+		// do nothing
+	case <-task.Done():
+		// notify request handler about finished task
+		tasksCh <- task
+	}
 }
 
 func removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output, logger log.Logger) {

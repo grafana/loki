@@ -4046,6 +4046,14 @@ spec:
                 description: Storage provides summary of all changes that have occurred
                   to the storage configuration.
                 properties:
+                  credentialMode:
+                    description: CredentialMode contains the authentication mode used
+                      for accessing the object storage.
+                    enum:
+                    - static
+                    - token
+                    - managed
+                    type: string
                   schemas:
                     description: Schemas is a list of schemas which have been applied
                       to the LokiStack.
