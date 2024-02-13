@@ -1,21 +1,1421 @@
----
-name: 'create release PR for minor releases'
-on:
+concurrency:
+  group: "create-release-pr-${{ github.sha }}"
+env:
+  DOCKER_USERNAME: "grafana"
+  IMAGE_PREFIX: "grafana"
+  RELEASE_REPO: "grafana/loki"
+  SKIP_VALIDATION: false
+  VERSIONING_STRATEGY: "always-bump-minor"
+jobs:
+  check:
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "setup go"
+      uses: "actions/setup-go@v5"
+      with:
+        cache-dependency-path: "release/go.sum"
+        go-version-file: "release/go.mod"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - name: "install dependencies"
+      run: |
+        go install github.com/bufbuild/buf/cmd/buf@v1.4.0
+        go install github.com/golang/protobuf/protoc-gen-go@v1.3.1
+        go install github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0
+        go install github.com/fatih/faillint@v1.11.0
+        go install golang.org/x/tools/cmd/goimports@v0.7.0
+        go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.4.0
+        go install github.com/monitoring-mixins/mixtool/cmd/mixtool@bca3066
+        go install github.com/google/go-jsonnet/cmd/jsonnet@v0.18.0
+        go install github.com/google/go-jsonnet/cmd/jsonnet-lint@v0.18.0
+        
+        sudo apt update
+        sudo apt install -qy musl gnupg ragel \
+          file zip unzip jq gettext \
+          protobuf-compiler libprotobuf-dev \
+          libsystemd-dev jq
+      shell: "bash"
+    - name: "install golangci-lint"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "golangci-lint"
+        download_url: "https://github.com/golangci/golangci-lint/releases/download/v${version}/golangci-lint-${version}-linux-amd64.tar.gz"
+        smoke_test: "${binary} version"
+        tarball_binary_path: "*/${binary}"
+        version: "1.55.1"
+    - name: "install shellcheck"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "shellcheck"
+        download_url: "https://github.com/koalaman/shellcheck/releases/download/v${version}/shellcheck-v${version}.linux.x86_64.tar.xz"
+        smoke_test: "${binary} --version"
+        tar_args: "xvf"
+        tarball_binary_path: "*/${binary}"
+        version: "0.9.0"
+    - name: "install helm"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "helm"
+        download_url: "https://get.helm.sh/helm-v${version}-linux-amd64.tar.gz"
+        smoke_test: "${binary} version"
+        tarball_binary_path: "*/${binary}"
+        version: "3.2.3"
+    - name: "install helm-docs"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "helm-docs"
+        download_url: "https://github.com/norwoodj/helm-docs/releases/download/v${version}/helm-docs_Linux_x86_64.tar.gz"
+        smoke_test: "${binary} --version"
+        tarball_binary_path: "${binary}"
+        version: "1.11.2"
+    - name: "install jsonnetfmt"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "jsonnetfmt"
+        download_url: "https://github.com/google/go-jsonnet/releases/download/v${version}/go-jsonnet_${version}_Linux_x86_64.tar.gz"
+        smoke_test: "${binary} --version"
+        tarball_binary_path: "${binary}"
+        version: "0.18.0"
+    - if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      name: "check generated files"
+      run: "make BUILD_IN_CONTAINER=false check-generated-files"
+      shell: "bash"
+      working-directory: "release"
+    - if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      name: "check mod"
+      run: "make BUILD_IN_CONTAINER=false check-mod"
+      shell: "bash"
+      working-directory: "release"
+    - if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      name: "shellcheck"
+      run: "make BUILD_IN_CONTAINER=false lint-scripts"
+      shell: "bash"
+      working-directory: "release"
+    - if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      name: "check docs"
+      run: "make BUILD_IN_CONTAINER=false check-doc"
+      shell: "bash"
+      working-directory: "release"
+    - if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      name: "validate example configs"
+      run: "make BUILD_IN_CONTAINER=false check-example-config-doc"
+      shell: "bash"
+      working-directory: "release"
+    - if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      name: "check helm reference doc"
+      run: "make BUILD_IN_CONTAINER=false documentation-helm-reference-check"
+      shell: "bash"
+      working-directory: "release"
+  create-release-pr:
+    needs:
+    - "dist"
+    - "fluent-bit"
+    - "fluentd"
+    - "logcli"
+    - "logstash"
+    - "loki"
+    - "loki-canary"
+    - "loki-canary-boringcrypto"
+    - "loki-operator"
+    - "promtail"
+    - "querytee"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - id: "extract_branch"
+      name: "extract branch name"
+      run: |
+        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - env:
+        SHA: "${{ github.sha }}"
+      id: "release"
+      name: "release please"
+      run: |
+        npm install
+        npm exec -- release-please release-pr \
+          --consider-all-branches \
+          --label "backport main,autorelease: pending,type/docs" \
+          --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/loki-build-artifacts/${SHA}) of ${SHA}" \
+          --release-type simple \
+          --repo-url="${{ env.RELEASE_REPO }}" \
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+      shell: "bash"
+      working-directory: "lib"
+  dist:
+    needs:
+    - "test"
+    - "lint"
+    - "check"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "setup go"
+      uses: "actions/setup-go@v5"
+      with:
+        cache-dependency-path: "release/go.sum"
+        go-version-file: "release/go.mod"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "install dependencies"
+      run: |
+        go install github.com/mitchellh/gox@9f71238
+        go install github.com/bufbuild/buf/cmd/buf@v1.4.0
+        go install github.com/golang/protobuf/protoc-gen-go@v1.3.1
+        go install github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0
+        
+        sudo apt update
+        sudo apt install -qy musl gnupg ragel \
+          file zip unzip jq gettext \
+          protobuf-compiler libprotobuf-dev \
+          libsystemd-dev jq
+      shell: "bash"
+    - name: "build artifacts"
+      run: "make BUILD_IN_CONTAINER=false SKIP_ARM=true dist"
+      shell: "bash"
+      working-directory: "release"
+    - name: "upload build artifacts"
+      uses: "google-github-actions/upload-cloud-storage@v2"
+      with:
+        destination: "loki-build-artifacts/${{ github.sha }}"
+        path: "release/dist"
+        process_gcloudignore: false
+  fluent-bit:
+    needs:
+    - "test"
+    - "lint"
+    - "check"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "setup go"
+      uses: "actions/setup-go@v5"
+      with:
+        cache-dependency-path: "release/go.sum"
+        go-version-file: "release/go.mod"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@v3"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@v3"
+    - id: "platform"
+      name: "parse image platform"
+      run: |
+        mkdir -p images
+        
+        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "extract_branch"
+      name: "extract branch name"
+      run: |
+        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "version"
+      name: "get release version"
+      run: |
+        npm install
+        npm exec -- release-please release-pr \
+          --consider-all-branches \
+          --dry-run \
+          --dry-run-output release.json \
+          --release-type simple \
+          --repo-url="${{ env.RELEASE_REPO }}" \
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
+          echo 'release-please would create more than 1 PR, so cannot determine correct version'
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+        else
+          version="$(npm run --silent get-version)"
+          echo "Parsed version: ${version}"
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "pr_created=true" >> $GITHUB_OUTPUT
+        fi
+      shell: "bash"
+      working-directory: "lib"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "Build and export"
+      uses: "docker/build-push-action@v5"
+      with:
+        context: "release"
+        file: "release/clients/cmd/fluent-bit/Dockerfile"
+        outputs: "type=docker,dest=release/images/fluent-bit-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.platform }}"
+        tags: "${{ env.IMAGE_PREFIX }}/fluent-bit:${{ steps.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@v2"
+      with:
+        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        path: "release/images/fluent-bit-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        process_gcloudignore: false
+    strategy:
+      fail-fast: true
+      matrix:
+        platform:
+        - "linux/amd64"
+  fluentd:
+    needs:
+    - "test"
+    - "lint"
+    - "check"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "setup go"
+      uses: "actions/setup-go@v5"
+      with:
+        cache-dependency-path: "release/go.sum"
+        go-version-file: "release/go.mod"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@v3"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@v3"
+    - id: "platform"
+      name: "parse image platform"
+      run: |
+        mkdir -p images
+        
+        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "extract_branch"
+      name: "extract branch name"
+      run: |
+        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "version"
+      name: "get release version"
+      run: |
+        npm install
+        npm exec -- release-please release-pr \
+          --consider-all-branches \
+          --dry-run \
+          --dry-run-output release.json \
+          --release-type simple \
+          --repo-url="${{ env.RELEASE_REPO }}" \
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
+          echo 'release-please would create more than 1 PR, so cannot determine correct version'
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+        else
+          version="$(npm run --silent get-version)"
+          echo "Parsed version: ${version}"
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "pr_created=true" >> $GITHUB_OUTPUT
+        fi
+      shell: "bash"
+      working-directory: "lib"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "Build and export"
+      uses: "docker/build-push-action@v5"
+      with:
+        context: "release"
+        file: "release/clients/cmd/fluentd/Dockerfile"
+        outputs: "type=docker,dest=release/images/fluentd-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.platform }}"
+        tags: "${{ env.IMAGE_PREFIX }}/fluentd:${{ steps.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@v2"
+      with:
+        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        path: "release/images/fluentd-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        process_gcloudignore: false
+    strategy:
+      fail-fast: true
+      matrix:
+        platform:
+        - "linux/amd64"
+  lint:
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "setup go"
+      uses: "actions/setup-go@v5"
+      with:
+        cache-dependency-path: "release/go.sum"
+        go-version-file: "release/go.mod"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - name: "install dependencies"
+      run: |
+        go install github.com/bufbuild/buf/cmd/buf@v1.4.0
+        go install github.com/golang/protobuf/protoc-gen-go@v1.3.1
+        go install github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0
+        go install github.com/fatih/faillint@v1.11.0
+        go install golang.org/x/tools/cmd/goimports@v0.7.0
+        go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.4.0
+        go install github.com/monitoring-mixins/mixtool/cmd/mixtool@bca3066
+        go install github.com/google/go-jsonnet/cmd/jsonnet@v0.18.0
+        go install github.com/google/go-jsonnet/cmd/jsonnet-lint@v0.18.0
+        
+        sudo apt update
+        sudo apt install -qy musl gnupg ragel \
+          file zip unzip jq gettext \
+          protobuf-compiler libprotobuf-dev \
+          libsystemd-dev jq
+      shell: "bash"
+    - name: "install golangci-lint"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "golangci-lint"
+        download_url: "https://github.com/golangci/golangci-lint/releases/download/v${version}/golangci-lint-${version}-linux-amd64.tar.gz"
+        smoke_test: "${binary} version"
+        tarball_binary_path: "*/${binary}"
+        version: "1.55.1"
+    - name: "install shellcheck"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "shellcheck"
+        download_url: "https://github.com/koalaman/shellcheck/releases/download/v${version}/shellcheck-v${version}.linux.x86_64.tar.xz"
+        smoke_test: "${binary} --version"
+        tar_args: "xvf"
+        tarball_binary_path: "*/${binary}"
+        version: "0.9.0"
+    - name: "install helm"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "helm"
+        download_url: "https://get.helm.sh/helm-v${version}-linux-amd64.tar.gz"
+        smoke_test: "${binary} version"
+        tarball_binary_path: "*/${binary}"
+        version: "3.2.3"
+    - name: "install helm-docs"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "helm-docs"
+        download_url: "https://github.com/norwoodj/helm-docs/releases/download/v${version}/helm-docs_Linux_x86_64.tar.gz"
+        smoke_test: "${binary} --version"
+        tarball_binary_path: "${binary}"
+        version: "1.11.2"
+    - name: "install jsonnetfmt"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "jsonnetfmt"
+        download_url: "https://github.com/google/go-jsonnet/releases/download/v${version}/go-jsonnet_${version}_Linux_x86_64.tar.gz"
+        smoke_test: "${binary} --version"
+        tarball_binary_path: "${binary}"
+        version: "0.18.0"
+    - if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      name: "lint"
+      run: "make BUILD_IN_CONTAINER=false lint"
+      shell: "bash"
+      working-directory: "release"
+    - if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      name: "lint jsonnet"
+      run: "make BUILD_IN_CONTAINER=false lint-jsonnet"
+      shell: "bash"
+      working-directory: "release"
+  logcli:
+    needs:
+    - "test"
+    - "lint"
+    - "check"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "setup go"
+      uses: "actions/setup-go@v5"
+      with:
+        cache-dependency-path: "release/go.sum"
+        go-version-file: "release/go.mod"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@v3"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@v3"
+    - id: "platform"
+      name: "parse image platform"
+      run: |
+        mkdir -p images
+        
+        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "extract_branch"
+      name: "extract branch name"
+      run: |
+        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "version"
+      name: "get release version"
+      run: |
+        npm install
+        npm exec -- release-please release-pr \
+          --consider-all-branches \
+          --dry-run \
+          --dry-run-output release.json \
+          --release-type simple \
+          --repo-url="${{ env.RELEASE_REPO }}" \
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
+          echo 'release-please would create more than 1 PR, so cannot determine correct version'
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+        else
+          version="$(npm run --silent get-version)"
+          echo "Parsed version: ${version}"
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "pr_created=true" >> $GITHUB_OUTPUT
+        fi
+      shell: "bash"
+      working-directory: "lib"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "Build and export"
+      uses: "docker/build-push-action@v5"
+      with:
+        context: "release"
+        file: "release/cmd/logcli/Dockerfile"
+        outputs: "type=docker,dest=release/images/logcli-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.platform }}"
+        tags: "${{ env.IMAGE_PREFIX }}/logcli:${{ steps.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@v2"
+      with:
+        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        path: "release/images/logcli-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        process_gcloudignore: false
+    strategy:
+      fail-fast: true
+      matrix:
+        platform:
+        - "linux/amd64"
+        - "linux/arm64"
+        - "linux/arm"
+  logstash:
+    needs:
+    - "test"
+    - "lint"
+    - "check"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "setup go"
+      uses: "actions/setup-go@v5"
+      with:
+        cache-dependency-path: "release/go.sum"
+        go-version-file: "release/go.mod"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@v3"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@v3"
+    - id: "platform"
+      name: "parse image platform"
+      run: |
+        mkdir -p images
+        
+        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "extract_branch"
+      name: "extract branch name"
+      run: |
+        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "version"
+      name: "get release version"
+      run: |
+        npm install
+        npm exec -- release-please release-pr \
+          --consider-all-branches \
+          --dry-run \
+          --dry-run-output release.json \
+          --release-type simple \
+          --repo-url="${{ env.RELEASE_REPO }}" \
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
+          echo 'release-please would create more than 1 PR, so cannot determine correct version'
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+        else
+          version="$(npm run --silent get-version)"
+          echo "Parsed version: ${version}"
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "pr_created=true" >> $GITHUB_OUTPUT
+        fi
+      shell: "bash"
+      working-directory: "lib"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "Build and export"
+      uses: "docker/build-push-action@v5"
+      with:
+        context: "release"
+        file: "release/clients/cmd/logstash/Dockerfile"
+        outputs: "type=docker,dest=release/images/logstash-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.platform }}"
+        tags: "${{ env.IMAGE_PREFIX }}/logstash:${{ steps.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@v2"
+      with:
+        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        path: "release/images/logstash-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        process_gcloudignore: false
+    strategy:
+      fail-fast: true
+      matrix:
+        platform:
+        - "linux/amd64"
+  loki:
+    needs:
+    - "test"
+    - "lint"
+    - "check"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "setup go"
+      uses: "actions/setup-go@v5"
+      with:
+        cache-dependency-path: "release/go.sum"
+        go-version-file: "release/go.mod"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@v3"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@v3"
+    - id: "platform"
+      name: "parse image platform"
+      run: |
+        mkdir -p images
+        
+        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "extract_branch"
+      name: "extract branch name"
+      run: |
+        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "version"
+      name: "get release version"
+      run: |
+        npm install
+        npm exec -- release-please release-pr \
+          --consider-all-branches \
+          --dry-run \
+          --dry-run-output release.json \
+          --release-type simple \
+          --repo-url="${{ env.RELEASE_REPO }}" \
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
+          echo 'release-please would create more than 1 PR, so cannot determine correct version'
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+        else
+          version="$(npm run --silent get-version)"
+          echo "Parsed version: ${version}"
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "pr_created=true" >> $GITHUB_OUTPUT
+        fi
+      shell: "bash"
+      working-directory: "lib"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "Build and export"
+      uses: "docker/build-push-action@v5"
+      with:
+        context: "release"
+        file: "release/cmd/loki/Dockerfile"
+        outputs: "type=docker,dest=release/images/loki-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.platform }}"
+        tags: "${{ env.IMAGE_PREFIX }}/loki:${{ steps.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@v2"
+      with:
+        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        path: "release/images/loki-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        process_gcloudignore: false
+    strategy:
+      fail-fast: true
+      matrix:
+        platform:
+        - "linux/amd64"
+        - "linux/arm64"
+        - "linux/arm"
+  loki-canary:
+    needs:
+    - "test"
+    - "lint"
+    - "check"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "setup go"
+      uses: "actions/setup-go@v5"
+      with:
+        cache-dependency-path: "release/go.sum"
+        go-version-file: "release/go.mod"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@v3"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@v3"
+    - id: "platform"
+      name: "parse image platform"
+      run: |
+        mkdir -p images
+        
+        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "extract_branch"
+      name: "extract branch name"
+      run: |
+        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "version"
+      name: "get release version"
+      run: |
+        npm install
+        npm exec -- release-please release-pr \
+          --consider-all-branches \
+          --dry-run \
+          --dry-run-output release.json \
+          --release-type simple \
+          --repo-url="${{ env.RELEASE_REPO }}" \
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
+          echo 'release-please would create more than 1 PR, so cannot determine correct version'
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+        else
+          version="$(npm run --silent get-version)"
+          echo "Parsed version: ${version}"
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "pr_created=true" >> $GITHUB_OUTPUT
+        fi
+      shell: "bash"
+      working-directory: "lib"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "Build and export"
+      uses: "docker/build-push-action@v5"
+      with:
+        context: "release"
+        file: "release/cmd/loki-canary/Dockerfile"
+        outputs: "type=docker,dest=release/images/loki-canary-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.platform }}"
+        tags: "${{ env.IMAGE_PREFIX }}/loki-canary:${{ steps.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@v2"
+      with:
+        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        path: "release/images/loki-canary-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        process_gcloudignore: false
+    strategy:
+      fail-fast: true
+      matrix:
+        platform:
+        - "linux/amd64"
+        - "linux/arm64"
+        - "linux/arm"
+  loki-canary-boringcrypto:
+    needs:
+    - "test"
+    - "lint"
+    - "check"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "setup go"
+      uses: "actions/setup-go@v5"
+      with:
+        cache-dependency-path: "release/go.sum"
+        go-version-file: "release/go.mod"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@v3"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@v3"
+    - id: "platform"
+      name: "parse image platform"
+      run: |
+        mkdir -p images
+        
+        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "extract_branch"
+      name: "extract branch name"
+      run: |
+        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "version"
+      name: "get release version"
+      run: |
+        npm install
+        npm exec -- release-please release-pr \
+          --consider-all-branches \
+          --dry-run \
+          --dry-run-output release.json \
+          --release-type simple \
+          --repo-url="${{ env.RELEASE_REPO }}" \
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
+          echo 'release-please would create more than 1 PR, so cannot determine correct version'
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+        else
+          version="$(npm run --silent get-version)"
+          echo "Parsed version: ${version}"
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "pr_created=true" >> $GITHUB_OUTPUT
+        fi
+      shell: "bash"
+      working-directory: "lib"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "Build and export"
+      uses: "docker/build-push-action@v5"
+      with:
+        context: "release"
+        file: "release/cmd/loki-canary-boringcrypto/Dockerfile"
+        outputs: "type=docker,dest=release/images/loki-canary-boringcrypto-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.platform }}"
+        tags: "${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto:${{ steps.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@v2"
+      with:
+        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        path: "release/images/loki-canary-boringcrypto-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        process_gcloudignore: false
+    strategy:
+      fail-fast: true
+      matrix:
+        platform:
+        - "linux/amd64"
+        - "linux/arm64"
+        - "linux/arm"
+  loki-operator:
+    needs:
+    - "test"
+    - "lint"
+    - "check"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "setup go"
+      uses: "actions/setup-go@v5"
+      with:
+        cache-dependency-path: "release/go.sum"
+        go-version-file: "release/go.mod"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@v3"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@v3"
+    - id: "platform"
+      name: "parse image platform"
+      run: |
+        mkdir -p images
+        
+        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "extract_branch"
+      name: "extract branch name"
+      run: |
+        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "version"
+      name: "get release version"
+      run: |
+        npm install
+        npm exec -- release-please release-pr \
+          --consider-all-branches \
+          --dry-run \
+          --dry-run-output release.json \
+          --release-type simple \
+          --repo-url="${{ env.RELEASE_REPO }}" \
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
+          echo 'release-please would create more than 1 PR, so cannot determine correct version'
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+        else
+          version="$(npm run --silent get-version)"
+          echo "Parsed version: ${version}"
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "pr_created=true" >> $GITHUB_OUTPUT
+        fi
+      shell: "bash"
+      working-directory: "lib"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "Build and export"
+      uses: "docker/build-push-action@v5"
+      with:
+        context: "release/operator"
+        file: "release/operator/Dockerfile"
+        outputs: "type=docker,dest=release/images/loki-operator-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.platform }}"
+        tags: "${{ env.IMAGE_PREFIX }}/loki-operator:${{ steps.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@v2"
+      with:
+        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        path: "release/images/loki-operator-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        process_gcloudignore: false
+    strategy:
+      fail-fast: true
+      matrix:
+        platform:
+        - "linux/amd64"
+  promtail:
+    needs:
+    - "test"
+    - "lint"
+    - "check"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "setup go"
+      uses: "actions/setup-go@v5"
+      with:
+        cache-dependency-path: "release/go.sum"
+        go-version-file: "release/go.mod"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@v3"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@v3"
+    - id: "platform"
+      name: "parse image platform"
+      run: |
+        mkdir -p images
+        
+        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "extract_branch"
+      name: "extract branch name"
+      run: |
+        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "version"
+      name: "get release version"
+      run: |
+        npm install
+        npm exec -- release-please release-pr \
+          --consider-all-branches \
+          --dry-run \
+          --dry-run-output release.json \
+          --release-type simple \
+          --repo-url="${{ env.RELEASE_REPO }}" \
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
+          echo 'release-please would create more than 1 PR, so cannot determine correct version'
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+        else
+          version="$(npm run --silent get-version)"
+          echo "Parsed version: ${version}"
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "pr_created=true" >> $GITHUB_OUTPUT
+        fi
+      shell: "bash"
+      working-directory: "lib"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "Build and export"
+      uses: "docker/build-push-action@v5"
+      with:
+        context: "release"
+        file: "release/clients/cmd/promtail/Dockerfile"
+        outputs: "type=docker,dest=release/images/promtail-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.platform }}"
+        tags: "${{ env.IMAGE_PREFIX }}/promtail:${{ steps.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@v2"
+      with:
+        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        path: "release/images/promtail-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        process_gcloudignore: false
+    strategy:
+      fail-fast: true
+      matrix:
+        platform:
+        - "linux/amd64"
+        - "linux/arm64"
+        - "linux/arm"
+  querytee:
+    needs:
+    - "test"
+    - "lint"
+    - "check"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "setup go"
+      uses: "actions/setup-go@v5"
+      with:
+        cache-dependency-path: "release/go.sum"
+        go-version-file: "release/go.mod"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@v3"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@v3"
+    - id: "platform"
+      name: "parse image platform"
+      run: |
+        mkdir -p images
+        
+        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "extract_branch"
+      name: "extract branch name"
+      run: |
+        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "version"
+      name: "get release version"
+      run: |
+        npm install
+        npm exec -- release-please release-pr \
+          --consider-all-branches \
+          --dry-run \
+          --dry-run-output release.json \
+          --release-type simple \
+          --repo-url="${{ env.RELEASE_REPO }}" \
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
+          echo 'release-please would create more than 1 PR, so cannot determine correct version'
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+        else
+          version="$(npm run --silent get-version)"
+          echo "Parsed version: ${version}"
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "pr_created=true" >> $GITHUB_OUTPUT
+        fi
+      shell: "bash"
+      working-directory: "lib"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "Build and export"
+      uses: "docker/build-push-action@v5"
+      with:
+        context: "release"
+        file: "release/cmd/querytee/Dockerfile"
+        outputs: "type=docker,dest=release/images/querytee-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.platform }}"
+        tags: "${{ env.IMAGE_PREFIX }}/querytee:${{ steps.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@v2"
+      with:
+        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        path: "release/images/querytee-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        process_gcloudignore: false
+    strategy:
+      fail-fast: true
+      matrix:
+        platform:
+        - "linux/amd64"
+  test:
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "setup go"
+      uses: "actions/setup-go@v5"
+      with:
+        cache-dependency-path: "release/go.sum"
+        go-version-file: "release/go.mod"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - name: "install dependencies"
+      run: |
+        go install github.com/bufbuild/buf/cmd/buf@v1.4.0
+        go install github.com/golang/protobuf/protoc-gen-go@v1.3.1
+        go install github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0
+        go install github.com/fatih/faillint@v1.11.0
+        go install golang.org/x/tools/cmd/goimports@v0.7.0
+        go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.4.0
+        go install github.com/monitoring-mixins/mixtool/cmd/mixtool@bca3066
+        go install github.com/google/go-jsonnet/cmd/jsonnet@v0.18.0
+        go install github.com/google/go-jsonnet/cmd/jsonnet-lint@v0.18.0
+        
+        sudo apt update
+        sudo apt install -qy musl gnupg ragel \
+          file zip unzip jq gettext \
+          protobuf-compiler libprotobuf-dev \
+          libsystemd-dev jq
+      shell: "bash"
+    - name: "install golangci-lint"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "golangci-lint"
+        download_url: "https://github.com/golangci/golangci-lint/releases/download/v${version}/golangci-lint-${version}-linux-amd64.tar.gz"
+        smoke_test: "${binary} version"
+        tarball_binary_path: "*/${binary}"
+        version: "1.55.1"
+    - name: "install shellcheck"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "shellcheck"
+        download_url: "https://github.com/koalaman/shellcheck/releases/download/v${version}/shellcheck-v${version}.linux.x86_64.tar.xz"
+        smoke_test: "${binary} --version"
+        tar_args: "xvf"
+        tarball_binary_path: "*/${binary}"
+        version: "0.9.0"
+    - name: "install helm"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "helm"
+        download_url: "https://get.helm.sh/helm-v${version}-linux-amd64.tar.gz"
+        smoke_test: "${binary} version"
+        tarball_binary_path: "*/${binary}"
+        version: "3.2.3"
+    - name: "install helm-docs"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "helm-docs"
+        download_url: "https://github.com/norwoodj/helm-docs/releases/download/v${version}/helm-docs_Linux_x86_64.tar.gz"
+        smoke_test: "${binary} --version"
+        tarball_binary_path: "${binary}"
+        version: "1.11.2"
+    - name: "install jsonnetfmt"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "jsonnetfmt"
+        download_url: "https://github.com/google/go-jsonnet/releases/download/v${version}/go-jsonnet_${version}_Linux_x86_64.tar.gz"
+        smoke_test: "${binary} --version"
+        tarball_binary_path: "${binary}"
+        version: "0.18.0"
+    - if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      name: "test"
+      run: "make BUILD_IN_CONTAINER=false test"
+      shell: "bash"
+      working-directory: "release"
+name: "create release PR"
+"on":
   push:
     branches:
-      - 'k[0-9]*'
-  workflow_dispatch: {}
+    - "k[0-9]*"
 permissions:
-  contents: 'write'
-  issues: 'write'
-  pull-requests: 'write'
-jobs:
-  create-release-pr:
-    uses: grafana/loki-release/.github/workflows/release-pr.yml@main
-    with:
-      release_repo: grafana/loki
-      skip_validation: false
-      versioning_strategy: always-bump-minor
-    secrets:
-      GCS_SERVICE_ACCOUNT_KEY: '${{ secrets.BACKEND_ENTERPRISE_DRONE }}'
-      GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+  contents: "write"
+  pull-requests: "write"
