@@ -775,10 +775,10 @@ func TestTenantRemoteWriteHeadersNoOrgIDHeader(t *testing.T) {
 	// Ensure that overrides take plus and that X-Scope-OrgID header is still missing
 	expected := []map[string]string{
 		{
-			"Base":               "value",
+			"Base": "value",
 		},
 		{
-			"Base":               "value2",
+			"Base": "value2",
 		},
 	}
 
