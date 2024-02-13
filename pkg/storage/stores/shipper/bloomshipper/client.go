@@ -149,7 +149,20 @@ type Block struct {
 	Data io.ReadSeekCloser
 }
 
-func BlockFrom(tenant, table string, blk *v1.Block) Block {
+// CloseableReadSeekerAdapter is a wrapper around io.ReadSeeker to make it io.Closer
+// if it doesn't already implement it.
+type ClosableReadSeekerAdapter struct {
+	io.ReadSeeker
+}
+
+func (c ClosableReadSeekerAdapter) Close() error {
+	if closer, ok := c.ReadSeeker.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
+func BlockFrom(tenant, table string, blk *v1.Block) (Block, error) {
 	md, _ := blk.Metadata()
 	ref := Ref{
 		TenantID:       tenant,
@@ -159,9 +172,21 @@ func BlockFrom(tenant, table string, blk *v1.Block) Block {
 		EndTimestamp:   md.Series.ThroughTs,
 		Checksum:       md.Checksum,
 	}
+
+	// TODO(owen-d): pool
+	buf := bytes.NewBuffer(nil)
+	err := v1.TarGz(buf, blk.Reader())
+
+	if err != nil {
+		return Block{}, errors.Wrap(err, "archiving+compressing block")
+	}
+
+	reader := bytes.NewReader(buf.Bytes())
+
 	return Block{
 		BlockRef: BlockRef{Ref: ref},
-	}
+		Data:     ClosableReadSeekerAdapter{reader},
+	}, nil
 }
 
 type BlockClient interface {

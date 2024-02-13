@@ -32,6 +32,10 @@ func NewBlock(reader BlockReader) *Block {
 	}
 }
 
+func (b *Block) Reader() BlockReader {
+	return b.reader
+}
+
 func (b *Block) LoadHeaders() error {
 	// TODO(owen-d): better control over when to decode
 	if !b.initialized {

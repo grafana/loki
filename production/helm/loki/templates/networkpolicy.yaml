@@ -172,7 +172,7 @@ spec:
 
 {{- end }}
 
-{{- if .Values.networkPolicy.discovery.port }}
+{{- if and .Values.networkPolicy.discovery.port (eq .Values.networkPolicy.flavor "kubernetes") }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

@@ -90,7 +90,7 @@ func New(
 	c.metrics = NewMetrics(r, c.btMetrics)
 
 	chunkLoader := NewStoreChunkLoader(
-		NewFetcherProviderAdapter(fetcherProvider),
+		fetcherProvider,
 		c.metrics,
 	)
 
@@ -205,9 +205,19 @@ func (c *Compactor) runOne(ctx context.Context) error {
 }
 
 func (c *Compactor) tables(ts time.Time) *dayRangeIterator {
-	from := model.TimeFromUnixNano(ts.Add(-c.cfg.MaxCompactionAge).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod))
-	through := model.TimeFromUnixNano(ts.Add(-c.cfg.MinCompactionAge).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod))
-	return newDayRangeIterator(DayTable(from), DayTable(through))
+	// adjust the minimum by one to make it inclusive, which is more intuitive
+	// for a configuration variable
+	adjustedMin := min(c.cfg.MinTableCompactionPeriod - 1)
+	minCompactionPeriod := time.Duration(adjustedMin) * config.ObjectStorageIndexRequiredPeriod
+	maxCompactionPeriod := time.Duration(c.cfg.MaxTableCompactionPeriod) * config.ObjectStorageIndexRequiredPeriod
+
+	from := ts.Add(-maxCompactionPeriod).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod) * int64(config.ObjectStorageIndexRequiredPeriod)
+	through := ts.Add(-minCompactionPeriod).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod) * int64(config.ObjectStorageIndexRequiredPeriod)
+
+	fromDay := DayTable(model.TimeFromUnixNano(from))
+	throughDay := DayTable(model.TimeFromUnixNano(through))
+	return newDayRangeIterator(fromDay, throughDay)
+
 }
 
 func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
