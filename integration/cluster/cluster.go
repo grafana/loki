@@ -84,7 +84,6 @@ bloom_gateway:
 
 bloom_compactor:
   enabled: false
-  working_directory: {{.dataPath}}/bloom-compactor
 
 compactor:
   working_directory: {{.dataPath}}/compactor
