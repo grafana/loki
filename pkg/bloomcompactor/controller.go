@@ -446,7 +446,7 @@ func findGaps(ownershipRange v1.FingerprintBounds, metas []v1.FingerprintBounds)
 
 		searchRange := ownershipRange.Slice(leftBound, clippedMeta.Max)
 		// update the left bound for the next iteration
-		leftBound = v1.MinFingerprint(clippedMeta.Max+1, ownershipRange.Max+1)
+		leftBound = min(clippedMeta.Max+1, ownershipRange.Max+1)
 
 		// since we've already ensured that the meta is within the ownership range,
 		// we know the xor will be of length zero (when the meta is equal to the ownership range)
