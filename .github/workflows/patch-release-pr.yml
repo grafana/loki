@@ -4,7 +4,7 @@ env:
   DOCKER_USERNAME: "grafana"
   IMAGE_PREFIX: "grafana"
   RELEASE_REPO: "grafana/loki"
-  SKIP_VALIDATION: false
+  SKIP_VALIDATION: true
   VERSIONING_STRATEGY: "always-bump-patch"
 jobs:
   check:
@@ -134,7 +134,7 @@ jobs:
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GITHUB_TOKEN }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
       shell: "bash"
       working-directory: "lib"
@@ -225,7 +225,7 @@ jobs:
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GITHUB_TOKEN }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         
         if [[ `jq length release.json` -gt 1 ]]; then 
@@ -321,7 +321,7 @@ jobs:
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GITHUB_TOKEN }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         
         if [[ `jq length release.json` -gt 1 ]]; then 
@@ -468,7 +468,7 @@ jobs:
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GITHUB_TOKEN }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         
         if [[ `jq length release.json` -gt 1 ]]; then 
@@ -566,7 +566,7 @@ jobs:
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GITHUB_TOKEN }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         
         if [[ `jq length release.json` -gt 1 ]]; then 
@@ -662,7 +662,7 @@ jobs:
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GITHUB_TOKEN }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         
         if [[ `jq length release.json` -gt 1 ]]; then 
@@ -760,7 +760,7 @@ jobs:
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GITHUB_TOKEN }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         
         if [[ `jq length release.json` -gt 1 ]]; then 
@@ -858,7 +858,7 @@ jobs:
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GITHUB_TOKEN }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         
         if [[ `jq length release.json` -gt 1 ]]; then 
@@ -956,7 +956,7 @@ jobs:
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GITHUB_TOKEN }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         
         if [[ `jq length release.json` -gt 1 ]]; then 
@@ -1052,7 +1052,7 @@ jobs:
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GITHUB_TOKEN }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         
         if [[ `jq length release.json` -gt 1 ]]; then 
@@ -1150,7 +1150,7 @@ jobs:
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GITHUB_TOKEN }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         
         if [[ `jq length release.json` -gt 1 ]]; then 

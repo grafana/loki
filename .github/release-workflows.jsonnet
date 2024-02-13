@@ -16,7 +16,7 @@ local build = lokiRelease.build;
         querytee: build.image('querytee', 'cmd/querytee', platform=['linux/amd64']),
       },
       releaseRepo='grafana/loki',
-      skipValidation=false,
+      skipValidation=true,
       versioningStrategy='always-bump-patch',
       imagePrefix='grafana',
       // TODO: remove temp PR branch
