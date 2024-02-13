@@ -52,6 +52,7 @@ type Tailer struct {
 	querierTailClientsMtx sync.RWMutex
 
 	stopped          bool
+	stoppedMtx       sync.RWMutex
 	delayFor         time.Duration
 	responseChan     chan *loghttp.TailResponse
 	closeErrChan     chan error
@@ -85,7 +86,10 @@ func (t *Tailer) loop() {
 
 	droppedEntries := make([]loghttp.DroppedEntry, 0)
 
-	for !t.stopped {
+	t.stoppedMtx.RLock()
+	stopped := t.stopped
+	t.stoppedMtx.RUnlock()
+	for !stopped {
 		select {
 		case <-checkConnectionTicker.C:
 			// Try to reconnect dropped ingesters and connect to new ingesters
@@ -214,7 +218,10 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 
 	logger := util_log.WithContext(querierTailClient.Context(), t.logger)
 	for {
-		if t.stopped {
+		t.stoppedMtx.RLock()
+		stopped := t.stopped
+		t.stoppedMtx.RUnlock()
+		if stopped {
 			if err := querierTailClient.CloseSend(); err != nil {
 				level.Error(logger).Log("msg", "Error closing grpc tail client", "err", err)
 			}
@@ -223,7 +230,7 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 		resp, err = querierTailClient.Recv()
 		if err != nil {
 			// We don't want to log error when its due to stopping the tail request
-			if !t.stopped {
+			if !stopped {
 				level.Error(logger).Log("msg", "Error receiving response from grpc tail client", "err", err)
 			}
 			break
@@ -269,7 +276,10 @@ func (t *Tailer) close() error {
 	t.metrics.tailsActive.Dec()
 	t.metrics.tailedStreamsActive.Sub(t.activeStreamCount())
 
+	t.stoppedMtx.Lock()
 	t.stopped = true
+	t.stoppedMtx.Unlock()
+
 	return t.openStreamIterator.Close()
 }
 
