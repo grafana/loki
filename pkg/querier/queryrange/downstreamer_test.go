@@ -451,8 +451,9 @@ func TestInstanceDownstream(t *testing.T) {
 		require.NoError(t, err)
 
 		results, err := DownstreamHandler{
-			limits: fakeLimits{},
-			next:   handler,
+			limits:     fakeLimits{},
+			next:       handler,
+			splitAlign: true,
 		}.Downstreamer(context.Background()).Downstream(context.Background(), queries)
 
 		assert.Equal(t, want, got)

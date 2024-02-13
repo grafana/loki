@@ -371,9 +371,12 @@ func (m RangeMapper) rangeSplitAlign(
 
 	splits := int(math.Ceil(float64(rangeInterval) / float64(m.splitByInterval))) // without first aligned subquery
 	align := m.splitAlignTs.Sub(m.splitAlignTs.Truncate(m.splitByInterval))       // say, 12:34:00 - 12:00:00(truncated) = 34m
-	if align != 0 {
-		splits += 1
+
+	if align == 0 {
+		return m.rangeSplit(expr, rangeInterval, recorder) // Don't have to align
 	}
+
+	splits += 1
 
 	var (
 		newRng      time.Duration = align
@@ -394,7 +397,7 @@ func (m RangeMapper) rangeSplitAlign(
 	}
 
 	// last subquery
-	newRng = m.splitByInterval - align // e.g: [24h]
+	newRng = m.splitByInterval - align // e.g: [24m]
 	downstreams = appendDownstream(downstreams, expr, newRng, newOffset)
 
 	// update stats and metrics
