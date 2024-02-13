@@ -90,7 +90,7 @@ func New(
 	c.metrics = NewMetrics(r, c.btMetrics)
 
 	chunkLoader := NewStoreChunkLoader(
-		NewFetcherProviderAdapter(fetcherProvider),
+		fetcherProvider,
 		c.metrics,
 	)
 
