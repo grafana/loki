@@ -1,15 +1,15 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.20-openshift-4.14 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.21-openshift-4.16 AS builder
 WORKDIR /go/src/github.com/grafana/loki
 COPY . .
 RUN touch loki-build-image/.uptodate && mkdir /build
 RUN make clean && make BUILD_IN_CONTAINER=false promtail
 
-FROM  registry.ci.openshift.org/ocp/4.14:base
+FROM  registry.ci.openshift.org/ocp/4.16:base
 LABEL io.k8s.display-name="OpenShift Loki Promtail" \
       io.k8s.description="An agent responsible for gathering logs and sending them to Loki." \
       io.openshift.tags="grafana,prometheus,monitoring" \
       maintainer="OpenShift Development <dev@lists.openshift.redhat.com>" \
-      version="v2.7.0"
+      version="v3.0.0"
 
 COPY --from=builder /go/src/github.com/grafana/loki/clients/cmd/promtail/promtail /usr/bin/promtail
 COPY --from=builder /go/src/github.com/grafana/loki/clients/cmd/promtail/promtail-docker-config.yaml /etc/promtail/config.yml
