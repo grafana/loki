@@ -1,18 +1,20 @@
 module github.com/grafana/loki/operator
 
-go 1.20
+go 1.21
+
+toolchain go1.22.0
 
 require (
 	github.com/ViaQ/logerr/v2 v2.1.0
-	github.com/go-logr/logr v1.2.4
-	github.com/google/go-cmp v0.5.9
+	github.com/go-logr/logr v1.3.0
+	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.3.1
 	github.com/grafana/loki v1.6.2-0.20230403212622-90888a0cc737
 	github.com/grafana/loki/operator/apis/loki v0.0.0-00010101000000-000000000000
 	github.com/imdario/mergo v0.3.13
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.7.0
 	github.com/openshift/api v0.0.0-20240116035456-11ed2fbcb805 // release-4.15
-	github.com/openshift/cloud-credential-operator v0.0.0-20240122210451-67842c7839ac // release-4.15
+	github.com/openshift/cloud-credential-operator v0.0.0-20240207052358-54bb8bfbbaed // release-4.15
 	github.com/openshift/library-go v0.0.0-20240117151256-95b334bccb5d // release-4.15
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.67.1
 	github.com/prometheus/client_golang v1.17.0
@@ -20,11 +22,11 @@ require (
 	github.com/prometheus/prometheus v0.42.0
 	github.com/stretchr/testify v1.8.4
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.28.6
-	k8s.io/apimachinery v0.28.6
-	k8s.io/apiserver v0.28.6
-	k8s.io/client-go v0.28.6
-	k8s.io/component-base v0.28.6
+	k8s.io/api v0.29.1
+	k8s.io/apimachinery v0.29.1
+	k8s.io/apiserver v0.29.1
+	k8s.io/client-go v0.29.1
+	k8s.io/component-base v0.29.1
 	k8s.io/utils v0.0.0-20240102154912-e7106e64919e
 	sigs.k8s.io/controller-runtime v0.16.3
 	sigs.k8s.io/yaml v1.3.0
@@ -51,7 +53,7 @@ require (
 	github.com/evanphx/json-patch/v5 v5.6.0 // indirect
 	github.com/fatih/color v1.14.1 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
-	github.com/fsnotify/fsnotify v1.6.0 // indirect
+	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -123,11 +125,12 @@ require (
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/weaveworks/common v0.0.0-20221201103051-7c2720a9024d // indirect
 	github.com/weaveworks/promrus v1.2.0 // indirect
-	go.etcd.io/etcd/api/v3 v3.5.9 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.5.9 // indirect
-	go.etcd.io/etcd/client/v3 v3.5.9 // indirect
-	go.opentelemetry.io/otel v1.14.0 // indirect
-	go.opentelemetry.io/otel/trace v1.14.0 // indirect
+	go.etcd.io/etcd/api/v3 v3.5.10 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.5.10 // indirect
+	go.etcd.io/etcd/client/v3 v3.5.10 // indirect
+	go.opentelemetry.io/otel v1.19.0 // indirect
+	go.opentelemetry.io/otel/metric v1.19.0 // indirect
+	go.opentelemetry.io/otel/trace v1.19.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/goleak v1.2.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
@@ -146,19 +149,19 @@ require (
 	golang.org/x/tools v0.16.1 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20230711160842-782d3b101e98 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20230711160842-782d3b101e98 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20230711160842-782d3b101e98 // indirect
+	google.golang.org/genproto v0.0.0-20230803162519-f966b187b2e5 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20230726155614-23370e0ffb3e // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20230822172742-b8732ec3820d // indirect
 	google.golang.org/grpc v1.58.3 // indirect
-	google.golang.org/protobuf v1.31.0 // indirect
+	google.golang.org/protobuf v1.32.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.28.3 // indirect
-	k8s.io/klog/v2 v2.100.1 // indirect
-	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
+	k8s.io/apiextensions-apiserver v0.29.1 // indirect
+	k8s.io/klog/v2 v2.110.1 // indirect
+	k8s.io/kube-openapi v0.0.0-20231010175941-2dd684a91f00 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 )
 
 replace github.com/grafana/loki/operator/apis/loki => ./apis/loki
