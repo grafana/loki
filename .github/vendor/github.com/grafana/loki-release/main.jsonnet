@@ -4,13 +4,14 @@
   release: import './workflows/release.libsonnet',
   validate: import './workflows/validate.libsonnet',
   releasePRWorkflow: function(
+    branches=['release-[0-9].[0-9].x', 'k[0-9]*'],
+    buildImage='grafana/loki-build-image:0.33.0',
+    dockerUsername='grafana',
     imageJobs={},
+    imagePrefix='grafana',
+    releaseRepo='grafana/loki-release',
     skipValidation=false,
     versioningStrategy='always-bump-patch',
-    releaseRepo='grafana/loki-release',
-    dockerUsername='grafana',
-    imagePrefix='grafana',
-    branches=['release-[0-9].[0-9].x', 'k[0-9]*']
                     ) {
     name: 'create release PR',
     on: {
@@ -33,8 +34,8 @@
       VERSIONING_STRATEGY: versioningStrategy,
     },
     local validationSteps = ['test', 'lint', 'check'],
-    jobs: $.validate {
-      dist: $.build.dist + $.common.job.withNeeds(validationSteps),
+    jobs: $.validate(buildImage) {
+      dist: $.build.dist(buildImage) + $.common.job.withNeeds(validationSteps),
     } + std.mapWithKey(function(name, job) job + $.common.job.withNeeds(validationSteps), imageJobs) + {
       local buildImageSteps = ['dist'] + std.objectFields(imageJobs),
       'create-release-pr': $.release.createReleasePR + $.common.job.withNeeds(buildImageSteps),
