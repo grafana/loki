@@ -1,5 +1,7 @@
 package storage
 
+import "fmt"
+
 const (
 	// EnvAlibabaCloudAccessKeyID is the environment variable to specify the AlibabaCloud client id to access S3.
 	EnvAlibabaCloudAccessKeyID = "ALIBABA_CLOUD_ACCESS_KEY_ID"
@@ -127,27 +129,29 @@ const (
 	// KeySwiftUsername is the secret data key for the OpenStack Swift password.
 	KeySwiftUsername = "username"
 
-	saTokenVolumeK8sDirectory       = "/var/run/secrets/kubernetes.io/serviceaccount"
-	saTokenVolumeName               = "bound-sa-token"
-	saTokenExpiration         int64 = 3600
+	saTokenVolumeName            = "bound-sa-token"
+	saTokenExpiration      int64 = 3600
+	saTokenVolumeMountPath       = "/var/run/secrets/storage/serviceaccount"
 
-	secretDirectory            = "/etc/storage/secrets"
-	managedAuthSecretDirectory = "/etc/storage/managed-auth"
-	storageTLSVolume           = "storage-tls"
-	caDirectory                = "/etc/storage/ca"
+	ServiceAccountTokenFilePath = saTokenVolumeMountPath + "/token"
 
-	awsDefaultAudience      = "sts.amazonaws.com"
-	AWSTokenVolumeDirectory = "/var/run/secrets/aws/serviceaccount"
+	secretDirectory  = "/etc/storage/secrets"
+	storageTLSVolume = "storage-tls"
+	caDirectory      = "/etc/storage/ca"
 
-	azureDefaultAudience      = "api://AzureADTokenExchange"
-	azureTokenVolumeDirectory = "/var/run/secrets/azure/serviceaccount"
+	managedAuthConfigVolumeName = "managed-auth-config"
+	managedAuthConfigDirectory  = "/etc/storage/managed-auth"
+
+	awsDefaultAudience = "sts.amazonaws.com"
+
+	azureDefaultAudience = "api://AzureADTokenExchange"
 
 	azureManagedCredentialKeyClientID       = "azure_client_id"
 	azureManagedCredentialKeyTenantID       = "azure_tenant_id"
 	azureManagedCredentialKeySubscriptionID = "azure_subscription_id"
-
-	gcpTokenVolumeDirectory  = "/var/run/secrets/gcp/serviceaccount"
-	GCPDefautCredentialsFile = gcpTokenVolumeDirectory + "/token"
-
-	AnnotationCredentialsRequestsSecretRef = "loki.grafana.com/credentials-request-secret-ref"
 )
+
+// ManagedCredentialsSecretName returns the name of the secret holding the managed credentials.
+func ManagedCredentialsSecretName(stackName string) string {
+	return fmt.Sprintf("%s-managed-credentials", stackName)
+}

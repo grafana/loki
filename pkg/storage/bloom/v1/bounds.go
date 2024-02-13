@@ -117,24 +117,9 @@ func (b FingerprintBounds) Intersection(target FingerprintBounds) *FingerprintBo
 	}
 
 	return &FingerprintBounds{
-		Min: MaxFingerprint(b.Min, target.Min),
-		Max: MinFingerprint(b.Max, target.Max),
+		Min: max(b.Min, target.Min),
+		Max: min(b.Max, target.Max),
 	}
-}
-
-func MaxFingerprint(a, b model.Fingerprint) model.Fingerprint {
-	if a < b {
-		return b
-	}
-
-	return a
-}
-
-func MinFingerprint(a, b model.Fingerprint) model.Fingerprint {
-	if a > b {
-		return b
-	}
-	return a
 }
 
 // Union returns the union of the two bounds
@@ -148,8 +133,8 @@ func (b FingerprintBounds) Union(target FingerprintBounds) (res []FingerprintBou
 
 	return []FingerprintBounds{
 		{
-			Min: MinFingerprint(b.Min, target.Min),
-			Max: MaxFingerprint(b.Max, target.Max),
+			Min: min(b.Min, target.Min),
+			Max: max(b.Max, target.Max),
 		},
 	}
 }
@@ -165,10 +150,10 @@ func (b FingerprintBounds) Unless(target FingerprintBounds) (res []FingerprintBo
 	}
 
 	if b.Min < target.Min {
-		res = append(res, FingerprintBounds{Min: b.Min, Max: MinFingerprint(b.Max, target.Min-1)})
+		res = append(res, FingerprintBounds{Min: b.Min, Max: min(b.Max, target.Min-1)})
 	}
 	if target.Max < b.Max {
-		res = append(res, FingerprintBounds{Min: MaxFingerprint(b.Min, target.Max+1), Max: b.Max})
+		res = append(res, FingerprintBounds{Min: max(b.Min, target.Max+1), Max: b.Max})
 	}
 	return res
 }

@@ -204,7 +204,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 
 // Stop stops the execution of this gateway client.
 func (s *GatewayClient) Stop() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeoutCause(context.Background(), 10*time.Second, errors.New("service shutdown timeout expired"))
 	defer cancel()
 	err := services.StopAndAwaitTerminated(ctx, s.pool)
 	if err != nil {

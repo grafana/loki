@@ -2641,13 +2641,26 @@ ring:
 # CLI flag: -bloom-compactor.enabled
 [enabled: <boolean> | default = false]
 
-# Directory where files can be downloaded for compaction.
-# CLI flag: -bloom-compactor.working-directory
-[working_directory: <string> | default = ""]
-
 # Interval at which to re-run the compaction operation.
 # CLI flag: -bloom-compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
+
+# How many index periods (days) to wait before compacting a table. This can be
+# used to lower cost by not re-writing data to object storage too frequently
+# since recent data changes more often.
+# CLI flag: -bloom-compactor.min-table-compaction-period
+[min_table_compaction_period: <int> | default = 1]
+
+# How many index periods (days) to wait before compacting a table. This can be
+# used to lower cost by not trying to compact older data which doesn't change.
+# This can be optimized by aligning it with the maximum
+# `reject_old_samples_max_age` setting of any tenant.
+# CLI flag: -bloom-compactor.max-table-compaction-period
+[max_table_compaction_period: <int> | default = 7]
+
+# Number of workers to run in parallel for compaction.
+# CLI flag: -bloom-compactor.worker-parallelism
+[worker_parallelism: <int> | default = 1]
 
 # Minimum backoff time between retries.
 # CLI flag: -bloom-compactor.compaction-retries-min-backoff
@@ -3127,6 +3140,12 @@ shard_streams:
 # Interval for computing the cache key in the Bloom Gateway.
 # CLI flag: -bloom-gateway.cache-key-interval
 [bloom_gateway_cache_key_interval: <duration> | default = 15m]
+
+# The maximum bloom block size. A value of 0 sets an unlimited size. Default is
+# 200MB. The actual block size might exceed this limit since blooms will be
+# added to blocks until the block exceeds the maximum block size.
+# CLI flag: -bloom-compactor.max-block-size
+[bloom_compactor_max_block_size: <int> | default = 200MB]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata

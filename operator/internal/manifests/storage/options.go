@@ -23,12 +23,47 @@ type Options struct {
 	OpenShift OpenShiftOptions
 }
 
+// CredentialMode returns which mode is used by the current storage configuration.
+// This defaults to CredentialModeStatic, but can be CredentialModeToken
+// or CredentialModeManaged depending on the object storage provide, the provided
+// secret and whether the operator is running in a managed-auth cluster.
+func (o Options) CredentialMode() lokiv1.CredentialMode {
+	if o.Azure != nil {
+		if o.OpenShift.ManagedAuthEnabled() {
+			return lokiv1.CredentialModeManaged
+		}
+
+		if o.Azure.WorkloadIdentity {
+			return lokiv1.CredentialModeToken
+		}
+	}
+
+	if o.GCS != nil {
+		if o.GCS.WorkloadIdentity {
+			return lokiv1.CredentialModeToken
+		}
+	}
+
+	if o.S3 != nil {
+		if o.OpenShift.ManagedAuthEnabled() {
+			return lokiv1.CredentialModeManaged
+		}
+
+		if o.S3.STS {
+			return lokiv1.CredentialModeToken
+		}
+	}
+
+	return lokiv1.CredentialModeStatic
+}
+
 // AzureStorageConfig for Azure storage config
 type AzureStorageConfig struct {
 	Env              string
 	Container        string
 	EndpointSuffix   string
 	Audience         string
+	Region           string
 	WorkloadIdentity bool
 }
 
