@@ -16,22 +16,36 @@ import (
 )
 
 type SwiftThanosObjectClient struct {
-	client objstore.Bucket
+	client       objstore.Bucket
+	hedgedClient objstore.Bucket
 }
 
 func NewSwiftThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config, reg prometheus.Registerer) (*SwiftThanosObjectClient, error) {
-	// TODO Add Hedging client once we are able to configure HTTP on Swift provider
-	return newSwiftThanosObjectClient(ctx, cfg, component, logger, reg)
-}
-
-func newSwiftThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, reg prometheus.Registerer) (*SwiftThanosObjectClient, error) {
-	bucket, err := bucket.NewClient(ctx, cfg, component, logger, reg)
+	client, err := newSwiftThanosObjectClient(ctx, cfg, component, logger, false, hedgingCfg, prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "false"}, reg))
+	if err != nil {
+		return nil, err
+	}
+	hedgedClient, err := newSwiftThanosObjectClient(ctx, cfg, component, logger, true, hedgingCfg, prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "true"}, reg))
 	if err != nil {
 		return nil, err
 	}
 	return &SwiftThanosObjectClient{
-		client: bucket,
+		client:       client,
+		hedgedClient: hedgedClient,
 	}, nil
+}
+
+func newSwiftThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedging bool, hedgingCfg hedging.Config, reg prometheus.Registerer) (objstore.Bucket, error) {
+	if hedging {
+		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, reg)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg.Swift.HTTP.Transport = hedgedTrasport
+	}
+
+	return bucket.NewClient(ctx, cfg, component, logger, reg)
 }
 
 func (s *SwiftThanosObjectClient) Stop() {}
