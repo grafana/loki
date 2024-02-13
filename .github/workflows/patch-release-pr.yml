@@ -180,7 +180,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -205,14 +205,14 @@ jobs:
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
-        
-        if [[ `jq length release.json` -gt 1 ]]; then 
+
+        if [[ `jq length release.json` -gt 1 ]]; then
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-        
-        if [[ `jq length release.json` -eq 0 ]]; then 
+
+        if [[ `jq length release.json` -eq 0 ]]; then
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(npm run --silent get-version)"
@@ -276,7 +276,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -301,14 +301,14 @@ jobs:
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
-        
-        if [[ `jq length release.json` -gt 1 ]]; then 
+
+        if [[ `jq length release.json` -gt 1 ]]; then
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-        
-        if [[ `jq length release.json` -eq 0 ]]; then 
+
+        if [[ `jq length release.json` -eq 0 ]]; then
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(npm run --silent get-version)"
@@ -401,7 +401,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -426,14 +426,14 @@ jobs:
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
-        
-        if [[ `jq length release.json` -gt 1 ]]; then 
+
+        if [[ `jq length release.json` -gt 1 ]]; then
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-        
-        if [[ `jq length release.json` -eq 0 ]]; then 
+
+        if [[ `jq length release.json` -eq 0 ]]; then
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(npm run --silent get-version)"
@@ -499,7 +499,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -524,14 +524,14 @@ jobs:
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
-        
-        if [[ `jq length release.json` -gt 1 ]]; then 
+
+        if [[ `jq length release.json` -gt 1 ]]; then
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-        
-        if [[ `jq length release.json` -eq 0 ]]; then 
+
+        if [[ `jq length release.json` -eq 0 ]]; then
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(npm run --silent get-version)"
@@ -595,7 +595,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -620,14 +620,14 @@ jobs:
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
-        
-        if [[ `jq length release.json` -gt 1 ]]; then 
+
+        if [[ `jq length release.json` -gt 1 ]]; then
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-        
-        if [[ `jq length release.json` -eq 0 ]]; then 
+
+        if [[ `jq length release.json` -eq 0 ]]; then
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(npm run --silent get-version)"
@@ -693,7 +693,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -718,14 +718,14 @@ jobs:
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
-        
-        if [[ `jq length release.json` -gt 1 ]]; then 
+
+        if [[ `jq length release.json` -gt 1 ]]; then
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-        
-        if [[ `jq length release.json` -eq 0 ]]; then 
+
+        if [[ `jq length release.json` -eq 0 ]]; then
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(npm run --silent get-version)"
@@ -791,7 +791,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -816,14 +816,14 @@ jobs:
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
-        
-        if [[ `jq length release.json` -gt 1 ]]; then 
+
+        if [[ `jq length release.json` -gt 1 ]]; then
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-        
-        if [[ `jq length release.json` -eq 0 ]]; then 
+
+        if [[ `jq length release.json` -eq 0 ]]; then
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(npm run --silent get-version)"
@@ -889,7 +889,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -914,14 +914,14 @@ jobs:
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
-        
-        if [[ `jq length release.json` -gt 1 ]]; then 
+
+        if [[ `jq length release.json` -gt 1 ]]; then
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-        
-        if [[ `jq length release.json` -eq 0 ]]; then 
+
+        if [[ `jq length release.json` -eq 0 ]]; then
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(npm run --silent get-version)"
@@ -985,7 +985,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -1010,14 +1010,14 @@ jobs:
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
-        
-        if [[ `jq length release.json` -gt 1 ]]; then 
+
+        if [[ `jq length release.json` -gt 1 ]]; then
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-        
-        if [[ `jq length release.json` -eq 0 ]]; then 
+
+        if [[ `jq length release.json` -eq 0 ]]; then
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(npm run --silent get-version)"
@@ -1083,7 +1083,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-        
+
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -1108,14 +1108,14 @@ jobs:
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
-        
-        if [[ `jq length release.json` -gt 1 ]]; then 
+
+        if [[ `jq length release.json` -gt 1 ]]; then
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-        
-        if [[ `jq length release.json` -eq 0 ]]; then 
+
+        if [[ `jq length release.json` -eq 0 ]]; then
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(npm run --silent get-version)"
@@ -1173,6 +1173,7 @@ name: "create release PR"
   push:
     branches:
     - "release-[0-9].[0-9].x"
+    - "fix-action-names-in-main"
 permissions:
   contents: "write"
   pull-requests: "write"

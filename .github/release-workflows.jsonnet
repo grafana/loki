@@ -43,7 +43,6 @@ local build = lokiRelease.build;
       branches=['k[0-9]*'],
     ), false, false
   ),
-  //TODO: need to set secrets on the repo and double check docker user/pw
   'release.yml': std.manifestYamlDoc(
     lokiRelease.releaseWorkflow(
       branches=['release-[0-9].[0-9].x', 'k[0-9]*'],
