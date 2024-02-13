@@ -3,6 +3,7 @@ package bloomcompactor
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -28,7 +29,7 @@ func blocksFromSchemaWithRange(t *testing.T, n int, options v1.BlockOptions, fro
 	numKeysPerSeries := 10000
 	data, _ = v1.MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, fromFP, throughFp, 0, 10000)
 
-	seriesPerBlock := 100 / n
+	seriesPerBlock := numSeries / n
 
 	for i := 0; i < n; i++ {
 		// references for linking in memory reader+writer
@@ -56,7 +57,7 @@ func blocksFromSchemaWithRange(t *testing.T, n int, options v1.BlockOptions, fro
 // doesn't actually load any chunks
 type dummyChunkLoader struct{}
 
-func (dummyChunkLoader) Load(_ context.Context, series *v1.Series) (*ChunkItersByFingerprint, error) {
+func (dummyChunkLoader) Load(_ context.Context, _ string, series *v1.Series) (*ChunkItersByFingerprint, error) {
 	return &ChunkItersByFingerprint{
 		fp:  series.Fingerprint,
 		itr: v1.NewEmptyIter[v1.ChunkRefWithIter](),
@@ -70,12 +71,14 @@ func dummyBloomGen(opts v1.BlockOptions, store v1.Iterator[*v1.Series], blocks [
 			BlockQuerier: v1.NewBlockQuerier(b),
 		})
 	}
+	blocksIter := v1.NewCloseableIterator(v1.NewSliceIter(bqs))
 
 	return NewSimpleBloomGenerator(
+		"fake",
 		opts,
 		store,
 		dummyChunkLoader{},
-		bqs,
+		blocksIter,
 		func() (v1.BlockWriter, v1.BlockReader) {
 			indexBuf := bytes.NewBuffer(nil)
 			bloomsBuf := bytes.NewBuffer(nil)
@@ -87,24 +90,35 @@ func dummyBloomGen(opts v1.BlockOptions, store v1.Iterator[*v1.Series], blocks [
 }
 
 func TestSimpleBloomGenerator(t *testing.T) {
+	const maxBlockSize = 100 << 20 // 100MB
 	for _, tc := range []struct {
-		desc                     string
-		fromSchema, toSchema     v1.BlockOptions
-		sourceBlocks, numSkipped int
+		desc                                   string
+		fromSchema, toSchema                   v1.BlockOptions
+		sourceBlocks, numSkipped, outputBlocks int
 	}{
 		{
 			desc:         "SkipsIncompatibleSchemas",
-			fromSchema:   v1.NewBlockOptions(3, 0),
-			toSchema:     v1.NewBlockOptions(4, 0),
+			fromSchema:   v1.NewBlockOptions(3, 0, maxBlockSize),
+			toSchema:     v1.NewBlockOptions(4, 0, maxBlockSize),
 			sourceBlocks: 2,
 			numSkipped:   2,
+			outputBlocks: 1,
 		},
 		{
 			desc:         "CombinesBlocks",
-			fromSchema:   v1.NewBlockOptions(4, 0),
-			toSchema:     v1.NewBlockOptions(4, 0),
+			fromSchema:   v1.NewBlockOptions(4, 0, maxBlockSize),
+			toSchema:     v1.NewBlockOptions(4, 0, maxBlockSize),
 			sourceBlocks: 2,
 			numSkipped:   0,
+			outputBlocks: 1,
+		},
+		{
+			desc:         "MaxBlockSize",
+			fromSchema:   v1.NewBlockOptions(4, 0, maxBlockSize),
+			toSchema:     v1.NewBlockOptions(4, 0, 1<<10), // 1KB
+			sourceBlocks: 2,
+			numSkipped:   0,
+			outputBlocks: 3,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -117,26 +131,155 @@ func TestSimpleBloomGenerator(t *testing.T) {
 			)
 
 			gen := dummyBloomGen(tc.toSchema, storeItr, sourceBlocks)
-			skipped, results, err := gen.Generate(context.Background())
+			skipped, _, results, err := gen.Generate(context.Background())
 			require.Nil(t, err)
 			require.Equal(t, tc.numSkipped, len(skipped))
 
-			require.True(t, results.Next())
-			block := results.At()
-			require.False(t, results.Next())
+			var outputBlocks []*v1.Block
+			for results.Next() {
+				outputBlocks = append(outputBlocks, results.At())
+			}
+			require.Equal(t, tc.outputBlocks, len(outputBlocks))
 
-			refs := v1.PointerSlice[v1.SeriesWithBloom](data)
-
-			v1.EqualIterators[*v1.SeriesWithBloom](
-				t,
-				func(a, b *v1.SeriesWithBloom) {
-					// TODO(owen-d): better equality check
-					// once chunk fetching is implemented
-					require.Equal(t, a.Series, b.Series)
-				},
-				v1.NewSliceIter[*v1.SeriesWithBloom](refs),
-				block.Querier(),
-			)
+			// Check all the input series are present in the output blocks.
+			expectedRefs := v1.PointerSlice(data)
+			outputRefs := make([]*v1.SeriesWithBloom, 0, len(data))
+			for _, block := range outputBlocks {
+				bq := block.Querier()
+				for bq.Next() {
+					outputRefs = append(outputRefs, bq.At())
+				}
+			}
+			require.Equal(t, len(expectedRefs), len(outputRefs))
+			for i := range expectedRefs {
+				require.Equal(t, expectedRefs[i].Series, outputRefs[i].Series)
+			}
 		})
 	}
+}
+
+func TestBatchedLoader(t *testing.T) {
+	errMapper := func(i int) (int, error) {
+		return 0, errors.New("bzzt")
+	}
+	successMapper := func(i int) (int, error) {
+		return i, nil
+	}
+
+	expired, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	for _, tc := range []struct {
+		desc      string
+		ctx       context.Context
+		batchSize int
+		mapper    func(int) (int, error)
+		err       bool
+		inputs    [][]int
+		exp       []int
+	}{
+		{
+			desc:      "OneBatch",
+			ctx:       context.Background(),
+			batchSize: 2,
+			mapper:    successMapper,
+			err:       false,
+			inputs:    [][]int{{0, 1}},
+			exp:       []int{0, 1},
+		},
+		{
+			desc:      "ZeroBatchSizeStillWorks",
+			ctx:       context.Background(),
+			batchSize: 0,
+			mapper:    successMapper,
+			err:       false,
+			inputs:    [][]int{{0, 1}},
+			exp:       []int{0, 1},
+		},
+		{
+			desc:      "OneBatchLessThanFull",
+			ctx:       context.Background(),
+			batchSize: 2,
+			mapper:    successMapper,
+			err:       false,
+			inputs:    [][]int{{0}},
+			exp:       []int{0},
+		},
+		{
+			desc:      "TwoBatches",
+			ctx:       context.Background(),
+			batchSize: 2,
+			mapper:    successMapper,
+			err:       false,
+			inputs:    [][]int{{0, 1, 2, 3}},
+			exp:       []int{0, 1, 2, 3},
+		},
+		{
+			desc:      "MultipleBatchesMultipleLoaders",
+			ctx:       context.Background(),
+			batchSize: 2,
+			mapper:    successMapper,
+			err:       false,
+			inputs:    [][]int{{0, 1}, {2}, {3, 4, 5}},
+			exp:       []int{0, 1, 2, 3, 4, 5},
+		},
+		{
+			desc:      "HandlesEmptyInputs",
+			ctx:       context.Background(),
+			batchSize: 2,
+			mapper:    successMapper,
+			err:       false,
+			inputs:    [][]int{{0, 1, 2, 3}, nil, {4}},
+			exp:       []int{0, 1, 2, 3, 4},
+		},
+		{
+			desc:      "Timeout",
+			ctx:       expired,
+			batchSize: 2,
+			mapper:    successMapper,
+			err:       true,
+			inputs:    [][]int{{0}},
+		},
+		{
+			desc:      "MappingFailure",
+			ctx:       context.Background(),
+			batchSize: 2,
+			mapper:    errMapper,
+			err:       true,
+			inputs:    [][]int{{0}},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			fetchers := make([]Fetcher[int, int], 0, len(tc.inputs))
+			for range tc.inputs {
+				fetchers = append(
+					fetchers,
+					FetchFunc[int, int](func(ctx context.Context, xs []int) ([]int, error) {
+						if ctx.Err() != nil {
+							return nil, ctx.Err()
+						}
+						return xs, nil
+					}),
+				)
+			}
+
+			loader := newBatchedLoader[int, int, int](
+				tc.ctx,
+				fetchers,
+				tc.inputs,
+				tc.mapper,
+				tc.batchSize,
+			)
+
+			got, err := v1.Collect[int](loader)
+			if tc.err {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.exp, got)
+
+		})
+	}
+
 }

@@ -1100,6 +1100,40 @@ string
 </tbody>
 </table>
 
+## CredentialMode { #loki-grafana-com-v1-CredentialMode }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStorageStatus">LokiStackStorageStatus</a>)
+</p>
+<div>
+<p>CredentialMode represents the type of authentication used for accessing the object storage.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;managed&#34;</p></td>
+<td><p>CredentialModeManaged represents the usage of short-lived tokens retrieved from a credential source.
+This mode is similar to CredentialModeToken,but instead of having a user-configured credential source,
+it is configured by the environment, for example the Cloud Credential Operator in OpenShift.
+This mode is only supported for certain object storage types in certain runtime environments.</p>
+</td>
+</tr><tr><td><p>&#34;static&#34;</p></td>
+<td><p>CredentialModeStatic represents the usage of static, long-lived credentials stored in a Secret.
+This is the default authentication mode and available for all supported object storage types.</p>
+</td>
+</tr><tr><td><p>&#34;token&#34;</p></td>
+<td><p>CredentialModeToken represents the usage of short-lived tokens retrieved from a credential source.
+In this mode the static configuration does not contain credentials needed for the object storage.
+Instead, they are generated during runtime using a service, which allows for shorter-lived credentials and
+much more granular control. This authentication mode is not supported for all object storage types.</p>
+</td>
+</tr></tbody>
+</table>
+
 ## HashRingSpec { #loki-grafana-com-v1-HashRingSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
@@ -2150,6 +2184,20 @@ the Loki storage configuration.</p>
 <em>(Optional)</em>
 <p>Schemas is a list of schemas which have been applied
 to the LokiStack.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>credentialMode</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-CredentialMode">
+CredentialMode
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>CredentialMode contains the authentication mode used for accessing the object storage.</p>
 </td>
 </tr>
 </tbody>

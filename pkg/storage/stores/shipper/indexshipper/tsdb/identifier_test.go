@@ -44,7 +44,7 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			id, ok := parseSingleTenantTSDBPath(tc.input)
+			id, ok := ParseSingleTenantTSDBPath(tc.input)
 			require.Equal(t, tc.id, id)
 			require.Equal(t, tc.ok, ok)
 		})
