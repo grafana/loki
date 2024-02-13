@@ -35,6 +35,11 @@ local setupValidationDeps = function(job) job {
     //   tarball_binary_path: '*/${binary}',
     //   smoke_test: '${binary} version',
     // }),
+    step.new('install dependencies') +
+    step.withRun(|||
+      apt update
+      apt install -qy tar xz-utils
+    |||),
     step.new('install shellcheck', './lib/actions/install-binary')
     + step.with({
       binary: 'shellcheck',

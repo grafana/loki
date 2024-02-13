@@ -22,6 +22,11 @@ jobs:
       with:
         path: "lib"
         repository: "grafana/loki-release"
+    - name: "install dependencies"
+      run: |
+        apt update
+        apt install -qy tar xz-utils
+      shell: "bash"
     - name: "install shellcheck"
       uses: "./lib/actions/install-binary"
       with:
@@ -170,6 +175,11 @@ jobs:
       with:
         path: "lib"
         repository: "grafana/loki-release"
+    - name: "install dependencies"
+      run: |
+        apt update
+        apt install -qy tar xz-utils
+      shell: "bash"
     - name: "install shellcheck"
       uses: "./lib/actions/install-binary"
       with:
@@ -314,6 +324,11 @@ jobs:
       with:
         path: "lib"
         repository: "grafana/loki-release"
+    - name: "install dependencies"
+      run: |
+        apt update
+        apt install -qy tar xz-utils
+      shell: "bash"
     - name: "install shellcheck"
       uses: "./lib/actions/install-binary"
       with:
