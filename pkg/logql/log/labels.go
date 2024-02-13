@@ -466,9 +466,7 @@ func newStringMapPool() *stringMapPool {
 
 func (s *stringMapPool) Get() map[string]string {
 	m := s.pool.Get().(map[string]string)
-	for key := range m {
-		delete(m, key)
-	}
+	clear(m)
 	return m
 }
 
