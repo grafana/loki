@@ -23,10 +23,10 @@ Just like `time` package provides `duration.Nanoseconds() uint64 `, `duration.Ho
 * `ByteSize.Megabytes() float64`
 * `ByteSize.Gigabytes() float64`
 * `ByteSize.Terabytes() float64`
-* `ByteSize.Petebytes() float64`
+* `ByteSize.Petabytes() float64`
 * `ByteSize.Exabytes() float64`
 
-Warning: see limitations at the end of this document about a possible precission loss
+Warning: see limitations at the end of this document about a possible precision loss
 
 ### Parsing strings
 
