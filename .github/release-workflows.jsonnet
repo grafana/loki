@@ -19,7 +19,8 @@ local build = lokiRelease.build;
       skipValidation=false,
       versioningStrategy='always-bump-patch',
       imagePrefix='grafana',
-      branches=['release-[0-9].[0-9].x'],
+      // TODO: remove temp PR branch
+      branches=['release-[0-9].[0-9].x', 'fix-action-names-in-main'],
     ), false, false
   ),
   'minor-release-pr.yml': std.manifestYamlDoc(

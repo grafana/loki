@@ -35,15 +35,15 @@ local setupValidationDeps = function(job) job {
     //   tarball_binary_path: '*/${binary}',
     //   smoke_test: '${binary} version',
     // }),
-    // step.new('install shellcheck', './lib/actions/install-binary')
-    // + step.with({
-    //   binary: 'shellcheck',
-    //   version: '0.9.0',
-    //   download_url: 'https://github.com/koalaman/shellcheck/releases/download/v${version}/shellcheck-v${version}.linux.x86_64.tar.xz',
-    //   tarball_binary_path: '*/${binary}',
-    //   smoke_test: '${binary} --version',
-    //   tar_args: 'xvf',
-    // }),
+    step.new('install shellcheck', './lib/actions/install-binary')
+    + step.with({
+      binary: 'shellcheck',
+      version: '0.9.0',
+      download_url: 'https://github.com/koalaman/shellcheck/releases/download/v${version}/shellcheck-v${version}.linux.x86_64.tar.xz',
+      tarball_binary_path: '*/${binary}',
+      smoke_test: '${binary} --version',
+      tar_args: 'xvf',
+    }),
     // step.new('install helm', './lib/actions/install-binary')
     // + step.with({
     //   binary: 'helm',

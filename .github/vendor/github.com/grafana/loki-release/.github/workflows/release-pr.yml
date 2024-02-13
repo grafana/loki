@@ -22,6 +22,15 @@ jobs:
       with:
         path: "lib"
         repository: "grafana/loki-release"
+    - name: "install shellcheck"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "shellcheck"
+        download_url: "https://github.com/koalaman/shellcheck/releases/download/v${version}/shellcheck-v${version}.linux.x86_64.tar.xz"
+        smoke_test: "${binary} --version"
+        tar_args: "xvf"
+        tarball_binary_path: "*/${binary}"
+        version: "0.9.0"
     - env:
         BUILD_IN_CONTAINER: false
       if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
@@ -153,6 +162,15 @@ jobs:
       with:
         path: "lib"
         repository: "grafana/loki-release"
+    - name: "install shellcheck"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "shellcheck"
+        download_url: "https://github.com/koalaman/shellcheck/releases/download/v${version}/shellcheck-v${version}.linux.x86_64.tar.xz"
+        smoke_test: "${binary} --version"
+        tar_args: "xvf"
+        tarball_binary_path: "*/${binary}"
+        version: "0.9.0"
     - env:
         BUILD_IN_CONTAINER: false
       if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
@@ -280,6 +298,15 @@ jobs:
       with:
         path: "lib"
         repository: "grafana/loki-release"
+    - name: "install shellcheck"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "shellcheck"
+        download_url: "https://github.com/koalaman/shellcheck/releases/download/v${version}/shellcheck-v${version}.linux.x86_64.tar.xz"
+        smoke_test: "${binary} --version"
+        tar_args: "xvf"
+        tarball_binary_path: "*/${binary}"
+        version: "0.9.0"
     - env:
         BUILD_IN_CONTAINER: false
       if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
