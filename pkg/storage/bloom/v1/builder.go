@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	DefaultBlockOptions = NewBlockOptions(4, 0)
+	DefaultBlockOptions = NewBlockOptions(4, 0, 50<<20) // 50MB
 )
 
 type BlockOptions struct {
@@ -65,16 +65,19 @@ func (b BlockOptions) Encode(enc *encoding.Encbuf) {
 type BlockBuilder struct {
 	opts BlockOptions
 
+	writer BlockWriter
 	index  *IndexBuilder
 	blooms *BloomBlockBuilder
 }
 
-func NewBlockOptions(NGramLength, NGramSkip uint64) BlockOptions {
-	return NewBlockOptionsFromSchema(Schema{
+func NewBlockOptions(NGramLength, NGramSkip, MaxBlockSizeBytes uint64) BlockOptions {
+	opts := NewBlockOptionsFromSchema(Schema{
 		version:     byte(1),
 		nGramLength: NGramLength,
 		nGramSkip:   NGramSkip,
 	})
+	opts.BlockSize = MaxBlockSizeBytes
+	return opts
 }
 
 func NewBlockOptionsFromSchema(s Schema) BlockOptions {
@@ -98,6 +101,7 @@ func NewBlockBuilder(opts BlockOptions, writer BlockWriter) (*BlockBuilder, erro
 
 	return &BlockBuilder{
 		opts:   opts,
+		writer: writer,
 		index:  NewIndexBuilder(opts, index),
 		blooms: NewBloomBlockBuilder(opts, blooms),
 	}, nil
@@ -110,10 +114,13 @@ type SeriesWithBloom struct {
 
 func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) {
 	for itr.Next() {
-		if err := b.AddSeries(itr.At()); err != nil {
+		blockFull, err := b.AddSeries(itr.At())
+		if err != nil {
 			return 0, err
 		}
-
+		if blockFull {
+			break
+		}
 	}
 
 	if err := itr.Err(); err != nil {
@@ -135,20 +142,40 @@ func (b *BlockBuilder) Close() (uint32, error) {
 	return combineChecksums(indexCheckSum, bloomChecksum), nil
 }
 
-func (b *BlockBuilder) AddSeries(series SeriesWithBloom) error {
+// AddSeries adds a series to the block. It returns true after adding the series, the block is full.
+func (b *BlockBuilder) AddSeries(series SeriesWithBloom) (bool, error) {
 	offset, err := b.blooms.Append(series)
 	if err != nil {
-		return errors.Wrapf(err, "writing bloom for series %v", series.Series.Fingerprint)
+		return false, errors.Wrapf(err, "writing bloom for series %v", series.Series.Fingerprint)
 	}
 
 	if err := b.index.Append(SeriesWithOffset{
 		Offset: offset,
 		Series: *series.Series,
 	}); err != nil {
-		return errors.Wrapf(err, "writing index for series %v", series.Series.Fingerprint)
+		return false, errors.Wrapf(err, "writing index for series %v", series.Series.Fingerprint)
 	}
 
-	return nil
+	full, err := b.isBlockFull()
+	if err != nil {
+		return false, errors.Wrap(err, "checking if block is full")
+	}
+
+	return full, nil
+}
+
+func (b *BlockBuilder) isBlockFull() (bool, error) {
+	// if the block size is 0, the max size is unlimited
+	if b.opts.BlockSize == 0 {
+		return false, nil
+	}
+
+	size, err := b.writer.Size()
+	if err != nil {
+		return false, errors.Wrap(err, "getting block size")
+	}
+
+	return uint64(size) >= b.opts.BlockSize, nil
 }
 
 type BloomBlockBuilder struct {
@@ -505,7 +532,11 @@ type MergeBuilder struct {
 //  1. merges multiple blocks into a single ordered querier,
 //     i) When two blocks have the same series, it will prefer the one with the most chunks already indexed
 //  2. iterates through the store, adding chunks to the relevant blooms via the `populate` argument
-func NewMergeBuilder(blocks []PeekingIterator[*SeriesWithBloom], store Iterator[*Series], populate func(*Series, *Bloom) error) *MergeBuilder {
+func NewMergeBuilder(
+	blocks []PeekingIterator[*SeriesWithBloom],
+	store Iterator[*Series],
+	populate func(*Series, *Bloom) error,
+) *MergeBuilder {
 	return &MergeBuilder{
 		blocks:   blocks,
 		store:    store,
@@ -513,8 +544,6 @@ func NewMergeBuilder(blocks []PeekingIterator[*SeriesWithBloom], store Iterator[
 	}
 }
 
-// NB: this will build one block. Ideally we would build multiple blocks once a target size threshold is met
-// but this gives us a good starting point.
 func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 	var (
 		nextInBlocks *SeriesWithBloom
@@ -585,8 +614,12 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 			}
 		}
 
-		if err := builder.AddSeries(*cur); err != nil {
+		blockFull, err := builder.AddSeries(*cur)
+		if err != nil {
 			return 0, errors.Wrap(err, "adding series to block")
+		}
+		if blockFull {
+			break
 		}
 	}
 

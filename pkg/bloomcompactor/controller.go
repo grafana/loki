@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/multierror"
 	"github.com/pkg/errors"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -20,6 +21,7 @@ type SimpleBloomController struct {
 	bloomStore  bloomshipper.Store
 	chunkLoader ChunkLoader
 	metrics     *Metrics
+	limits      Limits
 
 	// TODO(owen-d): add metrics
 	logger log.Logger
@@ -29,6 +31,7 @@ func NewSimpleBloomController(
 	tsdbStore TSDBStore,
 	blockStore bloomshipper.Store,
 	chunkLoader ChunkLoader,
+	limits Limits,
 	metrics *Metrics,
 	logger log.Logger,
 ) *SimpleBloomController {
@@ -37,6 +40,7 @@ func NewSimpleBloomController(
 		bloomStore:  blockStore,
 		chunkLoader: chunkLoader,
 		metrics:     metrics,
+		limits:      limits,
 		logger:      logger,
 	}
 }
@@ -109,6 +113,11 @@ func (s *SimpleBloomController) buildBlocks(
 		return errors.Wrap(err, "failed to create plan")
 	}
 
+	nGramSize := uint64(s.limits.BloomNGramLength(tenant))
+	nGramSkip := uint64(s.limits.BloomNGramSkip(tenant))
+	maxBlockSize := uint64(s.limits.BloomCompactorMaxBlockSize(tenant))
+	blockOpts := v1.NewBlockOptions(nGramSize, nGramSkip, maxBlockSize)
+
 	// 4. Generate Blooms
 	// Now that we have the gaps, we will generate a bloom block for each gap.
 	// We can accelerate this by using existing blocks which may already contain
@@ -134,10 +143,20 @@ func (s *SimpleBloomController) buildBlocks(
 				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 				return errors.Wrap(err, "failed to get series and blocks")
 			}
+			// Close all remaining blocks on exit
+			closePreExistingBlocks := func() {
+				var closeErrors multierror.MultiError
+				for _, block := range preExistingBlocks {
+					closeErrors.Add(block.Close())
+				}
+				if err := closeErrors.Err(); err != nil {
+					level.Error(s.logger).Log("msg", "failed to close blocks", "err", err)
+				}
+			}
 
 			gen := NewSimpleBloomGenerator(
 				tenant,
-				v1.DefaultBlockOptions,
+				blockOpts,
 				seriesItr,
 				s.chunkLoader,
 				preExistingBlocks,
@@ -150,13 +169,14 @@ func (s *SimpleBloomController) buildBlocks(
 			if err != nil {
 				// TODO(owen-d): metrics
 				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
+				closePreExistingBlocks()
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
 			client, err := s.bloomStore.Client(table.ModelTime())
-
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get client", "err", err)
+				closePreExistingBlocks()
 				return errors.Wrap(err, "failed to get client")
 			}
 
@@ -175,15 +195,20 @@ func (s *SimpleBloomController) buildBlocks(
 					built,
 				); err != nil {
 					level.Error(logger).Log("msg", "failed to write block", "err", err)
+					closePreExistingBlocks()
 					return errors.Wrap(err, "failed to write block")
 				}
 			}
 
 			if err := newBlocks.Err(); err != nil {
 				// TODO(owen-d): metrics
-				level.Error(logger).Log("msg", "failed to generate bloom block", "err", err)
-				return errors.Wrap(err, "failed to generate bloom block")
+				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
+				closePreExistingBlocks()
+				return errors.Wrap(err, "failed to generate bloom")
 			}
+
+			// Close pre-existing blocks
+			closePreExistingBlocks()
 		}
 	}
 

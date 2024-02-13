@@ -3141,6 +3141,12 @@ shard_streams:
 # CLI flag: -bloom-gateway.cache-key-interval
 [bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
+# The maximum bloom block size. A value of 0 sets an unlimited size. Default is
+# 200MB. The actual block size might exceed this limit since blooms will be
+# added to blocks until the block exceeds the maximum block size.
+# CLI flag: -bloom-compactor.max-block-size
+[bloom_compactor_max_block_size: <int> | default = 200MB]
+
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
 [allow_structured_metadata: <boolean> | default = false]

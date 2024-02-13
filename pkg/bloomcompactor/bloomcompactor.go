@@ -98,6 +98,7 @@ func New(
 		c.tsdbStore,
 		c.bloomStore,
 		chunkLoader,
+		c.limits,
 		c.metrics,
 		c.logger,
 	)

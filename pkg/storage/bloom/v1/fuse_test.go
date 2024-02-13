@@ -36,7 +36,8 @@ func TestFusedQuerier(t *testing.T) {
 	require.Nil(t, err)
 	itr := NewSliceIter[SeriesWithBloom](data)
 	_, err = builder.BuildFrom(itr)
-	require.Nil(t, err)
+	require.NoError(t, err)
+	require.False(t, itr.Next())
 	block := NewBlock(reader)
 	querier := NewBlockQuerier(block)
 

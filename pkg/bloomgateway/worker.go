@@ -25,10 +25,10 @@ type workerConfig struct {
 }
 
 type workerMetrics struct {
-	dequeueDuration   *prometheus.SummaryVec
-	processDuration   *prometheus.SummaryVec
-	metasFetched      *prometheus.SummaryVec
-	blocksFetched     *prometheus.SummaryVec
+	dequeueDuration   *prometheus.HistogramVec
+	processDuration   *prometheus.HistogramVec
+	metasFetched      *prometheus.HistogramVec
+	blocksFetched     *prometheus.HistogramVec
 	tasksDequeued     *prometheus.CounterVec
 	tasksProcessed    *prometheus.CounterVec
 	blockQueryLatency *prometheus.HistogramVec
@@ -38,25 +38,25 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 	labels := []string{"worker"}
 	r := promauto.With(registerer)
 	return &workerMetrics{
-		dequeueDuration: r.NewSummaryVec(prometheus.SummaryOpts{
+		dequeueDuration: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "dequeue_duration_seconds",
 			Help:      "Time spent dequeuing tasks from queue in seconds",
 		}, labels),
-		processDuration: r.NewSummaryVec(prometheus.SummaryOpts{
+		processDuration: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "process_duration_seconds",
 			Help:      "Time spent processing tasks in seconds",
 		}, append(labels, "status")),
-		metasFetched: r.NewSummaryVec(prometheus.SummaryOpts{
+		metasFetched: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "metas_fetched",
 			Help:      "Amount of metas fetched",
 		}, labels),
-		blocksFetched: r.NewSummaryVec(prometheus.SummaryOpts{
+		blocksFetched: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "blocks_fetched",

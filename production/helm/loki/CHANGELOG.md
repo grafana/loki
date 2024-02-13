@@ -15,6 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 5.42.2
 
+- [BUGFIX] Added condition for `egress-discovery` networkPolicies and ciliumNetworkPolicies.
 - [BUGFIX] Remove trailing tab character in statefulset templates
 
 ## 5.42.1
