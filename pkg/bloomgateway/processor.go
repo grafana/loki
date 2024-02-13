@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"sort"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
@@ -17,16 +18,20 @@ type tasksForBlock struct {
 	tasks    []Task
 }
 
-func newProcessor(store bloomshipper.Store, logger log.Logger) *processor {
+func newProcessor(id string, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
 	return &processor{
-		store:  store,
-		logger: logger,
+		id:      id,
+		store:   store,
+		logger:  logger,
+		metrics: metrics,
 	}
 }
 
 type processor struct {
-	store  bloomshipper.Store
-	logger log.Logger
+	id      string
+	store   bloomshipper.Store
+	logger  log.Logger
+	metrics *workerMetrics
 }
 
 func (p *processor) run(ctx context.Context, tasks []Task) error {
@@ -58,6 +63,8 @@ func (p *processor) processTasks(ctx context.Context, tenant string, interval bl
 	if err != nil {
 		return err
 	}
+	p.metrics.metasFetched.WithLabelValues(p.id).Observe(float64(len(metas)))
+
 	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
 	return p.processBlocks(ctx, partition(tasks, blocksRefs))
 }
@@ -72,6 +79,7 @@ func (p *processor) processBlocks(ctx context.Context, data []tasksForBlock) err
 	if err != nil {
 		return err
 	}
+	p.metrics.metasFetched.WithLabelValues(p.id).Observe(float64(len(bqs)))
 
 	blockIter := v1.NewSliceIter(bqs)
 
@@ -109,7 +117,16 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 	}
 
 	fq := blockQuerier.Fuse(iters)
-	return fq.Run()
+
+	start := time.Now()
+	err = fq.Run()
+	if err != nil {
+		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelFailure).Observe(time.Since(start).Seconds())
+	} else {
+		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelSuccess).Observe(time.Since(start).Seconds())
+	}
+
+	return err
 }
 
 // getFirstLast returns the first and last item of a fingerprint slice

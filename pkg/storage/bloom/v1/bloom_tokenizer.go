@@ -96,7 +96,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 	var tokenBuf []byte
 	var prefixLn int
 
-	for chks.Err() == nil && chks.Next() {
+	for chks.Next() && chks.Err() == nil {
 		chk := chks.At()
 		itr := chk.Itr
 		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N, chk.Ref, tokenBuf)
