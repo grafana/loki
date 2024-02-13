@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"sort"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -15,32 +14,70 @@ import (
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
+var (
+	DefaultBlockOptions = NewBlockOptions(4, 0, 50<<20) // 50MB
+)
+
 type BlockOptions struct {
 	// Schema determines the Schema of the block and cannot be changed
+	// without recreating the block from underlying data
 	Schema Schema
 
 	// The following options can be changed on the fly.
 	// For instance, adding another page to a block with
-	// a different target page size is supported.
+	// a different target page size is supported, although
+	// the block will store the original sizes it was created with
 
 	// target size in bytes (decompressed)
 	// of each page type
-	SeriesPageSize, BloomPageSize, BlockSize int
+	SeriesPageSize, BloomPageSize, BlockSize uint64
+}
+
+func (b BlockOptions) Len() int {
+	return 3*8 + b.Schema.Len()
+}
+
+func (b *BlockOptions) DecodeFrom(r io.ReadSeeker) error {
+	buf := make([]byte, b.Len())
+	_, err := io.ReadFull(r, buf)
+	if err != nil {
+		return errors.Wrap(err, "reading block options")
+	}
+
+	dec := encoding.DecWith(buf)
+
+	if err := b.Schema.Decode(&dec); err != nil {
+		return errors.Wrap(err, "decoding schema")
+	}
+	b.SeriesPageSize = dec.Be64()
+	b.BloomPageSize = dec.Be64()
+	b.BlockSize = dec.Be64()
+	return nil
+}
+
+func (b BlockOptions) Encode(enc *encoding.Encbuf) {
+	b.Schema.Encode(enc)
+	enc.PutBE64(b.SeriesPageSize)
+	enc.PutBE64(b.BloomPageSize)
+	enc.PutBE64(b.BlockSize)
 }
 
 type BlockBuilder struct {
 	opts BlockOptions
 
+	writer BlockWriter
 	index  *IndexBuilder
 	blooms *BloomBlockBuilder
 }
 
-func NewBlockOptions(NGramLength, NGramSkip uint64) BlockOptions {
-	return NewBlockOptionsFromSchema(Schema{
+func NewBlockOptions(NGramLength, NGramSkip, MaxBlockSizeBytes uint64) BlockOptions {
+	opts := NewBlockOptionsFromSchema(Schema{
 		version:     byte(1),
 		nGramLength: NGramLength,
 		nGramSkip:   NGramSkip,
 	})
+	opts.BlockSize = MaxBlockSizeBytes
+	return opts
 }
 
 func NewBlockOptionsFromSchema(s Schema) BlockOptions {
@@ -64,6 +101,7 @@ func NewBlockBuilder(opts BlockOptions, writer BlockWriter) (*BlockBuilder, erro
 
 	return &BlockBuilder{
 		opts:   opts,
+		writer: writer,
 		index:  NewIndexBuilder(opts, index),
 		blooms: NewBloomBlockBuilder(opts, blooms),
 	}, nil
@@ -76,40 +114,68 @@ type SeriesWithBloom struct {
 
 func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) {
 	for itr.Next() {
-		if err := b.AddSeries(itr.At()); err != nil {
+		blockFull, err := b.AddSeries(itr.At())
+		if err != nil {
 			return 0, err
 		}
-
+		if blockFull {
+			break
+		}
 	}
 
 	if err := itr.Err(); err != nil {
 		return 0, errors.Wrap(err, "iterating series with blooms")
 	}
 
-	checksum, err := b.blooms.Close()
+	return b.Close()
+}
+
+func (b *BlockBuilder) Close() (uint32, error) {
+	bloomChecksum, err := b.blooms.Close()
 	if err != nil {
 		return 0, errors.Wrap(err, "closing bloom file")
 	}
-	if err := b.index.Close(); err != nil {
+	indexCheckSum, err := b.index.Close()
+	if err != nil {
 		return 0, errors.Wrap(err, "closing series file")
 	}
-	return checksum, nil
+	return combineChecksums(indexCheckSum, bloomChecksum), nil
 }
 
-func (b *BlockBuilder) AddSeries(series SeriesWithBloom) error {
+// AddSeries adds a series to the block. It returns true after adding the series, the block is full.
+func (b *BlockBuilder) AddSeries(series SeriesWithBloom) (bool, error) {
 	offset, err := b.blooms.Append(series)
 	if err != nil {
-		return errors.Wrapf(err, "writing bloom for series %v", series.Series.Fingerprint)
+		return false, errors.Wrapf(err, "writing bloom for series %v", series.Series.Fingerprint)
 	}
 
 	if err := b.index.Append(SeriesWithOffset{
 		Offset: offset,
 		Series: *series.Series,
 	}); err != nil {
-		return errors.Wrapf(err, "writing index for series %v", series.Series.Fingerprint)
+		return false, errors.Wrapf(err, "writing index for series %v", series.Series.Fingerprint)
 	}
 
-	return nil
+	full, err := b.isBlockFull()
+	if err != nil {
+		return false, errors.Wrap(err, "checking if block is full")
+	}
+
+	return full, nil
+}
+
+func (b *BlockBuilder) isBlockFull() (bool, error) {
+	// if the block size is 0, the max size is unlimited
+	if b.opts.BlockSize == 0 {
+		return false, nil
+	}
+
+	size, err := b.writer.Size()
+	if err != nil {
+		return false, errors.Wrap(err, "getting block size")
+	}
+
+	return uint64(size) >= b.opts.BlockSize, nil
 }
 
 type BloomBlockBuilder struct {
@@ -127,7 +193,7 @@ func NewBloomBlockBuilder(opts BlockOptions, writer io.WriteCloser) *BloomBlockB
 	return &BloomBlockBuilder{
 		opts:    opts,
 		writer:  writer,
-		page:    NewPageWriter(opts.BloomPageSize),
+		page:    NewPageWriter(int(opts.BloomPageSize)),
 		scratch: &encoding.Encbuf{},
 	}
 }
@@ -303,16 +369,16 @@ func NewIndexBuilder(opts BlockOptions, writer io.WriteCloser) *IndexBuilder {
 	return &IndexBuilder{
 		opts:    opts,
 		writer:  writer,
-		page:    NewPageWriter(opts.SeriesPageSize),
+		page:    NewPageWriter(int(opts.SeriesPageSize)),
 		scratch: &encoding.Encbuf{},
 	}
 }
 
-func (b *IndexBuilder) WriteSchema() error {
+func (b *IndexBuilder) WriteOpts() error {
 	b.scratch.Reset()
-	b.opts.Schema.Encode(b.scratch)
+	b.opts.Encode(b.scratch)
 	if _, err := b.writer.Write(b.scratch.Get()); err != nil {
-		return errors.Wrap(err, "writing schema")
+		return errors.Wrap(err, "writing opts+schema")
 	}
 	b.writtenSchema = true
 	b.offset += b.scratch.Len()
@@ -321,8 +387,8 @@ func (b *IndexBuilder) WriteSchema() error {
 
 func (b *IndexBuilder) Append(series SeriesWithOffset) error {
 	if !b.writtenSchema {
-		if err := b.WriteSchema(); err != nil {
-			return errors.Wrap(err, "writing schema")
+		if err := b.WriteOpts(); err != nil {
+			return errors.Wrap(err, "appending series")
 		}
 	}
 
@@ -404,8 +470,7 @@ func (b *IndexBuilder) flushPage() error {
 		DecompressedLen: decompressedLen,
 		SeriesHeader: SeriesHeader{
 			NumSeries: b.page.Count(),
-			FromFp:    b.fromFp,
-			ThroughFp: b.previousFp,
+			Bounds:    NewBounds(b.fromFp, b.previousFp),
 			FromTs:    b.fromTs,
 			ThroughTs: b.throughTs,
 		},
@@ -424,10 +489,10 @@ func (b *IndexBuilder) flushPage() error {
 	return nil
 }
 
-func (b *IndexBuilder) Close() error {
+func (b *IndexBuilder) Close() (uint32, error) {
 	if b.page.Count() > 0 {
 		if err := b.flushPage(); err != nil {
-			return errors.Wrap(err, "flushing final series page")
+			return 0, errors.Wrap(err, "flushing final series page")
 		}
 	}
 
@@ -447,39 +512,9 @@ func (b *IndexBuilder) Close() error {
 	b.scratch.PutHash(crc32Hash)
 	_, err := b.writer.Write(b.scratch.Get())
 	if err != nil {
-		return errors.Wrap(err, "writing series page headers")
+		return 0, errors.Wrap(err, "writing series page headers")
 	}
-	return errors.Wrap(b.writer.Close(), "closing series writer")
-}
-
-// SortBlocksIntoOverlappingGroups sorts a list of blocks into a sorted list of lists,
-// where each list contains blocks that overlap with each other.
-// TODO(owen-d): implement as an iterator so we don't have to load all blocks at once
-// NB: unused now, but likely useful when we want to optimize compaction. I wrote this expecting to need it now
-// but it feels unsavory to remove it
-func SortBlocksIntoOverlappingGroups(xs []*Block) (groups [][]*Block) {
-	sort.Slice(xs, func(i, j int) bool {
-		a, b := xs[i].index, xs[j].index
-		return a.pageHeaders[0].FromFp <= b.pageHeaders[0].FromFp
-	})
-
-	var curGroup []*Block
-	for _, x := range xs {
-		switch {
-		case len(curGroup) == 0:
-			curGroup = append(curGroup, x)
-		case curGroup[len(curGroup)-1].dataRange.OverlapFingerprintRange(x.dataRange):
-			curGroup = append(curGroup, x)
-		default:
-			groups = append(groups, curGroup)
-			curGroup = []*Block{x}
-		}
-	}
-
-	if len(curGroup) > 0 {
-		groups = append(groups, curGroup)
-	}
-	return groups
+	return crc32Hash.Sum32(), errors.Wrap(b.writer.Close(), "closing series writer")
 }
 
 // Simplistic implementation of a merge builder that builds a single block
@@ -497,7 +532,11 @@ type MergeBuilder struct {
 //  1. merges multiple blocks into a single ordered querier,
 //     i) When two blocks have the same series, it will prefer the one with the most chunks already indexed
 //  2. iterates through the store, adding chunks to the relevant blooms via the `populate` argument
-func NewMergeBuilder(blocks []PeekingIterator[*SeriesWithBloom], store Iterator[*Series], populate func(*Series, *Bloom) error) *MergeBuilder {
+func NewMergeBuilder(
+	blocks []PeekingIterator[*SeriesWithBloom],
+	store Iterator[*Series],
+	populate func(*Series, *Bloom) error,
+) *MergeBuilder {
 	return &MergeBuilder{
 		blocks:   blocks,
 		store:    store,
@@ -505,8 +544,6 @@ func NewMergeBuilder(blocks []PeekingIterator[*SeriesWithBloom], store Iterator[
 	}
 }
 
-// NB: this will build one block. Ideally we would build multiple blocks once a target size threshold is met
-// but this gives us a good starting point.
 func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 	var (
 		nextInBlocks *SeriesWithBloom
@@ -521,7 +558,7 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 		func(a, b *SeriesWithBloom) bool {
 			return a.Series.Fingerprint == b.Series.Fingerprint
 		},
-		id[*SeriesWithBloom],
+		Identity[*SeriesWithBloom],
 		func(a, b *SeriesWithBloom) *SeriesWithBloom {
 			if len(a.Series.Chunks) > len(b.Series.Chunks) {
 				return a
@@ -577,17 +614,18 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 			}
 		}
 
-		if err := builder.AddSeries(*cur); err != nil {
+		blockFull, err := builder.AddSeries(*cur)
+		if err != nil {
 			return 0, errors.Wrap(err, "adding series to block")
+		}
+		if blockFull {
+			break
 		}
 	}
 
-	checksum, err := builder.blooms.Close()
+	checksum, err := builder.Close()
 	if err != nil {
-		return 0, errors.Wrap(err, "closing bloom file")
-	}
-	if err := builder.index.Close(); err != nil {
-		return 0, errors.Wrap(err, "closing series file")
+		return 0, errors.Wrap(err, "closing block")
 	}
 	return checksum, nil
 }

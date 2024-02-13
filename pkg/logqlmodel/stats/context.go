@@ -55,17 +55,18 @@ type Context struct {
 type CacheType string
 
 const (
-	ChunkCache                CacheType = "chunk" //nolint:staticcheck
-	IndexCache                          = "index"
-	ResultCache                         = "result"
-	StatsResultCache                    = "stats-result"
-	VolumeResultCache                   = "volume-result"
-	InstantMetricResultsCache           = "instant-metric-result"
-	WriteDedupeCache                    = "write-dedupe"
-	SeriesResultCache                   = "series-result"
-	LabelResultCache                    = "label-result"
-	BloomFilterCache                    = "bloom-filter"
-	BloomBlocksCache                    = "bloom-blocks"
+	ChunkCache                CacheType = "chunk"                 //nolint:staticcheck
+	IndexCache                CacheType = "index"                 //nolint:staticcheck
+	ResultCache               CacheType = "result"                //nolint:staticcheck
+	StatsResultCache          CacheType = "stats-result"          //nolint:staticcheck
+	VolumeResultCache         CacheType = "volume-result"         //nolint:staticcheck
+	InstantMetricResultsCache CacheType = "instant-metric-result" // nolint:staticcheck
+	WriteDedupeCache          CacheType = "write-dedupe"          //nolint:staticcheck
+	SeriesResultCache         CacheType = "series-result"         //nolint:staticcheck
+	LabelResultCache          CacheType = "label-result"          //nolint:staticcheck
+	BloomFilterCache          CacheType = "bloom-filter"          //nolint:staticcheck
+	BloomBlocksCache          CacheType = "bloom-blocks"          //nolint:staticcheck
+	BloomMetasCache           CacheType = "bloom-metas"           //nolint:staticcheck
 )
 
 // NewContext creates a new statistics context

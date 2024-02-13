@@ -251,8 +251,10 @@ func TestInstanceFor(t *testing.T) {
 	var mtx sync.Mutex
 	var ct int
 
+	acc := logql.NewBufferedAccumulator(len(queries))
+
 	// ensure we can execute queries that number more than the parallelism parameter
-	_, err := in.For(context.TODO(), queries, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
+	_, err := in.For(context.TODO(), queries, acc, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		ct++
@@ -267,7 +269,7 @@ func TestInstanceFor(t *testing.T) {
 	// ensure an early error abandons the other queues queries
 	in = mkIn()
 	ct = 0
-	_, err = in.For(context.TODO(), queries, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
+	_, err = in.For(context.TODO(), queries, acc, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		ct++
@@ -303,6 +305,7 @@ func TestInstanceFor(t *testing.T) {
 				},
 			},
 		},
+		logql.NewBufferedAccumulator(2),
 		func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
 			// Decode shard
 			s := strings.Split(qry.Params.Shards()[0], "_")
@@ -387,11 +390,10 @@ func TestInstanceDownstream(t *testing.T) {
 		results, err := DownstreamHandler{
 			limits: fakeLimits{},
 			next:   handler,
-		}.Downstreamer(context.Background()).Downstream(context.Background(), queries)
+		}.Downstreamer(context.Background()).Downstream(context.Background(), queries, logql.NewBufferedAccumulator(len(queries)))
 
 		fmt.Println("want", want.GetEnd(), want.GetStart(), "got", got.GetEnd(), got.GetStart())
 		require.Equal(t, want, got)
-
 		require.Nil(t, err)
 		require.Equal(t, 1, len(results))
 		require.Equal(t, expected.Data, results[0].Data)
@@ -475,6 +477,7 @@ func TestCancelWhileWaitingResponse(t *testing.T) {
 	in := mkIn()
 
 	queries := make([]logql.DownstreamQuery, in.parallelism+1)
+	acc := logql.NewBufferedAccumulator(len(queries))
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -482,7 +485,7 @@ func TestCancelWhileWaitingResponse(t *testing.T) {
 	// to prove it will exit when the context is canceled.
 	b := atomic.NewBool(false)
 	go func() {
-		_, _ = in.For(ctx, queries, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
+		_, _ = in.For(ctx, queries, acc, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
 			// Intended to keep the For method from returning unless the context is canceled.
 			time.Sleep(100 * time.Second)
 			return logqlmodel.Result{}, nil
@@ -599,41 +602,6 @@ func TestDownstreamAccumulatorSimple(t *testing.T) {
 			require.Equal(t, time.Unix(int64(9-j), 0), got[i].Entries[j].Timestamp, "correct timestamp")
 		}
 	}
-}
-
-func TestDownstream_withoutOffset(t *testing.T) {
-	start := time.Now()
-	end := start.Add(2 * time.Hour)
-
-	t.Log("start", start, "end", end)
-	cases := []struct {
-		in logql.Params
-
-		exp logql.Params
-	}{
-		{in: newTestParams(t, `sum(rate({job="foo"}[5m] offset 2h))`, start, start), exp: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start.Add(-2*time.Hour), start.Add(-2*time.Hour))}, // instant query
-		{in: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start, start), exp: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start, start)},                                               // instant query without offset in original query. start and end shouldn't change
-	}
-
-	for _, tc := range cases {
-		qry := logql.DownstreamQuery{
-			Params: tc.in,
-		}
-		q, start, end := withoutOffset(qry)
-
-		assert.Equal(t, tc.exp.QueryString(), q)
-		assert.Equal(t, tc.exp.Start(), start)
-		assert.Equal(t, tc.exp.End(), end)
-	}
-}
-
-func newTestParams(t *testing.T, q string, start, end time.Time) logql.Params {
-	t.Helper()
-
-	params, err := logql.NewLiteralParams(q, start, end, 10*time.Second, 10*time.Second, logproto.BACKWARD, 0, nil)
-	require.NoError(t, err)
-
-	return params
 }
 
 // TestDownstreamAccumulatorMultiMerge simulates merging multiple
