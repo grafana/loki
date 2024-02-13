@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	baseStore "github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -49,12 +50,12 @@ func NewBloomTSDBStore(storage storage.Client) *BloomTSDBStore {
 }
 
 func (b *BloomTSDBStore) UsersForPeriod(ctx context.Context, table DayTable) ([]string, error) {
-	_, users, err := b.storage.ListFiles(ctx, table.String(), false)
+	_, users, err := b.storage.ListFiles(ctx, table.String(), true) // bypass cache for ease of testing
 	return users, err
 }
 
 func (b *BloomTSDBStore) ResolveTSDBs(ctx context.Context, table DayTable, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error) {
-	indices, err := b.storage.ListUserFiles(ctx, table.String(), tenant, false)
+	indices, err := b.storage.ListUserFiles(ctx, table.String(), tenant, true) // bypass cache for ease of testing
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list user files")
 	}
@@ -84,16 +85,25 @@ func (b *BloomTSDBStore) LoadTSDB(
 	id tsdb.Identifier,
 	bounds v1.FingerprintBounds,
 ) (v1.CloseableIterator[*v1.Series], error) {
-	data, err := b.storage.GetUserFile(ctx, table.String(), tenant, id.Name())
+	withCompression := id.Name() + gzipExtension
+
+	data, err := b.storage.GetUserFile(ctx, table.String(), tenant, withCompression)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get file")
 	}
+	defer data.Close()
 
-	buf, err := io.ReadAll(data)
+	decompressorPool := chunkenc.GetReaderPool(chunkenc.EncGZIP)
+	decompressor, err := decompressorPool.GetReader(data)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get decompressor")
+	}
+	defer decompressorPool.PutReader(decompressor)
+
+	buf, err := io.ReadAll(decompressor)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read file")
 	}
-	_ = data.Close()
 
 	reader, err := index.NewReader(index.RealByteSlice(buf))
 	if err != nil {
@@ -226,7 +236,8 @@ func NewTSDBStores(
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create object client")
 			}
-			res.stores[i] = NewBloomTSDBStore(storage.NewIndexStorageClient(c, cfg.IndexTables.PathPrefix))
+			prefix := path.Join(cfg.IndexTables.PathPrefix, cfg.IndexTables.Prefix)
+			res.stores[i] = NewBloomTSDBStore(storage.NewIndexStorageClient(c, prefix))
 		}
 	}
 

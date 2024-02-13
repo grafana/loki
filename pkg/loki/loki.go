@@ -248,6 +248,9 @@ func (c *Config) Validate() error {
 	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
+	if err := c.BloomCompactor.Validate(); err != nil {
+		return errors.Wrap(err, "invalid bloom_compactor config")
+	}
 
 	if err := ValidateConfigCompatibility(*c); err != nil {
 		return err
@@ -648,7 +651,7 @@ func (t *Loki) setupModuleManager() error {
 		Write:   {Ingester, Distributor},
 		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
 
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor, BloomCompactor},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
