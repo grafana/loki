@@ -1,5 +1,6 @@
 ## Main
 
+- [11928](https://github.com/grafana/loki/pull/11928) **periklis**: Fix remote write client timeout config rename
 - [11920](https://github.com/grafana/loki/pull/11920) **xperimental**: Refactor handling of credentials in managed-auth mode
 - [11869](https://github.com/grafana/loki/pull/11869) **periklis**: Add support for running with Google Workload Identity
 - [11868](https://github.com/grafana/loki/pull/11868) **xperimental**: Integrate support for OpenShift-managed credentials in Azure
