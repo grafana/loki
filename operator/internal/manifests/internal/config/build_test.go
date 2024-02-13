@@ -843,7 +843,7 @@ ruler:
     client:
       name: remote-write-me
       url: http://remote.write.me
-      timeout: 10s
+      remote_timeout: 10s
       proxy_url: http://proxy.through.me
       follow_redirects: true
       headers:
@@ -1201,7 +1201,7 @@ ruler:
     client:
       name: remote-write-me
       url: http://remote.write.me
-      timeout: 10s
+      remote_timeout: 10s
       proxy_url: http://proxy.through.me
       follow_redirects: true
       headers:
@@ -1560,7 +1560,7 @@ ruler:
     client:
       name: remote-write-me
       url: http://remote.write.me
-      timeout: 10s
+      remote_timeout: 10s
       proxy_url: http://proxy.through.me
       follow_redirects: true
       headers:
@@ -2300,7 +2300,7 @@ ruler:
     client:
       name: remote-write-me
       url: http://remote.write.me
-      timeout: 10s
+      remote_timeout: 10s
       proxy_url: http://proxy.through.me
       follow_redirects: true
       headers:
@@ -3065,7 +3065,7 @@ ruler:
     client:
       name: remote-write-me
       url: http://remote.write.me
-      timeout: 10s
+      remote_timeout: 10s
       proxy_url: http://proxy.through.me
       follow_redirects: true
       headers:
