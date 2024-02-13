@@ -14,3 +14,5 @@ Grafana Labs is excited to announce the release of Loki ?.?.? Here's a summary o
 ## Upgrade Considerations
 
 ## Bug fixes
+
+-  **Approximate `quantile_over_time`**: :warning: ADD DESCRIPTION HERE :warning:. [PR #10417](https://github.com/grafana/loki/pull/10417)]
