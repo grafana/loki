@@ -60,14 +60,14 @@ local setupValidationDeps = function(job) job {
     //   tarball_binary_path: '${binary}',
     //   smoke_test: '${binary} --version',
     // }),
-    // step.new('install jsonnetfmt', './lib/actions/install-binary')
-    // + step.with({
-    //   binary: 'jsonnetfmt',
-    //   version: '0.18.0',
-    //   download_url: 'https://github.com/google/go-jsonnet/releases/download/v${version}/go-jsonnet_${version}_Linux_x86_64.tar.gz',
-    //   tarball_binary_path: '${binary}',
-    //   smoke_test: '${binary} --version',
-    // }),
+    step.new('install jsonnetfmt', './lib/actions/install-binary')
+    + step.with({
+      binary: 'jsonnetfmt',
+      version: '0.18.0',
+      download_url: 'https://github.com/google/go-jsonnet/releases/download/v${version}/go-jsonnet_${version}_Linux_x86_64.tar.gz',
+      tarball_binary_path: '${binary}',
+      smoke_test: '${binary} --version',
+    }),
   ] + job.steps,
 };
 

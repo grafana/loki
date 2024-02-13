@@ -31,6 +31,14 @@ jobs:
         tar_args: "xvf"
         tarball_binary_path: "*/${binary}"
         version: "0.9.0"
+    - name: "install jsonnetfmt"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "jsonnetfmt"
+        download_url: "https://github.com/google/go-jsonnet/releases/download/v${version}/go-jsonnet_${version}_Linux_x86_64.tar.gz"
+        smoke_test: "${binary} --version"
+        tarball_binary_path: "${binary}"
+        version: "0.18.0"
     - env:
         BUILD_IN_CONTAINER: false
       if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
@@ -372,6 +380,14 @@ jobs:
         tar_args: "xvf"
         tarball_binary_path: "*/${binary}"
         version: "0.9.0"
+    - name: "install jsonnetfmt"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "jsonnetfmt"
+        download_url: "https://github.com/google/go-jsonnet/releases/download/v${version}/go-jsonnet_${version}_Linux_x86_64.tar.gz"
+        smoke_test: "${binary} --version"
+        tarball_binary_path: "${binary}"
+        version: "0.18.0"
     - env:
         BUILD_IN_CONTAINER: false
       if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
@@ -1188,6 +1204,14 @@ jobs:
         tar_args: "xvf"
         tarball_binary_path: "*/${binary}"
         version: "0.9.0"
+    - name: "install jsonnetfmt"
+      uses: "./lib/actions/install-binary"
+      with:
+        binary: "jsonnetfmt"
+        download_url: "https://github.com/google/go-jsonnet/releases/download/v${version}/go-jsonnet_${version}_Linux_x86_64.tar.gz"
+        smoke_test: "${binary} --version"
+        tarball_binary_path: "${binary}"
+        version: "0.18.0"
     - env:
         BUILD_IN_CONTAINER: false
       if: "${{ !fromJSON(env.SKIP_VALIDATION) }}"
