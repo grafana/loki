@@ -133,9 +133,7 @@ jobs:
     container:
       image: "grafana/loki-build-image:0.33.0"
     needs:
-    - "test"
-    - "lint"
-    - "check"
+    - "version"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"
@@ -149,6 +147,7 @@ jobs:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - env:
         BUILD_IN_CONTAINER: false
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
         SKIP_ARM: true
       name: "build artifacts"
       run: "make SKIP_ARM=true dist"
@@ -213,9 +212,7 @@ jobs:
       working-directory: "release"
   loki:
     needs:
-    - "test"
-    - "lint"
-    - "check"
+    - "version"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull release library code"
@@ -250,57 +247,21 @@ jobs:
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       shell: "bash"
       working-directory: "release"
-    - id: "extract_branch"
-      name: "extract branch name"
-      run: |
-        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
-      shell: "bash"
-      working-directory: "release"
-    - id: "version"
-      name: "get release version"
-      run: |
-        npm install
-        npm exec -- release-please release-pr \
-          --consider-all-branches \
-          --dry-run \
-          --dry-run-output release.json \
-          --release-type simple \
-          --repo-url="${{ env.RELEASE_REPO }}" \
-          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GH_TOKEN }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
-        
-        if [[ `jq length release.json` -gt 1 ]]; then 
-          echo 'release-please would create more than 1 PR, so cannot determine correct version'
-          echo "pr_created=false" >> $GITHUB_OUTPUT
-          exit 1
-        fi
-        
-        if [[ `jq length release.json` -eq 0 ]]; then 
-          echo "pr_created=false" >> $GITHUB_OUTPUT
-        else
-          version="$(npm run --silent get-version)"
-          echo "Parsed version: ${version}"
-          echo "version=${version}" >> $GITHUB_OUTPUT
-          echo "pr_created=true" >> $GITHUB_OUTPUT
-        fi
-      shell: "bash"
-      working-directory: "lib"
-    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
         file: "release/cmd/loki/Dockerfile"
-        outputs: "type=docker,dest=release/images/fake-loki-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        outputs: "type=docker,dest=release/images/fake-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/fake-loki:${{ steps.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-    - if: "${{ fromJSON(steps.version.outputs.pr_created) }}"
+        tags: "${{ env.IMAGE_PREFIX }}/fake-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/fake-loki-${{ steps.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        path: "release/images/fake-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
@@ -353,6 +314,66 @@ jobs:
       run: "make test"
       shell: "bash"
       working-directory: "release"
+  version:
+    needs:
+    - "test"
+    - "lint"
+    - "check"
+    outputs:
+      pr_created: "${{ steps.version.outputs.pr_created }}"
+      version: "${{ steps.version.outputs.version }}"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - id: "extract_branch"
+      name: "extract branch name"
+      run: |
+        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      shell: "bash"
+      working-directory: "release"
+    - id: "version"
+      name: "get release version"
+      run: |
+        npm install
+        npm exec -- release-please release-pr \
+          --consider-all-branches \
+          --dry-run \
+          --dry-run-output release.json \
+          --release-type simple \
+          --repo-url="${{ env.RELEASE_REPO }}" \
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token="${{ secrets.GH_TOKEN }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
+          echo 'release-please would create more than 1 PR, so cannot determine correct version'
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
+          echo "pr_created=false" >> $GITHUB_OUTPUT
+        else
+          version="$(npm run --silent get-version)"
+          echo "Parsed version: ${version}"
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "pr_created=true" >> $GITHUB_OUTPUT
+        fi
+      shell: "bash"
+      working-directory: "lib"
 name: "create release PR"
 "on":
   push:

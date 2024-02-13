@@ -35,8 +35,9 @@
     },
     local validationSteps = ['test', 'lint', 'check'],
     jobs: $.validate(buildImage) {
-      dist: $.build.dist(buildImage) + $.common.job.withNeeds(validationSteps),
-    } + std.mapWithKey(function(name, job) job + $.common.job.withNeeds(validationSteps), imageJobs) + {
+      version: $.build.version + $.common.job.withNeeds(validationSteps),
+      dist: $.build.dist(buildImage) + $.common.job.withNeeds(['version']),
+    } + std.mapWithKey(function(name, job) job + $.common.job.withNeeds(['version']), imageJobs) + {
       local buildImageSteps = ['dist'] + std.objectFields(imageJobs),
       'create-release-pr': $.release.createReleasePR + $.common.job.withNeeds(buildImageSteps),
     },
