@@ -62,12 +62,12 @@ func (s *SwiftThanosObjectClient) PutObject(ctx context.Context, objectKey strin
 
 // GetObject returns a reader and the size for the specified object key from the configured Swift bucket.
 func (s *SwiftThanosObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
-	reader, err := s.client.Get(ctx, objectKey)
+	reader, err := s.hedgedClient.Get(ctx, objectKey)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	attr, err := s.client.Attributes(ctx, objectKey)
+	attr, err := s.hedgedClient.Attributes(ctx, objectKey)
 	if err != nil {
 		return nil, 0, errors.Wrapf(err, "failed to get attributes for %s", objectKey)
 	}
