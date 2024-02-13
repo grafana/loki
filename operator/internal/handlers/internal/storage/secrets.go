@@ -59,15 +59,7 @@ func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg c
 	}
 
 	if fg.OpenShift.ManagedAuthEnv {
-		secretName, ok := stack.Annotations[storage.AnnotationCredentialsRequestsSecretRef]
-		if !ok {
-			return nil, nil, &status.DegradedError{
-				Message: "Missing OpenShift cloud credentials request",
-				Reason:  lokiv1.ReasonMissingCredentialsRequest,
-				Requeue: true,
-			}
-		}
-
+		secretName := storage.ManagedCredentialsSecretName(stack.Name)
 		managedAuthCredsKey := client.ObjectKey{Name: secretName, Namespace: stack.Namespace}
 		if err := k.Get(ctx, managedAuthCredsKey, &managedAuthSecret); err != nil {
 			if apierrors.IsNotFound(err) {
@@ -100,7 +92,7 @@ func extractSecrets(secretType lokiv1.ObjectStorageSecretType, objStore, managed
 		SharedStore: secretType,
 	}
 
-	if fg.OpenShift.ManagedAuthEnabled() {
+	if fg.OpenShift.ManagedAuthEnv {
 		var managedAuthHash string
 		managedAuthHash, err = hashSecretData(managedAuth)
 		if err != nil {
@@ -190,9 +182,16 @@ func extractAzureConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*stor
 	// Extract and validate optional fields
 	endpointSuffix := s.Data[storage.KeyAzureStorageEndpointSuffix]
 	audience := s.Data[storage.KeyAzureAudience]
+	region := s.Data[storage.KeyAzureRegion]
 
 	if !workloadIdentity && len(audience) > 0 {
 		return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAzureAudience)
+	}
+
+	if fg.OpenShift.ManagedAuthEnv {
+		if len(region) == 0 {
+			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureRegion)
+		}
 	}
 
 	return &storage.AzureStorageConfig{
@@ -210,12 +209,7 @@ func validateAzureCredentials(s *corev1.Secret, fg configv1.FeatureGates) (workl
 	tenantID := s.Data[storage.KeyAzureStorageTenantID]
 	subscriptionID := s.Data[storage.KeyAzureStorageSubscriptionID]
 
-	if fg.OpenShift.ManagedAuthEnabled() {
-		region := s.Data[storage.KeyAzureRegion]
-		if len(region) == 0 {
-			return false, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureRegion)
-		}
-
+	if fg.OpenShift.ManagedAuthEnv {
 		if len(accountKey) > 0 || len(clientID) > 0 || len(tenantID) > 0 || len(subscriptionID) > 0 {
 			return false, errAzureManagedIdentityNoOverride
 		}
@@ -282,8 +276,8 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyGCPWorkloadIdentityProviderAudience)
 		}
 
-		if credentialsFile.CredentialsSource.File != storage.GCPDefautCredentialsFile {
-			return nil, fmt.Errorf("%w: %s", errGCPWrongCredentialSourceFile, storage.GCPDefautCredentialsFile)
+		if credentialsFile.CredentialsSource.File != storage.ServiceAccountTokenFilePath {
+			return nil, fmt.Errorf("%w: %s", errGCPWrongCredentialSourceFile, storage.ServiceAccountTokenFilePath)
 		}
 	}
 
@@ -330,7 +324,7 @@ func extractS3ConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*storage
 	)
 
 	switch {
-	case fg.OpenShift.ManagedAuthEnabled():
+	case fg.OpenShift.ManagedAuthEnv:
 		cfg.STS = true
 		cfg.Audience = string(audience)
 		// Do not allow users overriding the role arn provided on Loki Operator installation
