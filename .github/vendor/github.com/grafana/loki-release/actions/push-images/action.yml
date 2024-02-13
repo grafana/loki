@@ -1,0 +1,20 @@
+---
+name: 'Push Images'
+description: 'An action to push multi-arch images and create manifests for them'
+
+# Define your inputs here.
+inputs:
+  imageDir:
+    description: 'root directory images are in'
+    required: true
+  imagePrefix:
+    description: 'repository prefix to push images to'
+    required: false
+    default: 'grafana'
+
+# Define your outputs here.
+outputs: {}
+
+runs:
+  using: node20
+  main: dist/index.js

@@ -1,0 +1,34 @@
+name: 'Install Binary'
+description: 'Install & cache common scripts and binaries.'
+
+# Define your inputs here.
+inputs:
+  binary:
+    description: 'Name of the binary. E.g. "architect"'
+    required: true
+  version:
+    description: 'Version. E.g. "architect"'
+    required: true
+  download_url:
+    description: 'Download URL template. Available variables are ${binary} and ${version}.'
+    required: false
+    default: 'https://github.com/giantswarm/${binary}/releases/download/v${version}/${binary}-v${version}-linux-amd64.tar.gz'
+  tarball_binary_path:
+    description: 'Template of the binary path in the tarball. Can contain wildcards.'
+    required: false
+    default: '*/${binary}'
+  smoke_test:
+    description: 'Template of the binary smoke test.'
+    required: false
+    default: '${binary} version'
+  tar_args:
+    description: 'Extraction args to pass to tar command'
+    required: false
+    default: 'xzvf'
+
+# Define your outputs here.
+outputs: {}
+
+runs:
+  using: node20
+  main: dist/index.js

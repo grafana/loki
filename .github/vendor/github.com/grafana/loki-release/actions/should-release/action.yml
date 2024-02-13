@@ -1,0 +1,24 @@
+name: 'Create Release PR'
+description: 'An action to create release PRs'
+
+# Define your inputs here.
+inputs:
+  baseBranch:
+    description: 'base branch to PR release into (defaults to main)'
+    required: false
+    default: main
+  token:
+    description: 'GitHub token for creating and grooming release PRs, defaults to using secrets.GITHUB_TOKEN'
+    required: false
+    default: ${{ github.token }}
+  repoUrl:
+    description: 'configure github repository URL. Default `process.env.GITHUB_REPOSITORY`'
+    required: false
+    default: ''
+
+# Define your outputs here.
+outputs: { }
+
+runs:
+  using: node20
+  main: dist/index.js
