@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage"
@@ -167,7 +168,7 @@ func NewBloomStore(
 	})
 
 	for _, periodicConfig := range periodicConfigs {
-		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
+		objectClient, err := storage.NewObjectClient("bloom-shipper", periodicConfig.ObjectType, storageConfig, clientMetrics, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating object client for period %s", periodicConfig.From)
 		}

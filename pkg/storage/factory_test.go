@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -233,7 +234,7 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 		var cfg Config
 		flagext.DefaultValues(&cfg)
 
-		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		objectClient, err := NewObjectClient("inmemory", "inmemory", cfg, cm, prometheus.NewRegistry())
 		require.NoError(t, err)
 
 		_, ok := objectClient.(client.PrefixedObjectClient)
@@ -245,7 +246,7 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 		flagext.DefaultValues(&cfg)
 		cfg.ObjectPrefix = "my/prefix/"
 
-		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		objectClient, err := NewObjectClient("inmemory", "inmemory", cfg, cm, prometheus.NewRegistry())
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)
@@ -258,7 +259,7 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 		flagext.DefaultValues(&cfg)
 		cfg.ObjectPrefix = "my/prefix"
 
-		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		objectClient, err := NewObjectClient("inmemory", "inmemory", cfg, cm, prometheus.NewRegistry())
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)
@@ -271,7 +272,7 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 		flagext.DefaultValues(&cfg)
 		cfg.ObjectPrefix = "/my/prefix/"
 
-		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		objectClient, err := NewObjectClient("inmemory", "inmemory", cfg, cm, prometheus.NewRegistry())
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)
