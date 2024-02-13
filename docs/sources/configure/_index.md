@@ -5174,16 +5174,6 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 # is received on a request.
 # CLI flag: -<prefix>.swift.request-timeout
 [request_timeout: <duration> | default = 5s]
-
-# Set to false to skip verifying the certificate chain and hostname.
-# Set to true to skip verifying the certificate chain and hostname.
-# CLI flag: -<prefix>.swift.insecure-skip-verify
-[insecure_skip_verify: <boolean> | default = false]
-
-# Path to the trusted CA file that signed the SSL certificate of the swift
-# endpoint.
-# CLI flag: -<prefix>.swift.ca-file
-[ca_file: <string> | default = ""]
 ```
 
 ### cos_storage_config
