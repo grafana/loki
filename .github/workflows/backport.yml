@@ -4,11 +4,11 @@ on:
     types:
       - closed
       - labeled
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+
 jobs:
   main:
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Actions
