@@ -2906,6 +2906,30 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.split-metadata-queries-by-interval
 [split_metadata_queries_by_interval: <duration> | default = 1d]
 
+# Experimental. Split interval to use for the portion of metadata request that
+# falls within `recent_metadata_query_window`. Rest of the request which is
+# outside the window still uses `split_metadata_queries_by_interval`. If set to
+# 0, the entire request defaults to using a split interval of
+# `split_metadata_queries_by_interval.`.
+# CLI flag: -experimental.querier.split-recent-metadata-queries-by-interval
+[split_recent_metadata_queries_by_interval: <duration> | default = 1h]
+
+# Experimental. Metadata query window inside which
+# `split_recent_metadata_queries_by_interval` gets applied, portion of the
+# metadata request that falls in this window is split using
+# `split_recent_metadata_queries_by_interval`. The value 0 disables using a
+# different split interval for recent metadata queries.
+# 
+# This is added to improve cacheability of recent metadata queries. Query split
+# interval also determines the interval used in cache key. The default split
+# interval of 24h is useful for caching long queries, each cache key holding 1
+# day's results. But metadata queries are often shorter than 24h, to cache them
+# effectively we need a smaller split interval. `recent_metadata_query_window`
+# along with `split_recent_metadata_queries_by_interval` help configure a
+# shorter split interval for recent metadata queries.
+# CLI flag: -experimental.querier.recent-metadata-query-window
+[recent_metadata_query_window: <duration> | default = 0s]
+
 # Interval to use for time-based splitting when a request is within the
 # `query_ingesters_within` window; defaults to `split-queries-by-interval` by
 # setting to 0.
