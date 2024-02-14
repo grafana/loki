@@ -92,6 +92,7 @@ func NewReader(writer io.Writer,
 	streamValue string,
 	interval time.Duration,
 	queryAppend string,
+	disableWebsocket bool,
 ) (*Reader, error) {
 	h := http.Header{}
 
@@ -156,16 +157,18 @@ func NewReader(writer io.Writer,
 		queryAppend:     queryAppend,
 	}
 
-	go rd.run()
+	if !disableWebsocket {
+		go rd.run()
 
-	go func() {
-		<-rd.quit
-		if rd.conn != nil {
-			fmt.Fprintf(rd.w, "shutting down reader\n")
-			rd.shuttingDown = true
-			_ = rd.conn.Close()
-		}
-	}()
+		go func() {
+			<-rd.quit
+			if rd.conn != nil {
+				fmt.Fprintf(rd.w, "shutting down reader\n")
+				rd.shuttingDown = true
+				_ = rd.conn.Close()
+			}
+		}()
+	}
 
 	return &rd, nil
 }

@@ -118,6 +118,7 @@ type Comparator struct {
 	metricTestRunning   bool
 	writeInterval       time.Duration
 	confirmAsync        bool
+	disableWebhook      bool
 	startTime           time.Time
 	sent                chan time.Time
 	recv                chan time.Time
@@ -138,7 +139,8 @@ func NewComparator(writer io.Writer,
 	sentChan chan time.Time,
 	receivedChan chan time.Time,
 	reader reader.LokiReader,
-	confirmAsync bool) *Comparator {
+	confirmAsync bool,
+	disableWebhook bool) *Comparator {
 	c := &Comparator{
 		w:                   writer,
 		entries:             []*time.Time{},
@@ -157,6 +159,7 @@ func NewComparator(writer io.Writer,
 		metricTestRunning:   false,
 		writeInterval:       writeInterval,
 		confirmAsync:        confirmAsync,
+		disableWebhook:      disableWebhook,
 		startTime:           time.Now(),
 		sent:                sentChan,
 		recv:                receivedChan,
@@ -246,14 +249,19 @@ func (c *Comparator) Size() int {
 }
 
 func (c *Comparator) run() {
-	t := time.NewTicker(c.pruneInterval)
+	var tCh <-chan time.Time
+	if !c.disableWebhook {
+		t := time.NewTicker(c.pruneInterval)
+		defer t.Stop()
+		tCh = t.C
+	}
+
 	// Use a random tick up to the interval for the first tick
 	firstMt := true
 	randomGenerator := rand.New(rand.NewSource(time.Now().UnixNano()))
 	mt := time.NewTicker(time.Duration(randomGenerator.Int63n(c.metricTestInterval.Nanoseconds())))
 	sc := time.NewTicker(c.spotCheckQueryRate)
 	defer func() {
-		t.Stop()
 		mt.Stop()
 		sc.Stop()
 		close(c.done)
@@ -265,7 +273,7 @@ func (c *Comparator) run() {
 			c.entryReceived(e)
 		case e := <-c.sent:
 			c.entrySent(e)
-		case <-t.C:
+		case <-tCh:
 			// Only run one instance of prune entries at a time.
 			c.pruneMtx.Lock()
 			if !c.pruneEntriesRunning {
