@@ -10,12 +10,12 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/multierror"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/dskit/ring"
 	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -201,10 +201,11 @@ func (c *Compactor) ownsTenant(tenant string) (v1.FingerprintBounds, bool, error
 
 	}
 
-	// TODO(salvacorts): Metrics for ownership range size and how many many series fall within it
-
-	tokenRange := bloomutils.GetInstanceWithTokenRange(c.cfg.Ring.InstanceID, rs.Instances)
-	return v1.NewBounds(model.Fingerprint(tokenRange.MinToken), model.Fingerprint(tokenRange.MaxToken)), true, nil
+	ownershipBounds, err := bloomutils.GetInstanceWithTokenRange(c.cfg.Ring.InstanceID, rs.Instances)
+	if err != nil {
+		return v1.FingerprintBounds{}, false, errors.Wrap(err, "getting instance token range")
+	}
+	return ownershipBounds, true, nil
 }
 
 // runs a single round of compaction for all relevant tenants and tables
