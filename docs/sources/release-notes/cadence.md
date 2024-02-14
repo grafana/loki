@@ -8,7 +8,7 @@ weight: 1
 
 ## Stable Releases
 
-Loki releases (this includes [Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/), [Loki Canary](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/loki-canary/), etc) use the following
+Loki releases (this includes [Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/), [Loki Canary](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/loki-canary/), etc.) use the following
 naming scheme: `MAJOR`.`MINOR`.`PATCH`.
 
 - `MAJOR` (roughly once a year): these releases include large new features and possible backwards-compatibility breaks.
