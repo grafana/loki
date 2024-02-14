@@ -2,7 +2,7 @@ concurrency:
   group: "create-release-pr-${{ github.sha }}"
 env:
   DOCKER_USERNAME: "grafana"
-  IMAGE_PREFIX: "grafana"
+  IMAGE_PREFIX: "trevorwhitney075"
   RELEASE_REPO: "grafana/loki-release"
   SKIP_VALIDATION: false
   VERSIONING_STRATEGY: "always-bump-patch"

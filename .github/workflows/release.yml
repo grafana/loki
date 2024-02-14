@@ -85,6 +85,16 @@ jobs:
       uses: "docker/setup-buildx-action@v3"
     - name: "Login to DockerHub (from vault)"
       uses: "grafana/shared-workflows/actions/dockerhub-login@main"
+    - name: "download images"
+      run: |
+        echo "downloading images to $(pwd)/images"
+        gsutil cp -r gs://loki-build-artifacts/${{ needs.createRelease.outputs.sha }}/images .
+      shell: "bash"
+    - name: "publish docker images"
+      uses: "./lib/actions/push-images"
+      with:
+        imageDir: "images"
+        imagePrefix: "${{ env.IMAGE_PREFIX }}"
   shouldRelease:
     outputs:
       branch: "${{ steps.extract_branch.outputs.branch }}"
@@ -122,4 +132,5 @@ name: "create release"
     - "k[0-9]*"
 permissions:
   contents: "write"
+  id-token: "write"
   pull-requests: "write"

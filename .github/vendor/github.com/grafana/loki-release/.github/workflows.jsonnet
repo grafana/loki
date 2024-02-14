@@ -7,7 +7,7 @@ local build = lokiRelease.build;
         loki: build.image('fake-loki', 'cmd/loki'),
       },
       branches=['release-[0-9].[0-9].x'],
-      imagePrefix='grafana',
+      imagePrefix='trevorwhitney075',
       releaseRepo='grafana/loki-release',
       skipValidation=false,
       versioningStrategy='always-bump-patch',
@@ -16,8 +16,9 @@ local build = lokiRelease.build;
   'release.yml': std.manifestYamlDoc(
     lokiRelease.releaseWorkflow(
       branches=['release-[0-9].[0-9].x'],
-      getDockerCredsFromVault=true,
-      imagePrefix='grafana',
+      dockerUsername='trevorwhitney075',
+      getDockerCredsFromVault=false,
+      imagePrefix='trevorwhitney075',
       releaseRepo='grafana/loki-release',
     ), false, false
   ),

@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.9.2](https://github.com/grafana/loki-release/compare/v1.9.1...v1.9.2) (2024-02-14)
+
+
+### Bug Fixes
+
+* missing docker steps ([46ca74e](https://github.com/grafana/loki-release/commit/46ca74e22e5e7597ddbf07bb85ab4bf7a8f67cb1))
+
+## [1.9.1](https://github.com/grafana/loki-release/compare/v1.9.0...v1.9.1) (2024-02-14)
+
+
+### Bug Fixes
+
+* add id-token write permission to release pipeline ([03a6364](https://github.com/grafana/loki-release/commit/03a6364b4404ce1f226393d665a608a7a00e341d))
+
+## [1.9.0](https://github.com/grafana/loki-release/compare/v1.8.15-alpha.1...v1.9.0) (2024-02-14)
+
+
+### Features
+
+* add build image to dist step ([cdff54a](https://github.com/grafana/loki-release/commit/cdff54a3f3fddb9bb5aa725143f6d95a95af00a4))
+* extract version to shared step ([c0af535](https://github.com/grafana/loki-release/commit/c0af535d7bc78f83feca93922cb64f5727b8465d))
+* further refine validation steps ([1bc0473](https://github.com/grafana/loki-release/commit/1bc04735e4b14a441af125f8b1b94eb57a06a6a4))
+* make arm configurable ([6582474](https://github.com/grafana/loki-release/commit/6582474ca4ca750f4f779863d31a3c4e733082fd))
+* patch release docker fixes from 1.8.x ([#88](https://github.com/grafana/loki-release/issues/88)) ([5b0f7c1](https://github.com/grafana/loki-release/commit/5b0f7c1a81ba4c28804d11f755148f7bdb7bf7b9))
+* use build image ([4a1f123](https://github.com/grafana/loki-release/commit/4a1f1239de1342825e183e93475370504be4270e))
+* working pipeline as a jsonnet library ([#81](https://github.com/grafana/loki-release/issues/81)) ([97f0254](https://github.com/grafana/loki-release/commit/97f0254db04c6dba53080aac4f6ec69bf4be7993))
+
+
+### Bug Fixes
+
+* add tar ([0d05ac4](https://github.com/grafana/loki-release/commit/0d05ac4dac550301fcf9c5ea6c0e3bd7d02330a2))
+* bring back manual jsonnetfmt installation ([63abcdd](https://github.com/grafana/loki-release/commit/63abcdd7617a65b250bc348565c97793ba9a2b20))
+* bring back manual shellcheck installation ([36ebc07](https://github.com/grafana/loki-release/commit/36ebc075d3f435407ae5de3defb29b467aefabfe))
+* fetch release repo for version step ([d84462b](https://github.com/grafana/loki-release/commit/d84462bb07e6839b5d2ff35c4b46f7c24f4a3140))
+* remove sudo and redundant deps ([259bb05](https://github.com/grafana/loki-release/commit/259bb05a24defabb774836559521e30ee9ee4e26))
+* version outputs ([8a1e8bd](https://github.com/grafana/loki-release/commit/8a1e8bd51ff300716cc13c448235d5d4711f429b))
+
 ## [1.8.15-alpha.1](https://github.com/grafana/loki-release/compare/v1.8.14-alpha.1...v1.8.15-alpha.1) (2024-02-13)
 
 ### Features

@@ -918,7 +918,6 @@ name: "create release PR"
   push:
     branches:
     - "release-[0-9].[0-9].x"
-    - "fix-action-names-in-main"
 permissions:
   contents: "write"
   pull-requests: "write"

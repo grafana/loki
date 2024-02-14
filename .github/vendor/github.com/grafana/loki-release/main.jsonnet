@@ -59,6 +59,7 @@
     permissions: {
       contents: 'write',
       'pull-requests': 'write',
+      'id-token': 'write',
     },
     concurrency: {
       group: 'create-release-${{ github.sha }}',
@@ -66,13 +67,11 @@
     env: {
       RELEASE_REPO: releaseRepo,
       IMAGE_PREFIX: imagePrefix,
-    } + if !getDockerCredsFromVault then {
-      DOCKER_USERNAME: dockerUsername,
-    } else {},
+    },
     jobs: {
       shouldRelease: $.release.shouldRelease,
       createRelease: $.release.createRelease,
-      publishImages: $.release.publishImages(getDockerCredsFromVault),
+      publishImages: $.release.publishImages(getDockerCredsFromVault, dockerUsername),
     },
   },
 }
