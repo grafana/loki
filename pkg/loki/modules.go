@@ -691,7 +691,7 @@ func (t *Loki) updateConfigForShipperStore() {
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeWriteOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 
-	case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read), t.Cfg.isModuleEnabled(Backend), t.isModuleActive(IndexGateway), t.isModuleActive(BloomCompactor):
+	case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read), t.Cfg.isModuleEnabled(Backend), t.isModuleActive(IndexGateway), t.Cfg.isModuleEnabled(BloomCompactor):
 		// We do not want query to do any updates to index
 		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
@@ -1422,11 +1422,15 @@ func (t *Loki) initBloomCompactor() (services.Service, error) {
 
 	compactor, err := bloomcompactor.New(
 		t.Cfg.BloomCompactor,
-		nil, // StoreAndClient placeholder. TODO(owen-d): remove this once we have a proper store and client
+		t.Cfg.SchemaConfig,
+		t.Cfg.StorageConfig,
+		t.clientMetrics,
+		t.Store,
 		shuffleSharding,
 		t.Overrides,
 		logger,
-		prometheus.DefaultRegisterer)
+		prometheus.DefaultRegisterer,
+	)
 
 	if err != nil {
 		return nil, err

@@ -176,7 +176,7 @@ func TestPartitionRequest(t *testing.T) {
 			exp: []seriesWithBounds{
 				{
 					bounds: model.Interval{Start: ts.Add(-60 * time.Minute), End: ts.Add(-45 * time.Minute)},
-					day:    mktime("2024-01-24 00:00"),
+					table:  config.NewDayTime(mktime("2024-01-24 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
@@ -217,7 +217,7 @@ func TestPartitionRequest(t *testing.T) {
 			exp: []seriesWithBounds{
 				{
 					bounds: model.Interval{Start: ts.Add(-23 * time.Hour), End: ts.Add(-22 * time.Hour)},
-					day:    mktime("2024-01-23 00:00"),
+					table:  config.NewDayTime(mktime("2024-01-23 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
@@ -229,7 +229,7 @@ func TestPartitionRequest(t *testing.T) {
 				},
 				{
 					bounds: model.Interval{Start: ts.Add(-2 * time.Hour), End: ts.Add(-1 * time.Hour)},
-					day:    mktime("2024-01-24 00:00"),
+					table:  config.NewDayTime(mktime("2024-01-24 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x01,
@@ -258,7 +258,7 @@ func TestPartitionRequest(t *testing.T) {
 			exp: []seriesWithBounds{
 				{
 					bounds: model.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
-					day:    mktime("2024-01-23 00:00"),
+					table:  config.NewDayTime(mktime("2024-01-23 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
@@ -270,7 +270,7 @@ func TestPartitionRequest(t *testing.T) {
 				},
 				{
 					bounds: model.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
-					day:    mktime("2024-01-24 00:00"),
+					table:  config.NewDayTime(mktime("2024-01-24 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
@@ -293,39 +293,10 @@ func TestPartitionRequest(t *testing.T) {
 
 }
 
-func createBlockQueriers(t *testing.T, numBlocks int, from, through model.Time, minFp, maxFp model.Fingerprint) ([]*bloomshipper.CloseableBlockQuerier, [][]v1.SeriesWithBloom) {
-	t.Helper()
-	step := (maxFp - minFp) / model.Fingerprint(numBlocks)
-	bqs := make([]*bloomshipper.CloseableBlockQuerier, 0, numBlocks)
-	series := make([][]v1.SeriesWithBloom, 0, numBlocks)
-	for i := 0; i < numBlocks; i++ {
-		fromFp := minFp + (step * model.Fingerprint(i))
-		throughFp := fromFp + step - 1
-		// last block needs to include maxFp
-		if i == numBlocks-1 {
-			throughFp = maxFp
-		}
-		blockQuerier, data := v1.MakeBlockQuerier(t, fromFp, throughFp, from, through)
-		bq := &bloomshipper.CloseableBlockQuerier{
-			BlockQuerier: blockQuerier,
-			BlockRef: bloomshipper.BlockRef{
-				Ref: bloomshipper.Ref{
-					Bounds:         v1.NewBounds(fromFp, throughFp),
-					StartTimestamp: from,
-					EndTimestamp:   through,
-				},
-			},
-		}
-		bqs = append(bqs, bq)
-		series = append(series, data)
-	}
-	return bqs, series
-}
-
 func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, minFp, maxFp model.Fingerprint) ([]bloomshipper.BlockRef, []bloomshipper.Meta, []*bloomshipper.CloseableBlockQuerier, [][]v1.SeriesWithBloom) {
 	t.Helper()
 
-	blocks := make([]bloomshipper.BlockRef, 0, n)
+	blockRefs := make([]bloomshipper.BlockRef, 0, n)
 	metas := make([]bloomshipper.Meta, 0, n)
 	queriers := make([]*bloomshipper.CloseableBlockQuerier, 0, n)
 	series := make([][]v1.SeriesWithBloom, 0, n)
@@ -340,12 +311,12 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		}
 		ref := bloomshipper.Ref{
 			TenantID:       tenant,
-			TableName:      "table_0",
+			TableName:      config.NewDayTime(truncateDay(from)).Table(),
 			Bounds:         v1.NewBounds(fromFp, throughFp),
 			StartTimestamp: from,
 			EndTimestamp:   through,
 		}
-		block := bloomshipper.BlockRef{
+		blockRef := bloomshipper.BlockRef{
 			Ref: ref,
 		}
 		meta := bloomshipper.Meta{
@@ -353,19 +324,26 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 				Ref: ref,
 			},
 			Tombstones: []bloomshipper.BlockRef{},
-			Blocks:     []bloomshipper.BlockRef{block},
+			Blocks:     []bloomshipper.BlockRef{blockRef},
 		}
-		blockQuerier, data := v1.MakeBlockQuerier(t, fromFp, throughFp, from, through)
+		block, data, _ := v1.MakeBlock(t, n, fromFp, throughFp, from, through)
+		// Printing fingerprints and the log lines of its chunks comes handy for debugging...
+		// for i := range keys {
+		// 	t.Log(data[i].Series.Fingerprint)
+		// 	for j := range keys[i] {
+		// 		t.Log(i, j, string(keys[i][j]))
+		// 	}
+		// }
 		querier := &bloomshipper.CloseableBlockQuerier{
-			BlockQuerier: blockQuerier,
-			BlockRef:     block,
+			BlockQuerier: v1.NewBlockQuerier(block),
+			BlockRef:     blockRef,
 		}
 		queriers = append(queriers, querier)
 		metas = append(metas, meta)
-		blocks = append(blocks, block)
+		blockRefs = append(blockRefs, blockRef)
 		series = append(series, data)
 	}
-	return blocks, metas, queriers, series
+	return blockRefs, metas, queriers, series
 }
 
 func createQueryInputFromBlockData(t *testing.T, tenant string, data [][]v1.SeriesWithBloom, nthSeries int) []*logproto.ChunkRef {

@@ -156,7 +156,7 @@ spec:
 
 {{- end }}
 
-{{- if .Values.networkPolicy.discovery.port }}
+{{- if and .Values.networkPolicy.discovery.port (eq .Values.networkPolicy.flavor "cilium") }}
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy

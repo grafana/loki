@@ -1,15 +1,19 @@
 package bloomcompactor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"sort"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/multierror"
 	"github.com/pkg/errors"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
@@ -18,8 +22,8 @@ type SimpleBloomController struct {
 	tsdbStore   TSDBStore
 	bloomStore  bloomshipper.Store
 	chunkLoader ChunkLoader
-	rwFn        func() (v1.BlockWriter, v1.BlockReader)
 	metrics     *Metrics
+	limits      Limits
 
 	// TODO(owen-d): add metrics
 	logger log.Logger
@@ -29,7 +33,7 @@ func NewSimpleBloomController(
 	tsdbStore TSDBStore,
 	blockStore bloomshipper.Store,
 	chunkLoader ChunkLoader,
-	rwFn func() (v1.BlockWriter, v1.BlockReader),
+	limits Limits,
 	metrics *Metrics,
 	logger log.Logger,
 ) *SimpleBloomController {
@@ -37,22 +41,29 @@ func NewSimpleBloomController(
 		tsdbStore:   tsdbStore,
 		bloomStore:  blockStore,
 		chunkLoader: chunkLoader,
-		rwFn:        rwFn,
 		metrics:     metrics,
+		limits:      limits,
 		logger:      logger,
 	}
 }
 
+// TODO(owen-d): pool, evaluate if memory-only is the best choice
+func (s *SimpleBloomController) rwFn() (v1.BlockWriter, v1.BlockReader) {
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
+}
+
 func (s *SimpleBloomController) buildBlocks(
 	ctx context.Context,
-	table DayTable,
+	table config.DayTime,
 	tenant string,
 	ownershipRange v1.FingerprintBounds,
 ) error {
 	logger := log.With(s.logger, "ownership", ownershipRange, "org_id", tenant, "table", table)
 
 	// 1. Resolve TSDBs
-	tsdbs, err := s.tsdbStore.ResolveTSDBs(ctx, table.String(), tenant)
+	tsdbs, err := s.tsdbStore.ResolveTSDBs(ctx, table, tenant)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
 		return errors.Wrap(err, "failed to resolve tsdbs")
@@ -68,15 +79,11 @@ func (s *SimpleBloomController) buildBlocks(
 	}
 
 	// 2. Fetch metas
-	bounds := table.Bounds()
 	metas, err := s.bloomStore.FetchMetas(
 		ctx,
 		bloomshipper.MetaSearchParams{
 			TenantID: tenant,
-			Interval: bloomshipper.Interval{
-				Start: bounds.Start,
-				End:   bounds.End,
-			},
+			Interval: bloomshipper.NewInterval(table.Bounds()),
 			Keyspace: ownershipRange,
 		},
 	)
@@ -104,6 +111,11 @@ func (s *SimpleBloomController) buildBlocks(
 		return errors.Wrap(err, "failed to create plan")
 	}
 
+	nGramSize := uint64(s.limits.BloomNGramLength(tenant))
+	nGramSkip := uint64(s.limits.BloomNGramSkip(tenant))
+	maxBlockSize := uint64(s.limits.BloomCompactorMaxBlockSize(tenant))
+	blockOpts := v1.NewBlockOptions(nGramSize, nGramSkip, maxBlockSize)
+
 	// 4. Generate Blooms
 	// Now that we have the gaps, we will generate a bloom block for each gap.
 	// We can accelerate this by using existing blocks which may already contain
@@ -124,44 +136,55 @@ func (s *SimpleBloomController) buildBlocks(
 		for _, gap := range plan.gaps {
 			// Fetch blocks that aren't up to date but are in the desired fingerprint range
 			// to try and accelerate bloom creation
-			seriesItr, preExistingBlocks, err := s.loadWorkForGap(ctx, table.String(), tenant, plan.tsdb, gap)
+			seriesItr, blocksIter, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 				return errors.Wrap(err, "failed to get series and blocks")
 			}
 
 			gen := NewSimpleBloomGenerator(
-				v1.DefaultBlockOptions,
+				tenant,
+				blockOpts,
 				seriesItr,
 				s.chunkLoader,
-				preExistingBlocks,
+				blocksIter,
 				s.rwFn,
 				s.metrics,
-				log.With(logger, "tsdb", plan.tsdb.Name(), "ownership", gap, "blocks", len(preExistingBlocks)),
+				log.With(logger, "tsdb", plan.tsdb.Name(), "ownership", gap),
 			)
 
-			_, newBlocks, err := gen.Generate(ctx)
+			_, loaded, newBlocks, err := gen.Generate(ctx)
+
 			if err != nil {
 				// TODO(owen-d): metrics
 				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
+				s.closeLoadedBlocks(loaded, blocksIter)
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
 			client, err := s.bloomStore.Client(table.ModelTime())
-
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get client", "err", err)
+				s.closeLoadedBlocks(loaded, blocksIter)
 				return errors.Wrap(err, "failed to get client")
 			}
-			for newBlocks.Next() {
+
+			for newBlocks.Next() && newBlocks.Err() == nil {
 				blockCt++
 				blk := newBlocks.At()
 
+				built, err := bloomshipper.BlockFrom(tenant, table.Table(), blk)
+				if err != nil {
+					level.Error(logger).Log("msg", "failed to build block", "err", err)
+					return errors.Wrap(err, "failed to build block")
+				}
+
 				if err := client.PutBlock(
 					ctx,
-					bloomshipper.BlockFrom(tenant, table.String(), blk),
+					built,
 				); err != nil {
 					level.Error(logger).Log("msg", "failed to write block", "err", err)
+					s.closeLoadedBlocks(loaded, blocksIter)
 					return errors.Wrap(err, "failed to write block")
 				}
 			}
@@ -169,9 +192,12 @@ func (s *SimpleBloomController) buildBlocks(
 			if err := newBlocks.Err(); err != nil {
 				// TODO(owen-d): metrics
 				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
+				s.closeLoadedBlocks(loaded, blocksIter)
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
+			// Close pre-existing blocks
+			s.closeLoadedBlocks(loaded, blocksIter)
 		}
 	}
 
@@ -185,23 +211,53 @@ func (s *SimpleBloomController) buildBlocks(
 
 func (s *SimpleBloomController) loadWorkForGap(
 	ctx context.Context,
-	table,
+	table config.DayTime,
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
-) (v1.CloseableIterator[*v1.Series], []*bloomshipper.CloseableBlockQuerier, error) {
+) (v1.CloseableIterator[*v1.Series], v1.CloseableIterator[*bloomshipper.CloseableBlockQuerier], error) {
 	// load a series iterator for the gap
 	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.bounds)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to load tsdb")
 	}
 
-	blocks, err := s.bloomStore.FetchBlocks(ctx, gap.blocks)
+	// load a blocks iterator for the gap
+	fetcher, err := s.bloomStore.Fetcher(table.ModelTime())
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to get blocks")
+		return nil, nil, errors.Wrap(err, "failed to get fetcher")
 	}
 
-	return seriesItr, blocks, nil
+	blocksIter, err := newBatchedBlockLoader(ctx, fetcher, gap.blocks)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to load blocks")
+	}
+
+	return seriesItr, blocksIter, nil
+}
+
+func (s *SimpleBloomController) closeLoadedBlocks(toClose []io.Closer, it v1.CloseableIterator[*bloomshipper.CloseableBlockQuerier]) {
+	// close loaded blocks
+	var err multierror.MultiError
+	for _, closer := range toClose {
+		err.Add(closer.Close())
+	}
+
+	switch itr := it.(type) {
+	case *batchedBlockLoader:
+		// close remaining loaded blocks from batch
+		err.Add(itr.CloseBatch())
+	default:
+		// close remaining loaded blocks
+		for itr.Next() && itr.Err() == nil {
+			err.Add(itr.At().Close())
+		}
+	}
+
+	// log error
+	if err.Err() != nil {
+		level.Error(s.logger).Log("msg", "failed to close blocks", "err", err)
+	}
 }
 
 type gapWithBlocks struct {

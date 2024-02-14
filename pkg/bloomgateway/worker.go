@@ -15,37 +15,71 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
+const (
+	labelSuccess = "success"
+	labelFailure = "failure"
+)
+
 type workerConfig struct {
 	maxItems int
 }
 
 type workerMetrics struct {
-	dequeuedTasks   *prometheus.CounterVec
-	dequeueErrors   *prometheus.CounterVec
-	dequeueWaitTime *prometheus.SummaryVec
+	dequeueDuration   *prometheus.HistogramVec
+	processDuration   *prometheus.HistogramVec
+	metasFetched      *prometheus.HistogramVec
+	blocksFetched     *prometheus.HistogramVec
+	tasksDequeued     *prometheus.CounterVec
+	tasksProcessed    *prometheus.CounterVec
+	blockQueryLatency *prometheus.HistogramVec
 }
 
 func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem string) *workerMetrics {
 	labels := []string{"worker"}
+	r := promauto.With(registerer)
 	return &workerMetrics{
-		dequeuedTasks: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		dequeueDuration: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "dequeued_tasks_total",
-			Help:      "Total amount of tasks that the worker dequeued from the bloom query queue",
+			Name:      "dequeue_duration_seconds",
+			Help:      "Time spent dequeuing tasks from queue in seconds",
 		}, labels),
-		dequeueErrors: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		processDuration: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "dequeue_errors_total",
-			Help:      "Total amount of failed dequeue operations",
-		}, labels),
-		dequeueWaitTime: promauto.With(registerer).NewSummaryVec(prometheus.SummaryOpts{
+			Name:      "process_duration_seconds",
+			Help:      "Time spent processing tasks in seconds",
+		}, append(labels, "status")),
+		metasFetched: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "dequeue_wait_time",
-			Help:      "Time spent waiting for dequeuing tasks from queue",
+			Name:      "metas_fetched",
+			Help:      "Amount of metas fetched",
 		}, labels),
+		blocksFetched: r.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "blocks_fetched",
+			Help:      "Amount of blocks fetched",
+		}, labels),
+		tasksDequeued: r.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "tasks_dequeued_total",
+			Help:      "Total amount of tasks that the worker dequeued from the queue",
+		}, append(labels, "status")),
+		tasksProcessed: r.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "tasks_processed_total",
+			Help:      "Total amount of tasks that the worker processed",
+		}, append(labels, "status")),
+		blockQueryLatency: r.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "block_query_latency",
+			Help:      "Time spent running searches against a bloom block",
+		}, append(labels, "status")),
 	}
 }
 
@@ -89,19 +123,19 @@ func (w *worker) starting(_ context.Context) error {
 func (w *worker) running(_ context.Context) error {
 	idx := queue.StartIndexWithLocalQueue
 
-	p := processor{store: w.store, logger: w.logger}
+	p := newProcessor(w.id, w.store, w.logger, w.metrics)
 
 	for st := w.State(); st == services.Running || st == services.Stopping; {
 		taskCtx := context.Background()
-		dequeueStart := time.Now()
+		start := time.Now()
 		items, newIdx, err := w.queue.DequeueMany(taskCtx, idx, w.id, w.cfg.maxItems)
-		w.metrics.dequeueWaitTime.WithLabelValues(w.id).Observe(time.Since(dequeueStart).Seconds())
+		w.metrics.dequeueDuration.WithLabelValues(w.id).Observe(time.Since(start).Seconds())
 		if err != nil {
 			// We only return an error if the queue is stopped and dequeuing did not yield any items
 			if err == queue.ErrStopped && len(items) == 0 {
 				return err
 			}
-			w.metrics.dequeueErrors.WithLabelValues(w.id).Inc()
+			w.metrics.tasksDequeued.WithLabelValues(w.id, labelFailure).Inc()
 			level.Error(w.logger).Log("msg", "failed to dequeue tasks", "err", err, "items", len(items))
 		}
 		idx = newIdx
@@ -110,7 +144,7 @@ func (w *worker) running(_ context.Context) error {
 			w.queue.ReleaseRequests(items)
 			continue
 		}
-		w.metrics.dequeuedTasks.WithLabelValues(w.id).Add(float64(len(items)))
+		w.metrics.tasksDequeued.WithLabelValues(w.id, labelSuccess).Add(float64(len(items)))
 
 		tasks := make([]Task, 0, len(items))
 		for _, item := range items {
@@ -125,9 +159,16 @@ func (w *worker) running(_ context.Context) error {
 			tasks = append(tasks, task)
 		}
 
+		start = time.Now()
 		err = p.run(taskCtx, tasks)
+
 		if err != nil {
+			w.metrics.processDuration.WithLabelValues(w.id, labelSuccess).Observe(time.Since(start).Seconds())
+			w.metrics.tasksProcessed.WithLabelValues(w.id, labelFailure).Add(float64(len(tasks)))
 			level.Error(w.logger).Log("msg", "failed to process tasks", "err", err)
+		} else {
+			w.metrics.processDuration.WithLabelValues(w.id, labelSuccess).Observe(time.Since(start).Seconds())
+			w.metrics.tasksProcessed.WithLabelValues(w.id, labelSuccess).Add(float64(len(tasks)))
 		}
 
 		// return dequeued items back to the pool
