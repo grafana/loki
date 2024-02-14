@@ -169,11 +169,11 @@ func runWithRetries(
 
 type tenantTable struct {
 	tenant         string
-	table          DayTable
+	table          config.DayTime
 	ownershipRange v1.FingerprintBounds
 }
 
-func (c *Compactor) tenants(ctx context.Context, table DayTable) (v1.Iterator[string], error) {
+func (c *Compactor) tenants(ctx context.Context, table config.DayTime) (v1.Iterator[string], error) {
 	tenants, err := c.tsdbStore.UsersForPeriod(ctx, table)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting tenants")
@@ -214,10 +214,9 @@ func (c *Compactor) tables(ts time.Time) *dayRangeIterator {
 	from := ts.Add(-maxCompactionPeriod).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod) * int64(config.ObjectStorageIndexRequiredPeriod)
 	through := ts.Add(-minCompactionPeriod).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod) * int64(config.ObjectStorageIndexRequiredPeriod)
 
-	fromDay := DayTable(model.TimeFromUnixNano(from))
-	throughDay := DayTable(model.TimeFromUnixNano(through))
+	fromDay := config.NewDayTime(model.TimeFromUnixNano(from))
+	throughDay := config.NewDayTime(model.TimeFromUnixNano(through))
 	return newDayRangeIterator(fromDay, throughDay)
-
 }
 
 func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
@@ -295,10 +294,10 @@ func (c *Compactor) compactTenantTable(ctx context.Context, tt tenantTable) erro
 }
 
 type dayRangeIterator struct {
-	min, max, cur DayTable
+	min, max, cur config.DayTime
 }
 
-func newDayRangeIterator(min, max DayTable) *dayRangeIterator {
+func newDayRangeIterator(min, max config.DayTime) *dayRangeIterator {
 	return &dayRangeIterator{min: min, max: max, cur: min.Dec()}
 }
 
@@ -307,7 +306,7 @@ func (r *dayRangeIterator) Next() bool {
 	return r.cur.Before(r.max)
 }
 
-func (r *dayRangeIterator) At() DayTable {
+func (r *dayRangeIterator) At() config.DayTime {
 	return r.cur
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
@@ -68,7 +69,7 @@ Compaction works as follows, split across many functions for clarity:
 */
 func (s *SimpleBloomController) compactTenant(
 	ctx context.Context,
-	table DayTable,
+	table config.DayTime,
 	tenant string,
 	ownershipRange v1.FingerprintBounds,
 ) error {
@@ -81,15 +82,11 @@ func (s *SimpleBloomController) compactTenant(
 	}
 
 	// Fetch source metas to be used in both compaction and cleanup of out-of-date metas+blooms
-	bounds := table.Bounds()
 	metas, err := s.bloomStore.FetchMetas(
 		ctx,
 		bloomshipper.MetaSearchParams{
 			TenantID: tenant,
-			Interval: bloomshipper.Interval{
-				Start: bounds.Start,
-				End:   bounds.End,
-			},
+			Interval: bloomshipper.NewInterval(table.Bounds()),
 			Keyspace: ownershipRange,
 		},
 	)
@@ -136,10 +133,7 @@ func (s *SimpleBloomController) compactTenant(
 		ctx,
 		bloomshipper.MetaSearchParams{
 			TenantID: tenant,
-			Interval: bloomshipper.Interval{
-				Start: bounds.Start,
-				End:   bounds.End,
-			},
+			Interval: bloomshipper.NewInterval(table.Bounds()),
 			Keyspace: superset,
 		},
 	)
@@ -184,7 +178,7 @@ func (s *SimpleBloomController) compactTenant(
 func (s *SimpleBloomController) findOutdatedGaps(
 	ctx context.Context,
 	tenant string,
-	table DayTable,
+	table config.DayTime,
 	ownershipRange v1.FingerprintBounds,
 	metas []bloomshipper.Meta,
 	logger log.Logger,
@@ -224,7 +218,7 @@ func (s *SimpleBloomController) findOutdatedGaps(
 
 func (s *SimpleBloomController) loadWorkForGap(
 	ctx context.Context,
-	table DayTable,
+	table config.DayTime,
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
@@ -252,7 +246,7 @@ func (s *SimpleBloomController) loadWorkForGap(
 func (s *SimpleBloomController) buildGaps(
 	ctx context.Context,
 	tenant string,
-	table DayTable,
+	table config.DayTime,
 	client bloomshipper.Client,
 	work []blockPlan,
 	logger log.Logger,
