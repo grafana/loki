@@ -18,9 +18,9 @@ toc: true
 
 ## Summary
 
-LokiStack object storage access on all public cloud providers supports currently only providing credentials for a static cloud service account (i.e. a pair of client id and secret). Provisioning static cloud service account represent a simple and automation-friendly approach to control access to each provider's resources (e.g. access to S3/GCS/etc.). However the administrator of this approach needs to consider manual handling of certain security aspects, i.e. secret rotation, account rotation on expiry, etc.
+LokiStack object storage access on all public cloud providers supports currently only providing credentials for a static cloud service account (i.e. a pair of client id and secret). Provisioning static cloud service account represent a simple and automation-friendly approach to control access to each provider's resources (e.g. access to S3/GCS/etc.). However the administrator of such needs to consider manual handling of certain security aspects, i.e. secret rotation, account rotation on expiry, etc.
 
-To enhance IAM automation across the entire lifetime of access credentials all public cloud providers offer specific services (i.e. named STS, Workload Identity Federation) offering:
+To enhance IAM automation across the entire lifetime of access credentials all public cloud providers offer specific services (e.g. named STS, Workload Identity Federation):
 1. Automate creation and rotation of credentials per Kubernetes workload using one OIDC authorization server per Kubernetes cluster for it's service accounts.
 2. Each workload on the managed Kubernetes cluster must be bound to a specific IAM role to access any provider service (e.g. S3/GCS.)
 3. The OIDC-based workflow ensures issuing only short-lived tokens to each workload and in turn frequent credentials rotation.
