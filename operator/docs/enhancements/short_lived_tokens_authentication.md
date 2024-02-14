@@ -18,11 +18,18 @@ toc: true
 
 ## Summary
 
-Usually, LokiStack's object storage access on major cloud providers is secured using a static service account that comprises a set of client id and client secret. Although static service accounts provide a simple way to control access to the provider's resources centrally (e.g. access to S3 only) they impose certain security risks, lack of automatic secret rotation, and usually unset expiry. In addition, access by a third party to the static service account cannot be controlled or tracked upfront.
+LokiStack object storage access on all public cloud providers supports currently only providing credentials for a static cloud service account (i.e. a pair of client id and secret). Provisioning static cloud service account represent a simple and automation-friendly approach to control access to each provider's resources (e.g. access to S3/GCS/etc.). However the administrator of this approach needs to consider manual handling of certain security aspects, i.e. secret rotation, account rotation on expiry, etc.
 
-Therefore all major cloud providers offer an OpenID Connect (OIDC) based workflow which ensures that the requesting entity (e.g. LokiStack) must be associated with an IAM role and further trust relationships (e.g. mapping to Kubernetes ServiceAccount resources) upfront before gaining access to any cloud resources (e.g. S3). Such a workflow ensures handing out only short-lived tokens instead of real credentials to the requesting entity which need to be refreshed periodically. This approach minimizes the security risk vector by a lot but it imposes a higher administration effort for running LokiStack with that workflow.
+To enhance IAM automation across the entire lifetime of access credentials all public cloud providers offer specific services (i.e. named STS, Workload Identity Federation) offering:
+1. Automate creation and rotation of credentials per Kubernetes workload using one OIDC authorization server per Kubernetes cluster for it's service accounts.
+2. Each workload on the managed Kubernetes cluster must be bound to a specific IAM role to access any provider service (e.g. S3/GCS.)
+3. The OIDC-based workflow ensures issuing only short-lived tokens to each workload and in turn frequent credentials rotation.
 
-__Note:__ Short-lived Token authentication is an arbitrary picked generic term that maps well enough to each cloud providers service offering:
+Such an approach ensures that each Kubernetes workload requests access to the IAM controlled resources by it's Kubernetes service account only. Each valid request is further secured by providing only rotated short lived tokens. Thus any Kubernets workload access can be controlled through the same IAM control mechanism as with static account (e.g. disable on security breaches) plus automatic rotation minimizes impact vector of security incidents.
+
+The following proposal discusses the implemented support of the above workflow in the Loki Operator for all three public cloud providers (AWS, GCP, Azure). Furthermore it provides instructions on how to create IAM resources upfront to control LokiStack object storage access using AWS STS or GCP Workload Identity or Azure Workload Identity Federation.
+
+__Note:__ Short-lived Token authentication is picked in this proposal as a generic term that maps well enough to the following public cloud providers IAM offerings:
 - Azure: [Workload Identity Federation](https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation)
 - AWS: [Secure Service Token](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp.html)
 - Google Cloud Platform: [Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation)
