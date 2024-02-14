@@ -237,7 +237,9 @@ func (d DayTime) String() string {
 	return d.Time.Time().UTC().Format("2006-01-02")
 }
 
-func (d DayTime) Table() string {
+// Addr returns the unix day offset as a string, which is used
+// as the address for the index table in storage.
+func (d DayTime) Addr() string {
 	return fmt.Sprintf("%d",
 		d.ModelTime().Time().UnixNano()/int64(ObjectStorageIndexRequiredPeriod))
 }

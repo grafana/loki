@@ -311,7 +311,7 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		}
 		ref := bloomshipper.Ref{
 			TenantID:       tenant,
-			TableName:      config.NewDayTime(truncateDay(from)).Table(),
+			TableName:      config.NewDayTime(truncateDay(from)).Addr(),
 			Bounds:         v1.NewBounds(fromFp, throughFp),
 			StartTimestamp: from,
 			EndTimestamp:   through,
