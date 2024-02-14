@@ -1274,6 +1274,10 @@ remote_write:
   # CLI flag: -ruler.remote-write.config-refresh-period
   [config_refresh_period: <duration> | default = 10s]
 
+  # Add X-Scope-OrgID header in remote write requests.
+  # CLI flag: -ruler.remote-write.add-org-id-header
+  [add_org_id_header: <boolean> | default = true]
+
 # Configuration for rule evaluation.
 evaluation:
   # The evaluation mode for the ruler. Can be either 'local' or 'remote'. If set
