@@ -27,7 +27,7 @@ import (
 	"cloud.google.com/go/compute/metadata"
 	"cloud.google.com/go/internal/optional"
 	"cloud.google.com/go/internal/trace"
-	storagepb "cloud.google.com/go/storage/internal/apiv2/stubs"
+	"cloud.google.com/go/storage/internal/apiv2/storagepb"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iamcredentials/v1"
 	"google.golang.org/api/iterator"
@@ -152,7 +152,7 @@ func (b *BucketHandle) Attrs(ctx context.Context) (attrs *BucketAttrs, err error
 
 // Update updates a bucket's attributes.
 func (b *BucketHandle) Update(ctx context.Context, uattrs BucketAttrsToUpdate) (attrs *BucketAttrs, err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Create")
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Update")
 	defer func() { trace.EndSpan(ctx, err) }()
 
 	isIdempotent := b.conds != nil && b.conds.MetagenerationMatch != 0
@@ -173,11 +173,17 @@ func (b *BucketHandle) Update(ctx context.Context, uattrs BucketAttrsToUpdate) (
 // [Overview of access control]: https://cloud.google.com/storage/docs/accesscontrol#signed_urls_query_string_authentication
 // [automatic detection of credentials]: https://pkg.go.dev/cloud.google.com/go/storage#hdr-Credential_requirements_for_signing
 func (b *BucketHandle) SignedURL(object string, opts *SignedURLOptions) (string, error) {
-	if opts.GoogleAccessID != "" && (opts.SignBytes != nil || len(opts.PrivateKey) > 0) {
-		return SignedURL(b.name, object, opts)
-	}
 	// Make a copy of opts so we don't modify the pointer parameter.
 	newopts := opts.clone()
+
+	if newopts.Hostname == "" {
+		// Extract the correct host from the readhost set on the client
+		newopts.Hostname = b.c.xmlHost
+	}
+
+	if opts.GoogleAccessID != "" && (opts.SignBytes != nil || len(opts.PrivateKey) > 0) {
+		return SignedURL(b.name, object, newopts)
+	}
 
 	if newopts.GoogleAccessID == "" {
 		id, err := b.detectDefaultGoogleAccessID()
@@ -215,11 +221,17 @@ func (b *BucketHandle) SignedURL(object string, opts *SignedURLOptions) (string,
 //
 // [automatic detection of credentials]: https://pkg.go.dev/cloud.google.com/go/storage#hdr-Credential_requirements_for_signing
 func (b *BucketHandle) GenerateSignedPostPolicyV4(object string, opts *PostPolicyV4Options) (*PostPolicyV4, error) {
-	if opts.GoogleAccessID != "" && (opts.SignRawBytes != nil || opts.SignBytes != nil || len(opts.PrivateKey) > 0) {
-		return GenerateSignedPostPolicyV4(b.name, object, opts)
-	}
 	// Make a copy of opts so we don't modify the pointer parameter.
 	newopts := opts.clone()
+
+	if newopts.Hostname == "" {
+		// Extract the correct host from the readhost set on the client
+		newopts.Hostname = b.c.xmlHost
+	}
+
+	if opts.GoogleAccessID != "" && (opts.SignRawBytes != nil || opts.SignBytes != nil || len(opts.PrivateKey) > 0) {
+		return GenerateSignedPostPolicyV4(b.name, object, newopts)
+	}
 
 	if newopts.GoogleAccessID == "" {
 		id, err := b.detectDefaultGoogleAccessID()
@@ -728,6 +740,13 @@ type Autoclass struct {
 	// If Autoclass is enabled when the bucket is created, the ToggleTime
 	// is set to the bucket creation time. This field is read-only.
 	ToggleTime time.Time
+	// TerminalStorageClass: The storage class that objects in the bucket
+	// eventually transition to if they are not read for a certain length of
+	// time. Valid values are NEARLINE and ARCHIVE.
+	TerminalStorageClass string
+	// TerminalStorageClassUpdateTime represents the time of the most recent
+	// update to "TerminalStorageClass".
+	TerminalStorageClassUpdateTime time.Time
 }
 
 func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
@@ -921,8 +940,6 @@ func (ua *BucketAttrsToUpdate) toProtoBucket() *storagepb.Bucket {
 		return &storagepb.Bucket{}
 	}
 
-	// TODO(cathyo): Handle labels. Pending b/230510191.
-
 	var v *storagepb.Bucket_Versioning
 	if ua.VersioningEnabled != nil {
 		v = &storagepb.Bucket_Versioning{Enabled: optional.ToBool(ua.VersioningEnabled)}
@@ -996,6 +1013,7 @@ func (ua *BucketAttrsToUpdate) toProtoBucket() *storagepb.Bucket {
 		IamConfig:             bktIAM,
 		Rpo:                   ua.RPO.String(),
 		Autoclass:             ua.Autoclass.toProtoAutoclass(),
+		Labels:                ua.setLabels,
 	}
 }
 
@@ -1230,9 +1248,11 @@ func (ua *BucketAttrsToUpdate) toRawBucket() *raw.Bucket {
 	}
 	if ua.Autoclass != nil {
 		rb.Autoclass = &raw.BucketAutoclass{
-			Enabled:         ua.Autoclass.Enabled,
-			ForceSendFields: []string{"Enabled"},
+			Enabled:              ua.Autoclass.Enabled,
+			TerminalStorageClass: ua.Autoclass.TerminalStorageClass,
+			ForceSendFields:      []string{"Enabled"},
 		}
+		rb.ForceSendFields = append(rb.ForceSendFields, "Autoclass")
 	}
 	if ua.PredefinedACL != "" {
 		// Clear ACL or the call will fail.
@@ -1264,7 +1284,9 @@ func (ua *BucketAttrsToUpdate) toRawBucket() *raw.Bucket {
 }
 
 // If returns a new BucketHandle that applies a set of preconditions.
-// Preconditions already set on the BucketHandle are ignored.
+// Preconditions already set on the BucketHandle are ignored. The supplied
+// BucketConditions must have exactly one field set to a non-zero value;
+// otherwise an error will be returned from any operation on the BucketHandle.
 // Operations on the new handle will return an error if the preconditions are not
 // satisfied. The only valid preconditions for buckets are MetagenerationMatch
 // and MetagenerationNotMatch.
@@ -1545,7 +1567,6 @@ func toProtoLifecycle(l Lifecycle) *storagepb.Bucket_Lifecycle {
 				// doc states "format: int32"), so the client types used int64,
 				// but the proto uses int32 so we have a potentially lossy
 				// conversion.
-				AgeDays:                 proto.Int32(int32(r.Condition.AgeInDays)),
 				DaysSinceCustomTime:     proto.Int32(int32(r.Condition.DaysSinceCustomTime)),
 				DaysSinceNoncurrentTime: proto.Int32(int32(r.Condition.DaysSinceNoncurrentTime)),
 				MatchesPrefix:           r.Condition.MatchesPrefix,
@@ -1555,7 +1576,11 @@ func toProtoLifecycle(l Lifecycle) *storagepb.Bucket_Lifecycle {
 			},
 		}
 
-		// TODO(#6205): This may not be needed for gRPC
+		// Only set AgeDays in the proto if it is non-zero, or if the user has set
+		// Condition.AllObjects.
+		if r.Condition.AgeInDays != 0 {
+			rr.Condition.AgeDays = proto.Int32(int32(r.Condition.AgeInDays))
+		}
 		if r.Condition.AllObjects {
 			rr.Condition.AgeDays = proto.Int32(0)
 		}
@@ -1654,8 +1679,8 @@ func toLifecycleFromProto(rl *storagepb.Bucket_Lifecycle) Lifecycle {
 			},
 		}
 
-		// TODO(#6205): This may not be needed for gRPC
-		if rr.GetCondition().GetAgeDays() == 0 {
+		// Only set Condition.AllObjects if AgeDays is zero, not if it is nil.
+		if rr.GetCondition().AgeDays != nil && rr.GetCondition().GetAgeDays() == 0 {
 			r.Condition.AllObjects = true
 		}
 
@@ -1938,9 +1963,10 @@ func (a *Autoclass) toRawAutoclass() *raw.BucketAutoclass {
 	if a == nil {
 		return nil
 	}
-	// Excluding read only field ToggleTime.
+	// Excluding read only fields ToggleTime and TerminalStorageClassUpdateTime.
 	return &raw.BucketAutoclass{
-		Enabled: a.Enabled,
+		Enabled:              a.Enabled,
+		TerminalStorageClass: a.TerminalStorageClass,
 	}
 }
 
@@ -1948,27 +1974,34 @@ func (a *Autoclass) toProtoAutoclass() *storagepb.Bucket_Autoclass {
 	if a == nil {
 		return nil
 	}
-	// Excluding read only field ToggleTime.
-	return &storagepb.Bucket_Autoclass{
+	// Excluding read only fields ToggleTime and TerminalStorageClassUpdateTime.
+	ba := &storagepb.Bucket_Autoclass{
 		Enabled: a.Enabled,
 	}
+	if a.TerminalStorageClass != "" {
+		ba.TerminalStorageClass = &a.TerminalStorageClass
+	}
+	return ba
 }
 
 func toAutoclassFromRaw(a *raw.BucketAutoclass) *Autoclass {
 	if a == nil || a.ToggleTime == "" {
 		return nil
 	}
-	// Return Autoclass.ToggleTime only if parsed with a valid value.
+	ac := &Autoclass{
+		Enabled:              a.Enabled,
+		TerminalStorageClass: a.TerminalStorageClass,
+	}
+	// Return ToggleTime and TSCUpdateTime only if parsed with valid values.
 	t, err := time.Parse(time.RFC3339, a.ToggleTime)
-	if err != nil {
-		return &Autoclass{
-			Enabled: a.Enabled,
-		}
+	if err == nil {
+		ac.ToggleTime = t
 	}
-	return &Autoclass{
-		Enabled:    a.Enabled,
-		ToggleTime: t,
+	ut, err := time.Parse(time.RFC3339, a.TerminalStorageClassUpdateTime)
+	if err == nil {
+		ac.TerminalStorageClassUpdateTime = ut
 	}
+	return ac
 }
 
 func toAutoclassFromProto(a *storagepb.Bucket_Autoclass) *Autoclass {
@@ -1976,8 +2009,10 @@ func toAutoclassFromProto(a *storagepb.Bucket_Autoclass) *Autoclass {
 		return nil
 	}
 	return &Autoclass{
-		Enabled:    a.GetEnabled(),
-		ToggleTime: a.GetToggleTime().AsTime(),
+		Enabled:                        a.GetEnabled(),
+		ToggleTime:                     a.GetToggleTime().AsTime(),
+		TerminalStorageClass:           a.GetTerminalStorageClass(),
+		TerminalStorageClassUpdateTime: a.GetTerminalStorageClassUpdateTime().AsTime(),
 	}
 }
 

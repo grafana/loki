@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/url"
 	"os"
 	"path"
 	"reflect"
@@ -42,6 +43,19 @@ const (
 // The endpoint MUST be properly encoded before calling this function.
 func NewRequest(ctx context.Context, httpMethod string, endpoint string) (*policy.Request, error) {
 	return exported.NewRequest(ctx, httpMethod, endpoint)
+}
+
+// EncodeQueryParams will parse and encode any query parameters in the specified URL.
+func EncodeQueryParams(u string) (string, error) {
+	before, after, found := strings.Cut(u, "?")
+	if !found {
+		return u, nil
+	}
+	qp, err := url.ParseQuery(after)
+	if err != nil {
+		return "", err
+	}
+	return before + "?" + qp.Encode(), nil
 }
 
 // JoinPaths concatenates multiple URL path segments into one path,

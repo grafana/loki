@@ -14,10 +14,12 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/compute/metadata"
 	"go.opencensus.io/plugin/ocgrpc"
 	"golang.org/x/oauth2"
+	"golang.org/x/time/rate"
 	"google.golang.org/api/internal"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
@@ -35,11 +37,11 @@ const disableDirectPath = "GOOGLE_CLOUD_DISABLE_DIRECT_PATH"
 // Check env to decide if using google-c2p resolver for DirectPath traffic.
 const enableDirectPathXds = "GOOGLE_CLOUD_ENABLE_DIRECT_PATH_XDS"
 
-// Set at init time by dial_appengine.go. If nil, we're not on App Engine.
-var appengineDialerHook func(context.Context) grpc.DialOption
-
 // Set at init time by dial_socketopt.go. If nil, socketopt is not supported.
 var timeoutDialerOption grpc.DialOption
+
+// Log rate limiter
+var logRateLimiter = rate.Sometimes{Interval: 1 * time.Second}
 
 // Dial returns a GRPC connection for use communicating with a Google cloud
 // service, configured with the given ClientOptions.
@@ -156,6 +158,9 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 		)
 
 		// Attempt Direct Path:
+		logRateLimiter.Do(func() {
+			logDirectPathMisconfig(endpoint, creds.TokenSource, o)
+		})
 		if isDirectPathEnabled(endpoint, o) && isTokenSourceDirectPathCompatible(creds.TokenSource, o) && metadata.OnGCE() {
 			// Overwrite all of the previously specific DialOptions, DirectPath uses its own set of credentials and certificates.
 			grpcOpts = []grpc.DialOption{
@@ -184,12 +189,6 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 			}
 			// TODO(cbro): add support for system parameters (quota project, request reason) via chained interceptor.
 		}
-	}
-
-	if appengineDialerHook != nil {
-		// Use the Socket API on App Engine.
-		// appengine dialer will override socketopt dialer
-		grpcOpts = append(grpcOpts, appengineDialerHook(ctx))
 	}
 
 	// Add tracing, but before the other options, so that clients can override the
@@ -303,6 +302,24 @@ func checkDirectPathEndPoint(endpoint string) bool {
 	}
 
 	return true
+}
+
+func logDirectPathMisconfig(endpoint string, ts oauth2.TokenSource, o *internal.DialSettings) {
+	if isDirectPathXdsUsed(o) {
+		// Case 1: does not enable DirectPath
+		if !isDirectPathEnabled(endpoint, o) {
+			log.Println("WARNING: DirectPath is misconfigured. Please set the EnableDirectPath option along with the EnableDirectPathXds option.")
+		} else {
+			// Case 2: credential is not correctly set
+			if !isTokenSourceDirectPathCompatible(ts, o) {
+				log.Println("WARNING: DirectPath is misconfigured. Please make sure the token source is fetched from GCE metadata server and the default service account is used.")
+			}
+			// Case 3: not running on GCE
+			if !metadata.OnGCE() {
+				log.Println("WARNING: DirectPath is misconfigured. DirectPath is only available in a GCE environment.")
+			}
+		}
+	}
 }
 
 func processAndValidateOpts(opts []option.ClientOption) (*internal.DialSettings, error) {

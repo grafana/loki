@@ -10,6 +10,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 )
 
 // PagingHandler contains the required data for constructing a Pager.
@@ -74,4 +77,42 @@ func (p *Pager[T]) NextPage(ctx context.Context) (T, error) {
 // UnmarshalJSON implements the json.Unmarshaler interface for Pager[T].
 func (p *Pager[T]) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &p.current)
+}
+
+// FetcherForNextLinkOptions contains the optional values for [FetcherForNextLink].
+type FetcherForNextLinkOptions struct {
+	// NextReq is the func to be called when requesting subsequent pages.
+	// Used for paged operations that have a custom next link operation.
+	NextReq func(context.Context, string) (*policy.Request, error)
+}
+
+// FetcherForNextLink is a helper containing boilerplate code to simplify creating a PagingHandler[T].Fetcher from a next link URL.
+//   - ctx is the [context.Context] controlling the lifetime of the HTTP operation
+//   - pl is the [Pipeline] used to dispatch the HTTP request
+//   - nextLink is the URL used to fetch the next page. the empty string indicates the first page is to be requested
+//   - firstReq is the func to be called when creating the request for the first page
+//   - options contains any optional parameters, pass nil to accept the default values
+func FetcherForNextLink(ctx context.Context, pl Pipeline, nextLink string, firstReq func(context.Context) (*policy.Request, error), options *FetcherForNextLinkOptions) (*http.Response, error) {
+	var req *policy.Request
+	var err error
+	if nextLink == "" {
+		req, err = firstReq(ctx)
+	} else if nextLink, err = EncodeQueryParams(nextLink); err == nil {
+		if options != nil && options.NextReq != nil {
+			req, err = options.NextReq(ctx, nextLink)
+		} else {
+			req, err = NewRequest(ctx, http.MethodGet, nextLink)
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	resp, err := pl.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if !HasStatusCode(resp, http.StatusOK) {
+		return nil, NewResponseError(resp)
+	}
+	return resp, nil
 }

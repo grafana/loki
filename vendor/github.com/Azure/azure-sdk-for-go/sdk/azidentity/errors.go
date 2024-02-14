@@ -11,9 +11,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/internal/errorinfo"
 	msal "github.com/AzureAD/microsoft-authentication-library-for-go/apps/errors"
 )
@@ -57,17 +57,16 @@ func (e *AuthenticationFailedError) Error() string {
 	fmt.Fprintln(msg, "--------------------------------------------------------------------------------")
 	fmt.Fprintf(msg, "RESPONSE %s\n", e.RawResponse.Status)
 	fmt.Fprintln(msg, "--------------------------------------------------------------------------------")
-	body, err := io.ReadAll(e.RawResponse.Body)
-	e.RawResponse.Body.Close()
-	if err != nil {
+	body, err := runtime.Payload(e.RawResponse)
+	switch {
+	case err != nil:
 		fmt.Fprintf(msg, "Error reading response body: %v", err)
-	} else if len(body) > 0 {
-		e.RawResponse.Body = io.NopCloser(bytes.NewReader(body))
+	case len(body) > 0:
 		if err := json.Indent(msg, body, "", "  "); err != nil {
 			// failed to pretty-print so just dump it verbatim
 			fmt.Fprint(msg, string(body))
 		}
-	} else {
+	default:
 		fmt.Fprint(msg, "Response contained no body")
 	}
 	fmt.Fprintln(msg, "\n--------------------------------------------------------------------------------")

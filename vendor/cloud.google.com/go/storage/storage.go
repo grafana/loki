@@ -41,7 +41,7 @@ import (
 	"cloud.google.com/go/internal/optional"
 	"cloud.google.com/go/internal/trace"
 	"cloud.google.com/go/storage/internal"
-	storagepb "cloud.google.com/go/storage/internal/apiv2/stubs"
+	"cloud.google.com/go/storage/internal/apiv2/storagepb"
 	"github.com/googleapis/gax-go/v2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/googleapi"
@@ -109,8 +109,8 @@ type Client struct {
 	raw *raw.Service
 	// Scheme describes the scheme under the current host.
 	scheme string
-	// ReadHost is the default host used on the reader.
-	readHost string
+	// xmlHost is the default host used for XML requests.
+	xmlHost string
 	// May be nil.
 	creds *google.Credentials
 	retry *retryConfig
@@ -123,7 +123,7 @@ type Client struct {
 	useGRPC bool
 }
 
-// NewClient creates a new Google Cloud Storage client.
+// NewClient creates a new Google Cloud Storage client using the HTTP transport.
 // The default scope is ScopeFullControl. To use a different scope, like
 // ScopeReadOnly, use option.WithScopes.
 //
@@ -133,12 +133,6 @@ type Client struct {
 // You may configure the client by passing in options from the [google.golang.org/api/option]
 // package. You may also use options defined in this package, such as [WithJSONReads].
 func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error) {
-	// Use the experimental gRPC client if the env var is set.
-	// This is an experimental API and not intended for public use.
-	if withGRPC := os.Getenv("STORAGE_USE_GRPC"); withGRPC != "" {
-		return newGRPCClient(ctx, opts...)
-	}
-
 	var creds *google.Credentials
 
 	// In general, it is recommended to use raw.NewService instead of htransport.NewClient
@@ -199,7 +193,7 @@ func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error
 	if err != nil {
 		return nil, fmt.Errorf("storage client: %w", err)
 	}
-	// Update readHost and scheme with the chosen endpoint.
+	// Update xmlHost and scheme with the chosen endpoint.
 	u, err := url.Parse(ep)
 	if err != nil {
 		return nil, fmt.Errorf("supplied endpoint %q is not valid: %w", ep, err)
@@ -211,20 +205,29 @@ func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error
 	}
 
 	return &Client{
-		hc:       hc,
-		raw:      rawService,
-		scheme:   u.Scheme,
-		readHost: u.Host,
-		creds:    creds,
-		tc:       tc,
+		hc:      hc,
+		raw:     rawService,
+		scheme:  u.Scheme,
+		xmlHost: u.Host,
+		creds:   creds,
+		tc:      tc,
 	}, nil
 }
 
-// newGRPCClient creates a new Storage client that initializes a gRPC-based
-// client. Calls that have not been implemented in gRPC will panic.
+// NewGRPCClient creates a new Storage client using the gRPC transport and API.
+// Client methods which have not been implemented in gRPC will return an error.
+// In particular, methods for Cloud Pub/Sub notifications are not supported.
 //
-// This is an experimental API and not intended for public use.
-func newGRPCClient(ctx context.Context, opts ...option.ClientOption) (*Client, error) {
+// The storage gRPC API is still in preview and not yet publicly available.
+// If you would like to use the API, please first contact your GCP account rep to
+// request access. The API may be subject to breaking changes.
+//
+// Clients should be reused instead of created as needed. The methods of Client
+// are safe for concurrent use by multiple goroutines.
+//
+// You may configure the client by passing in options from the [google.golang.org/api/option]
+// package.
+func NewGRPCClient(ctx context.Context, opts ...option.ClientOption) (*Client, error) {
 	opts = append(defaultGRPCOptions(), opts...)
 	tc, err := newGRPCStorageClient(ctx, withClientOptions(opts...))
 	if err != nil {
@@ -262,13 +265,13 @@ const (
 	SigningSchemeV4
 )
 
-// URLStyle determines the style to use for the signed URL. pathStyle is the
+// URLStyle determines the style to use for the signed URL. PathStyle is the
 // default. All non-default options work with V4 scheme only. See
 // https://cloud.google.com/storage/docs/request-endpoints for details.
 type URLStyle interface {
 	// host should return the host portion of the signed URL, not including
 	// the scheme (e.g. storage.googleapis.com).
-	host(bucket string) string
+	host(hostname, bucket string) string
 
 	// path should return the path portion of the signed URL, which may include
 	// both the bucket and object name or only the object name depending on the
@@ -284,7 +287,11 @@ type bucketBoundHostname struct {
 	hostname string
 }
 
-func (s pathStyle) host(bucket string) string {
+func (s pathStyle) host(hostname, bucket string) string {
+	if hostname != "" {
+		return stripScheme(hostname)
+	}
+
 	if host := os.Getenv("STORAGE_EMULATOR_HOST"); host != "" {
 		return stripScheme(host)
 	}
@@ -292,7 +299,7 @@ func (s pathStyle) host(bucket string) string {
 	return "storage.googleapis.com"
 }
 
-func (s virtualHostedStyle) host(bucket string) string {
+func (s virtualHostedStyle) host(_, bucket string) string {
 	if host := os.Getenv("STORAGE_EMULATOR_HOST"); host != "" {
 		return bucket + "." + stripScheme(host)
 	}
@@ -300,7 +307,7 @@ func (s virtualHostedStyle) host(bucket string) string {
 	return bucket + ".storage.googleapis.com"
 }
 
-func (s bucketBoundHostname) host(bucket string) string {
+func (s bucketBoundHostname) host(_, bucket string) string {
 	return s.hostname
 }
 
@@ -321,7 +328,10 @@ func (s bucketBoundHostname) path(bucket, object string) string {
 }
 
 // PathStyle is the default style, and will generate a URL of the form
-// "storage.googleapis.com/<bucket-name>/<object-name>".
+// "<host-name>/<bucket-name>/<object-name>". By default, <host-name> is
+// storage.googleapis.com, but setting an endpoint on the storage Client or
+// through STORAGE_EMULATOR_HOST overrides this. Setting Hostname on
+// SignedURLOptions or PostPolicyV4Options overrides everything else.
 func PathStyle() URLStyle {
 	return pathStyle{}
 }
@@ -442,6 +452,12 @@ type SignedURLOptions struct {
 	// Scheme determines the version of URL signing to use. Default is
 	// SigningSchemeV2.
 	Scheme SigningScheme
+
+	// Hostname sets the host of the signed URL. This field overrides any
+	// endpoint set on a storage Client or through STORAGE_EMULATOR_HOST.
+	// Only compatible with PathStyle URLStyle.
+	// Optional.
+	Hostname string
 }
 
 func (opts *SignedURLOptions) clone() *SignedURLOptions {
@@ -458,6 +474,7 @@ func (opts *SignedURLOptions) clone() *SignedURLOptions {
 		Style:           opts.Style,
 		Insecure:        opts.Insecure,
 		Scheme:          opts.Scheme,
+		Hostname:        opts.Hostname,
 	}
 }
 
@@ -716,7 +733,7 @@ func signedURLV4(bucket, name string, opts *SignedURLOptions, now time.Time) (st
 	fmt.Fprintf(buf, "%s\n", escapedQuery)
 
 	// Fill in the hostname based on the desired URL style.
-	u.Host = opts.Style.host(bucket)
+	u.Host = opts.Style.host(opts.Hostname, bucket)
 
 	// Fill in the URL scheme.
 	if opts.Insecure {
@@ -850,7 +867,7 @@ func signedURLV2(bucket, name string, opts *SignedURLOptions) (string, error) {
 	}
 	encoded := base64.StdEncoding.EncodeToString(b)
 	u.Scheme = "https"
-	u.Host = PathStyle().host(bucket)
+	u.Host = PathStyle().host(opts.Hostname, bucket)
 	q := u.Query()
 	q.Set("GoogleAccessId", opts.GoogleAccessID)
 	q.Set("Expires", fmt.Sprintf("%d", opts.Expires.Unix()))
@@ -893,7 +910,9 @@ func (o *ObjectHandle) Generation(gen int64) *ObjectHandle {
 }
 
 // If returns a new ObjectHandle that applies a set of preconditions.
-// Preconditions already set on the ObjectHandle are ignored.
+// Preconditions already set on the ObjectHandle are ignored. The supplied
+// Conditions must have at least one field set to a non-default value;
+// otherwise an error will be returned from any operation on the ObjectHandle.
 // Operations on the new handle will return an error if the preconditions are not
 // satisfied. See https://cloud.google.com/storage/docs/generations-preconditions
 // for more details.
@@ -1020,6 +1039,7 @@ func (o *ObjectHandle) ReadCompressed(compressed bool) *ObjectHandle {
 // It is the caller's responsibility to call Close when writing is done. To
 // stop writing without saving the data, cancel the context.
 func (o *ObjectHandle) NewWriter(ctx context.Context) *Writer {
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Object.Writer")
 	return &Writer{
 		ctx:         ctx,
 		o:           o,
@@ -1163,7 +1183,7 @@ func (uattrs *ObjectAttrsToUpdate) toProtoObject(bucket, object string) *storage
 		o.Acl = toProtoObjectACL(uattrs.ACL)
 	}
 
-	// TODO(cathyo): Handle metadata. Pending b/230510191.
+	o.Metadata = uattrs.Metadata
 
 	return o
 }
@@ -1484,6 +1504,8 @@ type Query struct {
 	// aside from the prefix, contain delimiter will have their name,
 	// truncated after the delimiter, returned in prefixes.
 	// Duplicate prefixes are omitted.
+	// Must be set to / when used with the MatchGlob parameter to filter results
+	// in a directory-like mode.
 	// Optional.
 	Delimiter string
 
@@ -1497,9 +1519,9 @@ type Query struct {
 	Versions bool
 
 	// attrSelection is used to select only specific fields to be returned by
-	// the query. It is set by the user calling calling SetAttrSelection. These
+	// the query. It is set by the user calling SetAttrSelection. These
 	// are used by toFieldMask and toFieldSelection for gRPC and HTTP/JSON
-	// clients repsectively.
+	// clients respectively.
 	attrSelection []string
 
 	// StartOffset is used to filter results to objects whose names are
@@ -1525,6 +1547,12 @@ type Query struct {
 	// true, they will also be included as objects and their metadata will be
 	// populated in the returned ObjectAttrs.
 	IncludeTrailingDelimiter bool
+
+	// MatchGlob is a glob pattern used to filter results (for example, foo*bar). See
+	// https://cloud.google.com/storage/docs/json_api/v1/objects/list#list-object-glob
+	// for syntax details. When Delimiter is set in conjunction with MatchGlob,
+	// it must be set to /.
+	MatchGlob string
 }
 
 // attrToFieldMap maps the field names of ObjectAttrs to the underlying field
@@ -2162,8 +2190,6 @@ func toProjectResource(project string) string {
 
 // setConditionProtoField uses protobuf reflection to set named condition field
 // to the given condition value if supported on the protobuf message.
-//
-// This is an experimental API and not intended for public use.
 func setConditionProtoField(m protoreflect.Message, f string, v int64) bool {
 	fields := m.Descriptor().Fields()
 	if rf := fields.ByName(protoreflect.Name(f)); rf != nil {
@@ -2176,8 +2202,6 @@ func setConditionProtoField(m protoreflect.Message, f string, v int64) bool {
 
 // applyCondsProto validates and attempts to set the conditions on a protobuf
 // message using protobuf reflection.
-//
-// This is an experimental API and not intended for public use.
 func applyCondsProto(method string, gen int64, conds *Conditions, msg proto.Message) error {
 	rmsg := msg.ProtoReflect()
 
