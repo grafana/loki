@@ -22,10 +22,10 @@ LokiStack object storage access on all public cloud providers supports currently
 
 To enhance IAM automation across the entire lifetime of access credentials all public cloud providers offer specific services (e.g. named STS, Workload Identity Federation):
 1. Automate creation and rotation of credentials per Kubernetes workload using one OIDC authorization server per Kubernetes cluster for it's service accounts.
-2. Each workload on the managed Kubernetes cluster must be bound to a specific IAM role to access any provider service (e.g. S3/GCS.)
+2. Each workload on the managed Kubernetes cluster must be bound to a specific IAM role to access any provider service (e.g. S3/GCS/Azure Storage)
 3. The OIDC-based workflow ensures issuing only short-lived tokens to each workload and in turn frequent credentials rotation.
 
-Such an approach ensures that each Kubernetes workload requests access to the IAM controlled resources by it's Kubernetes service account only. Each valid request is further secured by providing only rotated short lived tokens. Thus any Kubernets workload access can be controlled through the same IAM control mechanism as with static account (e.g. disable on security breaches) plus automatic rotation minimizes impact vector of security incidents.
+Such an approach ensures that each Kubernetes workload requests access to the IAM controlled resources by it's Kubernetes service account only. Each valid request is further secured by providing only rotated short lived tokens. Thus any Kubernetes workload access can be controlled through the same IAM mechanisms as with static service accounts (e.g. disable on security breaches) plus using automatic rotation to minimize the impact vector on security incidents.
 
 The following proposal discusses the implemented support of the above workflow in the Loki Operator for all three public cloud providers (AWS, GCP, Azure). Furthermore it provides instructions on how to create IAM resources upfront to control LokiStack object storage access using AWS STS or GCP Workload Identity or Azure Workload Identity Federation.
 
