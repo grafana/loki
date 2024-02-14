@@ -26,11 +26,11 @@ const (
 )
 
 type TSDBStore interface {
-	UsersForPeriod(ctx context.Context, table DayTable) ([]string, error)
-	ResolveTSDBs(ctx context.Context, table DayTable, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error)
+	UsersForPeriod(ctx context.Context, table config.DayTime) ([]string, error)
+	ResolveTSDBs(ctx context.Context, table config.DayTime, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error)
 	LoadTSDB(
 		ctx context.Context,
-		table DayTable,
+		table config.DayTime,
 		tenant string,
 		id tsdb.Identifier,
 		bounds v1.FingerprintBounds,
@@ -49,13 +49,13 @@ func NewBloomTSDBStore(storage storage.Client) *BloomTSDBStore {
 	}
 }
 
-func (b *BloomTSDBStore) UsersForPeriod(ctx context.Context, table DayTable) ([]string, error) {
-	_, users, err := b.storage.ListFiles(ctx, table.String(), true) // bypass cache for ease of testing
+func (b *BloomTSDBStore) UsersForPeriod(ctx context.Context, table config.DayTime) ([]string, error) {
+	_, users, err := b.storage.ListFiles(ctx, table.Table(), true) // bypass cache for ease of testing
 	return users, err
 }
 
-func (b *BloomTSDBStore) ResolveTSDBs(ctx context.Context, table DayTable, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error) {
-	indices, err := b.storage.ListUserFiles(ctx, table.String(), tenant, true) // bypass cache for ease of testing
+func (b *BloomTSDBStore) ResolveTSDBs(ctx context.Context, table config.DayTime, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error) {
+	indices, err := b.storage.ListUserFiles(ctx, table.Table(), tenant, true) // bypass cache for ease of testing
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list user files")
 	}
@@ -80,14 +80,14 @@ func (b *BloomTSDBStore) ResolveTSDBs(ctx context.Context, table DayTable, tenan
 
 func (b *BloomTSDBStore) LoadTSDB(
 	ctx context.Context,
-	table DayTable,
+	table config.DayTime,
 	tenant string,
 	id tsdb.Identifier,
 	bounds v1.FingerprintBounds,
 ) (v1.CloseableIterator[*v1.Series], error) {
 	withCompression := id.Name() + gzipExtension
 
-	data, err := b.storage.GetUserFile(ctx, table.String(), tenant, withCompression)
+	data, err := b.storage.GetUserFile(ctx, table.Table(), tenant, withCompression)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get file")
 	}
@@ -244,11 +244,11 @@ func NewTSDBStores(
 	return res, nil
 }
 
-func (s *TSDBStores) storeForPeriod(table DayTable) (TSDBStore, error) {
+func (s *TSDBStores) storeForPeriod(table config.DayTime) (TSDBStore, error) {
 	for i := len(s.schemaCfg.Configs) - 1; i >= 0; i-- {
 		period := s.schemaCfg.Configs[i]
 
-		if !table.Before(DayTable(period.From.Time)) {
+		if !table.Before(period.From) {
 			// we have the desired period config
 
 			if s.stores[i] != nil {
@@ -260,19 +260,19 @@ func (s *TSDBStores) storeForPeriod(table DayTable) (TSDBStore, error) {
 			return nil, errors.Errorf(
 				"store for period is not of TSDB type (%s) while looking up store for (%v)",
 				period.IndexType,
-				table.ModelTime().Time(),
+				table,
 			)
 		}
 
 	}
 
 	return nil, fmt.Errorf(
-		"There is no store matching no matching period found for table (%v) -- too early",
-		table.ModelTime().Time(),
+		"there is no store matching no matching period found for table (%v) -- too early",
+		table,
 	)
 }
 
-func (s *TSDBStores) UsersForPeriod(ctx context.Context, table DayTable) ([]string, error) {
+func (s *TSDBStores) UsersForPeriod(ctx context.Context, table config.DayTime) ([]string, error) {
 	store, err := s.storeForPeriod(table)
 	if err != nil {
 		return nil, err
@@ -281,7 +281,7 @@ func (s *TSDBStores) UsersForPeriod(ctx context.Context, table DayTable) ([]stri
 	return store.UsersForPeriod(ctx, table)
 }
 
-func (s *TSDBStores) ResolveTSDBs(ctx context.Context, table DayTable, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error) {
+func (s *TSDBStores) ResolveTSDBs(ctx context.Context, table config.DayTime, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error) {
 	store, err := s.storeForPeriod(table)
 	if err != nil {
 		return nil, err
@@ -292,7 +292,7 @@ func (s *TSDBStores) ResolveTSDBs(ctx context.Context, table DayTable, tenant st
 
 func (s *TSDBStores) LoadTSDB(
 	ctx context.Context,
-	table DayTable,
+	table config.DayTime,
 	tenant string,
 	id tsdb.Identifier,
 	bounds v1.FingerprintBounds,

@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
@@ -55,7 +56,7 @@ func (s *SimpleBloomController) rwFn() (v1.BlockWriter, v1.BlockReader) {
 
 func (s *SimpleBloomController) buildBlocks(
 	ctx context.Context,
-	table DayTable,
+	table config.DayTime,
 	tenant string,
 	ownershipRange v1.FingerprintBounds,
 ) error {
@@ -78,15 +79,11 @@ func (s *SimpleBloomController) buildBlocks(
 	}
 
 	// 2. Fetch metas
-	bounds := table.Bounds()
 	metas, err := s.bloomStore.FetchMetas(
 		ctx,
 		bloomshipper.MetaSearchParams{
 			TenantID: tenant,
-			Interval: bloomshipper.Interval{
-				Start: bounds.Start,
-				End:   bounds.End,
-			},
+			Interval: bloomshipper.NewInterval(table.Bounds()),
 			Keyspace: ownershipRange,
 		},
 	)
@@ -176,7 +173,7 @@ func (s *SimpleBloomController) buildBlocks(
 				blockCt++
 				blk := newBlocks.At()
 
-				built, err := bloomshipper.BlockFrom(tenant, table.String(), blk)
+				built, err := bloomshipper.BlockFrom(tenant, table.Table(), blk)
 				if err != nil {
 					level.Error(logger).Log("msg", "failed to build block", "err", err)
 					return errors.Wrap(err, "failed to build block")
@@ -214,7 +211,7 @@ func (s *SimpleBloomController) buildBlocks(
 
 func (s *SimpleBloomController) loadWorkForGap(
 	ctx context.Context,
-	table DayTable,
+	table config.DayTime,
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
