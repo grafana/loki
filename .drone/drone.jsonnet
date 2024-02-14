@@ -601,30 +601,17 @@ local build_image_tag = '0.33.0';
       path: 'loki',
     },
     steps: [
-      make('check-drone-drift', container=false) { depends_on: ['clone'] },
-      make('check-generated-files', container=false) { depends_on: ['clone'] },
       run('clone-target-branch', commands=[
         'cd ..',
         'echo "cloning "$DRONE_TARGET_BRANCH ',
         'git clone -b $DRONE_TARGET_BRANCH $CI_REPO_REMOTE loki-target-branch',
         'cd -',
       ]) { depends_on: ['clone'], when: onPRs },
-      make('test', container=false) { depends_on: ['clone-target-branch', 'check-generated-files'] },
-      make('lint', container=false) { depends_on: ['check-generated-files'] },
-      make('check-mod', container=false) { depends_on: ['test', 'lint'] },
-      {
-        name: 'shellcheck',
-        image: 'koalaman/shellcheck-alpine:stable',
-        commands: ['apk add make bash && make lint-scripts'],
-      },
       make('loki', container=false) { depends_on: ['check-generated-files'] },
-      make('check-doc', container=false) { depends_on: ['loki'] },
       make('check-format', container=false, args=[
         'GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"',
       ]) { depends_on: ['loki'], when: onPRs },
-      make('validate-example-configs', container=false) { depends_on: ['loki'] },
       make('validate-dev-cluster-config', container=false) { depends_on: ['validate-example-configs'] },
-      make('check-example-config-doc', container=false) { depends_on: ['clone'] },
       {
         name: 'build-docs-website',
         image: 'grafana/docs-base:e6ef023f8b8',

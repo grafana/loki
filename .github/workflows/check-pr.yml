@@ -24,6 +24,15 @@ jobs:
       - run: make check-drone-drift
       - run: make check-generated-files
       - run: make test
+  shellcheck:
+    runs-on: ubuntu-latest
+    container:
+      image: koalaman/shellcheck-alpine:stable
+    steps:
+      - uses: actions/checkout@v4
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: apk add make bash
+      - run: make lint-scripts
   check-title:
     runs-on: ubuntu-latest
     steps:
