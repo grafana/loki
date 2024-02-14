@@ -290,7 +290,7 @@ func (c *Compactor) runWorkers(ctx context.Context, ch <-chan tenantTable) error
 
 func (c *Compactor) compactTenantTable(ctx context.Context, tt tenantTable) error {
 	level.Info(c.logger).Log("msg", "compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange)
-	return c.controller.buildBlocks(ctx, tt.table, tt.tenant, tt.ownershipRange)
+	return c.controller.compactTenant(ctx, tt.table, tt.tenant, tt.ownershipRange)
 }
 
 type dayRangeIterator struct {
