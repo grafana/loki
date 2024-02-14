@@ -8,9 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
 func TestBatchedLoader(t *testing.T) {
+	t.Parallel()
+
 	errMapper := func(i int) (int, error) {
 		return 0, errors.New("bzzt")
 	}
@@ -101,6 +104,7 @@ func TestBatchedLoader(t *testing.T) {
 			inputs:    [][]int{{0}},
 		},
 	} {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			fetchers := make([]Fetcher[int, int], 0, len(tc.inputs))
 			for range tc.inputs {
@@ -133,5 +137,74 @@ func TestBatchedLoader(t *testing.T) {
 
 		})
 	}
+}
 
+func TestOverlappingBlocksIter(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		desc string
+		inp  []bloomshipper.BlockRef
+		exp  int // expected groups
+	}{
+		{
+			desc: "Empty",
+			inp:  []bloomshipper.BlockRef{},
+			exp:  0,
+		},
+		{
+			desc: "NonOverlapping",
+			inp: []bloomshipper.BlockRef{
+				genBlockRef(0x0000, 0x00ff),
+				genBlockRef(0x0100, 0x01ff),
+				genBlockRef(0x0200, 0x02ff),
+			},
+			exp: 3,
+		},
+		{
+			desc: "AllOverlapping",
+			inp: []bloomshipper.BlockRef{
+				genBlockRef(0x0000, 0x02ff), // |-----------|
+				genBlockRef(0x0100, 0x01ff), //     |---|
+				genBlockRef(0x0200, 0x02ff), //         |---|
+			},
+			exp: 1,
+		},
+		{
+			desc: "PartialOverlapping",
+			inp: []bloomshipper.BlockRef{
+				genBlockRef(0x0000, 0x01ff), // group 1  |-------|
+				genBlockRef(0x0100, 0x02ff), // group 1      |-------|
+				genBlockRef(0x0200, 0x03ff), // group 1          |-------|
+				genBlockRef(0x0200, 0x02ff), // group 1          |---|
+			},
+			exp: 1,
+		},
+		{
+			desc: "PartialOverlapping",
+			inp: []bloomshipper.BlockRef{
+				genBlockRef(0x0000, 0x01ff), // group 1  |-------|
+				genBlockRef(0x0100, 0x02ff), // group 1      |-------|
+				genBlockRef(0x0100, 0x01ff), // group 1      |---|
+				genBlockRef(0x0300, 0x03ff), // group 2              |---|
+				genBlockRef(0x0310, 0x03ff), // group 2                |-|
+			},
+			exp: 2,
+		},
+	} {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			it := overlappingBlocksIter(tc.inp)
+			var overlapping [][]bloomshipper.BlockRef
+			var i int
+			for it.Next() && it.Err() == nil {
+				require.NotNil(t, it.At())
+				overlapping = append(overlapping, it.At())
+				for _, r := range it.At() {
+					t.Log(i, r)
+				}
+				i++
+			}
+			require.Equal(t, tc.exp, len(overlapping))
+		})
+	}
 }

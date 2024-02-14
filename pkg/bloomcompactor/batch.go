@@ -2,8 +2,12 @@ package bloomcompactor
 
 import (
 	"context"
+	"io"
 	"math"
 	"time"
+
+	"github.com/grafana/dskit/multierror"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
@@ -12,22 +16,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
-
-func newBatchedBlockLoader(
-	ctx context.Context,
-	fetcher Fetcher[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier],
-	blocks []bloomshipper.BlockRef,
-	batchSize int,
-) *batchedLoader[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier, *bloomshipper.CloseableBlockQuerier] {
-
-	fetchers := []Fetcher[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier]{fetcher}
-	inputs := [][]bloomshipper.BlockRef{blocks}
-	mapper := func(a *bloomshipper.CloseableBlockQuerier) (*bloomshipper.CloseableBlockQuerier, error) {
-		return a, nil
-	}
-
-	return newBatchedLoader(ctx, fetchers, inputs, mapper, batchSize)
-}
 
 type Fetcher[A, B any] interface {
 	Fetch(ctx context.Context, inputs []A) ([]B, error)
@@ -39,9 +27,7 @@ func (f FetchFunc[A, B]) Fetch(ctx context.Context, inputs []A) ([]B, error) {
 	return f(ctx, inputs)
 }
 
-// batchedLoader implements `v1.Iterator[v1.ChunkRefWithIter]` in batches
-// to ensure memory is bounded while loading chunks
-// TODO(owen-d): testware
+// batchedLoader implements `v1.Iterator[C]` in batches
 type batchedLoader[A, B, C any] struct {
 	metrics   *Metrics
 	batchSize int
@@ -120,6 +106,16 @@ func (b *batchedLoader[_, B, C]) prepNext() bool {
 	return b.err == nil
 }
 
+func (b *batchedLoader[_, _, C]) At() C {
+	return b.cur
+}
+
+func (b *batchedLoader[_, _, _]) Err() error {
+	return b.err
+}
+
+// to ensure memory is bounded while loading chunks
+// TODO(owen-d): testware
 func newBatchedChunkLoader(
 	ctx context.Context,
 	fetchers []Fetcher[chunk.Chunk, chunk.Chunk],
@@ -155,10 +151,206 @@ func newBatchedChunkLoader(
 	return newBatchedLoader(ctx, fetchers, inputs, mapper, batchSize)
 }
 
-func (b *batchedLoader[_, _, C]) At() C {
-	return b.cur
+func newBatchedBlockLoader(
+	ctx context.Context,
+	fetcher Fetcher[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier],
+	blocks []bloomshipper.BlockRef,
+	batchSize int,
+) *batchedLoader[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier, *bloomshipper.CloseableBlockQuerier] {
+
+	fetchers := []Fetcher[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier]{fetcher}
+	inputs := [][]bloomshipper.BlockRef{blocks}
+	mapper := func(a *bloomshipper.CloseableBlockQuerier) (*bloomshipper.CloseableBlockQuerier, error) {
+		return a, nil
+	}
+
+	return newBatchedLoader(ctx, fetchers, inputs, mapper, batchSize)
 }
 
-func (b *batchedLoader[_, _, _]) Err() error {
-	return b.err
+// compiler checks
+var _ v1.Iterator[*v1.SeriesWithBloom] = &blockLoadingIter{}
+var _ v1.CloseableIterator[*v1.SeriesWithBloom] = &blockLoadingIter{}
+var _ v1.ResettableIterator[*v1.SeriesWithBloom] = &blockLoadingIter{}
+
+func newBlockLoadingIter(ctx context.Context, blocks []bloomshipper.BlockRef, fetcher FetchFunc[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier], batchSize int) *blockLoadingIter {
+
+	return &blockLoadingIter{
+		ctx:       ctx,
+		fetcher:   fetcher,
+		inputs:    blocks,
+		batchSize: batchSize,
+		loaded:    make(map[io.Closer]struct{}),
+	}
+}
+
+type blockLoadingIter struct {
+	// constructor arguments
+	ctx         context.Context
+	fetcher     Fetcher[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier]
+	inputs      []bloomshipper.BlockRef
+	overlapping v1.Iterator[[]bloomshipper.BlockRef]
+	batchSize   int
+	// optional arguments
+	filter func(*bloomshipper.CloseableBlockQuerier) bool
+	// internals
+	initialized bool
+	err         error
+	iter        v1.Iterator[*v1.SeriesWithBloom]
+	loader      *batchedLoader[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier, *bloomshipper.CloseableBlockQuerier]
+	loaded      map[io.Closer]struct{}
+}
+
+// At implements v1.Iterator.
+func (i *blockLoadingIter) At() *v1.SeriesWithBloom {
+	if !i.initialized {
+		panic("iterator not initialized")
+	}
+	return i.iter.At()
+}
+
+// Err implements v1.Iterator.
+func (i *blockLoadingIter) Err() error {
+	if !i.initialized {
+		panic("iterator not initialized")
+	}
+	if i.err != nil {
+		return i.err
+	}
+	return i.iter.Err()
+}
+
+// Next implements v1.Iterator.
+func (i *blockLoadingIter) Next() bool {
+	i.init()
+	// next from current batch
+	hasNext := i.iter.Next()
+	if !hasNext && !i.loadNext() {
+		return false
+	}
+	// next from next batch
+	return i.iter.Next()
+}
+
+// Close implements v1.CloseableIterator.
+func (i *blockLoadingIter) Close() error {
+	var err multierror.MultiError
+	for k := range i.loaded {
+		err.Add(k.Close())
+	}
+	return err.Err()
+}
+
+// Reset implements v1.ResettableIterator.
+// It resets the iterator without loading already fetched blocks
+// to avoid the overhead of creating the reader.
+func (i *blockLoadingIter) Reset() error {
+	if !i.initialized {
+		return nil
+	}
+	i.initialized = false
+	return nil
+}
+
+func (i *blockLoadingIter) init() {
+	if i.initialized {
+		return
+	}
+
+	// group overlapping blocks
+	i.overlapping = overlappingBlocksIter(i.inputs)
+
+	// set "match all" filter function if not present
+	if i.filter == nil {
+		i.filter = func(cbq *bloomshipper.CloseableBlockQuerier) bool { return true }
+	}
+
+	// load first batch
+	i.loadNext()
+
+	// done
+	i.initialized = true
+}
+
+func (i *blockLoadingIter) Filter(filter func(*bloomshipper.CloseableBlockQuerier) bool) {
+	if i.initialized {
+		panic("iterator already initialized")
+	}
+	i.filter = filter
+}
+
+func (i *blockLoadingIter) loadNext() bool {
+	// check if there are more overlapping groups to load
+	if !i.overlapping.Next() {
+		return false
+	}
+
+	if i.overlapping.Err() != nil {
+		i.err = i.overlapping.Err()
+		return false
+	}
+
+	blockRefs := i.overlapping.At()
+
+	loader := newBatchedBlockLoader(i.ctx, i.fetcher, blockRefs, i.batchSize)
+	filtered := v1.NewFilterIter[*bloomshipper.CloseableBlockQuerier](loader, i.filter)
+
+	iters := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(blockRefs))
+	for filtered.Next() && filtered.Err() == nil {
+		bq := loader.At()
+		if _, ok := i.loaded[bq]; !ok {
+			i.loaded[bq] = struct{}{}
+		}
+		iter, _ := bq.SeriesIter()
+		iters = append(iters, iter)
+	}
+
+	if loader.Err() != nil {
+		i.err = loader.Err()
+		return false
+	}
+
+	if len(iters) == 0 {
+		i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
+		return true
+	}
+
+	// Turn the list of blocks into a single iterator that returns the next series
+	mergedBlocks := v1.NewHeapIterForSeriesWithBloom(iters...)
+	// two overlapping blocks can conceivably have the same series, so we need to dedupe,
+	// preferring the one with the most chunks already indexed since we'll have
+	// to add fewer chunks to the bloom
+	i.iter = v1.NewDedupingIter[*v1.SeriesWithBloom, *v1.SeriesWithBloom](
+		func(a, b *v1.SeriesWithBloom) bool {
+			return a.Series.Fingerprint == b.Series.Fingerprint
+		},
+		v1.Identity[*v1.SeriesWithBloom],
+		func(a, b *v1.SeriesWithBloom) *v1.SeriesWithBloom {
+			if len(a.Series.Chunks) > len(b.Series.Chunks) {
+				return a
+			}
+			return b
+		},
+		v1.NewPeekingIter(mergedBlocks),
+	)
+	return true
+}
+
+func overlappingBlocksIter(inputs []bloomshipper.BlockRef) v1.Iterator[[]bloomshipper.BlockRef] {
+	// can we assume sorted blocks?
+	peekIter := v1.NewPeekingIter(v1.NewSliceIter(inputs))
+
+	return v1.NewDedupingIter[bloomshipper.BlockRef, []bloomshipper.BlockRef](
+		func(a bloomshipper.BlockRef, b []bloomshipper.BlockRef) bool {
+			minFp := b[0].Bounds.Min
+			maxFp := slices.MaxFunc(b, func(a, b bloomshipper.BlockRef) int { return int(a.Bounds.Max - b.Bounds.Max) }).Bounds.Max
+			return a.Bounds.Overlaps(v1.NewBounds(minFp, maxFp))
+		},
+		func(a bloomshipper.BlockRef) []bloomshipper.BlockRef {
+			return []bloomshipper.BlockRef{a}
+		},
+		func(a bloomshipper.BlockRef, b []bloomshipper.BlockRef) []bloomshipper.BlockRef {
+			return append(b, a)
+		},
+		peekIter,
+	)
 }

@@ -44,7 +44,8 @@ type SimpleBloomGenerator struct {
 	userID      string
 	store       v1.Iterator[*v1.Series]
 	chunkLoader ChunkLoader
-	blocksIter  v1.CloseableIterator[*bloomshipper.CloseableBlockQuerier]
+	blocksIter  v1.ResettableIterator[*v1.SeriesWithBloom]
+	skipped     []v1.BlockMetadata
 
 	// options to build blocks with
 	opts v1.BlockOptions
@@ -66,7 +67,7 @@ func NewSimpleBloomGenerator(
 	opts v1.BlockOptions,
 	store v1.Iterator[*v1.Series],
 	chunkLoader ChunkLoader,
-	blocksIter v1.CloseableIterator[*bloomshipper.CloseableBlockQuerier],
+	blocksIter v1.ResettableIterator[*v1.SeriesWithBloom],
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	metrics *Metrics,
 	logger log.Logger,
@@ -103,44 +104,39 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 
 }
 
-func (s *SimpleBloomGenerator) Generate(ctx context.Context) ([]v1.BlockMetadata, []io.Closer, v1.Iterator[*v1.Block], error) {
-	skippedBlocks := make([]v1.BlockMetadata, 0)
-	toClose := make([]io.Closer, 0)
-	blocksMatchingSchema := make([]*bloomshipper.CloseableBlockQuerier, 0)
-
-	for s.blocksIter.Next() && s.blocksIter.Err() == nil {
-		block := s.blocksIter.At()
-		toClose = append(toClose, block)
-
-		logger := log.With(s.logger, "block", block.BlockRef)
-		md, err := block.Metadata()
-		schema := md.Options.Schema
-		if err != nil {
-			level.Warn(logger).Log("msg", "failed to get schema for block", "err", err)
-			skippedBlocks = append(skippedBlocks, md)
-			continue
-		}
-
-		if !s.opts.Schema.Compatible(schema) {
-			level.Warn(logger).Log("msg", "block schema incompatible with options", "generator_schema", fmt.Sprintf("%+v", s.opts.Schema), "block_schema", fmt.Sprintf("%+v", schema))
-			skippedBlocks = append(skippedBlocks, md)
-			continue
-		}
-
-		level.Debug(logger).Log("msg", "adding compatible block to bloom generation inputs")
-		blocksMatchingSchema = append(blocksMatchingSchema, block)
-	}
-
-	if s.blocksIter.Err() != nil {
-		// should we ignore the error and continue with the blocks we got?
-		return skippedBlocks, toClose, v1.NewSliceIter([]*v1.Block{}), s.blocksIter.Err()
-	}
-
-	level.Debug(s.logger).Log("msg", "generating bloom filters for blocks", "num_blocks", len(blocksMatchingSchema), "skipped_blocks", len(skippedBlocks), "schema", fmt.Sprintf("%+v", s.opts.Schema))
+func (s *SimpleBloomGenerator) Generate(ctx context.Context) v1.Iterator[*v1.Block] {
+	level.Debug(s.logger).Log("msg", "generating bloom filters for blocks", "schema", fmt.Sprintf("%+v", s.opts.Schema))
 
 	series := v1.NewPeekingIter(s.store)
-	blockIter := NewLazyBlockBuilderIterator(ctx, s.opts, s.populator(ctx), s.readWriterFn, series, blocksMatchingSchema)
-	return skippedBlocks, toClose, blockIter, nil
+
+	// TODO: Use interface
+	impl, ok := s.blocksIter.(*blockLoadingIter)
+	if ok {
+		impl.Filter(
+			func(bq *bloomshipper.CloseableBlockQuerier) bool {
+
+				logger := log.With(s.logger, "block", bq.BlockRef)
+				md, err := bq.Metadata()
+				schema := md.Options.Schema
+				if err != nil {
+					level.Warn(logger).Log("msg", "failed to get schema for block", "err", err)
+					s.skipped = append(s.skipped, md)
+					return false
+				}
+
+				if !s.opts.Schema.Compatible(schema) {
+					level.Warn(logger).Log("msg", "block schema incompatible with options", "generator_schema", fmt.Sprintf("%+v", s.opts.Schema), "block_schema", fmt.Sprintf("%+v", schema))
+					s.skipped = append(s.skipped, md)
+					return false
+				}
+
+				level.Debug(logger).Log("msg", "adding compatible block to bloom generation inputs")
+				return true
+			},
+		)
+	}
+
+	return NewLazyBlockBuilderIterator(ctx, s.opts, s.populator(ctx), s.readWriterFn, series, s.blocksIter)
 }
 
 // LazyBlockBuilderIterator is a lazy iterator over blocks that builds
@@ -151,11 +147,10 @@ type LazyBlockBuilderIterator struct {
 	populate     func(*v1.Series, *v1.Bloom) error
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
 	series       v1.PeekingIterator[*v1.Series]
-	blocks       []*bloomshipper.CloseableBlockQuerier
+	blocks       v1.ResettableIterator[*v1.SeriesWithBloom]
 
-	blocksAsPeekingIter []v1.PeekingIterator[*v1.SeriesWithBloom]
-	curr                *v1.Block
-	err                 error
+	curr *v1.Block
+	err  error
 }
 
 func NewLazyBlockBuilderIterator(
@@ -164,20 +159,16 @@ func NewLazyBlockBuilderIterator(
 	populate func(*v1.Series, *v1.Bloom) error,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	series v1.PeekingIterator[*v1.Series],
-	blocks []*bloomshipper.CloseableBlockQuerier,
+	blocks v1.ResettableIterator[*v1.SeriesWithBloom],
 ) *LazyBlockBuilderIterator {
-	it := &LazyBlockBuilderIterator{
+	return &LazyBlockBuilderIterator{
 		ctx:          ctx,
 		opts:         opts,
 		populate:     populate,
 		readWriterFn: readWriterFn,
 		series:       series,
 		blocks:       blocks,
-
-		blocksAsPeekingIter: make([]v1.PeekingIterator[*v1.SeriesWithBloom], len(blocks)),
 	}
-
-	return it
 }
 
 func (b *LazyBlockBuilderIterator) Next() bool {
@@ -186,21 +177,15 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		return false
 	}
 
-	// reset all the blocks to the start
-	for i, block := range b.blocks {
-		if err := block.Reset(); err != nil {
-			b.err = errors.Wrapf(err, "failed to reset block iterator %d", i)
-			return false
-		}
-		b.blocksAsPeekingIter[i] = v1.NewPeekingIter[*v1.SeriesWithBloom](block)
-	}
-
 	if err := b.ctx.Err(); err != nil {
 		b.err = errors.Wrap(err, "context canceled")
 		return false
 	}
 
-	mergeBuilder := v1.NewMergeBuilder(b.blocksAsPeekingIter, b.series, b.populate)
+	fmt.Println("b.blocks.Reset()")
+	b.blocks.Reset()
+
+	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate)
 	writer, reader := b.readWriterFn()
 	blockBuilder, err := v1.NewBlockBuilder(b.opts, writer)
 	if err != nil {
