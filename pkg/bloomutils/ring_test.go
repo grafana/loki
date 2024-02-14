@@ -67,7 +67,7 @@ func TestBloomGatewayClient_GetInstanceWithTokenRange(t *testing.T) {
 	for name, tc := range map[string]struct {
 		id       string
 		input    []ring.InstanceDesc
-		expected InstancesWithTokenRange
+		expected InstanceWithTokenRange
 	}{
 		"first instance includes 0 token": {
 			id: "3",
@@ -76,8 +76,8 @@ func TestBloomGatewayClient_GetInstanceWithTokenRange(t *testing.T) {
 				{Id: "2", Tokens: []uint32{5}},
 				{Id: "3", Tokens: []uint32{1}},
 			},
-			expected: InstancesWithTokenRange{
-				{Instance: ring.InstanceDesc{Id: "3", Tokens: []uint32{1}}, MinToken: 0, MaxToken: math.MaxUint32/3 - 1},
+			expected: InstanceWithTokenRange{
+				Instance: ring.InstanceDesc{Id: "3", Tokens: []uint32{1}}, MinToken: 0, MaxToken: math.MaxUint32/3 - 1,
 			},
 		},
 		"middle instance": {
@@ -87,8 +87,8 @@ func TestBloomGatewayClient_GetInstanceWithTokenRange(t *testing.T) {
 				{Id: "2", Tokens: []uint32{5}},
 				{Id: "3", Tokens: []uint32{1}},
 			},
-			expected: InstancesWithTokenRange{
-				{Instance: ring.InstanceDesc{Id: "1", Tokens: []uint32{3}}, MinToken: math.MaxUint32 / 3, MaxToken: math.MaxUint32/3*2 - 1},
+			expected: InstanceWithTokenRange{
+				Instance: ring.InstanceDesc{Id: "1", Tokens: []uint32{3}}, MinToken: math.MaxUint32 / 3, MaxToken: math.MaxUint32/3*2 - 1,
 			},
 		},
 		"last instance includes MaxUint32 token": {
@@ -98,8 +98,8 @@ func TestBloomGatewayClient_GetInstanceWithTokenRange(t *testing.T) {
 				{Id: "2", Tokens: []uint32{5}},
 				{Id: "3", Tokens: []uint32{1}},
 			},
-			expected: InstancesWithTokenRange{
-				{Instance: ring.InstanceDesc{Id: "2", Tokens: []uint32{5}}, MinToken: math.MaxUint32 / 3 * 2, MaxToken: math.MaxUint32},
+			expected: InstanceWithTokenRange{
+				Instance: ring.InstanceDesc{Id: "2", Tokens: []uint32{5}}, MinToken: math.MaxUint32 / 3 * 2, MaxToken: math.MaxUint32,
 			},
 		},
 	} {

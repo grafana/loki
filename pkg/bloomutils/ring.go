@@ -38,11 +38,11 @@ func (i InstancesWithTokenRange) Contains(token uint32) bool {
 	return false
 }
 
-// GetInstanceTokenRange calculates the token range for a specific instance
+// GetInstanceWithTokenRange calculates the token range for a specific instance
 // with given id based on the first token in the ring.
 // This assumes that each instance in the ring is configured with only a single
 // token.
-func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) InstancesWithTokenRange {
+func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) InstanceWithTokenRange {
 
 	// Sorting the tokens of the instances would not be necessary if there is
 	// only a single token per instances, however, since we only assume one
@@ -64,7 +64,7 @@ func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) Instanc
 
 	// instance with Id == id not found
 	if idx == -1 {
-		return InstancesWithTokenRange{}
+		return InstanceWithTokenRange{}
 	}
 
 	i := uint32(idx)
@@ -78,8 +78,10 @@ func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) Instanc
 		maxToken = math.MaxUint32
 	}
 
-	return InstancesWithTokenRange{
-		{MinToken: minToken, MaxToken: maxToken, Instance: instances[i]},
+	return InstanceWithTokenRange{
+		Instance: instances[i],
+		MinToken: minToken,
+		MaxToken: maxToken,
 	}
 }
 
