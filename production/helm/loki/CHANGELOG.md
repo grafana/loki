@@ -16,7 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 5.43.0
 
-- [ENHANCEMENT] Allow define resources for GrafanaAgent pods
+- [ENHANCEMENT] Allow the definition of resources for GrafanaAgent pods
 
 ## 5.42.3
 
