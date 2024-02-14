@@ -53,6 +53,19 @@ func (s *SimpleBloomController) rwFn() (v1.BlockWriter, v1.BlockReader) {
 	return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
 }
 
+/*
+Compaction works as follows, split across many functions for clarity:
+ 1. Fetch all meta.jsons for the given tenant and table which overlap the ownership range of this compactor.
+ 2. Load current TSDBs for this tenant/table.
+ 3. For each live TSDB (there should be only 1, but this works with multiple), find any gaps
+    (fingerprint ranges) which are not up date, determined by checking other meta.jsons and comparing
+    the tsdbs they were generated from + their ownership ranges.
+ 4. Build new bloom blocks for each gap, using the series and chunks from the TSDBs and any existing
+    blocks which overlap the gaps to accelerate bloom generation.
+ 5. Write the new blocks and metas to the store.
+ 6. Determine if any meta.jsons overlap the ownership range but are outdated, and remove them and
+    their associated blocks if so.
+*/
 func (s *SimpleBloomController) compactTenant(
 	ctx context.Context,
 	table DayTable,
