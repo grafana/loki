@@ -25,7 +25,6 @@ local releaseLibStep = common.releaseLibStep;
     + job.withSteps([
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
-      // common.setupGo,
       common.setupNode,
       common.googleAuth,
 
@@ -102,7 +101,7 @@ local releaseLibStep = common.releaseLibStep;
       pr_created: '${{ steps.version.outputs.pr_created }}',
     }),
 
-  dist: function(buildImage)
+  dist: function(buildImage, skipArm=true)
     job.new()
     + job.withContainer({
       image: buildImage,
@@ -111,27 +110,13 @@ local releaseLibStep = common.releaseLibStep;
       common.fetchReleaseRepo,
       common.googleAuth,
 
-      // step.new('install dependencies') +
-      // step.withRun(|||
-      //   go install github.com/mitchellh/gox@9f71238
-      //   go install github.com/bufbuild/buf/cmd/buf@v1.4.0
-      //   go install github.com/golang/protobuf/protoc-gen-go@v1.3.1
-      //   go install github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0
-
-      //   sudo apt update
-      //   sudo apt install -qy musl gnupg ragel \
-      //     file zip unzip jq gettext \
-      //     protobuf-compiler libprotobuf-dev \
-      //     libsystemd-dev jq
-      // |||),
-
       releaseStep('build artifacts')
       + step.withEnv({
         BUILD_IN_CONTAINER: false,
-        SKIP_ARM: true,
+        SKIP_ARM: skipArm,
         IMAGE_TAG: '${{ needs.version.outputs.version }}',
       })
-      + step.withRun('make SKIP_ARM=true dist'),
+      + step.withRun('make dist'),
 
       step.new('upload build artifacts', 'google-github-actions/upload-cloud-storage@v2')
       + step.with({

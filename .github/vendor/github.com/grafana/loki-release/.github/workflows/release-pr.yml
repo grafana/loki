@@ -2,7 +2,7 @@ concurrency:
   group: "create-release-pr-${{ github.sha }}"
 env:
   DOCKER_USERNAME: "grafana"
-  IMAGE_PREFIX: "trevorwhitney075"
+  IMAGE_PREFIX: "grafana"
   RELEASE_REPO: "grafana/loki-release"
   SKIP_VALIDATION: false
   VERSIONING_STRATEGY: "always-bump-patch"
@@ -22,7 +22,7 @@ jobs:
       with:
         path: "lib"
         repository: "grafana/loki-release"
-    - name: "install dependencies"
+    - name: "install tar"
       run: |
         apt update
         apt install -qy tar xz-utils
@@ -150,7 +150,7 @@ jobs:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
         SKIP_ARM: true
       name: "build artifacts"
-      run: "make SKIP_ARM=true dist"
+      run: "make dist"
       shell: "bash"
       working-directory: "release"
     - name: "upload build artifacts"
@@ -174,7 +174,7 @@ jobs:
       with:
         path: "lib"
         repository: "grafana/loki-release"
-    - name: "install dependencies"
+    - name: "install tar"
       run: |
         apt update
         apt install -qy tar xz-utils
@@ -285,7 +285,7 @@ jobs:
       with:
         path: "lib"
         repository: "grafana/loki-release"
-    - name: "install dependencies"
+    - name: "install tar"
       run: |
         apt update
         apt install -qy tar xz-utils
