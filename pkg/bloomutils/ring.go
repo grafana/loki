@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/grafana/dskit/ring"
+	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -38,11 +39,11 @@ func (i InstancesWithTokenRange) Contains(token uint32) bool {
 	return false
 }
 
-// GetInstanceTokenRange calculates the token range for a specific instance
+// GetInstanceWithTokenRange calculates the token range for a specific instance
 // with given id based on the first token in the ring.
 // This assumes that each instance in the ring is configured with only a single
 // token.
-func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) InstancesWithTokenRange {
+func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) (v1.FingerprintBounds, error) {
 
 	// Sorting the tokens of the instances would not be necessary if there is
 	// only a single token per instances, however, since we only assume one
@@ -64,23 +65,21 @@ func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) Instanc
 
 	// instance with Id == id not found
 	if idx == -1 {
-		return InstancesWithTokenRange{}
+		return v1.FingerprintBounds{}, ring.ErrInstanceNotFound
 	}
 
-	i := uint32(idx)
-	n := uint32(len(instances))
-	step := math.MaxUint32 / n
+	i := uint64(idx)
+	n := uint64(len(instances))
+	step := math.MaxUint64 / n
 
-	minToken := step * i
-	maxToken := step*i + step - 1
+	minToken := model.Fingerprint(step * i)
+	maxToken := model.Fingerprint(step*i + step - 1)
 	if i == n-1 {
 		// extend the last token tange to MaxUint32
-		maxToken = math.MaxUint32
+		maxToken = math.MaxUint64
 	}
 
-	return InstancesWithTokenRange{
-		{MinToken: minToken, MaxToken: maxToken, Instance: instances[i]},
-	}
+	return v1.NewBounds(minToken, maxToken), nil
 }
 
 // GetInstancesWithTokenRanges calculates the token ranges for a specific
