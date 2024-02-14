@@ -105,8 +105,6 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 	// we instead prefer `split_recent_metadata_queries_by_interval` for metadata queries which favours shorter subqueries to improve cache effectiveness.
 	// even though the number of subqueries increase, caching should deamplify it overtime.
 	case *LokiSeriesRequest, *LabelRequest:
-		// for metadata requests, we use a different split interval of `split_recent_metadata_queries_by_interval` for the portion
-		// of the query within `recent_metadata_query_window`.
 		var (
 			recentMetadataQueryWindow        = validation.MaxDurationOrZeroPerTenant(tenantIDs, s.limits.RecentMetadataQueryWindow)
 			recentMetadataQuerySplitInterval = validation.MaxDurationOrZeroPerTenant(tenantIDs, s.limits.RecentMetadataQuerySplitDuration)
@@ -120,7 +118,6 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 		start, end, reboundOrigQuery = recentMetadataQueryBounds(execTime, recentMetadataQueryWindow, req)
 		splitIntervalBeforeRebound = recentMetadataQuerySplitInterval
 	default:
-		// if `split_ingester_queries_by_interval` is configured, we split the for the portion of query within `query_ingesters_within` window using this interval.
 		if ingesterQueryInterval := validation.MaxDurationOrZeroPerTenant(tenantIDs, s.limits.IngesterQuerySplitDuration); ingesterQueryInterval != 0 {
 			start, end, reboundOrigQuery = ingesterQueryBounds(execTime, s.iqo, req)
 			splitIntervalBeforeRebound = ingesterQueryInterval
