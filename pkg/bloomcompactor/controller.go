@@ -235,10 +235,8 @@ func (s *SimpleBloomController) loadWorkForGap(
 		return nil, nil, errors.Wrap(err, "failed to get fetcher")
 	}
 
-	blocksIter, err := newBatchedBlockLoader(ctx, fetcher, gap.blocks)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to load blocks")
-	}
+	f := FetchFunc[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier](fetcher.FetchBlocks)
+	blocksIter := newBatchedBlockLoader(ctx, f, gap.blocks, 10)
 
 	return seriesItr, blocksIter, nil
 }
@@ -486,16 +484,8 @@ func (s *SimpleBloomController) closeLoadedBlocks(toClose []io.Closer, it v1.Clo
 	for _, closer := range toClose {
 		err.Add(closer.Close())
 	}
-
-	switch itr := it.(type) {
-	case *batchedBlockLoader:
-		// close remaining loaded blocks from batch
-		err.Add(itr.CloseBatch())
-	default:
-		// close remaining loaded blocks
-		for itr.Next() && itr.Err() == nil {
-			err.Add(itr.At().Close())
-		}
+	for it.Next() && it.Err() == nil {
+		err.Add(it.At().Close())
 	}
 
 	// log error
