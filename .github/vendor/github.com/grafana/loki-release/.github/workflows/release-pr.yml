@@ -89,7 +89,6 @@ jobs:
   create-release-pr:
     needs:
     - "dist"
-    - "packages"
     - "loki"
     runs-on: "ubuntu-latest"
     steps:
@@ -148,10 +147,11 @@ jobs:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - env:
         BUILD_IN_CONTAINER: false
+        DRONE_TAG: "${{ needs.version.outputs.version }}"
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
         SKIP_ARM: true
       name: "build artifacts"
-      run: "make dist"
+      run: "make dist packages"
       shell: "bash"
       working-directory: "release"
     - name: "upload build artifacts"
@@ -271,36 +271,6 @@ jobs:
         - "linux/amd64"
         - "linux/arm64"
         - "linux/arm"
-  packages:
-    container:
-      image: "grafana/loki-build-image:0.33.0"
-    needs:
-    - "version"
-    runs-on: "ubuntu-latest"
-    steps:
-    - name: "pull code to release"
-      uses: "actions/checkout@v4"
-      with:
-        path: "release"
-        repository: "${{ env.RELEASE_REPO }}"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
-      with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - env:
-        BUILD_IN_CONTAINER: false
-        DRONE_TAG: "${{ needs.version.outputs.version }}"
-      name: "package"
-      run: "make packages"
-      shell: "bash"
-      working-directory: "release"
-    - name: "upload packages"
-      uses: "google-github-actions/upload-cloud-storage@v2"
-      with:
-        destination: "loki-build-artifacts/${{ github.sha }}/packages"
-        parent: false
-        path: "release/dist"
-        process_gcloudignore: false
   test:
     container:
       image: "grafana/loki-build-image:0.33.0"
