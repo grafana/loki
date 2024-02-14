@@ -97,6 +97,44 @@ func (s *SimpleBloomController) compactTenant(
 		return errors.Wrap(err, "failed to build gaps")
 	}
 
+	// in order to delete outdates metas which only partially fall within the ownership range,
+	// we need to fetcha all metas in the entire bound range of the first set of metas we've resolved
+	/*
+		For instance, we have the following ownership range and we resolve `meta1` in our first Fetch call
+		because it overlaps the ownership range, we'll need to fetch newer metas that may overlap it in order
+		to check if it safely can be deleted. This falls partially outside our specific ownership range, but
+		we can safely run multiple deletes by treating their removal as idempotent.
+		     |-------------ownership range-----------------|
+		                                      |-------meta1-------|
+
+		we fetch this before possibly deleting meta1       |------|
+	*/
+	superset := ownershipRange
+	for _, meta := range metas {
+		union := superset.Union(meta.Bounds)
+		if len(union) > 1 {
+			level.Error(logger).Log("msg", "meta bounds union is not a single range", "union", union)
+			return errors.New("meta bounds union is not a single range")
+		}
+		superset = union[0]
+	}
+
+	metas, err = s.bloomStore.FetchMetas(
+		ctx,
+		bloomshipper.MetaSearchParams{
+			TenantID: tenant,
+			Interval: bloomshipper.Interval{
+				Start: bounds.Start,
+				End:   bounds.End,
+			},
+			Keyspace: superset,
+		},
+	)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to get meta superset range", "err", err, "superset", superset)
+		return errors.Wrap(err, "failed to get meta supseret range")
+	}
+
 	// combine built and pre-existing metas
 	// in preparation for removing outdated metas
 	metas = append(metas, built...)
