@@ -1,5 +1,7 @@
 package storage
 
+import "fmt"
+
 const (
 	// EnvAlibabaCloudAccessKeyID is the environment variable to specify the AlibabaCloud client id to access S3.
 	EnvAlibabaCloudAccessKeyID = "ALIBABA_CLOUD_ACCESS_KEY_ID"
@@ -86,7 +88,13 @@ const (
 	KeyAzureStorageEndpointSuffix = "endpoint_suffix"
 	// KeyAzureEnvironmentName is the secret data key for the Azure cloud environment name.
 	KeyAzureEnvironmentName = "environment"
+	// KeyAzureRegion is the secret data key for storing the Azure cloud region.
+	KeyAzureRegion = "region"
+	// KeyAzureAudience is the secret data key for customizing the audience used for the ServiceAccount token.
+	KeyAzureAudience = "audience"
 
+	// KeyGCPWorkloadIdentityProviderAudience is the secret data key for the GCP Workload Identity Provider audience.
+	KeyGCPWorkloadIdentityProviderAudience = "audience"
 	// KeyGCPStorageBucketName is the secret data key for the GCS bucket name.
 	KeyGCPStorageBucketName = "bucketname"
 	// KeyGCPServiceAccountKeyFilename is the service account key filename containing the Google authentication credentials.
@@ -121,21 +129,29 @@ const (
 	// KeySwiftUsername is the secret data key for the OpenStack Swift password.
 	KeySwiftUsername = "username"
 
-	saTokenVolumeK8sDirectory       = "/var/run/secrets/kubernetes.io/serviceaccount"
-	SATokenVolumeOcpDirectory       = "/var/run/secrets/openshift/serviceaccount"
-	saTokenVolumeName               = "bound-sa-token"
-	saTokenExpiration         int64 = 3600
+	saTokenVolumeName            = "bound-sa-token"
+	saTokenExpiration      int64 = 3600
+	saTokenVolumeMountPath       = "/var/run/secrets/storage/serviceaccount"
 
-	secretDirectory            = "/etc/storage/secrets"
-	managedAuthSecretDirectory = "/etc/storage/managed-auth"
-	storageTLSVolume           = "storage-tls"
-	caDirectory                = "/etc/storage/ca"
+	ServiceAccountTokenFilePath = saTokenVolumeMountPath + "/token"
 
-	awsDefaultAudience   = "sts.amazonaws.com"
-	AWSOpenShiftAudience = "openshift"
+	secretDirectory  = "/etc/storage/secrets"
+	storageTLSVolume = "storage-tls"
+	caDirectory      = "/etc/storage/ca"
 
-	azureDefaultAudience      = "api://AzureADTokenExchange"
-	azureTokenVolumeDirectory = "/var/run/secrets/azure/serviceaccount"
+	managedAuthConfigVolumeName = "managed-auth-config"
+	managedAuthConfigDirectory  = "/etc/storage/managed-auth"
 
-	AnnotationCredentialsRequestsSecretRef = "loki.grafana.com/credentials-request-secret-ref"
+	awsDefaultAudience = "sts.amazonaws.com"
+
+	azureDefaultAudience = "api://AzureADTokenExchange"
+
+	azureManagedCredentialKeyClientID       = "azure_client_id"
+	azureManagedCredentialKeyTenantID       = "azure_tenant_id"
+	azureManagedCredentialKeySubscriptionID = "azure_subscription_id"
 )
+
+// ManagedCredentialsSecretName returns the name of the secret holding the managed credentials.
+func ManagedCredentialsSecretName(stackName string) string {
+	return fmt.Sprintf("%s-managed-credentials", stackName)
+}

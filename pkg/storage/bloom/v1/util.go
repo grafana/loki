@@ -246,3 +246,33 @@ type CloseableIterator[T any] interface {
 	Iterator[T]
 	Close() error
 }
+
+func NewCloseableIterator[T io.Closer](itr Iterator[T]) *CloseIter[T] {
+	return &CloseIter[T]{itr}
+}
+
+type CloseIter[T io.Closer] struct {
+	Iterator[T]
+}
+
+func (i *CloseIter[T]) Close() error {
+	return i.At().Close()
+}
+
+type PeekingCloseableIterator[T any] interface {
+	PeekingIterator[T]
+	CloseableIterator[T]
+}
+
+type PeekCloseIter[T any] struct {
+	*PeekIter[T]
+	close func() error
+}
+
+func NewPeekCloseIter[T any](itr CloseableIterator[T]) *PeekCloseIter[T] {
+	return &PeekCloseIter[T]{PeekIter: NewPeekingIter[T](itr), close: itr.Close}
+}
+
+func (it *PeekCloseIter[T]) Close() error {
+	return it.close()
+}

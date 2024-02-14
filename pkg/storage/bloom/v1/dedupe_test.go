@@ -7,6 +7,7 @@ import (
 )
 
 func TestMergeDedupeIter(t *testing.T) {
+	t.Parallel()
 	var (
 		numSeries        = 100
 		numKeysPerSeries = 10000

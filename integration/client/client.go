@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buger/jsonparser"
 	"github.com/gorilla/websocket"
 	"github.com/grafana/dskit/user"
+	"github.com/grafana/jsonparser"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/collector/pdata/pcommon"

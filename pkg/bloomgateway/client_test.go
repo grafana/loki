@@ -207,19 +207,6 @@ func TestBloomGatewayClient_ServerAddressesWithTokenRanges(t *testing.T) {
 }
 
 func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
-
-	logger := log.NewNopLogger()
-	reg := prometheus.NewRegistry()
-
-	l, err := validation.NewOverrides(validation.Limits{BloomGatewayShardSize: 1}, nil)
-	require.NoError(t, err)
-
-	cfg := ClientConfig{}
-	flagext.DefaultValues(&cfg)
-
-	c, err := NewClient(cfg, nil, l, reg, logger, "loki", nil, false)
-	require.NoError(t, err)
-
 	instances := []ring.InstanceDesc{
 		{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{2146405214, 1029997044, 678878693}},
 		{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{296463531, 1697323986, 800258284}},
@@ -339,8 +326,9 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 				return tc.chunks[i].Fingerprint < tc.chunks[j].Fingerprint
 			})
 
-			res, err := c.groupFingerprintsByServer(tc.chunks, subRing, instances)
+			servers, err := serverAddressesWithTokenRanges(subRing, instances)
 			require.NoError(t, err)
+			res := groupFingerprintsByServer(tc.chunks, servers)
 			require.Equal(t, tc.expected, res)
 		})
 	}

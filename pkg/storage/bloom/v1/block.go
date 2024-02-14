@@ -32,6 +32,10 @@ func NewBlock(reader BlockReader) *Block {
 	}
 }
 
+func (b *Block) Reader() BlockReader {
+	return b.reader
+}
+
 func (b *Block) LoadHeaders() error {
 	// TODO(owen-d): better control over when to decode
 	if !b.initialized {
@@ -127,8 +131,16 @@ func NewBlockQuerier(b *Block) *BlockQuerier {
 	}
 }
 
+func (bq *BlockQuerier) Metadata() (BlockMetadata, error) {
+	return bq.block.Metadata()
+}
+
 func (bq *BlockQuerier) Schema() (Schema, error) {
 	return bq.block.Schema()
+}
+
+func (bq *BlockQuerier) Reset() error {
+	return bq.series.Seek(0)
 }
 
 func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {
