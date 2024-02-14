@@ -172,6 +172,7 @@ var _ v1.Iterator[*v1.SeriesWithBloom] = &blockLoadingIter{}
 var _ v1.CloseableIterator[*v1.SeriesWithBloom] = &blockLoadingIter{}
 var _ v1.ResettableIterator[*v1.SeriesWithBloom] = &blockLoadingIter{}
 
+// TODO(chaudum): testware
 func newBlockLoadingIter(ctx context.Context, blocks []bloomshipper.BlockRef, fetcher FetchFunc[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier], batchSize int) *blockLoadingIter {
 
 	return &blockLoadingIter{
@@ -241,14 +242,15 @@ func (i *blockLoadingIter) Close() error {
 }
 
 // Reset implements v1.ResettableIterator.
-// It resets the iterator without loading already fetched blocks
-// to avoid the overhead of creating the reader.
+// TODO(chaudum) Cache already fetched blocks to to avoid the overhead of
+// creating the reader.
 func (i *blockLoadingIter) Reset() error {
 	if !i.initialized {
 		return nil
 	}
 	i.initialized = false
-	return nil
+	// close loaded queriers
+	return i.Close()
 }
 
 func (i *blockLoadingIter) init() {
