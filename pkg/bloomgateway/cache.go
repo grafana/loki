@@ -182,6 +182,7 @@ func NewBloomGatewayClientCacheMiddleware(
 		},
 		cacheGen,
 		retentionEnabled,
+		false,
 	)
 
 	return &ClientCache{
