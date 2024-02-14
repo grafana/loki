@@ -125,4 +125,26 @@ local releaseLibStep = common.releaseLibStep;
         process_gcloudignore: false,
       }),
     ]),
+  packages: function(buildImage)
+    job.new()
+    + job.withContainer({
+      image: buildImage,
+    })
+    + job.withSteps([
+      common.fetchReleaseRepo,
+      common.googleAuth,
+      releaseStep('package')
+      + step.withEnv({
+        BUILD_IN_CONTAINER: false,
+        DRONE_TAG: '${{ needs.version.outputs.version }}',
+      })
+      + step.withRun('make packages'),
+      step.new('upload packages', 'google-github-actions/upload-cloud-storage@v2')
+      + step.with({
+        path: 'release/dist',
+        destination: 'loki-build-artifacts/${{ github.sha }}/packages',  //TODO: make bucket configurable
+        process_gcloudignore: false,
+        parent: false,
+      }),
+    ]),
 }

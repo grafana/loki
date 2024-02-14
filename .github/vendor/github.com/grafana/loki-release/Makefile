@@ -37,3 +37,7 @@ documentation-helm-reference-check:
 dist:
 	mkdir -p dist
 	cp CHANGELOG.md dist/
+
+packages:
+	mkdir -p dist
+	cp CHANGELOG.md dist/

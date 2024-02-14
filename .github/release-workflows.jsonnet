@@ -20,7 +20,7 @@ local build = lokiRelease.build;
       versioningStrategy='always-bump-patch',
       imagePrefix='grafana',
       skipArm=false,
-      branches=['release-[0-9].[0-9].x'],
+      branches=['release-[0-9]+.[0-9]+.x', 'fix-action-names-in-main'],
     ), false, false
   ),
   'minor-release-pr.yml': std.manifestYamlDoc(
@@ -41,12 +41,12 @@ local build = lokiRelease.build;
       skipValidation=false,
       versioningStrategy='always-bump-minor',
       imagePrefix='grafana',
-      branches=['k[0-9]*'],
+      branches=['k[0-9]+'],
     ), false, false
   ),
   'release.yml': std.manifestYamlDoc(
     lokiRelease.releaseWorkflow(
-      branches=['release-[0-9].[0-9].x', 'k[0-9]*'],
+      branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+'],
       getDockerCredsFromVault=true,
       imagePrefix='grafana',
       releaseRepo='grafana/loki',
