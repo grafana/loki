@@ -184,8 +184,10 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		return false
 	}
 
-	fmt.Println("b.blocks.Reset()")
-	b.blocks.Reset()
+	if err := b.blocks.Reset(); err != nil {
+		b.err = errors.Wrap(err, "reset blocks iterator")
+		return false
+	}
 
 	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate)
 	writer, reader := b.readWriterFn()
