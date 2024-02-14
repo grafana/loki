@@ -4,7 +4,9 @@ on:
     types:
       - closed
       - labeled
-
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   main:
     runs-on: ubuntu-latest
