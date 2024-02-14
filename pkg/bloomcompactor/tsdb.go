@@ -50,12 +50,12 @@ func NewBloomTSDBStore(storage storage.Client) *BloomTSDBStore {
 }
 
 func (b *BloomTSDBStore) UsersForPeriod(ctx context.Context, table config.DayTime) ([]string, error) {
-	_, users, err := b.storage.ListFiles(ctx, table.Table(), true) // bypass cache for ease of testing
+	_, users, err := b.storage.ListFiles(ctx, table.Addr(), true) // bypass cache for ease of testing
 	return users, err
 }
 
 func (b *BloomTSDBStore) ResolveTSDBs(ctx context.Context, table config.DayTime, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error) {
-	indices, err := b.storage.ListUserFiles(ctx, table.Table(), tenant, true) // bypass cache for ease of testing
+	indices, err := b.storage.ListUserFiles(ctx, table.Addr(), tenant, true) // bypass cache for ease of testing
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list user files")
 	}
@@ -87,7 +87,7 @@ func (b *BloomTSDBStore) LoadTSDB(
 ) (v1.CloseableIterator[*v1.Series], error) {
 	withCompression := id.Name() + gzipExtension
 
-	data, err := b.storage.GetUserFile(ctx, table.Table(), tenant, withCompression)
+	data, err := b.storage.GetUserFile(ctx, table.Addr(), tenant, withCompression)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get file")
 	}

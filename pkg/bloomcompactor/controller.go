@@ -77,7 +77,7 @@ func (s *SimpleBloomController) compactTenant(
 
 	client, err := s.bloomStore.Client(table.ModelTime())
 	if err != nil {
-		level.Error(logger).Log("msg", "failed to get client", "err", err, "table", table.String())
+		level.Error(logger).Log("msg", "failed to get client", "err", err, "table", table.Addr())
 		return errors.Wrap(err, "failed to get client")
 	}
 
@@ -280,7 +280,7 @@ func (s *SimpleBloomController) buildGaps(
 				MetaRef: bloomshipper.MetaRef{
 					Ref: bloomshipper.Ref{
 						TenantID:  tenant,
-						TableName: table.String(),
+						TableName: table.Addr(),
 						Bounds:    gap.bounds,
 					},
 				},
@@ -319,7 +319,7 @@ func (s *SimpleBloomController) buildGaps(
 				blockCt++
 				blk := newBlocks.At()
 
-				built, err := bloomshipper.BlockFrom(tenant, table.String(), blk)
+				built, err := bloomshipper.BlockFrom(tenant, table.Addr(), blk)
 				if err != nil {
 					level.Error(logger).Log("msg", "failed to build block", "err", err)
 					return nil, errors.Wrap(err, "failed to build block")
@@ -348,7 +348,7 @@ func (s *SimpleBloomController) buildGaps(
 			s.closeLoadedBlocks(loaded, blocksIter)
 
 			// Write the new meta
-			ref, err := bloomshipper.MetaRefFrom(tenant, table.String(), gap.bounds, meta.Sources, meta.Blocks)
+			ref, err := bloomshipper.MetaRefFrom(tenant, table.Addr(), gap.bounds, meta.Sources, meta.Blocks)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to checksum meta", "err", err)
 				return nil, errors.Wrap(err, "failed to checksum meta")
