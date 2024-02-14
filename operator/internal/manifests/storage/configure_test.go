@@ -206,7 +206,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: "/var/run/secrets/azure/serviceaccount",
+											MountPath: saTokenVolumeMountPath,
 										},
 									},
 									Env: []corev1.EnvVar{
@@ -256,7 +256,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										},
 										{
 											Name:  EnvAzureFederatedTokenFile,
-											Value: "/var/run/secrets/azure/serviceaccount/token",
+											Value: "/var/run/secrets/storage/serviceaccount/token",
 										},
 									},
 								},
@@ -331,7 +331,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: "/var/run/secrets/azure/serviceaccount",
+											MountPath: saTokenVolumeMountPath,
 										},
 									},
 									Env: []corev1.EnvVar{
@@ -381,7 +381,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										},
 										{
 											Name:  EnvAzureFederatedTokenFile,
-											Value: "/var/run/secrets/azure/serviceaccount/token",
+											Value: "/var/run/secrets/storage/serviceaccount/token",
 										},
 									},
 								},
@@ -462,11 +462,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: "/var/run/secrets/azure/serviceaccount",
-										},
-										{
-											Name:      "cloud-credentials",
-											MountPath: managedAuthSecretDirectory,
+											MountPath: saTokenVolumeMountPath,
 										},
 									},
 									Env: []corev1.EnvVar{
@@ -516,7 +512,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										},
 										{
 											Name:  EnvAzureFederatedTokenFile,
-											Value: "/var/run/secrets/azure/serviceaccount/token",
+											Value: "/var/run/secrets/storage/serviceaccount/token",
 										},
 									},
 								},
@@ -543,14 +539,6 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													},
 												},
 											},
-										},
-									},
-								},
-								{
-									Name: "cloud-credentials",
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "cloud-credentials",
 										},
 									},
 								},
@@ -655,7 +643,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: "/var/run/secrets/gcp/serviceaccount",
+											MountPath: saTokenVolumeMountPath,
 										},
 									},
 									Env: []corev1.EnvVar{
@@ -810,7 +798,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: "/var/run/secrets/aws/serviceaccount",
+											MountPath: saTokenVolumeMountPath,
 										},
 									},
 									Env: []corev1.EnvVar{
@@ -827,7 +815,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										},
 										{
 											Name:  "AWS_WEB_IDENTITY_TOKEN_FILE",
-											Value: "/var/run/secrets/aws/serviceaccount/token",
+											Value: "/var/run/secrets/storage/serviceaccount/token",
 										},
 									},
 								},
@@ -908,13 +896,9 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: "/var/run/secrets/aws/serviceaccount",
+											MountPath: saTokenVolumeMountPath,
 										},
-										{
-											Name:      "cloud-credentials",
-											ReadOnly:  false,
-											MountPath: "/etc/storage/managed-auth",
-										},
+										managedAuthConfigVolumeMount,
 									},
 									Env: []corev1.EnvVar{
 										{
@@ -954,7 +938,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 									},
 								},
 								{
-									Name: "cloud-credentials",
+									Name: managedAuthConfigVolumeName,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: "cloud-credentials",
@@ -1340,7 +1324,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: "/var/run/secrets/azure/serviceaccount",
+											MountPath: saTokenVolumeMountPath,
 										},
 									},
 									Env: []corev1.EnvVar{
@@ -1390,7 +1374,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 										},
 										{
 											Name:  EnvAzureFederatedTokenFile,
-											Value: "/var/run/secrets/azure/serviceaccount/token",
+											Value: "/var/run/secrets/storage/serviceaccount/token",
 										},
 									},
 								},
@@ -1465,7 +1449,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: "/var/run/secrets/azure/serviceaccount",
+											MountPath: saTokenVolumeMountPath,
 										},
 									},
 									Env: []corev1.EnvVar{
@@ -1515,7 +1499,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 										},
 										{
 											Name:  EnvAzureFederatedTokenFile,
-											Value: "/var/run/secrets/azure/serviceaccount/token",
+											Value: "/var/run/secrets/storage/serviceaccount/token",
 										},
 									},
 								},
@@ -1596,11 +1580,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: "/var/run/secrets/azure/serviceaccount",
-										},
-										{
-											Name:      "cloud-credentials",
-											MountPath: managedAuthSecretDirectory,
+											MountPath: saTokenVolumeMountPath,
 										},
 									},
 									Env: []corev1.EnvVar{
@@ -1650,7 +1630,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 										},
 										{
 											Name:  EnvAzureFederatedTokenFile,
-											Value: "/var/run/secrets/azure/serviceaccount/token",
+											Value: "/var/run/secrets/storage/serviceaccount/token",
 										},
 									},
 								},
@@ -1677,14 +1657,6 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 													},
 												},
 											},
-										},
-									},
-								},
-								{
-									Name: "cloud-credentials",
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "cloud-credentials",
 										},
 									},
 								},
@@ -1789,7 +1761,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: "/var/run/secrets/gcp/serviceaccount",
+											MountPath: saTokenVolumeMountPath,
 										},
 									},
 									Env: []corev1.EnvVar{
@@ -1950,13 +1922,9 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: "/var/run/secrets/aws/serviceaccount",
+											MountPath: saTokenVolumeMountPath,
 										},
-										{
-											Name:      "cloud-credentials",
-											ReadOnly:  false,
-											MountPath: "/etc/storage/managed-auth",
-										},
+										managedAuthConfigVolumeMount,
 									},
 									Env: []corev1.EnvVar{
 										{
@@ -1996,7 +1964,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 									},
 								},
 								{
-									Name: "cloud-credentials",
+									Name: managedAuthConfigVolumeName,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: "cloud-credentials",

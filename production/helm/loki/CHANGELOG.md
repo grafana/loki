@@ -18,9 +18,12 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [ENHANCEMENT] Allow define resources for GrafanaAgent pods
 
-## 5.42.2
+## 5.42.3
 
 - [BUGFIX] Added condition for `egress-discovery` networkPolicies and ciliumNetworkPolicies.
+
+## 5.42.2
+
 - [BUGFIX] Remove trailing tab character in statefulset templates
 
 ## 5.42.1
