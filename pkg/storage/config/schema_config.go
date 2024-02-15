@@ -200,6 +200,14 @@ func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRa
 	}
 }
 
+func (cfg *PeriodConfig) GetFullTableName(t model.Time) string {
+	return NewDayTime(t).TableWithPrefix(cfg)
+}
+
+func NewDayTime(d model.Time) DayTime {
+	return DayTime{d}
+}
+
 // DayTime is a model.Time what holds day-aligned values, and marshals to/from
 // YAML in YYYY-MM-DD format.
 type DayTime struct {
@@ -225,8 +233,45 @@ func (d *DayTime) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-func (d *DayTime) String() string {
+func (d DayTime) String() string {
 	return d.Time.Time().UTC().Format("2006-01-02")
+}
+
+// Addr returns the unix day offset as a string, which is used
+// as the address for the index table in storage.
+func (d DayTime) Addr() string {
+	return fmt.Sprintf("%d",
+		d.ModelTime().Time().UnixNano()/int64(ObjectStorageIndexRequiredPeriod))
+}
+
+func (d DayTime) TableWithPrefix(cfg *PeriodConfig) string {
+	return fmt.Sprintf("%s%d",
+		cfg.IndexTables.Prefix,
+		d.ModelTime().Time().UnixNano()/int64(ObjectStorageIndexRequiredPeriod))
+}
+
+func (d DayTime) Inc() DayTime {
+	return DayTime{d.Add(ObjectStorageIndexRequiredPeriod)}
+}
+
+func (d DayTime) Dec() DayTime {
+	return DayTime{d.Add(-ObjectStorageIndexRequiredPeriod)}
+}
+
+func (d DayTime) Before(other DayTime) bool {
+	return d.Time.Before(other.Time)
+}
+
+func (d DayTime) After(other DayTime) bool {
+	return d.Time.After(other.Time)
+}
+
+func (d DayTime) ModelTime() model.Time {
+	return d.Time
+}
+
+func (d DayTime) Bounds() (model.Time, model.Time) {
+	return d.Time, d.Inc().Time
 }
 
 // SchemaConfig contains the config for our chunk index schemas

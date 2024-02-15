@@ -182,16 +182,9 @@ func extractAzureConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*stor
 	// Extract and validate optional fields
 	endpointSuffix := s.Data[storage.KeyAzureStorageEndpointSuffix]
 	audience := s.Data[storage.KeyAzureAudience]
-	region := s.Data[storage.KeyAzureRegion]
 
 	if !workloadIdentity && len(audience) > 0 {
 		return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAzureAudience)
-	}
-
-	if fg.OpenShift.ManagedAuthEnv {
-		if len(region) == 0 {
-			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureRegion)
-		}
 	}
 
 	return &storage.AzureStorageConfig{

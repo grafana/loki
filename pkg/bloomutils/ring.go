@@ -1,30 +1,60 @@
 // This file contains a bunch of utility functions for bloom components.
-// TODO: Find a better location for this package
 
 package bloomutils
 
 import (
+	"errors"
+	"fmt"
 	"math"
 	"sort"
 
 	"github.com/grafana/dskit/ring"
+	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/slices"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
-type InstanceWithTokenRange struct {
-	Instance           ring.InstanceDesc
-	MinToken, MaxToken uint32
+var (
+	Uint32Range = Range[uint32]{Min: 0, Max: math.MaxUint32}
+	Uint64Range = Range[uint64]{Min: 0, Max: math.MaxUint64}
+)
+
+type Range[T constraints.Integer] struct {
+	Min, Max T
 }
 
-func (i InstanceWithTokenRange) Cmp(token uint32) v1.BoundsCheck {
-	if token < i.MinToken {
+func (r Range[T]) String() string {
+	return fmt.Sprintf("%016x-%016x", r.Min, r.Max)
+}
+
+func (r Range[T]) Less(other Range[T]) bool {
+	if r.Min != other.Min {
+		return r.Min < other.Min
+	}
+	return r.Max <= other.Max
+}
+
+func (r Range[T]) Cmp(t T) v1.BoundsCheck {
+	if t < r.Min {
 		return v1.Before
-	} else if token > i.MaxToken {
+	} else if t > r.Max {
 		return v1.After
 	}
 	return v1.Overlap
+}
+
+func NewTokenRange(min, max uint32) Range[uint32] {
+	return Range[uint32]{min, max}
+}
+
+type InstanceWithTokenRange struct {
+	Instance   ring.InstanceDesc
+	TokenRange Range[uint32]
+}
+
+func (i InstanceWithTokenRange) Cmp(token uint32) v1.BoundsCheck {
+	return i.TokenRange.Cmp(token)
 }
 
 type InstancesWithTokenRange []InstanceWithTokenRange
@@ -38,22 +68,14 @@ func (i InstancesWithTokenRange) Contains(token uint32) bool {
 	return false
 }
 
-// GetInstanceTokenRange calculates the token range for a specific instance
+// KeyRangeForInstance calculates the token range for a specific instance
 // with given id based on the first token in the ring.
 // This assumes that each instance in the ring is configured with only a single
 // token.
-func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) InstancesWithTokenRange {
+func KeyRangeForInstance[T constraints.Integer](id string, instances []ring.InstanceDesc, keyspace Range[T]) (Range[T], error) {
 
-	// Sorting the tokens of the instances would not be necessary if there is
-	// only a single token per instances, however, since we only assume one
-	// token, but don't enforce one token, we keep the sorting.
-	for _, inst := range instances {
-		sort.Slice(inst.Tokens, func(i, j int) bool {
-			return inst.Tokens[i] < inst.Tokens[j]
-		})
-	}
-
-	// Sort instances
+	// Sort instances -- they may not be sorted
+	// because they're usually accessed by looking up the tokens (which are sorted)
 	sort.Slice(instances, func(i, j int) bool {
 		return instances[i].Tokens[0] < instances[j].Tokens[0]
 	})
@@ -64,83 +86,61 @@ func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) Instanc
 
 	// instance with Id == id not found
 	if idx == -1 {
-		return InstancesWithTokenRange{}
+		return Range[T]{}, ring.ErrInstanceNotFound
 	}
 
-	i := uint32(idx)
-	n := uint32(len(instances))
-	step := math.MaxUint32 / n
+	diff := keyspace.Max - keyspace.Min
+	i := T(idx)
+	n := T(len(instances))
 
-	minToken := step * i
-	maxToken := step*i + step - 1
+	if diff < n {
+		return Range[T]{}, errors.New("keyspace is smaller than amount of instances")
+	}
+
+	step := diff / n
+	min := step * i
+	max := step*i + step - 1
 	if i == n-1 {
 		// extend the last token tange to MaxUint32
-		maxToken = math.MaxUint32
+		max = (keyspace.Max - keyspace.Min)
 	}
 
-	return InstancesWithTokenRange{
-		{MinToken: minToken, MaxToken: maxToken, Instance: instances[i]},
-	}
-}
-
-// GetInstancesWithTokenRanges calculates the token ranges for a specific
-// instance with given id based on all tokens in the ring.
-// If the instances in the ring are configured with a single token, such as the
-// bloom compactor, use GetInstanceWithTokenRange() instead.
-func GetInstancesWithTokenRanges(id string, instances []ring.InstanceDesc) InstancesWithTokenRange {
-	servers := make([]InstanceWithTokenRange, 0, len(instances))
-	it := NewInstanceSortMergeIterator(instances)
-	var firstInst ring.InstanceDesc
-	var lastToken uint32
-	for it.Next() {
-		if firstInst.Id == "" {
-			firstInst = it.At().Instance
-		}
-		if it.At().Instance.Id == id {
-			servers = append(servers, it.At())
-		}
-		lastToken = it.At().MaxToken
-	}
-	// append token range from lastToken+1 to MaxUint32
-	// only if the instance with the first token is the current one
-	if len(servers) > 0 && firstInst.Id == id {
-		servers = append(servers, InstanceWithTokenRange{
-			MinToken: lastToken + 1,
-			MaxToken: math.MaxUint32,
-			Instance: servers[0].Instance,
-		})
-	}
-	return servers
+	return Range[T]{min, max}, nil
 }
 
 // NewInstanceSortMergeIterator creates an iterator that yields instanceWithToken elements
 // where the token of the elements are sorted in ascending order.
 func NewInstanceSortMergeIterator(instances []ring.InstanceDesc) v1.Iterator[InstanceWithTokenRange] {
-	it := &sortMergeIterator[ring.InstanceDesc, uint32, InstanceWithTokenRange]{
-		items: instances,
-		transform: func(item ring.InstanceDesc, val uint32, prev *InstanceWithTokenRange) *InstanceWithTokenRange {
-			var prevToken uint32
-			if prev != nil {
-				prevToken = prev.MaxToken + 1
-			}
-			return &InstanceWithTokenRange{Instance: item, MinToken: prevToken, MaxToken: val}
-		},
+	tokenIters := make([]v1.PeekingIterator[v1.IndexedValue[uint32]], 0, len(instances))
+	for i, inst := range instances {
+		sort.Slice(inst.Tokens, func(a, b int) bool { return inst.Tokens[a] < inst.Tokens[b] })
+		itr := v1.NewIterWithIndex(v1.NewSliceIter[uint32](inst.Tokens), i)
+		tokenIters = append(tokenIters, v1.NewPeekingIter[v1.IndexedValue[uint32]](itr))
 	}
-	sequences := make([]v1.PeekingIterator[v1.IndexedValue[uint32]], 0, len(instances))
-	for i := range instances {
-		sort.Slice(instances[i].Tokens, func(a, b int) bool {
-			return instances[i].Tokens[a] < instances[i].Tokens[b]
-		})
-		iter := v1.NewIterWithIndex[uint32](v1.NewSliceIter(instances[i].Tokens), i)
-		sequences = append(sequences, v1.NewPeekingIter[v1.IndexedValue[uint32]](iter))
-	}
-	it.heap = v1.NewHeapIterator(
-		func(i, j v1.IndexedValue[uint32]) bool {
-			return i.Value() < j.Value()
-		},
-		sequences...,
-	)
-	it.err = nil
 
-	return it
+	heapIter := v1.NewHeapIterator[v1.IndexedValue[uint32]](
+		func(iv1, iv2 v1.IndexedValue[uint32]) bool {
+			return iv1.Value() < iv2.Value()
+		},
+		tokenIters...,
+	)
+
+	prevToken := -1
+	return v1.NewDedupingIter[v1.IndexedValue[uint32], InstanceWithTokenRange](
+		func(iv v1.IndexedValue[uint32], iwtr InstanceWithTokenRange) bool {
+			return false
+		},
+		func(iv v1.IndexedValue[uint32]) InstanceWithTokenRange {
+			minToken, maxToken := uint32(prevToken+1), iv.Value()
+			prevToken = int(maxToken)
+			return InstanceWithTokenRange{
+				Instance:   instances[iv.Index()],
+				TokenRange: NewTokenRange(minToken, maxToken),
+			}
+		},
+		func(iv v1.IndexedValue[uint32], iwtr InstanceWithTokenRange) InstanceWithTokenRange {
+			panic("must not be called, because Eq() is always false")
+		},
+		v1.NewPeekingIter(heapIter),
+	)
 }
