@@ -9,16 +9,13 @@ import (
 
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/slices"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
-type integer interface {
-	~uint | ~uint32 | ~uint64 | ~int | ~int32 | ~int64
-}
-
-type Range[T integer] struct {
+type Range[T constraints.Integer] struct {
 	Min, Max T
 }
 
