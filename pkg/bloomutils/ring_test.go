@@ -38,38 +38,6 @@ func TestBloomGatewayClient_SortInstancesByToken(t *testing.T) {
 	}
 }
 
-func TestBloomGatewayClient_GetInstancesWithTokenRanges(t *testing.T) {
-	t.Run("instance does not own first token in the ring", func(t *testing.T) {
-		input := []ring.InstanceDesc{
-			{Id: "1", Tokens: []uint32{5, 9}},
-			{Id: "2", Tokens: []uint32{3, 7}},
-			{Id: "3", Tokens: []uint32{1}},
-		}
-		expected := InstancesWithTokenRange{
-			{Instance: input[1], TokenRange: NewTokenRange(2, 3)},
-			{Instance: input[1], TokenRange: NewTokenRange(6, 7)},
-		}
-
-		result := GetInstancesWithTokenRanges("2", input)
-		require.Equal(t, expected, result)
-	})
-
-	t.Run("instance owns first token in the ring", func(t *testing.T) {
-		input := []ring.InstanceDesc{
-			{Id: "1", Tokens: []uint32{5, 9}},
-			{Id: "2", Tokens: []uint32{3, 7}},
-			{Id: "3", Tokens: []uint32{1}},
-		}
-		expected := InstancesWithTokenRange{
-			{Instance: input[2], TokenRange: NewTokenRange(0, 1)},
-			{Instance: input[2], TokenRange: NewTokenRange(10, math.MaxUint32)},
-		}
-
-		result := GetInstancesWithTokenRanges("3", input)
-		require.Equal(t, expected, result)
-	})
-}
-
 func TestBloomGatewayClient_GetInstanceWithTokenRange(t *testing.T) {
 	for name, tc := range map[string]struct {
 		id       string

@@ -101,35 +101,6 @@ func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) (v1.Fin
 	return v1.NewBounds(minToken, maxToken), nil
 }
 
-// GetInstancesWithTokenRanges calculates the token ranges for a specific
-// instance with given id based on all tokens in the ring.
-// If the instances in the ring are configured with a single token, such as the
-// bloom compactor, use GetInstanceWithTokenRange() instead.
-func GetInstancesWithTokenRanges(id string, instances []ring.InstanceDesc) InstancesWithTokenRange {
-	servers := make([]InstanceWithTokenRange, 0, len(instances))
-	it := NewInstanceSortMergeIterator(instances)
-	var firstInst ring.InstanceDesc
-	var lastToken uint32
-	for it.Next() {
-		if firstInst.Id == "" {
-			firstInst = it.At().Instance
-		}
-		if it.At().Instance.Id == id {
-			servers = append(servers, it.At())
-		}
-		lastToken = it.At().TokenRange.Max
-	}
-	// append token range from lastToken+1 to MaxUint32
-	// only if the instance with the first token is the current one
-	if len(servers) > 0 && firstInst.Id == id {
-		servers = append(servers, InstanceWithTokenRange{
-			Instance:   servers[0].Instance,
-			TokenRange: NewTokenRange(lastToken+1, math.MaxUint32),
-		})
-	}
-	return servers
-}
-
 // NewInstanceSortMergeIterator creates an iterator that yields instanceWithToken elements
 // where the token of the elements are sorted in ascending order.
 func NewInstanceSortMergeIterator(instances []ring.InstanceDesc) v1.Iterator[InstanceWithTokenRange] {
