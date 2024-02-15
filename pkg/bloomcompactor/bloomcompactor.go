@@ -2,7 +2,6 @@ package bloomcompactor
 
 import (
 	"context"
-	"math"
 	"sync"
 	"time"
 
