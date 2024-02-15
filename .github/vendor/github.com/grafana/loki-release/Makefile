@@ -39,5 +39,6 @@ dist:
 	cp CHANGELOG.md dist/
 
 packages:
+	./tools/nfpm-env-var-test.sh
 	mkdir -p dist
-	cp CHANGELOG.md dist/
+	cp CHANGELOG.md dist/PACKAGING.MD
