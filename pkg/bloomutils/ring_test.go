@@ -11,6 +11,11 @@ import (
 )
 
 func TestBloomGatewayClient_SortInstancesByToken(t *testing.T) {
+	//          | 1  2  3  4  5  6  7  8  9  |
+	// ---------+----------------------------+
+	// ID 1     |             *           *  |
+	// ID 2     |       *           *        |
+	// ID 3     | *                          |
 	input := []ring.InstanceDesc{
 		{Id: "1", Tokens: []uint32{5, 9}},
 		{Id: "2", Tokens: []uint32{3, 7}},
