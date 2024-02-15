@@ -15,12 +15,13 @@ local build = lokiRelease.build;
         promtail: build.image('promtail', 'clients/cmd/promtail'),
         querytee: build.image('querytee', 'cmd/querytee', platform=['linux/amd64']),
       },
+      branches=['release-[0-9]+.[0-9]+.x', 'fix-action-names-in-main'],
+      checkTemplate='grafana/loki-release/.github/workflows/check.yml@release-1.10.x',
+      imagePrefix='grafana',
       releaseRepo='grafana/loki',
+      skipArm=false,
       skipValidation=true,
       versioningStrategy='always-bump-patch',
-      imagePrefix='grafana',
-      skipArm=false,
-      branches=['release-[0-9]+.[0-9]+.x', 'fix-action-names-in-main'],
     ), false, false
   ),
   'minor-release-pr.yml': std.manifestYamlDoc(
@@ -37,11 +38,12 @@ local build = lokiRelease.build;
         promtail: build.image('promtail', 'clients/cmd/promtail'),
         querytee: build.image('querytee', 'cmd/querytee', platform=['linux/amd64']),
       },
+      branches=['k[0-9]+'],
+      checkTemplate='grafana/loki-release/.github/workflows/check.yml@release-1.10.x',
+      imagePrefix='grafana',
       releaseRepo='grafana/loki',
       skipValidation=false,
       versioningStrategy='always-bump-minor',
-      imagePrefix='grafana',
-      branches=['k[0-9]+'],
     ), false, false
   ),
   'release.yml': std.manifestYamlDoc(

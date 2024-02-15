@@ -1,0 +1,171 @@
+"concurrency":
+  "group": "check-${{ github.sha }}"
+"jobs":
+  "check":
+    "container":
+      "image": "grafana/loki-build-image:0.33.0"
+    "env":
+      "BUILD_IN_CONTAINER": false
+      "SKIP_VALIDATION": "${{ inputs.skip_validation }}"
+    "runs-on": "ubuntu-latest"
+    "steps":
+    - "name": "checkout"
+      "uses": "actions/checkout@v4"
+    - "name": "pull release library code"
+      "uses": "actions/checkout@v4"
+      "with":
+        "path": "lib"
+        "repository": "grafana/loki-release"
+    - "name": "install tar"
+      "run": |
+        apt update
+        apt install -qy tar xz-utils
+      "shell": "bash"
+    - "name": "install shellcheck"
+      "uses": "./lib/actions/install-binary"
+      "with":
+        "binary": "shellcheck"
+        "download_url": "https://github.com/koalaman/shellcheck/releases/download/v${version}/shellcheck-v${version}.linux.x86_64.tar.xz"
+        "smoke_test": "${binary} --version"
+        "tar_args": "xvf"
+        "tarball_binary_path": "*/${binary}"
+        "version": "0.9.0"
+    - "name": "install jsonnetfmt"
+      "uses": "./lib/actions/install-binary"
+      "with":
+        "binary": "jsonnetfmt"
+        "download_url": "https://github.com/google/go-jsonnet/releases/download/v${version}/go-jsonnet_${version}_Linux_x86_64.tar.gz"
+        "smoke_test": "${binary} --version"
+        "tarball_binary_path": "${binary}"
+        "version": "0.18.0"
+    - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      "name": "check generated files"
+      "run": "make check-generated-files"
+      "shell": "bash"
+    - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      "name": "check mod"
+      "run": "make check-mod"
+      "shell": "bash"
+    - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      "name": "check docs"
+      "run": "make check-doc"
+      "shell": "bash"
+    - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      "name": "validate example configs"
+      "run": "make validate-example-configs"
+      "shell": "bash"
+    - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      "name": "check example config docs"
+      "run": "make check-example-config-doc"
+      "shell": "bash"
+    - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      "name": "check helm reference doc"
+      "run": "make documentation-helm-reference-check"
+      "shell": "bash"
+    - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      "name": "check drone drift"
+      "run": "make check-drone-drift"
+      "shell": "bash"
+  "lint":
+    "container":
+      "image": "grafana/loki-build-image:0.33.0"
+    "env":
+      "BUILD_IN_CONTAINER": false
+      "SKIP_VALIDATION": "${{ inputs.skip_validation }}"
+    "runs-on": "ubuntu-latest"
+    "steps":
+    - "name": "checkout"
+      "uses": "actions/checkout@v4"
+    - "name": "pull release library code"
+      "uses": "actions/checkout@v4"
+      "with":
+        "path": "lib"
+        "repository": "grafana/loki-release"
+    - "name": "install tar"
+      "run": |
+        apt update
+        apt install -qy tar xz-utils
+      "shell": "bash"
+    - "name": "install shellcheck"
+      "uses": "./lib/actions/install-binary"
+      "with":
+        "binary": "shellcheck"
+        "download_url": "https://github.com/koalaman/shellcheck/releases/download/v${version}/shellcheck-v${version}.linux.x86_64.tar.xz"
+        "smoke_test": "${binary} --version"
+        "tar_args": "xvf"
+        "tarball_binary_path": "*/${binary}"
+        "version": "0.9.0"
+    - "name": "install jsonnetfmt"
+      "uses": "./lib/actions/install-binary"
+      "with":
+        "binary": "jsonnetfmt"
+        "download_url": "https://github.com/google/go-jsonnet/releases/download/v${version}/go-jsonnet_${version}_Linux_x86_64.tar.gz"
+        "smoke_test": "${binary} --version"
+        "tarball_binary_path": "${binary}"
+        "version": "0.18.0"
+    - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      "name": "lint"
+      "run": "make lint"
+      "shell": "bash"
+    - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      "name": "lint jsonnet"
+      "run": "make lint-jsonnet"
+      "shell": "bash"
+    - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      "name": "lint scripts"
+      "run": "make lint-scripts"
+      "shell": "bash"
+  "test":
+    "container":
+      "image": "grafana/loki-build-image:0.33.0"
+    "env":
+      "BUILD_IN_CONTAINER": false
+      "SKIP_VALIDATION": "${{ inputs.skip_validation }}"
+    "runs-on": "ubuntu-latest"
+    "steps":
+    - "name": "checkout"
+      "uses": "actions/checkout@v4"
+    - "name": "pull release library code"
+      "uses": "actions/checkout@v4"
+      "with":
+        "path": "lib"
+        "repository": "grafana/loki-release"
+    - "name": "install tar"
+      "run": |
+        apt update
+        apt install -qy tar xz-utils
+      "shell": "bash"
+    - "name": "install shellcheck"
+      "uses": "./lib/actions/install-binary"
+      "with":
+        "binary": "shellcheck"
+        "download_url": "https://github.com/koalaman/shellcheck/releases/download/v${version}/shellcheck-v${version}.linux.x86_64.tar.xz"
+        "smoke_test": "${binary} --version"
+        "tar_args": "xvf"
+        "tarball_binary_path": "*/${binary}"
+        "version": "0.9.0"
+    - "name": "install jsonnetfmt"
+      "uses": "./lib/actions/install-binary"
+      "with":
+        "binary": "jsonnetfmt"
+        "download_url": "https://github.com/google/go-jsonnet/releases/download/v${version}/go-jsonnet_${version}_Linux_x86_64.tar.gz"
+        "smoke_test": "${binary} --version"
+        "tarball_binary_path": "${binary}"
+        "version": "0.18.0"
+    - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
+      "name": "test"
+      "run": "make test"
+      "shell": "bash"
+"name": "check"
+"on":
+  "workflow_call":
+    "inputs":
+      "skip_validation":
+        "default": false
+        "description": "skip validation steps"
+        "required": false
+        "type": "boolean"
+"permissions":
+  "contents": "write"
+  "id-token": "write"
+  "pull-requests": "write"

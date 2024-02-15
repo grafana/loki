@@ -4,9 +4,8 @@
 npx lint-staged
 
 workflow_files_count="$(git diff --name-only --cached workflows/*.{libsonnet,jsonnet} | wc -l)"
-other_jsonnet_count="$(git diff --name-only --cached *.{libsonnet,jsonnet} | wc -l)"
-github_jsonnet_count="$(git diff --name-only --cached .github/*.{libsonnet,jsonnet} | wc -l)"
-if [[ "${workflow_files_count}" -gt 0 ]] || [[ "${other_jsonnet_count}" -gt 0 ]] || [[ "${github_jsonnet_count}" -gt 0 ]]; then
+root_jsonnet_count="$(git diff --name-only --cached *.{libsonnet,jsonnet} | wc -l)"
+if [[ "${workflow_files_count}" -gt 0 ]] || [[ "${root_jsonnet_count}" -gt 0 ]]; then
 	npm run workflows
 	git add .github/workflows
 fi

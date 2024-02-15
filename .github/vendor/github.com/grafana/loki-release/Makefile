@@ -34,6 +34,12 @@ check-example-config-doc:
 documentation-helm-reference-check:
 	echo "documentation helm reference check"
 
+check-drone-drift:
+	echo "checking drone drift"
+
+validate-example-configs:
+	echo "validating example configs"
+
 dist:
 	mkdir -p dist
 	cp CHANGELOG.md dist/

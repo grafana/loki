@@ -5,7 +5,7 @@ local releaseStep = common.releaseStep;
 
 local setupValidationDeps = function(job) job {
   steps: [
-    common.fetchReleaseRepo,
+    common.checkout,
     common.fetchReleaseLib,
     step.new('install tar') +
     step.withRun(|||
@@ -32,49 +32,48 @@ local setupValidationDeps = function(job) job {
   ] + job.steps,
 };
 
+local validationJob = function(buildImage) job.new()
+                                           + job.withContainer({
+                                             image: buildImage,
+                                           })
+                                           + job.withEnv({
+                                             BUILD_IN_CONTAINER: false,
+                                             SKIP_VALIDATION: '${{ inputs.skip_validation }}',
+                                           });
+
 
 function(buildImage) {
   local validationMakeStep = function(name, target)
-    releaseStep(name)
+    step.new(name)
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
-    + step.withEnv({
-      BUILD_IN_CONTAINER: false,
-    })
     + step.withRun(common.makeTarget(target)),
 
   test: setupValidationDeps(
-    job.new()
-    + job.withContainer({
-      image: buildImage,
-    })
+    validationJob(buildImage)
     + job.withSteps([
       validationMakeStep('test', 'test'),
     ])
   ),
 
   lint: setupValidationDeps(
-    job.new()
-    + job.withContainer({
-      image: buildImage,
-    })
+    validationJob(buildImage)
     + job.withSteps([
       validationMakeStep('lint', 'lint'),
       validationMakeStep('lint jsonnet', 'lint-jsonnet'),
+      validationMakeStep('lint scripts', 'lint-scripts'),
     ])
   ),
 
   check: setupValidationDeps(
-    job.new()
-    + job.withContainer({
-      image: buildImage,
-    })
+    validationJob(buildImage)
     + job.withSteps([
       validationMakeStep('check generated files', 'check-generated-files'),
       validationMakeStep('check mod', 'check-mod'),
-      validationMakeStep('shellcheck', 'lint-scripts'),
       validationMakeStep('check docs', 'check-doc'),
-      validationMakeStep('validate example configs', 'check-example-config-doc'),
+      validationMakeStep('validate example configs', 'validate-example-configs'),
+      validationMakeStep('check example config docs', 'check-example-config-doc'),
       validationMakeStep('check helm reference doc', 'documentation-helm-reference-check'),
+      validationMakeStep('check drone drift', 'check-drone-drift'),
     ])
   ),
 }
