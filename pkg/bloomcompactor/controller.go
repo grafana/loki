@@ -4,12 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"sort"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/multierror"
 	"github.com/pkg/errors"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -221,7 +219,7 @@ func (s *SimpleBloomController) loadWorkForGap(
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
-) (v1.CloseableIterator[*v1.Series], v1.CloseableIterator[*bloomshipper.CloseableBlockQuerier], error) {
+) (v1.CloseableIterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBloom], error) {
 	// load a series iterator for the gap
 	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.bounds)
 	if err != nil {
@@ -234,10 +232,8 @@ func (s *SimpleBloomController) loadWorkForGap(
 		return nil, nil, errors.Wrap(err, "failed to get fetcher")
 	}
 
-	blocksIter, err := newBatchedBlockLoader(ctx, fetcher, gap.blocks)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to load blocks")
-	}
+	f := FetchFunc[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier](fetcher.FetchBlocks)
+	blocksIter := newBlockLoadingIter(ctx, gap.blocks, f, 10)
 
 	return seriesItr, blocksIter, nil
 }
@@ -311,10 +307,10 @@ func (s *SimpleBloomController) buildGaps(
 				log.With(logger, "tsdb", plan.tsdb.Name(), "ownership", gap),
 			)
 
-			_, loaded, newBlocks, err := gen.Generate(ctx)
+			newBlocks := gen.Generate(ctx)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
-				s.closeLoadedBlocks(loaded, blocksIter)
+				blocksIter.Close()
 				return nil, errors.Wrap(err, "failed to generate bloom")
 			}
 
@@ -325,6 +321,7 @@ func (s *SimpleBloomController) buildGaps(
 				built, err := bloomshipper.BlockFrom(tenant, table.Addr(), blk)
 				if err != nil {
 					level.Error(logger).Log("msg", "failed to build block", "err", err)
+					blocksIter.Close()
 					return nil, errors.Wrap(err, "failed to build block")
 				}
 
@@ -333,7 +330,7 @@ func (s *SimpleBloomController) buildGaps(
 					built,
 				); err != nil {
 					level.Error(logger).Log("msg", "failed to write block", "err", err)
-					s.closeLoadedBlocks(loaded, blocksIter)
+					blocksIter.Close()
 					return nil, errors.Wrap(err, "failed to write block")
 				}
 
@@ -342,12 +339,11 @@ func (s *SimpleBloomController) buildGaps(
 
 			if err := newBlocks.Err(); err != nil {
 				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
-				s.closeLoadedBlocks(loaded, blocksIter)
 				return nil, errors.Wrap(err, "failed to generate bloom")
 			}
 
 			// Close pre-existing blocks
-			s.closeLoadedBlocks(loaded, blocksIter)
+			blocksIter.Close()
 
 			// Write the new meta
 			ref, err := bloomshipper.MetaRefFrom(tenant, table.Addr(), gap.bounds, meta.Sources, meta.Blocks)
@@ -483,30 +479,6 @@ func tsdbsStrictlyNewer(as, bs []tsdb.SingleTenantTSDBIdentifier) bool {
 		}
 	}
 	return true
-}
-
-func (s *SimpleBloomController) closeLoadedBlocks(toClose []io.Closer, it v1.CloseableIterator[*bloomshipper.CloseableBlockQuerier]) {
-	// close loaded blocks
-	var err multierror.MultiError
-	for _, closer := range toClose {
-		err.Add(closer.Close())
-	}
-
-	switch itr := it.(type) {
-	case *batchedBlockLoader:
-		// close remaining loaded blocks from batch
-		err.Add(itr.CloseBatch())
-	default:
-		// close remaining loaded blocks
-		for itr.Next() && itr.Err() == nil {
-			err.Add(itr.At().Close())
-		}
-	}
-
-	// log error
-	if err.Err() != nil {
-		level.Error(s.logger).Log("msg", "failed to close blocks", "err", err)
-	}
 }
 
 type gapWithBlocks struct {

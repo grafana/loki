@@ -277,6 +277,38 @@ func (it *PeekCloseIter[T]) Close() error {
 	return it.close()
 }
 
+type ResettableIterator[T any] interface {
+	Reset() error
+	Iterator[T]
+}
+
+type CloseableResettableIterator[T any] interface {
+	CloseableIterator[T]
+	ResettableIterator[T]
+}
+
+type Predicate[T any] func(T) bool
+
+func NewFilterIter[T any](it Iterator[T], p Predicate[T]) *FilterIter[T] {
+	return &FilterIter[T]{
+		Iterator: it,
+		match:    p,
+	}
+}
+
+type FilterIter[T any] struct {
+	Iterator[T]
+	match Predicate[T]
+}
+
+func (i *FilterIter[T]) Next() bool {
+	hasNext := i.Iterator.Next()
+	for hasNext && !i.match(i.Iterator.At()) {
+		hasNext = i.Iterator.Next()
+	}
+	return hasNext
+}
+
 type CounterIterator[T any] interface {
 	Iterator[T]
 	Count() int
