@@ -2,6 +2,7 @@ package bloomcompactor
 
 import (
 	"context"
+	"math"
 	"sync"
 	"time"
 
@@ -201,11 +202,11 @@ func (c *Compactor) ownsTenant(tenant string) (v1.FingerprintBounds, bool, error
 
 	}
 
-	ownershipBounds, err := bloomutils.GetInstanceWithTokenRange(c.cfg.Ring.InstanceID, rs.Instances)
+	keyRange, err := bloomutils.KeyRangeForInstance(c.cfg.Ring.InstanceID, rs.Instances, bloomutils.Range[uint64]{Min: 0, Max: math.MaxUint64})
 	if err != nil {
 		return v1.FingerprintBounds{}, false, errors.Wrap(err, "getting instance token range")
 	}
-	return ownershipBounds, true, nil
+	return v1.NewBounds(model.Fingerprint(keyRange.Min), model.Fingerprint(keyRange.Max)), true, nil
 }
 
 // runs a single round of compaction for all relevant tenants and tables

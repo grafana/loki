@@ -3,16 +3,21 @@
 package bloomutils
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sort"
 
 	"github.com/grafana/dskit/ring"
-	"github.com/prometheus/common/model"
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/slices"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+)
+
+var (
+	Uint32Range = Range[uint32]{Min: 0, Max: math.MaxUint32}
+	Uint64Range = Range[uint64]{Min: 0, Max: math.MaxUint64}
 )
 
 type Range[T constraints.Integer] struct {
@@ -63,11 +68,11 @@ func (i InstancesWithTokenRange) Contains(token uint32) bool {
 	return false
 }
 
-// GetInstanceWithTokenRange calculates the token range for a specific instance
+// KeyRangeForInstance calculates the token range for a specific instance
 // with given id based on the first token in the ring.
 // This assumes that each instance in the ring is configured with only a single
 // token.
-func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) (v1.FingerprintBounds, error) {
+func KeyRangeForInstance[T constraints.Integer](id string, instances []ring.InstanceDesc, keyspace Range[T]) (Range[T], error) {
 
 	// Sort instances -- they may not be sorted
 	// because they're usually accessed by looking up the tokens (which are sorted)
@@ -81,21 +86,26 @@ func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) (v1.Fin
 
 	// instance with Id == id not found
 	if idx == -1 {
-		return v1.FingerprintBounds{}, ring.ErrInstanceNotFound
+		return Range[T]{}, ring.ErrInstanceNotFound
 	}
 
-	i := uint64(idx)
-	n := uint64(len(instances))
-	step := math.MaxUint64 / n
+	diff := keyspace.Max - keyspace.Min
+	i := T(idx)
+	n := T(len(instances))
 
-	minToken := model.Fingerprint(step * i)
-	maxToken := model.Fingerprint(step*i + step - 1)
+	if diff < n {
+		return Range[T]{}, errors.New("keyspace is smaller than amount of instances")
+	}
+
+	step := diff / n
+	min := step * i
+	max := step*i + step - 1
 	if i == n-1 {
 		// extend the last token tange to MaxUint32
-		maxToken = math.MaxUint64
+		max = (keyspace.Max - keyspace.Min)
 	}
 
-	return v1.NewBounds(minToken, maxToken), nil
+	return Range[T]{min, max}, nil
 }
 
 // NewInstanceSortMergeIterator creates an iterator that yields instanceWithToken elements

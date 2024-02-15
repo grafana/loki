@@ -10,7 +10,7 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
-func TestBloomGatewayClient_SortInstancesByToken(t *testing.T) {
+func TestBloomGatewayClient_InstanceSortMergeIterator(t *testing.T) {
 	//          | 0 1 2 3 4 5 6 7 8 9 |
 	// ---------+---------------------+
 	// ID 1     |        ***o    ***o |
@@ -38,7 +38,7 @@ func TestBloomGatewayClient_SortInstancesByToken(t *testing.T) {
 	}
 }
 
-func TestBloomGatewayClient_GetInstanceWithTokenRange(t *testing.T) {
+func TestBloomGatewayClient_KeyRangeForInstance(t *testing.T) {
 	for name, tc := range map[string]struct {
 		id       string
 		input    []ring.InstanceDesc
@@ -74,7 +74,7 @@ func TestBloomGatewayClient_GetInstanceWithTokenRange(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(name, func(t *testing.T) {
-			result, err := GetInstanceWithTokenRange(tc.id, tc.input)
+			result, err := KeyRangeForInstance(tc.id, tc.input, Uint32Range)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, result)
 		})
