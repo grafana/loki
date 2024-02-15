@@ -202,7 +202,7 @@ func (c *Compactor) ownsTenant(tenant string) (v1.FingerprintBounds, bool, error
 
 	}
 
-	keyRange, err := bloomutils.KeyRangeForInstance(c.cfg.Ring.InstanceID, rs.Instances, bloomutils.Range[uint64]{Min: 0, Max: math.MaxUint64})
+	keyRange, err := bloomutils.KeyRangeForInstance(c.cfg.Ring.InstanceID, rs.Instances, bloomutils.Uint64Range)
 	if err != nil {
 		return v1.FingerprintBounds{}, false, errors.Wrap(err, "getting instance token range")
 	}
