@@ -276,3 +276,29 @@ func NewPeekCloseIter[T any](itr CloseableIterator[T]) *PeekCloseIter[T] {
 func (it *PeekCloseIter[T]) Close() error {
 	return it.close()
 }
+
+type CounterIterator[T any] interface {
+	Iterator[T]
+	Count() int
+}
+
+type CounterIter[T any] struct {
+	Iterator[T] // the underlying iterator
+	count       int
+}
+
+func NewCounterIter[T any](itr Iterator[T]) *CounterIter[T] {
+	return &CounterIter[T]{Iterator: itr}
+}
+
+func (it *CounterIter[T]) Next() bool {
+	if it.Iterator.Next() {
+		it.count++
+		return true
+	}
+	return false
+}
+
+func (it *CounterIter[T]) Count() int {
+	return it.count
+}
