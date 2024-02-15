@@ -23,7 +23,6 @@ type SimpleBloomController struct {
 	metrics     *Metrics
 	limits      Limits
 
-	// TODO(owen-d): add metrics
 	logger log.Logger
 }
 
@@ -265,6 +264,7 @@ func (s *SimpleBloomController) buildGaps(
 		maxBlockSize = uint64(s.limits.BloomCompactorMaxBlockSize(tenant))
 		blockOpts    = v1.NewBlockOptions(nGramSize, nGramSkip, maxBlockSize)
 		created      []bloomshipper.Meta
+		totalSeries  uint64
 	)
 
 	for _, plan := range work {
@@ -291,10 +291,15 @@ func (s *SimpleBloomController) buildGaps(
 				return nil, errors.Wrap(err, "failed to get series and blocks")
 			}
 
+			// Blocks are built consuming the series iterator. For observability, we wrap the series iterator
+			// with a counter iterator to count the number of times Next() is called on it.
+			// This is used to observe the number of series that are being processed.
+			seriesItrWithCounter := v1.NewCounterIter[*v1.Series](seriesItr)
+
 			gen := NewSimpleBloomGenerator(
 				tenant,
 				blockOpts,
-				seriesItr,
+				seriesItrWithCounter,
 				s.chunkLoader,
 				blocksIter,
 				s.rwFn,
@@ -303,9 +308,7 @@ func (s *SimpleBloomController) buildGaps(
 			)
 
 			newBlocks := gen.Generate(ctx)
-
 			if err != nil {
-				// TODO(owen-d): metrics
 				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
 				blocksIter.Close()
 				return nil, errors.Wrap(err, "failed to generate bloom")
@@ -335,7 +338,6 @@ func (s *SimpleBloomController) buildGaps(
 			}
 
 			if err := newBlocks.Err(); err != nil {
-				// TODO(owen-d): metrics
 				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
 				return nil, errors.Wrap(err, "failed to generate bloom")
 			}
@@ -356,9 +358,12 @@ func (s *SimpleBloomController) buildGaps(
 				return nil, errors.Wrap(err, "failed to write meta")
 			}
 			created = append(created, meta)
+
+			totalSeries += uint64(seriesItrWithCounter.Count())
 		}
 	}
 
+	s.metrics.tenantsSeries.Observe(float64(totalSeries))
 	level.Debug(logger).Log("msg", "finished bloom generation", "blocks", blockCt, "tsdbs", tsdbCt)
 	return created, nil
 }

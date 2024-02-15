@@ -16,105 +16,104 @@ const (
 )
 
 type Metrics struct {
-	bloomMetrics *v1.Metrics
-	chunkSize    prometheus.Histogram // uncompressed size of all chunks summed per series
+	bloomMetrics     *v1.Metrics
+	compactorRunning prometheus.Gauge
+	chunkSize        prometheus.Histogram // uncompressed size of all chunks summed per series
 
-	compactionRunsStarted          prometheus.Counter
-	compactionRunsCompleted        *prometheus.CounterVec
-	compactionRunTime              *prometheus.HistogramVec
-	compactionRunDiscoveredTenants prometheus.Counter
-	compactionRunSkippedTenants    prometheus.Counter
-	compactionRunTenantsCompleted  *prometheus.CounterVec
-	compactionRunTenantsTime       *prometheus.HistogramVec
-	compactionRunJobStarted        prometheus.Counter
-	compactionRunJobCompleted      *prometheus.CounterVec
-	compactionRunJobTime           *prometheus.HistogramVec
-	compactionRunInterval          prometheus.Gauge
-	compactorRunning               prometheus.Gauge
+	compactionsStarted  prometheus.Counter
+	compactionCompleted *prometheus.CounterVec
+	compactionTime      *prometheus.HistogramVec
+
+	tenantsDiscovered    prometheus.Counter
+	tenantsOwned         prometheus.Counter
+	tenantsSkipped       prometheus.Counter
+	tenantsStarted       prometheus.Counter
+	tenantsCompleted     *prometheus.CounterVec
+	tenantsCompletedTime *prometheus.HistogramVec
+	tenantsSeries        prometheus.Histogram
 }
 
 func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 	m := Metrics{
 		bloomMetrics: bloomMetrics,
-		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:    "bloom_chunk_series_size",
-			Help:    "Uncompressed size of chunks in a series",
-			Buckets: prometheus.ExponentialBucketsRange(1024, 1073741824, 10),
-		}),
-		compactionRunsStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		compactorRunning: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "runs_started_total",
+			Name:      "running",
+			Help:      "Value will be 1 if compactor is currently running on this instance",
+		}),
+		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "chunk_series_size",
+			Help:      "Uncompressed size of chunks in a series",
+			Buckets:   prometheus.ExponentialBucketsRange(1024, 1073741824, 10),
+		}),
+
+		compactionsStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "compactions_started",
 			Help:      "Total number of compactions started",
 		}),
-		compactionRunsCompleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		compactionCompleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "runs_completed_total",
-			Help:      "Total number of compactions completed successfully",
+			Name:      "compactions_completed",
+			Help:      "Total number of compactions completed",
 		}, []string{"status"}),
-		compactionRunTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+		compactionTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "runs_time_seconds",
+			Name:      "compactions_time_seconds",
 			Help:      "Time spent during a compaction cycle.",
 			Buckets:   prometheus.DefBuckets,
 		}, []string{"status"}),
-		compactionRunDiscoveredTenants: promauto.With(r).NewCounter(prometheus.CounterOpts{
+
+		tenantsDiscovered: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "tenants_discovered",
 			Help:      "Number of tenants discovered during the current compaction run",
 		}),
-		compactionRunSkippedTenants: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		tenantsOwned: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "tenants_owned",
+			Help:      "Number of tenants owned by this instance",
+		}),
+		tenantsSkipped: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "tenants_skipped",
-			Help:      "Number of tenants skipped during the current compaction run",
+			Help:      "Number of tenants skipped since they are not owned by this instance",
 		}),
-		compactionRunTenantsCompleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		tenantsStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "tenants_started",
+			Help:      "Number of tenants started to process during the current compaction run",
+		}),
+		tenantsCompleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "tenants_completed",
 			Help:      "Number of tenants successfully processed during the current compaction run",
 		}, []string{"status"}),
-		compactionRunTenantsTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+		tenantsCompletedTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "tenants_time_seconds",
 			Help:      "Time spent processing tenants.",
 			Buckets:   prometheus.DefBuckets,
 		}, []string{"status"}),
-		compactionRunJobStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		tenantsSeries: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "job_started",
-			Help:      "Number of jobs started processing during the current compaction run",
-		}),
-		compactionRunJobCompleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
-			Subsystem: metricsSubsystem,
-			Name:      "job_completed",
-			Help:      "Number of jobs successfully processed during the current compaction run",
-		}, []string{"status"}),
-		compactionRunJobTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: metricsNamespace,
-			Subsystem: metricsSubsystem,
-			Name:      "job_time_seconds",
-			Help:      "Time spent processing jobs.",
-			Buckets:   prometheus.DefBuckets,
-		}, []string{"status"}),
-		compactionRunInterval: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Namespace: metricsNamespace,
-			Subsystem: metricsSubsystem,
-			Name:      "compaction_interval_seconds",
-			Help:      "The configured interval on which compaction is run in seconds",
-		}),
-		compactorRunning: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Namespace: metricsNamespace,
-			Subsystem: metricsSubsystem,
-			Name:      "running",
-			Help:      "Value will be 1 if compactor is currently running on this instance",
+			Name:      "tenants_series",
+			Help:      "Number of series processed per tenant in the owned fingerprint-range.",
+			// Up to 10M series per tenant, way more than what we expect given our max_global_streams_per_user limits
+			Buckets: prometheus.ExponentialBucketsRange(1, 10000000, 10),
 		}),
 	}
 

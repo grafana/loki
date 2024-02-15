@@ -128,7 +128,7 @@ func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 		return
 	}
 
-	checksum, err := strconv.ParseInt(elems[4], 16, 32)
+	checksum, err := strconv.ParseUint(elems[4], 16, 32)
 	if err != nil {
 		return
 	}
