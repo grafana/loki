@@ -45,16 +45,8 @@ func (i InstancesWithTokenRange) Contains(token uint32) bool {
 // token.
 func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) (v1.FingerprintBounds, error) {
 
-	// Sorting the tokens of the instances would not be necessary if there is
-	// only a single token per instances, however, since we only assume one
-	// token, but don't enforce one token, we keep the sorting.
-	for _, inst := range instances {
-		sort.Slice(inst.Tokens, func(i, j int) bool {
-			return inst.Tokens[i] < inst.Tokens[j]
-		})
-	}
-
-	// Sort instances
+	// Sort instances -- they may not be sorted
+	// because they're usually accessed by looking up the tokens (which are sorted)
 	sort.Slice(instances, func(i, j int) bool {
 		return instances[i].Tokens[0] < instances[j].Tokens[0]
 	})
