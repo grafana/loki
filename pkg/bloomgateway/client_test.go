@@ -2,6 +2,7 @@ package bloomgateway
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sort"
 	"testing"
@@ -163,6 +164,33 @@ func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
 		bounded := partitionFingerprintsByAddresses(groups, servers)
 		require.Equal(t, expected, bounded)
 	})
+}
+
+func BenchmarkPartitionFingerprintsByAddresses(b *testing.B) {
+	numFp := 100000
+	fpStep := math.MaxUint64 / uint64(numFp)
+
+	groups := make([]*logproto.GroupedChunkRefs, 0, numFp)
+	for i := uint64(0); i < math.MaxUint64-fpStep; i += fpStep {
+		groups = append(groups, &logproto.GroupedChunkRefs{Fingerprint: i})
+	}
+
+	numServers := 100
+	tokenStep := math.MaxUint32 / uint32(numServers)
+	servers := make([]addrsWithTokenRange, 0, numServers)
+	for i := uint32(0); i < math.MaxUint32-tokenStep; i += tokenStep {
+		servers = append(servers, addrsWithTokenRange{
+			id:         fmt.Sprintf("instance-%x", i),
+			addrs:      []string{fmt.Sprintf("%d", i)},
+			tokenRange: newTr(i, i+tokenStep),
+		})
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = partitionFingerprintsByAddresses(groups, servers)
+	}
 }
 
 func TestBloomGatewayClient_ServerAddressesWithTokenRanges(t *testing.T) {
