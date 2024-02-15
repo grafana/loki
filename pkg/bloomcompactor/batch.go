@@ -248,9 +248,11 @@ func (i *blockLoadingIter) Reset() error {
 	if !i.initialized {
 		return nil
 	}
-	i.initialized = false
 	// close loaded queriers
-	return i.Close()
+	err := i.Close()
+	i.initialized = false
+	clear(i.loaded)
+	return err
 }
 
 func (i *blockLoadingIter) init() {
