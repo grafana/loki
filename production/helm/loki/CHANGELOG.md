@@ -14,6 +14,10 @@ Entries should include a reference to the pull request that introduced the chang
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
 
+## 5.43.1
+
+- [BUGFIX] Fix `toPorts` fields in the `ciliumnetworkpolicy` template
+
 ## 5.43.0
 
 - [ENHANCEMENT] Allow the definition of resources for GrafanaAgent pods
