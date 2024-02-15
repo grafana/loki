@@ -107,31 +107,38 @@ func GetInstancesWithTokenRanges(id string, instances []ring.InstanceDesc) Insta
 // NewInstanceSortMergeIterator creates an iterator that yields instanceWithToken elements
 // where the token of the elements are sorted in ascending order.
 func NewInstanceSortMergeIterator(instances []ring.InstanceDesc) v1.Iterator[InstanceWithTokenRange] {
-	it := &sortMergeIterator[ring.InstanceDesc, uint32, InstanceWithTokenRange]{
-		items: instances,
-		transform: func(item ring.InstanceDesc, val uint32, prev *InstanceWithTokenRange) *InstanceWithTokenRange {
-			var prevToken uint32
-			if prev != nil {
-				prevToken = prev.MaxToken + 1
-			}
-			return &InstanceWithTokenRange{Instance: item, MinToken: prevToken, MaxToken: val}
-		},
-	}
-	sequences := make([]v1.PeekingIterator[v1.IndexedValue[uint32]], 0, len(instances))
-	for i := range instances {
-		sort.Slice(instances[i].Tokens, func(a, b int) bool {
-			return instances[i].Tokens[a] < instances[i].Tokens[b]
-		})
-		iter := v1.NewIterWithIndex[uint32](v1.NewSliceIter(instances[i].Tokens), i)
-		sequences = append(sequences, v1.NewPeekingIter[v1.IndexedValue[uint32]](iter))
-	}
-	it.heap = v1.NewHeapIterator(
-		func(i, j v1.IndexedValue[uint32]) bool {
-			return i.Value() < j.Value()
-		},
-		sequences...,
-	)
-	it.err = nil
 
-	return it
+	tokenIters := make([]v1.PeekingIterator[v1.IndexedValue[uint32]], 0, len(instances))
+	for i, inst := range instances {
+		sort.Slice(inst.Tokens, func(a, b int) bool { return inst.Tokens[a] < inst.Tokens[b] })
+		itr := v1.NewIterWithIndex(v1.NewSliceIter[uint32](inst.Tokens), i)
+		tokenIters = append(tokenIters, v1.NewPeekingIter[v1.IndexedValue[uint32]](itr))
+	}
+
+	heapIter := v1.NewHeapIterator[v1.IndexedValue[uint32]](
+		func(iv1, iv2 v1.IndexedValue[uint32]) bool {
+			return iv1.Value() < iv2.Value()
+		},
+		tokenIters...,
+	)
+
+	prevToken := -1
+	return v1.NewDedupingIter[v1.IndexedValue[uint32], InstanceWithTokenRange](
+		func(iv v1.IndexedValue[uint32], iwtr InstanceWithTokenRange) bool {
+			return false
+		},
+		func(iv v1.IndexedValue[uint32]) InstanceWithTokenRange {
+			minToken, maxToken := uint32(prevToken+1), iv.Value()
+			prevToken = int(maxToken)
+			return InstanceWithTokenRange{
+				Instance: instances[iv.Index()],
+				MinToken: minToken,
+				MaxToken: maxToken,
+			}
+		},
+		func(iv v1.IndexedValue[uint32], iwtr InstanceWithTokenRange) InstanceWithTokenRange {
+			panic("must not be called, because Eq() is always false")
+		},
+		v1.NewPeekingIter(heapIter),
+	)
 }
