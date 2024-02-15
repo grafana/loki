@@ -6,6 +6,8 @@ import (
 
 	"github.com/grafana/dskit/ring"
 	"github.com/stretchr/testify/require"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
 func TestBloomGatewayClient_SortInstancesByToken(t *testing.T) {
@@ -67,7 +69,7 @@ func TestBloomGatewayClient_GetInstanceWithTokenRange(t *testing.T) {
 	for name, tc := range map[string]struct {
 		id       string
 		input    []ring.InstanceDesc
-		expected InstancesWithTokenRange
+		expected v1.FingerprintBounds
 	}{
 		"first instance includes 0 token": {
 			id: "3",
@@ -76,9 +78,7 @@ func TestBloomGatewayClient_GetInstanceWithTokenRange(t *testing.T) {
 				{Id: "2", Tokens: []uint32{5}},
 				{Id: "3", Tokens: []uint32{1}},
 			},
-			expected: InstancesWithTokenRange{
-				{Instance: ring.InstanceDesc{Id: "3", Tokens: []uint32{1}}, MinToken: 0, MaxToken: math.MaxUint32/3 - 1},
-			},
+			expected: v1.NewBounds(0, math.MaxUint64/3-1),
 		},
 		"middle instance": {
 			id: "1",
@@ -87,9 +87,7 @@ func TestBloomGatewayClient_GetInstanceWithTokenRange(t *testing.T) {
 				{Id: "2", Tokens: []uint32{5}},
 				{Id: "3", Tokens: []uint32{1}},
 			},
-			expected: InstancesWithTokenRange{
-				{Instance: ring.InstanceDesc{Id: "1", Tokens: []uint32{3}}, MinToken: math.MaxUint32 / 3, MaxToken: math.MaxUint32/3*2 - 1},
-			},
+			expected: v1.NewBounds(math.MaxUint64/3, math.MaxUint64/3*2-1),
 		},
 		"last instance includes MaxUint32 token": {
 			id: "2",
@@ -98,14 +96,13 @@ func TestBloomGatewayClient_GetInstanceWithTokenRange(t *testing.T) {
 				{Id: "2", Tokens: []uint32{5}},
 				{Id: "3", Tokens: []uint32{1}},
 			},
-			expected: InstancesWithTokenRange{
-				{Instance: ring.InstanceDesc{Id: "2", Tokens: []uint32{5}}, MinToken: math.MaxUint32 / 3 * 2, MaxToken: math.MaxUint32},
-			},
+			expected: v1.NewBounds(math.MaxUint64/3*2, math.MaxUint64),
 		},
 	} {
 		tc := tc
 		t.Run(name, func(t *testing.T) {
-			result := GetInstanceWithTokenRange(tc.id, tc.input)
+			result, err := GetInstanceWithTokenRange(tc.id, tc.input)
+			require.NoError(t, err)
 			require.Equal(t, tc.expected, result)
 		})
 	}

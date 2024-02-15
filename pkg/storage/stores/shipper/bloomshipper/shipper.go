@@ -60,7 +60,7 @@ func BlocksForMetas(metas []Meta, interval Interval, keyspaces []v1.FingerprintB
 	blocks := make(map[BlockRef]bool) // block -> isTombstoned
 
 	for _, meta := range metas {
-		for _, tombstone := range meta.Tombstones {
+		for _, tombstone := range meta.BlockTombstones {
 			blocks[tombstone] = true
 		}
 		for _, block := range meta.Blocks {

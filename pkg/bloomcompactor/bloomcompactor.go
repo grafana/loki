@@ -2,7 +2,6 @@ package bloomcompactor
 
 import (
 	"context"
-	"math"
 	"sync"
 	"time"
 
@@ -11,16 +10,23 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/multierror"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	util_ring "github.com/grafana/loki/pkg/util/ring"
+)
+
+var (
+	RingOp = ring.NewOp([]ring.InstanceState{ring.JOINING, ring.ACTIVE}, nil)
 )
 
 /*
@@ -47,7 +53,7 @@ type Compactor struct {
 	// temporary workaround until bloomStore has implemented read/write shipper interface
 	bloomStore bloomshipper.Store
 
-	sharding ShardingStrategy
+	sharding util_ring.TenantSharding
 
 	metrics   *Metrics
 	btMetrics *v1.Metrics
@@ -59,7 +65,7 @@ func New(
 	storeCfg storage.Config,
 	clientMetrics storage.ClientMetrics,
 	fetcherProvider stores.ChunkFetcherProvider,
-	sharding ShardingStrategy,
+	sharding util_ring.TenantSharding,
 	limits Limits,
 	logger log.Logger,
 	r prometheus.Registerer,
@@ -182,9 +188,24 @@ func (c *Compactor) tenants(ctx context.Context, table config.DayTime) (v1.Itera
 	return v1.NewSliceIter(tenants), nil
 }
 
-// TODO(owen-d): implement w/ subrings
-func (c *Compactor) ownsTenant(_ string) (ownershipRange v1.FingerprintBounds, owns bool) {
-	return v1.NewBounds(0, math.MaxUint64), true
+// ownsTenant returns the ownership range for the tenant, if the compactor owns the tenant, and an error.
+func (c *Compactor) ownsTenant(tenant string) (v1.FingerprintBounds, bool, error) {
+	tenantRing, owned := c.sharding.OwnsTenant(tenant)
+	if !owned {
+		return v1.FingerprintBounds{}, false, nil
+	}
+
+	rs, err := tenantRing.GetAllHealthy(RingOp)
+	if err != nil {
+		return v1.FingerprintBounds{}, false, errors.Wrap(err, "getting ring healthy instances")
+
+	}
+
+	ownershipBounds, err := bloomutils.GetInstanceWithTokenRange(c.cfg.Ring.InstanceID, rs.Instances)
+	if err != nil {
+		return v1.FingerprintBounds{}, false, errors.Wrap(err, "getting instance token range")
+	}
+	return ownershipBounds, true, nil
 }
 
 // runs a single round of compaction for all relevant tenants and tables
@@ -232,7 +253,10 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
 			tenant := tenants.At()
-			ownershipRange, owns := c.ownsTenant(tenant)
+			ownershipRange, owns, err := c.ownsTenant(tenant)
+			if err != nil {
+				return errors.Wrap(err, "checking tenant ownership")
+			}
 			if !owns {
 				continue
 			}
@@ -290,7 +314,7 @@ func (c *Compactor) runWorkers(ctx context.Context, ch <-chan tenantTable) error
 
 func (c *Compactor) compactTenantTable(ctx context.Context, tt tenantTable) error {
 	level.Info(c.logger).Log("msg", "compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange)
-	return c.controller.buildBlocks(ctx, tt.table, tt.tenant, tt.ownershipRange)
+	return c.controller.compactTenant(ctx, tt.table, tt.tenant, tt.ownershipRange)
 }
 
 type dayRangeIterator struct {
