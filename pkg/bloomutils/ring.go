@@ -1,9 +1,9 @@
 // This file contains a bunch of utility functions for bloom components.
-// TODO: Find a better location for this package
 
 package bloomutils
 
 import (
+	"fmt"
 	"math"
 	"sort"
 
@@ -14,18 +14,45 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
-type InstanceWithTokenRange struct {
-	Instance           ring.InstanceDesc
-	MinToken, MaxToken uint32
+type integer interface {
+	~uint | ~uint32 | ~uint64 | ~int | ~int32 | ~int64
 }
 
-func (i InstanceWithTokenRange) Cmp(token uint32) v1.BoundsCheck {
-	if token < i.MinToken {
+type Range[T integer] struct {
+	Min, Max T
+}
+
+func (r Range[T]) String() string {
+	return fmt.Sprintf("%016x-%016x", r.Min, r.Max)
+}
+
+func (r Range[T]) Less(other Range[T]) bool {
+	if r.Min != other.Min {
+		return r.Min < other.Min
+	}
+	return r.Max <= other.Max
+}
+
+func (r Range[T]) Cmp(t T) v1.BoundsCheck {
+	if t < r.Min {
 		return v1.Before
-	} else if token > i.MaxToken {
+	} else if t > r.Max {
 		return v1.After
 	}
 	return v1.Overlap
+}
+
+func NewTokenRange(min, max uint32) Range[uint32] {
+	return Range[uint32]{min, max}
+}
+
+type InstanceWithTokenRange struct {
+	Instance   ring.InstanceDesc
+	TokenRange Range[uint32]
+}
+
+func (i InstanceWithTokenRange) Cmp(token uint32) v1.BoundsCheck {
+	return i.TokenRange.Cmp(token)
 }
 
 type InstancesWithTokenRange []InstanceWithTokenRange
@@ -90,15 +117,14 @@ func GetInstancesWithTokenRanges(id string, instances []ring.InstanceDesc) Insta
 		if it.At().Instance.Id == id {
 			servers = append(servers, it.At())
 		}
-		lastToken = it.At().MaxToken
+		lastToken = it.At().TokenRange.Max
 	}
 	// append token range from lastToken+1 to MaxUint32
 	// only if the instance with the first token is the current one
 	if len(servers) > 0 && firstInst.Id == id {
 		servers = append(servers, InstanceWithTokenRange{
-			MinToken: lastToken + 1,
-			MaxToken: math.MaxUint32,
-			Instance: servers[0].Instance,
+			Instance:   servers[0].Instance,
+			TokenRange: NewTokenRange(lastToken+1, math.MaxUint32),
 		})
 	}
 	return servers
@@ -107,7 +133,6 @@ func GetInstancesWithTokenRanges(id string, instances []ring.InstanceDesc) Insta
 // NewInstanceSortMergeIterator creates an iterator that yields instanceWithToken elements
 // where the token of the elements are sorted in ascending order.
 func NewInstanceSortMergeIterator(instances []ring.InstanceDesc) v1.Iterator[InstanceWithTokenRange] {
-
 	tokenIters := make([]v1.PeekingIterator[v1.IndexedValue[uint32]], 0, len(instances))
 	for i, inst := range instances {
 		sort.Slice(inst.Tokens, func(a, b int) bool { return inst.Tokens[a] < inst.Tokens[b] })
@@ -131,9 +156,8 @@ func NewInstanceSortMergeIterator(instances []ring.InstanceDesc) v1.Iterator[Ins
 			minToken, maxToken := uint32(prevToken+1), iv.Value()
 			prevToken = int(maxToken)
 			return InstanceWithTokenRange{
-				Instance: instances[iv.Index()],
-				MinToken: minToken,
-				MaxToken: maxToken,
+				Instance:   instances[iv.Index()],
+				TokenRange: NewTokenRange(minToken, maxToken),
 			}
 		},
 		func(iv v1.IndexedValue[uint32], iwtr InstanceWithTokenRange) InstanceWithTokenRange {

@@ -11,22 +11,22 @@ import (
 )
 
 func TestBloomGatewayClient_SortInstancesByToken(t *testing.T) {
-	//          | 1  2  3  4  5  6  7  8  9  |
-	// ---------+----------------------------+
-	// ID 1     |             *           *  |
-	// ID 2     |       *           *        |
-	// ID 3     | *                          |
+	//          | 0 1 2 3 4 5 6 7 8 9 |
+	// ---------+---------------------+
+	// ID 1     |        ***o    ***o |
+	// ID 2     |    ***o    ***o     |
+	// ID 3     | **o                 |
 	input := []ring.InstanceDesc{
 		{Id: "1", Tokens: []uint32{5, 9}},
 		{Id: "2", Tokens: []uint32{3, 7}},
 		{Id: "3", Tokens: []uint32{1}},
 	}
 	expected := []InstanceWithTokenRange{
-		{Instance: input[2], MinToken: 0, MaxToken: 1},
-		{Instance: input[1], MinToken: 2, MaxToken: 3},
-		{Instance: input[0], MinToken: 4, MaxToken: 5},
-		{Instance: input[1], MinToken: 6, MaxToken: 7},
-		{Instance: input[0], MinToken: 8, MaxToken: 9},
+		{Instance: input[2], TokenRange: NewTokenRange(0, 1)},
+		{Instance: input[1], TokenRange: NewTokenRange(2, 3)},
+		{Instance: input[0], TokenRange: NewTokenRange(4, 5)},
+		{Instance: input[1], TokenRange: NewTokenRange(6, 7)},
+		{Instance: input[0], TokenRange: NewTokenRange(8, 9)},
 	}
 
 	var i int
@@ -46,8 +46,8 @@ func TestBloomGatewayClient_GetInstancesWithTokenRanges(t *testing.T) {
 			{Id: "3", Tokens: []uint32{1}},
 		}
 		expected := InstancesWithTokenRange{
-			{Instance: input[1], MinToken: 2, MaxToken: 3},
-			{Instance: input[1], MinToken: 6, MaxToken: 7},
+			{Instance: input[1], TokenRange: NewTokenRange(2, 3)},
+			{Instance: input[1], TokenRange: NewTokenRange(6, 7)},
 		}
 
 		result := GetInstancesWithTokenRanges("2", input)
@@ -61,8 +61,8 @@ func TestBloomGatewayClient_GetInstancesWithTokenRanges(t *testing.T) {
 			{Id: "3", Tokens: []uint32{1}},
 		}
 		expected := InstancesWithTokenRange{
-			{Instance: input[2], MinToken: 0, MaxToken: 1},
-			{Instance: input[2], MinToken: 10, MaxToken: math.MaxUint32},
+			{Instance: input[2], TokenRange: NewTokenRange(0, 1)},
+			{Instance: input[2], TokenRange: NewTokenRange(10, math.MaxUint32)},
 		}
 
 		result := GetInstancesWithTokenRanges("3", input)
