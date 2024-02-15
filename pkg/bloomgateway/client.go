@@ -326,11 +326,6 @@ func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.Inst
 	return servers, nil
 }
 
-type instanceWithToken struct {
-	instance ring.InstanceDesc
-	token    uint32
-}
-
 type addrsWithTokenRange struct {
 	id         string
 	addrs      []string
