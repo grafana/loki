@@ -178,6 +178,13 @@ kind: pipeline
 name: check
 steps:
 - commands:
+  - make BUILD_IN_CONTAINER=false check-generated-files
+  depends_on:
+  - clone
+  environment: {}
+  image: grafana/loki-build-image:0.33.0
+  name: check-generated-files
+- commands:
   - cd ..
   - 'echo "cloning "$DRONE_TARGET_BRANCH '
   - git clone -b $DRONE_TARGET_BRANCH $CI_REPO_REMOTE loki-target-branch
@@ -190,6 +197,13 @@ steps:
   when:
     event:
     - pull_request
+- commands:
+  - make BUILD_IN_CONTAINER=false check-doc
+  depends_on:
+  - loki
+  environment: {}
+  image: grafana/loki-build-image:0.33.0
+  name: check-doc
 - commands:
   - make BUILD_IN_CONTAINER=false loki
   depends_on:
@@ -1913,6 +1927,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 07c4412faebf5affd662ec20ea50be4f89e0ad132942d7c6a76c91f7aee9facc
+hmac: b098779af60b423c7c8b05a7228438e83766f42655c2291c2f61da73e17e4ff2
 
 ...
