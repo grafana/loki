@@ -8,12 +8,14 @@ local setupValidationDeps = function(job) job {
     common.checkout,
     common.fetchReleaseLib,
     common.fixDubiousOwnership,
-    step.new('install tar') +
-    step.withRun(|||
+    step.new('install tar')
+    + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
+    + step.withRun(|||
       apt update
       apt install -qy tar xz-utils
     |||),
     step.new('install shellcheck', './lib/actions/install-binary')
+    + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
     + step.with({
       binary: 'shellcheck',
       version: '0.9.0',
@@ -23,6 +25,7 @@ local setupValidationDeps = function(job) job {
       tar_args: 'xvf',
     }),
     step.new('install jsonnetfmt', './lib/actions/install-binary')
+    + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
     + step.with({
       binary: 'jsonnetfmt',
       version: '0.18.0',
@@ -65,6 +68,7 @@ function(buildImage) {
     ]) + {
       steps+: [
         step.new('golangci-lint', 'golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5')
+        + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
         + step.with({
           version: 'v1.55.1',
           'only-new-issues': true,

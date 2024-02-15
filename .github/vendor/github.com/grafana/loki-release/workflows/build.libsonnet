@@ -123,6 +123,7 @@ local releaseLibStep = common.releaseLibStep;
         NFPM_SIGNING_KEY_FILE: 'nfpm-private-key.key',
         SKIP_ARM: skipArm,
       })
+      //TODO: the workdir here is loki specific
       + step.withRun(|||
         cat <<EOF | docker run \
           --interactive \
