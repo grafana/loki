@@ -7,10 +7,7 @@ local setupValidationDeps = function(job) job {
   steps: [
     common.checkout,
     common.fetchReleaseLib,
-    step.new('fix git dubious ownership')
-    + step.withRun(|||
-      git config --global --add safe.directory "$GITHUB_WORKSPACE"
-    |||),
+    common.fixDubiousOwnership,
     step.new('install tar') +
     step.withRun(|||
       apt update

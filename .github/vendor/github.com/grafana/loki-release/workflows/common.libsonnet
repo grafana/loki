@@ -113,4 +113,9 @@
                      + $.step.withRun(|||
                        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
                      |||),
+
+  fixDubiousOwnership: $.step.new('fix git dubious ownership')
+                       + $.step.withRun(|||
+                         git config --global --add safe.directory "$GITHUB_WORKSPACE"
+                       |||),
 }

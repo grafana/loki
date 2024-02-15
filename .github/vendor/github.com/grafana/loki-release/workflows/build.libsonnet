@@ -136,6 +136,7 @@ local releaseLibStep = common.releaseLibStep;
           --volume .:/src/loki \
           --workdir /src/loki \
           --entrypoint /bin/sh "%s"
+          git config --global --add safe.directory /src/loki
           echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
           make dist packages
         EOF
