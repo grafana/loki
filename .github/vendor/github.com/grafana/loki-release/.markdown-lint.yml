@@ -1,7 +1,0 @@
-# Unordered list style
-MD004:
-  style: dash
-
-# Ordered list item prefix
-MD029:
-  style: one

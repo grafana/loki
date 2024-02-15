@@ -5,11 +5,11 @@
       "source": {
         "git": {
           "remote": "https://github.com/grafana/loki-release.git",
-          "subdir": ""
+          "subdir": "workflows"
         }
       },
-      "version": "a8dfe9aab48aea27205f30601002bdf42d6ccb39",
-      "sum": "O83xr9x/q6mEjCO+QqTaY50bzyeZGIyzVsLJP31cuTA="
+      "version": "797d43b8a79e06427aaa688bfc77c4e74b5716fb",
+      "sum": "n3dBljY/P10BNd6agesEYxTtUKlcMf7dv0i6ekN6cmE="
     }
   ],
   "legacyImports": false

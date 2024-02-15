@@ -5,7 +5,7 @@
       "source": {
         "git": {
           "remote": "https://github.com/grafana/loki-release.git",
-          "subdir": ""
+          "subdir": "workflows"
         }
       },
       "version": "release-1.10.x"

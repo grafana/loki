@@ -1,4 +1,4 @@
-local lokiRelease = import 'loki-release/main.jsonnet';
+local lokiRelease = import 'workflows/main.jsonnet';
 local build = lokiRelease.build;
 {
   'patch-release-pr.yml': std.manifestYamlDoc(

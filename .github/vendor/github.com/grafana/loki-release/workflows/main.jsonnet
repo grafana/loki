@@ -1,10 +1,10 @@
 {
-  common: import './workflows/common.libsonnet',
+  common: import 'common.libsonnet',
   job: $.common.job,
   step: $.common.step,
-  build: import './workflows/build.libsonnet',
-  release: import './workflows/release.libsonnet',
-  validate: import './workflows/validate.libsonnet',
+  build: import 'build.libsonnet',
+  release: import 'release.libsonnet',
+  validate: import 'validate.libsonnet',
   releasePRWorkflow: function(
     branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+'],
     buildImage='grafana/loki-build-image:0.33.0',
