@@ -109,9 +109,7 @@ func New(
 		c.logger,
 	)
 
-	c.metrics.compactionRunInterval.Set(cfg.CompactionInterval.Seconds())
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
-
 	return c, nil
 }
 
@@ -138,11 +136,17 @@ func (c *Compactor) running(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 
-		case <-ticker.C:
+		case start := <-ticker.C:
+			c.metrics.compactionsStarted.Inc()
 			if err := c.runOne(ctx); err != nil {
-				level.Error(c.logger).Log("msg", "compaction iteration failed", "err", err)
+				level.Error(c.logger).Log("msg", "compaction iteration failed", "err", err, "duration", time.Since(start))
+				c.metrics.compactionCompleted.WithLabelValues(statusFailure).Inc()
+				c.metrics.compactionTime.WithLabelValues(statusFailure).Observe(time.Since(start).Seconds())
 				return err
 			}
+			level.Info(c.logger).Log("msg", "compaction iteration completed", "duration", time.Since(start))
+			c.metrics.compactionCompleted.WithLabelValues(statusSuccess).Inc()
+			c.metrics.compactionTime.WithLabelValues(statusSuccess).Observe(time.Since(start).Seconds())
 		}
 	}
 }
@@ -252,14 +256,17 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 		}
 
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
+			c.metrics.tenantsDiscovered.Inc()
 			tenant := tenants.At()
 			ownershipRange, owns, err := c.ownsTenant(tenant)
 			if err != nil {
 				return errors.Wrap(err, "checking tenant ownership")
 			}
 			if !owns {
+				c.metrics.tenantsSkipped.Inc()
 				continue
 			}
+			c.metrics.tenantsOwned.Inc()
 
 			select {
 			case ch <- tenantTable{tenant: tenant, table: table, ownershipRange: ownershipRange}:
@@ -296,7 +303,11 @@ func (c *Compactor) runWorkers(ctx context.Context, ch <-chan tenantTable) error
 					return nil
 				}
 
+				start := time.Now()
+				c.metrics.tenantsStarted.Inc()
 				if err := c.compactTenantTable(ctx, tt); err != nil {
+					c.metrics.tenantsCompleted.WithLabelValues(statusFailure).Inc()
+					c.metrics.tenantsCompletedTime.WithLabelValues(statusFailure).Observe(time.Since(start).Seconds())
 					return errors.Wrapf(
 						err,
 						"compacting tenant table (%s) for tenant (%s) with ownership (%s)",
@@ -305,6 +316,8 @@ func (c *Compactor) runWorkers(ctx context.Context, ch <-chan tenantTable) error
 						tt.ownershipRange,
 					)
 				}
+				c.metrics.tenantsCompleted.WithLabelValues(statusSuccess).Inc()
+				c.metrics.tenantsCompletedTime.WithLabelValues(statusSuccess).Observe(time.Since(start).Seconds())
 			}
 		}
 
