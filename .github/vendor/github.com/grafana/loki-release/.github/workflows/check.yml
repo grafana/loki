@@ -16,11 +16,13 @@
       "with":
         "path": "lib"
         "repository": "grafana/loki-release"
+    - "name": "fix git dubious ownership"
+      "run": |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
     - "name": "install tar"
       "run": |
         apt update
         apt install -qy tar xz-utils
-      "shell": "bash"
     - "name": "install shellcheck"
       "uses": "./lib/actions/install-binary"
       "with":
@@ -41,31 +43,24 @@
     - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
       "name": "check generated files"
       "run": "make check-generated-files"
-      "shell": "bash"
     - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
       "name": "check mod"
       "run": "make check-mod"
-      "shell": "bash"
     - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
       "name": "check docs"
       "run": "make check-doc"
-      "shell": "bash"
     - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
       "name": "validate example configs"
       "run": "make validate-example-configs"
-      "shell": "bash"
     - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
       "name": "check example config docs"
       "run": "make check-example-config-doc"
-      "shell": "bash"
     - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
       "name": "check helm reference doc"
       "run": "make documentation-helm-reference-check"
-      "shell": "bash"
     - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
       "name": "check drone drift"
       "run": "make check-drone-drift"
-      "shell": "bash"
   "lint":
     "container":
       "image": "grafana/loki-build-image:0.33.0"
@@ -81,11 +76,13 @@
       "with":
         "path": "lib"
         "repository": "grafana/loki-release"
+    - "name": "fix git dubious ownership"
+      "run": |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
     - "name": "install tar"
       "run": |
         apt update
         apt install -qy tar xz-utils
-      "shell": "bash"
     - "name": "install shellcheck"
       "uses": "./lib/actions/install-binary"
       "with":
@@ -106,15 +103,17 @@
     - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
       "name": "lint"
       "run": "make lint"
-      "shell": "bash"
     - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
       "name": "lint jsonnet"
       "run": "make lint-jsonnet"
-      "shell": "bash"
     - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
       "name": "lint scripts"
       "run": "make lint-scripts"
-      "shell": "bash"
+    - "name": "golangci-lint"
+      "uses": "golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5"
+      "with":
+        "only-new-issues": true
+        "version": "v1.55.1"
   "test":
     "container":
       "image": "grafana/loki-build-image:0.33.0"
@@ -130,11 +129,13 @@
       "with":
         "path": "lib"
         "repository": "grafana/loki-release"
+    - "name": "fix git dubious ownership"
+      "run": |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
     - "name": "install tar"
       "run": |
         apt update
         apt install -qy tar xz-utils
-      "shell": "bash"
     - "name": "install shellcheck"
       "uses": "./lib/actions/install-binary"
       "with":
@@ -155,7 +156,6 @@
     - "if": "${{ !fromJSON(env.SKIP_VALIDATION) }}"
       "name": "test"
       "run": "make test"
-      "shell": "bash"
 "name": "check"
 "on":
   "workflow_call":

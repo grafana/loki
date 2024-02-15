@@ -9,7 +9,6 @@
       with+: with,
     },
     withRun: function(run) {
-      shell: 'bash',
       run: run,
     },
     withId: function(id) {

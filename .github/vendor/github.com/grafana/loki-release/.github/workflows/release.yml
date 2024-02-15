@@ -38,7 +38,6 @@ jobs:
       run: |
         echo "downloading binaries to $(pwd)/dist"
         gsutil cp -r gs://loki-build-artifacts/${{ needs.shouldRelease.outputs.sha }}/dist .
-      shell: "bash"
       working-directory: "release"
     - id: "release"
       name: "create release"
@@ -50,7 +49,6 @@ jobs:
           --repo-url="${{ env.RELEASE_REPO }}" \
           --target-branch "${{ needs.shouldRelease.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}"
-      shell: "bash"
       working-directory: "lib"
     - env:
         GH_TOKEN: "${{ secrets.GH_TOKEN }}"
@@ -59,7 +57,6 @@ jobs:
       run: |
         gh release upload ${{ needs.shouldRelease.outputs.name }} dist/*
         gh release edit ${{ needs.shouldRelease.outputs.name }} --draft=false
-      shell: "bash"
       working-directory: "release"
   publishImages:
     needs:
@@ -92,7 +89,6 @@ jobs:
       run: |
         echo "downloading images to $(pwd)/images"
         gsutil cp -r gs://loki-build-artifacts/${{ needs.createRelease.outputs.sha }}/images .
-      shell: "bash"
     - name: "publish docker images"
       uses: "./lib/actions/push-images"
       with:
@@ -120,7 +116,6 @@ jobs:
       name: "extract branch name"
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
-      shell: "bash"
       working-directory: "release"
     - id: "should_release"
       name: "should a release be created?"
