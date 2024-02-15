@@ -285,6 +285,7 @@ func (i *blockLoadingIter) Filter(filter func(*bloomshipper.CloseableBlockQuerie
 func (i *blockLoadingIter) loadNext() bool {
 	// check if there are more overlapping groups to load
 	if !i.overlapping.Next() {
+		i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
 		return false
 	}
 
