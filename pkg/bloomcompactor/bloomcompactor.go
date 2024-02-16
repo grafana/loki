@@ -180,11 +180,12 @@ func runWithRetries(
 type tenantTable struct {
 	tenant         string
 	table          config.DayTime
+	period         config.PeriodConfig
 	ownershipRange v1.FingerprintBounds
 }
 
-func (c *Compactor) tenants(ctx context.Context, table config.DayTime) (v1.Iterator[string], error) {
-	tenants, err := c.tsdbStore.UsersForPeriod(ctx, table)
+func (c *Compactor) tenants(ctx context.Context, table config.DayTime, period config.PeriodConfig) (v1.Iterator[string], error) {
+	tenants, err := c.tsdbStore.UsersForPeriod(ctx, table, period)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting tenants")
 	}
@@ -248,9 +249,14 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 	tables := c.tables(time.Now())
 
 	for tables.Next() && tables.Err() == nil && ctx.Err() == nil {
-
 		table := tables.At()
-		tenants, err := c.tenants(ctx, table)
+
+		period, err := c.schemaCfg.SchemaForTime(table.ModelTime())
+		if err != nil {
+			return errors.Wrap(err, "getting schema for time")
+		}
+
+		tenants, err := c.tenants(ctx, table, period)
 		if err != nil {
 			return errors.Wrap(err, "getting tenants")
 		}
@@ -269,7 +275,12 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 			c.metrics.tenantsOwned.Inc()
 
 			select {
-			case ch <- tenantTable{tenant: tenant, table: table, ownershipRange: ownershipRange}:
+			case ch <- tenantTable{
+				tenant:         tenant,
+				table:          table,
+				period:         period,
+				ownershipRange: ownershipRange,
+			}:
 			case <-ctx.Done():
 				return ctx.Err()
 			}
@@ -327,7 +338,7 @@ func (c *Compactor) runWorkers(ctx context.Context, ch <-chan tenantTable) error
 
 func (c *Compactor) compactTenantTable(ctx context.Context, tt tenantTable) error {
 	level.Info(c.logger).Log("msg", "compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange)
-	return c.controller.compactTenant(ctx, tt.table, tt.tenant, tt.ownershipRange)
+	return c.controller.compactTenant(ctx, tt.table, tt.period, tt.tenant, tt.ownershipRange)
 }
 
 type dayRangeIterator struct {

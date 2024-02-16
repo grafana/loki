@@ -67,14 +67,15 @@ Compaction works as follows, split across many functions for clarity:
 func (s *SimpleBloomController) compactTenant(
 	ctx context.Context,
 	table config.DayTime,
+	period config.PeriodConfig,
 	tenant string,
 	ownershipRange v1.FingerprintBounds,
 ) error {
-	logger := log.With(s.logger, "ownership", ownershipRange, "org_id", tenant, "table", table)
+	logger := log.With(s.logger, "ownership", ownershipRange, "org_id", tenant, "table", table.AddrWithPreffix(&period))
 
 	client, err := s.bloomStore.Client(table.ModelTime())
 	if err != nil {
-		level.Error(logger).Log("msg", "failed to get client", "err", err, "table", table.Addr())
+		level.Error(logger).Log("msg", "failed to get client", "err", err)
 		return errors.Wrap(err, "failed to get client")
 	}
 
@@ -93,13 +94,13 @@ func (s *SimpleBloomController) compactTenant(
 	}
 
 	// build compaction plans
-	work, err := s.findOutdatedGaps(ctx, tenant, table, ownershipRange, metas, logger)
+	work, err := s.findOutdatedGaps(ctx, tenant, table, period, ownershipRange, metas, logger)
 	if err != nil {
 		return errors.Wrap(err, "failed to find outdated gaps")
 	}
 
 	// build new blocks
-	built, err := s.buildGaps(ctx, tenant, table, client, work, logger)
+	built, err := s.buildGaps(ctx, tenant, table, period, client, work, logger)
 	if err != nil {
 		return errors.Wrap(err, "failed to build gaps")
 	}
@@ -176,12 +177,13 @@ func (s *SimpleBloomController) findOutdatedGaps(
 	ctx context.Context,
 	tenant string,
 	table config.DayTime,
+	period config.PeriodConfig,
 	ownershipRange v1.FingerprintBounds,
 	metas []bloomshipper.Meta,
 	logger log.Logger,
 ) ([]blockPlan, error) {
 	// Resolve TSDBs
-	tsdbs, err := s.tsdbStore.ResolveTSDBs(ctx, table, tenant)
+	tsdbs, err := s.tsdbStore.ResolveTSDBs(ctx, table, period, tenant)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
 		return nil, errors.Wrap(err, "failed to resolve tsdbs")
@@ -216,12 +218,13 @@ func (s *SimpleBloomController) findOutdatedGaps(
 func (s *SimpleBloomController) loadWorkForGap(
 	ctx context.Context,
 	table config.DayTime,
+	period config.PeriodConfig,
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
 ) (v1.CloseableIterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBloom], error) {
 	// load a series iterator for the gap
-	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.bounds)
+	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, period, tenant, id, gap.bounds)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to load tsdb")
 	}
@@ -242,6 +245,7 @@ func (s *SimpleBloomController) buildGaps(
 	ctx context.Context,
 	tenant string,
 	table config.DayTime,
+	period config.PeriodConfig,
 	client bloomshipper.Client,
 	work []blockPlan,
 	logger log.Logger,
@@ -276,7 +280,7 @@ func (s *SimpleBloomController) buildGaps(
 				MetaRef: bloomshipper.MetaRef{
 					Ref: bloomshipper.Ref{
 						TenantID:  tenant,
-						TableName: table.Addr(),
+						TableName: table.AddrWithPreffix(&period),
 						Bounds:    gap.bounds,
 					},
 				},
@@ -285,7 +289,7 @@ func (s *SimpleBloomController) buildGaps(
 
 			// Fetch blocks that aren't up to date but are in the desired fingerprint range
 			// to try and accelerate bloom creation
-			seriesItr, blocksIter, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
+			seriesItr, blocksIter, err := s.loadWorkForGap(ctx, table, period, tenant, plan.tsdb, gap)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 				return nil, errors.Wrap(err, "failed to get series and blocks")
@@ -318,7 +322,7 @@ func (s *SimpleBloomController) buildGaps(
 				blockCt++
 				blk := newBlocks.At()
 
-				built, err := bloomshipper.BlockFrom(tenant, table.Addr(), blk)
+				built, err := bloomshipper.BlockFrom(tenant, table.AddrWithPreffix(&period), blk)
 				if err != nil {
 					level.Error(logger).Log("msg", "failed to build block", "err", err)
 					blocksIter.Close()
@@ -346,7 +350,7 @@ func (s *SimpleBloomController) buildGaps(
 			blocksIter.Close()
 
 			// Write the new meta
-			ref, err := bloomshipper.MetaRefFrom(tenant, table.Addr(), gap.bounds, meta.Sources, meta.Blocks)
+			ref, err := bloomshipper.MetaRefFrom(tenant, table.AddrWithPreffix(&period), gap.bounds, meta.Sources, meta.Blocks)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to checksum meta", "err", err)
 				return nil, errors.Wrap(err, "failed to checksum meta")

@@ -201,7 +201,7 @@ func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRa
 }
 
 func (cfg *PeriodConfig) GetFullTableName(t model.Time) string {
-	return NewDayTime(t).TableWithPrefix(cfg)
+	return NewDayTime(t).AddrWithPreffix(cfg)
 }
 
 func NewDayTime(d model.Time) DayTime {
@@ -244,7 +244,7 @@ func (d DayTime) Addr() string {
 		d.ModelTime().Time().UnixNano()/int64(ObjectStorageIndexRequiredPeriod))
 }
 
-func (d DayTime) TableWithPrefix(cfg *PeriodConfig) string {
+func (d DayTime) AddrWithPreffix(cfg *PeriodConfig) string {
 	return fmt.Sprintf("%s%d",
 		cfg.IndexTables.Prefix,
 		d.ModelTime().Time().UnixNano()/int64(ObjectStorageIndexRequiredPeriod))
