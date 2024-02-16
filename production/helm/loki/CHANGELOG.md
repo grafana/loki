@@ -17,6 +17,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Added `alibabacloud` to `isUsingObjectStorage` check.
 
+## 5.43.1
+
+- [BUGFIX] Fix `toPorts` fields in the `ciliumnetworkpolicy` template
+
 ## 5.43.0
 
 - [ENHANCEMENT] Allow the definition of resources for GrafanaAgent pods

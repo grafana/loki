@@ -200,10 +200,6 @@ func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRa
 	}
 }
 
-func (cfg *PeriodConfig) GetFullTableName(t model.Time) string {
-	return NewDayTime(t).TableWithPrefix(cfg)
-}
-
 func NewDayTime(d model.Time) DayTime {
 	return DayTime{d}
 }
@@ -237,17 +233,6 @@ func (d DayTime) String() string {
 	return d.Time.Time().UTC().Format("2006-01-02")
 }
 
-func (d DayTime) Table() string {
-	return fmt.Sprintf("%d",
-		d.ModelTime().Time().UnixNano()/int64(ObjectStorageIndexRequiredPeriod))
-}
-
-func (d DayTime) TableWithPrefix(cfg *PeriodConfig) string {
-	return fmt.Sprintf("%s%d",
-		cfg.IndexTables.Prefix,
-		d.ModelTime().Time().UnixNano()/int64(ObjectStorageIndexRequiredPeriod))
-}
-
 func (d DayTime) Inc() DayTime {
 	return DayTime{d.Add(ObjectStorageIndexRequiredPeriod)}
 }
@@ -270,6 +255,30 @@ func (d DayTime) ModelTime() model.Time {
 
 func (d DayTime) Bounds() (model.Time, model.Time) {
 	return d.Time, d.Inc().Time
+}
+
+type DayTable struct {
+	DayTime
+	Prefix string
+}
+
+func (d DayTable) String() string {
+	return d.Addr()
+}
+
+func NewDayTable(d DayTime, prefix string) DayTable {
+	return DayTable{
+		DayTime: d,
+		Prefix:  prefix,
+	}
+}
+
+// Addr returns the prefix (if any) and the unix day offset as a string, which is used
+// as the address for the index table in storage.
+func (d DayTable) Addr() string {
+	return fmt.Sprintf("%s%d",
+		d.Prefix,
+		d.ModelTime().Time().UnixNano()/int64(ObjectStorageIndexRequiredPeriod))
 }
 
 // SchemaConfig contains the config for our chunk index schemas
