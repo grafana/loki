@@ -77,6 +77,7 @@ func NewInstantMetricCacheMiddleware(
 		},
 		parallelismForReq,
 		retentionEnabled,
+		false,
 		metrics,
 	)
 }
