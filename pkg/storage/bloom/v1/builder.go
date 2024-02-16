@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	DefaultBlockOptions = NewBlockOptions(4, 0, 50<<20) // 50MB
+	DefaultBlockOptions = NewBlockOptions(4, 1, 50<<20) // 50MB
 )
 
 type BlockOptions struct {
