@@ -31,6 +31,9 @@ type Metrics struct {
 	tenantsCompleted     *prometheus.CounterVec
 	tenantsCompletedTime *prometheus.HistogramVec
 	tenantsSeries        prometheus.Histogram
+
+	blocksCreated prometheus.Counter
+	metasCreated  prometheus.Counter
 }
 
 func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
@@ -114,6 +117,18 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 			Help:      "Number of series processed per tenant in the owned fingerprint-range.",
 			// Up to 10M series per tenant, way more than what we expect given our max_global_streams_per_user limits
 			Buckets: prometheus.ExponentialBucketsRange(1, 10000000, 10),
+		}),
+		blocksCreated: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "blocks_created",
+			Help:      "Number of blocks created",
+		}),
+		metasCreated: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "metas_created",
+			Help:      "Number of metas created",
 		}),
 	}
 

@@ -70,7 +70,7 @@ func (s *SimpleBloomController) compactTenant(
 	tenant string,
 	ownershipRange v1.FingerprintBounds,
 ) error {
-	logger := log.With(s.logger, "ownership", ownershipRange, "org_id", tenant, "table", table.Addr())
+	logger := log.With(s.logger, "org_id", tenant, "table", table.Addr(), "ownership", ownershipRange.String())
 
 	client, err := s.bloomStore.Client(table.ModelTime())
 	if err != nil {
@@ -91,6 +91,8 @@ func (s *SimpleBloomController) compactTenant(
 		level.Error(logger).Log("msg", "failed to get metas", "err", err)
 		return errors.Wrap(err, "failed to get metas")
 	}
+
+	level.Debug(logger).Log("msg", "found relevant metas", "metas", len(metas))
 
 	// build compaction plans
 	work, err := s.findOutdatedGaps(ctx, tenant, table, ownershipRange, metas, logger)
@@ -126,7 +128,13 @@ func (s *SimpleBloomController) compactTenant(
 		superset = union[0]
 	}
 
-	metas, err = s.bloomStore.FetchMetas(
+	level.Debug(logger).Log(
+		"msg", "looking for superset metas",
+		"superset", superset.String(),
+		"superset_within", superset.Within(ownershipRange),
+	)
+
+	freshMetas, err := s.bloomStore.FetchMetas(
 		ctx,
 		bloomshipper.MetaSearchParams{
 			TenantID: tenant,
@@ -139,37 +147,46 @@ func (s *SimpleBloomController) compactTenant(
 		return errors.Wrap(err, "failed to get meta supseret range")
 	}
 
+	level.Debug(logger).Log(
+		"msg", "found superset metas",
+		"metas", len(metas),
+		"fresh_metas", len(freshMetas),
+		"delta", len(freshMetas)-len(metas),
+	)
+
 	// combine built and pre-existing metas
 	// in preparation for removing outdated metas
-	metas = append(metas, built...)
+	combined := append(freshMetas, built...)
 
-	outdated := outdatedMetas(metas)
+	outdated := outdatedMetas(combined)
+	level.Debug(logger).Log("msg", "found outdated metas", "outdated", len(outdated))
 	for _, meta := range outdated {
 		for _, block := range meta.Blocks {
-			if err := client.DeleteBlocks(ctx, []bloomshipper.BlockRef{block}); err != nil {
+			err := client.DeleteBlocks(ctx, []bloomshipper.BlockRef{block})
+			if err != nil {
 				if client.IsObjectNotFoundErr(err) {
-					level.Debug(logger).Log("msg", "block not found while attempting delete, continuing", "block", block)
-					continue
+					level.Debug(logger).Log("msg", "block not found while attempting delete, continuing", "block", block.String())
+				} else {
+					level.Error(logger).Log("msg", "failed to delete blocks", "err", err, "block", block.String())
 				}
-
-				level.Error(logger).Log("msg", "failed to delete blocks", "err", err)
-				return errors.Wrap(err, "failed to delete blocks")
 			}
+			level.Debug(logger).Log("msg", "removed outdated block", "block", block.String())
 		}
 
-		if err := client.DeleteMetas(ctx, []bloomshipper.MetaRef{meta.MetaRef}); err != nil {
+		err = client.DeleteMetas(ctx, []bloomshipper.MetaRef{meta.MetaRef})
+		if err != nil {
 			if client.IsObjectNotFoundErr(err) {
-				level.Debug(logger).Log("msg", "meta not found while attempting delete, continuing", "meta", meta.MetaRef)
+				level.Debug(logger).Log("msg", "meta not found while attempting delete, continuing", "meta", meta.MetaRef.String())
 			} else {
-				level.Error(logger).Log("msg", "failed to delete metas", "err", err)
-				return errors.Wrap(err, "failed to delete metas")
+				level.Error(logger).Log("msg", "failed to delete meta", "err", err, "meta", meta.MetaRef.String())
+				return errors.Wrap(err, "failed to delete meta")
 			}
 		}
+		level.Debug(logger).Log("msg", "removed outdated meta", "meta", meta.MetaRef.String())
 	}
 
 	level.Debug(logger).Log("msg", "finished compaction")
 	return nil
-
 }
 
 func (s *SimpleBloomController) findOutdatedGaps(
@@ -271,6 +288,7 @@ func (s *SimpleBloomController) buildGaps(
 
 		for i := range plan.gaps {
 			gap := plan.gaps[i]
+			logger := log.With(logger, "gap", gap.bounds.String(), "tsdb", plan.tsdb.Name())
 
 			meta := bloomshipper.Meta{
 				MetaRef: bloomshipper.MetaRef{
@@ -304,8 +322,10 @@ func (s *SimpleBloomController) buildGaps(
 				blocksIter,
 				s.rwFn,
 				s.metrics,
-				log.With(logger, "tsdb", plan.tsdb.Name(), "ownership", gap),
+				logger,
 			)
+
+			level.Debug(logger).Log("msg", "generating blocks", "overlapping_blocks", len(gap.blocks))
 
 			newBlocks := gen.Generate(ctx)
 			if err != nil {
@@ -333,6 +353,8 @@ func (s *SimpleBloomController) buildGaps(
 					blocksIter.Close()
 					return nil, errors.Wrap(err, "failed to write block")
 				}
+				s.metrics.blocksCreated.Inc()
+				level.Debug(logger).Log("msg", "uploaded block", "block", built.BlockRef.String())
 
 				meta.Blocks = append(meta.Blocks, built.BlockRef)
 			}
@@ -357,8 +379,10 @@ func (s *SimpleBloomController) buildGaps(
 				level.Error(logger).Log("msg", "failed to write meta", "err", err)
 				return nil, errors.Wrap(err, "failed to write meta")
 			}
-			created = append(created, meta)
+			s.metrics.metasCreated.Inc()
+			level.Debug(logger).Log("msg", "uploaded meta", "meta", meta.MetaRef.String())
 
+			created = append(created, meta)
 			totalSeries += uint64(seriesItrWithCounter.Count())
 		}
 	}
