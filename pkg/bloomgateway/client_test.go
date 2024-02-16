@@ -54,7 +54,7 @@ func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
 			{Fingerprint: 400},
 			{Fingerprint: 401}, // out of bounds, will be dismissed
 		}
-		servers := []addrsWithTokenRange{
+		servers := []addrsWithBounds{
 			{id: "instance-1", addrs: []string{"10.0.0.1"}, FingerprintBounds: v1.NewBounds(0, 100)},
 			{id: "instance-2", addrs: []string{"10.0.0.2"}, FingerprintBounds: v1.NewBounds(101, 200)},
 			{id: "instance-3", addrs: []string{"10.0.0.3"}, FingerprintBounds: v1.NewBounds(201, 300)},
@@ -101,14 +101,14 @@ func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
 
 		expected = []instanceWithFingerprints{
 			{
-				instance: addrsWithTokenRange{id: "instance-1", addrs: []string{"10.0.0.1"}},
+				instance: addrsWithBounds{id: "instance-1", addrs: []string{"10.0.0.1"}},
 				fingerprints: []*logproto.GroupedChunkRefs{
 					{Fingerprint: 0},
 					{Fingerprint: 100},
 				},
 			},
 			{
-				instance: addrsWithTokenRange{id: "instance-2", addrs: []string{"10.0.0.2"}},
+				instance: addrsWithBounds{id: "instance-2", addrs: []string{"10.0.0.2"}},
 				fingerprints: []*logproto.GroupedChunkRefs{
 					{Fingerprint: 101},
 					{Fingerprint: 200},
@@ -117,7 +117,7 @@ func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
 				},
 			},
 			{
-				instance: addrsWithTokenRange{id: "instance-3", addrs: []string{"10.0.0.3"}},
+				instance: addrsWithBounds{id: "instance-3", addrs: []string{"10.0.0.3"}},
 				fingerprints: []*logproto.GroupedChunkRefs{
 					{Fingerprint: 201},
 					{Fingerprint: 300},
@@ -136,7 +136,7 @@ func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
 			{Fingerprint: 250},
 			{Fingerprint: 350},
 		}
-		servers := []addrsWithTokenRange{
+		servers := []addrsWithBounds{
 			{id: "instance-1", addrs: []string{"10.0.0.1"}, FingerprintBounds: v1.NewBounds(0, 200)},
 			{id: "instance-2", addrs: []string{"10.0.0.2"}, FingerprintBounds: v1.NewBounds(100, 300)},
 			{id: "instance-3", addrs: []string{"10.0.0.3"}, FingerprintBounds: v1.NewBounds(200, 400)},
@@ -175,9 +175,9 @@ func BenchmarkPartitionFingerprintsByAddresses(b *testing.B) {
 
 	numServers := 100
 	tokenStep := math.MaxUint32 / uint32(numServers)
-	servers := make([]addrsWithTokenRange, 0, numServers)
+	servers := make([]addrsWithBounds, 0, numServers)
 	for i := uint32(0); i < math.MaxUint32-tokenStep; i += tokenStep {
-		servers = append(servers, addrsWithTokenRange{
+		servers = append(servers, addrsWithBounds{
 			id:    fmt.Sprintf("instance-%x", i),
 			addrs: []string{fmt.Sprintf("%d", i)},
 			FingerprintBounds: v1.NewBounds(
@@ -222,7 +222,7 @@ func TestBloomGatewayClient_MapTokenRangeToFingerprintRange(t *testing.T) {
 func TestBloomGatewayClient_ServerAddressesWithTokenRanges(t *testing.T) {
 	testCases := map[string]struct {
 		instances []ring.InstanceDesc
-		expected  []addrsWithTokenRange
+		expected  []addrsWithBounds
 	}{
 		"one token per instance, no gaps between fingerprint ranges": {
 			instances: []ring.InstanceDesc{
@@ -230,7 +230,7 @@ func TestBloomGatewayClient_ServerAddressesWithTokenRanges(t *testing.T) {
 				{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{(1 << 30) * 2}}, // 0x80000000
 				{Id: "instance-3", Addr: "10.0.0.3", Tokens: []uint32{(1 << 30) * 3}}, // 0xc0000000
 			},
-			expected: []addrsWithTokenRange{
+			expected: []addrsWithBounds{
 				{id: "instance-1", addrs: []string{"10.0.0.1"}, FingerprintBounds: v1.NewBounds(0, 4611686022722355199)},
 				{id: "instance-2", addrs: []string{"10.0.0.2"}, FingerprintBounds: v1.NewBounds(4611686022722355200, 9223372041149743103)},
 				{id: "instance-3", addrs: []string{"10.0.0.3"}, FingerprintBounds: v1.NewBounds(9223372041149743104, 13835058059577131007)},
@@ -242,7 +242,7 @@ func TestBloomGatewayClient_ServerAddressesWithTokenRanges(t *testing.T) {
 				{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{0}},
 				{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{math.MaxUint32}},
 			},
-			expected: []addrsWithTokenRange{
+			expected: []addrsWithBounds{
 				{id: "instance-1", addrs: []string{"10.0.0.1"}, FingerprintBounds: v1.NewBounds(0, (1<<32)-1)},
 				{id: "instance-2", addrs: []string{"10.0.0.2"}, FingerprintBounds: v1.NewBounds((1 << 32), math.MaxUint64)},
 			},
@@ -304,7 +304,7 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 			},
 			expected: []instanceWithFingerprints{
 				{
-					instance: addrsWithTokenRange{
+					instance: addrsWithBounds{
 						id:    "instance-3",
 						addrs: []string{"10.0.0.3"},
 					},
@@ -325,7 +325,7 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 			},
 			expected: []instanceWithFingerprints{
 				{
-					instance: addrsWithTokenRange{
+					instance: addrsWithBounds{
 						id:    "instance-1",
 						addrs: []string{"10.0.0.1"},
 					},
@@ -351,7 +351,7 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 			},
 			expected: []instanceWithFingerprints{
 				{
-					instance: addrsWithTokenRange{
+					instance: addrsWithBounds{
 						id:    "instance-1",
 						addrs: []string{"10.0.0.1"},
 					},
@@ -363,7 +363,7 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 					},
 				},
 				{
-					instance: addrsWithTokenRange{
+					instance: addrsWithBounds{
 						id:    "instance-2",
 						addrs: []string{"10.0.0.2"},
 					},
@@ -373,7 +373,7 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 					},
 				},
 				{
-					instance: addrsWithTokenRange{
+					instance: addrsWithBounds{
 						id:    "instance-3",
 						addrs: []string{"10.0.0.3"},
 					},
