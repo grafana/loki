@@ -39,7 +39,7 @@ func (defaultKeyResolver) Meta(ref MetaRef) Location {
 		fmt.Sprintf("%v", ref.TableName),
 		ref.TenantID,
 		MetasPrefix,
-		fmt.Sprintf("%v-%v%s", ref.Bounds, ref.Checksum, extJSON),
+		fmt.Sprintf("%v-%x%s", ref.Bounds, ref.Checksum, extJSON),
 	}
 }
 
