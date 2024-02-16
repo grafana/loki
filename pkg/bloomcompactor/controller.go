@@ -66,15 +66,15 @@ Compaction works as follows, split across many functions for clarity:
 */
 func (s *SimpleBloomController) compactTenant(
 	ctx context.Context,
-	table config.DayTime,
+	table config.DayTable,
 	tenant string,
 	ownershipRange v1.FingerprintBounds,
 ) error {
-	logger := log.With(s.logger, "ownership", ownershipRange, "org_id", tenant, "table", table)
+	logger := log.With(s.logger, "ownership", ownershipRange, "org_id", tenant, "table", table.Addr())
 
 	client, err := s.bloomStore.Client(table.ModelTime())
 	if err != nil {
-		level.Error(logger).Log("msg", "failed to get client", "err", err, "table", table.Addr())
+		level.Error(logger).Log("msg", "failed to get client", "err", err)
 		return errors.Wrap(err, "failed to get client")
 	}
 
@@ -175,7 +175,7 @@ func (s *SimpleBloomController) compactTenant(
 func (s *SimpleBloomController) findOutdatedGaps(
 	ctx context.Context,
 	tenant string,
-	table config.DayTime,
+	table config.DayTable,
 	ownershipRange v1.FingerprintBounds,
 	metas []bloomshipper.Meta,
 	logger log.Logger,
@@ -215,7 +215,7 @@ func (s *SimpleBloomController) findOutdatedGaps(
 
 func (s *SimpleBloomController) loadWorkForGap(
 	ctx context.Context,
-	table config.DayTime,
+	table config.DayTable,
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
@@ -241,7 +241,7 @@ func (s *SimpleBloomController) loadWorkForGap(
 func (s *SimpleBloomController) buildGaps(
 	ctx context.Context,
 	tenant string,
-	table config.DayTime,
+	table config.DayTable,
 	client bloomshipper.Client,
 	work []blockPlan,
 	logger log.Logger,
