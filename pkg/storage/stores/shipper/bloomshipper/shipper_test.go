@@ -31,7 +31,7 @@ func TestBloomShipper_findBlocks(t *testing.T) {
 				},
 			},
 			{
-				Tombstones: []BlockRef{
+				BlockTombstones: []BlockRef{
 					createMatchingBlockRef(1),
 					createMatchingBlockRef(3),
 				},

@@ -16,6 +16,8 @@ type Limits interface {
 	QuerySplitDuration(string) time.Duration
 	InstantMetricQuerySplitDuration(string) time.Duration
 	MetadataQuerySplitDuration(string) time.Duration
+	RecentMetadataQuerySplitDuration(string) time.Duration
+	RecentMetadataQueryWindow(string) time.Duration
 	IngesterQuerySplitDuration(string) time.Duration
 	MaxQuerySeries(context.Context, string) int
 	MaxEntriesLimitPerQuery(context.Context, string) int

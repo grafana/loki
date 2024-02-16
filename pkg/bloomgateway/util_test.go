@@ -176,7 +176,7 @@ func TestPartitionRequest(t *testing.T) {
 			exp: []seriesWithBounds{
 				{
 					bounds: model.Interval{Start: ts.Add(-60 * time.Minute), End: ts.Add(-45 * time.Minute)},
-					day:    mktime("2024-01-24 00:00"),
+					table:  config.NewDayTime(mktime("2024-01-24 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
@@ -217,7 +217,7 @@ func TestPartitionRequest(t *testing.T) {
 			exp: []seriesWithBounds{
 				{
 					bounds: model.Interval{Start: ts.Add(-23 * time.Hour), End: ts.Add(-22 * time.Hour)},
-					day:    mktime("2024-01-23 00:00"),
+					table:  config.NewDayTime(mktime("2024-01-23 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
@@ -229,7 +229,7 @@ func TestPartitionRequest(t *testing.T) {
 				},
 				{
 					bounds: model.Interval{Start: ts.Add(-2 * time.Hour), End: ts.Add(-1 * time.Hour)},
-					day:    mktime("2024-01-24 00:00"),
+					table:  config.NewDayTime(mktime("2024-01-24 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x01,
@@ -258,7 +258,7 @@ func TestPartitionRequest(t *testing.T) {
 			exp: []seriesWithBounds{
 				{
 					bounds: model.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
-					day:    mktime("2024-01-23 00:00"),
+					table:  config.NewDayTime(mktime("2024-01-23 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
@@ -270,7 +270,7 @@ func TestPartitionRequest(t *testing.T) {
 				},
 				{
 					bounds: model.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
-					day:    mktime("2024-01-24 00:00"),
+					table:  config.NewDayTime(mktime("2024-01-24 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
@@ -311,7 +311,7 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		}
 		ref := bloomshipper.Ref{
 			TenantID:       tenant,
-			TableName:      "table_0",
+			TableName:      config.NewDayTime(truncateDay(from)).Addr(),
 			Bounds:         v1.NewBounds(fromFp, throughFp),
 			StartTimestamp: from,
 			EndTimestamp:   through,
@@ -323,8 +323,8 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 			MetaRef: bloomshipper.MetaRef{
 				Ref: ref,
 			},
-			Tombstones: []bloomshipper.BlockRef{},
-			Blocks:     []bloomshipper.BlockRef{blockRef},
+			BlockTombstones: []bloomshipper.BlockRef{},
+			Blocks:          []bloomshipper.BlockRef{blockRef},
 		}
 		block, data, _ := v1.MakeBlock(t, n, fromFp, throughFp, from, through)
 		// Printing fingerprints and the log lines of its chunks comes handy for debugging...
