@@ -92,7 +92,7 @@ func New(
 	c.bloomStore = bloomStore
 
 	// initialize metrics
-	c.btMetrics = v1.NewMetrics(prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer", r))
+	c.btMetrics = v1.NewMetrics(prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer_", r))
 	c.metrics = NewMetrics(r, c.btMetrics)
 
 	chunkLoader := NewStoreChunkLoader(

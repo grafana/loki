@@ -3155,7 +3155,7 @@ shard_streams:
 
 # Skip factor for the n-grams created when computing blooms from log lines.
 # CLI flag: -bloom-compactor.ngram-skip
-[bloom_ngram_skip: <int> | default = 0]
+[bloom_ngram_skip: <int> | default = 1]
 
 # Scalable Bloom Filter desired false-positive rate.
 # CLI flag: -bloom-compactor.false-positive-rate
