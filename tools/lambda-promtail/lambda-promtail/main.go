@@ -41,7 +41,7 @@ var (
 	skipTlsVerify                                                                             bool
 	printLogLine                                                                              bool
 	extraHeaders                                                                              map[string]string
-	httpHeaderKeyRegex                                                                        = regexp.MustCompile("([A-Za-z0-9-])+")
+	httpHeaderKeyRegex                                                                        = regexp.MustCompile("^[-A-Za-z0-9]+$")
 )
 
 func setupArguments() {
