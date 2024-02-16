@@ -20,7 +20,7 @@ var (
 	Uint64Range = Range[uint64]{Min: 0, Max: math.MaxUint64}
 )
 
-type Range[T constraints.Integer] struct {
+type Range[T constraints.Unsigned] struct {
 	Min, Max T
 }
 
@@ -72,7 +72,7 @@ func (i InstancesWithTokenRange) Contains(token uint32) bool {
 // with given id based on the first token in the ring.
 // This assumes that each instance in the ring is configured with only a single
 // token.
-func KeyRangeForInstance[T constraints.Integer](id string, instances []ring.InstanceDesc, keyspace Range[T]) (Range[T], error) {
+func KeyRangeForInstance[T constraints.Unsigned](id string, instances []ring.InstanceDesc, keyspace Range[T]) (Range[T], error) {
 
 	// Sort instances -- they may not be sorted
 	// because they're usually accessed by looking up the tokens (which are sorted)

@@ -7,7 +7,6 @@ import (
 	"io"
 	"math"
 	"math/rand"
-	"sort"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -20,6 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -326,11 +326,6 @@ func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.Inst
 	return servers, nil
 }
 
-type instanceWithToken struct {
-	instance ring.InstanceDesc
-	token    uint32
-}
-
 type addrsWithTokenRange struct {
 	id         string
 	addrs      []string
@@ -348,13 +343,22 @@ type instanceWithFingerprints struct {
 
 func partitionFingerprintsByAddresses(fingerprints []*logproto.GroupedChunkRefs, addresses []addrsWithTokenRange) (result []instanceWithFingerprints) {
 	for _, instance := range addresses {
-
-		min := sort.Search(len(fingerprints), func(i int) bool {
-			return instance.cmp(uint32(fingerprints[i].Fingerprint)) > v1.Before
+		min, _ := slices.BinarySearchFunc(fingerprints, instance.tokenRange, func(g *logproto.GroupedChunkRefs, r bloomutils.Range[uint32]) int {
+			if uint32(g.Fingerprint) < r.Min {
+				return -1
+			} else if uint32(g.Fingerprint) > r.Min {
+				return 1
+			}
+			return 0
 		})
 
-		max := sort.Search(len(fingerprints), func(i int) bool {
-			return instance.cmp(uint32(fingerprints[i].Fingerprint)) == v1.After
+		max, _ := slices.BinarySearchFunc(fingerprints, instance.tokenRange, func(g *logproto.GroupedChunkRefs, r bloomutils.Range[uint32]) int {
+			if uint32(g.Fingerprint) <= r.Max {
+				return -1
+			} else if uint32(g.Fingerprint) > r.Max {
+				return 1
+			}
+			return 0
 		})
 
 		// fingerprint is out of boundaries
