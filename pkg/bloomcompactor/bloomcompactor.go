@@ -342,7 +342,7 @@ type dayRangeIterator struct {
 }
 
 func newDayRangeIterator(min, max config.DayTime, schemaCfg config.SchemaConfig) *dayRangeIterator {
-	return &dayRangeIterator{min: min, max: max, cur: min.Dec()}
+	return &dayRangeIterator{min: min, max: max, cur: min.Dec(), schemaCfg: schemaCfg}
 }
 
 func (r *dayRangeIterator) Next() bool {
