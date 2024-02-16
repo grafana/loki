@@ -262,6 +262,10 @@ type DayTable struct {
 	Prefix string
 }
 
+func (d DayTable) String() string {
+	return d.Addr()
+}
+
 func NewDayTable(d DayTime, prefix string) DayTable {
 	return DayTable{
 		DayTime: d,
