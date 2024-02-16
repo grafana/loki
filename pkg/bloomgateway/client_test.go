@@ -181,8 +181,8 @@ func BenchmarkPartitionFingerprintsByAddresses(b *testing.B) {
 			id:    fmt.Sprintf("instance-%x", i),
 			addrs: []string{fmt.Sprintf("%d", i)},
 			FingerprintBounds: v1.NewBounds(
-				model.Fingerprint(i)<<uint32_uint64,
-				model.Fingerprint(i+tokenStep)<<uint32_uint64,
+				model.Fingerprint(i)<<bitsTokenToFingerprint,
+				model.Fingerprint(i+tokenStep)<<bitsTokenToFingerprint,
 			),
 		})
 	}

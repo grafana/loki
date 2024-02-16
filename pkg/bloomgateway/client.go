@@ -35,9 +35,9 @@ import (
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
-// Number of bits to shift to the left to tranform a token value from the ring
+// Number of bits to shift to the left to transform a token value from the ring
 // (uint32) into a value in the keyspace of fingerprints (uint64).
-const uint32_uint64 = 32
+const bitsTokenToFingerprint = 32
 
 var (
 	// BlocksOwnerRead is the operation used to check the authoritative owners of a block
@@ -323,7 +323,7 @@ func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.Inst
 			return nil, errors.Wrap(err, "bloom gateway get ring")
 		}
 
-		bounds := mapTokenRangeToFingerprintRange(it.At().TokenRange, uint32_uint64)
+		bounds := mapTokenRangeToFingerprintRange(it.At().TokenRange, bitsTokenToFingerprint)
 		servers = append(servers, addrsWithBounds{
 			id:                it.At().Instance.Id,
 			addrs:             rs.GetAddresses(),
@@ -332,12 +332,12 @@ func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.Inst
 	}
 
 	if len(servers) > 0 && servers[len(servers)-1].Max < math.MaxUint64 {
-		// append the instance for the token range between the greates token and MaxUint64
+		// append the instance for the range between the maxFp and MaxUint64
 		servers = append(servers, addrsWithBounds{
 			id:    servers[0].id,
 			addrs: servers[0].addrs,
 			FingerprintBounds: v1.NewBounds(
-				model.Fingerprint(servers[len(servers)-1].Max+1),
+				servers[len(servers)-1].Max+1,
 				model.Fingerprint(math.MaxUint64),
 			),
 		})
