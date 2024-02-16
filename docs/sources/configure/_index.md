@@ -903,7 +903,7 @@ instant_metric_results_cache:
   # CLI flag: -frontend.instant-metric-results-cache.compression
   [compression: <string> | default = ""]
 
-# Wheather to align the splits of instant metric query with splitByInterval and
+# Whether to align the splits of instant metric query with splitByInterval and
 # query's exec time. Useful when instant_metric_cache is enabled
 # CLI flag: -querier.instant-metric-query-split-align
 [instant_metric_query_split_align: <boolean> | default = false]
@@ -2962,7 +2962,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # determines how cache keys are chosen when instant metric query result caching
 # is enabled.
 # CLI flag: -querier.split-instant-metric-queries-by-interval
-[split_instant_metric_queries_by_interval: <duration> | default = 5m]
+[split_instant_metric_queries_by_interval: <duration> | default = 1h]
 
 # Interval to use for time-based splitting when a request is within the
 # `query_ingesters_within` window; defaults to `split-queries-by-interval` by

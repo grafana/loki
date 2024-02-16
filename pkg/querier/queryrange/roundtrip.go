@@ -52,7 +52,7 @@ type Config struct {
 	VolumeCacheConfig            VolumeCacheConfig        `yaml:"volume_results_cache" doc:"description=If a cache config is not specified and cache_volume_results is true, the config for the results cache is used."`
 	CacheInstantMetricResults    bool                     `yaml:"cache_instant_metric_results"`
 	InstantMetricCacheConfig     InstantMetricCacheConfig `yaml:"instant_metric_results_cache" doc:"description=If a cache config is not specified and cache_instant_metric_results is true, the config for the results cache is used."`
-	InstantMetricQuerySplitAlign bool                     `yaml:"instant_metric_query_split_align" doc:"description=Wheather to align the splits of instant metric query with splitByInterval and query's exec time. Useful when instant_metric_cache is enabled"`
+	InstantMetricQuerySplitAlign bool                     `yaml:"instant_metric_query_split_align" doc:"description=Whether to align the splits of instant metric query with splitByInterval and query's exec time. Useful when instant_metric_cache is enabled"`
 	CacheSeriesResults           bool                     `yaml:"cache_series_results"`
 	SeriesCacheConfig            SeriesCacheConfig        `yaml:"series_results_cache" doc:"description=If series_results_cache is not configured and cache_series_results is true, the config for the results cache is used."`
 	CacheLabelResults            bool                     `yaml:"cache_label_results"`

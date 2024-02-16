@@ -20,7 +20,7 @@ type InstantMetricSplitter struct {
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
 func (i InstantMetricSplitter) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
-	split := i.InstantMetricQuerySplitDuration(userID) // should we use const split duration actually used for instant metric query?
+	split := i.InstantMetricQuerySplitDuration(userID)
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {

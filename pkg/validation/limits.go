@@ -308,7 +308,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.QuerySplitDuration.Set("1h")
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by a time interval and execute in parallel. The value 0 disables splitting by time. This also determines how cache keys are chosen when result caching is enabled.")
-	_ = l.InstantMetricQuerySplitDuration.Set("5m")
+	_ = l.InstantMetricQuerySplitDuration.Set("1h")
 	f.Var(&l.InstantMetricQuerySplitDuration, "querier.split-instant-metric-queries-by-interval", "Split instant metric queries by a time interval and execute in parallel. The value 0 disables splitting instant metric queries by time. This also determines how cache keys are chosen when instant metric query result caching is enabled.")
 
 	_ = l.MetadataQuerySplitDuration.Set("24h")
