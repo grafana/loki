@@ -35,6 +35,10 @@ import (
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
+// Number of bits to shift to the left to tranform a token value from the ring
+// (uint32) into a value in the keyspace of fingerprints (uint64).
+const uint32_uint64 = 32
+
 var (
 	// BlocksOwnerRead is the operation used to check the authoritative owners of a block
 	// (replicas included) that are available for queries (a bloom gateway is available for
@@ -296,11 +300,21 @@ func groupFingerprintsByServer(groups []*logproto.GroupedChunkRefs, servers []ad
 	return groupByInstance(boundedFingerprints)
 }
 
+func mapTokenRangeToFingerprintRange(r bloomutils.Range[uint32], lshift int) v1.FingerprintBounds {
+	minFp := uint64(r.Min) << lshift
+	maxFp := uint64(r.Max) << lshift
+	return v1.NewBounds(
+		model.Fingerprint(minFp),
+		model.Fingerprint(maxFp+(1<<lshift)-1),
+	)
+}
+
 func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.InstanceDesc) ([]addrsWithTokenRange, error) {
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 
 	servers := make([]addrsWithTokenRange, 0, len(instances))
 	it := bloomutils.NewInstanceSortMergeIterator(instances)
+
 	for it.Next() {
 		// We can use on of the tokens from the token range
 		// to obtain all addresses for that token.
@@ -308,32 +322,33 @@ func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.Inst
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
 		}
+
+		bounds := mapTokenRangeToFingerprintRange(it.At().TokenRange, uint32_uint64)
 		servers = append(servers, addrsWithTokenRange{
-			id:         it.At().Instance.Id,
-			addrs:      rs.GetAddresses(),
-			tokenRange: it.At().TokenRange,
+			id:                it.At().Instance.Id,
+			addrs:             rs.GetAddresses(),
+			FingerprintBounds: bounds,
 		})
 	}
 
-	if len(servers) > 0 && servers[len(servers)-1].tokenRange.Max < math.MaxUint32 {
-		// append the instance for the token range between the greates token and MaxUint32
+	if len(servers) > 0 && servers[len(servers)-1].Max < math.MaxUint64 {
+		// append the instance for the token range between the greates token and MaxUint64
 		servers = append(servers, addrsWithTokenRange{
-			id:         servers[0].id,
-			addrs:      servers[0].addrs,
-			tokenRange: bloomutils.NewTokenRange(servers[len(servers)-1].tokenRange.Max+1, math.MaxUint32),
+			id:    servers[0].id,
+			addrs: servers[0].addrs,
+			FingerprintBounds: v1.NewBounds(
+				model.Fingerprint(servers[len(servers)-1].Max+1),
+				model.Fingerprint(math.MaxUint64),
+			),
 		})
 	}
 	return servers, nil
 }
 
 type addrsWithTokenRange struct {
-	id         string
-	addrs      []string
-	tokenRange bloomutils.Range[uint32]
-}
-
-func (s addrsWithTokenRange) cmp(token uint32) v1.BoundsCheck {
-	return s.tokenRange.Cmp(token)
+	v1.FingerprintBounds
+	id    string
+	addrs []string
 }
 
 type instanceWithFingerprints struct {
@@ -343,19 +358,19 @@ type instanceWithFingerprints struct {
 
 func partitionFingerprintsByAddresses(fingerprints []*logproto.GroupedChunkRefs, addresses []addrsWithTokenRange) (result []instanceWithFingerprints) {
 	for _, instance := range addresses {
-		min, _ := slices.BinarySearchFunc(fingerprints, instance.tokenRange, func(g *logproto.GroupedChunkRefs, r bloomutils.Range[uint32]) int {
-			if uint32(g.Fingerprint) < r.Min {
+		min, _ := slices.BinarySearchFunc(fingerprints, instance.FingerprintBounds, func(g *logproto.GroupedChunkRefs, b v1.FingerprintBounds) int {
+			if g.Fingerprint < uint64(b.Min) {
 				return -1
-			} else if uint32(g.Fingerprint) > r.Min {
+			} else if g.Fingerprint > uint64(b.Min) {
 				return 1
 			}
 			return 0
 		})
 
-		max, _ := slices.BinarySearchFunc(fingerprints, instance.tokenRange, func(g *logproto.GroupedChunkRefs, r bloomutils.Range[uint32]) int {
-			if uint32(g.Fingerprint) <= r.Max {
+		max, _ := slices.BinarySearchFunc(fingerprints, instance.FingerprintBounds, func(g *logproto.GroupedChunkRefs, b v1.FingerprintBounds) int {
+			if g.Fingerprint <= uint64(b.Max) {
 				return -1
-			} else if uint32(g.Fingerprint) > r.Max {
+			} else if g.Fingerprint > uint64(b.Max) {
 				return 1
 			}
 			return 0
