@@ -11,11 +11,11 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/pkg/util"
 )
 
 type InstantMetricSplitter struct {
-	cacheKeyLimits
+	Limits
+	transformer UserIDTransformer
 }
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
@@ -55,7 +55,6 @@ func NewInstantMetricCacheMiddleware(
 	merger queryrangebase.Merger,
 	c cache.Cache,
 	cacheGenNumberLoader queryrangebase.CacheGenNumberLoader,
-	iqo util.IngesterQueryOptions,
 	shouldCache queryrangebase.ShouldCacheFn,
 	parallelismForReq queryrangebase.ParallelismForReqFn,
 	retentionEnabled bool,
@@ -65,7 +64,7 @@ func NewInstantMetricCacheMiddleware(
 	return queryrangebase.NewResultsCacheMiddleware(
 		log,
 		c,
-		InstantMetricSplitter{cacheKeyLimits{limits, transformer, iqo}},
+		InstantMetricSplitter{limits, transformer},
 		limits,
 		merger,
 		queryrangebase.PrometheusResponseExtractor{},
