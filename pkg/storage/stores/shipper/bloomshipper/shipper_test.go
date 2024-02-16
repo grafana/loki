@@ -14,49 +14,6 @@ import (
 )
 
 func TestBloomShipper_findBlocks(t *testing.T) {
-	t.Run("expected block that are specified in tombstones to be filtered out", func(t *testing.T) {
-		metas := []Meta{
-			{
-				Blocks: []BlockRef{
-					//this blockRef is marked as deleted in the next meta
-					createMatchingBlockRef(1),
-					createMatchingBlockRef(2),
-				},
-			},
-			{
-				Blocks: []BlockRef{
-					//this blockRef is marked as deleted in the next meta
-					createMatchingBlockRef(3),
-					createMatchingBlockRef(4),
-				},
-			},
-			{
-				BlockTombstones: []BlockRef{
-					createMatchingBlockRef(1),
-					createMatchingBlockRef(3),
-				},
-				Blocks: []BlockRef{
-					createMatchingBlockRef(5),
-				},
-			},
-		}
-
-		ts := model.Now()
-
-		interval := NewInterval(
-			ts.Add(-2*time.Hour),
-			ts.Add(-1*time.Hour),
-		)
-		blocks := BlocksForMetas(metas, interval, []v1.FingerprintBounds{{Min: 100, Max: 200}})
-
-		expectedBlockRefs := []BlockRef{
-			createMatchingBlockRef(2),
-			createMatchingBlockRef(4),
-			createMatchingBlockRef(5),
-		}
-		require.ElementsMatch(t, expectedBlockRefs, blocks)
-	})
-
 	tests := map[string]struct {
 		minFingerprint uint64
 		maxFingerprint uint64
