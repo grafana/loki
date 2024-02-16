@@ -94,6 +94,13 @@ func (s *SimpleBloomController) compactTenant(
 
 	level.Debug(logger).Log("msg", "found relevant metas", "metas", len(metas))
 
+	// fetch all metas overlapping all metas overlapping our ownership range so we can safely
+	// check which metas can be deleted even if they only partially overlap out ownership range
+	superset, err := s.fetchSuperSet(ctx, tenant, table, ownershipRange, metas, logger)
+	if err != nil {
+		return errors.Wrap(err, "failed to fetch superset")
+	}
+
 	// build compaction plans
 	work, err := s.findOutdatedGaps(ctx, tenant, table, ownershipRange, metas, logger)
 	if err != nil {
@@ -106,57 +113,9 @@ func (s *SimpleBloomController) compactTenant(
 		return errors.Wrap(err, "failed to build gaps")
 	}
 
-	// in order to delete outdates metas which only partially fall within the ownership range,
-	// we need to fetcha all metas in the entire bound range of the first set of metas we've resolved
-	/*
-		For instance, we have the following ownership range and we resolve `meta1` in our first Fetch call
-		because it overlaps the ownership range, we'll need to fetch newer metas that may overlap it in order
-		to check if it safely can be deleted. This falls partially outside our specific ownership range, but
-		we can safely run multiple deletes by treating their removal as idempotent.
-		     |-------------ownership range-----------------|
-		                                      |-------meta1-------|
-
-		we fetch this before possibly deleting meta1       |------|
-	*/
-	superset := ownershipRange
-	for _, meta := range metas {
-		union := superset.Union(meta.Bounds)
-		if len(union) > 1 {
-			level.Error(logger).Log("msg", "meta bounds union is not a single range", "union", union)
-			return errors.New("meta bounds union is not a single range")
-		}
-		superset = union[0]
-	}
-
-	level.Debug(logger).Log(
-		"msg", "looking for superset metas",
-		"superset", superset.String(),
-		"superset_within", superset.Within(ownershipRange),
-	)
-
-	freshMetas, err := s.bloomStore.FetchMetas(
-		ctx,
-		bloomshipper.MetaSearchParams{
-			TenantID: tenant,
-			Interval: bloomshipper.NewInterval(table.Bounds()),
-			Keyspace: superset,
-		},
-	)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to get meta superset range", "err", err, "superset", superset)
-		return errors.Wrap(err, "failed to get meta supseret range")
-	}
-
-	level.Debug(logger).Log(
-		"msg", "found superset metas",
-		"metas", len(metas),
-		"fresh_metas", len(freshMetas),
-		"delta", len(freshMetas)-len(metas),
-	)
-
-	// combine built and pre-existing metas
-	// in preparation for removing outdated metas
-	combined := append(freshMetas, built...)
+	// combine built and superset metas
+	// in preparation for removing outdated ones
+	combined := append(superset, built...)
 
 	outdated := outdatedMetas(combined)
 	level.Debug(logger).Log("msg", "found outdated metas", "outdated", len(outdated))
@@ -167,7 +126,8 @@ func (s *SimpleBloomController) compactTenant(
 				if client.IsObjectNotFoundErr(err) {
 					level.Debug(logger).Log("msg", "block not found while attempting delete, continuing", "block", block.String())
 				} else {
-					level.Error(logger).Log("msg", "failed to delete blocks", "err", err, "block", block.String())
+					level.Error(logger).Log("msg", "failed to delete block", "err", err, "block", block.String())
+					return errors.Wrap(err, "failed to delete block")
 				}
 			}
 			level.Debug(logger).Log("msg", "removed outdated block", "block", block.String())
@@ -187,6 +147,66 @@ func (s *SimpleBloomController) compactTenant(
 
 	level.Debug(logger).Log("msg", "finished compaction")
 	return nil
+}
+
+func (s *SimpleBloomController) fetchSuperSet(
+	ctx context.Context,
+	tenant string,
+	table config.DayTable,
+	ownershipRange v1.FingerprintBounds,
+	metas []bloomshipper.Meta,
+	logger log.Logger,
+) ([]bloomshipper.Meta, error) {
+	// in order to delete outdates metas which only partially fall within the ownership range,
+	// we need to fetcha all metas in the entire bound range of the first set of metas we've resolved
+	/*
+		For instance, we have the following ownership range and we resolve `meta1` in our first Fetch call
+		because it overlaps the ownership range, we'll need to fetch newer metas that may overlap it in order
+		to check if it safely can be deleted. This falls partially outside our specific ownership range, but
+		we can safely run multiple deletes by treating their removal as idempotent.
+		     |-------------ownership range-----------------|
+		                                      |-------meta1-------|
+
+		we fetch this before possibly deleting meta1       |------|
+	*/
+	superset := ownershipRange
+	for _, meta := range metas {
+		union := superset.Union(meta.Bounds)
+		if len(union) > 1 {
+			level.Error(logger).Log("msg", "meta bounds union is not a single range", "union", union)
+			return nil, errors.New("meta bounds union is not a single range")
+		}
+		superset = union[0]
+	}
+
+	level.Debug(logger).Log(
+		"msg", "looking for superset metas",
+		"superset", superset.String(),
+		"superset_within", superset.Within(ownershipRange),
+	)
+
+	supersetMetas, err := s.bloomStore.FetchMetas(
+		ctx,
+		bloomshipper.MetaSearchParams{
+			TenantID: tenant,
+			Interval: bloomshipper.NewInterval(table.Bounds()),
+			Keyspace: superset,
+		},
+	)
+
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to get meta superset range", "err", err, "superset", superset)
+		return nil, errors.Wrap(err, "failed to get meta supseret range")
+	}
+
+	level.Debug(logger).Log(
+		"msg", "found superset metas",
+		"metas", len(metas),
+		"fresh_metas", len(supersetMetas),
+		"delta", len(supersetMetas)-len(metas),
+	)
+
+	return supersetMetas, nil
 }
 
 func (s *SimpleBloomController) findOutdatedGaps(

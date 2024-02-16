@@ -214,7 +214,7 @@ func (c *Compactor) ownsTenant(tenant string) (v1.FingerprintBounds, bool, error
 
 // runs a single round of compaction for all relevant tenants and tables
 func (c *Compactor) runOne(ctx context.Context) error {
-	level.Info(c.logger).Log("msg", "running bloom compaction")
+	level.Info(c.logger).Log("msg", "running bloom compaction", "workers", c.cfg.WorkerParallelism)
 	var workersErr error
 	var wg sync.WaitGroup
 	ch := make(chan tenantTable)
