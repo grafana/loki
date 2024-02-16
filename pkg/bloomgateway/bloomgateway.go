@@ -82,10 +82,12 @@ var (
 )
 
 type metrics struct {
-	queueDuration       prometheus.Histogram
-	inflightRequests    prometheus.Summary
-	chunkRefsUnfiltered prometheus.Counter
-	chunkRefsFiltered   prometheus.Counter
+	queueDuration    prometheus.Histogram
+	inflightRequests prometheus.Summary
+	chunksTotal      prometheus.Counter
+	chunksFiltered   prometheus.Counter
+	seriesTotal      prometheus.Counter
+	seriesFiltered   prometheus.Counter
 }
 
 func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -106,27 +108,31 @@ func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *
 			MaxAge:     time.Minute,
 			AgeBuckets: 6,
 		}),
-		chunkRefsUnfiltered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		chunksTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "chunkrefs_pre_filtering",
-			Help:      "Total amount of chunk refs pre filtering. Does not count chunk refs in failed requests.",
+			Name:      "chunks_total",
+			Help:      "Total amount of chunks pre filtering. Does not count chunks in failed requests.",
 		}),
-		chunkRefsFiltered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		chunksFiltered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "chunkrefs_post_filtering",
-			Help:      "Total amount of chunk refs post filtering.",
+			Name:      "chunks_filtered",
+			Help:      "Total amount of chunks that have been filtered out. Does not count chunks in failed requests.",
+		}),
+		seriesTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "series_total",
+			Help:      "Total amount of series pre filtering. Does not count series in failed requests.",
+		}),
+		seriesFiltered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "series_filtered",
+			Help:      "Total amount of series that have been filtered out. Does not count series in failed requests.",
 		}),
 	}
-}
-
-func (m *metrics) addUnfilteredCount(n int) {
-	m.chunkRefsUnfiltered.Add(float64(n))
-}
-
-func (m *metrics) addFilteredCount(n int) {
-	m.chunkRefsFiltered.Add(float64(n))
 }
 
 // SyncMap is a map structure which can be synchronized using the RWMutex
@@ -324,12 +330,8 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, errors.New("from time must not be after through time")
 	}
 
-	numChunksUnfiltered := len(req.Refs)
-
 	// Shortcut if request does not contain filters
 	if len(req.Filters) == 0 {
-		g.metrics.addUnfilteredCount(numChunksUnfiltered)
-		g.metrics.addFilteredCount(len(req.Refs))
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: req.Refs,
 		}, nil
@@ -395,17 +397,17 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}
 	}
 
-	for _, o := range responses {
-		if o.Removals.Len() == 0 {
-			continue
-		}
-		removeNotMatchingChunks(req, o, g.logger)
-	}
+	preFilterSeries := len(req.Refs)
+	g.metrics.seriesTotal.Add(float64(preFilterSeries))
 
-	g.metrics.addUnfilteredCount(numChunksUnfiltered)
-	g.metrics.addFilteredCount(len(req.Refs))
+	// TODO(chaudum): Don't wait for all responses before starting to filter chunks.
+	filtered := g.processResponses(req, responses)
+	g.metrics.chunksFiltered.Add(float64(filtered))
 
-	level.Info(logger).Log("msg", "return filtered chunk refs", "unfiltered", numChunksUnfiltered, "filtered", len(req.Refs))
+	postFilterSeries := len(req.Refs)
+	g.metrics.seriesFiltered.Add(float64(preFilterSeries - postFilterSeries))
+
+	level.Info(logger).Log("msg", "return filtered chunk refs", "pre_filter_series", preFilterSeries, "post_filter_series", postFilterSeries, "filtered_chunks", filtered)
 	return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
 }
 
@@ -437,7 +439,18 @@ func consumeTask(ctx context.Context, task Task, tasksCh chan<- Task, logger log
 	}
 }
 
-func removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output, logger log.Logger) {
+func (g *Gateway) processResponses(req *logproto.FilterChunkRefRequest, responses []v1.Output) (filtered int) {
+	for _, o := range responses {
+		if o.Removals.Len() == 0 {
+			continue
+		}
+		filtered += g.removeNotMatchingChunks(req, o)
+	}
+	return
+}
+
+func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output) (filtered int) {
+
 	// binary search index of fingerprint
 	idx := sort.Search(len(req.Refs), func(i int) bool {
 		return req.Refs[i].Fingerprint >= uint64(res.Fp)
@@ -445,13 +458,15 @@ func removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output,
 
 	// fingerprint not found
 	if idx >= len(req.Refs) {
-		level.Error(logger).Log("msg", "index out of range", "idx", idx, "len", len(req.Refs), "fp", uint64(res.Fp))
+		level.Error(g.logger).Log("msg", "index out of range", "idx", idx, "len", len(req.Refs), "fp", uint64(res.Fp))
 		return
 	}
 
 	// if all chunks of a fingerprint are are removed
 	// then remove the whole group from the response
 	if len(req.Refs[idx].Refs) == res.Removals.Len() {
+		filtered += len(req.Refs[idx].Refs)
+
 		req.Refs[idx] = nil // avoid leaking pointer
 		req.Refs = append(req.Refs[:idx], req.Refs[idx+1:]...)
 		return
@@ -461,10 +476,13 @@ func removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output,
 		toRemove := res.Removals[i]
 		for j := 0; j < len(req.Refs[idx].Refs); j++ {
 			if toRemove.Checksum == req.Refs[idx].Refs[j].Checksum {
+				filtered += 1
+
 				req.Refs[idx].Refs[j] = nil // avoid leaking pointer
 				req.Refs[idx].Refs = append(req.Refs[idx].Refs[:j], req.Refs[idx].Refs[j+1:]...)
 				j-- // since we removed the current item at index, we have to redo the same index
 			}
 		}
 	}
+	return
 }
