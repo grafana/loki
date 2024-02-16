@@ -369,36 +369,38 @@ func (m RangeMapper) rangeSplitAlign(
 		return expr
 	}
 
-	splits := int(math.Ceil(float64(rangeInterval) / float64(m.splitByInterval))) // without first aligned subquery
-	align := m.splitAlignTs.Sub(m.splitAlignTs.Truncate(m.splitByInterval))       // say, 12:34:00 - 12:00:00(truncated) = 34m
+	align := m.splitAlignTs.Sub(m.splitAlignTs.Truncate(m.splitByInterval)) // say, 12:34:00 - 12:00:00(truncated) = 34m
 
 	if align == 0 {
 		return m.rangeSplit(expr, rangeInterval, recorder) // Don't have to align
 	}
 
-	splits += 1
-
 	var (
-		newRng      time.Duration = align
-		newOffset   time.Duration = originalOffset
-		downstreams *ConcatSampleExpr
+		newRng               = align
+		newOffset            = originalOffset
+		downstreams          *ConcatSampleExpr
+		pendingRangeInterval = rangeInterval
+		splits               = 0
 	)
 
 	// first subquery
 	downstreams = appendDownstream(downstreams, expr, newRng, newOffset)
+	splits++
 
-	newOffset += align         // e.g: offset 34m
+	newOffset += align // e.g: offset 34m
+	pendingRangeInterval -= align
 	newRng = m.splitByInterval // [1h]
 
-	// Rest of the subqueries. Always aligned with splitBy
-	for i := 0; i < splits-2; i++ {
+	// Rest of the subqueries.
+	for pendingRangeInterval > 0 {
+		if pendingRangeInterval < m.splitByInterval {
+			newRng = pendingRangeInterval // last subquery
+		}
 		downstreams = appendDownstream(downstreams, expr, newRng, newOffset)
 		newOffset += m.splitByInterval
+		pendingRangeInterval -= m.splitByInterval
+		splits++
 	}
-
-	// last subquery
-	newRng = m.splitByInterval - align // e.g: [24m]
-	downstreams = appendDownstream(downstreams, expr, newRng, newOffset)
 
 	// update stats and metrics
 	m.stats.AddSplitQueries(splits)

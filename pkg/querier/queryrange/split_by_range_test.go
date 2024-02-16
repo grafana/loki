@@ -290,7 +290,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 
 				})).Do(ctx, tc.in)
 			require.NoError(t, err)
-			require.Equal(t, tc.expected, resp.(*LokiPromResponse).Response)
+			assert.Equal(t, tc.expected, resp.(*LokiPromResponse).Response)
 		})
 	}
 }

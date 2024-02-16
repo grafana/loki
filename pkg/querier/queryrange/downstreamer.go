@@ -117,10 +117,10 @@ func withoutOffset(query logql.DownstreamQuery) (string, time.Time, time.Time) {
 			off := rng.Left.Offset
 
 			if off != 0 {
-				rng.Left.Offset = 0     // remove offset
-				if newStart == newEnd { // instant query
-					newEnd = newEnd.Add(-off)
-				}
+				rng.Left.Offset = 0 // remove offset
+
+				// adjust start and end time
+				newEnd = newEnd.Add(-off)
 				newStart = newStart.Add(-off)
 
 			}
