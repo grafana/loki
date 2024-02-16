@@ -381,8 +381,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	defer responsesPool.Put(responses)
 	remaining := len(tasks)
 
-outer:
-	for {
+	for remaining > 0 {
 		select {
 		case <-ctx.Done():
 			return nil, errors.Wrap(ctx.Err(), "request failed")
@@ -393,9 +392,6 @@ outer:
 			}
 			responses = append(responses, task.responses...)
 			remaining--
-			if remaining == 0 {
-				break outer
-			}
 		}
 	}
 
