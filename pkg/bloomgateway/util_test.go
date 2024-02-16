@@ -73,7 +73,7 @@ func mkBlockRef(minFp, maxFp uint64) bloomshipper.BlockRef {
 	}
 }
 
-func TestPartitionFingerprintRange(t *testing.T) {
+func TestPartitionTasks(t *testing.T) {
 
 	t.Run("consecutive block ranges", func(t *testing.T) {
 		bounds := []bloomshipper.BlockRef{
@@ -93,7 +93,7 @@ func TestPartitionFingerprintRange(t *testing.T) {
 			tasks[i%nTasks].series = append(tasks[i%nTasks].series, &logproto.GroupedChunkRefs{Fingerprint: uint64(i)})
 		}
 
-		results := partitionFingerprintRange(tasks, bounds)
+		results := partitionTasks(tasks, bounds)
 		require.Equal(t, 3, len(results)) // ensure we only return bounds in range
 
 		actualFingerprints := make([]*logproto.GroupedChunkRefs, 0, nSeries)
@@ -128,7 +128,7 @@ func TestPartitionFingerprintRange(t *testing.T) {
 			task.series = append(task.series, &logproto.GroupedChunkRefs{Fingerprint: uint64(i)})
 		}
 
-		results := partitionFingerprintRange([]Task{task}, bounds)
+		results := partitionTasks([]Task{task}, bounds)
 		require.Equal(t, 3, len(results)) // ensure we only return bounds in range
 		for _, res := range results {
 			// ensure we have the right number of tasks per bound

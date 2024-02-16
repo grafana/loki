@@ -83,15 +83,17 @@ func convertToChunkRefs(refs []*logproto.ShortRef) v1.ChunkRefs {
 	return result
 }
 
-type boundedTasks struct {
-	blockRef bloomshipper.BlockRef
-	tasks    []Task
+type blockWithTasks struct {
+	ref   bloomshipper.BlockRef
+	tasks []Task
 }
 
-func partitionFingerprintRange(tasks []Task, blocks []bloomshipper.BlockRef) (result []boundedTasks) {
+func partitionTasks(tasks []Task, blocks []bloomshipper.BlockRef) []blockWithTasks {
+	result := make([]blockWithTasks, 0, len(blocks))
+
 	for _, block := range blocks {
-		bounded := boundedTasks{
-			blockRef: block,
+		bounded := blockWithTasks{
+			ref: block,
 		}
 
 		for _, task := range tasks {
