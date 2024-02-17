@@ -7,7 +7,6 @@ import (
 	"io"
 	"math"
 	"math/rand"
-	"sort"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -20,6 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -304,48 +304,36 @@ func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.Inst
 	for it.Next() {
 		// We can use on of the tokens from the token range
 		// to obtain all addresses for that token.
-		rs, err := subRing.Get(it.At().MaxToken, BlocksOwnerRead, bufDescs, bufHosts, bufZones)
+		rs, err := subRing.Get(it.At().TokenRange.Max, BlocksOwnerRead, bufDescs, bufHosts, bufZones)
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
 		}
 		servers = append(servers, addrsWithTokenRange{
-			id:       it.At().Instance.Id,
-			addrs:    rs.GetAddresses(),
-			minToken: it.At().MinToken,
-			maxToken: it.At().MaxToken,
+			id:         it.At().Instance.Id,
+			addrs:      rs.GetAddresses(),
+			tokenRange: it.At().TokenRange,
 		})
 	}
 
-	if len(servers) > 0 && servers[len(servers)-1].maxToken < math.MaxUint32 {
+	if len(servers) > 0 && servers[len(servers)-1].tokenRange.Max < math.MaxUint32 {
 		// append the instance for the token range between the greates token and MaxUint32
 		servers = append(servers, addrsWithTokenRange{
-			id:       servers[0].id,
-			addrs:    servers[0].addrs,
-			minToken: servers[len(servers)-1].maxToken + 1,
-			maxToken: math.MaxUint32,
+			id:         servers[0].id,
+			addrs:      servers[0].addrs,
+			tokenRange: bloomutils.NewTokenRange(servers[len(servers)-1].tokenRange.Max+1, math.MaxUint32),
 		})
 	}
 	return servers, nil
 }
 
-type instanceWithToken struct {
-	instance ring.InstanceDesc
-	token    uint32
-}
-
 type addrsWithTokenRange struct {
-	id                 string
-	addrs              []string
-	minToken, maxToken uint32
+	id         string
+	addrs      []string
+	tokenRange bloomutils.Range[uint32]
 }
 
 func (s addrsWithTokenRange) cmp(token uint32) v1.BoundsCheck {
-	if token < s.minToken {
-		return v1.Before
-	} else if token > s.maxToken {
-		return v1.After
-	}
-	return v1.Overlap
+	return s.tokenRange.Cmp(token)
 }
 
 type instanceWithFingerprints struct {
@@ -355,13 +343,22 @@ type instanceWithFingerprints struct {
 
 func partitionFingerprintsByAddresses(fingerprints []*logproto.GroupedChunkRefs, addresses []addrsWithTokenRange) (result []instanceWithFingerprints) {
 	for _, instance := range addresses {
-
-		min := sort.Search(len(fingerprints), func(i int) bool {
-			return instance.cmp(uint32(fingerprints[i].Fingerprint)) > v1.Before
+		min, _ := slices.BinarySearchFunc(fingerprints, instance.tokenRange, func(g *logproto.GroupedChunkRefs, r bloomutils.Range[uint32]) int {
+			if uint32(g.Fingerprint) < r.Min {
+				return -1
+			} else if uint32(g.Fingerprint) > r.Min {
+				return 1
+			}
+			return 0
 		})
 
-		max := sort.Search(len(fingerprints), func(i int) bool {
-			return instance.cmp(uint32(fingerprints[i].Fingerprint)) == v1.After
+		max, _ := slices.BinarySearchFunc(fingerprints, instance.tokenRange, func(g *logproto.GroupedChunkRefs, r bloomutils.Range[uint32]) int {
+			if uint32(g.Fingerprint) <= r.Max {
+				return -1
+			} else if uint32(g.Fingerprint) > r.Max {
+				return 1
+			}
+			return 0
 		})
 
 		// fingerprint is out of boundaries

@@ -26,6 +26,7 @@ func discoverManagedAuthConfig() *ManagedAuthConfig {
 	clientID := os.Getenv("CLIENTID")
 	tenantID := os.Getenv("TENANTID")
 	subscriptionID := os.Getenv("SUBSCRIPTIONID")
+	region := os.Getenv("REGION")
 
 	switch {
 	case roleARN != "":
@@ -40,6 +41,7 @@ func discoverManagedAuthConfig() *ManagedAuthConfig {
 				ClientID:       clientID,
 				SubscriptionID: subscriptionID,
 				TenantID:       tenantID,
+				Region:         region,
 			},
 		}
 	}

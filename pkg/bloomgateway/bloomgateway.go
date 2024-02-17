@@ -369,7 +369,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	tasksCh := make(chan Task, len(tasks))
 	for _, task := range tasks {
 		task := task
-		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "day", task.day, "series", len(task.series))
+		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "table", task.table, "series", len(task.series))
 		g.queue.Enqueue(tenantID, []string{}, task, func() {
 			// When enqueuing, we also add the task to the pending tasks
 			g.pendingTasks.Add(task.ID, task)

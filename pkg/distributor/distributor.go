@@ -52,7 +52,7 @@ import (
 const (
 	ringKey = "distributor"
 
-	ringAutoForgetUnhealthyPeriods = 10
+	ringAutoForgetUnhealthyPeriods = 2
 )
 
 var (
