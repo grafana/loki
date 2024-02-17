@@ -3,7 +3,7 @@ package queryrange
 import (
 	"fmt"
 
-	"github.com/buger/jsonparser"
+	"github.com/grafana/jsonparser"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"

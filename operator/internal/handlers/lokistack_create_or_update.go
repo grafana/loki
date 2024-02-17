@@ -36,7 +36,7 @@ func CreateOrUpdateLokiStack(
 	k k8s.Client,
 	s *runtime.Scheme,
 	fg configv1.FeatureGates,
-) error {
+) (lokiv1.CredentialMode, error) {
 	ll := log.WithValues("lokistack", req.NamespacedName, "event", "createOrUpdate")
 
 	var stack lokiv1.LokiStack
@@ -44,9 +44,9 @@ func CreateOrUpdateLokiStack(
 		if apierrors.IsNotFound(err) {
 			// maybe the user deleted it before we could react? Either way this isn't an issue
 			ll.Error(err, "could not find the requested loki stack", "name", req.NamespacedName)
-			return nil
+			return "", nil
 		}
-		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
+		return "", kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
 	}
 
 	img := os.Getenv(manifests.EnvRelatedImageLoki)
@@ -61,21 +61,21 @@ func CreateOrUpdateLokiStack(
 
 	objStore, err := storage.BuildOptions(ctx, k, &stack, fg)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	baseDomain, tenants, err := gateway.BuildOptions(ctx, ll, k, &stack, fg)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if err = rules.Cleanup(ctx, ll, k, &stack); err != nil {
-		return err
+		return "", err
 	}
 
 	alertingRules, recordingRules, ruler, ocpOptions, err := rules.BuildOptions(ctx, ll, k, &stack)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	certRotationRequiredAt := ""
@@ -86,7 +86,7 @@ func CreateOrUpdateLokiStack(
 	timeoutConfig, err := manifests.NewTimeoutConfig(stack.Spec.Limits)
 	if err != nil {
 		ll.Error(err, "failed to parse query timeout")
-		return &status.DegradedError{
+		return "", &status.DegradedError{
 			Message: fmt.Sprintf("Error parsing query timeout: %s", err),
 			Reason:  lokiv1.ReasonQueryTimeoutInvalid,
 			Requeue: false,
@@ -116,13 +116,13 @@ func CreateOrUpdateLokiStack(
 
 	if optErr := manifests.ApplyDefaultSettings(&opts); optErr != nil {
 		ll.Error(optErr, "failed to conform options to build settings")
-		return optErr
+		return "", optErr
 	}
 
 	if fg.LokiStackGateway {
 		if optErr := manifests.ApplyGatewayDefaultOptions(&opts); optErr != nil {
 			ll.Error(optErr, "failed to apply defaults options to gateway settings")
-			return optErr
+			return "", optErr
 		}
 	}
 
@@ -140,13 +140,13 @@ func CreateOrUpdateLokiStack(
 
 	if optErr := manifests.ApplyTLSSettings(&opts, tlsProfile); optErr != nil {
 		ll.Error(optErr, "failed to conform options to tls profile settings")
-		return optErr
+		return "", optErr
 	}
 
 	objects, err := manifests.BuildAll(opts)
 	if err != nil {
 		ll.Error(err, "failed to build manifests")
-		return err
+		return "", err
 	}
 
 	ll.Info("manifests built", "count", len(objects))
@@ -158,7 +158,7 @@ func CreateOrUpdateLokiStack(
 	// a user possibly being unable to read logs.
 	if err := status.SetStorageSchemaStatus(ctx, k, req, objStore.Schemas); err != nil {
 		ll.Error(err, "failed to set storage schema status")
-		return err
+		return "", err
 	}
 
 	var errCount int32
@@ -182,7 +182,7 @@ func CreateOrUpdateLokiStack(
 		depAnnotations, err := dependentAnnotations(ctx, k, obj)
 		if err != nil {
 			l.Error(err, "failed to set dependent annotations")
-			return err
+			return "", err
 		}
 
 		desired := obj.DeepCopyObject().(client.Object)
@@ -205,7 +205,7 @@ func CreateOrUpdateLokiStack(
 	}
 
 	if errCount > 0 {
-		return kverrors.New("failed to configure lokistack resources", "name", req.NamespacedName)
+		return "", kverrors.New("failed to configure lokistack resources", "name", req.NamespacedName)
 	}
 
 	// 1x.demo is used only for development, so the metrics will not
@@ -214,7 +214,7 @@ func CreateOrUpdateLokiStack(
 		metrics.Collect(&opts.Stack, opts.Name)
 	}
 
-	return nil
+	return objStore.CredentialMode(), nil
 }
 
 func dependentAnnotations(ctx context.Context, k k8s.Client, obj client.Object) (map[string]string, error) {

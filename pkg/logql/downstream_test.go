@@ -8,12 +8,14 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 )
 
 var nilShardMetrics = NewShardMapperMetrics(nil)
@@ -542,4 +544,143 @@ func relativeError(t *testing.T, expected, actual promql.Matrix, alpha float64) 
 		}
 		require.InEpsilonSlice(t, e, a, alpha)
 	}
+}
+
+func TestFormat_ShardedExpr(t *testing.T) {
+	oldMax := syntax.MaxCharsPerLine
+	syntax.MaxCharsPerLine = 20
+
+	oldDefaultDepth := defaultMaxDepth
+	defaultMaxDepth = 2
+	defer func() {
+		syntax.MaxCharsPerLine = oldMax
+		defaultMaxDepth = oldDefaultDepth
+	}()
+
+	cases := []struct {
+		name string
+		in   syntax.Expr
+		exp  string
+	}{
+		{
+			name: "ConcatSampleExpr",
+			in: &ConcatSampleExpr{
+				DownstreamSampleExpr: DownstreamSampleExpr{
+					shard: &astmapper.ShardAnnotation{
+						Shard: 0,
+						Of:    3,
+					},
+					SampleExpr: &syntax.RangeAggregationExpr{
+						Operation: syntax.OpRangeTypeRate,
+						Left: &syntax.LogRange{
+							Left: &syntax.MatchersExpr{
+								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+							},
+							Interval: time.Minute,
+						},
+					},
+				},
+				next: &ConcatSampleExpr{
+					DownstreamSampleExpr: DownstreamSampleExpr{
+						shard: &astmapper.ShardAnnotation{
+							Shard: 1,
+							Of:    3,
+						},
+						SampleExpr: &syntax.RangeAggregationExpr{
+							Operation: syntax.OpRangeTypeRate,
+							Left: &syntax.LogRange{
+								Left: &syntax.MatchersExpr{
+									Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+								},
+								Interval: time.Minute,
+							},
+						},
+					},
+					next: &ConcatSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
+							shard: &astmapper.ShardAnnotation{
+								Shard: 1,
+								Of:    3,
+							},
+							SampleExpr: &syntax.RangeAggregationExpr{
+								Operation: syntax.OpRangeTypeRate,
+								Left: &syntax.LogRange{
+									Left: &syntax.MatchersExpr{
+										Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+									},
+									Interval: time.Minute,
+								},
+							},
+						},
+						next: nil,
+					},
+				},
+			},
+			exp: `concat(
+  downstream<
+    rate(
+      {foo="bar"} [1m]
+    ),
+    shard=0_of_3
+  >
+  ++
+  downstream<
+    rate(
+      {foo="bar"} [1m]
+    ),
+    shard=1_of_3
+  >
+  ++ ...
+)`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := syntax.Prettify(c.in)
+			assert.Equal(t, c.exp, got)
+		})
+	}
+}
+
+func TestPrettierWithoutShards(t *testing.T) {
+	q := `((quantile_over_time(0.5,{foo="bar"} | json | unwrap bytes[1d]) by (cluster) > 42) and (count by (cluster)(max_over_time({foo="baz"} |= "error" | json | unwrap bytes[1d]) by (cluster,namespace)) > 10))`
+	e := syntax.MustParseExpr(q)
+
+	mapper := NewShardMapper(ConstantShards(4), nilShardMetrics, []string{})
+	_, _, mapped, err := mapper.Parse(e)
+	require.NoError(t, err)
+	got := syntax.Prettify(mapped)
+	expected := `    downstream<quantile_over_time(0.5,{foo="bar"} | json | unwrap bytes[1d]) by (cluster), shard=<nil>>
+  >
+    42
+and
+    count by (cluster)(
+      max by (cluster, namespace)(
+        concat(
+          downstream<
+            max_over_time({foo="baz"} |= "error" | json | unwrap bytes[1d]) by (cluster,namespace),
+            shard=0_of_4
+          >
+          ++
+          downstream<
+            max_over_time({foo="baz"} |= "error" | json | unwrap bytes[1d]) by (cluster,namespace),
+            shard=1_of_4
+          >
+          ++
+          downstream<
+            max_over_time({foo="baz"} |= "error" | json | unwrap bytes[1d]) by (cluster,namespace),
+            shard=2_of_4
+          >
+          ++
+          downstream<
+            max_over_time({foo="baz"} |= "error" | json | unwrap bytes[1d]) by (cluster,namespace),
+            shard=3_of_4
+          >
+        )
+      )
+    )
+  >
+    10`
+	assert.Equal(t, expected, got)
 }

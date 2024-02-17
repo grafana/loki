@@ -1174,6 +1174,27 @@ type LokiStackComponentStatus struct {
 	Ruler PodStatusMap `json:"ruler,omitempty"`
 }
 
+// CredentialMode represents the type of authentication used for accessing the object storage.
+//
+// +kubebuilder:validation:Enum=static;token;managed
+type CredentialMode string
+
+const (
+	// CredentialModeStatic represents the usage of static, long-lived credentials stored in a Secret.
+	// This is the default authentication mode and available for all supported object storage types.
+	CredentialModeStatic CredentialMode = "static"
+	// CredentialModeToken represents the usage of short-lived tokens retrieved from a credential source.
+	// In this mode the static configuration does not contain credentials needed for the object storage.
+	// Instead, they are generated during runtime using a service, which allows for shorter-lived credentials and
+	// much more granular control. This authentication mode is not supported for all object storage types.
+	CredentialModeToken CredentialMode = "token"
+	// CredentialModeManaged represents the usage of short-lived tokens retrieved from a credential source.
+	// This mode is similar to CredentialModeToken,but instead of having a user-configured credential source,
+	// it is configured by the environment, for example the Cloud Credential Operator in OpenShift.
+	// This mode is only supported for certain object storage types in certain runtime environments.
+	CredentialModeManaged CredentialMode = "managed"
+)
+
 // LokiStackStorageStatus defines the observed state of
 // the Loki storage configuration.
 type LokiStackStorageStatus struct {
@@ -1183,6 +1204,12 @@ type LokiStackStorageStatus struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	Schemas []ObjectStorageSchema `json:"schemas,omitempty"`
+
+	// CredentialMode contains the authentication mode used for accessing the object storage.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	CredentialMode CredentialMode `json:"credentialMode,omitempty"`
 }
 
 // LokiStackStatus defines the observed state of LokiStack

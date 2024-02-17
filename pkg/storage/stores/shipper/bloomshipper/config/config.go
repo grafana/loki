@@ -11,20 +11,10 @@ import (
 )
 
 type Config struct {
-	WorkingDirectory       string                 `yaml:"working_directory"`
-	BlocksDownloadingQueue DownloadingQueueConfig `yaml:"blocks_downloading_queue"`
-	BlocksCache            BlocksCacheConfig      `yaml:"blocks_cache"`
-}
-
-type BlocksCacheConfig struct {
-	EmbeddedCacheConfig           cache.EmbeddedCacheConfig `yaml:",inline"`
-	RemoveDirectoryGracefulPeriod time.Duration             `yaml:"remove_directory_graceful_period"`
-}
-
-func (c *BlocksCacheConfig) RegisterFlagsWithPrefixAndDefaults(prefix string, f *flag.FlagSet) {
-	c.EmbeddedCacheConfig.RegisterFlagsWithPrefixAndDefaults(prefix, "", f, 0)
-	f.DurationVar(&c.RemoveDirectoryGracefulPeriod, prefix+"remove-directory-graceful-period", 5*time.Minute,
-		"During this period the process waits until the directory becomes not used and only after this it will be deleted. If the timeout is reached, the directory is force deleted.")
+	WorkingDirectory       string                    `yaml:"working_directory"`
+	BlocksDownloadingQueue DownloadingQueueConfig    `yaml:"blocks_downloading_queue"`
+	BlocksCache            cache.EmbeddedCacheConfig `yaml:"blocks_cache"`
+	MetasCache             cache.Config              `yaml:"metas_cache"`
 }
 
 type DownloadingQueueConfig struct {
@@ -40,7 +30,8 @@ func (cfg *DownloadingQueueConfig) RegisterFlagsWithPrefix(prefix string, f *fla
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&c.WorkingDirectory, prefix+"shipper.working-directory", "bloom-shipper", "Working directory to store downloaded Bloom Blocks.")
 	c.BlocksDownloadingQueue.RegisterFlagsWithPrefix(prefix+"shipper.blocks-downloading-queue.", f)
-	c.BlocksCache.RegisterFlagsWithPrefixAndDefaults("blocks-cache.", f)
+	c.BlocksCache.RegisterFlagsWithPrefixAndDefaults(prefix+"blocks-cache.", "Cache for bloom blocks. ", f, 24*time.Hour)
+	c.MetasCache.RegisterFlagsWithPrefix(prefix+"metas-cache.", "Cache for bloom metas. ", f)
 }
 
 func (c *Config) Validate() error {

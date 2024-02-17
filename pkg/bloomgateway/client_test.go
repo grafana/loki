@@ -2,6 +2,7 @@ package bloomgateway
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sort"
 	"testing"
@@ -18,6 +19,9 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/validation"
 )
+
+// short constructor
+var newTr = bloomutils.NewTokenRange
 
 func TestBloomGatewayClient(t *testing.T) {
 	logger := log.NewNopLogger()
@@ -53,10 +57,10 @@ func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
 			{Fingerprint: 401}, // out of bounds, will be dismissed
 		}
 		servers := []addrsWithTokenRange{
-			{id: "instance-1", addrs: []string{"10.0.0.1"}, minToken: 0, maxToken: 100},
-			{id: "instance-2", addrs: []string{"10.0.0.2"}, minToken: 101, maxToken: 200},
-			{id: "instance-3", addrs: []string{"10.0.0.3"}, minToken: 201, maxToken: 300},
-			{id: "instance-2", addrs: []string{"10.0.0.2"}, minToken: 301, maxToken: 400},
+			{id: "instance-1", addrs: []string{"10.0.0.1"}, tokenRange: newTr(0, 100)},
+			{id: "instance-2", addrs: []string{"10.0.0.2"}, tokenRange: newTr(101, 200)},
+			{id: "instance-3", addrs: []string{"10.0.0.3"}, tokenRange: newTr(201, 300)},
+			{id: "instance-2", addrs: []string{"10.0.0.2"}, tokenRange: newTr(301, 400)},
 		}
 
 		// partition fingerprints
@@ -135,9 +139,9 @@ func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
 			{Fingerprint: 350},
 		}
 		servers := []addrsWithTokenRange{
-			{id: "instance-1", addrs: []string{"10.0.0.1"}, minToken: 0, maxToken: 200},
-			{id: "instance-2", addrs: []string{"10.0.0.2"}, minToken: 100, maxToken: 300},
-			{id: "instance-3", addrs: []string{"10.0.0.3"}, minToken: 200, maxToken: 400},
+			{id: "instance-1", addrs: []string{"10.0.0.1"}, tokenRange: newTr(0, 200)},
+			{id: "instance-2", addrs: []string{"10.0.0.2"}, tokenRange: newTr(100, 300)},
+			{id: "instance-3", addrs: []string{"10.0.0.3"}, tokenRange: newTr(200, 400)},
 		}
 
 		// partition fingerprints
@@ -162,6 +166,33 @@ func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
 	})
 }
 
+func BenchmarkPartitionFingerprintsByAddresses(b *testing.B) {
+	numFp := 100000
+	fpStep := math.MaxUint64 / uint64(numFp)
+
+	groups := make([]*logproto.GroupedChunkRefs, 0, numFp)
+	for i := uint64(0); i < math.MaxUint64-fpStep; i += fpStep {
+		groups = append(groups, &logproto.GroupedChunkRefs{Fingerprint: i})
+	}
+
+	numServers := 100
+	tokenStep := math.MaxUint32 / uint32(numServers)
+	servers := make([]addrsWithTokenRange, 0, numServers)
+	for i := uint32(0); i < math.MaxUint32-tokenStep; i += tokenStep {
+		servers = append(servers, addrsWithTokenRange{
+			id:         fmt.Sprintf("instance-%x", i),
+			addrs:      []string{fmt.Sprintf("%d", i)},
+			tokenRange: newTr(i, i+tokenStep),
+		})
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = partitionFingerprintsByAddresses(groups, servers)
+	}
+}
+
 func TestBloomGatewayClient_ServerAddressesWithTokenRanges(t *testing.T) {
 	testCases := map[string]struct {
 		instances []ring.InstanceDesc
@@ -174,10 +205,10 @@ func TestBloomGatewayClient_ServerAddressesWithTokenRanges(t *testing.T) {
 				{Id: "instance-3", Addr: "10.0.0.3", Tokens: []uint32{math.MaxUint32 / 6 * 5}},
 			},
 			expected: []addrsWithTokenRange{
-				{id: "instance-1", addrs: []string{"10.0.0.1"}, minToken: 0, maxToken: math.MaxUint32 / 6 * 1},
-				{id: "instance-2", addrs: []string{"10.0.0.2"}, minToken: math.MaxUint32/6*1 + 1, maxToken: math.MaxUint32 / 6 * 3},
-				{id: "instance-3", addrs: []string{"10.0.0.3"}, minToken: math.MaxUint32/6*3 + 1, maxToken: math.MaxUint32 / 6 * 5},
-				{id: "instance-1", addrs: []string{"10.0.0.1"}, minToken: math.MaxUint32/6*5 + 1, maxToken: math.MaxUint32},
+				{id: "instance-1", addrs: []string{"10.0.0.1"}, tokenRange: newTr(0, math.MaxUint32/6*1)},
+				{id: "instance-2", addrs: []string{"10.0.0.2"}, tokenRange: newTr(math.MaxUint32/6*1+1, math.MaxUint32/6*3)},
+				{id: "instance-3", addrs: []string{"10.0.0.3"}, tokenRange: newTr(math.MaxUint32/6*3+1, math.MaxUint32/6*5)},
+				{id: "instance-1", addrs: []string{"10.0.0.1"}, tokenRange: newTr(math.MaxUint32/6*5+1, math.MaxUint32)},
 			},
 		},
 		"MinUint32 and MaxUint32 are tokens in the ring": {
@@ -186,10 +217,10 @@ func TestBloomGatewayClient_ServerAddressesWithTokenRanges(t *testing.T) {
 				{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{math.MaxUint32 / 3 * 1, math.MaxUint32}},
 			},
 			expected: []addrsWithTokenRange{
-				{id: "instance-1", addrs: []string{"10.0.0.1"}, minToken: 0, maxToken: 0},
-				{id: "instance-2", addrs: []string{"10.0.0.2"}, minToken: 1, maxToken: math.MaxUint32 / 3},
-				{id: "instance-1", addrs: []string{"10.0.0.1"}, minToken: math.MaxUint32/3*1 + 1, maxToken: math.MaxUint32 / 3 * 2},
-				{id: "instance-2", addrs: []string{"10.0.0.2"}, minToken: math.MaxUint32/3*2 + 1, maxToken: math.MaxUint32},
+				{id: "instance-1", addrs: []string{"10.0.0.1"}, tokenRange: newTr(0, 0)},
+				{id: "instance-2", addrs: []string{"10.0.0.2"}, tokenRange: newTr(1, math.MaxUint32/3)},
+				{id: "instance-1", addrs: []string{"10.0.0.1"}, tokenRange: newTr(math.MaxUint32/3*1+1, math.MaxUint32/3*2)},
+				{id: "instance-2", addrs: []string{"10.0.0.2"}, tokenRange: newTr(math.MaxUint32/3*2+1, math.MaxUint32)},
 			},
 		},
 	}
@@ -207,19 +238,6 @@ func TestBloomGatewayClient_ServerAddressesWithTokenRanges(t *testing.T) {
 }
 
 func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
-
-	logger := log.NewNopLogger()
-	reg := prometheus.NewRegistry()
-
-	l, err := validation.NewOverrides(validation.Limits{BloomGatewayShardSize: 1}, nil)
-	require.NoError(t, err)
-
-	cfg := ClientConfig{}
-	flagext.DefaultValues(&cfg)
-
-	c, err := NewClient(cfg, nil, l, reg, logger, "loki", nil, false)
-	require.NoError(t, err)
-
 	instances := []ring.InstanceDesc{
 		{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{2146405214, 1029997044, 678878693}},
 		{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{296463531, 1697323986, 800258284}},
@@ -228,7 +246,7 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 
 	it := bloomutils.NewInstanceSortMergeIterator(instances)
 	for it.Next() {
-		t.Log(it.At().MaxToken, it.At().Instance.Addr)
+		t.Log(it.At().TokenRange.Max, it.At().Instance.Addr)
 	}
 
 	testCases := []struct {
@@ -339,8 +357,9 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 				return tc.chunks[i].Fingerprint < tc.chunks[j].Fingerprint
 			})
 
-			res, err := c.groupFingerprintsByServer(tc.chunks, subRing, instances)
+			servers, err := serverAddressesWithTokenRanges(subRing, instances)
 			require.NoError(t, err)
+			res := groupFingerprintsByServer(tc.chunks, servers)
 			require.Equal(t, tc.expected, res)
 		})
 	}
@@ -369,10 +388,10 @@ type mockRing struct {
 // Get implements ring.ReadRing.
 func (r *mockRing) Get(key uint32, _ ring.Operation, _ []ring.InstanceDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
 	idx, _ := sort.Find(len(r.ranges), func(i int) int {
-		if r.ranges[i].MaxToken < key {
+		if r.ranges[i].TokenRange.Max < key {
 			return 1
 		}
-		if r.ranges[i].MaxToken > key {
+		if r.ranges[i].TokenRange.Max > key {
 			return -1
 		}
 		return 0

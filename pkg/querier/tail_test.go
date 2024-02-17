@@ -389,7 +389,7 @@ func readFromTailer(tailer *Tailer, maxEntries int) ([]*loghttp.TailResponse, er
 	timeoutTicker := time.NewTicker(timeout)
 	defer timeoutTicker.Stop()
 
-	for !tailer.stopped && entriesCount < maxEntries {
+	for !tailer.stopped.Load() && entriesCount < maxEntries {
 		select {
 		case <-timeoutTicker.C:
 			return nil, errors.New("timeout expired while reading responses from Tailer")

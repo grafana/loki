@@ -127,6 +127,7 @@ func NewResultsCacheMiddleware(
 	shouldCache ShouldCacheFn,
 	parallelismForReq ParallelismForReqFn,
 	retentionEnabled bool,
+	onlyUseEntireExtent bool,
 	metrics *ResultsCacheMetrics,
 ) (Middleware, error) {
 	if cacheGenNumberLoader != nil {
@@ -172,6 +173,7 @@ func NewResultsCacheMiddleware(
 			parallelismForReqWrapper,
 			cacheGenNumberLoader,
 			retentionEnabled,
+			onlyUseEntireExtent,
 		)
 
 		return out

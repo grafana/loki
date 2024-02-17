@@ -98,7 +98,7 @@ func Test_FingerprintBounds_Union(t *testing.T) {
 	}, NewBounds(5, 15).Union(target))
 }
 
-func Test_FingerprintBounds_Xor(t *testing.T) {
+func Test_FingerprintBounds_Unless(t *testing.T) {
 	t.Parallel()
 	target := NewBounds(10, 20)
 	assert.Equal(t, []FingerprintBounds{

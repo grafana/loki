@@ -575,7 +575,7 @@ func WeightedParallelism(
 		// config because query is in future
 		// or
 		// there is overlap with current config
-		finalOrFuture := i == len(configs)-1 || configs[i].From.After(end)
+		finalOrFuture := i == len(configs)-1 || configs[i].From.Time.After(end)
 		if finalOrFuture {
 			return true
 		}
@@ -605,7 +605,7 @@ func WeightedParallelism(
 
 	var tsdbDur, otherDur time.Duration
 
-	for ; i < len(configs) && configs[i].From.Before(end); i++ {
+	for ; i < len(configs) && configs[i].From.Time.Before(end); i++ {
 		_, from := minMaxModelTime(start, configs[i].From.Time)
 		through := end
 		if i+1 < len(configs) {

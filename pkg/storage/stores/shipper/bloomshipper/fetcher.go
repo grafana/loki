@@ -32,7 +32,7 @@ type Fetcher struct {
 	client Client
 
 	metasCache      cache.Cache
-	blocksCache     *cache.EmbeddedCache[string, BlockDirectory]
+	blocksCache     cache.TypedCache[string, BlockDirectory]
 	localFSResolver KeyResolver
 
 	q *downloadQueue[BlockRef, BlockDirectory]
@@ -41,7 +41,7 @@ type Fetcher struct {
 	logger  log.Logger
 }
 
-func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blocksCache *cache.EmbeddedCache[string, BlockDirectory], logger log.Logger) (*Fetcher, error) {
+func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blocksCache cache.TypedCache[string, BlockDirectory], logger log.Logger) (*Fetcher, error) {
 	fetcher := &Fetcher{
 		client:          client,
 		metasCache:      metasCache,

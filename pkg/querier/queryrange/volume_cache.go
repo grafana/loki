@@ -131,6 +131,7 @@ func NewVolumeCacheMiddleware(
 		},
 		parallelismForReq,
 		retentionEnabled,
+		false,
 		metrics,
 	)
 }

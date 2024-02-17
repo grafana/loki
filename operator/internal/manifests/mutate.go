@@ -6,6 +6,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 	routev1 "github.com/openshift/api/route/v1"
+	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -123,6 +124,11 @@ func MutateFuncFor(existing, desired client.Object, depAnnotations map[string]st
 			wantRt := desired.(*routev1.Route)
 			mutateRoute(rt, wantRt)
 
+		case *cloudcredentialv1.CredentialsRequest:
+			cr := existing.(*cloudcredentialv1.CredentialsRequest)
+			wantCr := desired.(*cloudcredentialv1.CredentialsRequest)
+			mutateCredentialRequest(cr, wantCr)
+
 		case *monitoringv1.PrometheusRule:
 			pr := existing.(*monitoringv1.PrometheusRule)
 			wantPr := desired.(*monitoringv1.PrometheusRule)
@@ -210,6 +216,10 @@ func mutateIngress(existing, desired *networkingv1.Ingress) {
 func mutateRoute(existing, desired *routev1.Route) {
 	existing.Annotations = desired.Annotations
 	existing.Labels = desired.Labels
+	existing.Spec = desired.Spec
+}
+
+func mutateCredentialRequest(existing, desired *cloudcredentialv1.CredentialsRequest) {
 	existing.Spec = desired.Spec
 }
 

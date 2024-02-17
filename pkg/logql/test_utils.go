@@ -215,7 +215,7 @@ type MockDownstreamer struct {
 
 func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return m }
 
-func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
+func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery, _ Accumulator) ([]logqlmodel.Result, error) {
 	results := make([]logqlmodel.Result, 0, len(queries))
 	for _, query := range queries {
 		res, err := m.Query(query.Params).Exec(ctx)

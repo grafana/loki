@@ -25,7 +25,7 @@ type Identifier interface {
 // identifierFromPath will detect whether this is a single or multitenant TSDB
 func identifierFromPath(p string) (Identifier, error) {
 	// try parsing as single tenant since the filename is more deterministic without an arbitrary nodename for uploader
-	id, ok := parseSingleTenantTSDBPath(p)
+	id, ok := ParseSingleTenantTSDBPath(p)
 	if ok {
 		return NewPrefixedIdentifier(id, filepath.Dir(p), ""), nil
 	}
@@ -95,7 +95,7 @@ func (i SingleTenantTSDBIdentifier) Path() string {
 	return i.str()
 }
 
-func parseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool) {
+func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool) {
 	// parsing as multitenant didn't work, so try single tenant
 
 	// incorrect suffix
@@ -128,7 +128,7 @@ func parseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 		return
 	}
 
-	checksum, err := strconv.ParseInt(elems[4], 16, 32)
+	checksum, err := strconv.ParseUint(elems[4], 16, 32)
 	if err != nil {
 		return
 	}

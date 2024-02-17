@@ -199,7 +199,7 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 					}
 					level.Error(logger).Log("msg", "Error from client", "err", err)
 					break
-				} else if tailer.stopped {
+				} else if tailer.stopped.Load() {
 					return
 				}
 

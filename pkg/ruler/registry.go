@@ -212,8 +212,10 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 				}
 			}
 
-			// always inject the X-Scope-OrgId header for multi-tenant metrics backends
-			clt.Headers[user.OrgIDHeaderName] = tenant
+			if rwCfg.AddOrgIDHeader {
+				// inject the X-Scope-OrgId header for multi-tenant metrics backends
+				clt.Headers[user.OrgIDHeaderName] = tenant
+			}
 
 			rwCfg.Clients[id] = clt
 

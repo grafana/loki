@@ -146,7 +146,7 @@ func NewBloomStore(
 	storageConfig storage.Config,
 	clientMetrics storage.ClientMetrics,
 	metasCache cache.Cache,
-	blocksCache *cache.EmbeddedCache[string, BlockDirectory],
+	blocksCache cache.TypedCache[string, BlockDirectory],
 	logger log.Logger,
 ) (*BloomStore, error) {
 	store := &BloomStore{
@@ -155,6 +155,10 @@ func NewBloomStore(
 
 	if metasCache == nil {
 		metasCache = cache.NewNoopCache()
+	}
+
+	if blocksCache == nil {
+		blocksCache = cache.NewNoopTypedCache[string, BlockDirectory]()
 	}
 
 	// sort by From time
