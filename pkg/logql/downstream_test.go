@@ -181,6 +181,70 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 	}
 }
 
+func TestMappingEquivalenceSketches_Instant(t *testing.T) {
+	var (
+		shards   = 3
+		nStreams = 10_000
+		rounds   = 20
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, true)
+		start    = time.Unix(0, int64(rounds+1))
+		end      = time.Unix(0, int64(rounds+1))
+		step     = time.Duration(0)
+		interval = time.Duration(0)
+		limit    = 100
+	)
+
+	for _, tc := range []struct {
+		query         string
+		realtiveError float64
+	}{
+		{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [10m]) by (a)`, 0.03},
+		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [10m]) by (a)`, 0.02},
+	} {
+		q := NewMockQuerier(
+			shards,
+			streams,
+		)
+
+		opts := EngineOpts{}
+		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
+		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
+
+		t.Run(tc.query, func(t *testing.T) {
+			params, err := NewLiteralParams(
+				tc.query,
+				start,
+				end,
+				step,
+				interval,
+				logproto.FORWARD,
+				uint32(limit),
+				nil,
+			)
+			require.NoError(t, err)
+			qry := regular.Query(params)
+			ctx := user.InjectOrgID(context.Background(), "fake")
+
+			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics, []string{ShardQuantileOverTime})
+			_, _, mapped, err := mapper.Parse(params.GetExpression())
+			require.NoError(t, err)
+
+			shardedQry := sharded.Query(ctx, ParamsWithExpressionOverride{
+				Params:             params,
+				ExpressionOverride: mapped,
+			})
+
+			res, err := qry.Exec(ctx)
+			require.NoError(t, err)
+
+			shardedRes, err := shardedQry.Exec(ctx)
+			require.NoError(t, err)
+
+			relativeErrorVector(t, res.Data.(promql.Vector), shardedRes.Data.(promql.Vector), tc.realtiveError)
+		})
+	}
+}
+
 func TestShardCounter(t *testing.T) {
 	var (
 		shards   = 3
@@ -544,6 +608,21 @@ func relativeError(t *testing.T, expected, actual promql.Matrix, alpha float64) 
 		}
 		require.InEpsilonSlice(t, e, a, alpha)
 	}
+}
+
+func relativeErrorVector(t *testing.T, expected, actual promql.Vector, alpha float64) {
+	require.Len(t, actual, len(expected))
+
+	e := make([]float64, len(expected))
+	a := make([]float64, len(expected))
+	for i := 0; i < len(expected); i++ {
+		require.Equal(t, expected[i].Metric, actual[i].Metric)
+
+		e[i] = expected[i].F
+		a[i] = expected[i].F
+	}
+	require.InEpsilonSlice(t, e, a, alpha)
+
 }
 
 func TestFormat_ShardedExpr(t *testing.T) {

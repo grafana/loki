@@ -283,6 +283,11 @@ func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluat
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
 		}
+		// Don't continue to evaluate more steps if we already filled the
+		// # of steps we should have based on start/end and step params.
+		if len(result) == stepCount {
+			break
+		}
 	}
 
 	return result, stepEvaluator.Error()
