@@ -52,11 +52,9 @@ func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 			BlocksDownloadingQueue: config.DownloadingQueueConfig{
 				WorkersCount: 1,
 			},
-			BlocksCache: config.BlocksCacheConfig{
-				EmbeddedCacheConfig: cache.EmbeddedCacheConfig{
-					MaxSizeItems: 1000,
-					TTL:          1 * time.Hour,
-				},
+			BlocksCache: cache.EmbeddedCacheConfig{
+				MaxSizeItems: 1000,
+				TTL:          1 * time.Hour,
 			},
 		},
 	}
@@ -66,7 +64,7 @@ func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 	logger := log.NewLogfmtLogger(os.Stderr)
 
 	metasCache := cache.NewMockCache()
-	blocksCache := NewBlocksCache(storageConfig.BloomShipperConfig, prometheus.NewPedanticRegistry(), logger)
+	blocksCache := NewBlocksCache(storageConfig.BloomShipperConfig.BlocksCache, prometheus.NewPedanticRegistry(), logger)
 	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, logger)
 	require.NoError(t, err)
 	t.Cleanup(store.Stop)
@@ -85,8 +83,8 @@ func createMetaInStorage(store *BloomStore, tenant string, start model.Time, min
 				// EndTimestamp:   start.Add(12 * time.Hour),
 			},
 		},
-		Blocks:     []BlockRef{},
-		Tombstones: []BlockRef{},
+		Blocks:          []BlockRef{},
+		BlockTombstones: []BlockRef{},
 	}
 	err := store.storeDo(start, func(s *bloomStoreEntry) error {
 		raw, _ := json.Marshal(meta)

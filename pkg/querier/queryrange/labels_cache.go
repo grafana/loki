@@ -11,21 +11,42 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type cacheKeyLabels struct {
 	Limits
 	transformer UserIDTransformer
-	iqo         util.IngesterQueryOptions
+}
+
+// metadataSplitIntervalForTimeRange returns split interval for series and label requests.
+// If `recent_metadata_query_window` is configured and the query start interval is within this window,
+// it returns `split_recent_metadata_queries_by_interval`.
+// For other cases, the default split interval of `split_metadata_queries_by_interval` will be used.
+func metadataSplitIntervalForTimeRange(limits Limits, tenantIDs []string, ref, start time.Time) time.Duration {
+	split := validation.MaxDurationOrZeroPerTenant(tenantIDs, limits.MetadataQuerySplitDuration)
+
+	recentMetadataQueryWindow := validation.MaxDurationOrZeroPerTenant(tenantIDs, limits.RecentMetadataQueryWindow)
+	recentMetadataQuerySplitInterval := validation.MaxDurationOrZeroPerTenant(tenantIDs, limits.RecentMetadataQuerySplitDuration)
+
+	// if either of the options are not configured, use the default metadata split interval
+	if recentMetadataQueryWindow == 0 || recentMetadataQuerySplitInterval == 0 {
+		return split
+	}
+
+	// if the query start is not before window start, it would be split using recentMetadataQuerySplitInterval
+	if windowStart := ref.Add(-recentMetadataQueryWindow); !start.Before(windowStart) {
+		split = recentMetadataQuerySplitInterval
+	}
+
+	return split
 }
 
 // GenerateCacheKey generates a cache key based on the userID, split duration and the interval of the request.
 // It also includes the label name and the provided query for label values request.
 func (i cacheKeyLabels) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	lr := r.(*LabelRequest)
-
-	split := SplitIntervalForTimeRange(i.iqo, i.Limits, i.MetadataQuerySplitDuration, []string{userID}, time.Now().UTC(), r.GetEnd().UTC())
+	split := metadataSplitIntervalForTimeRange(i.Limits, []string{userID}, time.Now().UTC(), r.GetStart().UTC())
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {
@@ -80,7 +101,6 @@ func NewLabelsCacheMiddleware(
 	merger queryrangebase.Merger,
 	c cache.Cache,
 	cacheGenNumberLoader queryrangebase.CacheGenNumberLoader,
-	iqo util.IngesterQueryOptions,
 	shouldCache queryrangebase.ShouldCacheFn,
 	parallelismForReq queryrangebase.ParallelismForReqFn,
 	retentionEnabled bool,
@@ -90,7 +110,7 @@ func NewLabelsCacheMiddleware(
 	return queryrangebase.NewResultsCacheMiddleware(
 		logger,
 		c,
-		cacheKeyLabels{limits, transformer, iqo},
+		cacheKeyLabels{limits, transformer},
 		limits,
 		merger,
 		labelsExtractor{},
@@ -100,6 +120,7 @@ func NewLabelsCacheMiddleware(
 		},
 		parallelismForReq,
 		retentionEnabled,
+		true,
 		metrics,
 	)
 }

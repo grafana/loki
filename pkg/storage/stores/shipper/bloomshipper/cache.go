@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 type CloseableBlockQuerier struct {
@@ -30,10 +29,17 @@ func (c *CloseableBlockQuerier) Close() error {
 	return nil
 }
 
-func NewBlocksCache(config config.Config, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, BlockDirectory] {
+func (c *CloseableBlockQuerier) SeriesIter() (v1.PeekingIterator[*v1.SeriesWithBloom], error) {
+	if err := c.Reset(); err != nil {
+		return nil, err
+	}
+	return v1.NewPeekingIter[*v1.SeriesWithBloom](c.BlockQuerier), nil
+}
+
+func NewBlocksCache(cfg cache.EmbeddedCacheConfig, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, BlockDirectory] {
 	return cache.NewTypedEmbeddedCache[string, BlockDirectory](
 		"bloom-blocks-cache",
-		config.BlocksCache.EmbeddedCacheConfig,
+		cfg,
 		reg,
 		logger,
 		stats.BloomBlocksCache,

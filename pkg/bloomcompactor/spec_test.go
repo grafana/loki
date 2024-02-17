@@ -13,22 +13,21 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
-func blocksFromSchema(t *testing.T, n int, options v1.BlockOptions) (res []*v1.Block, data []v1.SeriesWithBloom) {
+func blocksFromSchema(t *testing.T, n int, options v1.BlockOptions) (res []*v1.Block, data []v1.SeriesWithBloom, refs []bloomshipper.BlockRef) {
 	return blocksFromSchemaWithRange(t, n, options, 0, 0xffff)
 }
 
 // splits 100 series across `n` non-overlapping blocks.
 // uses options to build blocks with.
-func blocksFromSchemaWithRange(t *testing.T, n int, options v1.BlockOptions, fromFP, throughFp model.Fingerprint) (res []*v1.Block, data []v1.SeriesWithBloom) {
+func blocksFromSchemaWithRange(t *testing.T, n int, options v1.BlockOptions, fromFP, throughFp model.Fingerprint) (res []*v1.Block, data []v1.SeriesWithBloom, refs []bloomshipper.BlockRef) {
 	if 100%n != 0 {
 		panic("100 series must be evenly divisible by n")
 	}
 
 	numSeries := 100
-	numKeysPerSeries := 10000
-	data, _ = v1.MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, fromFP, throughFp, 0, 10000)
+	data, _ = v1.MkBasicSeriesWithBlooms(numSeries, 0, fromFP, throughFp, 0, 10000)
 
-	seriesPerBlock := 100 / n
+	seriesPerBlock := numSeries / n
 
 	for i := 0; i < n; i++ {
 		// references for linking in memory reader+writer
@@ -43,39 +42,62 @@ func blocksFromSchemaWithRange(t *testing.T, n int, options v1.BlockOptions, fro
 		)
 		require.Nil(t, err)
 
-		itr := v1.NewSliceIter[v1.SeriesWithBloom](data[i*seriesPerBlock : (i+1)*seriesPerBlock])
+		minIdx, maxIdx := i*seriesPerBlock, (i+1)*seriesPerBlock
+
+		itr := v1.NewSliceIter[v1.SeriesWithBloom](data[minIdx:maxIdx])
 		_, err = builder.BuildFrom(itr)
 		require.Nil(t, err)
 
 		res = append(res, v1.NewBlock(reader))
+		ref := genBlockRef(data[minIdx].Series.Fingerprint, data[maxIdx-1].Series.Fingerprint)
+		t.Log("create block", ref)
+		refs = append(refs, ref)
 	}
 
-	return res, data
+	return res, data, refs
 }
 
 // doesn't actually load any chunks
 type dummyChunkLoader struct{}
 
-func (dummyChunkLoader) Load(_ context.Context, series *v1.Series) (*ChunkItersByFingerprint, error) {
+func (dummyChunkLoader) Load(_ context.Context, _ string, series *v1.Series) (*ChunkItersByFingerprint, error) {
 	return &ChunkItersByFingerprint{
 		fp:  series.Fingerprint,
 		itr: v1.NewEmptyIter[v1.ChunkRefWithIter](),
 	}, nil
 }
 
-func dummyBloomGen(opts v1.BlockOptions, store v1.Iterator[*v1.Series], blocks []*v1.Block) *SimpleBloomGenerator {
+func dummyBloomGen(t *testing.T, opts v1.BlockOptions, store v1.Iterator[*v1.Series], blocks []*v1.Block, refs []bloomshipper.BlockRef) *SimpleBloomGenerator {
 	bqs := make([]*bloomshipper.CloseableBlockQuerier, 0, len(blocks))
-	for _, b := range blocks {
+	for i, b := range blocks {
 		bqs = append(bqs, &bloomshipper.CloseableBlockQuerier{
+			BlockRef:     refs[i],
 			BlockQuerier: v1.NewBlockQuerier(b),
 		})
 	}
 
+	fetcher := func(_ context.Context, refs []bloomshipper.BlockRef) ([]*bloomshipper.CloseableBlockQuerier, error) {
+		res := make([]*bloomshipper.CloseableBlockQuerier, 0, len(refs))
+		for _, ref := range refs {
+			for _, bq := range bqs {
+				if ref.Bounds.Equal(bq.Bounds) {
+					res = append(res, bq)
+				}
+			}
+		}
+		t.Log("req", refs)
+		t.Log("res", res)
+		return res, nil
+	}
+
+	blocksIter := newBlockLoadingIter(context.Background(), refs, FetchFunc[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier](fetcher), 1)
+
 	return NewSimpleBloomGenerator(
+		"fake",
 		opts,
 		store,
 		dummyChunkLoader{},
-		bqs,
+		blocksIter,
 		func() (v1.BlockWriter, v1.BlockReader) {
 			indexBuf := bytes.NewBuffer(nil)
 			bloomsBuf := bytes.NewBuffer(nil)
@@ -87,28 +109,40 @@ func dummyBloomGen(opts v1.BlockOptions, store v1.Iterator[*v1.Series], blocks [
 }
 
 func TestSimpleBloomGenerator(t *testing.T) {
+	const maxBlockSize = 100 << 20 // 100MB
 	for _, tc := range []struct {
-		desc                     string
-		fromSchema, toSchema     v1.BlockOptions
-		sourceBlocks, numSkipped int
+		desc                                   string
+		fromSchema, toSchema                   v1.BlockOptions
+		sourceBlocks, numSkipped, outputBlocks int
+		overlapping                            bool
 	}{
 		{
 			desc:         "SkipsIncompatibleSchemas",
-			fromSchema:   v1.NewBlockOptions(3, 0),
-			toSchema:     v1.NewBlockOptions(4, 0),
+			fromSchema:   v1.NewBlockOptions(3, 0, maxBlockSize),
+			toSchema:     v1.NewBlockOptions(4, 0, maxBlockSize),
 			sourceBlocks: 2,
 			numSkipped:   2,
+			outputBlocks: 1,
 		},
 		{
 			desc:         "CombinesBlocks",
-			fromSchema:   v1.NewBlockOptions(4, 0),
-			toSchema:     v1.NewBlockOptions(4, 0),
+			fromSchema:   v1.NewBlockOptions(4, 0, maxBlockSize),
+			toSchema:     v1.NewBlockOptions(4, 0, maxBlockSize),
 			sourceBlocks: 2,
 			numSkipped:   0,
+			outputBlocks: 1,
+		},
+		{
+			desc:         "MaxBlockSize",
+			fromSchema:   v1.NewBlockOptions(4, 0, maxBlockSize),
+			toSchema:     v1.NewBlockOptions(4, 0, 1<<10), // 1KB
+			sourceBlocks: 2,
+			numSkipped:   0,
+			outputBlocks: 6,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			sourceBlocks, data := blocksFromSchema(t, tc.sourceBlocks, tc.fromSchema)
+			sourceBlocks, data, refs := blocksFromSchemaWithRange(t, tc.sourceBlocks, tc.fromSchema, 0x00000, 0x6ffff)
 			storeItr := v1.NewMapIter[v1.SeriesWithBloom, *v1.Series](
 				v1.NewSliceIter[v1.SeriesWithBloom](data),
 				func(swb v1.SeriesWithBloom) *v1.Series {
@@ -116,27 +150,29 @@ func TestSimpleBloomGenerator(t *testing.T) {
 				},
 			)
 
-			gen := dummyBloomGen(tc.toSchema, storeItr, sourceBlocks)
-			skipped, results, err := gen.Generate(context.Background())
-			require.Nil(t, err)
-			require.Equal(t, tc.numSkipped, len(skipped))
+			gen := dummyBloomGen(t, tc.toSchema, storeItr, sourceBlocks, refs)
+			results := gen.Generate(context.Background())
 
-			require.True(t, results.Next())
-			block := results.At()
-			require.False(t, results.Next())
+			var outputBlocks []*v1.Block
+			for results.Next() {
+				outputBlocks = append(outputBlocks, results.At())
+			}
+			require.Equal(t, tc.outputBlocks, len(outputBlocks))
+			require.Equal(t, tc.numSkipped, len(gen.skipped))
 
-			refs := v1.PointerSlice[v1.SeriesWithBloom](data)
-
-			v1.EqualIterators[*v1.SeriesWithBloom](
-				t,
-				func(a, b *v1.SeriesWithBloom) {
-					// TODO(owen-d): better equality check
-					// once chunk fetching is implemented
-					require.Equal(t, a.Series, b.Series)
-				},
-				v1.NewSliceIter[*v1.SeriesWithBloom](refs),
-				block.Querier(),
-			)
+			// Check all the input series are present in the output blocks.
+			expectedRefs := v1.PointerSlice(data)
+			outputRefs := make([]*v1.SeriesWithBloom, 0, len(data))
+			for _, block := range outputBlocks {
+				bq := block.Querier()
+				for bq.Next() {
+					outputRefs = append(outputRefs, bq.At())
+				}
+			}
+			require.Equal(t, len(expectedRefs), len(outputRefs))
+			for i := range expectedRefs {
+				require.Equal(t, expectedRefs[i].Series, outputRefs[i].Series)
+			}
 		})
 	}
 }
