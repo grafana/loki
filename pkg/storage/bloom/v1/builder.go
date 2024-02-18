@@ -606,6 +606,10 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 		}
 	}
 
+	if err := mb.store.Err(); err != nil {
+		return 0, errors.Wrap(err, "iterating store")
+	}
+
 	checksum, err := builder.Close()
 	if err != nil {
 		return 0, errors.Wrap(err, "closing block")
