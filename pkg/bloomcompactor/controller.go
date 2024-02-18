@@ -149,6 +149,7 @@ func (s *SimpleBloomController) compactTenant(
 	return nil
 }
 
+// fetchSuperSet fetches all metas which overlap the ownership range of the first set of metas we've resolved
 func (s *SimpleBloomController) fetchSuperSet(
 	ctx context.Context,
 	tenant string,
@@ -179,11 +180,21 @@ func (s *SimpleBloomController) fetchSuperSet(
 		superset = union[0]
 	}
 
+	within := superset.Within(ownershipRange)
 	level.Debug(logger).Log(
 		"msg", "looking for superset metas",
 		"superset", superset.String(),
-		"superset_within", superset.Within(ownershipRange),
+		"superset_within", within,
 	)
+
+	if within {
+		// we don't need to fetch any more metas
+		// NB(owen-d): here we copy metas into the output. This is slightly inefficient, but
+		// helps prevent mutability bugs by returning the same slice as the input.
+		results := make([]bloomshipper.Meta, len(metas))
+		copy(results, metas)
+		return results, nil
+	}
 
 	supersetMetas, err := s.bloomStore.FetchMetas(
 		ctx,
