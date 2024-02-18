@@ -374,7 +374,15 @@ func (s *SimpleBloomController) buildGaps(
 					return nil, errors.Wrap(err, "failed to write block")
 				}
 				s.metrics.blocksCreated.Inc()
-				level.Debug(logger).Log("msg", "uploaded block", "block", built.BlockRef.String())
+
+				totalGapKeyspace := (gap.bounds.Max - gap.bounds.Min)
+				progress := (built.Bounds.Max - gap.bounds.Min)
+				pct := float64(progress) / float64(totalGapKeyspace) * 100
+				level.Debug(logger).Log(
+					"msg", "uploaded block",
+					"block", built.BlockRef.String(),
+					"progress_pct", fmt.Sprintf("%.2f", pct),
+				)
 
 				meta.Blocks = append(meta.Blocks, built.BlockRef)
 			}
@@ -388,6 +396,7 @@ func (s *SimpleBloomController) buildGaps(
 			blocksIter.Close()
 
 			// Write the new meta
+			// TODO(owen-d): put total size in log, total time in metrics+log
 			ref, err := bloomshipper.MetaRefFrom(tenant, table.Addr(), gap.bounds, meta.Sources, meta.Blocks)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to checksum meta", "err", err)
