@@ -149,10 +149,10 @@ func (c CompositeStore) LabelValuesForMetricName(ctx context.Context, userID str
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
 	var result util.UniqueStrings
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		labelNames, err := store.LabelNamesForMetricName(innerCtx, userID, from, through, metricName)
+		labelNames, err := store.LabelNamesForMetricName(innerCtx, userID, from, through, metricName, matchers...)
 		if err != nil {
 			return err
 		}
