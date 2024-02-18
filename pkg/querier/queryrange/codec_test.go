@@ -727,7 +727,7 @@ func Test_codec_series_EncodeRequest(t *testing.T) {
 func Test_codec_labels_EncodeRequest(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 
-	// Test labels values endpoint
+	// Test labels endpoint
 	toEncode := NewLabelRequest(start, end, `{foo="bar"}`, "", "/loki/api/v1/labels")
 	got, err := DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
@@ -768,7 +768,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 func Test_codec_labels_DecodeRequest(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 
-	// Test labels values endpoint
+	// Test labels endpoint
 	u, err := url.Parse(`/loki/api/v1/labels?start=1575285010000000010&end=1575288610000000010&query={foo="bar"}`)
 	require.NoError(t, err)
 
