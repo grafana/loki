@@ -132,7 +132,7 @@ func newBatchedChunkLoader(
 			time.Unix(0, 0),
 			time.Unix(0, math.MaxInt64),
 			logproto.FORWARD,
-			logql_log.NewNoopPipeline().ForStream(c.Metric),
+			logql_log.NewNoopPipeline().ForStream(nil),
 		)
 
 		if err != nil {
