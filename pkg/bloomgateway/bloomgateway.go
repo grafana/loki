@@ -108,7 +108,7 @@ func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *
 		chunkRemovals: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "chunks_filtered",
+			Name:      "chunk_removals_total",
 			Help:      "Total amount of removals received from the block querier.",
 		}, []string{"state"}),
 	}
