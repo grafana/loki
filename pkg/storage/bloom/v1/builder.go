@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	DefaultBlockOptions = NewBlockOptions(4, 0, 50<<20) // 50MB
+	DefaultBlockOptions = NewBlockOptions(4, 1, 50<<20) // 50MB
 )
 
 type BlockOptions struct {
@@ -521,11 +521,12 @@ func (b *IndexBuilder) Close() (uint32, error) {
 // from a list of blocks and a store of series.
 type MergeBuilder struct {
 	// existing blocks
-	blocks []PeekingIterator[*SeriesWithBloom]
+	blocks Iterator[*SeriesWithBloom]
 	// store
 	store Iterator[*Series]
 	// Add chunks to a bloom
 	populate func(*Series, *Bloom) error
+	metrics  *Metrics
 }
 
 // NewMergeBuilder is a specific builder which does the following:
@@ -533,14 +534,16 @@ type MergeBuilder struct {
 //     i) When two blocks have the same series, it will prefer the one with the most chunks already indexed
 //  2. iterates through the store, adding chunks to the relevant blooms via the `populate` argument
 func NewMergeBuilder(
-	blocks []PeekingIterator[*SeriesWithBloom],
+	blocks Iterator[*SeriesWithBloom],
 	store Iterator[*Series],
 	populate func(*Series, *Bloom) error,
+	metrics *Metrics,
 ) *MergeBuilder {
 	return &MergeBuilder{
 		blocks:   blocks,
 		store:    store,
 		populate: populate,
+		metrics:  metrics,
 	}
 }
 
@@ -549,24 +552,7 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 		nextInBlocks *SeriesWithBloom
 	)
 
-	// Turn the list of blocks into a single iterator that returns the next series
-	mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewHeapIterForSeriesWithBloom(mb.blocks...))
-	// two overlapping blocks can conceivably have the same series, so we need to dedupe,
-	// preferring the one with the most chunks already indexed since we'll have
-	// to add fewer chunks to the bloom
-	deduped := NewDedupingIter[*SeriesWithBloom](
-		func(a, b *SeriesWithBloom) bool {
-			return a.Series.Fingerprint == b.Series.Fingerprint
-		},
-		Identity[*SeriesWithBloom],
-		func(a, b *SeriesWithBloom) *SeriesWithBloom {
-			if len(a.Series.Chunks) > len(b.Series.Chunks) {
-				return a
-			}
-			return b
-		},
-		mergedBlocks,
-	)
+	deduped := mb.blocks
 
 	for mb.store.Next() {
 		nextInStore := mb.store.At()
@@ -585,6 +571,8 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 			nextInBlocks = deduped.At()
 		}
 
+		var chunksIndexed, chunksCopied int
+
 		cur := nextInBlocks
 		chunksToAdd := nextInStore.Chunks
 		// The next series from the store doesn't exist in the blocks, so we add it
@@ -600,7 +588,10 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 		} else {
 			// if the series already exists in the block, we only need to add the new chunks
 			chunksToAdd = nextInStore.Chunks.Unless(nextInBlocks.Series.Chunks)
+			chunksCopied = len(nextInStore.Chunks) - len(chunksToAdd)
 		}
+
+		chunksIndexed = len(chunksToAdd)
 
 		if len(chunksToAdd) > 0 {
 			if err := mb.populate(
@@ -614,6 +605,9 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 			}
 		}
 
+		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeIterated).Add(float64(chunksIndexed))
+		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeCopied).Add(float64(chunksCopied))
+
 		blockFull, err := builder.AddSeries(*cur)
 		if err != nil {
 			return 0, errors.Wrap(err, "adding series to block")
@@ -621,6 +615,10 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 		if blockFull {
 			break
 		}
+	}
+
+	if err := mb.store.Err(); err != nil {
+		return 0, errors.Wrap(err, "iterating store")
 	}
 
 	checksum, err := builder.Close()

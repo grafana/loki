@@ -88,45 +88,62 @@ type Meta struct {
 	// The specific TSDB files used to generate the block.
 	Sources []tsdb.SingleTenantTSDBIdentifier
 
-	// Old blocks which can be deleted in the future. These should be from previous compaction rounds.
-	Tombstones []BlockRef
-
 	// A list of blocks that were generated
 	Blocks []BlockRef
 }
 
-// TODO(owen-d): use this to update internal ref's checksum.
-func (m Meta) Checksum() (uint32, error) {
+func MetaRefFrom(
+	tenant,
+	table string,
+	bounds v1.FingerprintBounds,
+	sources []tsdb.SingleTenantTSDBIdentifier,
+	blocks []BlockRef,
+) (MetaRef, error) {
+
 	h := v1.Crc32HashPool.Get()
 	defer v1.Crc32HashPool.Put(h)
 
-	err := m.Bounds.Hash(h)
+	err := bounds.Hash(h)
 	if err != nil {
-		return 0, errors.Wrap(err, "writing OwnershipRange")
+		return MetaRef{}, errors.Wrap(err, "writing OwnershipRange")
 	}
 
-	for _, tombstone := range m.Tombstones {
-		err = tombstone.Hash(h)
-		if err != nil {
-			return 0, errors.Wrap(err, "writing Tombstones")
-		}
-	}
-
-	for _, source := range m.Sources {
+	for _, source := range sources {
 		err = source.Hash(h)
 		if err != nil {
-			return 0, errors.Wrap(err, "writing Sources")
+			return MetaRef{}, errors.Wrap(err, "writing Sources")
 		}
 	}
 
-	for _, block := range m.Blocks {
+	var (
+		start, end model.Time
+	)
+
+	for i, block := range blocks {
+		if i == 0 || block.StartTimestamp.Before(start) {
+			start = block.StartTimestamp
+		}
+
+		if block.EndTimestamp.After(end) {
+			end = block.EndTimestamp
+		}
+
 		err = block.Hash(h)
 		if err != nil {
-			return 0, errors.Wrap(err, "writing Blocks")
+			return MetaRef{}, errors.Wrap(err, "writing Blocks")
 		}
 	}
 
-	return h.Sum32(), nil
+	return MetaRef{
+		Ref: Ref{
+			TenantID:       tenant,
+			TableName:      table,
+			Bounds:         bounds,
+			StartTimestamp: start,
+			EndTimestamp:   end,
+			Checksum:       h.Sum32(),
+		},
+	}, nil
 
 }
 
@@ -200,6 +217,7 @@ type BlockClient interface {
 type Client interface {
 	MetaClient
 	BlockClient
+	IsObjectNotFoundErr(err error) bool
 	Stop()
 }
 
@@ -222,6 +240,10 @@ func NewBloomClient(cfg bloomStoreConfig, client client.ObjectClient, logger log
 		client:      client,
 		logger:      logger,
 	}, nil
+}
+
+func (b *BloomClient) IsObjectNotFoundErr(err error) bool {
+	return b.client.IsObjectNotFoundErr(err)
 }
 
 func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
@@ -300,6 +322,7 @@ func (b *BloomClient) DeleteBlocks(ctx context.Context, references []BlockRef) e
 		ref := references[idx]
 		key := b.Block(ref).Addr()
 		err := b.client.DeleteObject(ctx, key)
+
 		if err != nil {
 			return fmt.Errorf("error deleting block file: %w", err)
 		}
@@ -345,7 +368,7 @@ func (b *BloomClient) GetMeta(ctx context.Context, ref MetaRef) (Meta, error) {
 func findPeriod(configs []config.PeriodConfig, ts model.Time) (config.DayTime, error) {
 	for i := len(configs) - 1; i >= 0; i-- {
 		periodConfig := configs[i]
-		if !periodConfig.From.After(ts) {
+		if !periodConfig.From.Time.After(ts) {
 			return periodConfig.From, nil
 		}
 	}

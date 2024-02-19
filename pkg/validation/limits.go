@@ -107,14 +107,16 @@ type Limits struct {
 	QueryTimeout               model.Duration   `yaml:"query_timeout" json:"query_timeout"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration         model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
-	MetadataQuerySplitDuration model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
-	IngesterQuerySplitDuration model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
-	MinShardingLookback        model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
-	MaxQueryBytesRead          flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
-	MaxQuerierBytesRead        flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
-	VolumeEnabled              bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
-	VolumeMaxSeries            int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
+	QuerySplitDuration               model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	MetadataQuerySplitDuration       model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
+	RecentMetadataQuerySplitDuration model.Duration   `yaml:"split_recent_metadata_queries_by_interval" json:"split_recent_metadata_queries_by_interval"`
+	RecentMetadataQueryWindow        model.Duration   `yaml:"recent_metadata_query_window" json:"recent_metadata_query_window"`
+	IngesterQuerySplitDuration       model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
+	MinShardingLookback              model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	MaxQueryBytesRead                flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
+	MaxQuerierBytesRead              flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
+	VolumeEnabled                    bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
+	VolumeMaxSeries                  int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
 
 	// Ruler defaults and limits.
 	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
@@ -306,12 +308,13 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.QuerySplitDuration.Set("1h")
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by a time interval and execute in parallel. The value 0 disables splitting by time. This also determines how cache keys are chosen when result caching is enabled.")
 
-	// with metadata caching, it is not possible to extract a subset of labels/series from a cached extent because unlike samples they are not associated with a timestamp.
-	// as a result, we could return inaccurate results. example: returning results from an entire 1h extent for a 5m query
-	// Setting max_metadata_cache_freshness to 24h should help us avoid caching recent data and preseve the correctness.
-	// For the portion of the request beyond the freshness window, granularity of the cached metadata results is determined by split_metadata_queries_by_interval.
 	_ = l.MetadataQuerySplitDuration.Set("24h")
 	f.Var(&l.MetadataQuerySplitDuration, "querier.split-metadata-queries-by-interval", "Split metadata queries by a time interval and execute in parallel. The value 0 disables splitting metadata queries by time. This also determines how cache keys are chosen when label/series result caching is enabled.")
+
+	_ = l.RecentMetadataQuerySplitDuration.Set("1h")
+	f.Var(&l.RecentMetadataQuerySplitDuration, "experimental.querier.split-recent-metadata-queries-by-interval", "Experimental. Split interval to use for the portion of metadata request that falls within `recent_metadata_query_window`. Rest of the request which is outside the window still uses `split_metadata_queries_by_interval`. If set to 0, the entire request defaults to using a split interval of `split_metadata_queries_by_interval.`.")
+
+	f.Var(&l.RecentMetadataQueryWindow, "experimental.querier.recent-metadata-query-window", "Experimental. Metadata query window inside which `split_recent_metadata_queries_by_interval` gets applied, portion of the metadata request that falls in this window is split using `split_recent_metadata_queries_by_interval`. The value 0 disables using a different split interval for recent metadata queries.\n\nThis is added to improve cacheability of recent metadata queries. Query split interval also determines the interval used in cache key. The default split interval of 24h is useful for caching long queries, each cache key holding 1 day's results. But metadata queries are often shorter than 24h, to cache them effectively we need a smaller split interval. `recent_metadata_query_window` along with `split_recent_metadata_queries_by_interval` help configure a shorter split interval for recent metadata queries.")
 
 	_ = l.IngesterQuerySplitDuration.Set("0s")
 	f.Var(&l.IngesterQuerySplitDuration, "querier.split-ingester-queries-by-interval", "Interval to use for time-based splitting when a request is within the `query_ingesters_within` window; defaults to `split-queries-by-interval` by setting to 0.")
@@ -331,12 +334,17 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.BloomCompactorEnabled, "bloom-compactor.enable-compaction", false, "Whether to compact chunks into bloom filters.")
 	f.IntVar(&l.BloomCompactorChunksBatchSize, "bloom-compactor.chunks-batch-size", 100, "The batch size of the chunks the bloom-compactor downloads at once.")
 	f.IntVar(&l.BloomNGramLength, "bloom-compactor.ngram-length", 4, "Length of the n-grams created when computing blooms from log lines.")
-	f.IntVar(&l.BloomNGramSkip, "bloom-compactor.ngram-skip", 0, "Skip factor for the n-grams created when computing blooms from log lines.")
+	f.IntVar(&l.BloomNGramSkip, "bloom-compactor.ngram-skip", 1, "Skip factor for the n-grams created when computing blooms from log lines.")
 	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-compactor.false-positive-rate", 0.01, "Scalable Bloom Filter desired false-positive rate.")
 	f.IntVar(&l.BloomGatewayBlocksDownloadingParallelism, "bloom-gateway.blocks-downloading-parallelism", 50, "Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.")
 	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Interval for computing the cache key in the Bloom Gateway.")
 	_ = l.BloomCompactorMaxBlockSize.Set(defaultBloomCompactorMaxBlockSize)
-	f.Var(&l.BloomCompactorMaxBlockSize, "bloom-compactor.max-block-size", "The maximum bloom block size. A value of 0 sets an unlimited size. Default is 200MB. The actual block size might exceed this limit since blooms will be added to blocks until the block exceeds the maximum block size.")
+	f.Var(&l.BloomCompactorMaxBlockSize, "bloom-compactor.max-block-size",
+		fmt.Sprintf(
+			"The maximum bloom block size. A value of 0 sets an unlimited size. Default is %s. The actual block size might exceed this limit since blooms will be added to blocks until the block exceeds the maximum block size.",
+			defaultBloomCompactorMaxBlockSize,
+		),
+	)
 
 	l.ShardStreams = &shardstreams.Config{}
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
@@ -596,6 +604,16 @@ func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 // MetadataQuerySplitDuration returns the tenant specific metadata splitby interval applied in the query frontend.
 func (o *Overrides) MetadataQuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MetadataQuerySplitDuration)
+}
+
+// RecentMetadataQuerySplitDuration returns the tenant specific splitby interval for recent metadata queries.
+func (o *Overrides) RecentMetadataQuerySplitDuration(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).RecentMetadataQuerySplitDuration)
+}
+
+// RecentMetadataQueryWindow returns the tenant specific time window used to determine recent metadata queries.
+func (o *Overrides) RecentMetadataQueryWindow(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).RecentMetadataQueryWindow)
 }
 
 // IngesterQuerySplitDuration returns the tenant specific splitby interval applied in the query frontend when querying

@@ -13,7 +13,6 @@ import (
 )
 
 func TestFusedQuerier(t *testing.T) {
-	t.Parallel()
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)

@@ -150,6 +150,23 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 	}
 }
 
+func dedupedBlocks(blocks []PeekingIterator[*SeriesWithBloom]) Iterator[*SeriesWithBloom] {
+	orderedBlocks := NewHeapIterForSeriesWithBloom(blocks...)
+	return NewDedupingIter[*SeriesWithBloom](
+		func(a *SeriesWithBloom, b *SeriesWithBloom) bool {
+			return a.Series.Fingerprint == b.Series.Fingerprint
+		},
+		Identity[*SeriesWithBloom],
+		func(a *SeriesWithBloom, b *SeriesWithBloom) *SeriesWithBloom {
+			if len(a.Series.Chunks) > len(b.Series.Chunks) {
+				return a
+			}
+			return b
+		},
+		NewPeekingIter[*SeriesWithBloom](orderedBlocks),
+	)
+}
+
 func TestMergeBuilder(t *testing.T) {
 	t.Parallel()
 
@@ -209,7 +226,7 @@ func TestMergeBuilder(t *testing.T) {
 	)
 
 	// Ensure that the merge builder combines all the blocks correctly
-	mergeBuilder := NewMergeBuilder(blocks, storeItr, pop)
+	mergeBuilder := NewMergeBuilder(dedupedBlocks(blocks), storeItr, pop, NewMetrics(nil))
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
@@ -377,12 +394,13 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	writer := NewMemoryBlockWriter(indexBuf, bloomBuf)
 	reader := NewByteReader(indexBuf, bloomBuf)
 	mb := NewMergeBuilder(
-		blocks,
+		dedupedBlocks(blocks),
 		dedupedStore,
 		func(s *Series, b *Bloom) error {
 			// We're not actually indexing new data in this test
 			return nil
 		},
+		NewMetrics(nil),
 	)
 	builder, err := NewBlockBuilder(DefaultBlockOptions, writer)
 	require.Nil(t, err)

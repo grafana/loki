@@ -83,8 +83,7 @@ func createMetaInStorage(store *BloomStore, tenant string, start model.Time, min
 				// EndTimestamp:   start.Add(12 * time.Hour),
 			},
 		},
-		Blocks:     []BlockRef{},
-		Tombstones: []BlockRef{},
+		Blocks: []BlockRef{},
 	}
 	err := store.storeDo(start, func(s *bloomStoreEntry) error {
 		raw, _ := json.Marshal(meta)
