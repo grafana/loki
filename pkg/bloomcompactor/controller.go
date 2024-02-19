@@ -94,7 +94,7 @@ func (s *SimpleBloomController) compactTenant(
 
 	level.Debug(logger).Log("msg", "found relevant metas", "metas", len(metas))
 
-	// fetch all metas overlapping all metas overlapping our ownership range so we can safely
+	// fetch all metas overlapping our ownership range so we can safely
 	// check which metas can be deleted even if they only partially overlap out ownership range
 	superset, err := s.fetchSuperSet(ctx, tenant, table, ownershipRange, metas, logger)
 	if err != nil {
@@ -119,6 +119,16 @@ func (s *SimpleBloomController) compactTenant(
 
 	outdated := outdatedMetas(combined)
 	level.Debug(logger).Log("msg", "found outdated metas", "outdated", len(outdated))
+
+	var (
+		deletedMetas  int
+		deletedBlocks int
+	)
+	defer func() {
+		s.metrics.metasDeleted.Add(float64(deletedMetas))
+		s.metrics.blocksDeleted.Add(float64(deletedBlocks))
+	}()
+
 	for _, meta := range outdated {
 		for _, block := range meta.Blocks {
 			err := client.DeleteBlocks(ctx, []bloomshipper.BlockRef{block})
@@ -130,6 +140,7 @@ func (s *SimpleBloomController) compactTenant(
 					return errors.Wrap(err, "failed to delete block")
 				}
 			}
+			deletedBlocks++
 			level.Debug(logger).Log("msg", "removed outdated block", "block", block.String())
 		}
 
@@ -142,6 +153,7 @@ func (s *SimpleBloomController) compactTenant(
 				return errors.Wrap(err, "failed to delete meta")
 			}
 		}
+		deletedMetas++
 		level.Debug(logger).Log("msg", "removed outdated meta", "meta", meta.MetaRef.String())
 	}
 

@@ -33,7 +33,9 @@ type Metrics struct {
 	tenantsSeries        prometheus.Histogram
 
 	blocksCreated prometheus.Counter
+	blocksDeleted prometheus.Counter
 	metasCreated  prometheus.Counter
+	metasDeleted  prometheus.Counter
 }
 
 func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
@@ -124,11 +126,23 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 			Name:      "blocks_created_total",
 			Help:      "Number of blocks created",
 		}),
+		blocksDeleted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "blocks_deleted_total",
+			Help:      "Number of blocks deleted",
+		}),
 		metasCreated: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "metas_created_total",
 			Help:      "Number of metas created",
+		}),
+		metasDeleted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "metas_deleted_total",
+			Help:      "Number of metas deleted",
 		}),
 	}
 
