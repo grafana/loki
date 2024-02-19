@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
@@ -82,15 +83,17 @@ func convertToChunkRefs(refs []*logproto.ShortRef) v1.ChunkRefs {
 	return result
 }
 
-type boundedTasks struct {
-	blockRef bloomshipper.BlockRef
-	tasks    []Task
+type blockWithTasks struct {
+	ref   bloomshipper.BlockRef
+	tasks []Task
 }
 
-func partitionFingerprintRange(tasks []Task, blocks []bloomshipper.BlockRef) (result []boundedTasks) {
+func partitionTasks(tasks []Task, blocks []bloomshipper.BlockRef) []blockWithTasks {
+	result := make([]blockWithTasks, 0, len(blocks))
+
 	for _, block := range blocks {
-		bounded := boundedTasks{
-			blockRef: block,
+		bounded := blockWithTasks{
+			ref: block,
 		}
 
 		for _, task := range tasks {
@@ -121,7 +124,7 @@ func partitionFingerprintRange(tasks []Task, blocks []bloomshipper.BlockRef) (re
 
 type seriesWithBounds struct {
 	bounds model.Interval
-	day    model.Time
+	table  config.DayTime
 	series []*logproto.GroupedChunkRefs
 }
 
@@ -173,7 +176,7 @@ func partitionRequest(req *logproto.FilterChunkRefRequest) []seriesWithBounds {
 					Start: minTs,
 					End:   maxTs,
 				},
-				day:    day,
+				table:  config.NewDayTime(day),
 				series: res,
 			})
 		}

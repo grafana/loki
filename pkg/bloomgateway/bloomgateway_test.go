@@ -3,6 +3,7 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -183,7 +184,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			require.NoError(t, err)
 		})
 
-		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 10)
+		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
 
 		// saturate workers
 		// then send additional request
@@ -359,7 +360,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			require.NoError(t, err)
 		})
 
-		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
+		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 10)
 
 		t.Run("no match - return empty response", func(t *testing.T) {
 			inputChunkRefs := groupRefs(t, chunkRefs)
@@ -383,27 +384,37 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 		t.Run("match - return filtered", func(t *testing.T) {
 			inputChunkRefs := groupRefs(t, chunkRefs)
-			// hack to get indexed key for a specific series
-			// the indexed key range for a series is defined as
-			// i * keysPerSeries ... i * keysPerSeries + keysPerSeries - 1
-			// where i is the nth series in a block
-			// fortunately, i is also used as Checksum for the single chunk of a series
-			// see mkBasicSeriesWithBlooms() in pkg/storage/bloom/v1/test_util.go
-			key := inputChunkRefs[0].Refs[0].Checksum*1000 + 500
+			// Hack to get search string for a specific series
+			// see MkBasicSeriesWithBlooms() in pkg/storage/bloom/v1/test_util.go
+			// each series has 1 chunk
+			// each chunk has multiple strings, from int(fp) to int(nextFp)-1
+			x := rand.Intn(len(inputChunkRefs))
+			fp := inputChunkRefs[x].Fingerprint
+			chks := inputChunkRefs[x].Refs
+			line := fmt.Sprintf("%04x:%04x", int(fp), 0) // first line
+
+			t.Log("x=", x, "fp=", fp, "line=", line)
 
 			req := &logproto.FilterChunkRefRequest{
 				From:    now.Add(-8 * time.Hour),
 				Through: now,
 				Refs:    inputChunkRefs,
 				Filters: []syntax.LineFilter{
-					{Ty: labels.MatchEqual, Match: fmt.Sprintf("series %d", key)},
+					{Ty: labels.MatchEqual, Match: line},
 				},
 			}
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 			res, err := gw.FilterChunkRefs(ctx, req)
 			require.NoError(t, err)
+
 			expectedResponse := &logproto.FilterChunkRefResponse{
-				ChunkRefs: inputChunkRefs[:1],
+				ChunkRefs: []*logproto.GroupedChunkRefs{
+					{
+						Fingerprint: fp,
+						Refs:        chks,
+						Tenant:      tenantID,
+					},
+				},
 			}
 			require.Equal(t, expectedResponse, res)
 		})
@@ -412,6 +423,9 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 }
 
 func TestBloomGateway_RemoveNotMatchingChunks(t *testing.T) {
+	g := &Gateway{
+		logger: log.NewNopLogger(),
+	}
 	t.Run("removing chunks partially", func(t *testing.T) {
 		req := &logproto.FilterChunkRefRequest{
 			Refs: []*logproto.GroupedChunkRefs{
@@ -439,7 +453,8 @@ func TestBloomGateway_RemoveNotMatchingChunks(t *testing.T) {
 				}},
 			},
 		}
-		removeNotMatchingChunks(req, res, log.NewNopLogger())
+		n := g.removeNotMatchingChunks(req, res)
+		require.Equal(t, 2, n)
 		require.Equal(t, expected, req)
 	})
 
@@ -463,7 +478,8 @@ func TestBloomGateway_RemoveNotMatchingChunks(t *testing.T) {
 		expected := &logproto.FilterChunkRefRequest{
 			Refs: []*logproto.GroupedChunkRefs{},
 		}
-		removeNotMatchingChunks(req, res, log.NewNopLogger())
+		n := g.removeNotMatchingChunks(req, res)
+		require.Equal(t, 3, n)
 		require.Equal(t, expected, req)
 	})
 
