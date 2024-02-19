@@ -109,7 +109,7 @@ func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *
 			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "chunk_removals_total",
-			Help:      "Total amount of removals received from the block querier.",
+			Help:      "Total amount of removals received from the block querier partitioned by state. The state 'accepted' means that the removals are processed, the state 'dropped' means that the removals were received after the task context was done (e.g. client timeout, etc).",
 		}, []string{"state"}),
 	}
 }
