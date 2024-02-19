@@ -109,7 +109,7 @@ func (r *LokiInstantRequest) GetStart() time.Time {
 
 func (r *LokiInstantRequest) WithStartEnd(s time.Time, _ time.Time) queryrangebase.Request {
 	clone := *r
-	clone.TimeTs = time.Unix(0, s.UnixNano())
+	clone.TimeTs = s
 	return &clone
 }
 
