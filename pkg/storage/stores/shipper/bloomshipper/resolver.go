@@ -14,6 +14,9 @@ const (
 	BloomPrefix  = "bloom"
 	MetasPrefix  = "metas"
 	BlocksPrefix = "blocks"
+
+	extTarGz = ".tar.gz"
+	extJSON  = ".json"
 )
 
 // KeyResolver is an interface for resolving keys to locations.
@@ -36,7 +39,7 @@ func (defaultKeyResolver) Meta(ref MetaRef) Location {
 		fmt.Sprintf("%v", ref.TableName),
 		ref.TenantID,
 		MetasPrefix,
-		fmt.Sprintf("%v-%v", ref.Bounds, ref.Checksum),
+		fmt.Sprintf("%v-%x%s", ref.Bounds, ref.Checksum, extJSON),
 	}
 }
 
@@ -50,7 +53,8 @@ func (defaultKeyResolver) ParseMetaKey(loc Location) (MetaRef, error) {
 	if err != nil {
 		return MetaRef{}, fmt.Errorf("failed to parse bounds of meta key %s : %w", loc, err)
 	}
-	checksum, err := strconv.ParseUint(fnParts[2], 16, 64)
+	withoutExt := strings.TrimSuffix(fnParts[2], extJSON)
+	checksum, err := strconv.ParseUint(withoutExt, 16, 64)
 	if err != nil {
 		return MetaRef{}, fmt.Errorf("failed to parse checksum of meta key %s : %w", loc, err)
 	}
@@ -77,7 +81,7 @@ func (defaultKeyResolver) Block(ref BlockRef) Location {
 		ref.TenantID,
 		BlocksPrefix,
 		ref.Bounds.String(),
-		fmt.Sprintf("%d-%d-%x", ref.StartTimestamp, ref.EndTimestamp, ref.Checksum),
+		fmt.Sprintf("%d-%d-%x%s", ref.StartTimestamp, ref.EndTimestamp, ref.Checksum, extTarGz),
 	}
 }
 

@@ -286,11 +286,10 @@ func (i *blockLoadingIter) loadNext() bool {
 	// check if there are more overlapping groups to load
 	if !i.overlapping.Next() {
 		i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
-		return false
-	}
+		if i.overlapping.Err() != nil {
+			i.err = i.overlapping.Err()
+		}
 
-	if i.overlapping.Err() != nil {
-		i.err = i.overlapping.Err()
 		return false
 	}
 
@@ -300,7 +299,7 @@ func (i *blockLoadingIter) loadNext() bool {
 	filtered := v1.NewFilterIter[*bloomshipper.CloseableBlockQuerier](loader, i.filter)
 
 	iters := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(blockRefs))
-	for filtered.Next() && filtered.Err() == nil {
+	for filtered.Next() {
 		bq := loader.At()
 		if _, ok := i.loaded[bq]; !ok {
 			i.loaded[bq] = struct{}{}
@@ -309,8 +308,9 @@ func (i *blockLoadingIter) loadNext() bool {
 		iters = append(iters, iter)
 	}
 
-	if loader.Err() != nil {
-		i.err = loader.Err()
+	if err := filtered.Err(); err != nil {
+		i.err = err
+		i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
 		return false
 	}
 
