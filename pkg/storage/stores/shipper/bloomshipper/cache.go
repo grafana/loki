@@ -46,9 +46,7 @@ func NewBlocksCache(cfg cache.EmbeddedCacheConfig, reg prometheus.Registerer, lo
 		logger,
 		stats.BloomBlocksCache,
 		directorySize,
-		func(_ string, value BlockDirectory) {
-			removeBlockDirectory(value)
-		},
+		removeBlockDirectory,
 	)
 }
 
@@ -180,7 +178,9 @@ const defaultActiveQueriersCheckInterval = 100 * time.Millisecond
 // The function needs to be synchronous, because otherwise we could get a cache
 // race condition where the item is already evicted from the cache, but the
 // underlying directory isn't.
-func removeBlockDirectory(b BlockDirectory) {
+func removeBlockDirectory(entry *cache.Entry[string, BlockDirectory]) {
+	b := entry.Value
+
 	timeout := time.After(b.removeDirectoryTimeout)
 	ticker := time.NewTicker(b.activeQueriersCheckInterval)
 	defer ticker.Stop()

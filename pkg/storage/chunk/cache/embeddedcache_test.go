@@ -48,10 +48,9 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 
 	for _, test := range tests {
 		removedEntriesCount := atomic.NewInt64(0)
-		onEntryRemoved := func(key string, value []byte) {
+		c := NewTypedEmbeddedCache[string, []byte](test.name, test.cfg, nil, log.NewNopLogger(), "test", sizeOf, func(_ *Entry[string, []byte]) {
 			removedEntriesCount.Inc()
-		}
-		c := NewTypedEmbeddedCache[string, []byte](test.name, test.cfg, nil, log.NewNopLogger(), "test", sizeOf, onEntryRemoved)
+		})
 		ctx := context.Background()
 
 		// Check put / get works
@@ -187,10 +186,9 @@ func TestEmbeddedCacheExpiry(t *testing.T) {
 	}
 
 	removedEntriesCount := atomic.NewInt64(0)
-	onEntryRemoved := func(key string, value []byte) {
+	c := NewTypedEmbeddedCache[string, []byte]("cache_exprity_test", cfg, nil, log.NewNopLogger(), "test", sizeOf, func(_ *Entry[string, []byte]) {
 		removedEntriesCount.Inc()
-	}
-	c := NewTypedEmbeddedCache[string, []byte]("cache_exprity_test", cfg, nil, log.NewNopLogger(), "test", sizeOf, onEntryRemoved)
+	})
 	ctx := context.Background()
 
 	err := c.Store(ctx, []string{key1, key2, key3, key4}, [][]byte{data1, data2, data3, data4})
