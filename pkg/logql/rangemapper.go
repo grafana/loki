@@ -377,7 +377,9 @@ func (m RangeMapper) rangeSplitAlign(
 	}
 
 	var (
-		newRng               = align
+		newRng = align
+
+		// TODO(kavi): If the originalOffset is non-zero, there may be a edge case, where subqueries generated won't be aligned correctly. Handle this edge case in separate PR.
 		newOffset            = originalOffset
 		downstreams          *ConcatSampleExpr
 		pendingRangeInterval = rangeInterval
@@ -389,7 +391,7 @@ func (m RangeMapper) rangeSplitAlign(
 	splits++
 
 	newOffset += align // e.g: offset 34m
-	pendingRangeInterval -= align
+	pendingRangeInterval -= newRng
 	newRng = m.splitByInterval // [1h]
 
 	// Rest of the subqueries.
