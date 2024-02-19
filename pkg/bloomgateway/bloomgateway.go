@@ -84,6 +84,7 @@ var (
 type metrics struct {
 	queueDuration    prometheus.Histogram
 	inflightRequests prometheus.Summary
+	chunkRemovals    *prometheus.CounterVec
 }
 
 func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -104,6 +105,12 @@ func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *
 			MaxAge:     time.Minute,
 			AgeBuckets: 6,
 		}),
+		chunkRemovals: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "chunks_filtered",
+			Help:      "Total amount of removals received from the block querier.",
+		}, []string{"state"}),
 	}
 }
 
@@ -348,7 +355,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			// When enqueuing, we also add the task to the pending tasks
 			g.pendingTasks.Add(task.ID, task)
 		})
-		go consumeTask(ctx, task, tasksCh, logger)
+		go g.consumeTask(ctx, task, tasksCh)
 	}
 
 	responses := responsesPool.Get(numSeries)
@@ -386,16 +393,18 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 // task is closed by the worker.
 // Once the tasks is closed, it will send the task with the results from the
 // block querier to the supplied task channel.
-func consumeTask(ctx context.Context, task Task, tasksCh chan<- Task, logger log.Logger) {
-	logger = log.With(logger, "task", task.ID)
+func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Task) {
+	logger := log.With(g.logger, "task", task.ID)
 
 	for res := range task.resCh {
 		select {
 		case <-ctx.Done():
 			level.Debug(logger).Log("msg", "drop partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
+			g.metrics.chunkRemovals.WithLabelValues("dropped").Add(float64(res.Removals.Len()))
 		default:
 			level.Debug(logger).Log("msg", "accept partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
 			task.responses = append(task.responses, res)
+			g.metrics.chunkRemovals.WithLabelValues("accepted").Add(float64(res.Removals.Len()))
 		}
 	}
 
