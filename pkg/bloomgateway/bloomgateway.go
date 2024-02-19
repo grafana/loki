@@ -84,10 +84,6 @@ var (
 type metrics struct {
 	queueDuration    prometheus.Histogram
 	inflightRequests prometheus.Summary
-	chunksTotal      prometheus.Counter
-	chunksFiltered   prometheus.Counter
-	seriesTotal      prometheus.Counter
-	seriesFiltered   prometheus.Counter
 }
 
 func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -107,30 +103,6 @@ func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *
 			Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.02, 0.8: 0.02, 0.9: 0.01, 0.95: 0.01, 0.99: 0.001},
 			MaxAge:     time.Minute,
 			AgeBuckets: 6,
-		}),
-		chunksTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "chunks_total",
-			Help:      "Total amount of chunks pre filtering. Does not count chunks in failed requests.",
-		}),
-		chunksFiltered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "chunks_filtered",
-			Help:      "Total amount of chunks that have been filtered out. Does not count chunks in failed requests.",
-		}),
-		seriesTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "series_total",
-			Help:      "Total amount of series pre filtering. Does not count series in failed requests.",
-		}),
-		seriesFiltered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "series_filtered",
-			Help:      "Total amount of series that have been filtered out. Does not count series in failed requests.",
 		}),
 	}
 }
@@ -398,14 +370,11 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	preFilterSeries := len(req.Refs)
-	g.metrics.seriesTotal.Add(float64(preFilterSeries))
 
 	// TODO(chaudum): Don't wait for all responses before starting to filter chunks.
 	filtered := g.processResponses(req, responses)
-	g.metrics.chunksFiltered.Add(float64(filtered))
 
 	postFilterSeries := len(req.Refs)
-	g.metrics.seriesFiltered.Add(float64(preFilterSeries - postFilterSeries))
 
 	level.Info(logger).Log("msg", "return filtered chunk refs", "pre_filter_series", preFilterSeries, "post_filter_series", postFilterSeries, "filtered_chunks", filtered)
 	return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
