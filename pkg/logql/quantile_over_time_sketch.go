@@ -269,6 +269,10 @@ func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluat
 		return nil, stepEvaluator.Error()
 	}
 
+	if GetRangeType(params) == InstantType {
+		return ProbabilisticQuantileMatrix{vec}, nil
+	}
+
 	stepCount := int(math.Ceil(float64(params.End().Sub(params.Start()).Nanoseconds()) / float64(params.Step().Nanoseconds())))
 	if stepCount <= 0 {
 		stepCount = 1
@@ -282,11 +286,6 @@ func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluat
 		vec = r.QuantileSketchVec()
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
-		}
-		// Don't continue to evaluate more steps if we already filled the
-		// # of steps we should have based on start/end and step params.
-		if len(result) == stepCount {
-			break
 		}
 	}
 
