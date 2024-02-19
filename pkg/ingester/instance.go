@@ -954,9 +954,8 @@ type QuerierQueryServer interface {
 	Send(res *logproto.QueryResponse) error
 }
 
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) (int32, error) {
+func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) error {
 	stats := stats.FromContext(ctx)
-	var lines int32
 
 	// send until the limit is reached.
 	for limit != 0 && !isDone(ctx) {
@@ -966,7 +965,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		}
 		batch, batchSize, err := iter.ReadBatch(i, fetchSize)
 		if err != nil {
-			return lines, err
+			return err
 		}
 
 		if limit > 0 {
@@ -975,49 +974,46 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
-		lines += int32(batchSize)
 
 		if isDone(ctx) {
 			break
 		}
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
-			return lines, err
+			return err
 		}
 
 		// We check this after sending an empty batch to make sure stats are sent
 		if len(batch.Streams) == 0 {
-			return lines, err
+			return nil
 		}
 
 		stats.Reset()
 	}
-	return lines, nil
+	return nil
 }
 
-func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) (int32, error) {
-	var lines int32
+func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
 	sp := opentracing.SpanFromContext(ctx)
 
 	stats := stats.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
 		if err != nil {
-			return lines, err
+			return err
 		}
 
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
-		lines += int32(size)
 		if isDone(ctx) {
 			break
 		}
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
-			return lines, err
+			return err
 		}
 
 		// We check this after sending an empty batch to make sure stats are sent
 		if len(batch.Series) == 0 {
-			return lines, nil
+			return nil
 		}
 
 		stats.Reset()
@@ -1026,7 +1022,7 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		}
 	}
 
-	return lines, nil
+	return nil
 }
 
 func shouldConsiderStream(stream *stream, reqFrom, reqThrough time.Time) bool {

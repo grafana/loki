@@ -1274,6 +1274,10 @@ remote_write:
   # CLI flag: -ruler.remote-write.config-refresh-period
   [config_refresh_period: <duration> | default = 10s]
 
+  # Add X-Scope-OrgID header in remote write requests.
+  # CLI flag: -ruler.remote-write.add-org-id-header
+  [add_org_id_header: <boolean> | default = true]
+
 # Configuration for rule evaluation.
 evaluation:
   # The evaluation mode for the ruler. Can be either 'local' or 'remote'. If set
@@ -2327,27 +2331,26 @@ bloom_shipper:
     [max_tasks_enqueued_per_tenant: <int> | default = 10000]
 
   blocks_cache:
-    # Whether embedded cache is enabled.
-    # CLI flag: -blocks-cache.enabled
+    # Cache for bloom blocks. Whether embedded cache is enabled.
+    # CLI flag: -bloom.blocks-cache.enabled
     [enabled: <boolean> | default = false]
 
-    # Maximum memory size of the cache in MB.
-    # CLI flag: -blocks-cache.max-size-mb
+    # Cache for bloom blocks. Maximum memory size of the cache in MB.
+    # CLI flag: -bloom.blocks-cache.max-size-mb
     [max_size_mb: <int> | default = 100]
 
-    # Maximum number of entries in the cache.
-    # CLI flag: -blocks-cache.max-size-items
+    # Cache for bloom blocks. Maximum number of entries in the cache.
+    # CLI flag: -bloom.blocks-cache.max-size-items
     [max_size_items: <int> | default = 0]
 
-    # The time to live for items in the cache before they get purged.
-    # CLI flag: -blocks-cache.ttl
-    [ttl: <duration> | default = 0s]
+    # Cache for bloom blocks. The time to live for items in the cache before
+    # they get purged.
+    # CLI flag: -bloom.blocks-cache.ttl
+    [ttl: <duration> | default = 24h]
 
-    # During this period the process waits until the directory becomes not used
-    # and only after this it will be deleted. If the timeout is reached, the
-    # directory is force deleted.
-    # CLI flag: -blocks-cache.remove-directory-graceful-period
-    [remove_directory_graceful_period: <duration> | default = 5m]
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is: bloom.metas-cache
+  [metas_cache: <cache_config>]
 ```
 
 ### chunk_store_config
@@ -2642,13 +2645,26 @@ ring:
 # CLI flag: -bloom-compactor.enabled
 [enabled: <boolean> | default = false]
 
-# Directory where files can be downloaded for compaction.
-# CLI flag: -bloom-compactor.working-directory
-[working_directory: <string> | default = ""]
-
 # Interval at which to re-run the compaction operation.
 # CLI flag: -bloom-compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
+
+# How many index periods (days) to wait before compacting a table. This can be
+# used to lower cost by not re-writing data to object storage too frequently
+# since recent data changes more often.
+# CLI flag: -bloom-compactor.min-table-compaction-period
+[min_table_compaction_period: <int> | default = 1]
+
+# How many index periods (days) to wait before compacting a table. This can be
+# used to lower cost by not trying to compact older data which doesn't change.
+# This can be optimized by aligning it with the maximum
+# `reject_old_samples_max_age` setting of any tenant.
+# CLI flag: -bloom-compactor.max-table-compaction-period
+[max_table_compaction_period: <int> | default = 7]
+
+# Number of workers to run in parallel for compaction.
+# CLI flag: -bloom-compactor.worker-parallelism
+[worker_parallelism: <int> | default = 1]
 
 # Minimum backoff time between retries.
 # CLI flag: -bloom-compactor.compaction-retries-min-backoff
@@ -2895,6 +2911,30 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.split-metadata-queries-by-interval
 [split_metadata_queries_by_interval: <duration> | default = 1d]
 
+# Experimental. Split interval to use for the portion of metadata request that
+# falls within `recent_metadata_query_window`. Rest of the request which is
+# outside the window still uses `split_metadata_queries_by_interval`. If set to
+# 0, the entire request defaults to using a split interval of
+# `split_metadata_queries_by_interval.`.
+# CLI flag: -experimental.querier.split-recent-metadata-queries-by-interval
+[split_recent_metadata_queries_by_interval: <duration> | default = 1h]
+
+# Experimental. Metadata query window inside which
+# `split_recent_metadata_queries_by_interval` gets applied, portion of the
+# metadata request that falls in this window is split using
+# `split_recent_metadata_queries_by_interval`. The value 0 disables using a
+# different split interval for recent metadata queries.
+# 
+# This is added to improve cacheability of recent metadata queries. Query split
+# interval also determines the interval used in cache key. The default split
+# interval of 24h is useful for caching long queries, each cache key holding 1
+# day's results. But metadata queries are often shorter than 24h, to cache them
+# effectively we need a smaller split interval. `recent_metadata_query_window`
+# along with `split_recent_metadata_queries_by_interval` help configure a
+# shorter split interval for recent metadata queries.
+# CLI flag: -experimental.querier.recent-metadata-query-window
+[recent_metadata_query_window: <duration> | default = 0s]
+
 # Interval to use for time-based splitting when a request is within the
 # `query_ingesters_within` window; defaults to `split-queries-by-interval` by
 # setting to 0.
@@ -3115,7 +3155,7 @@ shard_streams:
 
 # Skip factor for the n-grams created when computing blooms from log lines.
 # CLI flag: -bloom-compactor.ngram-skip
-[bloom_ngram_skip: <int> | default = 0]
+[bloom_ngram_skip: <int> | default = 1]
 
 # Scalable Bloom Filter desired false-positive rate.
 # CLI flag: -bloom-compactor.false-positive-rate
@@ -3128,6 +3168,12 @@ shard_streams:
 # Interval for computing the cache key in the Bloom Gateway.
 # CLI flag: -bloom-gateway.cache-key-interval
 [bloom_gateway_cache_key_interval: <duration> | default = 15m]
+
+# The maximum bloom block size. A value of 0 sets an unlimited size. Default is
+# 200MB. The actual block size might exceed this limit since blooms will be
+# added to blocks until the block exceeds the maximum block size.
+# CLI flag: -bloom-compactor.max-block-size
+[bloom_compactor_max_block_size: <int> | default = 200MB]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
@@ -3143,14 +3189,22 @@ shard_streams:
 
 # OTLP log ingestion configurations
 otlp_config:
+  # Configuration for resource attributes to store them as index labels or
+  # Structured Metadata or drop them altogether
   resource_attributes:
-    [ignore_defaults: <boolean>]
+    # Configure whether to ignore the default list of resource attributes to be
+    # stored as index labels and only use the given resource attributes config
+    [ignore_defaults: <boolean> | default = false]
 
-    [attributes: <list of AttributesConfigs>]
+    [attributes_config: <list of attributes_configs>]
 
-  [scope_attributes: <list of AttributesConfigs>]
+  # Configuration for scope attributes to store them as Structured Metadata or
+  # drop them altogether
+  [scope_attributes: <list of attributes_configs>]
 
-  [log_attributes: <list of AttributesConfigs>]
+  # Configuration for log attributes to store them as Structured Metadata or
+  # drop them altogether
+  [log_attributes: <list of attributes_configs>]
 
 # Defines a set of custom trackers for ingested bytes.
 # Takes a map of tracker names as keys and stream selectors as values.
@@ -4350,6 +4404,7 @@ The TLS configuration.
 The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bloom-gateway-client.cache`
+- `bloom.metas-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
 - `frontend.label-results-cache`
@@ -5294,6 +5349,24 @@ Named store from this example can be used by setting object_store to store-1 in 
 [swift: <map of string to swift_storage_config>]
 
 [cos: <map of string to cos_storage_config>]
+```
+
+### attributes_config
+
+Define actions for matching OpenTelemetry (OTEL) attributes.
+
+```yaml
+# Configures action to take on matching attributes. It allows one of
+# [structured_metadata, drop] for all attribute types. It additionally allows
+# index_label action for resource attributes
+[action: <string> | default = ""]
+
+# List of attributes to configure how to store them or drop them altogether
+[attributes: <list of strings>]
+
+# Regex to choose attributes to configure how to store them or drop them
+# altogether
+[regex: <Regexp>]
 ```
 
 ## Runtime Configuration file

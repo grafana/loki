@@ -2809,6 +2809,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the grafanaAgent pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.selfMonitoring.grafanaAgent.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for GrafanaAgent pods</td>

@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"crypto/sha1"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -29,9 +30,15 @@ var (
 
 	errS3NoAuth = errors.New("missing secret fields for static or sts authentication")
 
-	errAzureNoCredentials    = errors.New("azure storage secret does contain neither account_key or client_id")
-	errAzureMixedCredentials = errors.New("azure storage secret can not contain both account_key and client_id")
+	errAzureNoCredentials             = errors.New("azure storage secret does contain neither account_key or client_id")
+	errAzureMixedCredentials          = errors.New("azure storage secret can not contain both account_key and client_id")
+	errAzureManagedIdentityNoOverride = errors.New("when in managed mode, storage secret can not contain credentials")
+
+	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
+	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
 )
+
+const gcpAccountTypeExternal = "external_account"
 
 func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
 	var (
@@ -52,15 +59,7 @@ func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg c
 	}
 
 	if fg.OpenShift.ManagedAuthEnv {
-		secretName, ok := stack.Annotations[storage.AnnotationCredentialsRequestsSecretRef]
-		if !ok {
-			return nil, nil, &status.DegradedError{
-				Message: "Missing OpenShift cloud credentials request",
-				Reason:  lokiv1.ReasonMissingCredentialsRequest,
-				Requeue: true,
-			}
-		}
-
+		secretName := storage.ManagedCredentialsSecretName(stack.Name)
 		managedAuthCredsKey := client.ObjectKey{Name: secretName, Namespace: stack.Namespace}
 		if err := k.Get(ctx, managedAuthCredsKey, &managedAuthSecret); err != nil {
 			if apierrors.IsNotFound(err) {
@@ -93,7 +92,7 @@ func extractSecrets(secretType lokiv1.ObjectStorageSecretType, objStore, managed
 		SharedStore: secretType,
 	}
 
-	if fg.OpenShift.ManagedAuthEnabled() {
+	if fg.OpenShift.ManagedAuthEnv {
 		var managedAuthHash string
 		managedAuthHash, err = hashSecretData(managedAuth)
 		if err != nil {
@@ -110,7 +109,7 @@ func extractSecrets(secretType lokiv1.ObjectStorageSecretType, objStore, managed
 
 	switch secretType {
 	case lokiv1.ObjectStorageSecretAzure:
-		storageOpts.Azure, err = extractAzureConfigSecret(objStore)
+		storageOpts.Azure, err = extractAzureConfigSecret(objStore, fg)
 	case lokiv1.ObjectStorageSecretGCS:
 		storageOpts.GCS, err = extractGCSConfigSecret(objStore)
 	case lokiv1.ObjectStorageSecretS3:
@@ -158,41 +157,57 @@ func hashSecretData(s *corev1.Secret) (string, error) {
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
-func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, error) {
+func extractAzureConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*storage.AzureStorageConfig, error) {
 	// Extract and validate mandatory fields
 	env := s.Data[storage.KeyAzureEnvironmentName]
 	if len(env) == 0 {
 		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureEnvironmentName)
 	}
+
+	accountName := s.Data[storage.KeyAzureStorageAccountName]
+	if len(accountName) == 0 {
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageAccountName)
+	}
+
 	container := s.Data[storage.KeyAzureStorageContainerName]
 	if len(container) == 0 {
 		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageContainerName)
 	}
-	workloadIdentity, err := validateAzureCredentials(s)
+
+	workloadIdentity, err := validateAzureCredentials(s, fg)
 	if err != nil {
 		return nil, err
 	}
 
 	// Extract and validate optional fields
 	endpointSuffix := s.Data[storage.KeyAzureStorageEndpointSuffix]
+	audience := s.Data[storage.KeyAzureAudience]
+
+	if !workloadIdentity && len(audience) > 0 {
+		return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAzureAudience)
+	}
 
 	return &storage.AzureStorageConfig{
 		Env:              string(env),
 		Container:        string(container),
 		EndpointSuffix:   string(endpointSuffix),
+		Audience:         string(audience),
 		WorkloadIdentity: workloadIdentity,
 	}, nil
 }
 
-func validateAzureCredentials(s *corev1.Secret) (workloadIdentity bool, err error) {
-	accountName := s.Data[storage.KeyAzureStorageAccountName]
+func validateAzureCredentials(s *corev1.Secret, fg configv1.FeatureGates) (workloadIdentity bool, err error) {
 	accountKey := s.Data[storage.KeyAzureStorageAccountKey]
 	clientID := s.Data[storage.KeyAzureStorageClientID]
 	tenantID := s.Data[storage.KeyAzureStorageTenantID]
 	subscriptionID := s.Data[storage.KeyAzureStorageSubscriptionID]
 
-	if len(accountName) == 0 {
-		return false, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageAccountName)
+	if fg.OpenShift.ManagedAuthEnv {
+		if len(accountKey) > 0 || len(clientID) > 0 || len(tenantID) > 0 || len(subscriptionID) > 0 {
+			return false, errAzureManagedIdentityNoOverride
+		}
+
+		return true, nil
 	}
 
 	if len(accountKey) == 0 && len(clientID) == 0 {
@@ -233,8 +248,36 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyGCPServiceAccountKeyFilename)
 	}
 
+	credentialsFile := struct {
+		CredentialsType   string `json:"type"`
+		CredentialsSource struct {
+			File string `json:"file"`
+		} `json:"credential_source"`
+	}{}
+
+	err := json.Unmarshal(keyJSON, &credentialsFile)
+	if err != nil {
+		return nil, errGCPParseCredentialsFile
+	}
+
+	var (
+		audience           = s.Data[storage.KeyGCPWorkloadIdentityProviderAudience]
+		isWorkloadIdentity = credentialsFile.CredentialsType == gcpAccountTypeExternal
+	)
+	if isWorkloadIdentity {
+		if len(audience) == 0 {
+			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyGCPWorkloadIdentityProviderAudience)
+		}
+
+		if credentialsFile.CredentialsSource.File != storage.ServiceAccountTokenFilePath {
+			return nil, fmt.Errorf("%w: %s", errGCPWrongCredentialSourceFile, storage.ServiceAccountTokenFilePath)
+		}
+	}
+
 	return &storage.GCSStorageConfig{
-		Bucket: string(bucket),
+		Bucket:           string(bucket),
+		WorkloadIdentity: isWorkloadIdentity,
+		Audience:         string(audience),
 	}, nil
 }
 
@@ -274,15 +317,12 @@ func extractS3ConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*storage
 	)
 
 	switch {
-	case fg.OpenShift.ManagedAuthEnabled():
+	case fg.OpenShift.ManagedAuthEnv:
 		cfg.STS = true
-		cfg.Audience = storage.AWSOpenShiftAudience
+		cfg.Audience = string(audience)
 		// Do not allow users overriding the role arn provided on Loki Operator installation
 		if len(roleArn) != 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAWSRoleArn)
-		}
-		if len(audience) != 0 {
-			return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAWSAudience)
 		}
 		// In the STS case region is not an optional field
 		if len(region) == 0 {

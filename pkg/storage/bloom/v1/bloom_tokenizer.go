@@ -61,14 +61,19 @@ func clearCache(cache map[string]interface{}) {
 // of specific ngram length, along with the length of the prefix.
 // It ensures enough capacity for the prefix and the token so additional tokens can be created
 // without allocations by appending them to the prefix length
-func prefixedToken(ngram int, chk ChunkRef) ([]byte, int) {
-	var enc encoding.Encbuf
+// If the buffer is nil or too small, a new one is created. The buffer is returned for reuse.
+func prefixedToken(ngram int, chk ChunkRef, buf []byte) ([]byte, int) {
+	enc := encoding.EncWith(buf)
+	enc.Reset()
 	enc.PutBE64(uint64(chk.Start))
 	enc.PutBE64(uint64(chk.End))
 	enc.PutBE32(chk.Checksum)
 	prefixLn := enc.Len() // record the length of the prefix
 
-	enc.PutBytes(make([]byte, ngram*MaxRuneLen)) // ensure enough capacity for the ngram
+	// If the buffer is too small, ensure enough capacity for the ngram
+	if cap(enc.Get()) < prefixLn+ngram*MaxRuneLen {
+		enc.PutBytes(make([]byte, ngram*MaxRuneLen))
+	}
 
 	// return the underlying byte slice and the length of the prefix
 	return enc.Get(), prefixLn
@@ -86,10 +91,13 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 
 	clearCache(bt.cache)
 
-	for chks.Err() == nil && chks.Next() {
+	var tokenBuf []byte
+	var prefixLn int
+
+	for chks.Next() && chks.Err() == nil {
 		chk := chks.At()
 		itr := chk.Itr
-		tokenBuf, prefixLn := prefixedToken(bt.lineTokenizer.N, chk.Ref)
+		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N, chk.Ref, tokenBuf)
 
 		defer itr.Close()
 
