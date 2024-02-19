@@ -146,7 +146,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
-		t.Run(tc.query, func(t *testing.T) {
+		t.Run(tc.query+"_range", func(t *testing.T) {
 			params, err := NewLiteralParams(
 				tc.query,
 				start,
@@ -178,45 +178,15 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 
 			relativeError(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix), tc.realtiveError)
 		})
-	}
-}
-
-func TestMappingEquivalenceSketches_Instant(t *testing.T) {
-	var (
-		shards   = 3
-		nStreams = 10_000
-		rounds   = 20
-		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, true)
-		start    = time.Unix(0, int64(rounds+1))
-		end      = time.Unix(0, int64(rounds+1))
-		step     = time.Duration(0)
-		interval = time.Duration(0)
-		limit    = 100
-	)
-
-	for _, tc := range []struct {
-		query         string
-		realtiveError float64
-	}{
-		{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [10m]) by (a)`, 0.03},
-		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [10m]) by (a)`, 0.02},
-	} {
-		q := NewMockQuerier(
-			shards,
-			streams,
-		)
-
-		opts := EngineOpts{}
-		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
-		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
-
-		t.Run(tc.query, func(t *testing.T) {
+		t.Run(tc.query+"_instant", func(t *testing.T) {
+			// for an instant query we set the start and end to the same timestamp
+			// plus set step and interval to 0
 			params, err := NewLiteralParams(
 				tc.query,
-				start,
-				end,
-				step,
-				interval,
+				time.Unix(0, int64(rounds+1)),
+				time.Unix(0, int64(rounds+1)),
+				0,
+				0,
 				logproto.FORWARD,
 				uint32(limit),
 				nil,
