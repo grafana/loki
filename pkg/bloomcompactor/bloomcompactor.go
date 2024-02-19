@@ -92,7 +92,7 @@ func New(
 	c.bloomStore = bloomStore
 
 	// initialize metrics
-	c.btMetrics = v1.NewMetrics(prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer", r))
+	c.btMetrics = v1.NewMetrics(prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer_", r))
 	c.metrics = NewMetrics(r, c.btMetrics)
 
 	chunkLoader := NewStoreChunkLoader(
@@ -179,11 +179,11 @@ func runWithRetries(
 
 type tenantTable struct {
 	tenant         string
-	table          config.DayTime
+	table          config.DayTable
 	ownershipRange v1.FingerprintBounds
 }
 
-func (c *Compactor) tenants(ctx context.Context, table config.DayTime) (v1.Iterator[string], error) {
+func (c *Compactor) tenants(ctx context.Context, table config.DayTable) (v1.Iterator[string], error) {
 	tenants, err := c.tsdbStore.UsersForPeriod(ctx, table)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting tenants")
@@ -241,15 +241,15 @@ func (c *Compactor) tables(ts time.Time) *dayRangeIterator {
 
 	fromDay := config.NewDayTime(model.TimeFromUnixNano(from))
 	throughDay := config.NewDayTime(model.TimeFromUnixNano(through))
-	return newDayRangeIterator(fromDay, throughDay)
+	return newDayRangeIterator(fromDay, throughDay, c.schemaCfg)
 }
 
 func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 	tables := c.tables(time.Now())
 
 	for tables.Next() && tables.Err() == nil && ctx.Err() == nil {
-
 		table := tables.At()
+
 		tenants, err := c.tenants(ctx, table)
 		if err != nil {
 			return errors.Wrap(err, "getting tenants")
@@ -269,7 +269,11 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 			c.metrics.tenantsOwned.Inc()
 
 			select {
-			case ch <- tenantTable{tenant: tenant, table: table, ownershipRange: ownershipRange}:
+			case ch <- tenantTable{
+				tenant:         tenant,
+				table:          table,
+				ownershipRange: ownershipRange,
+			}:
 			case <-ctx.Done():
 				return ctx.Err()
 			}
@@ -332,19 +336,33 @@ func (c *Compactor) compactTenantTable(ctx context.Context, tt tenantTable) erro
 
 type dayRangeIterator struct {
 	min, max, cur config.DayTime
+	curPeriod     config.PeriodConfig
+	schemaCfg     config.SchemaConfig
+	err           error
 }
 
-func newDayRangeIterator(min, max config.DayTime) *dayRangeIterator {
-	return &dayRangeIterator{min: min, max: max, cur: min.Dec()}
+func newDayRangeIterator(min, max config.DayTime, schemaCfg config.SchemaConfig) *dayRangeIterator {
+	return &dayRangeIterator{min: min, max: max, cur: min.Dec(), schemaCfg: schemaCfg}
 }
 
 func (r *dayRangeIterator) Next() bool {
 	r.cur = r.cur.Inc()
-	return r.cur.Before(r.max)
+	if !r.cur.Before(r.max) {
+		return false
+	}
+
+	period, err := r.schemaCfg.SchemaForTime(r.cur.ModelTime())
+	if err != nil {
+		r.err = errors.Wrapf(err, "getting schema for time (%s)", r.cur)
+		return false
+	}
+	r.curPeriod = period
+
+	return true
 }
 
-func (r *dayRangeIterator) At() config.DayTime {
-	return r.cur
+func (r *dayRangeIterator) At() config.DayTable {
+	return config.NewDayTable(r.cur, r.curPeriod.IndexTables.Prefix)
 }
 
 func (r *dayRangeIterator) Err() error {

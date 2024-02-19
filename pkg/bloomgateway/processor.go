@@ -3,7 +3,6 @@ package bloomgateway
 import (
 	"context"
 	"math"
-	"sort"
 	"time"
 
 	"github.com/go-kit/log"
@@ -12,11 +11,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
-
-type tasksForBlock struct {
-	blockRef bloomshipper.BlockRef
-	tasks    []Task
-}
 
 func newProcessor(id string, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
 	return &processor{
@@ -66,13 +60,13 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 	p.metrics.metasFetched.WithLabelValues(p.id).Observe(float64(len(metas)))
 
 	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
-	return p.processBlocks(ctx, partition(tasks, blocksRefs))
+	return p.processBlocks(ctx, partitionTasks(tasks, blocksRefs))
 }
 
-func (p *processor) processBlocks(ctx context.Context, data []tasksForBlock) error {
+func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) error {
 	refs := make([]bloomshipper.BlockRef, len(data))
 	for _, block := range data {
-		refs = append(refs, block.blockRef)
+		refs = append(refs, block.ref)
 	}
 
 	bqs, err := p.store.FetchBlocks(ctx, refs)
@@ -87,7 +81,7 @@ outer:
 	for blockIter.Next() {
 		bq := blockIter.At()
 		for i, block := range data {
-			if block.blockRef.Bounds.Equal(bq.Bounds) {
+			if block.ref.Bounds.Equal(bq.Bounds) {
 				err := p.processBlock(ctx, bq.BlockQuerier, block.tasks)
 				bq.Close()
 				if err != nil {
@@ -145,38 +139,4 @@ func group[K comparable, V any, S ~[]V](s S, f func(v V) K) map[K]S {
 		m[f(elem)] = append(m[f(elem)], elem)
 	}
 	return m
-}
-
-func partition(tasks []Task, blocks []bloomshipper.BlockRef) []tasksForBlock {
-	result := make([]tasksForBlock, 0, len(blocks))
-
-	for _, block := range blocks {
-		bounded := tasksForBlock{
-			blockRef: block,
-		}
-
-		for _, task := range tasks {
-			refs := task.series
-			min := sort.Search(len(refs), func(i int) bool {
-				return block.Cmp(refs[i].Fingerprint) > v1.Before
-			})
-
-			max := sort.Search(len(refs), func(i int) bool {
-				return block.Cmp(refs[i].Fingerprint) == v1.After
-			})
-
-			// All fingerprints fall outside of the consumer's range
-			if min == len(refs) || max == 0 {
-				continue
-			}
-
-			bounded.tasks = append(bounded.tasks, task.Copy(refs[min:max]))
-		}
-
-		if len(bounded.tasks) > 0 {
-			result = append(result, bounded)
-		}
-
-	}
-	return result
 }

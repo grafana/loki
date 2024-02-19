@@ -163,7 +163,7 @@ func (w *worker) running(_ context.Context) error {
 		err = p.run(taskCtx, tasks)
 
 		if err != nil {
-			w.metrics.processDuration.WithLabelValues(w.id, labelSuccess).Observe(time.Since(start).Seconds())
+			w.metrics.processDuration.WithLabelValues(w.id, labelFailure).Observe(time.Since(start).Seconds())
 			w.metrics.tasksProcessed.WithLabelValues(w.id, labelFailure).Add(float64(len(tasks)))
 			level.Error(w.logger).Log("msg", "failed to process tasks", "err", err)
 		} else {
