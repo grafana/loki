@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.43.2
 
 - [ENHANCEMENT] Added missing default values to support ServerSideApply
+- [BUGFIX] Added `alibabacloud` to `isUsingObjectStorage` check.
 
 ## 5.43.1
 

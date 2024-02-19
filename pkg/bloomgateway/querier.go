@@ -5,17 +5,56 @@ import (
 	"sort"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
+type querierMetrics struct {
+	chunksTotal    prometheus.Counter
+	chunksFiltered prometheus.Counter
+	seriesTotal    prometheus.Counter
+	seriesFiltered prometheus.Counter
+}
+
+func newQuerierMetrics(registerer prometheus.Registerer, namespace, subsystem string) *querierMetrics {
+	return &querierMetrics{
+		chunksTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "chunks_total",
+			Help:      "Total amount of chunks pre filtering. Does not count chunks in failed requests.",
+		}),
+		chunksFiltered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "chunks_filtered_total",
+			Help:      "Total amount of chunks that have been filtered out. Does not count chunks in failed requests.",
+		}),
+		seriesTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "series_total",
+			Help:      "Total amount of series pre filtering. Does not count series in failed requests.",
+		}),
+		seriesFiltered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "series_filtered_total",
+			Help:      "Total amount of series that have been filtered out. Does not count series in failed requests.",
+		}),
+	}
+}
+
 // BloomQuerier is a store-level abstraction on top of Client
 // It is used by the index gateway to filter ChunkRefs based on given line fiter expression.
 type BloomQuerier struct {
-	c      Client
-	logger log.Logger
+	c       Client
+	logger  log.Logger
+	metrics *querierMetrics
 }
 
 func NewQuerier(c Client, logger log.Logger) *BloomQuerier {
@@ -37,6 +76,9 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	defer groupedChunksRefPool.Put(grouped)
 	grouped = groupChunkRefs(chunkRefs, grouped)
 
+	preFilterChunks := len(chunkRefs)
+	preFilterSeries := len(grouped)
+
 	refs, err := bq.c.FilterChunks(ctx, tenant, from, through, grouped, filters...)
 	if err != nil {
 		return nil, err
@@ -55,6 +97,15 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 			})
 		}
 	}
+
+	postFilterChunks := len(result)
+	postFilterSeries := len(refs)
+
+	bq.metrics.chunksTotal.Add(float64(preFilterChunks))
+	bq.metrics.chunksFiltered.Add(float64(preFilterChunks - postFilterChunks))
+	bq.metrics.seriesTotal.Add(float64(preFilterSeries))
+	bq.metrics.seriesFiltered.Add(float64(preFilterSeries - postFilterSeries))
+
 	return result, nil
 }
 
