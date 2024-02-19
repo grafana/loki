@@ -3,7 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "loki.gatewayFullname" . }}
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.gatewayLabels" . | nindent 4 }}
   {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.backend.annotations))}}

@@ -11,9 +11,11 @@ metadata:
   name: {{ include "loki.readFullname" . }}
   labels:
     {{- include "loki.readLabels" . | nindent 4 }}
+  namespace: {{ include "loki.namespace" . }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
+    namespace: {{ include "loki.namespace" . }}
 {{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) }}
     kind: Deployment
     name: {{ include "loki.readFullname" . }}

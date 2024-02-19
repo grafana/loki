@@ -16,6 +16,8 @@ nameOverride: null
 fullnameOverride: null
 # -- Overrides the chart's cluster label
 clusterLabelOverride: null
+# -- Overrides the chart's release namespace
+namespaceOverride: null
 # -- Image pull secrets for Docker images
 imagePullSecrets: []
 kubectlImage:

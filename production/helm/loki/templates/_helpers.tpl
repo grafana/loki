@@ -15,6 +15,13 @@ Expand the name of the chart.
 {{- end }}
 
 {{/*
+Returns the final namespace value
+*/}}
+{{- define "loki.namespace" -}}
+{{ default .Release.Namespace .Values.namespaceOverride }}
+{{- end -}}
+
+{{/*
 singleBinary fullname
 */}}
 {{- define "loki.singleBinaryFullname" -}}
@@ -608,9 +615,9 @@ Create the service endpoint including port for MinIO.
 {{/* Determine the public host for the Loki cluster */}}
 {{- define "loki.host" -}}
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
-{{- $url := printf "%s.%s.svc.%s.:%s" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.gateway.service.port | toString)  }}
+{{- $url := printf "%s.%s.svc.%s.:%s" (include "loki.gatewayFullname" .) (include "loki.namespace" .) .Values.global.clusterDomain (.Values.gateway.service.port | toString)  }}
 {{- if and $isSingleBinary (not .Values.gateway.enabled)  }}
-  {{- $url = printf "%s.%s.svc.%s.:3100" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+  {{- $url = printf "%s.%s.svc.%s.:3100" (include "loki.singleBinaryFullname" .) (include "loki.namespace" .) .Values.global.clusterDomain }}
 {{- end }}
 {{- printf "%s" $url -}}
 {{- end -}}
@@ -723,9 +730,9 @@ http {
     {{- $writeHost = include "loki.singleBinaryFullname" .}}
     {{- end }}
 
-    {{- $writeUrl    := printf "http://%s.%s.svc.%s:3100" $writeHost   .Release.Namespace .Values.global.clusterDomain }}
-    {{- $readUrl     := printf "http://%s.%s.svc.%s:3100" $readHost    .Release.Namespace .Values.global.clusterDomain }}
-    {{- $backendUrl  := printf "http://%s.%s.svc.%s:3100" $backendHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $writeUrl    := printf "http://%s.%s.svc.%s:3100" $writeHost   (include "loki.namespace" .) .Values.global.clusterDomain }}
+    {{- $readUrl     := printf "http://%s.%s.svc.%s:3100" $readHost    (include "loki.namespace" .) .Values.global.clusterDomain }}
+    {{- $backendUrl  := printf "http://%s.%s.svc.%s:3100" $backendHost (include "loki.namespace" .) .Values.global.clusterDomain }}
 
     {{- if .Values.gateway.nginxConfig.customWriteUrl }}
     {{- $writeUrl  = .Values.gateway.nginxConfig.customWriteUrl }}
@@ -893,7 +900,7 @@ enableServiceLinks: false
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- $schedulerAddress := ""}}
 {{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) -}}
-{{- $schedulerAddress = printf "query-scheduler-discovery.%s.svc.%s.:9095" .Release.Namespace .Values.global.clusterDomain -}}
+{{- $schedulerAddress = printf "query-scheduler-discovery.%s.svc.%s.:9095" (include "loki.namespace" .) .Values.global.clusterDomain -}}
 {{- end -}}
 {{- printf "%s" $schedulerAddress }}
 {{- end }}
