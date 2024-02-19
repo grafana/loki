@@ -31,7 +31,7 @@ func newQuerierMetrics(registerer prometheus.Registerer, namespace, subsystem st
 		chunksFiltered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "chunks_filtered",
+			Name:      "chunks_filtered_total",
 			Help:      "Total amount of chunks that have been filtered out. Does not count chunks in failed requests.",
 		}),
 		seriesTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
@@ -43,7 +43,7 @@ func newQuerierMetrics(registerer prometheus.Registerer, namespace, subsystem st
 		seriesFiltered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "series_filtered",
+			Name:      "series_filtered_total",
 			Help:      "Total amount of series that have been filtered out. Does not count series in failed requests.",
 		}),
 	}
