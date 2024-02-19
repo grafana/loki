@@ -401,7 +401,7 @@ func (m RangeMapper) rangeSplitAlign(
 		}
 		downstreams = appendDownstream(downstreams, expr, newRng, newOffset)
 		newOffset += m.splitByInterval
-		pendingRangeInterval -= m.splitByInterval
+		pendingRangeInterval -= newRng
 		splits++
 	}
 
