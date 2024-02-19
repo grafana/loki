@@ -88,10 +88,6 @@ type Meta struct {
 	// The specific TSDB files used to generate the block.
 	Sources []tsdb.SingleTenantTSDBIdentifier
 
-	// TODO(owen-d): remove, unused
-	// Old blocks which can be deleted in the future. These should be from previous compaction rounds.
-	BlockTombstones []BlockRef
-
 	// A list of blocks that were generated
 	Blocks []BlockRef
 }

@@ -214,6 +214,7 @@ func (c *Compactor) ownsTenant(tenant string) (v1.FingerprintBounds, bool, error
 
 // runs a single round of compaction for all relevant tenants and tables
 func (c *Compactor) runOne(ctx context.Context) error {
+	level.Info(c.logger).Log("msg", "running bloom compaction", "workers", c.cfg.WorkerParallelism)
 	var workersErr error
 	var wg sync.WaitGroup
 	ch := make(chan tenantTable)
@@ -226,7 +227,11 @@ func (c *Compactor) runOne(ctx context.Context) error {
 	err := c.loadWork(ctx, ch)
 
 	wg.Wait()
-	return multierror.New(workersErr, err, ctx.Err()).Err()
+	err = multierror.New(workersErr, err, ctx.Err()).Err()
+	if err != nil {
+		level.Error(c.logger).Log("msg", "compaction iteration failed", "err", err)
+	}
+	return err
 }
 
 func (c *Compactor) tables(ts time.Time) *dayRangeIterator {
@@ -241,6 +246,7 @@ func (c *Compactor) tables(ts time.Time) *dayRangeIterator {
 
 	fromDay := config.NewDayTime(model.TimeFromUnixNano(from))
 	throughDay := config.NewDayTime(model.TimeFromUnixNano(through))
+	level.Debug(c.logger).Log("msg", "loaded tables for compaction", "from", fromDay, "through", throughDay)
 	return newDayRangeIterator(fromDay, throughDay, c.schemaCfg)
 }
 
@@ -249,6 +255,8 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 
 	for tables.Next() && tables.Err() == nil && ctx.Err() == nil {
 		table := tables.At()
+
+		level.Debug(c.logger).Log("msg", "loading work for table", "table", table)
 
 		tenants, err := c.tenants(ctx, table)
 		if err != nil {
@@ -262,6 +270,7 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 			if err != nil {
 				return errors.Wrap(err, "checking tenant ownership")
 			}
+			level.Debug(c.logger).Log("msg", "enqueueing work for tenant", "tenant", tenant, "table", table, "ownership", ownershipRange.String(), "owns", owns)
 			if !owns {
 				c.metrics.tenantsSkipped.Inc()
 				continue
@@ -280,12 +289,14 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 		}
 
 		if err := tenants.Err(); err != nil {
+			level.Error(c.logger).Log("msg", "error iterating tenants", "err", err)
 			return errors.Wrap(err, "iterating tenants")
 		}
 
 	}
 
 	if err := tables.Err(); err != nil {
+		level.Error(c.logger).Log("msg", "error iterating tables", "err", err)
 		return errors.Wrap(err, "iterating tables")
 	}
 
@@ -330,7 +341,7 @@ func (c *Compactor) runWorkers(ctx context.Context, ch <-chan tenantTable) error
 }
 
 func (c *Compactor) compactTenantTable(ctx context.Context, tt tenantTable) error {
-	level.Info(c.logger).Log("msg", "compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange)
+	level.Info(c.logger).Log("msg", "compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange.String())
 	return c.controller.compactTenant(ctx, tt.table, tt.tenant, tt.ownershipRange)
 }
 
