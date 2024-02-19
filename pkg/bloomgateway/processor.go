@@ -29,9 +29,13 @@ type processor struct {
 }
 
 func (p *processor) run(ctx context.Context, tasks []Task) error {
+	return p.runWithBounds(ctx, tasks, MultiFingerprintBounds{{Min: 0, Max: math.MaxUint64}})
+}
+
+func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds MultiFingerprintBounds) error {
 	for ts, tasks := range group(tasks, func(t Task) config.DayTime { return t.table }) {
 		tenant := tasks[0].Tenant
-		err := p.processTasks(ctx, tenant, ts, []v1.FingerprintBounds{{Min: 0, Max: math.MaxUint64}}, tasks)
+		err := p.processTasks(ctx, tenant, ts, bounds, tasks)
 		if err != nil {
 			for _, task := range tasks {
 				task.CloseWithError(err)
@@ -45,13 +49,13 @@ func (p *processor) run(ctx context.Context, tasks []Task) error {
 	return nil
 }
 
-func (p *processor) processTasks(ctx context.Context, tenant string, day config.DayTime, keyspaces []v1.FingerprintBounds, tasks []Task) error {
+func (p *processor) processTasks(ctx context.Context, tenant string, day config.DayTime, keyspaces MultiFingerprintBounds, tasks []Task) error {
 	minFpRange, maxFpRange := getFirstLast(keyspaces)
 	interval := bloomshipper.NewInterval(day.Bounds())
 	metaSearch := bloomshipper.MetaSearchParams{
 		TenantID: tenant,
 		Interval: interval,
-		Keyspace: v1.FingerprintBounds{Min: minFpRange.Min, Max: maxFpRange.Max},
+		Keyspace: v1.NewBounds(minFpRange.Min, maxFpRange.Max),
 	}
 	metas, err := p.store.FetchMetas(ctx, metaSearch)
 	if err != nil {

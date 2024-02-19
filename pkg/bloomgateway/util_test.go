@@ -384,3 +384,108 @@ func createBlockRefsFromBlockData(t *testing.T, tenant string, data []*bloomship
 	}
 	return res
 }
+
+func Test_MultiFingerprintBounds(t *testing.T) {
+	for _, tc := range []struct {
+		desc   string
+		mb     MultiFingerprintBounds
+		target v1.FingerprintBounds
+		exp    MultiFingerprintBounds
+	}{
+		{
+			desc:   "no elements",
+			mb:     MultiFingerprintBounds{},
+			target: v1.NewBounds(0, 9),
+			exp: MultiFingerprintBounds{
+				v1.NewBounds(0, 9),
+			},
+		},
+		{
+			desc: "single element before",
+			mb: MultiFingerprintBounds{
+				v1.NewBounds(5, 9),
+			},
+			target: v1.NewBounds(15, 19),
+			exp: MultiFingerprintBounds{
+				v1.NewBounds(5, 9),
+				v1.NewBounds(15, 19),
+			},
+		},
+		{
+			desc: "single element after",
+			mb: MultiFingerprintBounds{
+				v1.NewBounds(5, 9),
+			},
+			target: v1.NewBounds(0, 3),
+			exp: MultiFingerprintBounds{
+				v1.NewBounds(0, 3),
+				v1.NewBounds(5, 9),
+			},
+		},
+		{
+			desc: "single element overlapping",
+			mb: MultiFingerprintBounds{
+				v1.NewBounds(5, 9),
+			},
+			target: v1.NewBounds(0, 14),
+			exp: MultiFingerprintBounds{
+				v1.NewBounds(0, 14),
+			},
+		},
+		{
+			desc: "multiple elements single overlapping",
+			mb: MultiFingerprintBounds{
+				v1.NewBounds(5, 9),
+				v1.NewBounds(15, 19),
+			},
+			target: v1.NewBounds(0, 6),
+			exp: MultiFingerprintBounds{
+				v1.NewBounds(0, 9),
+				v1.NewBounds(15, 19),
+			},
+		},
+		{
+			desc: "multiple elements single overlapping",
+			mb: MultiFingerprintBounds{
+				v1.NewBounds(5, 9),
+				v1.NewBounds(15, 19),
+			},
+			target: v1.NewBounds(11, 25),
+			exp: MultiFingerprintBounds{
+				v1.NewBounds(5, 9),
+				v1.NewBounds(11, 25),
+			},
+		},
+		{
+			desc: "multiple elements combining overlapping",
+			mb: MultiFingerprintBounds{
+				v1.NewBounds(5, 9),
+				v1.NewBounds(15, 19),
+			},
+			target: v1.NewBounds(9, 15),
+			exp: MultiFingerprintBounds{
+				v1.NewBounds(5, 19),
+			},
+		},
+		{
+			desc: "combination",
+			mb: MultiFingerprintBounds{
+				v1.NewBounds(0, 2),
+				v1.NewBounds(5, 9),
+				v1.NewBounds(15, 19),
+				v1.NewBounds(25, 29),
+			},
+			target: v1.NewBounds(9, 15),
+			exp: MultiFingerprintBounds{
+				v1.NewBounds(0, 2),
+				v1.NewBounds(5, 19),
+				v1.NewBounds(25, 29),
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			res := tc.mb.Union(tc.target)
+			require.Equal(t, tc.exp, res)
+		})
+	}
+}

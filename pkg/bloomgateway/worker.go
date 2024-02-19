@@ -10,8 +10,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/queue"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
@@ -147,6 +149,7 @@ func (w *worker) running(_ context.Context) error {
 		w.metrics.tasksDequeued.WithLabelValues(w.id, labelSuccess).Add(float64(len(items)))
 
 		tasks := make([]Task, 0, len(items))
+		var mb MultiFingerprintBounds
 		for _, item := range items {
 			task, ok := item.(Task)
 			if !ok {
@@ -157,10 +160,13 @@ func (w *worker) running(_ context.Context) error {
 			level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
 			w.pending.Delete(task.ID)
 			tasks = append(tasks, task)
+
+			first, last := getFirstLast(task.series)
+			mb = mb.Union(v1.NewBounds(model.Fingerprint(first.Fingerprint), model.Fingerprint(last.Fingerprint)))
 		}
 
 		start = time.Now()
-		err = p.run(taskCtx, tasks)
+		err = p.runWithBounds(taskCtx, tasks, mb)
 
 		if err != nil {
 			w.metrics.processDuration.WithLabelValues(w.id, labelFailure).Observe(time.Since(start).Seconds())

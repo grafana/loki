@@ -184,3 +184,29 @@ func partitionRequest(req *logproto.FilterChunkRefRequest) []seriesWithBounds {
 
 	return result
 }
+
+type MultiFingerprintBounds []v1.FingerprintBounds
+
+func (mb MultiFingerprintBounds) Union(target v1.FingerprintBounds) MultiFingerprintBounds {
+	if len(mb) == 0 {
+		return MultiFingerprintBounds{target}
+	}
+	if len(mb) == 1 {
+		return mb[0].Union(target)
+	}
+
+	var union MultiFingerprintBounds
+	last := target
+	for len(mb) > 0 {
+		res := last.Union(mb[0])
+		if len(res) == 2 {
+			last = res[1]
+			union = append(union, res[0])
+		} else {
+			last = res[0]
+		}
+		mb = mb[1:]
+	}
+
+	return append(union, last)
+}
