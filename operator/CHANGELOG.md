@@ -1,5 +1,6 @@
 ## Main
 
+- [12007](https://github.com/grafana/loki/pull/12007) **xperimental**: Extend Azure secret validation
 - [11964](https://github.com/grafana/loki/pull/11964) **xperimental**: Provide Azure region for managed credentials using environment variable
 - [11920](https://github.com/grafana/loki/pull/11920) **xperimental**: Refactor handling of credentials in managed-auth mode
 - [11869](https://github.com/grafana/loki/pull/11869) **periklis**: Add support for running with Google Workload Identity
