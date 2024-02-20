@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+* [11982](https://github.com/grafana/loki/pull/11982) **yuri-rs**: API: Expose optional label matcher for label names API
 * [11851](https://github.com/grafana/loki/pull/11851) **elcomtik**: Helm: Allow the definition of resources for GrafanaAgent pods.
 * [11819](https://github.com/grafana/loki/pull/11819) **jburnham**: Ruler: Add the ability to disable the `X-Scope-OrgId` tenant identification header in remote write requests.
 * [11633](https://github.com/grafana/loki/pull/11633) **cyriltovena**: Add profiling integrations to tracing instrumentation.
