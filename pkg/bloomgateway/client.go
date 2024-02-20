@@ -329,6 +329,7 @@ func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.Inst
 
 	if len(servers) > 0 && servers[len(servers)-1].Max < math.MaxUint64 {
 		// append the instance for the range between the maxFp and MaxUint64
+		// TODO(owen-d): support wrapping around keyspace for token ranges
 		servers = append(servers, addrsWithBounds{
 			id:    servers[0].id,
 			addrs: servers[0].addrs,
