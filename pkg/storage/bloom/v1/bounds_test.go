@@ -82,20 +82,29 @@ func Test_FingerprintBounds_Intersection(t *testing.T) {
 func Test_FingerprintBounds_Union(t *testing.T) {
 	t.Parallel()
 	target := NewBounds(10, 20)
+
 	assert.Equal(t, []FingerprintBounds{
-		{Min: 1, Max: 9},
+		{Min: 1, Max: 8},
 		{Min: 10, Max: 20},
-	}, NewBounds(1, 9).Union(target))
+	}, NewBounds(1, 8).Union(target))
 	assert.Equal(t, []FingerprintBounds{
 		{Min: 10, Max: 20},
-		{Min: 21, Max: 30},
-	}, NewBounds(21, 30).Union(target))
+		{Min: 22, Max: 30},
+	}, NewBounds(22, 30).Union(target))
 	assert.Equal(t, []FingerprintBounds{
 		{Min: 10, Max: 20},
 	}, NewBounds(10, 20).Union(target))
 	assert.Equal(t, []FingerprintBounds{
 		{Min: 5, Max: 20},
 	}, NewBounds(5, 15).Union(target))
+	// contiguous range, target before
+	assert.Equal(t, []FingerprintBounds{
+		{Min: 10, Max: 25},
+	}, NewBounds(21, 25).Union(target))
+	// contiguous range, target after
+	assert.Equal(t, []FingerprintBounds{
+		{Min: 5, Max: 20},
+	}, NewBounds(5, 9).Union(target))
 }
 
 func Test_FingerprintBounds_Unless(t *testing.T) {
