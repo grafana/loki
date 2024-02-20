@@ -69,7 +69,7 @@ func TestJoinQuantileSketchVectorError(t *testing.T) {
 	ev := errorStepEvaluator{
 		err: errors.New("could not evaluate"),
 	}
-	_, err := JoinQuantileSketchVector(true, result, ev, LiteralParams{})
+	_, err := MergeQuantileSketchVector(true, result, ev, LiteralParams{})
 	require.ErrorContains(t, err, "could not evaluate")
 }
 
@@ -136,7 +136,7 @@ func BenchmarkJoinQuantileSketchVector(b *testing.B) {
 			iter: iter,
 		}
 		_, _, r := ev.Next()
-		m, err := JoinQuantileSketchVector(true, r.QuantileSketchVec(), ev, params)
+		m, err := MergeQuantileSketchVector(true, r.QuantileSketchVec(), ev, params)
 		require.NoError(b, err)
 		m.(ProbabilisticQuantileMatrix).Release()
 	}
