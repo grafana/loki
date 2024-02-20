@@ -2,6 +2,10 @@ package bloomcompactor
 
 import (
 	"context"
+	"fmt"
+	"math"
+	"slices"
+	"sort"
 	"sync"
 	"time"
 
@@ -193,23 +197,120 @@ func (c *Compactor) tenants(ctx context.Context, table config.DayTable) (v1.Iter
 }
 
 // ownsTenant returns the ownership range for the tenant, if the compactor owns the tenant, and an error.
-func (c *Compactor) ownsTenant(tenant string) (v1.FingerprintBounds, bool, error) {
+func (c *Compactor) ownsTenant(tenant string) ([]v1.FingerprintBounds, bool, error) {
 	tenantRing, owned := c.sharding.OwnsTenant(tenant)
 	if !owned {
-		return v1.FingerprintBounds{}, false, nil
+		return nil, false, nil
 	}
+
+	// TOOD(owen-d): use <ReadRing>.GetTokenRangesForInstance()
+	// when it's supported for non zone-aware rings
+	// instead of doing all this manually
 
 	rs, err := tenantRing.GetAllHealthy(RingOp)
 	if err != nil {
-		return v1.FingerprintBounds{}, false, errors.Wrap(err, "getting ring healthy instances")
-
+		return nil, false, errors.Wrap(err, "getting ring healthy instances")
 	}
 
-	keyRange, err := bloomutils.KeyRangeForInstance(c.cfg.Ring.InstanceID, rs.Instances, bloomutils.Uint64Range)
+	ranges, err := tokenRangesForInstance(c.cfg.Ring.InstanceID, rs.Instances)
 	if err != nil {
-		return v1.FingerprintBounds{}, false, errors.Wrap(err, "getting instance token range")
+		return nil, false, errors.Wrap(err, "getting token ranges for instance")
 	}
-	return v1.NewBounds(model.Fingerprint(keyRange.Min), model.Fingerprint(keyRange.Max)), true, nil
+
+	keyspaces := bloomutils.KeyspacesFromTokenRanges(ranges)
+	return keyspaces, true, nil
+}
+
+func tokenRangesForInstance(id string, instances []ring.InstanceDesc) (ranges ring.TokenRanges, err error) {
+	var ownedTokens map[uint32]struct{}
+
+	// lifted from grafana/dskit/ring/model.go <*Desc>.GetTokens()
+	toks := make([][]uint32, 0, len(instances))
+	for _, instance := range instances {
+		if instance.Id == id {
+			ranges = make(ring.TokenRanges, 0, 2*(len(instance.Tokens)+1))
+			ownedTokens = make(map[uint32]struct{}, len(instance.Tokens))
+			for _, tok := range instance.Tokens {
+				ownedTokens[tok] = struct{}{}
+			}
+		}
+
+		// Tokens may not be sorted for an older version which, so we enforce sorting here.
+		tokens := instance.Tokens
+		if !sort.IsSorted(ring.Tokens(tokens)) {
+			sort.Sort(ring.Tokens(tokens))
+		}
+
+		toks = append(toks, tokens)
+	}
+
+	if cap(ranges) == 0 {
+		return nil, fmt.Errorf("instance %s not found", id)
+	}
+
+	allTokens := ring.MergeTokens(toks)
+	if len(allTokens) == 0 {
+		return nil, errors.New("no tokens in the ring")
+	}
+
+	// mostly lifted from grafana/dskit/ring/token_range.go <*Ring>.GetTokenRangesForInstance()
+
+	// non-zero value means we're now looking for start of the range. Zero value means we're looking for next end of range (ie. token owned by this instance).
+	rangeEnd := uint32(0)
+
+	// if this instance claimed the first token, it owns the wrap-around range, which we'll break into two separate ranges
+	firstToken := allTokens[0]
+	_, ownsFirstToken := ownedTokens[firstToken]
+
+	if ownsFirstToken {
+		// we'll start by looking for the beginning of the range that ends with math.MaxUint32
+		rangeEnd = math.MaxUint32
+	}
+
+	// walk the ring backwards, alternating looking for ends and starts of ranges
+	for i := len(allTokens) - 1; i > 0; i-- {
+		token := allTokens[i]
+		_, owned := ownedTokens[token]
+
+		if rangeEnd == 0 {
+			// we're looking for the end of the next range
+			if owned {
+				rangeEnd = token - 1
+			}
+		} else {
+			// we have a range end, and are looking for the start of the range
+			if !owned {
+				ranges = append(ranges, rangeEnd, token)
+				rangeEnd = 0
+			}
+		}
+	}
+
+	// finally look at the first token again
+	// - if we have a range end, check if we claimed token 0
+	//   - if we don't, we have our start
+	//   - if we do, the start is 0
+	// - if we don't have a range end, check if we claimed token 0
+	//   - if we don't, do nothing
+	//   - if we do, add the range of [0, token-1]
+	//     - BUT, if the token itself is 0, do nothing, because we don't own the tokens themselves (we should be covered by the already added range that ends with MaxUint32)
+
+	if rangeEnd == 0 {
+		if ownsFirstToken && firstToken != 0 {
+			ranges = append(ranges, firstToken-1, 0)
+		}
+	} else {
+		if ownsFirstToken {
+			ranges = append(ranges, rangeEnd, 0)
+		} else {
+			ranges = append(ranges, rangeEnd, firstToken)
+		}
+	}
+
+	// Ensure returned ranges are sorted.
+	slices.Sort(ranges)
+
+	return ranges, nil
 }
 
 // runs a single round of compaction for all relevant tenants and tables
@@ -266,25 +367,28 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
 			c.metrics.tenantsDiscovered.Inc()
 			tenant := tenants.At()
-			ownershipRange, owns, err := c.ownsTenant(tenant)
+			ownershipRanges, owns, err := c.ownsTenant(tenant)
 			if err != nil {
 				return errors.Wrap(err, "checking tenant ownership")
 			}
-			level.Debug(c.logger).Log("msg", "enqueueing work for tenant", "tenant", tenant, "table", table, "ownership", ownershipRange.String(), "owns", owns)
+			level.Debug(c.logger).Log("msg", "enqueueing work for tenant", "tenant", tenant, "table", table, "ranges", len(ownershipRanges), "owns", owns)
 			if !owns {
 				c.metrics.tenantsSkipped.Inc()
 				continue
 			}
 			c.metrics.tenantsOwned.Inc()
 
-			select {
-			case ch <- tenantTable{
-				tenant:         tenant,
-				table:          table,
-				ownershipRange: ownershipRange,
-			}:
-			case <-ctx.Done():
-				return ctx.Err()
+			for _, ownershipRange := range ownershipRanges {
+
+				select {
+				case ch <- tenantTable{
+					tenant:         tenant,
+					table:          table,
+					ownershipRange: ownershipRange,
+				}:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			}
 		}
 
