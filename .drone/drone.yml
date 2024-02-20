@@ -361,66 +361,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-loki-image
-  settings:
-    dockerfile: cmd/loki/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-loki-canary-image
-  settings:
-    dockerfile: cmd/loki-canary/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-canary
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-loki-canary-boringcrypto-image
-  settings:
-    dockerfile: cmd/loki-canary-boringcrypto/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-canary-boringcrypto
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-logcli-image
-  settings:
-    dockerfile: cmd/logcli/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/logcli
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
@@ -503,66 +443,6 @@ steps:
   - echo $(./tools/image-tag)-arm64 > .tags
   image: alpine
   name: image-tag
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-loki-image
-  settings:
-    dockerfile: cmd/loki/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-loki-canary-image
-  settings:
-    dockerfile: cmd/loki-canary/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-canary
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-loki-canary-boringcrypto-image
-  settings:
-    dockerfile: cmd/loki-canary-boringcrypto/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-canary-boringcrypto
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-logcli-image
-  settings:
-    dockerfile: cmd/logcli/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/logcli
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -651,66 +531,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker:linux-arm
-  name: build-loki-image
-  settings:
-    dockerfile: cmd/loki/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker:linux-arm
-  name: build-loki-canary-image
-  settings:
-    dockerfile: cmd/loki-canary/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-canary
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker:linux-arm
-  name: build-loki-canary-boringcrypto-image
-  settings:
-    dockerfile: cmd/loki-canary-boringcrypto/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-canary-boringcrypto
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker:linux-arm
-  name: build-logcli-image
-  settings:
-    dockerfile: cmd/logcli/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/logcli
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker:linux-arm
   name: publish-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
@@ -796,21 +616,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-promtail-image
-  settings:
-    dockerfile: clients/cmd/promtail/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/promtail
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-promtail-image
   settings:
     dockerfile: clients/cmd/promtail/Dockerfile
@@ -848,21 +653,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-promtail-image
-  settings:
-    dockerfile: clients/cmd/promtail/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/promtail
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-promtail-image
   settings:
     dockerfile: clients/cmd/promtail/Dockerfile
@@ -897,21 +687,6 @@ steps:
   - echo $(./tools/image-tag)-arm > .tags
   image: alpine
   name: image-tag
-- depends_on:
-  - image-tag
-  image: plugins/docker:linux-arm
-  name: build-promtail-image
-  settings:
-    dockerfile: clients/cmd/promtail/Dockerfile.arm32
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/promtail
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker:linux-arm
@@ -1120,21 +895,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-fluent-bit-image
-  settings:
-    dockerfile: clients/cmd/fluent-bit/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/fluent-bit-plugin-loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-fluent-bit-image
   settings:
     dockerfile: clients/cmd/fluent-bit/Dockerfile
@@ -1172,21 +932,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-fluent-bit-image
-  settings:
-    dockerfile: clients/cmd/fluent-bit/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/fluent-bit-plugin-loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-fluent-bit-image
   settings:
     dockerfile: clients/cmd/fluent-bit/Dockerfile
@@ -1221,21 +966,6 @@ steps:
   - echo $(./tools/image-tag)-arm > .tags
   image: alpine
   name: image-tag
-- depends_on:
-  - image-tag
-  image: plugins/docker:linux-arm
-  name: build-fluent-bit-image
-  settings:
-    dockerfile: clients/cmd/fluent-bit/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/fluent-bit-plugin-loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker:linux-arm
@@ -1277,21 +1007,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-fluentd-image
-  settings:
-    dockerfile: clients/cmd/fluentd/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/fluent-plugin-loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-fluentd-image
   settings:
     dockerfile: clients/cmd/fluentd/Dockerfile
@@ -1330,21 +1045,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-logstash-image
-  settings:
-    dockerfile: clients/cmd/logstash/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/logstash-output-loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-logstash-image
   settings:
     dockerfile: clients/cmd/logstash/Dockerfile
@@ -1380,21 +1080,6 @@ steps:
   - echo ",main" >> .tags
   image: alpine
   name: image-tag
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-querytee-image
-  settings:
-    dockerfile: cmd/querytee/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-query-tee
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -1659,21 +1344,6 @@ steps:
   - echo $(./tools/image-tag)-amd64 > .tags
   image: alpine
   name: image-tag
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-logql-analyzer-image
-  settings:
-    dockerfile: cmd/logql-analyzer/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/logql-analyzer
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -2072,6 +1742,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 51861919f0ba5370a152bdb9267828c742f2042819fb01388c6d23bf44e3cbb7
+hmac: 407e26c6abea4941598787a4dd59bb3bec044edf7e816365543c62d46bf52f2c
 
 ...

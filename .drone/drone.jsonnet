@@ -177,16 +177,6 @@ local promtail_win() = pipeline('promtail-windows') {
 
 local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
   steps+: [
-    // dry run for everything that is not tag or main
-    docker('amd64', 'querytee') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/loki-query-tee',
-      },
-    },
-  ] + [
     // publish for tag or main
     docker('amd64', 'querytee') {
       depends_on: ['image-tag'],
@@ -201,16 +191,6 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
 
 local fluentbit(arch) = pipeline('fluent-bit-' + arch) + arch_image(arch) {
   steps+: [
-    // dry run for everything that is not tag or main
-    clients_docker(arch, 'fluent-bit') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/fluent-bit-plugin-loki',
-      },
-    },
-  ] + [
     // publish for tag or main
     clients_docker(arch, 'fluent-bit') {
       depends_on: ['image-tag'],
@@ -225,16 +205,6 @@ local fluentbit(arch) = pipeline('fluent-bit-' + arch) + arch_image(arch) {
 
 local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'main') {
   steps+: [
-    // dry run for everything that is not tag or main
-    clients_docker('amd64', 'fluentd') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/fluent-plugin-loki',
-      },
-    },
-  ] + [
     // publish for tag or main
     clients_docker('amd64', 'fluentd') {
       depends_on: ['image-tag'],
@@ -249,16 +219,6 @@ local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'main') {
 
 local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'main') {
   steps+: [
-    // dry run for everything that is not tag or main
-    clients_docker('amd64', 'logstash') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/logstash-output-loki',
-      },
-    },
-  ] + [
     // publish for tag or main
     clients_docker('amd64', 'logstash') {
       depends_on: ['image-tag'],
@@ -273,15 +233,6 @@ local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'main') {
 
 local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
   steps+: [
-    // dry run for everything that is not tag or main
-    clients_docker(arch, 'promtail') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-      },
-    },
-  ] + [
     // publish for tag or main
     clients_docker(arch, 'promtail') {
       depends_on: ['image-tag'],
@@ -341,16 +292,6 @@ local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
 
 local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
   steps+: [
-    // dry run for everything that is not tag or main
-    docker('amd64', 'logql-analyzer') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/logql-analyzer',
-      },
-    },
-  ] + [
     // publish for tag or main
     docker('amd64', 'logql-analyzer') {
       depends_on: ['image-tag'],
@@ -365,16 +306,6 @@ local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
 
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
-    // dry run for everything that is not tag or main
-    docker(arch, app) {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-      },
-    }
-    for app in apps
-  ] + [
     // publish for tag or main
     docker(arch, app) {
       depends_on: ['image-tag'],
