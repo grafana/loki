@@ -42,6 +42,7 @@ local releaseLibStep = common.releaseLibStep;
       |||),
 
       step.new('Build and export', 'docker/build-push-action@v5')
+      + step.withTimeoutMinutes(15)
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         context: context,

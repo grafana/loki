@@ -26,6 +26,9 @@
     withSecrets: function(env) {
       secrets: env,
     },
+    withTimeoutMinutes: function(timeout) {
+      'timeout-minutes': timeout,
+    },
   },
   job: {
     new: function(runsOn='ubuntu-latest') {
