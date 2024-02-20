@@ -177,8 +177,6 @@ func RecordRangeAndInstantQueryMetrics(
 		"ingester_chunk_refs", stats.Ingester.Store.GetTotalChunksRef(),
 		// Total number of chunks fetched.
 		"ingester_chunk_downloaded", stats.Ingester.Store.GetTotalChunksDownloaded(),
-		// Time spent fetching chunks in nanoseconds.
-		"ingester_chunk_fetch_time", stats.Ingester.Store.ChunksDownloadDuration(),
 		// Total of chunks matched by the query from ingesters.
 		"ingester_chunk_matches", stats.Ingester.GetTotalChunksMatched(),
 		// Total ingester reached for this query.
@@ -189,8 +187,6 @@ func RecordRangeAndInstantQueryMetrics(
 		"ingester_chunk_compressed_bytes", humanizeBytes(uint64(stats.Ingester.Store.Chunk.GetCompressedBytes())),
 		// Total bytes decompressed and processed from chunks. Includes structured metadata bytes.
 		"ingester_chunk_decompressed_bytes", humanizeBytes(uint64(stats.Ingester.Store.Chunk.GetDecompressedBytes())),
-		// Total duplicates found while processing.
-		"ingester_chunk_duplicates", stats.Ingester.Store.Chunk.GetTotalDuplicates(),
 		// Total lines post filtering.
 		"ingester_post_filter_lines", stats.Ingester.Store.Chunk.GetPostFilterLines(),
 	}...)
