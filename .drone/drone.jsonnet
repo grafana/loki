@@ -177,16 +177,6 @@ local promtail_win() = pipeline('promtail-windows') {
 
 local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
   steps+: [
-    // dry run for everything that is not tag or main
-    docker('amd64', 'querytee') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/loki-query-tee',
-      },
-    },
-  ] + [
     // publish for tag or main
     docker('amd64', 'querytee') {
       depends_on: ['image-tag'],
@@ -201,16 +191,6 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
 
 local fluentbit(arch) = pipeline('fluent-bit-' + arch) + arch_image(arch) {
   steps+: [
-    // dry run for everything that is not tag or main
-    clients_docker(arch, 'fluent-bit') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/fluent-bit-plugin-loki',
-      },
-    },
-  ] + [
     // publish for tag or main
     clients_docker(arch, 'fluent-bit') {
       depends_on: ['image-tag'],
@@ -225,16 +205,6 @@ local fluentbit(arch) = pipeline('fluent-bit-' + arch) + arch_image(arch) {
 
 local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'main') {
   steps+: [
-    // dry run for everything that is not tag or main
-    clients_docker('amd64', 'fluentd') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/fluent-plugin-loki',
-      },
-    },
-  ] + [
     // publish for tag or main
     clients_docker('amd64', 'fluentd') {
       depends_on: ['image-tag'],
@@ -249,16 +219,6 @@ local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'main') {
 
 local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'main') {
   steps+: [
-    // dry run for everything that is not tag or main
-    clients_docker('amd64', 'logstash') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/logstash-output-loki',
-      },
-    },
-  ] + [
     // publish for tag or main
     clients_docker('amd64', 'logstash') {
       depends_on: ['image-tag'],
@@ -273,15 +233,6 @@ local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'main') {
 
 local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
   steps+: [
-    // dry run for everything that is not tag or main
-    clients_docker(arch, 'promtail') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-      },
-    },
-  ] + [
     // publish for tag or main
     clients_docker(arch, 'promtail') {
       depends_on: ['image-tag'],
@@ -297,15 +248,6 @@ local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(a
 
   steps+: [
     skipStep,
-    // dry run for everything that is not tag or main
-    lambda_promtail_ecr('lambda-promtail') {
-      depends_on: ['image-tag', skipStep.name],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-      },
-    },
-  ] + [
     // publish for tag or main
     lambda_promtail_ecr('lambda-promtail') {
       depends_on: ['image-tag'],
@@ -318,15 +260,6 @@ local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(a
 
 local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
   steps+: [
-    // dry run for everything that is not tag or main
-    docker_operator(arch, 'loki-operator') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-      },
-    },
-  ] + [
     // publish for tag or main
     docker_operator(arch, 'loki-operator') {
       depends_on: ['image-tag'],
@@ -341,16 +274,6 @@ local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
 
 local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
   steps+: [
-    // dry run for everything that is not tag or main
-    docker('amd64', 'logql-analyzer') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/logql-analyzer',
-      },
-    },
-  ] + [
     // publish for tag or main
     docker('amd64', 'logql-analyzer') {
       depends_on: ['image-tag'],
@@ -365,16 +288,6 @@ local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
 
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
-    // dry run for everything that is not tag or main
-    docker(arch, app) {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-      },
-    }
-    for app in apps
-  ] + [
     // publish for tag or main
     docker(arch, app) {
       depends_on: ['image-tag'],
@@ -509,21 +422,6 @@ local build_image_tag = '0.33.0';
     },
     steps: [
       {
-        name: 'test',
-        image: 'plugins/docker',
-        when: onPRs + onPath('loki-build-image/**'),
-        environment: {
-          DOCKER_BUILDKIT: 1,
-        },
-        settings: {
-          repo: 'grafana/loki-build-image',
-          context: 'loki-build-image',
-          dockerfile: 'loki-build-image/Dockerfile',
-          tags: [build_image_tag + '-' + arch],
-          dry_run: true,
-        },
-      },
-      {
         name: 'push',
         image: 'plugins/docker',
         when: onTagOrMain + onPath('loki-build-image/**'),
@@ -571,16 +469,6 @@ local build_image_tag = '0.33.0';
       path: 'loki',
     },
     steps: [
-      {
-        name: 'test-image',
-        image: 'plugins/docker',
-        when: onPRs + onPath('production/helm/loki/src/helm-test/**'),
-        settings: {
-          repo: 'grafana/loki-helm-test',
-          dockerfile: 'production/helm/loki/src/helm-test/Dockerfile',
-          dry_run: true,
-        },
-      },
       {
         name: 'push-image',
         image: 'plugins/docker',
@@ -760,7 +648,7 @@ local build_image_tag = '0.33.0';
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     trigger: {
-      // wee need to run it only on Loki tags that starts with `v`.
+      // we need to run it only on Loki tags that starts with `v`.
       ref: ['refs/tags/v*'],
     },
     steps: [
