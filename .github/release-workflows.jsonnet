@@ -18,6 +18,7 @@ local build = lokiRelease.build;
       buildImage='grafana/loki-build-image:0.29.3-go1.20.10',
       branches=['release-[0-9]+.[0-9]+.x', 'backport-11808-to-release-2.8.x'],
       checkTemplate='grafana/loki-release/.github/workflows/check.yml@release-1.11.x',
+      golangCiLintVersion='v1.51.2',
       imagePrefix='grafana',
       releaseRepo='grafana/loki',
       skipArm=false,

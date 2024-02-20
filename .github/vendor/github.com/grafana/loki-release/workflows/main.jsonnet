@@ -10,6 +10,7 @@
     buildImage='grafana/loki-build-image:0.33.0',
     checkTemplate='./.github/workflows/check.yml',
     dockerUsername='grafana',
+    golangCiLintVersion='v1.55.1',
     imageJobs={},
     imagePrefix='grafana',
     releaseRepo='grafana/loki-release',
@@ -44,6 +45,7 @@
              + $.job.with({
                skip_validation: skipValidation,
                build_image: buildImage,
+               golang_ci_lint_version: golangCiLintVersion,
              }),
       version: $.build.version + $.common.job.withNeeds(validationSteps),
       dist: $.build.dist(buildImage, skipArm) + $.common.job.withNeeds(['version']),
@@ -88,15 +90,21 @@
     on: {
       workflow_call: {
         inputs: {
+          build_image: {
+            description: 'loki build image to use',
+            required: true,
+            type: 'string',
+          },
           skip_validation: {
             default: false,
             description: 'skip validation steps',
             required: false,
             type: 'boolean',
           },
-          build_image: {
-            description: 'loki build image to use',
-            required: true,
+          golang_ci_lint_version: {
+            default: 'v1.55.1',
+            description: 'version of golangci-lint to use',
+            required: false,
             type: 'string',
           },
         },

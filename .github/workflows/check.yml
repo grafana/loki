@@ -11,3 +11,4 @@ jobs:
     with:
       skip_validation: false
       build_image: grafana/loki-build-image:0.29.3-go1.20.10
+      golang_ci_lint_version: v1.51.2
