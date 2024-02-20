@@ -199,6 +199,10 @@ func (s *Store) Merge(m Store) {
 	}
 }
 
+func (s *Store) ChunksDownloadDuration() time.Duration {
+	return time.Duration(s.GetChunksDownloadTime())
+}
+
 func (s *Summary) Merge(m Summary) {
 	s.Splits += m.Splits
 	s.Shards += m.Shards
