@@ -88,8 +88,6 @@ const (
 	KeyAzureStorageEndpointSuffix = "endpoint_suffix"
 	// KeyAzureEnvironmentName is the secret data key for the Azure cloud environment name.
 	KeyAzureEnvironmentName = "environment"
-	// KeyAzureRegion is the secret data key for storing the Azure cloud region.
-	KeyAzureRegion = "region"
 	// KeyAzureAudience is the secret data key for customizing the audience used for the ServiceAccount token.
 	KeyAzureAudience = "audience"
 

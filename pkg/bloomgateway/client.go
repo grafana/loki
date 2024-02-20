@@ -7,7 +7,6 @@ import (
 	"io"
 	"math"
 	"math/rand"
-	"sort"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -20,6 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -291,77 +291,86 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 	return err
 }
 
-func groupFingerprintsByServer(groups []*logproto.GroupedChunkRefs, servers []addrsWithTokenRange) []instanceWithFingerprints {
+func groupFingerprintsByServer(groups []*logproto.GroupedChunkRefs, servers []addrsWithBounds) []instanceWithFingerprints {
 	boundedFingerprints := partitionFingerprintsByAddresses(groups, servers)
 	return groupByInstance(boundedFingerprints)
 }
 
-func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.InstanceDesc) ([]addrsWithTokenRange, error) {
+func mapTokenRangeToFingerprintRange(r bloomutils.Range[uint32]) v1.FingerprintBounds {
+	minFp := uint64(r.Min) << 32
+	maxFp := uint64(r.Max) << 32
+	return v1.NewBounds(
+		model.Fingerprint(minFp),
+		model.Fingerprint(maxFp|math.MaxUint32),
+	)
+}
+
+func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.InstanceDesc) ([]addrsWithBounds, error) {
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 
-	servers := make([]addrsWithTokenRange, 0, len(instances))
+	servers := make([]addrsWithBounds, 0, len(instances))
 	it := bloomutils.NewInstanceSortMergeIterator(instances)
+
 	for it.Next() {
 		// We can use on of the tokens from the token range
 		// to obtain all addresses for that token.
-		rs, err := subRing.Get(it.At().MaxToken, BlocksOwnerRead, bufDescs, bufHosts, bufZones)
+		rs, err := subRing.Get(it.At().TokenRange.Max, BlocksOwnerRead, bufDescs, bufHosts, bufZones)
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
 		}
-		servers = append(servers, addrsWithTokenRange{
-			id:       it.At().Instance.Id,
-			addrs:    rs.GetAddresses(),
-			minToken: it.At().MinToken,
-			maxToken: it.At().MaxToken,
+
+		bounds := mapTokenRangeToFingerprintRange(it.At().TokenRange)
+		servers = append(servers, addrsWithBounds{
+			id:                it.At().Instance.Id,
+			addrs:             rs.GetAddresses(),
+			FingerprintBounds: bounds,
 		})
 	}
 
-	if len(servers) > 0 && servers[len(servers)-1].maxToken < math.MaxUint32 {
-		// append the instance for the token range between the greates token and MaxUint32
-		servers = append(servers, addrsWithTokenRange{
-			id:       servers[0].id,
-			addrs:    servers[0].addrs,
-			minToken: servers[len(servers)-1].maxToken + 1,
-			maxToken: math.MaxUint32,
+	if len(servers) > 0 && servers[len(servers)-1].Max < math.MaxUint64 {
+		// append the instance for the range between the maxFp and MaxUint64
+		// TODO(owen-d): support wrapping around keyspace for token ranges
+		servers = append(servers, addrsWithBounds{
+			id:    servers[0].id,
+			addrs: servers[0].addrs,
+			FingerprintBounds: v1.NewBounds(
+				servers[len(servers)-1].Max+1,
+				model.Fingerprint(math.MaxUint64),
+			),
 		})
 	}
 	return servers, nil
 }
 
-type instanceWithToken struct {
-	instance ring.InstanceDesc
-	token    uint32
-}
-
-type addrsWithTokenRange struct {
-	id                 string
-	addrs              []string
-	minToken, maxToken uint32
-}
-
-func (s addrsWithTokenRange) cmp(token uint32) v1.BoundsCheck {
-	if token < s.minToken {
-		return v1.Before
-	} else if token > s.maxToken {
-		return v1.After
-	}
-	return v1.Overlap
+type addrsWithBounds struct {
+	v1.FingerprintBounds
+	id    string
+	addrs []string
 }
 
 type instanceWithFingerprints struct {
-	instance     addrsWithTokenRange
+	instance     addrsWithBounds
 	fingerprints []*logproto.GroupedChunkRefs
 }
 
-func partitionFingerprintsByAddresses(fingerprints []*logproto.GroupedChunkRefs, addresses []addrsWithTokenRange) (result []instanceWithFingerprints) {
+func partitionFingerprintsByAddresses(fingerprints []*logproto.GroupedChunkRefs, addresses []addrsWithBounds) (result []instanceWithFingerprints) {
 	for _, instance := range addresses {
-
-		min := sort.Search(len(fingerprints), func(i int) bool {
-			return instance.cmp(uint32(fingerprints[i].Fingerprint)) > v1.Before
+		min, _ := slices.BinarySearchFunc(fingerprints, instance.FingerprintBounds, func(g *logproto.GroupedChunkRefs, b v1.FingerprintBounds) int {
+			if g.Fingerprint < uint64(b.Min) {
+				return -1
+			} else if g.Fingerprint > uint64(b.Min) {
+				return 1
+			}
+			return 0
 		})
 
-		max := sort.Search(len(fingerprints), func(i int) bool {
-			return instance.cmp(uint32(fingerprints[i].Fingerprint)) == v1.After
+		max, _ := slices.BinarySearchFunc(fingerprints, instance.FingerprintBounds, func(g *logproto.GroupedChunkRefs, b v1.FingerprintBounds) int {
+			if g.Fingerprint <= uint64(b.Max) {
+				return -1
+			} else if g.Fingerprint > uint64(b.Max) {
+				return 1
+			}
+			return 0
 		})
 
 		// fingerprint is out of boundaries
@@ -401,7 +410,7 @@ func groupByInstance(boundedFingerprints []instanceWithFingerprints) []instanceW
 
 		pos[cur.instance.id] = len(result)
 		result = append(result, instanceWithFingerprints{
-			instance: addrsWithTokenRange{
+			instance: addrsWithBounds{
 				id:    cur.instance.id,
 				addrs: cur.instance.addrs,
 			},

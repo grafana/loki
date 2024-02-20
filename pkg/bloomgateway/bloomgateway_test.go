@@ -423,6 +423,9 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 }
 
 func TestBloomGateway_RemoveNotMatchingChunks(t *testing.T) {
+	g := &Gateway{
+		logger: log.NewNopLogger(),
+	}
 	t.Run("removing chunks partially", func(t *testing.T) {
 		req := &logproto.FilterChunkRefRequest{
 			Refs: []*logproto.GroupedChunkRefs{
@@ -450,7 +453,8 @@ func TestBloomGateway_RemoveNotMatchingChunks(t *testing.T) {
 				}},
 			},
 		}
-		removeNotMatchingChunks(req, res, log.NewNopLogger())
+		n := g.removeNotMatchingChunks(req, res)
+		require.Equal(t, 2, n)
 		require.Equal(t, expected, req)
 	})
 
@@ -474,7 +478,8 @@ func TestBloomGateway_RemoveNotMatchingChunks(t *testing.T) {
 		expected := &logproto.FilterChunkRefRequest{
 			Refs: []*logproto.GroupedChunkRefs{},
 		}
-		removeNotMatchingChunks(req, res, log.NewNopLogger())
+		n := g.removeNotMatchingChunks(req, res)
+		require.Equal(t, 3, n)
 		require.Equal(t, expected, req)
 	})
 

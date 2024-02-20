@@ -157,27 +157,6 @@ func TestAzureExtract(t *testing.T) {
 			wantError: "missing secret field: subscription_id",
 		},
 		{
-			name: "managed auth - no region",
-			secret: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "test"},
-				Data: map[string][]byte{
-					"environment":  []byte("here"),
-					"account_name": []byte("test-account-name"),
-					"container":    []byte("this,that"),
-				},
-			},
-			managedSecret: &corev1.Secret{
-				Data: map[string][]byte{},
-			},
-			featureGates: configv1.FeatureGates{
-				OpenShift: configv1.OpenShiftFeatureGates{
-					Enabled:        true,
-					ManagedAuthEnv: true,
-				},
-			},
-			wantError: "missing secret field: region",
-		},
-		{
 			name: "managed auth - no auth override",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},

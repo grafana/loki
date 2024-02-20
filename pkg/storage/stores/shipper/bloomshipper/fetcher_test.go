@@ -34,8 +34,7 @@ func makeMetas(t *testing.T, schemaCfg config.SchemaConfig, ts model.Time, keysp
 					EndTimestamp:   ts,
 				},
 			},
-			Tombstones: []BlockRef{},
-			Blocks:     []BlockRef{},
+			Blocks: []BlockRef{},
 		}
 	}
 	return metas
