@@ -62,7 +62,7 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, s.limits.QuerySplitDuration)
+	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, s.limits.InstantMetricQuerySplitDuration)
 	// if no interval configured, continue to the next middleware
 	if interval == 0 {
 		return s.next.Do(ctx, request)

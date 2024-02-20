@@ -94,13 +94,20 @@ func RecordRangeAndInstantQueryMetrics(
 ) {
 	var (
 		logger        = fixLogger(ctx, log)
-		rt            = string(GetRangeType(p))
+		rangeType     = GetRangeType(p)
+		rt            = string(rangeType)
 		latencyType   = latencyTypeFast
 		returnedLines = 0
 	)
 	queryType, err := QueryType(p.GetExpression())
 	if err != nil {
 		level.Warn(logger).Log("msg", "error parsing query type", "err", err)
+	}
+
+	resultCache := stats.Caches.Result
+
+	if queryType == QueryTypeMetric && rangeType == InstantType {
+		resultCache = stats.Caches.InstantMetricResult
 	}
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -162,10 +169,10 @@ func RecordRangeAndInstantQueryMetrics(
 		"cache_volume_results_req", stats.Caches.VolumeResult.EntriesRequested,
 		"cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
 		"cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
-		"cache_result_req", stats.Caches.Result.EntriesRequested,
-		"cache_result_hit", stats.Caches.Result.EntriesFound,
-		"cache_result_download_time", stats.Caches.Result.CacheDownloadTime(),
-		"cache_result_query_length_served", stats.Caches.Result.CacheQueryLengthServed(),
+		"cache_result_req", resultCache.EntriesRequested,
+		"cache_result_hit", resultCache.EntriesFound,
+		"cache_result_download_time", resultCache.CacheDownloadTime(),
+		"cache_result_query_length_served", resultCache.CacheQueryLengthServed(),
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)

@@ -49,6 +49,8 @@ func (cfg *InstantMetricCacheConfig) Validate() error {
 	return cfg.ResultsCacheConfig.Validate()
 }
 
+type instantMetricExtractor struct{}
+
 func NewInstantMetricCacheMiddleware(
 	log log.Logger,
 	limits Limits,
@@ -67,7 +69,7 @@ func NewInstantMetricCacheMiddleware(
 		InstantMetricSplitter{limits, transformer},
 		limits,
 		merger,
-		queryrangebase.PrometheusResponseExtractor{},
+		PrometheusExtractor{},
 		cacheGenNumberLoader,
 		func(ctx context.Context, r queryrangebase.Request) bool {
 			if shouldCache != nil && !shouldCache(ctx, r) {
