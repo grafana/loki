@@ -32,6 +32,8 @@ type Metrics struct {
 	tenantsCompletedTime *prometheus.HistogramVec
 	tenantsSeries        prometheus.Histogram
 
+	blocksReused prometheus.Counter
+
 	blocksCreated prometheus.Counter
 	blocksDeleted prometheus.Counter
 	metasCreated  prometheus.Counter
@@ -119,6 +121,12 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 			Help:      "Number of series processed per tenant in the owned fingerprint-range.",
 			// Up to 10M series per tenant, way more than what we expect given our max_global_streams_per_user limits
 			Buckets: prometheus.ExponentialBucketsRange(1, 10000000, 10),
+		}),
+		blocksReused: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "blocks_reused_total",
+			Help:      "Number of overlapping bloom blocks reused when creating new blocks",
 		}),
 		blocksCreated: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
