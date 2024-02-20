@@ -7,6 +7,7 @@ on:
       - main
 jobs:
   check:
-    uses: grafana/loki-release/.github/workflows/check.yml@release-1.10.x
+    uses: grafana/loki-release/.github/workflows/check.yml@release-1.11.x
     with:
       skip_validation: false
+      build_image: grafana/loki-build-image:0.29.3-go1.20.10

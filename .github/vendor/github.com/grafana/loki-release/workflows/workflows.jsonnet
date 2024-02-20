@@ -23,8 +23,6 @@ local build = lokiRelease.build;
     ), false, false
   ),
   '.github/workflows/check.yml': std.manifestYamlDoc(
-    lokiRelease.check(
-      buildImage='grafana/loki-build-image:0.33.0'
-    )
+    lokiRelease.check
   ),
 }

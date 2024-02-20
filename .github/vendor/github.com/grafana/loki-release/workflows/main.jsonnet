@@ -43,6 +43,7 @@
       check: {} + $.job.withUses(checkTemplate)
              + $.job.with({
                skip_validation: skipValidation,
+               build_image: buildImage,
              }),
       version: $.build.version + $.common.job.withNeeds(validationSteps),
       dist: $.build.dist(buildImage, skipArm) + $.common.job.withNeeds(['version']),
@@ -82,9 +83,7 @@
       publishImages: $.release.publishImages(getDockerCredsFromVault, dockerUsername),
     },
   },
-  check: function(
-    buildImage='grafana/loki-build-image:0.33.0',
-        ) {
+  check: {
     name: 'check',
     on: {
       workflow_call: {
@@ -94,6 +93,11 @@
             description: 'skip validation steps',
             required: false,
             type: 'boolean',
+          },
+          build_image: {
+            description: 'loki build image to use',
+            required: true,
+            type: 'string',
           },
         },
       },
@@ -106,6 +110,6 @@
     concurrency: {
       group: 'check-${{ github.sha }}',
     },
-    jobs: $.validate(buildImage),
+    jobs: $.validate,
   },
 }

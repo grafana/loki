@@ -36,31 +36,31 @@ local setupValidationDeps = function(job) job {
   ] + job.steps,
 };
 
-local validationJob = function(buildImage) job.new()
-                                           + job.withContainer({
-                                             image: buildImage,
-                                           })
-                                           + job.withEnv({
-                                             BUILD_IN_CONTAINER: false,
-                                             SKIP_VALIDATION: '${{ inputs.skip_validation }}',
-                                           });
+local validationJob = job.new()
+                      + job.withContainer({
+                        image: '${{ inputs.build_image }}',
+                      })
+                      + job.withEnv({
+                        BUILD_IN_CONTAINER: false,
+                        SKIP_VALIDATION: '${{ inputs.skip_validation }}',
+                      });
 
 
-function(buildImage) {
+{
   local validationMakeStep = function(name, target)
     step.new(name)
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
     + step.withRun(common.makeTarget(target)),
 
   test: setupValidationDeps(
-    validationJob(buildImage)
+    validationJob
     + job.withSteps([
       validationMakeStep('test', 'test'),
     ])
   ),
 
   lint: setupValidationDeps(
-    validationJob(buildImage)
+    validationJob
     + job.withSteps(
       [
         validationMakeStep('lint', 'lint'),
@@ -84,7 +84,7 @@ function(buildImage) {
   ),
 
   check: setupValidationDeps(
-    validationJob(buildImage)
+    validationJob
     + job.withSteps([
       validationMakeStep('check generated files', 'check-generated-files'),
       validationMakeStep('check mod', 'check-mod'),
