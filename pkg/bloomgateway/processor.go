@@ -73,7 +73,7 @@ func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) er
 	if err != nil {
 		return err
 	}
-	p.metrics.metasFetched.WithLabelValues(p.id).Observe(float64(len(bqs)))
+	p.metrics.blocksFetched.WithLabelValues(p.id).Observe(float64(len(bqs)))
 
 	blockIter := v1.NewSliceIter(bqs)
 
