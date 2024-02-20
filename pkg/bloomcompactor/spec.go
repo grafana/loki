@@ -138,7 +138,7 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) v1.Iterator[*v1.Blo
 		)
 	}
 
-	return NewLazyBlockBuilderIterator(ctx, s.opts, s.populator(ctx), s.readWriterFn, series, s.blocksIter)
+	return NewLazyBlockBuilderIterator(ctx, s.opts, s.metrics, s.populator(ctx), s.readWriterFn, series, s.blocksIter)
 }
 
 // LazyBlockBuilderIterator is a lazy iterator over blocks that builds
@@ -146,6 +146,7 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) v1.Iterator[*v1.Blo
 type LazyBlockBuilderIterator struct {
 	ctx          context.Context
 	opts         v1.BlockOptions
+	metrics      *Metrics
 	populate     func(*v1.Series, *v1.Bloom) error
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
 	series       v1.PeekingIterator[*v1.Series]
@@ -158,6 +159,7 @@ type LazyBlockBuilderIterator struct {
 func NewLazyBlockBuilderIterator(
 	ctx context.Context,
 	opts v1.BlockOptions,
+	metrics *Metrics,
 	populate func(*v1.Series, *v1.Bloom) error,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	series v1.PeekingIterator[*v1.Series],
@@ -166,6 +168,7 @@ func NewLazyBlockBuilderIterator(
 	return &LazyBlockBuilderIterator{
 		ctx:          ctx,
 		opts:         opts,
+		metrics:      metrics,
 		populate:     populate,
 		readWriterFn: readWriterFn,
 		series:       series,
@@ -189,7 +192,7 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		return false
 	}
 
-	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate)
+	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate, b.metrics.bloomMetrics)
 	writer, reader := b.readWriterFn()
 	blockBuilder, err := v1.NewBlockBuilder(b.opts, writer)
 	if err != nil {

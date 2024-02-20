@@ -342,7 +342,12 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.BloomGatewayBlocksDownloadingParallelism, "bloom-gateway.blocks-downloading-parallelism", 50, "Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.")
 	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Interval for computing the cache key in the Bloom Gateway.")
 	_ = l.BloomCompactorMaxBlockSize.Set(defaultBloomCompactorMaxBlockSize)
-	f.Var(&l.BloomCompactorMaxBlockSize, "bloom-compactor.max-block-size", "The maximum bloom block size. A value of 0 sets an unlimited size. Default is 200MB. The actual block size might exceed this limit since blooms will be added to blocks until the block exceeds the maximum block size.")
+	f.Var(&l.BloomCompactorMaxBlockSize, "bloom-compactor.max-block-size",
+		fmt.Sprintf(
+			"The maximum bloom block size. A value of 0 sets an unlimited size. Default is %s. The actual block size might exceed this limit since blooms will be added to blocks until the block exceeds the maximum block size.",
+			defaultBloomCompactorMaxBlockSize,
+		),
+	)
 
 	l.ShardStreams = &shardstreams.Config{}
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
