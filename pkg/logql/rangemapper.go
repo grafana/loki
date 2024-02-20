@@ -357,7 +357,6 @@ func (m RangeMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInterval t
 // 2. sum(rate({foo="bar"}[1h] offset 34m))
 // 3. sum(rate({foo="bar"}[1h] offset 1h34m))
 // 4. sum(rate({foo="bar"}[26m] offset 2h34m))
-// All with execTs: 12:34:00. Here (2) and (3) range values (1h) aligned with splitByInteval (1h).
 func (m RangeMapper) rangeSplitAlign(
 	expr syntax.SampleExpr, rangeInterval time.Duration, recorder *downstreamRecorder,
 ) syntax.SampleExpr {

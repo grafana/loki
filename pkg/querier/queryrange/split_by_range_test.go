@@ -261,7 +261,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			srm := NewSplitByRangeMiddleware(log.NewNopLogger(), testEngineOpts, fakeLimits{
 				maxSeries:    10000,
 				queryTimeout: time.Second,
-				splitDuration: map[string]time.Duration{
+				instantMetricSplitDuration: map[string]time.Duration{
 					"tenant": tc.splitByInterval,
 				},
 			}, true, nilShardingMetrics) // enable splitAlign
@@ -299,7 +299,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 	srm := NewSplitByRangeMiddleware(log.NewNopLogger(), testEngineOpts, fakeLimits{
 		maxSeries:    10000,
 		queryTimeout: time.Second,
-		splitDuration: map[string]time.Duration{
+		instantMetricSplitDuration: map[string]time.Duration{
 			"tenant": time.Minute,
 		},
 	}, false, nilShardingMetrics)
