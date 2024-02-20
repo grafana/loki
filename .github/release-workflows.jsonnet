@@ -15,12 +15,12 @@ local build = lokiRelease.build;
         promtail: build.image('promtail', 'clients/cmd/promtail'),
         querytee: build.image('querytee', 'cmd/querytee', platform=['linux/amd64']),
       },
-      branches=['release-[0-9]+.[0-9]+.x', 'fix-action-names-in-main'],
+      branches=['release-[0-9]+.[0-9]+.x'],
       checkTemplate='grafana/loki-release/.github/workflows/check.yml@release-1.10.x',
       imagePrefix='grafana',
       releaseRepo='grafana/loki',
       skipArm=false,
-      skipValidation=true,
+      skipValidation=false,
       versioningStrategy='always-bump-patch',
     ), false, false
   ),
@@ -42,6 +42,7 @@ local build = lokiRelease.build;
       checkTemplate='grafana/loki-release/.github/workflows/check.yml@release-1.10.x',
       imagePrefix='grafana',
       releaseRepo='grafana/loki',
+      skipArm=false,
       skipValidation=false,
       versioningStrategy='always-bump-minor',
     ), false, false

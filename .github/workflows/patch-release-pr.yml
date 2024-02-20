@@ -4,13 +4,13 @@ env:
   DOCKER_USERNAME: "grafana"
   IMAGE_PREFIX: "grafana"
   RELEASE_REPO: "grafana/loki"
-  SKIP_VALIDATION: true
+  SKIP_VALIDATION: false
   VERSIONING_STRATEGY: "always-bump-patch"
 jobs:
   check:
     uses: "grafana/loki-release/.github/workflows/check.yml@release-1.10.x"
     with:
-      skip_validation: true
+      skip_validation: false
   create-release-pr:
     needs:
     - "dist"
@@ -154,7 +154,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -212,7 +212,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -270,7 +270,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -330,7 +330,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -388,7 +388,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -448,7 +448,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -508,7 +508,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -568,7 +568,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release/operator"
@@ -626,7 +626,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -686,7 +686,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -767,7 +767,6 @@ name: "create release PR"
   push:
     branches:
     - "release-[0-9]+.[0-9]+.x"
-    - "fix-action-names-in-main"
 permissions:
   contents: "write"
   id-token: "write"

@@ -90,7 +90,7 @@ jobs:
         DRONE_TAG: "${{ needs.version.outputs.version }}"
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
         NFPM_SIGNING_KEY_FILE: "nfpm-private-key.key"
-        SKIP_ARM: true
+        SKIP_ARM: false
       name: "build artifacts"
       run: |
         cat <<EOF | docker run \
@@ -154,7 +154,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -212,7 +212,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -270,7 +270,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -330,7 +330,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -388,7 +388,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -448,7 +448,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -508,7 +508,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -568,7 +568,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release/operator"
@@ -626,7 +626,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
@@ -686,7 +686,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 20
+      timeout-minutes: 25
       uses: "docker/build-push-action@v5"
       with:
         context: "release"
