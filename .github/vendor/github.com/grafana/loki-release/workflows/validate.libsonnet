@@ -61,13 +61,18 @@ function(buildImage) {
 
   lint: setupValidationDeps(
     validationJob(buildImage)
-    + job.withSteps([
-      validationMakeStep('lint', 'lint'),
-      validationMakeStep('lint jsonnet', 'lint-jsonnet'),
-      validationMakeStep('lint scripts', 'lint-scripts'),
-      validationMakeStep('format', 'check-format'),
-    ]) + {
-      steps+: [
+    + job.withSteps(
+      [
+        validationMakeStep('lint', 'lint'),
+        validationMakeStep('lint jsonnet', 'lint-jsonnet'),
+        validationMakeStep('lint scripts', 'lint-scripts'),
+        step.new('format')
+        + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
+        + step.withRun(|||
+          git fetch origin
+          make check-format
+        |||),
+      ] + [
         step.new('golangci-lint', 'golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
         + step.with({
@@ -75,7 +80,7 @@ function(buildImage) {
           'only-new-issues': true,
         }),
       ],
-    }
+    )
   ),
 
   check: setupValidationDeps(
