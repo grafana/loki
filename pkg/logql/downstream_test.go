@@ -146,7 +146,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
-		t.Run(tc.query, func(t *testing.T) {
+		t.Run(tc.query+"_range", func(t *testing.T) {
 			params, err := NewLiteralParams(
 				tc.query,
 				start,
@@ -177,6 +177,40 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 			require.NoError(t, err)
 
 			relativeError(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix), tc.realtiveError)
+		})
+		t.Run(tc.query+"_instant", func(t *testing.T) {
+			// for an instant query we set the start and end to the same timestamp
+			// plus set step and interval to 0
+			params, err := NewLiteralParams(
+				tc.query,
+				time.Unix(0, int64(rounds+1)),
+				time.Unix(0, int64(rounds+1)),
+				0,
+				0,
+				logproto.FORWARD,
+				uint32(limit),
+				nil,
+			)
+			require.NoError(t, err)
+			qry := regular.Query(params)
+			ctx := user.InjectOrgID(context.Background(), "fake")
+
+			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics, []string{ShardQuantileOverTime})
+			_, _, mapped, err := mapper.Parse(params.GetExpression())
+			require.NoError(t, err)
+
+			shardedQry := sharded.Query(ctx, ParamsWithExpressionOverride{
+				Params:             params,
+				ExpressionOverride: mapped,
+			})
+
+			res, err := qry.Exec(ctx)
+			require.NoError(t, err)
+
+			shardedRes, err := shardedQry.Exec(ctx)
+			require.NoError(t, err)
+
+			relativeErrorVector(t, res.Data.(promql.Vector), shardedRes.Data.(promql.Vector), tc.realtiveError)
 		})
 	}
 }
@@ -544,6 +578,21 @@ func relativeError(t *testing.T, expected, actual promql.Matrix, alpha float64) 
 		}
 		require.InEpsilonSlice(t, e, a, alpha)
 	}
+}
+
+func relativeErrorVector(t *testing.T, expected, actual promql.Vector, alpha float64) {
+	require.Len(t, actual, len(expected))
+
+	e := make([]float64, len(expected))
+	a := make([]float64, len(expected))
+	for i := 0; i < len(expected); i++ {
+		require.Equal(t, expected[i].Metric, actual[i].Metric)
+
+		e[i] = expected[i].F
+		a[i] = expected[i].F
+	}
+	require.InEpsilonSlice(t, e, a, alpha)
+
 }
 
 func TestFormat_ShardedExpr(t *testing.T) {
