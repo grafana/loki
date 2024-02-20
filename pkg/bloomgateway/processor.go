@@ -29,10 +29,10 @@ type processor struct {
 }
 
 func (p *processor) run(ctx context.Context, tasks []Task) error {
-	return p.runWithBounds(ctx, tasks, MultiFingerprintBounds{{Min: 0, Max: math.MaxUint64}})
+	return p.runWithBounds(ctx, tasks, v1.MultiFingerprintBounds{{Min: 0, Max: math.MaxUint64}})
 }
 
-func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds MultiFingerprintBounds) error {
+func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.MultiFingerprintBounds) error {
 	for ts, tasks := range group(tasks, func(t Task) config.DayTime { return t.table }) {
 		tenant := tasks[0].Tenant
 		err := p.processTasks(ctx, tenant, ts, bounds, tasks)
@@ -49,7 +49,7 @@ func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds Mult
 	return nil
 }
 
-func (p *processor) processTasks(ctx context.Context, tenant string, day config.DayTime, keyspaces MultiFingerprintBounds, tasks []Task) error {
+func (p *processor) processTasks(ctx context.Context, tenant string, day config.DayTime, keyspaces v1.MultiFingerprintBounds, tasks []Task) error {
 	minFpRange, maxFpRange := getFirstLast(keyspaces)
 	interval := bloomshipper.NewInterval(day.Bounds())
 	metaSearch := bloomshipper.MetaSearchParams{

@@ -7,6 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/pkg/util/encoding"
 )
@@ -167,6 +168,40 @@ func (b FingerprintBounds) Unless(target FingerprintBounds) (res []FingerprintBo
 		res = append(res, FingerprintBounds{Min: max(b.Min, target.Max+1), Max: b.Max})
 	}
 	return res
+}
+
+type MultiFingerprintBounds []FingerprintBounds
+
+func (mb MultiFingerprintBounds) Union(target FingerprintBounds) MultiFingerprintBounds {
+	if len(mb) == 0 {
+		return MultiFingerprintBounds{target}
+	}
+	if len(mb) == 1 {
+		return mb[0].Union(target)
+	}
+
+	mb = append(mb, target)
+	slices.SortFunc(mb, func(a, b FingerprintBounds) int {
+		if a.Less(b) {
+			return -1
+		} else if a.Equal(b) {
+			return 0
+		}
+		return 1
+	})
+
+	var union MultiFingerprintBounds
+	for i := 0; i < len(mb); i++ {
+		j := len(union) - 1 // index of last item of union
+		if j >= 0 && union[j].Max >= mb[i].Min-1 {
+			union[j] = NewBounds(union[j].Min, max(mb[i].Max, union[j].Max))
+		} else {
+			union = append(union, mb[i])
+		}
+	}
+
+	mb = union
+	return mb
 }
 
 // unused, but illustrative

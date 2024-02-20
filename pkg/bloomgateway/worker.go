@@ -149,7 +149,7 @@ func (w *worker) running(_ context.Context) error {
 		w.metrics.tasksDequeued.WithLabelValues(w.id, labelSuccess).Add(float64(len(items)))
 
 		tasks := make([]Task, 0, len(items))
-		var mb MultiFingerprintBounds
+		var mb v1.MultiFingerprintBounds
 		for _, item := range items {
 			task, ok := item.(Task)
 			if !ok {
