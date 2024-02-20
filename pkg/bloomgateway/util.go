@@ -195,18 +195,27 @@ func (mb MultiFingerprintBounds) Union(target v1.FingerprintBounds) MultiFingerp
 		return mb[0].Union(target)
 	}
 
-	var union MultiFingerprintBounds
-	last := target
-	for len(mb) > 0 {
-		res := last.Union(mb[0])
-		if len(res) == 2 {
-			last = res[1]
-			union = append(union, res[0])
+	mb = append(mb, target)
+	slices.SortFunc(mb, func(a, b v1.FingerprintBounds) int {
+		if a.Less(b) {
+			return -1
+		} else if a.Equal(b) {
+			return 0
 		} else {
-			last = res[0]
+			return 1
 		}
-		mb = mb[1:]
+	})
+
+	var union MultiFingerprintBounds
+	for i := 0; i < len(mb); i++ {
+		j := len(union) - 1 // index of last item of union
+		if j >= 0 && union[j].Max >= mb[i].Min-1 {
+			union[j] = v1.NewBounds(union[j].Min, max(mb[i].Max, union[j].Max))
+		} else {
+			union = append(union, mb[i])
+		}
 	}
 
-	return append(union, last)
+	mb = union
+	return mb
 }

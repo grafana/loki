@@ -482,6 +482,30 @@ func Test_MultiFingerprintBounds(t *testing.T) {
 				v1.NewBounds(25, 29),
 			},
 		},
+		{
+			desc: "overlapping ranges",
+			mb: MultiFingerprintBounds{
+				v1.NewBounds(0, 6),
+				v1.NewBounds(5, 15),
+			},
+			target: v1.NewBounds(8, 10),
+			exp: MultiFingerprintBounds{
+				v1.NewBounds(0, 15),
+			},
+		},
+		{
+			desc: "disjoint ranges and target is inbetween",
+			mb: MultiFingerprintBounds{
+				v1.NewBounds(0, 9),
+				v1.NewBounds(30, 39),
+			},
+			target: v1.NewBounds(15, 19),
+			exp: MultiFingerprintBounds{
+				v1.NewBounds(0, 9),
+				v1.NewBounds(15, 19),
+				v1.NewBounds(30, 39),
+			},
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			res := tc.mb.Union(tc.target)
