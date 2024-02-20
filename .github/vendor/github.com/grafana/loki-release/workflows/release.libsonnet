@@ -36,10 +36,11 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
           --label "backport main,autorelease: pending,type/docs" \
           --pull-request-footer "%s" \
           --release-type simple \
-          --repo-url="${{ env.RELEASE_REPO }}" \
+          --repo-url "${{ env.RELEASE_REPO }}" \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GH_TOKEN }}" \
+          --token "${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
+          --separate-pull-requests false \
           --debug
       ||| % [pullRequestFooter, pullRequestFooter]),
     ]),
