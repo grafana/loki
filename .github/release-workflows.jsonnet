@@ -15,7 +15,7 @@ local build = lokiRelease.build;
         promtail: build.image('promtail', 'clients/cmd/promtail'),
         querytee: build.image('querytee', 'cmd/querytee', platform=['linux/amd64']),
       },
-      branches=['release-[0-9]+.[0-9]+.x'],
+      branches=['release-[0-9]+.[0-9]+.x', 'backport-11808-to-release-2.8.x'],
       checkTemplate='grafana/loki-release/.github/workflows/check.yml@release-1.10.x',
       imagePrefix='grafana',
       releaseRepo='grafana/loki',
