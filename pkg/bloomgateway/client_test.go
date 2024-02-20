@@ -41,24 +41,20 @@ func TestBloomGatewayClient(t *testing.T) {
 }
 
 func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
+	// Create 10 fingerprints [0, 2, 4, ... 18]
+	groups := make([]*logproto.GroupedChunkRefs, 0, 10)
+	for i := 0; i < 20; i += 2 {
+		groups = append(groups, &logproto.GroupedChunkRefs{Fingerprint: uint64(i)})
+	}
+
 	// instance token ranges do not overlap
 	t.Run("non-overlapping", func(t *testing.T) {
-		groups := []*logproto.GroupedChunkRefs{
-			{Fingerprint: 0},
-			{Fingerprint: 100},
-			{Fingerprint: 101},
-			{Fingerprint: 200},
-			{Fingerprint: 201},
-			{Fingerprint: 300},
-			{Fingerprint: 301},
-			{Fingerprint: 400},
-			{Fingerprint: 401}, // out of bounds, will be dismissed
-		}
+
 		servers := []addrsWithBounds{
-			{id: "instance-1", addrs: []string{"10.0.0.1"}, FingerprintBounds: v1.NewBounds(0, 100)},
-			{id: "instance-2", addrs: []string{"10.0.0.2"}, FingerprintBounds: v1.NewBounds(101, 200)},
-			{id: "instance-3", addrs: []string{"10.0.0.3"}, FingerprintBounds: v1.NewBounds(201, 300)},
-			{id: "instance-2", addrs: []string{"10.0.0.2"}, FingerprintBounds: v1.NewBounds(301, 400)},
+			{id: "instance-1", addrs: []string{"10.0.0.1"}, FingerprintBounds: v1.NewBounds(0, 4)},
+			{id: "instance-2", addrs: []string{"10.0.0.2"}, FingerprintBounds: v1.NewBounds(5, 9)},
+			{id: "instance-3", addrs: []string{"10.0.0.3"}, FingerprintBounds: v1.NewBounds(10, 14)},
+			{id: "instance-2", addrs: []string{"10.0.0.2"}, FingerprintBounds: v1.NewBounds(15, 19)},
 		}
 
 		// partition fingerprints
@@ -68,28 +64,30 @@ func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
 				instance: servers[0],
 				fingerprints: []*logproto.GroupedChunkRefs{
 					{Fingerprint: 0},
-					{Fingerprint: 100},
+					{Fingerprint: 2},
+					{Fingerprint: 4},
 				},
 			},
 			{
 				instance: servers[1],
 				fingerprints: []*logproto.GroupedChunkRefs{
-					{Fingerprint: 101},
-					{Fingerprint: 200},
+					{Fingerprint: 6},
+					{Fingerprint: 8},
 				},
 			},
 			{
 				instance: servers[2],
 				fingerprints: []*logproto.GroupedChunkRefs{
-					{Fingerprint: 201},
-					{Fingerprint: 300},
+					{Fingerprint: 10},
+					{Fingerprint: 12},
+					{Fingerprint: 14},
 				},
 			},
 			{
 				instance: servers[3],
 				fingerprints: []*logproto.GroupedChunkRefs{
-					{Fingerprint: 301},
-					{Fingerprint: 400},
+					{Fingerprint: 16},
+					{Fingerprint: 18},
 				},
 			},
 		}
@@ -104,23 +102,25 @@ func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
 				instance: addrsWithBounds{id: "instance-1", addrs: []string{"10.0.0.1"}},
 				fingerprints: []*logproto.GroupedChunkRefs{
 					{Fingerprint: 0},
-					{Fingerprint: 100},
+					{Fingerprint: 2},
+					{Fingerprint: 4},
 				},
 			},
 			{
 				instance: addrsWithBounds{id: "instance-2", addrs: []string{"10.0.0.2"}},
 				fingerprints: []*logproto.GroupedChunkRefs{
-					{Fingerprint: 101},
-					{Fingerprint: 200},
-					{Fingerprint: 301},
-					{Fingerprint: 400},
+					{Fingerprint: 6},
+					{Fingerprint: 8},
+					{Fingerprint: 16},
+					{Fingerprint: 18},
 				},
 			},
 			{
 				instance: addrsWithBounds{id: "instance-3", addrs: []string{"10.0.0.3"}},
 				fingerprints: []*logproto.GroupedChunkRefs{
-					{Fingerprint: 201},
-					{Fingerprint: 300},
+					{Fingerprint: 10},
+					{Fingerprint: 12},
+					{Fingerprint: 14},
 				},
 			},
 		}
@@ -130,33 +130,45 @@ func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
 
 	// instance token ranges overlap
 	t.Run("overlapping", func(t *testing.T) {
-		groups := []*logproto.GroupedChunkRefs{
-			{Fingerprint: 50},
-			{Fingerprint: 150},
-			{Fingerprint: 250},
-			{Fingerprint: 350},
-		}
 		servers := []addrsWithBounds{
-			{id: "instance-1", addrs: []string{"10.0.0.1"}, FingerprintBounds: v1.NewBounds(0, 200)},
-			{id: "instance-2", addrs: []string{"10.0.0.2"}, FingerprintBounds: v1.NewBounds(100, 300)},
-			{id: "instance-3", addrs: []string{"10.0.0.3"}, FingerprintBounds: v1.NewBounds(200, 400)},
+			{id: "instance-1", addrs: []string{"10.0.0.1"}, FingerprintBounds: v1.NewBounds(0, 9)},
+			{id: "instance-2", addrs: []string{"10.0.0.2"}, FingerprintBounds: v1.NewBounds(5, 14)},
+			{id: "instance-3", addrs: []string{"10.0.0.3"}, FingerprintBounds: v1.NewBounds(10, 19)},
 		}
 
 		// partition fingerprints
 
 		expected := []instanceWithFingerprints{
-			{instance: servers[0], fingerprints: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 50},
-				{Fingerprint: 150},
-			}},
-			{instance: servers[1], fingerprints: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 150},
-				{Fingerprint: 250},
-			}},
-			{instance: servers[2], fingerprints: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 250},
-				{Fingerprint: 350},
-			}},
+			{
+				instance: servers[0],
+				fingerprints: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 0},
+					{Fingerprint: 2},
+					{Fingerprint: 4},
+					{Fingerprint: 6},
+					{Fingerprint: 8},
+				},
+			},
+			{
+				instance: servers[1],
+				fingerprints: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 6},
+					{Fingerprint: 8},
+					{Fingerprint: 10},
+					{Fingerprint: 12},
+					{Fingerprint: 14},
+				},
+			},
+			{
+				instance: servers[2],
+				fingerprints: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 10},
+					{Fingerprint: 12},
+					{Fingerprint: 14},
+					{Fingerprint: 16},
+					{Fingerprint: 18},
+				},
+			},
 		}
 
 		bounded := partitionFingerprintsByAddresses(groups, servers)
