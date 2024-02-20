@@ -35,10 +35,6 @@ import (
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
-// Number of bits to shift to the left to transform a token value from the ring
-// (uint32) into a value in the keyspace of fingerprints (uint64).
-const bitsTokenToFingerprint = 32
-
 var (
 	// BlocksOwnerRead is the operation used to check the authoritative owners of a block
 	// (replicas included) that are available for queries (a bloom gateway is available for
@@ -300,12 +296,12 @@ func groupFingerprintsByServer(groups []*logproto.GroupedChunkRefs, servers []ad
 	return groupByInstance(boundedFingerprints)
 }
 
-func mapTokenRangeToFingerprintRange(r bloomutils.Range[uint32], lshift int) v1.FingerprintBounds {
-	minFp := uint64(r.Min) << lshift
-	maxFp := uint64(r.Max) << lshift
+func mapTokenRangeToFingerprintRange(r bloomutils.Range[uint32]) v1.FingerprintBounds {
+	minFp := uint64(r.Min) << 32
+	maxFp := uint64(r.Max) << 32
 	return v1.NewBounds(
 		model.Fingerprint(minFp),
-		model.Fingerprint(maxFp+(1<<lshift)-1),
+		model.Fingerprint(maxFp|math.MaxUint32),
 	)
 }
 
@@ -323,7 +319,7 @@ func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.Inst
 			return nil, errors.Wrap(err, "bloom gateway get ring")
 		}
 
-		bounds := mapTokenRangeToFingerprintRange(it.At().TokenRange, bitsTokenToFingerprint)
+		bounds := mapTokenRangeToFingerprintRange(it.At().TokenRange)
 		servers = append(servers, addrsWithBounds{
 			id:                it.At().Instance.Id,
 			addrs:             rs.GetAddresses(),

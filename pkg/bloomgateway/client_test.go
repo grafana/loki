@@ -181,8 +181,8 @@ func BenchmarkPartitionFingerprintsByAddresses(b *testing.B) {
 			id:    fmt.Sprintf("instance-%x", i),
 			addrs: []string{fmt.Sprintf("%d", i)},
 			FingerprintBounds: v1.NewBounds(
-				model.Fingerprint(i)<<bitsTokenToFingerprint,
-				model.Fingerprint(i+tokenStep)<<bitsTokenToFingerprint,
+				model.Fingerprint(i)<<32,
+				model.Fingerprint(i+tokenStep)<<32,
 			),
 		})
 	}
@@ -201,19 +201,17 @@ func TestBloomGatewayClient_MapTokenRangeToFingerprintRange(t *testing.T) {
 		exp    v1.FingerprintBounds
 	}{
 		"single token expands to multiple fingerprints": {
-			lshift: 8,
-			inp:    bloomutils.NewTokenRange(0, 0),
-			exp:    v1.NewBounds(0, 0xff),
+			inp: bloomutils.NewTokenRange(0, 0),
+			exp: v1.NewBounds(0, 0xffffffff),
 		},
 		"max value expands to max value of new range": {
-			lshift: 8,
-			inp:    bloomutils.NewTokenRange((1 << 7), math.MaxUint8),
-			exp:    v1.NewBounds(0x8000, 0xffff),
+			inp: bloomutils.NewTokenRange((1 << 31), math.MaxUint32),
+			exp: v1.NewBounds((1 << 63), 0xffffffffffffffff),
 		},
 	}
 	for desc, tc := range testCases {
 		t.Run(desc, func(t *testing.T) {
-			actual := mapTokenRangeToFingerprintRange(tc.inp, tc.lshift)
+			actual := mapTokenRangeToFingerprintRange(tc.inp)
 			require.Equal(t, tc.exp, actual)
 		})
 	}
