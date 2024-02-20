@@ -3236,7 +3236,8 @@ otlp_config:
   [log_attributes: <list of attributes_configs>]
 
 # Defines a set of custom trackers for ingested bytes.
-# Takes a map of tracker names as keys and stream selectors as values.
+# Takes a map of tracker names as keys and a list of label names as values. A
+# tracker matches a stream if all labels are present.
 custom_trackers:
 ```
 
