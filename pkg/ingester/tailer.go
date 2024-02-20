@@ -116,10 +116,10 @@ func (t *tailer) loop() {
 }
 
 func (t *tailer) receiveStreamsLoop() {
+	defer t.close()
 	for {
 		select {
 		case <-t.conn.Context().Done():
-			t.close()
 			return
 		case <-t.closeChan:
 			return
