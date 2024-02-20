@@ -44,8 +44,12 @@ func (r Range[T]) Cmp(t T) v1.BoundsCheck {
 	return v1.Overlap
 }
 
+func NewRange[T constraints.Unsigned](min, max T) Range[T] {
+	return Range[T]{Min: min, Max: max}
+}
+
 func NewTokenRange(min, max uint32) Range[uint32] {
-	return Range[uint32]{min, max}
+	return Range[uint32]{Min: min, Max: max}
 }
 
 type InstanceWithTokenRange struct {
