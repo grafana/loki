@@ -132,76 +132,6 @@ workspace:
   path: loki
 ---
 kind: pipeline
-name: check
-steps:
-- commands:
-  - make BUILD_IN_CONTAINER=false check-generated-files
-  depends_on:
-  - clone
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: check-generated-files
-- commands:
-  - cd ..
-  - 'echo "cloning "$DRONE_TARGET_BRANCH '
-  - git clone -b $DRONE_TARGET_BRANCH $CI_REPO_REMOTE loki-target-branch
-  - cd -
-  depends_on:
-  - clone
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: clone-target-branch
-  when:
-    event:
-    - pull_request
-- commands:
-  - make BUILD_IN_CONTAINER=false check-doc
-  depends_on:
-  - loki
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: check-doc
-- commands:
-  - make BUILD_IN_CONTAINER=false loki
-  depends_on:
-  - check-generated-files
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: loki
-- commands:
-  - make BUILD_IN_CONTAINER=false check-format GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"
-  depends_on:
-  - loki
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: check-format
-  when:
-    event:
-    - pull_request
-- commands:
-  - make BUILD_IN_CONTAINER=false validate-dev-cluster-config
-  depends_on:
-  - validate-example-configs
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: validate-dev-cluster-config
-- commands:
-  - mkdir -p /hugo/content/docs/loki/latest
-  - cp -r docs/sources/* /hugo/content/docs/loki/latest/
-  - cd /hugo && make prod
-  image: grafana/docs-base:e6ef023f8b8
-  name: build-docs-website
-trigger:
-  ref:
-  - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
-  - refs/pull/*/head
-workspace:
-  base: /src
-  path: loki
----
-kind: pipeline
 name: mixins
 steps:
 - commands:
@@ -253,8 +183,6 @@ workspace:
   base: /src
   path: loki
 ---
-depends_on:
-- check
 kind: pipeline
 name: docker-amd64
 platform:
@@ -338,8 +266,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: docker-arm64
 platform:
@@ -423,8 +349,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: docker-arm
 platform:
@@ -508,8 +432,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: promtail-amd64
 platform:
@@ -545,8 +467,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: promtail-arm64
 platform:
@@ -582,8 +502,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: promtail-arm
 platform:
@@ -619,8 +537,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: lokioperator-amd64
 platform:
@@ -659,8 +575,6 @@ trigger:
   - refs/tags/operator/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: lokioperator-arm64
 platform:
@@ -699,8 +613,6 @@ trigger:
   - refs/tags/operator/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: lokioperator-arm
 platform:
@@ -739,8 +651,6 @@ trigger:
   - refs/tags/operator/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: fluent-bit-amd64
 platform:
@@ -776,8 +686,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: fluent-bit-arm64
 platform:
@@ -813,8 +721,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: fluent-bit-arm
 platform:
@@ -850,8 +756,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: fluentd-amd64
 platform:
@@ -888,8 +792,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: logstash-amd64
 platform:
@@ -926,8 +828,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: querytee-amd64
 platform:
@@ -1191,8 +1091,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: logql-analyzer
 platform:
@@ -1261,8 +1159,6 @@ volumes:
     path: /var/run/docker.sock
   name: docker
 ---
-depends_on:
-- check
 kind: pipeline
 name: lambda-promtail-amd64
 platform:
@@ -1311,8 +1207,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: lambda-promtail-arm64
 platform:
@@ -1468,6 +1362,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 66d587f7e6384dfb9439b147269b517b93fe6752d9667a4a61f7a3b8290b0c3f
+hmac: 32b44aecaad0258ed9494225595e1016a56bea960bcd0b15b2db3449bed957e0
 
 ...

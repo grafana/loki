@@ -65,6 +65,7 @@ function(buildImage) {
       validationMakeStep('lint', 'lint'),
       validationMakeStep('lint jsonnet', 'lint-jsonnet'),
       validationMakeStep('lint scripts', 'lint-scripts'),
+      validationMakeStep('format', 'check-format'),
     ]) + {
       steps+: [
         step.new('golangci-lint', 'golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5')
@@ -84,9 +85,30 @@ function(buildImage) {
       validationMakeStep('check mod', 'check-mod'),
       validationMakeStep('check docs', 'check-doc'),
       validationMakeStep('validate example configs', 'validate-example-configs'),
+      validationMakeStep('validate dev cluster config', 'validate-dev-cluster-config'),
       validationMakeStep('check example config docs', 'check-example-config-doc'),
       validationMakeStep('check helm reference doc', 'documentation-helm-reference-check'),
       validationMakeStep('check drone drift', 'check-drone-drift'),
-    ])
+    ]) + {
+      steps+: [
+        step.new('build docs website')
+        + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
+        + step.withRun(|||
+          cat <<EOF | docker run \
+            --interactive \
+            --env BUILD_IN_CONTAINER \
+            --env DRONE_TAG \
+            --env IMAGE_TAG \
+            --volume .:/src/loki \
+            --workdir /src/loki \
+            --entrypoint /bin/sh "%s"
+            git config --global --add safe.directory /src/loki
+            mkdir -p /hugo/content/docs/loki/latest
+            cp -r docs/sources/* /hugo/content/docs/loki/latest/
+            cd /hugo && make prod
+          EOF
+        ||| % 'grafana/docs-base:e6ef023f8b8'),
+      ],
+    }
   ),
 }

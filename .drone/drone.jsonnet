@@ -186,7 +186,6 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
       },
     },
   ],
-  depends_on: ['check'],
 };
 
 local fluentbit(arch) = pipeline('fluent-bit-' + arch) + arch_image(arch) {
@@ -200,7 +199,6 @@ local fluentbit(arch) = pipeline('fluent-bit-' + arch) + arch_image(arch) {
       },
     },
   ],
-  depends_on: ['check'],
 };
 
 local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'main') {
@@ -214,7 +212,6 @@ local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'main') {
       },
     },
   ],
-  depends_on: ['check'],
 };
 
 local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'main') {
@@ -228,7 +225,6 @@ local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'main') {
       },
     },
   ],
-  depends_on: ['check'],
 };
 
 local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
@@ -240,7 +236,6 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
       settings+: {},
     },
   ],
-  depends_on: ['check'],
 };
 
 local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(arch) {
@@ -255,7 +250,6 @@ local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(a
       settings+: {},
     },
   ],
-  depends_on: ['check'],
 };
 
 local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
@@ -269,7 +263,6 @@ local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
       settings+: {},
     },
   ],
-  depends_on: ['check'],
 };
 
 local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
@@ -283,7 +276,6 @@ local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
       },
     },
   ],
-  depends_on: ['check'],
 };
 
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
@@ -296,7 +288,6 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
     }
     for app in apps
   ],
-  depends_on: ['check'],
 };
 
 local manifest(apps) = pipeline('manifest') {
@@ -480,36 +471,6 @@ local build_image_tag = '0.33.0';
           password: { from_secret: docker_password_secret.name },
           dry_run: false,
         },
-      },
-    ],
-  },
-  pipeline('check') {
-    workspace: {
-      base: '/src',
-      path: 'loki',
-    },
-    steps: [
-      make('check-generated-files', container=false) { depends_on: ['clone'] },
-      run('clone-target-branch', commands=[
-        'cd ..',
-        'echo "cloning "$DRONE_TARGET_BRANCH ',
-        'git clone -b $DRONE_TARGET_BRANCH $CI_REPO_REMOTE loki-target-branch',
-        'cd -',
-      ]) { depends_on: ['clone'], when: onPRs },
-      make('check-doc', container=false) { depends_on: ['loki'] },
-      make('loki', container=false) { depends_on: ['check-generated-files'] },
-      make('check-format', container=false, args=[
-        'GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"',
-      ]) { depends_on: ['loki'], when: onPRs },
-      make('validate-dev-cluster-config', container=false) { depends_on: ['validate-example-configs'] },
-      {
-        name: 'build-docs-website',
-        image: 'grafana/docs-base:e6ef023f8b8',
-        commands: [
-          'mkdir -p /hugo/content/docs/loki/latest',
-          'cp -r docs/sources/* /hugo/content/docs/loki/latest/',
-          'cd /hugo && make prod',
-        ],
       },
     ],
   },
