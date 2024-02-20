@@ -6,8 +6,9 @@ import (
 	"testing"
 
 	"github.com/grafana/dskit/ring"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/stretchr/testify/require"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
 func TestBloomGatewayClient_InstanceSortMergeIterator(t *testing.T) {
