@@ -346,6 +346,7 @@ func (s *SimpleBloomController) buildGaps(
 
 			// Fetch blocks that aren't up to date but are in the desired fingerprint range
 			// to try and accelerate bloom creation
+			level.Debug(logger).Log("msg", "loading series and blocks for gap", "blocks", len(gap.blocks))
 			seriesItr, blocksIter, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
@@ -436,6 +437,8 @@ func (s *SimpleBloomController) buildGaps(
 
 			created = append(created, meta)
 			totalSeries += uint64(seriesItrWithCounter.Count())
+
+			s.metrics.blocksReused.Add(float64(len(gap.blocks)))
 		}
 	}
 
