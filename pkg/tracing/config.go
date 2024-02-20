@@ -11,6 +11,7 @@ type Config struct {
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, "tracing.enabled", true, "Set to false to disable tracing.")
+	f.BoolVar(&cfg.ProfilingEnabled, "tracing.profiling-enabled", true, "Set to true to enable profiling integration.")
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {

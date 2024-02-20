@@ -31,6 +31,11 @@ type Metrics struct {
 	tenantsCompleted     *prometheus.CounterVec
 	tenantsCompletedTime *prometheus.HistogramVec
 	tenantsSeries        prometheus.Histogram
+
+	blocksCreated prometheus.Counter
+	blocksDeleted prometheus.Counter
+	metasCreated  prometheus.Counter
+	metasDeleted  prometheus.Counter
 }
 
 func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
@@ -53,13 +58,13 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 		compactionsStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "compactions_started",
+			Name:      "compactions_started_total",
 			Help:      "Total number of compactions started",
 		}),
 		compactionCompleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "compactions_completed",
+			Name:      "compactions_completed_total",
 			Help:      "Total number of compactions completed",
 		}, []string{"status"}),
 		compactionTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
@@ -73,7 +78,7 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 		tenantsDiscovered: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "tenants_discovered",
+			Name:      "tenants_discovered_total",
 			Help:      "Number of tenants discovered during the current compaction run",
 		}),
 		tenantsOwned: promauto.With(r).NewCounter(prometheus.CounterOpts{
@@ -85,19 +90,19 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 		tenantsSkipped: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "tenants_skipped",
+			Name:      "tenants_skipped_total",
 			Help:      "Number of tenants skipped since they are not owned by this instance",
 		}),
 		tenantsStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "tenants_started",
+			Name:      "tenants_started_total",
 			Help:      "Number of tenants started to process during the current compaction run",
 		}),
 		tenantsCompleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "tenants_completed",
+			Name:      "tenants_completed_total",
 			Help:      "Number of tenants successfully processed during the current compaction run",
 		}, []string{"status"}),
 		tenantsCompletedTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
@@ -114,6 +119,30 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 			Help:      "Number of series processed per tenant in the owned fingerprint-range.",
 			// Up to 10M series per tenant, way more than what we expect given our max_global_streams_per_user limits
 			Buckets: prometheus.ExponentialBucketsRange(1, 10000000, 10),
+		}),
+		blocksCreated: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "blocks_created_total",
+			Help:      "Number of blocks created",
+		}),
+		blocksDeleted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "blocks_deleted_total",
+			Help:      "Number of blocks deleted",
+		}),
+		metasCreated: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "metas_created_total",
+			Help:      "Number of metas created",
+		}),
+		metasDeleted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "metas_deleted_total",
+			Help:      "Number of metas deleted",
 		}),
 	}
 

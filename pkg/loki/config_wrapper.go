@@ -646,6 +646,13 @@ func applyEmbeddedCacheConfig(r *ConfigWrapper) {
 		r.QueryRange.LabelsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
 		r.QueryRange.LabelsCacheConfig.CacheConfig.Prefix = prefix
 	}
+
+	instantMetricCacheConfig := r.QueryRange.InstantMetricCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(instantMetricCacheConfig) {
+		prefix := instantMetricCacheConfig.Prefix
+		r.QueryRange.InstantMetricCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.InstantMetricCacheConfig.CacheConfig.Prefix = prefix
+	}
 }
 
 func applyIngesterFinalSleep(cfg *ConfigWrapper) {

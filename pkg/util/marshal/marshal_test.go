@@ -129,6 +129,16 @@ const emptyStats = `{
 			"downloadTime": 0,
 			"queryLengthServed": 0
 		},
+		"instantMetricResult": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0,
+			"queryLengthServed": 0
+		},
 		"result": {
 			"entriesFound": 0,
 			"entriesRequested": 0,
@@ -208,13 +218,13 @@ var queryTestWithEncodingFlags = []struct {
 							[ "123456789012346", "super line with labels", {
 								"structuredMetadata": {
 									"foo": "a",
-									"bar": "b" 
-								} 
+									"bar": "b"
+								}
 							}],
 							[ "123456789012347", "super line with labels msg=text", {
 								"structuredMetadata": {
 									"foo": "a",
-									"bar": "b" 
+									"bar": "b"
 								},
 								"parsed": {
 									"msg": "text"
@@ -549,13 +559,13 @@ var tailTestWithEncodingFlags = []struct {
 						[ "123456789012346", "super line with labels", {
 							"structuredMetadata": {
 								"foo": "a",
-								"bar": "b" 
-							} 
+								"bar": "b"
+							}
 						}],
 						[ "123456789012347", "super line with labels msg=text", {
 							"structuredMetadata": {
 								"foo": "a",
-								"bar": "b" 
+								"bar": "b"
 							},
 							"parsed": {
 								"msg": "text"

@@ -1055,6 +1055,49 @@ query_range:
 		})
 	})
 
+	t.Run("for the instant-metric results cache config", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  instant_metric_results_cache:
+    cache:
+      redis:
+        endpoint: endpoint.redis.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "endpoint.redis.org", config.QueryRange.InstantMetricCacheConfig.CacheConfig.Redis.Endpoint)
+			assert.EqualValues(t, "frontend.instant-metric-results-cache.", config.QueryRange.InstantMetricCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.InstantMetricCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  instant_metric_results_cache:
+    cache:
+      memcached_client:
+        host: memcached.host.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.InstantMetricCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.instant-metric-results-cache.", config.QueryRange.InstantMetricCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.InstantMetricCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.True(t, config.QueryRange.InstantMetricCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+			assert.EqualValues(t, "frontend.instant-metric-results-cache.", config.QueryRange.InstantMetricCacheConfig.CacheConfig.Prefix)
+		})
+
+		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.InstantMetricCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.instant-metric-results-cache.", config.QueryRange.InstantMetricCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.InstantMetricCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+	})
+
 	t.Run("for the labels results cache config", func(t *testing.T) {
 		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---

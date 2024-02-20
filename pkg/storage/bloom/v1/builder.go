@@ -526,6 +526,7 @@ type MergeBuilder struct {
 	store Iterator[*Series]
 	// Add chunks to a bloom
 	populate func(*Series, *Bloom) error
+	metrics  *Metrics
 }
 
 // NewMergeBuilder is a specific builder which does the following:
@@ -536,11 +537,13 @@ func NewMergeBuilder(
 	blocks Iterator[*SeriesWithBloom],
 	store Iterator[*Series],
 	populate func(*Series, *Bloom) error,
+	metrics *Metrics,
 ) *MergeBuilder {
 	return &MergeBuilder{
 		blocks:   blocks,
 		store:    store,
 		populate: populate,
+		metrics:  metrics,
 	}
 }
 
@@ -568,6 +571,8 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 			nextInBlocks = deduped.At()
 		}
 
+		var chunksIndexed, chunksCopied int
+
 		cur := nextInBlocks
 		chunksToAdd := nextInStore.Chunks
 		// The next series from the store doesn't exist in the blocks, so we add it
@@ -583,7 +588,10 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 		} else {
 			// if the series already exists in the block, we only need to add the new chunks
 			chunksToAdd = nextInStore.Chunks.Unless(nextInBlocks.Series.Chunks)
+			chunksCopied = len(nextInStore.Chunks) - len(chunksToAdd)
 		}
+
+		chunksIndexed = len(chunksToAdd)
 
 		if len(chunksToAdd) > 0 {
 			if err := mb.populate(
@@ -597,6 +605,9 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 			}
 		}
 
+		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeIterated).Add(float64(chunksIndexed))
+		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeCopied).Add(float64(chunksCopied))
+
 		blockFull, err := builder.AddSeries(*cur)
 		if err != nil {
 			return 0, errors.Wrap(err, "adding series to block")
@@ -604,6 +615,10 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 		if blockFull {
 			break
 		}
+	}
+
+	if err := mb.store.Err(); err != nil {
+		return 0, errors.Wrap(err, "iterating store")
 	}
 
 	checksum, err := builder.Close()

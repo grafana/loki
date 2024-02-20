@@ -323,8 +323,7 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 			MetaRef: bloomshipper.MetaRef{
 				Ref: ref,
 			},
-			BlockTombstones: []bloomshipper.BlockRef{},
-			Blocks:          []bloomshipper.BlockRef{blockRef},
+			Blocks: []bloomshipper.BlockRef{blockRef},
 		}
 		block, data, _ := v1.MakeBlock(t, n, fromFp, throughFp, from, through)
 		// Printing fingerprints and the log lines of its chunks comes handy for debugging...
