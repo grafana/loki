@@ -229,7 +229,7 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 
 		customTrackers := limits.CustomTrackersConfig(userID)
 		var lbs labels.Labels
-		if tenantsRetention != nil || len(customTrackers.config) > 0 {
+		if tenantsRetention != nil || len(customTrackers.source) > 0 {
 			lbs, err = syntax.ParseLabels(s.Labels)
 			if err != nil {
 				return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)

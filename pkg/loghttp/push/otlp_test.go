@@ -130,7 +130,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		{
 			name:                 "service.name not defined in resource attributes",
 			otlpConfig:           DefaultOTLPConfig,
-			customTrackersConfig: MustNewCustomTrackersConfig(map[string]string{"foo": `{service_namespace="foo"}`}),
+			customTrackersConfig: NewCustomTrackersConfig(map[string][]string{"foo": {"service_namespace"}}),
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("service.namespace", "foo")

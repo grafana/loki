@@ -54,7 +54,7 @@ func TestParseRequest(t *testing.T) {
 		expectedStructuredMetadataBytes int
 		expectedBytes                   int
 		expectedLines                   int
-		customTrackers                  map[string]string
+		customTrackers                  map[string][]string
 		expectedBytesCustomTracker      map[string]int
 	}{
 		{
@@ -85,7 +85,7 @@ func TestParseRequest(t *testing.T) {
 			valid:                      true,
 			expectedBytes:              len("fizzbuzz"),
 			expectedLines:              1,
-			customTrackers:             map[string]string{"t": `{foo=~"b.*2"}`},
+			customTrackers:             map[string][]string{"t": {"foo="}},
 			expectedBytesCustomTracker: map[string]int{"t": len("fizzbuss")},
 		},
 		{
@@ -205,8 +205,7 @@ func TestParseRequest(t *testing.T) {
 				request.Header.Add("Content-Encoding", test.contentEncoding)
 			}
 
-			customTrackersConfig, err := NewCustomTrackersConfig(test.customTrackers)
-			require.NoError(t, err)
+			customTrackersConfig := NewCustomTrackersConfig(test.customTrackers)
 			limits := &mockLimits{
 				customTrackers: customTrackersConfig,
 			}
