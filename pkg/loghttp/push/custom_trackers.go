@@ -1,11 +1,13 @@
 package push
 
 import (
+	"time"
+
 	"github.com/prometheus/prometheus/model/labels"
 )
 
 type CustomTracker interface {
-	IngestedBytesAdd(tenant string, labels labels.Labels, value float64)
+	IngestedBytesAdd(tenant string, retentionPeriod time.Duration, labels labels.Labels, value float64)
 	DiscardedBytesAdd(tenant string, labels labels.Labels, value float64)
 }
 

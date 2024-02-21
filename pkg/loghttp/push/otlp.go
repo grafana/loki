@@ -40,9 +40,6 @@ func newPushStats() *Stats {
 	return &Stats{
 		logLinesBytes:           map[time.Duration]int64{},
 		structuredMetadataBytes: map[time.Duration]int64{},
-
-		logLinesBytesCustomTrackers:           map[string]map[time.Duration]int64{},
-		structuredMetadataBytesCustomTrackers: map[string]map[time.Duration]int64{},
 	}
 }
 
@@ -148,7 +145,18 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		labelsStr := streamLabels.String()
 
 		lbs := modelLabelsSetToLabelsList(streamLabels)
-		trackers := customTrackersConfig.MatchTrackers(lbs)
+
+		// Init custom streams tracking
+		trackedLabels := customTrackersConfig.MatchTrackers(lbs)
+		stats.structuredMetadataBytesCustomTrackers = make([]customTrackerPair, len(trackedLabels))
+		stats.logLinesBytesCustomTrackers = make([]customTrackerPair, len(trackedLabels))
+		for i, labels := range trackedLabels {
+			stats.structuredMetadataBytesCustomTrackers[i].Labels = labels
+			stats.structuredMetadataBytesCustomTrackers[i].Bytes = map[time.Duration]int64{}
+			stats.logLinesBytesCustomTrackers[i].Labels = labels
+			stats.logLinesBytesCustomTrackers[i].Bytes = map[time.Duration]int64{}
+		}
+
 		if _, ok := pushRequestsByStream[labelsStr]; !ok {
 			pushRequestsByStream[labelsStr] = logproto.Stream{
 				Labels: labelsStr,
@@ -229,12 +237,12 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 
 				stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
 				stats.logLinesBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(len(entry.Line))
-				for _, tracker := range trackers {
-					if _, ok := stats.logLinesBytesCustomTrackers[tracker]; !ok {
-						stats.logLinesBytesCustomTrackers[tracker] = map[time.Duration]int64{}
-					}
-					stats.logLinesBytesCustomTrackers[tracker][tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(len(entry.Line))
+
+				for i := range trackedLabels {
+					stats.logLinesBytesCustomTrackers[i].Bytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(len(entry.Line))
+					stats.structuredMetadataBytesCustomTrackers[i].Bytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
 				}
+
 				stats.numLines++
 				if entry.Timestamp.After(stats.mostRecentEntryTimestamp) {
 					stats.mostRecentEntryTimestamp = entry.Timestamp

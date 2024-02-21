@@ -84,8 +84,8 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				streamLabelsSize:                      21,
 				mostRecentEntryTimestamp:              now,
-				logLinesBytesCustomTrackers:           map[string]map[time.Duration]int64{},
-				structuredMetadataBytesCustomTrackers: map[string]map[time.Duration]int64{},
+				logLinesBytesCustomTrackers:           []customTrackerPair{},
+				structuredMetadataBytesCustomTrackers: []customTrackerPair{},
 			},
 		},
 		{
@@ -123,8 +123,8 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				streamLabelsSize:                      27,
 				mostRecentEntryTimestamp:              now,
-				logLinesBytesCustomTrackers:           map[string]map[time.Duration]int64{},
-				structuredMetadataBytesCustomTrackers: map[string]map[time.Duration]int64{},
+				logLinesBytesCustomTrackers:           []customTrackerPair{},
+				structuredMetadataBytesCustomTrackers: []customTrackerPair{},
 			},
 		},
 		{
@@ -162,12 +162,28 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				streamLabelsSize:         47,
 				mostRecentEntryTimestamp: now,
-				logLinesBytesCustomTrackers: map[string]map[time.Duration]int64{
-					"foo": {
-						time.Hour: 9,
+				logLinesBytesCustomTrackers: []customTrackerPair{
+					{
+						Labels: []labels.Label{
+							{Name: "service_namespace", Value: "foo"},
+							{Name: "tracker", Value: "foo"},
+						},
+						Bytes: map[time.Duration]int64{
+							time.Hour: 9,
+						},
 					},
 				},
-				structuredMetadataBytesCustomTrackers: map[string]map[time.Duration]int64{},
+				structuredMetadataBytesCustomTrackers: []customTrackerPair{
+					{
+						Labels: []labels.Label{
+							{Name: "service_namespace", Value: "foo"},
+							{Name: "tracker", Value: "foo"},
+						},
+						Bytes: map[time.Duration]int64{
+							time.Hour: 0,
+						},
+					},
+				},
 			},
 		},
 		{
@@ -244,8 +260,8 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				streamLabelsSize:                      21,
 				mostRecentEntryTimestamp:              now,
-				logLinesBytesCustomTrackers:           map[string]map[time.Duration]int64{},
-				structuredMetadataBytesCustomTrackers: map[string]map[time.Duration]int64{},
+				logLinesBytesCustomTrackers:           []customTrackerPair{},
+				structuredMetadataBytesCustomTrackers: []customTrackerPair{},
 			},
 		},
 		{
@@ -331,8 +347,8 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				streamLabelsSize:                      21,
 				mostRecentEntryTimestamp:              now,
-				logLinesBytesCustomTrackers:           map[string]map[time.Duration]int64{},
-				structuredMetadataBytesCustomTrackers: map[string]map[time.Duration]int64{},
+				logLinesBytesCustomTrackers:           []customTrackerPair{},
+				structuredMetadataBytesCustomTrackers: []customTrackerPair{},
 			},
 		},
 		{
@@ -477,8 +493,8 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				streamLabelsSize:                      42,
 				mostRecentEntryTimestamp:              now,
-				logLinesBytesCustomTrackers:           map[string]map[time.Duration]int64{},
-				structuredMetadataBytesCustomTrackers: map[string]map[time.Duration]int64{},
+				logLinesBytesCustomTrackers:           []customTrackerPair{},
+				structuredMetadataBytesCustomTrackers: []customTrackerPair{},
 			},
 		},
 	} {
