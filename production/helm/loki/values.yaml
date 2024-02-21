@@ -2343,12 +2343,11 @@ gateway:
     httpGet:
       path: /
       port: http-metrics
-      schema: HTTPS
     initialDelaySeconds: 15
     timeoutSeconds: 1
   nginxConfig:
-    # -- Which schema to be used by URLs. Can be 'http' or 'https'.
-    schema: "https"
+    # -- Which schema to be used when building URLs. Can be 'http' or 'https'.
+    schema: http
     # -- Enable listener for IPv6, disable on IPv4-only systems
     enableIPv6: true
     # -- NGINX log format
