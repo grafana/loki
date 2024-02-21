@@ -818,8 +818,8 @@ trivy: loki-image
 
 # Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
 .PHONY: snyk
-snyk: loki-image
-	snyk code test
+snyk:
+	snyk test
 
 .PHONY: scan-vulnerabilities
 scan-vulnerabilities: trivy snyk
