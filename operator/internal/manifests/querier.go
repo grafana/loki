@@ -11,7 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
@@ -73,7 +73,7 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 // NewQuerierDeployment creates a deployment object for a querier
 func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 	l := ComponentLabels(LabelQuerierComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.ObjectStorage.SecretSHA1, opts.CertRotationRequiredAt)
+	a := commonAnnotations(opts)
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: opts.Name,
 		Affinity:           configureAffinity(LabelQuerierComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Querier),
@@ -152,7 +152,7 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32(opts.Stack.Template.Querier.Replicas),
+			Replicas: ptr.To(opts.Stack.Template.Querier.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},

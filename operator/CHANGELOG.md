@@ -1,5 +1,19 @@
 ## Main
 
+- [12008](https://github.com/grafana/loki/pull/12008) **xperimental**: Support using multiple buckets with AWS STS
+- [11964](https://github.com/grafana/loki/pull/11964) **xperimental**: Provide Azure region for managed credentials using environment variable
+- [11920](https://github.com/grafana/loki/pull/11920) **xperimental**: Refactor handling of credentials in managed-auth mode
+- [11869](https://github.com/grafana/loki/pull/11869) **periklis**: Add support for running with Google Workload Identity
+- [11868](https://github.com/grafana/loki/pull/11868) **xperimental**: Integrate support for OpenShift-managed credentials in Azure
+- [11854](https://github.com/grafana/loki/pull/11854) **periklis**: Allow custom audience for managed-auth on STS
+- [11802](https://github.com/grafana/loki/pull/11802) **xperimental**: Add support for running with Azure Workload Identity
+- [11824](https://github.com/grafana/loki/pull/11824) **xperimental**: Improve messages for errors in storage secret
+- [11524](https://github.com/grafana/loki/pull/11524) **JoaoBraveCoding**, **periklis**: Add OpenShift cloud credentials support for AWS STS
+- [11513](https://github.com/grafana/loki/pull/11513) **btaani**: Add a custom metric that collects Lokistacks requiring a schema upgrade
+- [11718](https://github.com/grafana/loki/pull/11718) **periklis**: Upgrade k8s.io, sigs.k8s.io and openshift deps
+- [11671](https://github.com/grafana/loki/pull/11671) **JoaoBraveCoding**: Update mixins to fix structured metadata dashboards
+- [11624](https://github.com/grafana/loki/pull/11624) **xperimental**: React to changes in ConfigMap used for storage CA
+- [11481](https://github.com/grafana/loki/pull/11481) **JoaoBraveCoding**: Adds AWS STS support
 - [11533](https://github.com/grafana/loki/pull/11533) **periklis**: Add serviceaccount per LokiStack resource
 - [11158](https://github.com/grafana/loki/pull/11158) **btaani**: operator: Add warning for old schema configuration
 - [11473](https://github.com/grafana/loki/pull/11473) **JoaoBraveCoding**: Adds structured metadata dashboards

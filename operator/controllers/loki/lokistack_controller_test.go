@@ -10,6 +10,7 @@ import (
 	"github.com/go-logr/logr"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
+	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -160,7 +161,18 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		{
 			obj:           &routev1.Route{},
 			index:         10,
-			ownCallsCount: 11,
+			ownCallsCount: 12,
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled: true,
+				},
+			},
+			pred: updateOrDeleteOnlyPred,
+		},
+		{
+			obj:           &cloudcredentialv1.CredentialsRequest{},
+			index:         11,
+			ownCallsCount: 12,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					Enabled: true,
@@ -203,10 +215,11 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 	table := []test{
 		{
 			src:               &openshiftconfigv1.APIServer{},
-			index:             2,
-			watchesCallsCount: 3,
+			index:             3,
+			watchesCallsCount: 4,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled:          true,
 					ClusterTLSPolicy: true,
 				},
 			},
@@ -214,10 +227,11 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 		},
 		{
 			src:               &openshiftconfigv1.Proxy{},
-			index:             2,
-			watchesCallsCount: 3,
+			index:             3,
+			watchesCallsCount: 4,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled:      true,
 					ClusterProxy: true,
 				},
 			},
@@ -226,14 +240,21 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 		{
 			src:               &corev1.Service{},
 			index:             0,
-			watchesCallsCount: 2,
+			watchesCallsCount: 3,
 			featureGates:      configv1.FeatureGates{},
 			pred:              createUpdateOrDeletePred,
 		},
 		{
 			src:               &corev1.Secret{},
 			index:             1,
-			watchesCallsCount: 2,
+			watchesCallsCount: 3,
+			featureGates:      configv1.FeatureGates{},
+			pred:              createUpdateOrDeletePred,
+		},
+		{
+			src:               &corev1.ConfigMap{},
+			index:             2,
+			watchesCallsCount: 3,
 			featureGates:      configv1.FeatureGates{},
 			pred:              createUpdateOrDeletePred,
 		},

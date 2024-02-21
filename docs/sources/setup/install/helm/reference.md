@@ -856,7 +856,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.8.4"
+"v1.8.6"
 </pre>
 </td>
 		</tr>
@@ -1241,6 +1241,15 @@ null
 			<td>Override Write URL</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.enableIPv6</td>
+			<td>bool</td>
+			<td>Enable listener for IPv6, disable on IPv4-only systems</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -2710,6 +2719,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.rules.disabled</td>
+			<td>object</td>
+			<td>If you disable all the alerts and keep .monitoring.rules.alerting set to true, the chart will fail to render.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.rules.enabled</td>
 			<td>bool</td>
 			<td>If enabled, create PrometheusRule resource with Loki recording rules</td>
@@ -2787,6 +2805,15 @@ true
 			<td>The name of the PriorityClass for GrafanaAgent pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the grafanaAgent pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>

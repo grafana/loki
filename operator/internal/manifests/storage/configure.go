@@ -8,8 +8,21 @@ import (
 	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+)
+
+var (
+	managedAuthConfigVolumeMount = corev1.VolumeMount{
+		Name:      managedAuthConfigVolumeName,
+		MountPath: managedAuthConfigDirectory,
+	}
+
+	saTokenVolumeMount = corev1.VolumeMount{
+		Name:      saTokenVolumeName,
+		MountPath: saTokenVolumeMountPath,
+	}
 )
 
 // ConfigureDeployment appends additional pod volumes and container env vars, args, volume mounts
@@ -55,7 +68,6 @@ func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
 // With this, the deployment will expose credentials specific environment variables.
 func configureDeployment(d *appsv1.Deployment, opts Options) error {
 	p := ensureObjectStoreCredentials(&d.Spec.Template.Spec, opts)
-
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge gcs object storage spec ")
 	}
@@ -82,7 +94,6 @@ func configureDeploymentCA(d *appsv1.Deployment, tls *TLSConfig) error {
 // With this, the statefulset will expose credentials specific environment variable.
 func configureStatefulSet(s *appsv1.StatefulSet, opts Options) error {
 	p := ensureObjectStoreCredentials(&s.Spec.Template.Spec, opts)
-
 	if err := mergo.Merge(&s.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge gcs object storage spec ")
 	}
@@ -125,7 +136,18 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 		MountPath: secretDirectory,
 	})
 
-	container.Env = append(container.Env, staticAuthCredentials(opts)...)
+	if managedAuthEnabled(opts) {
+		container.Env = append(container.Env, managedAuthCredentials(opts)...)
+		volumes = append(volumes, saTokenVolume(opts))
+		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount)
+
+		if opts.OpenShift.ManagedAuthEnabled() && opts.S3 != nil && opts.S3.STS {
+			volumes = append(volumes, managedAuthConfigVolume(opts))
+			container.VolumeMounts = append(container.VolumeMounts, managedAuthConfigVolumeMount)
+		}
+	} else {
+		container.Env = append(container.Env, staticAuthCredentials(opts)...)
+	}
 	container.Env = append(container.Env, serverSideEncryption(opts)...)
 
 	return corev1.PodSpec{
@@ -162,6 +184,47 @@ func staticAuthCredentials(opts Options) []corev1.EnvVar {
 		return []corev1.EnvVar{
 			envVarFromSecret(EnvSwiftUsername, secretName, KeySwiftUsername),
 			envVarFromSecret(EnvSwiftPassword, secretName, KeySwiftPassword),
+		}
+	default:
+		return []corev1.EnvVar{}
+	}
+}
+
+func managedAuthCredentials(opts Options) []corev1.EnvVar {
+	switch opts.SharedStore {
+	case lokiv1.ObjectStorageSecretS3:
+		if opts.OpenShift.ManagedAuthEnabled() {
+			return []corev1.EnvVar{
+				envVarFromValue(EnvAWSCredentialsFile, path.Join(managedAuthConfigDirectory, KeyAWSCredentialsFilename)),
+				envVarFromValue(EnvAWSSdkLoadConfig, "true"),
+			}
+		} else {
+			return []corev1.EnvVar{
+				envVarFromSecret(EnvAWSRoleArn, opts.SecretName, KeyAWSRoleArn),
+				envVarFromValue(EnvAWSWebIdentityTokenFile, ServiceAccountTokenFilePath),
+			}
+		}
+	case lokiv1.ObjectStorageSecretAzure:
+		if opts.OpenShift.ManagedAuthEnabled() {
+			return []corev1.EnvVar{
+				envVarFromSecret(EnvAzureStorageAccountName, opts.SecretName, KeyAzureStorageAccountName),
+				envVarFromSecret(EnvAzureClientID, opts.OpenShift.CloudCredentials.SecretName, azureManagedCredentialKeyClientID),
+				envVarFromSecret(EnvAzureTenantID, opts.OpenShift.CloudCredentials.SecretName, azureManagedCredentialKeyTenantID),
+				envVarFromSecret(EnvAzureSubscriptionID, opts.OpenShift.CloudCredentials.SecretName, azureManagedCredentialKeySubscriptionID),
+				envVarFromValue(EnvAzureFederatedTokenFile, ServiceAccountTokenFilePath),
+			}
+		}
+
+		return []corev1.EnvVar{
+			envVarFromSecret(EnvAzureStorageAccountName, opts.SecretName, KeyAzureStorageAccountName),
+			envVarFromSecret(EnvAzureClientID, opts.SecretName, KeyAzureStorageClientID),
+			envVarFromSecret(EnvAzureTenantID, opts.SecretName, KeyAzureStorageTenantID),
+			envVarFromSecret(EnvAzureSubscriptionID, opts.SecretName, KeyAzureStorageSubscriptionID),
+			envVarFromValue(EnvAzureFederatedTokenFile, ServiceAccountTokenFilePath),
+		}
+	case lokiv1.ObjectStorageSecretGCS:
+		return []corev1.EnvVar{
+			envVarFromValue(EnvGoogleApplicationCredentials, path.Join(secretDirectory, KeyGCPServiceAccountKeyFilename)),
 		}
 	default:
 		return []corev1.EnvVar{}
@@ -234,5 +297,64 @@ func envVarFromValue(name, value string) corev1.EnvVar {
 	return corev1.EnvVar{
 		Name:  name,
 		Value: value,
+	}
+}
+
+func managedAuthEnabled(opts Options) bool {
+	switch opts.SharedStore {
+	case lokiv1.ObjectStorageSecretS3:
+		return opts.S3 != nil && opts.S3.STS
+	case lokiv1.ObjectStorageSecretAzure:
+		return opts.Azure != nil && opts.Azure.WorkloadIdentity
+	case lokiv1.ObjectStorageSecretGCS:
+		return opts.GCS != nil && opts.GCS.WorkloadIdentity
+	default:
+		return false
+	}
+}
+
+func saTokenVolume(opts Options) corev1.Volume {
+	var audience string
+	storeType := opts.SharedStore
+	switch storeType {
+	case lokiv1.ObjectStorageSecretS3:
+		audience = awsDefaultAudience
+		if opts.S3.Audience != "" {
+			audience = opts.S3.Audience
+		}
+	case lokiv1.ObjectStorageSecretAzure:
+		audience = azureDefaultAudience
+		if opts.Azure.Audience != "" {
+			audience = opts.Azure.Audience
+		}
+	case lokiv1.ObjectStorageSecretGCS:
+		audience = opts.GCS.Audience
+	}
+	return corev1.Volume{
+		Name: saTokenVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			Projected: &corev1.ProjectedVolumeSource{
+				Sources: []corev1.VolumeProjection{
+					{
+						ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+							ExpirationSeconds: ptr.To(saTokenExpiration),
+							Path:              corev1.ServiceAccountTokenKey,
+							Audience:          audience,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func managedAuthConfigVolume(opts Options) corev1.Volume {
+	return corev1.Volume{
+		Name: managedAuthConfigVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{
+				SecretName: opts.OpenShift.CloudCredentials.SecretName,
+			},
+		},
 	}
 }

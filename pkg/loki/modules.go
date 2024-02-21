@@ -75,6 +75,7 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/querylimits"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
+	util_ring "github.com/grafana/loki/pkg/util/ring"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -691,7 +692,7 @@ func (t *Loki) updateConfigForShipperStore() {
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeWriteOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 
-	case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read), t.Cfg.isModuleEnabled(Backend), t.isModuleActive(IndexGateway), t.isModuleActive(BloomCompactor):
+	case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read), t.Cfg.isModuleEnabled(Backend), t.isModuleActive(IndexGateway), t.Cfg.isModuleEnabled(BloomCompactor):
 		// We do not want query to do any updates to index
 		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
@@ -800,12 +801,25 @@ func (disabledShuffleShardingLimits) MaxQueriersPerUser(_ string) uint { return 
 
 func (disabledShuffleShardingLimits) MaxQueryCapacity(_ string) float64 { return 0 }
 
+// ingesterQueryOptions exists simply to avoid dependency cycles when using querier.Config directly in queryrange.NewMiddleware
+type ingesterQueryOptions struct {
+	querier.Config
+}
+
+func (i ingesterQueryOptions) QueryStoreOnly() bool {
+	return i.Config.QueryStoreOnly
+}
+func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
+	return i.Config.QueryIngestersWithin
+}
+
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
+		ingesterQueryOptions{t.Cfg.Querier},
 		util_log.Logger,
 		t.Overrides,
 		t.Cfg.SchemaConfig,
@@ -1258,9 +1272,7 @@ func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
 func (t *Loki) initBloomGateway() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "bloom-gateway")
 
-	shuffleSharding := bloomgateway.NewShuffleShardingStrategy(t.bloomGatewayRingManager.Ring, t.bloomGatewayRingManager.RingLifecycler, t.Overrides, logger)
-
-	gateway, err := bloomgateway.New(t.Cfg.BloomGateway, t.Cfg.SchemaConfig, t.Cfg.StorageConfig, t.Overrides, shuffleSharding, t.clientMetrics, logger, prometheus.DefaultRegisterer)
+	gateway, err := bloomgateway.New(t.Cfg.BloomGateway, t.Cfg.SchemaConfig, t.Cfg.StorageConfig, t.Overrides, t.clientMetrics, logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -1407,17 +1419,19 @@ func (t *Loki) initBloomCompactor() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "bloom-compactor")
 
-	shuffleSharding := bloomcompactor.NewShuffleShardingStrategy(t.bloomCompactorRingManager.Ring, t.bloomCompactorRingManager.RingLifecycler, t.Overrides)
+	shuffleSharding := util_ring.NewTenantShuffleSharding(t.bloomCompactorRingManager.Ring, t.bloomCompactorRingManager.RingLifecycler, t.Overrides.BloomCompactorShardSize)
 
 	compactor, err := bloomcompactor.New(
 		t.Cfg.BloomCompactor,
-		t.Cfg.StorageConfig,
 		t.Cfg.SchemaConfig,
+		t.Cfg.StorageConfig,
+		t.clientMetrics,
+		t.Store,
+		shuffleSharding,
 		t.Overrides,
 		logger,
-		shuffleSharding,
-		t.clientMetrics,
-		prometheus.DefaultRegisterer)
+		prometheus.DefaultRegisterer,
+	)
 
 	if err != nil {
 		return nil, err
@@ -1432,7 +1446,9 @@ func (t *Loki) initBloomCompactorRing() (services.Service, error) {
 	// is LegacyMode needed?
 	// legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
 
-	rm, err := lokiring.NewRingManager(bloomCompactorRingKey, lokiring.ServerMode, t.Cfg.BloomCompactor.Ring, 1, 1, util_log.Logger, prometheus.DefaultRegisterer)
+	// TODO(owen-d): configurable num tokens, just use lifecycler config?
+	numTokens := 10
+	rm, err := lokiring.NewRingManager(bloomCompactorRingKey, lokiring.ServerMode, t.Cfg.BloomCompactor.Ring, 1, numTokens, util_log.Logger, prometheus.DefaultRegisterer)
 
 	if err != nil {
 		return nil, gerrors.Wrap(err, "error initializing bloom-compactor ring manager")

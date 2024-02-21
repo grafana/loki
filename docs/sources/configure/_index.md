@@ -731,6 +731,11 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.log-queries-longer-than
 [log_queries_longer_than: <duration> | default = 0s]
 
+# Comma-separated list of request header names to include in query logs. Applies
+# to both query stats and slow queries logs.
+# CLI flag: -frontend.log-query-request-headers
+[log_query_request_headers: <string> | default = ""]
+
 # Max body size for downstream prometheus.
 # CLI flag: -frontend.max-body-size
 [max_body_size: <int> | default = 10485760]
@@ -880,6 +885,28 @@ volume_results_cache:
   # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.volume-results-cache.compression
   [compression: <string> | default = ""]
+
+# Cache instant metric query results.
+# CLI flag: -querier.cache-instant-metric-results
+[cache_instant_metric_results: <boolean> | default = false]
+
+# If a cache config is not specified and cache_instant_metric_results is true,
+# the config for the results cache is used.
+instant_metric_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.instant-metric-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.instant-metric-results-cache.compression
+  [compression: <string> | default = ""]
+
+# Whether to align the splits of instant metric query with splitByInterval and
+# query's exec time. Useful when instant_metric_cache is enabled
+# CLI flag: -querier.instant-metric-query-split-align
+[instant_metric_query_split_align: <boolean> | default = false]
 
 # Cache series query results.
 # CLI flag: -querier.cache-series-results
@@ -1268,6 +1295,10 @@ remote_write:
   # -limits.per-user-override-period.
   # CLI flag: -ruler.remote-write.config-refresh-period
   [config_refresh_period: <duration> | default = 10s]
+
+  # Add X-Scope-OrgID header in remote write requests.
+  # CLI flag: -ruler.remote-write.add-org-id-header
+  [add_org_id_header: <boolean> | default = true]
 
 # Configuration for rule evaluation.
 evaluation:
@@ -2322,27 +2353,26 @@ bloom_shipper:
     [max_tasks_enqueued_per_tenant: <int> | default = 10000]
 
   blocks_cache:
-    # Whether embedded cache is enabled.
-    # CLI flag: -blocks-cache.enabled
+    # Cache for bloom blocks. Whether embedded cache is enabled.
+    # CLI flag: -bloom.blocks-cache.enabled
     [enabled: <boolean> | default = false]
 
-    # Maximum memory size of the cache in MB.
-    # CLI flag: -blocks-cache.max-size-mb
+    # Cache for bloom blocks. Maximum memory size of the cache in MB.
+    # CLI flag: -bloom.blocks-cache.max-size-mb
     [max_size_mb: <int> | default = 100]
 
-    # Maximum number of entries in the cache.
-    # CLI flag: -blocks-cache.max-size-items
+    # Cache for bloom blocks. Maximum number of entries in the cache.
+    # CLI flag: -bloom.blocks-cache.max-size-items
     [max_size_items: <int> | default = 0]
 
-    # The time to live for items in the cache before they get purged.
-    # CLI flag: -blocks-cache.ttl
-    [ttl: <duration> | default = 0s]
+    # Cache for bloom blocks. The time to live for items in the cache before
+    # they get purged.
+    # CLI flag: -bloom.blocks-cache.ttl
+    [ttl: <duration> | default = 24h]
 
-    # During this period the process waits until the directory becomes not used
-    # and only after this it will be deleted. If the timeout is reached, the
-    # directory is force deleted.
-    # CLI flag: -blocks-cache.remove-directory-graceful-period
-    [remove_directory_graceful_period: <duration> | default = 5m]
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is: bloom.metas-cache
+  [metas_cache: <cache_config>]
 ```
 
 ### chunk_store_config
@@ -2637,13 +2667,26 @@ ring:
 # CLI flag: -bloom-compactor.enabled
 [enabled: <boolean> | default = false]
 
-# Directory where files can be downloaded for compaction.
-# CLI flag: -bloom-compactor.working-directory
-[working_directory: <string> | default = ""]
-
 # Interval at which to re-run the compaction operation.
 # CLI flag: -bloom-compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
+
+# How many index periods (days) to wait before compacting a table. This can be
+# used to lower cost by not re-writing data to object storage too frequently
+# since recent data changes more often.
+# CLI flag: -bloom-compactor.min-table-compaction-period
+[min_table_compaction_period: <int> | default = 1]
+
+# How many index periods (days) to wait before compacting a table. This can be
+# used to lower cost by not trying to compact older data which doesn't change.
+# This can be optimized by aligning it with the maximum
+# `reject_old_samples_max_age` setting of any tenant.
+# CLI flag: -bloom-compactor.max-table-compaction-period
+[max_table_compaction_period: <int> | default = 7]
+
+# Number of workers to run in parallel for compaction.
+# CLI flag: -bloom-compactor.worker-parallelism
+[worker_parallelism: <int> | default = 1]
 
 # Minimum backoff time between retries.
 # CLI flag: -bloom-compactor.compaction-retries-min-backoff
@@ -2830,6 +2873,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness_per_query: <duration> | default = 10m]
 
+# Do not cache metadata request if the end time is within the
+# frontend.max-metadata-cache-freshness window. Set this to 0 to apply no such
+# limits. Defaults to 24h.
+# CLI flag: -frontend.max-metadata-cache-freshness
+[max_metadata_cache_freshness: <duration> | default = 1d]
+
 # Do not cache requests with an end time that falls within Now minus this
 # duration. 0 disables this feature (default).
 # CLI flag: -frontend.max-stats-cache-freshness
@@ -2883,6 +2932,43 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # keys are chosen when label/series result caching is enabled.
 # CLI flag: -querier.split-metadata-queries-by-interval
 [split_metadata_queries_by_interval: <duration> | default = 1d]
+
+# Experimental. Split interval to use for the portion of metadata request that
+# falls within `recent_metadata_query_window`. Rest of the request which is
+# outside the window still uses `split_metadata_queries_by_interval`. If set to
+# 0, the entire request defaults to using a split interval of
+# `split_metadata_queries_by_interval.`.
+# CLI flag: -experimental.querier.split-recent-metadata-queries-by-interval
+[split_recent_metadata_queries_by_interval: <duration> | default = 1h]
+
+# Experimental. Metadata query window inside which
+# `split_recent_metadata_queries_by_interval` gets applied, portion of the
+# metadata request that falls in this window is split using
+# `split_recent_metadata_queries_by_interval`. The value 0 disables using a
+# different split interval for recent metadata queries.
+# 
+# This is added to improve cacheability of recent metadata queries. Query split
+# interval also determines the interval used in cache key. The default split
+# interval of 24h is useful for caching long queries, each cache key holding 1
+# day's results. But metadata queries are often shorter than 24h, to cache them
+# effectively we need a smaller split interval. `recent_metadata_query_window`
+# along with `split_recent_metadata_queries_by_interval` help configure a
+# shorter split interval for recent metadata queries.
+# CLI flag: -experimental.querier.recent-metadata-query-window
+[recent_metadata_query_window: <duration> | default = 0s]
+
+# Split instant metric queries by a time interval and execute in parallel. The
+# value 0 disables splitting instant metric queries by time. This also
+# determines how cache keys are chosen when instant metric query result caching
+# is enabled.
+# CLI flag: -querier.split-instant-metric-queries-by-interval
+[split_instant_metric_queries_by_interval: <duration> | default = 1h]
+
+# Interval to use for time-based splitting when a request is within the
+# `query_ingesters_within` window; defaults to `split-queries-by-interval` by
+# setting to 0.
+# CLI flag: -querier.split-ingester-queries-by-interval
+[split_ingester_queries_by_interval: <duration> | default = 0s]
 
 # Limit queries that can be sharded. Queries within the time range of now and
 # now minus this sharding lookback are not sharded. The default value of 0s
@@ -3088,13 +3174,17 @@ shard_streams:
 # CLI flag: -bloom-compactor.enable-compaction
 [bloom_compactor_enable_compaction: <boolean> | default = false]
 
+# The batch size of the chunks the bloom-compactor downloads at once.
+# CLI flag: -bloom-compactor.chunks-batch-size
+[bloom_compactor_chunks_batch_size: <int> | default = 100]
+
 # Length of the n-grams created when computing blooms from log lines.
 # CLI flag: -bloom-compactor.ngram-length
 [bloom_ngram_length: <int> | default = 4]
 
 # Skip factor for the n-grams created when computing blooms from log lines.
 # CLI flag: -bloom-compactor.ngram-skip
-[bloom_ngram_skip: <int> | default = 0]
+[bloom_ngram_skip: <int> | default = 1]
 
 # Scalable Bloom Filter desired false-positive rate.
 # CLI flag: -bloom-compactor.false-positive-rate
@@ -3108,6 +3198,12 @@ shard_streams:
 # CLI flag: -bloom-gateway.cache-key-interval
 [bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
+# The maximum bloom block size. A value of 0 sets an unlimited size. Default is
+# 200MB. The actual block size might exceed this limit since blooms will be
+# added to blocks until the block exceeds the maximum block size.
+# CLI flag: -bloom-compactor.max-block-size
+[bloom_compactor_max_block_size: <int> | default = 200MB]
+
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
 [allow_structured_metadata: <boolean> | default = false]
@@ -3119,6 +3215,25 @@ shard_streams:
 # Maximum number of structured metadata entries per log line.
 # CLI flag: -limits.max-structured-metadata-entries-count
 [max_structured_metadata_entries_count: <int> | default = 128]
+
+# OTLP log ingestion configurations
+otlp_config:
+  # Configuration for resource attributes to store them as index labels or
+  # Structured Metadata or drop them altogether
+  resource_attributes:
+    # Configure whether to ignore the default list of resource attributes to be
+    # stored as index labels and only use the given resource attributes config
+    [ignore_defaults: <boolean> | default = false]
+
+    [attributes_config: <list of attributes_configs>]
+
+  # Configuration for scope attributes to store them as Structured Metadata or
+  # drop them altogether
+  [scope_attributes: <list of attributes_configs>]
+
+  # Configuration for log attributes to store them as Structured Metadata or
+  # drop them altogether
+  [log_attributes: <list of attributes_configs>]
 ```
 
 ### frontend_worker
@@ -4314,8 +4429,10 @@ The TLS configuration.
 The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bloom-gateway-client.cache`
+- `bloom.metas-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
+- `frontend.instant-metric-results-cache`
 - `frontend.label-results-cache`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
@@ -4545,7 +4662,7 @@ chunks:
   [tags: <map of string to string>]
 
 # How many shards will be created. Only used if schema is v10 or greater.
-[row_shards: <int>]
+[row_shards: <int> | default = 16]
 ```
 
 ### aws_storage_config
@@ -5260,6 +5377,24 @@ Named store from this example can be used by setting object_store to store-1 in 
 [cos: <map of string to cos_storage_config>]
 ```
 
+### attributes_config
+
+Define actions for matching OpenTelemetry (OTEL) attributes.
+
+```yaml
+# Configures action to take on matching attributes. It allows one of
+# [structured_metadata, drop] for all attribute types. It additionally allows
+# index_label action for resource attributes
+[action: <string> | default = ""]
+
+# List of attributes to configure how to store them or drop them altogether
+[attributes: <list of strings>]
+
+# Regex to choose attributes to configure how to store them or drop them
+# altogether
+[regex: <Regexp>]
+```
+
 ## Runtime Configuration file
 
 Loki has a concept of "runtime config" file, which is simply a file that is reloaded while Loki is running. It is used by some Loki components to allow operator to change some aspects of Loki configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
@@ -5313,7 +5448,8 @@ place in the `limits_config` section:
 configure a runtime configuration file:
 
     ```
-    runtime_config: overrides.yaml
+    runtime_config:
+      file: overrides.yaml
     ```
 
     In the `overrides.yaml` file, add `unordered_writes` for each tenant

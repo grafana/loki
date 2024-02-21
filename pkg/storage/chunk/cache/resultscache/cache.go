@@ -50,7 +50,7 @@ type ResultsCache struct {
 	next                 Handler
 	cache                cache.Cache
 	limits               Limits
-	splitter             KeyGenerator
+	keyGen               KeyGenerator
 	cacheGenNumberLoader CacheGenNumberLoader
 	retentionEnabled     bool
 	extractor            Extractor
@@ -58,6 +58,7 @@ type ResultsCache struct {
 	merger               ResponseMerger
 	shouldCacheReq       ShouldCacheReqFn
 	shouldCacheRes       ShouldCacheResFn
+	onlyUseEntireExtent  bool
 	parallelismForReq    func(ctx context.Context, tenantIDs []string, r Request) int
 }
 
@@ -79,14 +80,14 @@ func NewResultsCache(
 	shouldCacheRes ShouldCacheResFn,
 	parallelismForReq func(ctx context.Context, tenantIDs []string, r Request) int,
 	cacheGenNumberLoader CacheGenNumberLoader,
-	retentionEnabled bool,
+	retentionEnabled, onlyUseEntireExtent bool,
 ) *ResultsCache {
 	return &ResultsCache{
 		logger:               logger,
 		next:                 next,
 		cache:                c,
 		limits:               limits,
-		splitter:             keyGen,
+		keyGen:               keyGen,
 		cacheGenNumberLoader: cacheGenNumberLoader,
 		retentionEnabled:     retentionEnabled,
 		extractor:            extractor,
@@ -95,6 +96,7 @@ func NewResultsCache(
 		shouldCacheReq:       shouldCacheReq,
 		shouldCacheRes:       shouldCacheRes,
 		parallelismForReq:    parallelismForReq,
+		onlyUseEntireExtent:  onlyUseEntireExtent,
 	}
 }
 
@@ -115,7 +117,7 @@ func (s ResultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	var (
-		key      = s.splitter.GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), r)
+		key      = s.keyGen.GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), r)
 		extents  []Extent
 		response Response
 	)
@@ -334,6 +336,25 @@ func (s ResultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 			continue
 		}
 
+		if s.onlyUseEntireExtent && (start > extent.GetStart() || end < extent.GetEnd()) {
+			// It is not possible to extract the overlapping portion of an extent for all request types.
+			// Metadata results for one cannot be extracted as the data portion is just a list of strings with no associated timestamp.
+			// To avoid returning incorrect results, we only use extents that are entirely within the requested query range.
+			//
+			//	Start                  End
+			//	┌────────────────────────┐
+			//	│          Req           │
+			//	└────────────────────────┘
+			//
+			//          ◄──────────────►               only this extent can be used. Remaining portion of the query will be added to requests.
+			//
+			//
+			//   ◄──────X───────►                      cannot be partially extracted. will be discarded if onlyUseEntireExtent is set.
+			//                       ◄───────X──────►
+			//   ◄───────────────X──────────────────►
+			continue
+		}
+
 		// If this extent is tiny and request is not tiny, discard it: more efficient to do a few larger queries.
 		// Hopefully tiny request can make tiny extent into not-so-tiny extent.
 
@@ -353,6 +374,7 @@ func (s ResultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 		if err != nil {
 			return nil, nil, err
 		}
+
 		// extract the overlap from the cached extent.
 		cachedResponses = append(cachedResponses, s.extractor.Extract(start, end, res, extent.GetStart(), extent.GetEnd()))
 		start = extent.End

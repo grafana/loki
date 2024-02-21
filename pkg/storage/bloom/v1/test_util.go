@@ -13,19 +13,20 @@ import (
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 )
 
-func MakeBlockQuerier(t testing.TB, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (*BlockQuerier, []SeriesWithBloom) {
+// TODO(owen-d): this should probably be in it's own testing-util package
+
+func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (*Block, []SeriesWithBloom, [][][]byte) {
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
-	numSeries := int(throughFp - fromFp)
-	numKeysPerSeries := 1000
-	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, fromFp, throughFp, fromTs, throughTs)
+	numSeries := int(throughFp-fromFp) / nth
+	data, keys := MkBasicSeriesWithBlooms(numSeries, nth, fromFp, throughFp, fromTs, throughTs)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			schema: Schema{
+			Schema: Schema{
 				version:     DefaultSchemaVersion,
 				encoding:    chunkenc.EncSnappy,
 				nGramLength: 4, // see DefaultNGramLength in bloom_tokenizer_test.go
@@ -41,17 +42,18 @@ func MakeBlockQuerier(t testing.TB, fromFp, throughFp model.Fingerprint, fromTs,
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 	block := NewBlock(reader)
-	return NewBlockQuerier(block), data
+	return block, data, keys
 }
 
-func mkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBloom, keysList [][][]byte) {
+func MkBasicSeriesWithBlooms(nSeries, _ int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBloom, keysList [][][]byte) {
+	const nGramLen = 4
 	seriesList = make([]SeriesWithBloom, 0, nSeries)
 	keysList = make([][][]byte, 0, nSeries)
 
 	step := (throughFp - fromFp) / model.Fingerprint(nSeries)
 	timeDelta := time.Duration(throughTs.Sub(fromTs).Nanoseconds() / int64(nSeries))
 
-	tokenizer := NewNGramTokenizer(4, 0)
+	tokenizer := NewNGramTokenizer(nGramLen, 0)
 	for i := 0; i < nSeries; i++ {
 		var series Series
 		series.Fingerprint = fromFp + model.Fingerprint(i)*step
@@ -67,13 +69,25 @@ func mkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model
 		var bloom Bloom
 		bloom.ScalableBloomFilter = *filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 
-		keys := make([][]byte, 0, keysPerSeries)
-		for j := 0; j < keysPerSeries; j++ {
-			it := tokenizer.Tokens(fmt.Sprintf("series %d", i*keysPerSeries+j))
-			for it.Next() {
-				key := it.At()
-				bloom.Add(key)
-				keys = append(keys, key)
+		keys := make([][]byte, 0, int(step))
+		for _, chk := range series.Chunks {
+			tokenBuf, prefixLen := prefixedToken(nGramLen, chk, nil)
+
+			for j := 0; j < int(step); j++ {
+				line := fmt.Sprintf("%04x:%04x", int(series.Fingerprint), j)
+				it := tokenizer.Tokens(line)
+				for it.Next() {
+					key := it.At()
+					// series-level key
+					bloom.Add(key)
+
+					// chunk-level key
+					tokenBuf = append(tokenBuf[:prefixLen], key...)
+					bloom.Add(tokenBuf)
+
+					keyCopy := key
+					keys = append(keys, keyCopy)
+				}
 			}
 		}
 
@@ -84,4 +98,15 @@ func mkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model
 		keysList = append(keysList, keys)
 	}
 	return
+}
+
+func EqualIterators[T any](t *testing.T, test func(a, b T), expected, actual Iterator[T]) {
+	for expected.Next() {
+		require.True(t, actual.Next())
+		a, b := expected.At(), actual.At()
+		test(a, b)
+	}
+	require.False(t, actual.Next())
+	require.Nil(t, expected.Err())
+	require.Nil(t, actual.Err())
 }

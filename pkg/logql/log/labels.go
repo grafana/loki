@@ -135,6 +135,7 @@ type BaseLabelsBuilder struct {
 	errDetails string
 
 	groups                       []string
+	baseMap                      map[string]string
 	parserKeyHints               ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
 	without, noLabels            bool
 	referencedStructuredMetadata bool
@@ -146,7 +147,6 @@ type BaseLabelsBuilder struct {
 // LabelsBuilder is the same as labels.Builder but tailored for this package.
 type LabelsBuilder struct {
 	base          labels.Labels
-	baseMap       map[string]string
 	buf           labels.Labels
 	currentResult LabelsResult
 	groupedResult LabelsResult
@@ -157,7 +157,7 @@ type LabelsBuilder struct {
 // NewBaseLabelsBuilderWithGrouping creates a new base labels builder with grouping to compute results.
 func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint, without, noLabels bool) *BaseLabelsBuilder {
 	if parserKeyHints == nil {
-		parserKeyHints = noParserHints
+		parserKeyHints = NoParserHints()
 	}
 
 	const labelsCapacity = 16
@@ -179,7 +179,7 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint
 
 // NewBaseLabelsBuilder creates a new base labels builder.
 func NewBaseLabelsBuilder() *BaseLabelsBuilder {
-	return NewBaseLabelsBuilderWithGrouping(nil, noParserHints, false, false)
+	return NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false)
 }
 
 // ForLabels creates a labels builder for a given labels set as base.
@@ -211,6 +211,7 @@ func (b *BaseLabelsBuilder) Reset() {
 	}
 	b.err = ""
 	b.errDetails = ""
+	b.baseMap = nil
 	b.parserKeyHints.Reset()
 }
 
@@ -481,9 +482,9 @@ func (b *LabelsBuilder) IntoMap(m map[string]string) {
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
 		if b.baseMap == nil {
 			b.baseMap = b.base.Map()
-			for k, v := range b.baseMap {
-				m[k] = v
-			}
+		}
+		for k, v := range b.baseMap {
+			m[k] = v
 		}
 		return
 	}
@@ -495,22 +496,21 @@ func (b *LabelsBuilder) IntoMap(m map[string]string) {
 	}
 }
 
-func (b *LabelsBuilder) Map() map[string]string {
+func (b *LabelsBuilder) Map() (map[string]string, bool) {
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
 		if b.baseMap == nil {
 			b.baseMap = b.base.Map()
 		}
-		return b.baseMap
+		return b.baseMap, false
 	}
 	b.buf = b.UnsortedLabels(b.buf)
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
 	res := smp.Get()
-	clear(res)
 	for _, l := range b.buf {
 		res[l.Name] = l.Value
 	}
-	return res
+	return res, true
 }
 
 // LabelsResult returns the LabelsResult from the builder.

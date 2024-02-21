@@ -1,17 +1,14 @@
 package v1
 
 import (
-	"context"
+	"fmt"
 	"math"
 	"time"
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/iter"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/util/encoding"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -48,10 +45,6 @@ func NewBloomTokenizer(nGramLen, nGramSkip int, metrics *Metrics) *BloomTokenize
 	}
 }
 
-func (bt *BloomTokenizer) SetLineTokenizer(t *NGramTokenizer) {
-	bt.lineTokenizer = t
-}
-
 func (bt *BloomTokenizer) GetNGramLength() uint64 {
 	return uint64(bt.lineTokenizer.N)
 }
@@ -68,57 +61,61 @@ func clearCache(cache map[string]interface{}) {
 // of specific ngram length, along with the length of the prefix.
 // It ensures enough capacity for the prefix and the token so additional tokens can be created
 // without allocations by appending them to the prefix length
-func prefixedToken(ngram int, chk logproto.ChunkRef) ([]byte, int) {
-	var enc encoding.Encbuf
-	enc.PutBE64(uint64(chk.From))
-	enc.PutBE64(uint64(chk.Through))
+// If the buffer is nil or too small, a new one is created. The buffer is returned for reuse.
+func prefixedToken(ngram int, chk ChunkRef, buf []byte) ([]byte, int) {
+	enc := encoding.EncWith(buf)
+	enc.Reset()
+	enc.PutBE64(uint64(chk.Start))
+	enc.PutBE64(uint64(chk.End))
 	enc.PutBE32(chk.Checksum)
 	prefixLn := enc.Len() // record the length of the prefix
 
-	enc.PutBytes(make([]byte, ngram*MaxRuneLen)) // ensure enough capacity for the ngram
+	// If the buffer is too small, ensure enough capacity for the ngram
+	if cap(enc.Get()) < prefixLn+ngram*MaxRuneLen {
+		enc.PutBytes(make([]byte, ngram*MaxRuneLen))
+	}
 
 	// return the underlying byte slice and the length of the prefix
 	return enc.Get(), prefixLn
 }
 
-// PopulateSeriesWithBloom is intended to be called on the write path, and is used to populate the bloom filter for a given series.
-func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks []chunk.Chunk) error {
+// ChunkRefWithIter is a wrapper around a ChunkRef and an EntryIterator.
+type ChunkRefWithIter struct {
+	Ref ChunkRef
+	Itr iter.EntryIterator
+}
+
+// Populate adds the tokens from the given chunks to the given seriesWithBloom.
+func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefWithIter]) error {
 	startTime := time.Now().UnixMilli()
-	level.Debug(util_log.Logger).Log("msg", "PopulateSeriesWithBloom")
 
 	clearCache(bt.cache)
-	chunkTotalUncompressedSize := 0
 
-	for idx := range chunks {
-		lc := chunks[idx].Data.(*chunkenc.Facade).LokiChunk()
-		tokenBuf, prefixLn := prefixedToken(bt.lineTokenizer.N, chunks[idx].ChunkRef)
-		chunkTotalUncompressedSize += lc.UncompressedSize()
+	var tokenBuf []byte
+	var prefixLn int
 
-		itr, err := lc.Iterator(
-			context.Background(),
-			time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
-			time.Unix(0, math.MaxInt64),
-			logproto.FORWARD,
-			log.NewNoopPipeline().ForStream(chunks[idx].Metric),
-		)
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "chunk iterator cannot be created", "err", err)
-			return err
-		}
+	for chks.Next() && chks.Err() == nil {
+		chk := chks.At()
+		itr := chk.Itr
+		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N, chk.Ref, tokenBuf)
 
 		defer itr.Close()
 
 		for itr.Next() && itr.Error() == nil {
+			// TODO(owen-d): rather than iterate over the line twice, once for prefixed tokenizer & once for
+			// raw tokenizer, we could iterate once and just return (prefix, token) pairs from the tokenizer.
+			// Double points for them being different-ln references to the same data.
 			chunkTokenizer := NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(itr.Entry().Line))
 			for chunkTokenizer.Next() {
 				tok := chunkTokenizer.At()
 				if tok != nil {
+					// TODO(owen-d): unsafe this?
 					str := string(tok)
 					_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
 					if !found {
 						bt.cache[str] = nil
 
-						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
+						swb.Bloom.ScalableBloomFilter.TestAndAdd(tok)
 
 						if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
 							clearCache(bt.cache)
@@ -135,7 +132,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 					if !found {
 						bt.cache[str] = nil
 
-						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
+						swb.Bloom.ScalableBloomFilter.TestAndAdd(tok)
 
 						if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
 							clearCache(bt.cache)
@@ -145,23 +142,25 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 			}
 
 		}
-		seriesWithBloom.Series.Chunks = append(seriesWithBloom.Series.Chunks, ChunkRef{
-			Start:    chunks[idx].From,
-			End:      chunks[idx].Through,
-			Checksum: chunks[idx].Checksum,
-		})
-	} // for each chunk
+		if err := itr.Error(); err != nil {
+			return fmt.Errorf("error iterating chunk: %#v, %w", chk.Ref, err)
+		}
+		swb.Series.Chunks = append(swb.Series.Chunks, chk.Ref)
+	}
+	if err := chks.Err(); err != nil {
+		level.Error(util_log.Logger).Log("msg", "error downloading chunks batch", "err", err)
+		return fmt.Errorf("error downloading chunks batch: %w", err)
+	}
 
 	endTime := time.Now().UnixMilli()
 
-	fillRatio := seriesWithBloom.Bloom.ScalableBloomFilter.FillRatio()
+	fillRatio := swb.Bloom.ScalableBloomFilter.FillRatio()
 	bt.metrics.hammingWeightRatio.Observe(fillRatio)
 	bt.metrics.estimatedCount.Observe(
-		float64(estimatedCount(seriesWithBloom.Bloom.ScalableBloomFilter.Capacity(), fillRatio)),
+		float64(estimatedCount(swb.Bloom.ScalableBloomFilter.Capacity(), fillRatio)),
 	)
-	bt.metrics.bloomSize.Observe(float64(seriesWithBloom.Bloom.ScalableBloomFilter.Capacity() / eightBits))
+	bt.metrics.bloomSize.Observe(float64(swb.Bloom.ScalableBloomFilter.Capacity() / eightBits))
 	bt.metrics.sbfCreationTime.Add(float64(endTime - startTime))
-	bt.metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
 	return nil
 }
 
