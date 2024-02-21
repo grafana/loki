@@ -704,19 +704,16 @@ http {
   {{- end }}
 
   server {
-    listen              443 ssl;
-    ssl_certificate     /var/tls/tls.crt;
-    ssl_certificate_key /var/tls/tls.key;
-    ssl_protocols       TLSv1.2 TLSv1.3;
-    server_name loki-memberlist;
-    ssl_ciphers         HIGH:!aNULL:!MD5;
-    ssl_client_certificate /var/client-tls/tls.crt;
-    ssl_verify_client   on;
-    ssl_trusted_certificate /var/root-tls/tls.crt;
-
+    {{- if (.Values.gateway.nginxConfig.ssl) }}
     listen             8080 ssl;
     {{- if .Values.gateway.nginxConfig.enableIPv6 }}
     listen             [::]:8080 ssl;
+    {{- end }}
+    {{- else }}
+    listen             8080;
+    {{- if .Values.gateway.nginxConfig.enableIPv6 }}
+    listen             [::]:8080;
+    {{- end }}
     {{- end }}
 
     {{- if .Values.gateway.basicAuth.enabled }}
@@ -781,7 +778,7 @@ http {
     {{- $queryFrontendUrl = $readUrl }}
     {{- $indexGatewayUrl = $backendUrl }}
     {{- $rulerUrl = $backendUrl }}
-    {{- end -}}-}}
+    {{- end -}}
 
     # Distributor
     location = /api/prom/push {
