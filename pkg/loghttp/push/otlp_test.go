@@ -71,15 +71,15 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				numLines: 1,
-				logLinesBytes: map[time.Duration]int64{
+				NumLines: 1,
+				LogLinesBytes: map[time.Duration]int64{
 					time.Hour: 9,
 				},
-				structuredMetadataBytes: map[time.Duration]int64{
+				StructuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 0,
 				},
-				streamLabelsSize:         21,
-				mostRecentEntryTimestamp: now,
+				StreamLabelsSize:         21,
+				MostRecentEntryTimestamp: now,
 			},
 		},
 		{
@@ -107,15 +107,15 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				numLines: 1,
-				logLinesBytes: map[time.Duration]int64{
+				NumLines: 1,
+				LogLinesBytes: map[time.Duration]int64{
 					time.Hour: 9,
 				},
-				structuredMetadataBytes: map[time.Duration]int64{
+				StructuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 0,
 				},
-				streamLabelsSize:         27,
-				mostRecentEntryTimestamp: now,
+				StreamLabelsSize:         27,
+				MostRecentEntryTimestamp: now,
 			},
 		},
 		{
@@ -143,15 +143,15 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				numLines: 1,
-				logLinesBytes: map[time.Duration]int64{
+				NumLines: 1,
+				LogLinesBytes: map[time.Duration]int64{
 					time.Hour: 9,
 				},
-				structuredMetadataBytes: map[time.Duration]int64{
+				StructuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 0,
 				},
-				streamLabelsSize:         47,
-				mostRecentEntryTimestamp: now,
+				StreamLabelsSize:         47,
+				MostRecentEntryTimestamp: now,
 			},
 		},
 		{
@@ -218,15 +218,15 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				numLines: 2,
-				logLinesBytes: map[time.Duration]int64{
+				NumLines: 2,
+				LogLinesBytes: map[time.Duration]int64{
 					time.Hour: 26,
 				},
-				structuredMetadataBytes: map[time.Duration]int64{
+				StructuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 37,
 				},
-				streamLabelsSize:         21,
-				mostRecentEntryTimestamp: now,
+				StreamLabelsSize:         21,
+				MostRecentEntryTimestamp: now,
 			},
 		},
 		{
@@ -302,15 +302,15 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				numLines: 2,
-				logLinesBytes: map[time.Duration]int64{
+				NumLines: 2,
+				LogLinesBytes: map[time.Duration]int64{
 					time.Hour: 26,
 				},
-				structuredMetadataBytes: map[time.Duration]int64{
+				StructuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 97,
 				},
-				streamLabelsSize:         21,
-				mostRecentEntryTimestamp: now,
+				StreamLabelsSize:         21,
+				MostRecentEntryTimestamp: now,
 			},
 		},
 		{
@@ -445,15 +445,15 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				numLines: 2,
-				logLinesBytes: map[time.Duration]int64{
+				NumLines: 2,
+				LogLinesBytes: map[time.Duration]int64{
 					time.Hour: 26,
 				},
-				structuredMetadataBytes: map[time.Duration]int64{
+				StructuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 113,
 				},
-				streamLabelsSize:         42,
-				mostRecentEntryTimestamp: now,
+				StreamLabelsSize:         42,
+				MostRecentEntryTimestamp: now,
 			},
 		},
 	} {

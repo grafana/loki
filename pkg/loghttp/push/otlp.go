@@ -38,8 +38,8 @@ func init() {
 
 func newPushStats() *Stats {
 	return &Stats{
-		logLinesBytes:           map[time.Duration]int64{},
-		structuredMetadataBytes: map[time.Duration]int64{},
+		LogLinesBytes:           map[time.Duration]int64{},
+		StructuredMetadataBytes: map[time.Duration]int64{},
 	}
 }
 
@@ -55,11 +55,11 @@ func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 }
 
 func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
-	pushStats.contentEncoding = r.Header.Get(contentEnc)
+	pushStats.ContentEncoding = r.Header.Get(contentEnc)
 	// bodySize should always reflect the compressed size of the request body
 	bodySize := loki_util.NewSizeReader(r.Body)
 	var body io.Reader = bodySize
-	if pushStats.contentEncoding == gzipContentEncoding {
+	if pushStats.ContentEncoding == gzipContentEncoding {
 		r, err := gzip.NewReader(bodySize)
 		if err != nil {
 			return plog.NewLogs(), err
@@ -74,12 +74,12 @@ func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
 		return plog.NewLogs(), err
 	}
 
-	pushStats.bodySize = bodySize.Size()
+	pushStats.BodySize = bodySize.Size()
 
 	req := plogotlp.NewExportRequest()
 
-	pushStats.contentType = r.Header.Get(contentType)
-	switch pushStats.contentType {
+	pushStats.ContentType = r.Header.Get(contentType)
+	switch pushStats.ContentType {
 	case pbContentType:
 		err := req.UnmarshalProto(buf)
 		if err != nil {
@@ -139,7 +139,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		})
 
 		if err := streamLabels.Validate(); err != nil {
-			stats.errs = append(stats.errs, fmt.Errorf("invalid labels: %w", err))
+			stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels: %w", err))
 			continue
 		}
 		labelsStr := streamLabels.String()
@@ -149,11 +149,11 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 			pushRequestsByStream[labelsStr] = logproto.Stream{
 				Labels: labelsStr,
 			}
-			stats.streamLabelsSize += int64(labelsSize(logproto.FromLabelsToLabelAdapters(lbs)))
+			stats.StreamLabelsSize += int64(labelsSize(logproto.FromLabelsToLabelAdapters(lbs)))
 		}
 
 		resourceAttributesAsStructuredMetadataSize := labelsSize(resourceAttributesAsStructuredMetadata)
-		stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(resourceAttributesAsStructuredMetadataSize)
+		stats.StructuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(resourceAttributesAsStructuredMetadataSize)
 
 		for j := 0; j < sls.Len(); j++ {
 			scope := sls.At(j).Scope()
@@ -203,7 +203,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 			}
 
 			scopeAttributesAsStructuredMetadataSize := labelsSize(scopeAttributesAsStructuredMetadata)
-			stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(scopeAttributesAsStructuredMetadataSize)
+			stats.StructuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(scopeAttributesAsStructuredMetadataSize)
 			for k := 0; k < logs.Len(); k++ {
 				log := logs.At(k)
 
@@ -223,11 +223,11 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 				stream.Entries = append(stream.Entries, entry)
 				pushRequestsByStream[labelsStr] = stream
 
-				stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
-				stats.logLinesBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(len(entry.Line))
-				stats.numLines++
-				if entry.Timestamp.After(stats.mostRecentEntryTimestamp) {
-					stats.mostRecentEntryTimestamp = entry.Timestamp
+				stats.StructuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
+				stats.LogLinesBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(len(entry.Line))
+				stats.NumLines++
+				if entry.Timestamp.After(stats.MostRecentEntryTimestamp) {
+					stats.MostRecentEntryTimestamp = entry.Timestamp
 				}
 			}
 		}
