@@ -9,8 +9,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -55,7 +57,7 @@ func TestParseRequest(t *testing.T) {
 		expectedBytes                   int
 		expectedLines                   int
 		customTrackers                  map[string][]string
-		expectedBytesCustomTracker      map[string]int
+		expectedBytesCustomTracker      map[string]float64
 	}{
 		{
 			path:        `/loki/api/v1/push`,
@@ -85,8 +87,8 @@ func TestParseRequest(t *testing.T) {
 			valid:                      true,
 			expectedBytes:              len("fizzbuzz"),
 			expectedLines:              1,
-			customTrackers:             map[string][]string{"t": {"foo="}},
-			expectedBytesCustomTracker: map[string]int{"t": len("fizzbuss")},
+			customTrackers:             map[string][]string{"t": {"foo"}},
+			expectedBytesCustomTracker: map[string]float64{`{foo="bar2", tracker="t"}`: float64(len("fizzbuss"))},
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -208,7 +210,11 @@ func TestParseRequest(t *testing.T) {
 			limits := &mockLimits{
 				customTrackers: customTrackersConfig,
 			}
-			data, err := ParseRequest(util_log.Logger, "fake", request, nil, limits, ParseLokiRequest, nil) // TODO: inject mocked custom tracker
+			tracker := &mockCustomTracker{
+				receivedBytes:  map[string]float64{},
+				discardedBytes: map[string]float64{},
+			}
+			data, err := ParseRequest(util_log.Logger, "fake", request, nil, limits, ParseLokiRequest, tracker)
 
 			structuredMetadataBytesReceived := int(structuredMetadataBytesReceivedStats.Value()["total"].(int64)) - previousStructuredMetadataBytesReceived
 			previousStructuredMetadataBytesReceived += structuredMetadataBytesReceived
@@ -226,11 +232,7 @@ func TestParseRequest(t *testing.T) {
 				require.Equal(t, float64(test.expectedStructuredMetadataBytes), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedBytes), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedLines), testutil.ToFloat64(linesIngested.WithLabelValues("fake")))
-				/* TODO
-				for tracker, value := range test.expectedBytesCustomTracker {
-					require.Equal(t, float64(value), testutil.ToFloat64(bytesIngestedCustom.WithLabelValues("fake", "", tracker)))
-				}
-				*/
+				require.InDeltaMapValues(t, test.expectedBytesCustomTracker, tracker.receivedBytes, 0.0)
 			} else {
 				assert.Errorf(t, err, "Should give error for %d", index)
 				assert.Nil(t, data, "Should not give data for %d", index)
@@ -257,4 +259,19 @@ func (m *mockLimits) CustomTrackersConfig(string) *CustomTrackersConfig {
 // OTLPConfig implements Limits.
 func (*mockLimits) OTLPConfig(string) OTLPConfig {
 	return DefaultOTLPConfig
+}
+
+type mockCustomTracker struct {
+	receivedBytes  map[string]float64
+	discardedBytes map[string]float64
+}
+
+// DiscardedBytesAdd implements CustomTracker.
+func (t *mockCustomTracker) DiscardedBytesAdd(_ string, labels labels.Labels, value float64) {
+	t.discardedBytes[labels.String()] += value
+}
+
+// IngestedBytesAdd implements CustomTracker.
+func (t *mockCustomTracker) IngestedBytesAdd(_ string, _ time.Duration, labels labels.Labels, value float64) {
+	t.receivedBytes[labels.String()] += value
 }

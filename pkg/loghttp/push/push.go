@@ -246,8 +246,11 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 		}
 		trackedLabels := customTrackers.MatchTrackers(lbs)
 		// TODO: avoid allocation if if cap() <= len(trackerLabels)
+		pushStats.logLinesBytesCustomTrackers = make([]customTrackerPair, len(trackedLabels))
 		pushStats.structuredMetadataBytesCustomTrackers = make([]customTrackerPair, len(trackedLabels))
 		for i, labels := range trackedLabels {
+			pushStats.logLinesBytesCustomTrackers[i].Labels = labels
+			pushStats.logLinesBytesCustomTrackers[i].Bytes = map[time.Duration]int64{}
 			pushStats.structuredMetadataBytesCustomTrackers[i].Labels = labels
 			pushStats.structuredMetadataBytesCustomTrackers[i].Bytes = map[time.Duration]int64{}
 		}
