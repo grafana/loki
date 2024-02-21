@@ -4,6 +4,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
+type CustomTracker interface {
+	IngestedBytesAdd(tenant string, labels labels.Labels, value float64)
+	DiscardedBytesAdd(tenant string, labels labels.Labels, value float64)
+}
+
 type CustomTrackersConfig struct {
 	source map[string][]string
 }
@@ -31,17 +36,20 @@ func NewCustomTrackersConfig(m map[string][]string) *CustomTrackersConfig {
 }
 
 // MatchTrackers returns a list of names of all trackers that match the given labels.
-func (c *CustomTrackersConfig) MatchTrackers(lbs labels.Labels) []string {
-	trackers := make([]string, 0)
+func (c *CustomTrackersConfig) MatchTrackers(lbs labels.Labels) []labels.Labels {
+	trackers := make([]labels.Labels, 0)
 Outer:
-	for name, labels := range c.source {
-		for _, label := range labels {
-			if !lbs.Has(label) {
+	for tracker, requiredLbs := range c.source {
+		matchedLabels := make(labels.Labels, 0, len(requiredLbs))
+		for _, name := range requiredLbs {
+			if value := lbs.Get(name); value != "" {
+				matchedLabels = append(matchedLabels, labels.Label{Name: name, Value: value})
+			} else {
 				continue Outer
 			}
 		}
-		// TODO: add label names
-		trackers = append(trackers, name)
+		matchedLabels = append(matchedLabels, labels.Label{Name: "tracker", Value: tracker})
+		trackers = append(trackers, matchedLabels)
 	}
 	return trackers
 }

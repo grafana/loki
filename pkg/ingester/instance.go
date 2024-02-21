@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
@@ -119,6 +120,8 @@ type instance struct {
 	writeFailures *writefailures.Manager
 
 	schemaconfig *config.SchemaConfig
+
+	customStreamsTracker push.CustomTracker
 }
 
 func newInstance(
@@ -296,8 +299,10 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
-		for _, tracker := range i.limiter.CustumTrackersConfig(i.instanceID).MatchTrackers(labels) {
-			validation.DiscardedBytesCustom.WithLabelValues(validation.StreamLimit, i.instanceID, tracker).Add(float64(bytes))
+		if i.customStreamsTracker != nil {
+			for _, matchedLbs := range i.limiter.CustumTrackersConfig(i.instanceID).MatchTrackers(labels) {
+				i.customStreamsTracker.DiscardedBytesAdd(i.instanceID, matchedLbs, float64(bytes))
+			}
 		}
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, i.instanceID)
 	}

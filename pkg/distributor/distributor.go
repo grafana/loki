@@ -39,6 +39,7 @@ import (
 	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
@@ -126,6 +127,8 @@ type Distributor struct {
 	ingesterAppendTimeouts *prometheus.CounterVec
 	replicationFactor      prometheus.Gauge
 	streamShardCount       prometheus.Counter
+
+	customStreamsTracker push.CustomTracker
 }
 
 // New a distributor creates.
@@ -348,8 +351,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					bytes += len(e.Line)
 				}
 				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(bytes))
-				for _, tracker := range validationContext.customTrackerConfig.MatchTrackers(lbs) {
-					validation.DiscardedBytesCustom.WithLabelValues(validation.RateLimited, tenantID, tracker).Add(float64(bytes))
+				for _, matchedLbs := range validationContext.customTrackerConfig.MatchTrackers(lbs) {
+					d.customStreamsTracker.DiscardedBytesAdd(tenantID, matchedLbs, float64(bytes))
 				}
 				continue
 			}

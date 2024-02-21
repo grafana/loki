@@ -112,15 +112,6 @@ var DiscardedBytes = promauto.NewCounterVec(
 	[]string{ReasonLabel, "tenant"},
 )
 
-var DiscardedBytesCustom = promauto.NewCounterVec(
-	prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "discarded_bytes_custom_total",
-		Help:      "The total number of bytes that were discarded for tracked streams.",
-	},
-	[]string{ReasonLabel, "tenant", "tracker"},
-)
-
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
 var DiscardedSamples = promauto.NewCounterVec(
 	prometheus.CounterOpts{
