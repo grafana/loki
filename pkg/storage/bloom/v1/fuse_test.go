@@ -20,6 +20,7 @@ func TestFusedQuerier(t *testing.T) {
 	reader := NewByteReader(indexBuf, bloomsBuf)
 	numSeries := 1000
 	data, keys := MkBasicSeriesWithBlooms(numSeries, 0, 0x0000, 0xffff, 0, 10000)
+	_ = keys
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -54,7 +55,7 @@ func TestFusedQuerier(t *testing.T) {
 				Fp:       data[idx].Series.Fingerprint,
 				Chks:     data[idx].Series.Chunks,
 				Response: ch,
-				Searches: keys[idx],
+				//Searches: keys[idx],
 			})
 		}
 		inputs = append(inputs, reqs)

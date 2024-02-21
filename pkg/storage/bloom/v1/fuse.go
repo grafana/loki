@@ -6,9 +6,10 @@ import (
 )
 
 type Request struct {
-	Fp       model.Fingerprint
-	Chks     ChunkRefs
-	Searches [][]byte
+	Fp   model.Fingerprint
+	Chks ChunkRefs
+	//Searches [][]byte
+	Searches BloomTests
 	Response chan<- Output
 }
 
@@ -103,22 +104,19 @@ func (fq *FusedQuerier) Run() error {
 
 		bloom := fq.bq.blooms.At()
 		// test every input against this chunk
-	inputLoop:
 		for _, input := range nextBatch {
 			_, inBlooms := input.Chks.Compare(series.Chunks, true)
 
 			// First, see if the search passes the series level bloom before checking for chunks individually
-			for _, search := range input.Searches {
-				if !bloom.Test(search) {
-					// We return all the chunks that were the intersection of the query
-					// because they for sure do not match the search and don't
-					// need to be downloaded
-					input.Response <- Output{
-						Fp:       fp,
-						Removals: inBlooms,
-					}
-					continue inputLoop
+			if !input.Searches.Test(bloom) {
+				// We return all the chunks that were the intersection of the query
+				// because they for sure do not match the search and don't
+				// need to be downloaded
+				input.Response <- Output{
+					Fp:       fp,
+					Removals: inBlooms,
 				}
+				continue
 			}
 
 			// TODO(owen-d): pool
@@ -128,17 +126,12 @@ func (fq *FusedQuerier) Run() error {
 			var tokenBuf []byte
 			var prefixLen int
 
-		chunkLoop:
 			for _, chk := range inBlooms {
 				// Get buf to concatenate the chunk and search token
 				tokenBuf, prefixLen = prefixedToken(schema.NGramLen(), chk, tokenBuf)
-				for _, search := range input.Searches {
-					tokenBuf = append(tokenBuf[:prefixLen], search...)
-
-					if !bloom.Test(tokenBuf) {
-						removals = append(removals, chk)
-						continue chunkLoop
-					}
+				if !input.Searches.TestWithPrefixBuf(bloom, tokenBuf, prefixLen) {
+					removals = append(removals, chk)
+					continue
 				}
 				// Otherwise, the chunk passed all the searches
 			}
