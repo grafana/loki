@@ -575,6 +575,10 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 				nextInBlocks = nil
 				break
 			}
+
+			if err := mb.blocks.Err(); err != nil {
+				return 0, errors.Wrap(err, "iterating blocks")
+			}
 			blockSeriesIterated++
 			nextInBlocks = mb.blocks.At()
 		}
