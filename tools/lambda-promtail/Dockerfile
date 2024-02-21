@@ -12,7 +12,7 @@ RUN go mod download
 RUN go build -o ./main -tags lambda.norpc -ldflags="-s -w" lambda-promtail/*.go
 
 
-FROM alpine:3.18.5
+FROM alpine:3.18.6
 
 WORKDIR /app
 
