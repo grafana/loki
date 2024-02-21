@@ -125,10 +125,21 @@ func (b FingerprintBounds) Intersection(target FingerprintBounds) *FingerprintBo
 // Union returns the union of the two bounds
 func (b FingerprintBounds) Union(target FingerprintBounds) (res []FingerprintBounds) {
 	if !b.Overlaps(target) {
-		if b.Less(target) {
-			return []FingerprintBounds{b, target}
+		if target.Less(b) {
+			b, target = target, b
 		}
-		return []FingerprintBounds{target, b}
+
+		// special case: if the bounds are contiguous, merge them
+		if b.Max+1 == target.Min {
+			return []FingerprintBounds{
+				{
+					Min: min(b.Min, target.Min),
+					Max: max(b.Max, target.Max),
+				},
+			}
+		}
+
+		return []FingerprintBounds{b, target}
 	}
 
 	return []FingerprintBounds{

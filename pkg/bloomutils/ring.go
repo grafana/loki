@@ -3,14 +3,13 @@
 package bloomutils
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"sort"
 
 	"github.com/grafana/dskit/ring"
+	"github.com/prometheus/common/model"
 	"golang.org/x/exp/constraints"
-	"golang.org/x/exp/slices"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
@@ -44,8 +43,12 @@ func (r Range[T]) Cmp(t T) v1.BoundsCheck {
 	return v1.Overlap
 }
 
+func NewRange[T constraints.Unsigned](min, max T) Range[T] {
+	return Range[T]{Min: min, Max: max}
+}
+
 func NewTokenRange(min, max uint32) Range[uint32] {
-	return Range[uint32]{min, max}
+	return Range[uint32]{Min: min, Max: max}
 }
 
 type InstanceWithTokenRange struct {
@@ -68,44 +71,16 @@ func (i InstancesWithTokenRange) Contains(token uint32) bool {
 	return false
 }
 
-// KeyRangeForInstance calculates the token range for a specific instance
-// with given id based on the first token in the ring.
-// This assumes that each instance in the ring is configured with only a single
-// token.
-func KeyRangeForInstance[T constraints.Unsigned](id string, instances []ring.InstanceDesc, keyspace Range[T]) (Range[T], error) {
-
-	// Sort instances -- they may not be sorted
-	// because they're usually accessed by looking up the tokens (which are sorted)
-	sort.Slice(instances, func(i, j int) bool {
-		return instances[i].Tokens[0] < instances[j].Tokens[0]
-	})
-
-	idx := slices.IndexFunc(instances, func(inst ring.InstanceDesc) bool {
-		return inst.Id == id
-	})
-
-	// instance with Id == id not found
-	if idx == -1 {
-		return Range[T]{}, ring.ErrInstanceNotFound
+// TODO(owen-d): use https://github.com/grafana/loki/pull/11975 after merge
+func KeyspacesFromTokenRanges(tokenRanges ring.TokenRanges) []v1.FingerprintBounds {
+	keyspaces := make([]v1.FingerprintBounds, 0, len(tokenRanges)/2)
+	for i := 0; i < len(tokenRanges)-1; i += 2 {
+		keyspaces = append(keyspaces, v1.FingerprintBounds{
+			Min: model.Fingerprint(tokenRanges[i]) << 32,
+			Max: model.Fingerprint(tokenRanges[i+1])<<32 | model.Fingerprint(math.MaxUint32),
+		})
 	}
-
-	diff := keyspace.Max - keyspace.Min
-	i := T(idx)
-	n := T(len(instances))
-
-	if diff < n {
-		return Range[T]{}, errors.New("keyspace is smaller than amount of instances")
-	}
-
-	step := diff / n
-	min := step * i
-	max := step*i + step - 1
-	if i == n-1 {
-		// extend the last token tange to MaxUint32
-		max = (keyspace.Max - keyspace.Min)
-	}
-
-	return Range[T]{min, max}, nil
+	return keyspaces
 }
 
 // NewInstanceSortMergeIterator creates an iterator that yields instanceWithToken elements
