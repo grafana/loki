@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/bloomutils"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
@@ -251,7 +252,7 @@ func TestTokenRangesForInstance(t *testing.T) {
 	for desc, test := range tests {
 		t.Run(desc, func(t *testing.T) {
 			for id := range test.exp {
-				ranges, err := tokenRangesForInstance(id, test.input)
+				ranges, err := bloomutils.TokenRangesForInstance(id, test.input)
 				if test.err {
 					require.Error(t, err)
 					continue
