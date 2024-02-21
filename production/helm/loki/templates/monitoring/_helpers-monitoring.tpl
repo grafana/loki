@@ -3,18 +3,13 @@ Client definition for LogsInstance
 */}}
 {{- define "loki.logsInstanceClient" -}}
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
-{{- $url := printf "https://%s.%s.svc.%s:3100/loki/api/v1/push" (include "loki.writeFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+{{- $url := printf "http://%s.%s.svc.%s:3100/loki/api/v1/push" (include "loki.writeFullname" .) .Release.Namespace .Values.global.clusterDomain }}
 {{- if $isSingleBinary  }}
-  {{- $url = printf "https://%s.%s.svc.%s:3100/loki/api/v1/push" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+  {{- $url = printf "http://%s.%s.svc.%s:3100/loki/api/v1/push" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
 {{- else if .Values.gateway.enabled -}}
-  {{- $url = printf "https://%s.%s.svc.%s/loki/api/v1/push" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+  {{- $url = printf "http://%s.%s.svc.%s/loki/api/v1/push" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain }}
 {{- end -}}
 - url: {{ $url }}
-  # tlsConfig:
-  #   caFile: /var/root-tls/tls.crt
-  #   certFile: /var/client-tls/tls.crt
-  #   keyFile: /var/client-tls/tls.key
-  #   serverName: loki-memberlist
   externalLabels:
     cluster: {{ include "loki.clusterLabel" . }}
   {{- if .Values.enterprise.enabled }}

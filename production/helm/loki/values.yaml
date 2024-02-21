@@ -654,7 +654,7 @@ monitoring:
     # -- Tenant to use for self monitoring
     tenant:
       # -- Name of the tenant
-      name: "loki"
+      name: "self-monitoring"
       # -- Namespace to create additional tenant token secret in. Useful if your Grafana instance
       # is in a separate namespace. Token will still be created in the canary namespace.
       secretNamespace: "{{ .Release.Namespace }}"
