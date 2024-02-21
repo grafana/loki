@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
@@ -277,6 +278,8 @@ func (b *BloomClient) GetBlock(ctx context.Context, ref BlockRef) (BlockDirector
 	defer rc.Close()
 
 	path := b.fsResolver.Block(ref).LocalPath()
+	// the block directory should not contain the .tar.gz extension
+	path = strings.TrimSuffix(path, ".tar.gz")
 	err = util.EnsureDirectory(path)
 	if err != nil {
 		return BlockDirectory{}, fmt.Errorf("failed to create block directory: %w", err)
