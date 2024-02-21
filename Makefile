@@ -812,16 +812,13 @@ dev-k3d-down:
 
 # Trivy is used to scan images for vulnerabilities
 .PHONY: trivy
-trivy: loki-image build-image
+trivy: loki-image
 	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
-	trivy i $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG)
 	trivy fs go.mod
 
 # Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
 .PHONY: snyk
-snyk: loki-image build-image
-	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) --file=cmd/loki/Dockerfile
-	snyk container test $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) --file=loki-build-image/Dockerfile
+snyk: loki-image
 	snyk code test
 
 .PHONY: scan-vulnerabilities
