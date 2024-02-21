@@ -1,4 +1,3 @@
-(import 'config.libsonnet') +
 (import 'dashboards/loki-retention.libsonnet') +
 (import 'dashboards/loki-chunks.libsonnet') +
 (import 'dashboards/loki-logs.libsonnet') +
