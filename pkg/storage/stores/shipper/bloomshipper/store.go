@@ -174,7 +174,7 @@ func NewBloomStore(
 	}
 
 	if err := util.EnsureDirectory(cfg.workingDir); err != nil {
-		return nil, errors.Wrap(err, "failed to create working directory for bloom store")
+		return nil, errors.Wrapf(err, "failed to create working directory for bloom store: '%s'", cfg.workingDir)
 	}
 
 	for _, periodicConfig := range periodicConfigs {
