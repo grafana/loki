@@ -1,11 +1,14 @@
 package bloomutils
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
 	"github.com/grafana/dskit/ring"
 	"github.com/stretchr/testify/require"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
 func TestBloomGatewayClient_InstanceSortMergeIterator(t *testing.T) {
@@ -40,45 +43,34 @@ func uint64Range(min, max uint64) Range[uint64] {
 	return Range[uint64]{min, max}
 }
 
-func TestBloomGatewayClient_KeyRangeForInstance(t *testing.T) {
-	for name, tc := range map[string]struct {
-		id       string
-		input    []ring.InstanceDesc
-		expected Range[uint64]
+func TestKeyspacesFromTokenRanges(t *testing.T) {
+	for i, tc := range []struct {
+		tokenRanges ring.TokenRanges
+		exp         []v1.FingerprintBounds
 	}{
-		"first instance includes 0 token": {
-			id: "3",
-			input: []ring.InstanceDesc{
-				{Id: "1", Tokens: []uint32{3}},
-				{Id: "2", Tokens: []uint32{5}},
-				{Id: "3", Tokens: []uint32{1}},
+		{
+			tokenRanges: ring.TokenRanges{
+				0, math.MaxUint32 / 2,
+				math.MaxUint32/2 + 1, math.MaxUint32,
 			},
-			expected: uint64Range(0, math.MaxUint64/3-1),
+			exp: []v1.FingerprintBounds{
+				v1.NewBounds(0, math.MaxUint64/2),
+				v1.NewBounds(math.MaxUint64/2+1, math.MaxUint64),
+			},
 		},
-		"middle instance": {
-			id: "1",
-			input: []ring.InstanceDesc{
-				{Id: "1", Tokens: []uint32{3}},
-				{Id: "2", Tokens: []uint32{5}},
-				{Id: "3", Tokens: []uint32{1}},
+		{
+			tokenRanges: ring.TokenRanges{
+				0, math.MaxUint8,
+				math.MaxUint16, math.MaxUint16 << 1,
 			},
-			expected: uint64Range(math.MaxUint64/3, math.MaxUint64/3*2-1),
-		},
-		"last instance includes MaxUint32 token": {
-			id: "2",
-			input: []ring.InstanceDesc{
-				{Id: "1", Tokens: []uint32{3}},
-				{Id: "2", Tokens: []uint32{5}},
-				{Id: "3", Tokens: []uint32{1}},
+			exp: []v1.FingerprintBounds{
+				v1.NewBounds(0, 0xff00000000|math.MaxUint32),
+				v1.NewBounds(math.MaxUint16<<32, math.MaxUint16<<33|math.MaxUint32),
 			},
-			expected: uint64Range(math.MaxUint64/3*2, math.MaxUint64),
 		},
 	} {
-		tc := tc
-		t.Run(name, func(t *testing.T) {
-			result, err := KeyRangeForInstance(tc.id, tc.input, Uint64Range)
-			require.NoError(t, err)
-			require.Equal(t, tc.expected, result)
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			require.Equal(t, tc.exp, KeyspacesFromTokenRanges(tc.tokenRanges))
 		})
 	}
 }
