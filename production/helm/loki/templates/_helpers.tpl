@@ -455,7 +455,7 @@ ruler:
 {{- end }}
 
 {{/*
-Calculate the config from structured and unstructred text input
+Calculate the config from structured and unstructured text input
 */}}
 {{- define "loki.calculatedConfig" -}}
 {{ tpl (mergeOverwrite (tpl .Values.loki.config . | fromYaml) .Values.loki.structuredConfig | toYaml) . }}
@@ -704,9 +704,19 @@ http {
   {{- end }}
 
   server {
-    listen             8080;
+    listen              443 ssl;
+    ssl_certificate     /var/tls/tls.crt;
+    ssl_certificate_key /var/tls/tls.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    server_name loki-memberlist;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_client_certificate /var/client-tls/tls.crt;
+    ssl_verify_client   on;
+    ssl_trusted_certificate /var/root-tls/tls.crt;
+
+    listen             8080 ssl;
     {{- if .Values.gateway.nginxConfig.enableIPv6 }}
-    listen             [::]:8080;
+    listen             [::]:8080 ssl;
     {{- end }}
 
     {{- if .Values.gateway.basicAuth.enabled }}
@@ -735,9 +745,11 @@ http {
     {{- $writeHost = include "loki.singleBinaryFullname" .}}
     {{- end }}
 
-    {{- $writeUrl    := printf "http://%s.%s.svc.%s:3100" $writeHost   .Release.Namespace .Values.global.clusterDomain }}
-    {{- $readUrl     := printf "http://%s.%s.svc.%s:3100" $readHost    .Release.Namespace .Values.global.clusterDomain }}
-    {{- $backendUrl  := printf "http://%s.%s.svc.%s:3100" $backendHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $httpSchema := .Values.gateway.nginxConfig.schema }}
+
+    {{- $writeUrl    := printf "%s://%s.%s.svc.%s:3100" $httpSchema $writeHost   .Release.Namespace .Values.global.clusterDomain }}
+    {{- $readUrl     := printf "%s://%s.%s.svc.%s:3100" $httpSchema $readHost    .Release.Namespace .Values.global.clusterDomain }}
+    {{- $backendUrl  := printf "%s://%s.%s.svc.%s:3100" $httpSchema $backendHost .Release.Namespace .Values.global.clusterDomain }}
 
     {{- if .Values.gateway.nginxConfig.customWriteUrl }}
     {{- $writeUrl  = .Values.gateway.nginxConfig.customWriteUrl }}
@@ -757,11 +769,11 @@ http {
     {{- $indexGatewayHost := include "loki.indexGatewayFullname" .}}
     {{- $rulerHost := include "loki.rulerFullname" .}}
 
-    {{- $distributorUrl := printf "http://%s.%s.svc.%s:3100" $distributorHost .Release.Namespace .Values.global.clusterDomain -}}
-    {{- $ingesterUrl := printf "http://%s.%s.svc.%s:3100" $ingesterHost .Release.Namespace .Values.global.clusterDomain }}
-    {{- $queryFrontendUrl := printf "http://%s.%s.svc.%s:3100" $queryFrontendHost .Release.Namespace .Values.global.clusterDomain }}
-    {{- $indexGatewayUrl := printf "http://%s.%s.svc.%s:3100" $indexGatewayHost .Release.Namespace .Values.global.clusterDomain }}
-    {{- $rulerUrl := printf "http://%s.%s.svc.%s:3100" $rulerHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $distributorUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $distributorHost .Release.Namespace .Values.global.clusterDomain -}}
+    {{- $ingesterUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $ingesterHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $queryFrontendUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $queryFrontendHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $indexGatewayUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $indexGatewayHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $rulerUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $rulerHost .Release.Namespace .Values.global.clusterDomain }}
 
     {{- if not "loki.deployment.isDistributed "}}
     {{- $distributorUrl = $writeUrl }}

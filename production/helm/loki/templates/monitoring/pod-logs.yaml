@@ -25,18 +25,17 @@ spec:
     - action: labelmap
       regex: __meta_kubernetes_pod_label_(.+)
     - action: replace
-      replacement: "$1"
-      separator: "-"
+      regex: "(.*)"
+      replacement: "($1)"
       sourceLabels:
-        - __meta_kubernetes_pod_label_app_kubernetes_io_name
-        - __meta_kubernetes_pod_label_app_kubernetes_io_component
-      targetLabel: __service__
+        - __meta_kubernetes_namespace
+      targetLabel: __job_namespace__
     - action: replace
       replacement: "$1"
       separator: "/"
       sourceLabels:
-        - __meta_kubernetes_namespace
-        - __service__
+        - __job_namespace__
+        - __meta_kubernetes_pod_label_app_kubernetes_io_component
       targetLabel: job
     - action: replace
       sourceLabels:

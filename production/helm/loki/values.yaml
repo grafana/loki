@@ -160,9 +160,9 @@ loki:
     schema_config:
       configs:
         - from: 2022-01-11
-          store: boltdb-shipper
+          store: tsdb
           object_store: {{ .Values.loki.storage.type }}
-          schema: v12
+          schema: v13
           index:
             prefix: loki_index_
             period: 24h
@@ -654,7 +654,7 @@ monitoring:
     # -- Tenant to use for self monitoring
     tenant:
       # -- Name of the tenant
-      name: "self-monitoring"
+      name: "loki"
       # -- Namespace to create additional tenant token secret in. Useful if your Grafana instance
       # is in a separate namespace. Token will still be created in the canary namespace.
       secretNamespace: "{{ .Release.Namespace }}"
@@ -714,6 +714,10 @@ monitoring:
     extraEnv: []
     # -- Environment variables from secrets or configmaps to add to the canary pods
     extraEnvFrom: []
+    # -- Volume mounts to add to the canary pods
+    extraVolumeMounts: []
+    # -- Volumes to add to the canary pods
+    extraVolumes: []
     # -- Resource requests and limits for the canary
     resources: {}
     # -- DNS config for canary pods
@@ -2339,9 +2343,12 @@ gateway:
     httpGet:
       path: /
       port: http-metrics
+      schema: HTTPS
     initialDelaySeconds: 15
     timeoutSeconds: 1
   nginxConfig:
+    # -- Which schema to be used by URLs. Can be 'http' or 'https'.
+    schema: "https"
     # -- Enable listener for IPv6, disable on IPv4-only systems
     enableIPv6: true
     # -- NGINX log format

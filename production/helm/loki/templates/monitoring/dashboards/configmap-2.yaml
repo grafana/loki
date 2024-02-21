@@ -16,15 +16,20 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 data:
+  {{ $prefix := "ssd" }}
+  {{- if "loki.deployment.isDistributed "}}
+  {{- $prefix = "distributed" }}
+  {{- end -}}
+
   "loki-reads-resources.json": |
-    {{ $.Files.Get "src/dashboards/loki-reads-resources.json" | fromJson | toJson }}
+    {{ $.Files.Get (printf "src/dashboards/%s/loki-reads-resources.json" $prefix) | fromJson | toJson }}
   "loki-reads.json": |
-    {{ $.Files.Get "src/dashboards/loki-reads.json" | fromJson | toJson }}
+    {{ $.Files.Get (printf "src/dashboards/%s/loki-reads.json" $prefix) | fromJson | toJson }}
   "loki-retention.json": |
-    {{ $.Files.Get "src/dashboards/loki-retention.json" | fromJson | toJson }}
+    {{ $.Files.Get (printf "src/dashboards/%s/loki-retention.json" $prefix) | fromJson | toJson }}
   "loki-writes-resources.json": |
-    {{ $.Files.Get "src/dashboards/loki-writes-resources.json" | fromJson | toJson }}
+    {{ $.Files.Get (printf "src/dashboards/%s/loki-writes-resources.json" $prefix) | fromJson | toJson }}
   "loki-writes.json": |
-    {{ $.Files.Get "src/dashboards/loki-writes.json" | fromJson | toJson }}
+    {{ $.Files.Get (printf "src/dashboards/%s/loki-writes.json" $prefix) | fromJson | toJson }}
 {{- end -}}
 {{- end -}}

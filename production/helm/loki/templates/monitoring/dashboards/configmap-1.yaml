@@ -16,15 +16,21 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 data:
-  "loki-chunks.json": |
-    {{ $.Files.Get "src/dashboards/loki-chunks.json" | fromJson | toJson }}
-  "loki-deletion.json": |
-    {{ $.Files.Get "src/dashboards/loki-deletion.json" | fromJson | toJson }}
-  "loki-logs.json": |
-    {{ $.Files.Get "src/dashboards/loki-logs.json" | fromJson | toJson }}
-  "loki-mixin-recording-rules.json": |
-    {{ $.Files.Get "src/dashboards/loki-mixin-recording-rules.json" | fromJson | toJson }}
-  "loki-operational.json": |
-    {{ $.Files.Get "src/dashboards/loki-operational.json" | fromJson | toJson }}
+  {{- $prefix := "ssd" }}
+  {{- if "loki.deployment.isDistributed "}}
+  {{- $prefix = "distributed" }}
+  {{- end -}}
+
+  # "loki-chunks.json": |
+  #   {{ $.Files.Get (printf "src/dashboards/%s/loki-chunks.json" $prefix) | fromJson | toJson }}
+  # TODO: why does this one fails?
+  # "loki-deletion.json": |
+  #   {{ $.Files.Get (printf "src/dashboards/%s/loki-deletion.json" $prefix) | fromJson | toJson }}
+  # "loki-logs.json": |
+  #   {{ $.Files.Get (printf "src/dashboards/%s/loki-logs.json" $prefix) | fromJson | toJson }}
+  # "loki-mixin-recording-rules.json": |
+  #   {{ $.Files.Get (printf "src/dashboards/%s/loki-mixin-recording-rules.json" $prefix) | fromJson | toJson }}
+  # "loki-operational.json": |
+  #   {{ $.Files.Get (printf "src/dashboards/%s/loki-operational.json" $prefix) | fromJson | toJson }}
 {{- end -}}
 {{- end -}}
