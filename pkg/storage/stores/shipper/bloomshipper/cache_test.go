@@ -30,9 +30,6 @@ func TestBlockDirectory_Cleanup(t *testing.T) {
 		tc := tc
 		t.Run(name, func(t *testing.T) {
 			extractedBlockDirectory := t.TempDir()
-			blockFilePath, _, _, _ := createBlockArchive(t)
-			err := extractArchive(blockFilePath, extractedBlockDirectory)
-			require.NoError(t, err)
 			require.DirExists(t, extractedBlockDirectory)
 
 			blockDir := BlockDirectory{
@@ -61,20 +58,10 @@ func TestBlockDirectory_Cleanup(t *testing.T) {
 }
 
 func Test_ClosableBlockQuerier(t *testing.T) {
-	blockFilePath, _, _, _ := createBlockArchive(t)
-	extractedBlockDirectory := t.TempDir()
-	err := extractArchive(blockFilePath, extractedBlockDirectory)
-	require.NoError(t, err)
-
-	blockDir := BlockDirectory{
-		Path:                   extractedBlockDirectory,
-		removeDirectoryTimeout: 100 * time.Millisecond,
-		refCount:               atomic.NewInt32(0),
-	}
+	blockDir := NewBlockDirectory(BlockRef{}, t.TempDir(), log.NewNopLogger())
 
 	querier := blockDir.BlockQuerier()
 	require.Equal(t, int32(1), blockDir.refCount.Load())
 	require.NoError(t, querier.Close())
 	require.Equal(t, int32(0), blockDir.refCount.Load())
-
 }

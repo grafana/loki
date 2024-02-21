@@ -15,6 +15,7 @@ import (
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util/encoding"
@@ -264,18 +265,26 @@ func (b *BloomClient) DeleteMetas(ctx context.Context, refs []MetaRef) error {
 	return err
 }
 
-// GetBlock downloads the blocks from objectStorage and returns the downloaded block
+// GetBlock downloads the blocks from objectStorage and returns the directory
+// in which the block data resides
 func (b *BloomClient) GetBlock(ctx context.Context, ref BlockRef) (BlockDirectory, error) {
 	key := b.Block(ref).Addr()
-	readCloser, _, err := b.client.GetObject(ctx, key)
+
+	rc, _, err := b.client.GetObject(ctx, key)
 	if err != nil {
 		return BlockDirectory{}, fmt.Errorf("failed to get block from storage: %w", err)
 	}
+	defer rc.Close()
 
 	path := b.fsResolver.Block(ref).LocalPath()
-	err = extractBlock(readCloser, path, b.logger)
+	err = util.EnsureDirectory(path)
 	if err != nil {
-		return BlockDirectory{}, fmt.Errorf("failed to extract block into directory : %w", err)
+		return BlockDirectory{}, fmt.Errorf("failed to create block directory: %w", err)
+	}
+
+	err = v1.UnTarGz(path, rc)
+	if err != nil {
+		return BlockDirectory{}, fmt.Errorf("failed to extract block: %w", err)
 	}
 
 	return NewBlockDirectory(ref, path, b.logger), nil
