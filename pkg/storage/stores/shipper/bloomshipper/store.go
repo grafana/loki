@@ -328,10 +328,10 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*Clo
 	results := make([]*CloseableBlockQuerier, 0, len(blocks))
 	for i := range fetchers {
 		res, err := fetchers[i].FetchBlocks(ctx, refs[i])
-		results = append(results, res...)
 		if err != nil {
 			return results, err
 		}
+		results = append(results, res...)
 	}
 
 	// sort responses (results []*CloseableBlockQuerier) based on requests (blocks []BlockRef)

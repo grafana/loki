@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -22,6 +23,10 @@ import (
 
 func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 	workDir := t.TempDir()
+	return newMockBloomStoreWithWorkDir(t, workDir)
+}
+
+func newMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*BloomStore, string) {
 
 	periodicConfigs := []storageconfig.PeriodConfig{
 		{
@@ -258,4 +263,35 @@ func TestBloomStore_FetchBlocks(t *testing.T) {
 		[]BlockRef{b1.BlockRef, b2.BlockRef, b3.BlockRef, b4.BlockRef},
 		[]BlockRef{bqs[0].BlockRef, bqs[1].BlockRef, bqs[2].BlockRef, bqs[3].BlockRef},
 	)
+}
+
+func TestBloomShipper_WorkingDir(t *testing.T) {
+	t.Run("insufficient permissions on directory yields error", func(t *testing.T) {
+		base := t.TempDir()
+		wd := filepath.Join(base, "notpermitted")
+		err := os.MkdirAll(wd, 0500)
+		require.NoError(t, err)
+
+		store, _ := newMockBloomStoreWithWorkDir(t, wd)
+		b, err := createBlockInStorage(t, store, "tenant", parseTime("2024-01-20 00:00"), 0x00000000, 0x0000ffff)
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		_, err = store.FetchBlocks(ctx, []BlockRef{b.BlockRef})
+		require.ErrorContains(t, err, "failed to extract block into directory")
+	})
+
+	t.Run("not existing directory will be created", func(t *testing.T) {
+		base := t.TempDir()
+		// if the base directory does not exist, it will be created
+		wd := filepath.Join(base, "doesnotexist")
+
+		store, _ := newMockBloomStoreWithWorkDir(t, wd)
+		b, err := createBlockInStorage(t, store, "tenant", parseTime("2024-01-20 00:00"), 0x00000000, 0x0000ffff)
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		_, err = store.FetchBlocks(ctx, []BlockRef{b.BlockRef})
+		require.NoError(t, err)
+	})
 }
