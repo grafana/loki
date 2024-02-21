@@ -856,10 +856,8 @@ trivy: loki-image build-image
 
 # Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
 .PHONY: snyk
-snyk: loki-image build-image
-	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) --file=cmd/loki/Dockerfile
-	snyk container test $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) --file=loki-build-image/Dockerfile
-	snyk code test
+snyk:
+	snyk test
 
 .PHONY: scan-vulnerabilities
 scan-vulnerabilities: trivy snyk
