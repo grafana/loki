@@ -66,6 +66,20 @@
 
 * [10542](https://github.com/grafana/loki/pull/10542) **chaudum**: Remove legacy deployment mode for ingester (Deployment, without WAL) and instead always run them as StatefulSet.
 
+## [2.9.5](https://github.com/grafana/loki/compare/v2.9.4...v2.9.5) (2024-02-21)
+
+
+### Features
+
+* configurable build image ([d16ac7f](https://github.com/grafana/loki/commit/d16ac7f931b43a23edcac0c13da11e655d093a4b))
+
+
+### Bug Fixes
+
+* bump to latest to remove check-format ([6b75c06](https://github.com/grafana/loki/commit/6b75c06f039482fc5edc0551ba4652cff92dadff))
+* **deps:** update github.com/grafana/loki digest to 7fa2f6e [security] (release-2.8.x) ([#10823](https://github.com/grafana/loki/issues/10823)) ([fab341d](https://github.com/grafana/loki/commit/fab341d1e4972ceb4ad1b14889aad1fd2343244b))
+* no boringcrypto with 2.8 ([3149a33](https://github.com/grafana/loki/commit/3149a339e37980542c5de1c5466e7a47e67105be))
+
 ## 2.9.2 (2023-10-16)
 
 ### All Changes
