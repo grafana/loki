@@ -85,43 +85,6 @@ func KeyspacesFromTokenRanges(tokenRanges ring.TokenRanges) []v1.FingerprintBoun
 	return keyspaces
 }
 
-// NewInstanceSortMergeIterator creates an iterator that yields instanceWithToken elements
-// where the token of the elements are sorted in ascending order.
-func NewInstanceSortMergeIterator(instances []ring.InstanceDesc) v1.Iterator[InstanceWithTokenRange] {
-	tokenIters := make([]v1.PeekingIterator[v1.IndexedValue[uint32]], 0, len(instances))
-	for i, inst := range instances {
-		sort.Slice(inst.Tokens, func(a, b int) bool { return inst.Tokens[a] < inst.Tokens[b] })
-		itr := v1.NewIterWithIndex(v1.NewSliceIter[uint32](inst.Tokens), i)
-		tokenIters = append(tokenIters, v1.NewPeekingIter[v1.IndexedValue[uint32]](itr))
-	}
-
-	heapIter := v1.NewHeapIterator[v1.IndexedValue[uint32]](
-		func(iv1, iv2 v1.IndexedValue[uint32]) bool {
-			return iv1.Value() < iv2.Value()
-		},
-		tokenIters...,
-	)
-
-	prevToken := -1
-	return v1.NewDedupingIter[v1.IndexedValue[uint32], InstanceWithTokenRange](
-		func(iv v1.IndexedValue[uint32], iwtr InstanceWithTokenRange) bool {
-			return false
-		},
-		func(iv v1.IndexedValue[uint32]) InstanceWithTokenRange {
-			minToken, maxToken := uint32(prevToken+1), iv.Value()
-			prevToken = int(maxToken)
-			return InstanceWithTokenRange{
-				Instance:   instances[iv.Index()],
-				TokenRange: NewTokenRange(minToken, maxToken),
-			}
-		},
-		func(iv v1.IndexedValue[uint32], iwtr InstanceWithTokenRange) InstanceWithTokenRange {
-			panic("must not be called, because Eq() is always false")
-		},
-		v1.NewPeekingIter(heapIter),
-	)
-}
-
 func TokenRangesForInstance(id string, instances []ring.InstanceDesc) (ranges ring.TokenRanges, err error) {
 	var ownedTokens map[uint32]struct{}
 
