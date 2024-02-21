@@ -10,8 +10,8 @@ jobs:
   check:
     uses: "grafana/loki-release/.github/workflows/check.yml@release-1.11.x"
     with:
-      build_image: "grafana/loki-build-image:0.33.0"
-      golang_ci_lint_version: "v1.55.1"
+      build_image: "grafana/loki-build-image:0.29.3-go1.20.10"
+      golang_ci_lint_version: "v1.51.2"
       skip_validation: false
   create-release-pr:
     needs:
@@ -22,7 +22,6 @@ jobs:
     - "logstash"
     - "loki"
     - "loki-canary"
-    - "loki-canary-boringcrypto"
     - "loki-operator"
     - "promtail"
     - "querytee"
@@ -106,7 +105,7 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "grafana/loki-build-image:0.33.0"
+          --entrypoint /bin/sh "grafana/loki-build-image:0.29.3-go1.20.10"
           git config --global --add safe.directory /src/loki
           echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
           make dist packages
@@ -464,66 +463,6 @@ jobs:
       with:
         destination: "loki-build-artifacts/${{ github.sha }}/images"
         path: "release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        process_gcloudignore: false
-    strategy:
-      fail-fast: true
-      matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
-  loki-canary-boringcrypto:
-    needs:
-    - "version"
-    runs-on: "ubuntu-latest"
-    steps:
-    - name: "pull release library code"
-      uses: "actions/checkout@v4"
-      with:
-        path: "lib"
-        repository: "grafana/loki-release"
-    - name: "pull code to release"
-      uses: "actions/checkout@v4"
-      with:
-        path: "release"
-        repository: "${{ env.RELEASE_REPO }}"
-    - name: "setup node"
-      uses: "actions/setup-node@v4"
-      with:
-        node-version: 20
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
-      with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
-    - id: "platform"
-      name: "parse image platform"
-      run: |
-        mkdir -p images
-        
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
-        echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
-      working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "Build and export"
-      timeout-minutes: 25
-      uses: "docker/build-push-action@v5"
-      with:
-        context: "release"
-        file: "release/cmd/loki-canary-boringcrypto/Dockerfile"
-        outputs: "type=docker,dest=release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
-      with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
