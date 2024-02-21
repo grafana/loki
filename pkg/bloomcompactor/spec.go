@@ -45,7 +45,6 @@ type SimpleBloomGenerator struct {
 	store       v1.Iterator[*v1.Series]
 	chunkLoader ChunkLoader
 	blocksIter  v1.ResettableIterator[*v1.SeriesWithBloom]
-	skipped     []v1.BlockMetadata
 
 	// options to build blocks with
 	opts v1.BlockOptions
@@ -120,14 +119,12 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) v1.Iterator[*v1.Blo
 				schema := md.Options.Schema
 				if err != nil {
 					level.Warn(logger).Log("msg", "failed to get schema for block", "err", err)
-					s.skipped = append(s.skipped, md)
 					bq.Close() // close unused querier
 					return false
 				}
 
 				if !s.opts.Schema.Compatible(schema) {
 					level.Warn(logger).Log("msg", "block schema incompatible with options", "generator_schema", fmt.Sprintf("%+v", s.opts.Schema), "block_schema", fmt.Sprintf("%+v", schema))
-					s.skipped = append(s.skipped, md)
 					bq.Close() // close unused querier
 					return false
 				}
