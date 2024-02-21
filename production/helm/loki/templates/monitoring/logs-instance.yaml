@@ -28,14 +28,3 @@ spec:
       {{- include "loki.selectorLabels" $ | nindent 6 }}
 {{- end -}}
 {{- end -}}
-
-  volumes:
-  - name: tls-cert
-    secret:
-      secretName: my-demo-app-tls
-  - name: root-tls-cert
-    secret:
-      secretName: ca-tls
-  - name: client-tls
-    secret:
-      secretName: client-tls

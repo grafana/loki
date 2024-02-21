@@ -10,11 +10,11 @@ Client definition for LogsInstance
   {{- $url = printf "https://%s.%s.svc.%s/loki/api/v1/push" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain }}
 {{- end -}}
 - url: {{ $url }}
-  tlsConfig:
-    caFile: /var/root-tls/tls.crt
-    certFile: /var/client-tls/tls.crt
-    keyFile: /var/client-tls/tls.key
-    serverName: loki-memberlist
+  # tlsConfig:
+  #   caFile: /var/root-tls/tls.crt
+  #   certFile: /var/client-tls/tls.crt
+  #   keyFile: /var/client-tls/tls.key
+  #   serverName: loki-memberlist
   externalLabels:
     cluster: {{ include "loki.clusterLabel" . }}
   {{- if .Values.enterprise.enabled }}

@@ -160,9 +160,9 @@ loki:
     schema_config:
       configs:
         - from: 2022-01-11
-          store: tsdb
+          store: boltdb-shipper
           object_store: {{ .Values.loki.storage.type }}
-          schema: v13
+          schema: v12
           index:
             prefix: loki_index_
             period: 24h
