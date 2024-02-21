@@ -25,7 +25,7 @@ jobs:
           image-ref: "docker.io/grafana/loki:${{ env.IMAGE_TAG }}"
           format: "json"
           output: "trivy-image.json"
-          severity: "CRITICAL,HIGH"
+          severity: "CRITICAL,HIGH,MEDIUM"
 
       - name: Run Trivy fs scanner
         uses: aquasecurity/trivy-action@master
@@ -34,7 +34,7 @@ jobs:
           scan-ref: "go.mod"
           format: "json"
           output: "trivy-fs.json"
-          severity: "CRITICAL,HIGH"
+          severity: "CRITICAL,HIGH,MEDIUM"
 
       - name: Prepare Trivy Message
         run: |

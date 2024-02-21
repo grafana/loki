@@ -20,7 +20,7 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           command: test
-          args: --severity-threshold=high --json-file-output=snyk.json
+          args: --severity-threshold=medium --json-file-output=snyk.json
 
       - name: Prepare Snyk message
         run: |
