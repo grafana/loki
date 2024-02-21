@@ -1,8 +1,13 @@
 ---
+test:
+  enabled: false
+
 monitoring:
   dashboards:
+    enabled: true
     namespace: k3d-helm-cluster
   selfMonitoring:
+    enabled: true
     tenant:
       name: loki
       secretNamespace: k3d-helm-cluster
@@ -13,6 +18,29 @@ monitoring:
     namespace: k3d-helm-cluster
     labels:
       release: "prometheus"
+  lokiCanary:
+    extraArgs:
+    - -ca-file=/var/root-tls/tls.crt
+    - -cert-file=/var/tls/tls.crt
+    - -key-file=/var/tls/tls.key
+    - -tls=true
+    extraVolumeMounts:
+    - name: tls-cert
+      mountPath: /var/tls
+    - name: root-tls-cert
+      mountPath: /var/root-tls
+    - name: client-tls
+      mountPath: /var/client-tls
+    extraVolumes:
+    - name: tls-cert
+      secret:
+        secretName: my-demo-app-tls
+    - name: root-tls-cert
+      secret:
+        secretName: ca-tls
+    - name: client-tls
+      secret:
+        secretName: client-tls
 minio:
   enabled: true
 backend:
@@ -23,25 +51,284 @@ write:
   replicas: 0
 singleBinary:
   replicas: 0
+
+gateway:
+  nginxConfig:
+    readinessProbe:
+      httpGet:
+        path: /
+        port: http-metrics
+        scheme: HTTPS
+      initialDelaySeconds: 30
+      timeoutSeconds: 1
+    schema: https
+  extraVolumeMounts:
+    - name: tls-cert
+      mountPath: /var/tls
+    - name: root-tls-cert
+      mountPath: /var/root-tls
+    - name: client-tls
+      mountPath: /var/client-tls
+  extraVolumes:
+    - name: tls-cert
+      secret:
+        secretName: my-demo-app-tls
+    - name: root-tls-cert
+      secret:
+        secretName: ca-tls
+    - name: client-tls
+      secret:
+        secretName: client-tls
 compactor:
   replicas: 1
   enabled: true
+  extraVolumeMounts:
+    - name: tls-cert
+      mountPath: /var/tls
+    - name: root-tls-cert
+      mountPath: /var/root-tls
+    - name: client-tls
+      mountPath: /var/client-tls
+  extraVolumes:
+    - name: tls-cert
+      secret:
+        secretName: my-demo-app-tls
+    - name: root-tls-cert
+      secret:
+        secretName: ca-tls
+    - name: client-tls
+      secret:
+        secretName: client-tls
 distributor:
   replicas: 1
+  extraVolumeMounts:
+    - name: tls-cert
+      mountPath: /var/tls
+    - name: root-tls-cert
+      mountPath: /var/root-tls
+    - name: client-tls
+      mountPath: /var/client-tls
+  extraVolumes:
+    - name: tls-cert
+      secret:
+        secretName: my-demo-app-tls
+    - name: root-tls-cert
+      secret:
+        secretName: ca-tls
+    - name: client-tls
+      secret:
+        secretName: client-tls
 indexGateway:
   replicas: 1
   enabled: true
+  extraVolumeMounts:
+    - name: tls-cert
+      mountPath: /var/tls
+    - name: root-tls-cert
+      mountPath: /var/root-tls
+    - name: client-tls
+      mountPath: /var/client-tls
+  extraVolumes:
+    - name: tls-cert
+      secret:
+        secretName: my-demo-app-tls
+    - name: root-tls-cert
+      secret:
+        secretName: ca-tls
+    - name: client-tls
+      secret:
+        secretName: client-tls
 ingester:
   replicas: 3
   maxUnavailable: 1
+  extraVolumeMounts:
+    - name: tls-cert
+      mountPath: /var/tls
+    - name: root-tls-cert
+      mountPath: /var/root-tls
+    - name: client-tls
+      mountPath: /var/client-tls
+  extraVolumes:
+    - name: tls-cert
+      secret:
+        secretName: my-demo-app-tls
+    - name: root-tls-cert
+      secret:
+        secretName: ca-tls
+    - name: client-tls
+      secret:
+        secretName: client-tls
 querier:
   replicas: 3
   maxUnavailable: 1
+  extraVolumeMounts:
+    - name: tls-cert
+      mountPath: /var/tls
+    - name: root-tls-cert
+      mountPath: /var/root-tls
+    - name: client-tls
+      mountPath: /var/client-tls
+  extraVolumes:
+    - name: tls-cert
+      secret:
+        secretName: my-demo-app-tls
+    - name: root-tls-cert
+      secret:
+        secretName: ca-tls
+    - name: client-tls
+      secret:
+        secretName: client-tls
 queryFrontend:
   replicas: 1
+  extraVolumeMounts:
+    - name: tls-cert
+      mountPath: /var/tls
+    - name: root-tls-cert
+      mountPath: /var/root-tls
+    - name: client-tls
+      mountPath: /var/client-tls
+  extraVolumes:
+    - name: tls-cert
+      secret:
+        secretName: my-demo-app-tls
+    - name: root-tls-cert
+      secret:
+        secretName: ca-tls
+    - name: client-tls
+      secret:
+        secretName: client-tls
+
 queryScheduler:
   replicas: 2
   enabled: true
+  extraVolumeMounts:
+    - name: tls-cert
+      mountPath: /var/tls
+    - name: root-tls-cert
+      mountPath: /var/root-tls
+    - name: client-tls
+      mountPath: /var/client-tls
+  extraVolumes:
+    - name: tls-cert
+      secret:
+        secretName: my-demo-app-tls
+    - name: root-tls-cert
+      secret:
+        secretName: ca-tls
+    - name: client-tls
+      secret:
+        secretName: client-tls
 ruler:
   replicas: 1
   enabled: true
+  extraVolumeMounts:
+    - name: tls-cert
+      mountPath: /var/tls
+    - name: root-tls-cert
+      mountPath: /var/root-tls
+    - name: client-tls
+      mountPath: /var/client-tls
+  extraVolumes:
+    - name: tls-cert
+      secret:
+        secretName: my-demo-app-tls
+    - name: root-tls-cert
+      secret:
+        secretName: ca-tls
+    - name: client-tls
+      secret:
+        secretName: client-tls
+loki:
+  schemaConfig:
+    configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: http-metrics
+      scheme: HTTPS
+    initialDelaySeconds: 30
+    timeoutSeconds: 1
+  structuredConfig:
+    server:
+      log_level: debug
+      http_tls_config:
+        cert_file: /var/tls/tls.crt
+        key_file: /var/tls/tls.key
+        client_auth_type: VerifyClientCertIfGiven
+        client_ca_file: /var/root-tls/tls.crt
+      grpc_tls_config:
+        cert_file: /var/tls/tls.crt
+        key_file: /var/tls/tls.key
+        client_auth_type: VerifyClientCertIfGiven
+        client_ca_file: /var/root-tls/tls.crt
+    ingester_client:
+      grpc_client_config:
+        tls_enabled: true
+        tls_cert_path: /var/client-tls/tls.crt
+        tls_key_path: /var/client-tls/tls.key
+        tls_ca_path: /var/root-tls/tls.crt
+        tls_server_name: loki-memberlist
+    query_scheduler:
+      grpc_client_config:
+        tls_enabled: true
+        tls_cert_path: /var/client-tls/tls.crt
+        tls_key_path: /var/client-tls/tls.key
+        tls_ca_path: /var/root-tls/tls.crt
+        tls_server_name: loki-memberlist
+    frontend:
+      tail_tls_config:
+        tls_cert_path: /var/client-tls/tls.crt
+        tls_key_path: /var/client-tls/tls.key
+        tls_ca_path: /var/root-tls/tls.crt
+        tls_server_name: loki-memberlist
+      grpc_client_config:
+        tls_enabled: true
+        tls_cert_path: /var/client-tls/tls.crt
+        tls_key_path: /var/client-tls/tls.key
+        tls_ca_path: /var/root-tls/tls.crt
+        tls_server_name: loki-memberlist
+    storage_config:
+      tsdb_shipper:
+        index_gateway_client:
+          grpc_client_config:
+            tls_enabled: true
+            tls_cert_path: /var/client-tls/tls.crt
+            tls_key_path: /var/client-tls/tls.key
+            tls_ca_path: /var/root-tls/tls.crt
+            tls_server_name: loki-memberlist
+    frontend_worker:
+      grpc_client_config:
+        tls_enabled: true
+        tls_cert_path: /var/client-tls/tls.crt
+        tls_key_path: /var/client-tls/tls.key
+        tls_ca_path: /var/root-tls/tls.crt
+        tls_server_name: loki-memberlist
+    memberlist:
+      bind_addr:
+      - 0.0.0.0
+      tls_enabled: true
+      tls_cert_path: /var/tls/tls.crt
+      tls_key_path: /var/tls/tls.key
+      tls_ca_path: /var/root-tls/tls.crt
+      tls_server_name: loki-memberlist
+    ruler:
+      ruler_client:
+        tls_enabled: true
+        tls_cert_path: /var/client-tls/tls.crt
+        tls_key_path: /var/client-tls/tls.key
+        tls_ca_path: /var/root-tls/tls.crt
+        tls_server_name: loki-memberlist
+      evaluation:
+        query_frontend:
+          tls_enabled: true
+          tls_cert_path: /var/client-tls/tls.crt
+          tls_key_path: /var/client-tls/tls.key
+          tls_ca_path: /var/root-tls/tls.crt
+          tls_server_name: loki-memberlist

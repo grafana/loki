@@ -38,19 +38,10 @@ spec:
       scrapeTimeout: {{ . }}
       {{- end }}
       relabelings:
-        - sourceLabels:
-          - __meta_kubernetes_namespace
-          targetLabel: __job_namespace
-          replacement: "($1)"
-
-        - sourceLabels:
-          - __job_namespace
-          - __meta_kubernetes_pod_label_app_kubernetes_io_component
+        - sourceLabels: [job]
           action: replace
-          separator: "/"
+          replacement: "{{ $.Release.Namespace }}/$1"
           targetLabel: job
-          # replacement: "({{ $.Release.Namespace }})/$1"
-
         - action: replace
           replacement: "{{ include "loki.clusterLabel" $ }}"
           targetLabel: cluster
