@@ -15,6 +15,7 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 )
 
@@ -170,6 +171,10 @@ func NewBloomStore(
 	cfg := bloomStoreConfig{
 		workingDir: storageConfig.BloomShipperConfig.WorkingDirectory,
 		numWorkers: storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
+	}
+
+	if err := util.EnsureDirectory(cfg.workingDir); err != nil {
+		return nil, errors.Wrapf(err, "failed to create working directory for bloom store: '%s'", cfg.workingDir)
 	}
 
 	for _, periodicConfig := range periodicConfigs {
