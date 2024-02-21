@@ -64,6 +64,16 @@ type Limits interface {
 	CustomTrackersConfig(userID string) *CustomTrackersConfig
 }
 
+type EmptyLimits struct{}
+
+func (EmptyLimits) OTLPConfig(string) OTLPConfig {
+	return DefaultOTLPConfig
+}
+
+func (EmptyLimits) CustomTrackersConfig(string) *CustomTrackersConfig {
+	return EmptyCustomTrackersConfig
+}
+
 type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits) (*logproto.PushRequest, *Stats, error)
 
 type customTrackerPair struct {
