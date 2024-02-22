@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -222,6 +223,9 @@ func (f *Fetcher) loadBlocksFromFS(_ context.Context, refs []BlockRef) ([]BlockD
 
 	for _, ref := range refs {
 		path := f.localFSResolver.Block(ref).LocalPath()
+		// the block directory does not contain the .tar.gz extension
+		// since it is stripped when the archive is extracted into a folder
+		path = strings.TrimSuffix(path, ".tar.gz")
 		if ok, clean := f.isBlockDir(path); ok {
 			blockDirs = append(blockDirs, NewBlockDirectory(ref, path, f.logger))
 		} else {
