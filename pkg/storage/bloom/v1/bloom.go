@@ -65,9 +65,9 @@ func LazyDecodeBloomPage(dec *encoding.Decbuf, pool chunkenc.ReaderPool, decompr
 	if err != nil {
 		return nil, errors.Wrap(err, "getting decompressor")
 	}
+	defer pool.PutReader(decompressor)
 
 	b := BlockPool.Get(decompressedSize)[:decompressedSize]
-	defer BlockPool.Put(b)
 
 	if _, err = io.ReadFull(decompressor, b); err != nil {
 		return nil, errors.Wrap(err, "decompressing bloom page")
@@ -105,6 +105,15 @@ type BloomPageDecoder struct {
 	n   int // number of blooms in page
 	cur *Bloom
 	err error
+}
+
+// Drop returns the underlying byte slice to the pool
+// for efficiency. It's intended to be used as a
+// perf optimization prior to garbage collection.
+func (d *BloomPageDecoder) Drop() {
+	if cap(d.data) > 0 {
+		BlockPool.Put(d.data)
+	}
 }
 
 func (d *BloomPageDecoder) Reset() {

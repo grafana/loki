@@ -30,8 +30,7 @@ func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 			IndexTables: storageconfig.IndexPeriodicTableConfig{
 				PeriodicTableConfig: storageconfig.PeriodicTableConfig{
 					Period: 24 * time.Hour,
-					// TODO(chaudum): Integrate {,Parse}MetaKey into schema config
-					// Prefix: "schema_a_table_",
+					Prefix: "schema_a_table_",
 				}},
 		},
 		{
@@ -40,8 +39,7 @@ func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 			IndexTables: storageconfig.IndexPeriodicTableConfig{
 				PeriodicTableConfig: storageconfig.PeriodicTableConfig{
 					Period: 24 * time.Hour,
-					// TODO(chaudum): Integrate {,Parse}MetaKey into schema config
-					// Prefix: "schema_b_table_",
+					Prefix: "schema_b_table_",
 				}},
 		},
 	}
@@ -83,8 +81,7 @@ func createMetaInStorage(store *BloomStore, tenant string, start model.Time, min
 				// EndTimestamp:   start.Add(12 * time.Hour),
 			},
 		},
-		Blocks:          []BlockRef{},
-		BlockTombstones: []BlockRef{},
+		Blocks: []BlockRef{},
 	}
 	err := store.storeDo(start, func(s *bloomStoreEntry) error {
 		raw, _ := json.Marshal(meta)

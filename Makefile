@@ -863,3 +863,7 @@ snyk: loki-image build-image
 
 .PHONY: scan-vulnerabilities
 scan-vulnerabilities: trivy snyk
+
+.PHONY: release-workflows
+release-workflows:
+	jsonnet -SJ .github/vendor -m .github/workflows .github/release-workflows.jsonnet

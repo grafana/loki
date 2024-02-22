@@ -13,9 +13,17 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-## 5.43.2
+## 5.44.0
 
 - [ENHANCEMENT] Modified helm template to use parameters http_listen_port and grpc_listen_port instead of hardcoded values.
+
+## 5.43.3
+
+- [ENHANCEMENT] Added missing default values to support ServerSideApply
+
+## 5.43.2
+
+- [BUGFIX] Added `alibabacloud` to `isUsingObjectStorage` check.
 
 ## 5.43.1
 

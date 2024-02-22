@@ -218,10 +218,6 @@ type SeriesHeader struct {
 	FromTs, ThroughTs model.Time
 }
 
-func (h SeriesHeader) OverlapFingerprintRange(other SeriesHeader) bool {
-	return h.Bounds.Overlaps(other.Bounds)
-}
-
 // build one aggregated header for the entire block
 func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 	if len(xs) == 0 {
@@ -234,8 +230,8 @@ func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 		Bounds: NewBounds(fromFp, throughFP),
 	}
 
-	for _, x := range xs {
-		if x.FromTs < res.FromTs {
+	for i, x := range xs {
+		if i == 0 || x.FromTs < res.FromTs {
 			res.FromTs = x.FromTs
 		}
 		if x.ThroughTs > res.ThroughTs {

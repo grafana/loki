@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"sort"
 	"testing"
 	"time"
 
@@ -17,11 +16,18 @@ import (
 
 	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/logproto"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/validation"
 )
 
-// short constructor
-var newTr = bloomutils.NewTokenRange
+func rs(id int, tokens ...uint32) ring.ReplicationSet {
+	inst := ring.InstanceDesc{
+		Id:     fmt.Sprintf("instance-%d", id),
+		Addr:   fmt.Sprintf("10.0.0.%d", id),
+		Tokens: tokens,
+	}
+	return ring.ReplicationSet{Instances: []ring.InstanceDesc{inst}}
+}
 
 func TestBloomGatewayClient(t *testing.T) {
 	logger := log.NewNopLogger()
@@ -42,127 +48,148 @@ func TestBloomGatewayClient(t *testing.T) {
 	})
 }
 
-func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
+func TestBloomGatewayClient_ReplicationSetsWithBounds(t *testing.T) {
+	testCases := map[string]struct {
+		instances []ring.InstanceDesc
+		expected  []rsWithRanges
+	}{
+		"single instance covers full range": {
+			instances: []ring.InstanceDesc{
+				{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{(1 << 31)}}, // 0x80000000
+			},
+			expected: []rsWithRanges{
+				{rs: rs(1, (1 << 31)), ranges: []v1.FingerprintBounds{
+					v1.NewBounds(0, math.MaxUint64),
+				}},
+			},
+		},
+		"one token per instance": {
+			instances: []ring.InstanceDesc{
+				{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{(1 << 30) * 1}}, // 0x40000000
+				{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{(1 << 30) * 2}}, // 0x80000000
+				{Id: "instance-3", Addr: "10.0.0.3", Tokens: []uint32{(1 << 30) * 3}}, // 0xc0000000
+			},
+			expected: []rsWithRanges{
+				{rs: rs(1, (1<<30)*1), ranges: []v1.FingerprintBounds{
+					v1.NewBounds(0, 4611686018427387903),
+					v1.NewBounds(13835058055282163712, 18446744073709551615),
+				}},
+				{rs: rs(2, (1<<30)*2), ranges: []v1.FingerprintBounds{
+					v1.NewBounds(4611686018427387904, 9223372036854775807),
+				}},
+				{rs: rs(3, (1<<30)*3), ranges: []v1.FingerprintBounds{
+					v1.NewBounds(9223372036854775808, 13835058055282163711),
+				}},
+			},
+		},
+		"extreme tokens in ring": {
+			instances: []ring.InstanceDesc{
+				{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{0}},
+				{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{math.MaxUint32}},
+			},
+			expected: []rsWithRanges{
+				{rs: rs(1, 0), ranges: []v1.FingerprintBounds{
+					v1.NewBounds(math.MaxUint64-math.MaxUint32, math.MaxUint64),
+				}},
+				{rs: rs(2, math.MaxUint32), ranges: []v1.FingerprintBounds{
+					v1.NewBounds(0, math.MaxUint64-math.MaxUint32-1),
+				}},
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		tc := tc
+		t.Run(name, func(t *testing.T) {
+			subRing := newMockRing(t, tc.instances)
+			res, err := replicationSetsWithBounds(subRing, tc.instances)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, res)
+		})
+	}
+}
+
+func TestBloomGatewayClient_PartitionByReplicationSet(t *testing.T) {
+	// Create 10 fingerprints [0, 2, 4, ... 18]
+	groups := make([]*logproto.GroupedChunkRefs, 0, 10)
+	for i := 0; i < 20; i += 2 {
+		groups = append(groups, &logproto.GroupedChunkRefs{Fingerprint: uint64(i)})
+	}
+
 	// instance token ranges do not overlap
 	t.Run("non-overlapping", func(t *testing.T) {
-		groups := []*logproto.GroupedChunkRefs{
-			{Fingerprint: 0},
-			{Fingerprint: 100},
-			{Fingerprint: 101},
-			{Fingerprint: 200},
-			{Fingerprint: 201},
-			{Fingerprint: 300},
-			{Fingerprint: 301},
-			{Fingerprint: 400},
-			{Fingerprint: 401}, // out of bounds, will be dismissed
-		}
-		servers := []addrsWithTokenRange{
-			{id: "instance-1", addrs: []string{"10.0.0.1"}, tokenRange: newTr(0, 100)},
-			{id: "instance-2", addrs: []string{"10.0.0.2"}, tokenRange: newTr(101, 200)},
-			{id: "instance-3", addrs: []string{"10.0.0.3"}, tokenRange: newTr(201, 300)},
-			{id: "instance-2", addrs: []string{"10.0.0.2"}, tokenRange: newTr(301, 400)},
+
+		servers := []rsWithRanges{
+			{rs: rs(1), ranges: []v1.FingerprintBounds{v1.NewBounds(0, 4)}},
+			{rs: rs(2), ranges: []v1.FingerprintBounds{v1.NewBounds(5, 9), v1.NewBounds(15, 19)}},
+			{rs: rs(3), ranges: []v1.FingerprintBounds{v1.NewBounds(10, 14)}},
 		}
 
 		// partition fingerprints
 
-		expected := []instanceWithFingerprints{
+		expected := [][]*logproto.GroupedChunkRefs{
 			{
-				instance: servers[0],
-				fingerprints: []*logproto.GroupedChunkRefs{
-					{Fingerprint: 0},
-					{Fingerprint: 100},
-				},
+				{Fingerprint: 0},
+				{Fingerprint: 2},
+				{Fingerprint: 4},
 			},
 			{
-				instance: servers[1],
-				fingerprints: []*logproto.GroupedChunkRefs{
-					{Fingerprint: 101},
-					{Fingerprint: 200},
-				},
+				{Fingerprint: 6},
+				{Fingerprint: 8},
+				{Fingerprint: 16},
+				{Fingerprint: 18},
 			},
 			{
-				instance: servers[2],
-				fingerprints: []*logproto.GroupedChunkRefs{
-					{Fingerprint: 201},
-					{Fingerprint: 300},
-				},
-			},
-			{
-				instance: servers[3],
-				fingerprints: []*logproto.GroupedChunkRefs{
-					{Fingerprint: 301},
-					{Fingerprint: 400},
-				},
+				{Fingerprint: 10},
+				{Fingerprint: 12},
+				{Fingerprint: 14},
 			},
 		}
 
-		bounded := partitionFingerprintsByAddresses(groups, servers)
-		require.Equal(t, expected, bounded)
-
-		// group fingerprints by instance
-
-		expected = []instanceWithFingerprints{
-			{
-				instance: addrsWithTokenRange{id: "instance-1", addrs: []string{"10.0.0.1"}},
-				fingerprints: []*logproto.GroupedChunkRefs{
-					{Fingerprint: 0},
-					{Fingerprint: 100},
-				},
-			},
-			{
-				instance: addrsWithTokenRange{id: "instance-2", addrs: []string{"10.0.0.2"}},
-				fingerprints: []*logproto.GroupedChunkRefs{
-					{Fingerprint: 101},
-					{Fingerprint: 200},
-					{Fingerprint: 301},
-					{Fingerprint: 400},
-				},
-			},
-			{
-				instance: addrsWithTokenRange{id: "instance-3", addrs: []string{"10.0.0.3"}},
-				fingerprints: []*logproto.GroupedChunkRefs{
-					{Fingerprint: 201},
-					{Fingerprint: 300},
-				},
-			},
+		partitioned := partitionByReplicationSet(groups, servers)
+		for i := range partitioned {
+			require.Equal(t, expected[i], partitioned[i].groups)
 		}
-		result := groupByInstance(bounded)
-		require.Equal(t, expected, result)
 	})
 
-	// instance token ranges overlap
+	// instance token ranges overlap -- this should not happen in a real ring, though
 	t.Run("overlapping", func(t *testing.T) {
-		groups := []*logproto.GroupedChunkRefs{
-			{Fingerprint: 50},
-			{Fingerprint: 150},
-			{Fingerprint: 250},
-			{Fingerprint: 350},
-		}
-		servers := []addrsWithTokenRange{
-			{id: "instance-1", addrs: []string{"10.0.0.1"}, tokenRange: newTr(0, 200)},
-			{id: "instance-2", addrs: []string{"10.0.0.2"}, tokenRange: newTr(100, 300)},
-			{id: "instance-3", addrs: []string{"10.0.0.3"}, tokenRange: newTr(200, 400)},
+		servers := []rsWithRanges{
+			{rs: rs(1), ranges: []v1.FingerprintBounds{v1.NewBounds(0, 9)}},
+			{rs: rs(2), ranges: []v1.FingerprintBounds{v1.NewBounds(5, 14)}},
+			{rs: rs(3), ranges: []v1.FingerprintBounds{v1.NewBounds(10, 19)}},
 		}
 
 		// partition fingerprints
 
-		expected := []instanceWithFingerprints{
-			{instance: servers[0], fingerprints: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 50},
-				{Fingerprint: 150},
-			}},
-			{instance: servers[1], fingerprints: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 150},
-				{Fingerprint: 250},
-			}},
-			{instance: servers[2], fingerprints: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 250},
-				{Fingerprint: 350},
-			}},
+		expected := [][]*logproto.GroupedChunkRefs{
+			{
+				{Fingerprint: 0},
+				{Fingerprint: 2},
+				{Fingerprint: 4},
+				{Fingerprint: 6},
+				{Fingerprint: 8},
+			},
+			{
+				{Fingerprint: 6},
+				{Fingerprint: 8},
+				{Fingerprint: 10},
+				{Fingerprint: 12},
+				{Fingerprint: 14},
+			},
+			{
+				{Fingerprint: 10},
+				{Fingerprint: 12},
+				{Fingerprint: 14},
+				{Fingerprint: 16},
+				{Fingerprint: 18},
+			},
 		}
 
-		bounded := partitionFingerprintsByAddresses(groups, servers)
-		require.Equal(t, expected, bounded)
+		partitioned := partitionByReplicationSet(groups, servers)
+		for i := range partitioned {
+			require.Equal(t, expected[i], partitioned[i].groups)
+		}
 	})
 }
 
@@ -177,190 +204,42 @@ func BenchmarkPartitionFingerprintsByAddresses(b *testing.B) {
 
 	numServers := 100
 	tokenStep := math.MaxUint32 / uint32(numServers)
-	servers := make([]addrsWithTokenRange, 0, numServers)
+	servers := make([]rsWithRanges, 0, numServers)
 	for i := uint32(0); i < math.MaxUint32-tokenStep; i += tokenStep {
-		servers = append(servers, addrsWithTokenRange{
-			id:         fmt.Sprintf("instance-%x", i),
-			addrs:      []string{fmt.Sprintf("%d", i)},
-			tokenRange: newTr(i, i+tokenStep),
+		servers = append(servers, rsWithRanges{
+			rs: rs(int(i)),
+			ranges: []v1.FingerprintBounds{
+				v1.NewBounds(model.Fingerprint(i)<<32, model.Fingerprint(i+tokenStep)<<32),
+			},
 		})
 	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = partitionFingerprintsByAddresses(groups, servers)
+		_ = partitionByReplicationSet(groups, servers)
 	}
 }
 
-func TestBloomGatewayClient_ServerAddressesWithTokenRanges(t *testing.T) {
+func TestBloomGatewayClient_MapTokenRangeToFingerprintRange(t *testing.T) {
 	testCases := map[string]struct {
-		instances []ring.InstanceDesc
-		expected  []addrsWithTokenRange
+		lshift int
+		inp    bloomutils.Range[uint32]
+		exp    v1.FingerprintBounds
 	}{
-		"one token per instance": {
-			instances: []ring.InstanceDesc{
-				{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{math.MaxUint32 / 6 * 1}},
-				{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{math.MaxUint32 / 6 * 3}},
-				{Id: "instance-3", Addr: "10.0.0.3", Tokens: []uint32{math.MaxUint32 / 6 * 5}},
-			},
-			expected: []addrsWithTokenRange{
-				{id: "instance-1", addrs: []string{"10.0.0.1"}, tokenRange: newTr(0, math.MaxUint32/6*1)},
-				{id: "instance-2", addrs: []string{"10.0.0.2"}, tokenRange: newTr(math.MaxUint32/6*1+1, math.MaxUint32/6*3)},
-				{id: "instance-3", addrs: []string{"10.0.0.3"}, tokenRange: newTr(math.MaxUint32/6*3+1, math.MaxUint32/6*5)},
-				{id: "instance-1", addrs: []string{"10.0.0.1"}, tokenRange: newTr(math.MaxUint32/6*5+1, math.MaxUint32)},
-			},
+		"single token expands to multiple fingerprints": {
+			inp: bloomutils.NewTokenRange(0, 0),
+			exp: v1.NewBounds(0, 0xffffffff),
 		},
-		"MinUint32 and MaxUint32 are tokens in the ring": {
-			instances: []ring.InstanceDesc{
-				{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{0, math.MaxUint32 / 3 * 2}},
-				{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{math.MaxUint32 / 3 * 1, math.MaxUint32}},
-			},
-			expected: []addrsWithTokenRange{
-				{id: "instance-1", addrs: []string{"10.0.0.1"}, tokenRange: newTr(0, 0)},
-				{id: "instance-2", addrs: []string{"10.0.0.2"}, tokenRange: newTr(1, math.MaxUint32/3)},
-				{id: "instance-1", addrs: []string{"10.0.0.1"}, tokenRange: newTr(math.MaxUint32/3*1+1, math.MaxUint32/3*2)},
-				{id: "instance-2", addrs: []string{"10.0.0.2"}, tokenRange: newTr(math.MaxUint32/3*2+1, math.MaxUint32)},
-			},
+		"max value expands to max value of new range": {
+			inp: bloomutils.NewTokenRange((1 << 31), math.MaxUint32),
+			exp: v1.NewBounds((1 << 63), 0xffffffffffffffff),
 		},
 	}
-
-	for name, tc := range testCases {
-		tc := tc
-		t.Run(name, func(t *testing.T) {
-			subRing := newMockRing(tc.instances)
-			res, err := serverAddressesWithTokenRanges(subRing, tc.instances)
-			require.NoError(t, err)
-			require.Equal(t, tc.expected, res)
-		})
-	}
-
-}
-
-func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
-	instances := []ring.InstanceDesc{
-		{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{2146405214, 1029997044, 678878693}},
-		{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{296463531, 1697323986, 800258284}},
-		{Id: "instance-3", Addr: "10.0.0.3", Tokens: []uint32{2014002871, 315617625, 1036168527}},
-	}
-
-	it := bloomutils.NewInstanceSortMergeIterator(instances)
-	for it.Next() {
-		t.Log(it.At().TokenRange.Max, it.At().Instance.Addr)
-	}
-
-	testCases := []struct {
-		name     string
-		chunks   []*logproto.GroupedChunkRefs
-		expected []instanceWithFingerprints
-	}{
-		{
-			name:     "empty input yields empty result",
-			chunks:   []*logproto.GroupedChunkRefs{},
-			expected: []instanceWithFingerprints{},
-		},
-		{
-			name: "fingerprints within a single token range are grouped",
-			chunks: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 1000000000, Refs: []*logproto.ShortRef{{Checksum: 1}}},
-				{Fingerprint: 1000000001, Refs: []*logproto.ShortRef{{Checksum: 2}}},
-			},
-			expected: []instanceWithFingerprints{
-				{
-					instance: addrsWithTokenRange{
-						id:    "instance-1",
-						addrs: []string{"10.0.0.1"},
-					},
-					fingerprints: []*logproto.GroupedChunkRefs{
-						{Fingerprint: 1000000000, Refs: []*logproto.ShortRef{{Checksum: 1}}},
-						{Fingerprint: 1000000001, Refs: []*logproto.ShortRef{{Checksum: 2}}},
-					},
-				},
-			},
-		},
-		{
-			name: "fingerprints within multiple token ranges of a single instance are grouped",
-			chunks: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 1000000000, Refs: []*logproto.ShortRef{{Checksum: 1}}},
-				{Fingerprint: 2100000000, Refs: []*logproto.ShortRef{{Checksum: 2}}},
-			},
-			expected: []instanceWithFingerprints{
-				{
-					instance: addrsWithTokenRange{
-						id:    "instance-1",
-						addrs: []string{"10.0.0.1"},
-					},
-					fingerprints: []*logproto.GroupedChunkRefs{
-						{Fingerprint: 1000000000, Refs: []*logproto.ShortRef{{Checksum: 1}}},
-						{Fingerprint: 2100000000, Refs: []*logproto.ShortRef{{Checksum: 2}}},
-					},
-				},
-			},
-		},
-		{
-			name: "fingerprints with token ranges of multiple instances are grouped",
-			chunks: []*logproto.GroupedChunkRefs{
-				// instance 1
-				{Fingerprint: 1000000000, Refs: []*logproto.ShortRef{{Checksum: 1}}},
-				// instance 1
-				{Fingerprint: 2100000000, Refs: []*logproto.ShortRef{{Checksum: 2}}},
-				// instance 2
-				{Fingerprint: 290000000, Refs: []*logproto.ShortRef{{Checksum: 3}}},
-				// instance 2 (fingerprint equals instance token)
-				{Fingerprint: 800258284, Refs: []*logproto.ShortRef{{Checksum: 4}}},
-				// instance 2 (fingerprint greater than greatest token)
-				{Fingerprint: 2147483648, Refs: []*logproto.ShortRef{{Checksum: 5}}},
-				// instance 3
-				{Fingerprint: 1029997045, Refs: []*logproto.ShortRef{{Checksum: 6}}},
-			},
-			expected: []instanceWithFingerprints{
-				{
-					instance: addrsWithTokenRange{
-						id:    "instance-2",
-						addrs: []string{"10.0.0.2"},
-					},
-					fingerprints: []*logproto.GroupedChunkRefs{
-						{Fingerprint: 290000000, Refs: []*logproto.ShortRef{{Checksum: 3}}},
-						{Fingerprint: 800258284, Refs: []*logproto.ShortRef{{Checksum: 4}}},
-						{Fingerprint: 2147483648, Refs: []*logproto.ShortRef{{Checksum: 5}}},
-					},
-				},
-				{
-					instance: addrsWithTokenRange{
-						id:    "instance-1",
-						addrs: []string{"10.0.0.1"},
-					},
-					fingerprints: []*logproto.GroupedChunkRefs{
-						{Fingerprint: 1000000000, Refs: []*logproto.ShortRef{{Checksum: 1}}},
-						{Fingerprint: 2100000000, Refs: []*logproto.ShortRef{{Checksum: 2}}},
-					},
-				},
-				{
-					instance: addrsWithTokenRange{
-						id:    "instance-3",
-						addrs: []string{"10.0.0.3"},
-					},
-					fingerprints: []*logproto.GroupedChunkRefs{
-						{Fingerprint: 1029997045, Refs: []*logproto.ShortRef{{Checksum: 6}}},
-					},
-				},
-			},
-		},
-	}
-
-	subRing := newMockRing(instances)
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			// sort chunks here, to be able to write more human readable test input
-			sort.Slice(tc.chunks, func(i, j int) bool {
-				return tc.chunks[i].Fingerprint < tc.chunks[j].Fingerprint
-			})
-
-			servers, err := serverAddressesWithTokenRanges(subRing, instances)
-			require.NoError(t, err)
-			res := groupFingerprintsByServer(tc.chunks, servers)
-			require.Equal(t, tc.expected, res)
+	for desc, tc := range testCases {
+		t.Run(desc, func(t *testing.T) {
+			actual := mapTokenRangeToFingerprintRange(tc.inp)
+			require.Equal(t, tc.exp, actual)
 		})
 	}
 }
@@ -368,11 +247,14 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 // make sure mockRing implements the ring.ReadRing interface
 var _ ring.ReadRing = &mockRing{}
 
-func newMockRing(instances []ring.InstanceDesc) *mockRing {
-	it := bloomutils.NewInstanceSortMergeIterator(instances)
-	ranges := make([]bloomutils.InstanceWithTokenRange, 0)
-	for it.Next() {
-		ranges = append(ranges, it.At())
+func newMockRing(t *testing.T, instances []ring.InstanceDesc) *mockRing {
+	ranges := make([]ring.TokenRanges, 0)
+	for i := range instances {
+		tr, err := bloomutils.TokenRangesForInstance(instances[i].Id, instances)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ranges = append(ranges, tr)
 	}
 	return &mockRing{
 		instances: instances,
@@ -382,21 +264,17 @@ func newMockRing(instances []ring.InstanceDesc) *mockRing {
 
 type mockRing struct {
 	instances []ring.InstanceDesc
-	ranges    []bloomutils.InstanceWithTokenRange
+	ranges    []ring.TokenRanges
 }
 
 // Get implements ring.ReadRing.
-func (r *mockRing) Get(key uint32, _ ring.Operation, _ []ring.InstanceDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
-	idx, _ := sort.Find(len(r.ranges), func(i int) int {
-		if r.ranges[i].TokenRange.Max < key {
-			return 1
+func (r *mockRing) Get(key uint32, _ ring.Operation, _ []ring.InstanceDesc, _ []string, _ []string) (rs ring.ReplicationSet, err error) {
+	for i := range r.ranges {
+		if r.ranges[i].IncludesKey(key) {
+			rs.Instances = append(rs.Instances, r.instances[i])
 		}
-		if r.ranges[i].TokenRange.Max > key {
-			return -1
-		}
-		return 0
-	})
-	return ring.ReplicationSet{Instances: []ring.InstanceDesc{r.ranges[idx].Instance}}, nil
+	}
+	return
 }
 
 // GetAllHealthy implements ring.ReadRing.
@@ -446,7 +324,6 @@ func (*mockRing) CleanupShuffleShardCache(_ string) {
 	panic("unimplemented")
 }
 
-func (r *mockRing) GetTokenRangesForInstance(_ string) (ring.TokenRanges, error) {
-	tr := ring.TokenRanges{0, math.MaxUint32}
-	return tr, nil
+func (r *mockRing) GetTokenRangesForInstance(id string) (ring.TokenRanges, error) {
+	return bloomutils.TokenRangesForInstance(id, r.instances)
 }
