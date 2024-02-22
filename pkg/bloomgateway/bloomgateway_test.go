@@ -26,6 +26,7 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
+	bloomshipperconfig "github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -70,6 +71,9 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 		Configs: []config.PeriodConfig{p},
 	}
 	storageCfg := storage.Config{
+		BloomShipperConfig: bloomshipperconfig.Config{
+			WorkingDirectory: t.TempDir(),
+		},
 		FSConfig: local.FSConfig{
 			Directory: t.TempDir(),
 		},
@@ -136,6 +140,9 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		Configs: []config.PeriodConfig{p},
 	}
 	storageCfg := storage.Config{
+		BloomShipperConfig: bloomshipperconfig.Config{
+			WorkingDirectory: t.TempDir(),
+		},
 		FSConfig: local.FSConfig{
 			Directory: t.TempDir(),
 		},

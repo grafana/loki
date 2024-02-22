@@ -6,11 +6,12 @@ import (
 )
 
 type Metrics struct {
-	sbfCreationTime    prometheus.Counter   // time spent creating sbfs
-	bloomSize          prometheus.Histogram // size of the bloom filter in bytes
-	hammingWeightRatio prometheus.Histogram // ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter
-	estimatedCount     prometheus.Histogram // estimated number of elements in the bloom filter
-	chunksIndexed      *prometheus.CounterVec
+	sbfCreationTime     prometheus.Counter   // time spent creating sbfs
+	bloomSize           prometheus.Histogram // size of the bloom filter in bytes
+	hammingWeightRatio  prometheus.Histogram // ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter
+	estimatedCount      prometheus.Histogram // estimated number of elements in the bloom filter
+	chunksIndexed       *prometheus.CounterVec
+	blockSeriesIterated prometheus.Counter
 }
 
 const chunkIndexedTypeIterated = "iterated"
@@ -41,5 +42,9 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Name: "bloom_chunks_indexed_total",
 			Help: "Number of chunks indexed in bloom filters, partitioned by type. Type can be iterated or copied, where iterated indicates the chunk data was fetched and ngrams for it's contents generated whereas copied indicates the chunk already existed in another source block and was copied to the new block",
 		}, []string{"type"}),
+		blockSeriesIterated: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "bloom_block_series_iterated_total",
+			Help: "Number of series iterated in existing blocks while generating new blocks",
+		}),
 	}
 }

@@ -407,7 +407,7 @@ func applyPathPrefixDefaults(r, defaults *ConfigWrapper) {
 			r.CompactorConfig.WorkingDirectory = fmt.Sprintf("%s/compactor", prefix)
 		}
 		if r.StorageConfig.BloomShipperConfig.WorkingDirectory == defaults.StorageConfig.BloomShipperConfig.WorkingDirectory {
-			r.StorageConfig.BloomShipperConfig.WorkingDirectory = fmt.Sprintf("%s/bloom-shipper", prefix)
+			r.StorageConfig.BloomShipperConfig.WorkingDirectory = fmt.Sprintf("%s/blooms", prefix)
 		}
 	}
 }

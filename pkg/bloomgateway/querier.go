@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 type querierMetrics struct {
@@ -57,8 +58,12 @@ type BloomQuerier struct {
 	metrics *querierMetrics
 }
 
-func NewQuerier(c Client, logger log.Logger) *BloomQuerier {
-	return &BloomQuerier{c: c, logger: logger}
+func NewQuerier(c Client, r prometheus.Registerer, logger log.Logger) *BloomQuerier {
+	return &BloomQuerier{
+		c:       c,
+		metrics: newQuerierMetrics(r, constants.Loki, querierMetricsSubsystem),
+		logger:  logger,
+	}
 }
 
 func convertToShortRef(ref *logproto.ChunkRef) *logproto.ShortRef {
