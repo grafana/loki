@@ -7,10 +7,15 @@ import (
 )
 
 type CustomTracker interface {
+
+	// IngestedBytesAdd records ingested bytes by tenant, retention period and labels.
 	IngestedBytesAdd(tenant string, retentionPeriod time.Duration, labels labels.Labels, value float64)
+
+	// DiscardedBytesAdd records discarded bytes by tenant and labels.
 	DiscardedBytesAdd(tenant string, labels labels.Labels, value float64)
 }
 
+// CustomTrackersConfig defines a map of tracker name to tracked label set.
 type CustomTrackersConfig struct {
 	source map[string][]string
 }
@@ -37,7 +42,8 @@ func NewCustomTrackersConfig(m map[string][]string) *CustomTrackersConfig {
 	}
 }
 
-// MatchTrackers returns a list of names of all trackers that match the given labels.
+// MatchTrackers returns a list of names of all trackers and labels that match the given labels.
+// a "tracker" label is added to the matched list.
 func (c *CustomTrackersConfig) MatchTrackers(lbs labels.Labels) []labels.Labels {
 	trackers := make([]labels.Labels, 0)
 Outer:
