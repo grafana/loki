@@ -28,6 +28,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "release-1.11.x"
         repository: "grafana/loki-release"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -118,6 +119,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "release-1.11.x"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -179,6 +181,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "release-1.11.x"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
