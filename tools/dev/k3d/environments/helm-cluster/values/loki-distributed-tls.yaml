@@ -11,6 +11,27 @@ monitoring:
     tenant:
       name: loki
       secretNamespace: k3d-helm-cluster
+    logsInstance:
+      clients:
+      - name: loki
+        external_labels:
+          cluster: loki 
+        url: https://loki-gateway.default.svc.cluster.local/loki/api/v1/push
+        tlsConfig:
+          insecureSkipVerify: false
+          cert:
+            secret:
+              key: tls.crt
+              name: client-tls
+          ca:
+            secret:
+              key: tls.crt
+              name: my-ca-tls
+          keySecret:
+            key: tls.key
+            name: client-tls
+          serverName: loki-gateway
+        tenantId: "self-monitoring"
   serviceMonitor:
     labels:
       release: "prometheus"
@@ -53,14 +74,25 @@ singleBinary:
   replicas: 0
 
 gateway:
-  nginxConfig:
-    readinessProbe:
+  readinessProbe:
       httpGet:
         path: /
         port: http-metrics
         scheme: HTTPS
       initialDelaySeconds: 30
       timeoutSeconds: 1
+  nginxConfig:
+    ssl: true
+    serverSnippet: |
+      listen              443 ssl;
+      ssl_verify_client   off;
+      ssl_protocols       TLSv1.2 TLSv1.3;
+      ssl_ciphers         HIGH:!aNULL:!MD5;
+      ssl_certificate     /var/tls/tls.crt;
+      ssl_certificate_key /var/tls/tls.key;
+      ssl_client_certificate /var/client-tls/tls.crt;
+      ssl_trusted_certificate /var/root-tls/tls.crt;
+      server_name loki-memberlist;
     schema: https
   extraVolumeMounts:
     - name: tls-cert
