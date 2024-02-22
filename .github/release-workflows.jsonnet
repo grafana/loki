@@ -19,6 +19,7 @@ local build = lokiRelease.build;
       checkTemplate='grafana/loki-release/.github/workflows/check.yml@release-1.11.x',
       golangCiLintVersion='v1.51.2',
       imagePrefix='grafana',
+      releaseLibRef='release-1.11.x',
       releaseRepo='grafana/loki',
       skipArm=false,
       skipValidation=false,
@@ -43,6 +44,7 @@ local build = lokiRelease.build;
       checkTemplate='grafana/loki-release/.github/workflows/check.yml@release-1.11.x',
       golangCiLintVersion='v1.51.2',
       imagePrefix='grafana',
+      releaseLibRef='release-1.11.x',
       releaseRepo='grafana/loki',
       skipArm=false,
       skipValidation=false,
@@ -54,6 +56,7 @@ local build = lokiRelease.build;
       branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+'],
       getDockerCredsFromVault=true,
       imagePrefix='grafana',
+      releaseLibRef='release-1.11.x',
       releaseRepo='grafana/loki',
     ), false, false
   ),

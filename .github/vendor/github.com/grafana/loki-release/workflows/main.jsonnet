@@ -13,6 +13,7 @@
     golangCiLintVersion='v1.55.1',
     imageJobs={},
     imagePrefix='grafana',
+    releaseLibRef='main',
     releaseRepo='grafana/loki-release',
     skipArm=true,
     skipValidation=false,
@@ -38,6 +39,7 @@
       IMAGE_PREFIX: imagePrefix,
       SKIP_VALIDATION: skipValidation,
       VERSIONING_STRATEGY: versioningStrategy,
+      RELEASE_LIB_REF: releaseLibRef,
     },
     local validationSteps = ['check'],
     jobs: {
@@ -46,6 +48,7 @@
                skip_validation: skipValidation,
                build_image: buildImage,
                golang_ci_lint_version: golangCiLintVersion,
+               release_lib_ref: releaseLibRef,
              }),
       version: $.build.version + $.common.job.withNeeds(validationSteps),
       dist: $.build.dist(buildImage, skipArm) + $.common.job.withNeeds(['version']),
@@ -55,11 +58,12 @@
     },
   },
   releaseWorkflow: function(
-    releaseRepo='grafana/loki-release',
-    dockerUsername='grafana',
-    imagePrefix='grafana',
     branches=['release-[0-9].[0-9].x', 'k[0-9]*'],
-    getDockerCredsFromVault=false
+    dockerUsername='grafana',
+    getDockerCredsFromVault=false,
+    imagePrefix='grafana',
+    releaseLibRef='main',
+    releaseRepo='grafana/loki-release',
                   ) {
     name: 'create release',
     on: {
@@ -78,6 +82,7 @@
     env: {
       RELEASE_REPO: releaseRepo,
       IMAGE_PREFIX: imagePrefix,
+      RELEASE_LIB_REF: releaseLibRef,
     },
     jobs: {
       shouldRelease: $.release.shouldRelease,
@@ -107,6 +112,12 @@
             required: false,
             type: 'string',
           },
+          release_lib_ref: {
+            default: 'main',
+            description: 'git ref of release library to use',
+            required: false,
+            type: 'string',
+          },
         },
       },
     },
@@ -117,6 +128,9 @@
     },
     concurrency: {
       group: 'check-${{ github.sha }}',
+    },
+    env: {
+      RELEASE_LIB_REF: '${{ inputs.release_lib_ref }}',
     },
     jobs: $.validate,
   },

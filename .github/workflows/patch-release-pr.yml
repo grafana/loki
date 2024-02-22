@@ -3,6 +3,7 @@ concurrency:
 env:
   DOCKER_USERNAME: "grafana"
   IMAGE_PREFIX: "grafana"
+  RELEASE_LIB_REF: "release-1.11.x"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   VERSIONING_STRATEGY: "always-bump-patch"
@@ -12,6 +13,7 @@ jobs:
     with:
       build_image: "grafana/loki-build-image:0.29.3-go1.20.10"
       golang_ci_lint_version: "v1.51.2"
+      release_lib_ref: "release-1.11.x"
       skip_validation: false
   create-release-pr:
     needs:
@@ -36,7 +38,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
-        ref: "release-1.11.x"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -93,6 +95,7 @@ jobs:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
         NFPM_SIGNING_KEY_FILE: "nfpm-private-key.key"
         SKIP_ARM: false
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "build artifacts"
       run: |
         cat <<EOF | docker run \
@@ -112,7 +115,8 @@ jobs:
           make dist packages
         EOF
       working-directory: "release"
-    - name: "upload build artifacts"
+    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "loki-build-artifacts/${{ github.sha }}"
@@ -127,7 +131,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
-        ref: "release-1.11.x"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -186,7 +190,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
-        ref: "release-1.11.x"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -245,7 +249,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
-        ref: "release-1.11.x"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -306,7 +310,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
-        ref: "release-1.11.x"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -365,7 +369,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
-        ref: "release-1.11.x"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -426,7 +430,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
-        ref: "release-1.11.x"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -487,7 +491,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
-        ref: "release-1.11.x"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -546,7 +550,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
-        ref: "release-1.11.x"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -607,7 +611,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
-        ref: "release-1.11.x"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -669,7 +673,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
-        ref: "release-1.11.x"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
