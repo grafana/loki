@@ -15,7 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 5.44.0
 
-- [ENHANCEMENT] Modified helm template to use parameters http_listen_port and grpc_listen_port instead of hardcoded values.
+- [FEATURE] Modified helm template to use parameters http_listen_port and grpc_listen_port instead of hardcoded values.
 
 ## 5.43.3
 
