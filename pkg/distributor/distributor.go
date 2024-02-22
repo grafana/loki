@@ -351,9 +351,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					bytes += len(e.Line)
 				}
 				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(bytes))
-				for _, matchedLbs := range validationContext.customTrackerConfig.MatchTrackers(lbs) {
-					d.customStreamsTracker.DiscardedBytesAdd(tenantID, matchedLbs, float64(bytes))
-				}
 				continue
 			}
 
@@ -419,11 +416,23 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
 
-		/* We would have to filter all streams again here.
-		for _, tracker := range validationContext.customTrackerConfig.MatchTrackers(lbs) {
-			validation.DiscardedBytesCustom.WithLabelValues(validation.RateLimited, tenantID, tracker).Add(float64(validatedLineSize))
+		if d.customStreamsTracker != nil {
+			for _, stream := range req.Streams {
+				lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, &stream)
+				if err != nil {
+					continue
+				}
+
+				discardedStreamBytes := 0
+				for _, e := range stream.Entries {
+					discardedStreamBytes += len(e.Line)
+				}
+
+				for _, matchedLbs := range validationContext.customTrackerConfig.MatchTrackers(lbs) {
+					d.customStreamsTracker.DiscardedBytesAdd(tenantID, matchedLbs, float64(discardedStreamBytes))
+				}
+			}
 		}
-		*/
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)
