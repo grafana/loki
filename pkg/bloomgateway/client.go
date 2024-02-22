@@ -311,7 +311,7 @@ func replicationSetsWithBounds(subRing ring.ReadRing, instances []ring.InstanceD
 
 	servers := make([]rsWithRanges, 0, len(instances))
 	for _, inst := range instances {
-		tr, err := subRing.GetTokenRangesForInstance(inst.Id)
+		tr, err := bloomutils.TokenRangesForInstance(inst.Id, instances)
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
 		}
