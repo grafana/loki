@@ -44,7 +44,8 @@ func TestBloomGatewayClient(t *testing.T) {
 	t.Run("FilterChunks returns response", func(t *testing.T) {
 		c, err := NewClient(cfg, &mockRing{}, l, reg, logger, "loki", nil, false)
 		require.NoError(t, err)
-		expr, err := syntax.ParseExpr(`{foo="bar"}`)
+		expr, err := syntax.ParseExpr(`{foo="bar"}`
+		require.NoError(t, err)
 		res, err := c.FilterChunks(context.Background(), "tenant", model.Now(), model.Now(), nil, plan.QueryPlan{AST: expr})
 		require.NoError(t, err)
 		require.Equal(t, []*logproto.GroupedChunkRefs{}, res)
