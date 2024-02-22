@@ -30,8 +30,7 @@ func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 			IndexTables: storageconfig.IndexPeriodicTableConfig{
 				PeriodicTableConfig: storageconfig.PeriodicTableConfig{
 					Period: 24 * time.Hour,
-					// TODO(chaudum): Integrate {,Parse}MetaKey into schema config
-					// Prefix: "schema_a_table_",
+					Prefix: "schema_a_table_",
 				}},
 		},
 		{
@@ -40,8 +39,7 @@ func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 			IndexTables: storageconfig.IndexPeriodicTableConfig{
 				PeriodicTableConfig: storageconfig.PeriodicTableConfig{
 					Period: 24 * time.Hour,
-					// TODO(chaudum): Integrate {,Parse}MetaKey into schema config
-					// Prefix: "schema_b_table_",
+					Prefix: "schema_b_table_",
 				}},
 		},
 	}
