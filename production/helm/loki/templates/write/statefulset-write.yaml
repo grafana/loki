@@ -194,6 +194,12 @@ spec:
       kind: PersistentVolumeClaim
       metadata:
         name: data
+        {{- if .Values.write.persistence.annotations }}
+        {{- with .Values.write.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- end }}
       spec:
         accessModes:
           - ReadWriteOnce
