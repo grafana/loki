@@ -15,7 +15,7 @@ local build = lokiRelease.build;
         querytee: build.image('querytee', 'cmd/querytee', platform=['linux/amd64']),
       },
       buildImage='grafana/loki-build-image:0.29.3-go1.20.10',
-      branches=['release-[0-9]+.[0-9]+.x'],
+      branches=['release-[0-9]+.[0-9]+.x', 'fix-2.8-release-config-again'],
       checkTemplate='grafana/loki-release/.github/workflows/check.yml@release-1.11.x',
       golangCiLintVersion='v1.51.2',
       imagePrefix='grafana',

@@ -1,7 +1,6 @@
 local common = import 'common.libsonnet';
 local job = common.job;
 local step = common.step;
-local releaseStep = common.releaseStep;
 
 local setupValidationDeps = function(job) job {
   steps: [

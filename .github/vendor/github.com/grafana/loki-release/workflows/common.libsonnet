@@ -86,7 +86,7 @@
     + $.step.with({
       repository: 'grafana/loki-release',
       path: 'lib',
-      ref: 'release-1.11.x',
+      ref: '{{ env.RELEASE_LIB_REF }}',
     }),
 
   setupNode: $.step.new('setup node', 'actions/setup-node@v4')

@@ -119,6 +119,7 @@ local releaseLibStep = common.releaseLibStep;
       }),
 
       releaseStep('build artifacts')
+      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.withEnv({
         BUILD_IN_CONTAINER: false,
         DRONE_TAG: '${{ needs.version.outputs.version }}',
@@ -146,7 +147,8 @@ local releaseLibStep = common.releaseLibStep;
         EOF
       ||| % buildImage),
 
-      step.new('upload build artifacts', 'google-github-actions/upload-cloud-storage@v2')
+      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
+      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/dist',
         destination: 'loki-build-artifacts/${{ github.sha }}',  //TODO: make bucket configurable
