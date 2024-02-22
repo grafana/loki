@@ -36,6 +36,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "release-1.11.x"
         repository: "grafana/loki-release"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -52,7 +53,6 @@ jobs:
       name: "release please"
       run: |
         npm install
-        echo "Pull request footer: Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/loki-build-artifacts/${SHA}) of ${SHA}"
         npm exec -- release-please release-pr \
           --consider-all-branches \
           --label "backport main,autorelease: pending,type/docs" \
@@ -63,6 +63,7 @@ jobs:
           --token "${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
           --separate-pull-requests false \
+          --manifest-file .release-please-manifest.json \
           --debug
       working-directory: "lib"
   dist:
@@ -126,6 +127,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "release-1.11.x"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -184,6 +186,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "release-1.11.x"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -242,6 +245,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "release-1.11.x"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -302,6 +306,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "release-1.11.x"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -360,6 +365,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "release-1.11.x"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -420,6 +426,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "release-1.11.x"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -480,6 +487,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "release-1.11.x"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -538,6 +546,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "release-1.11.x"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -598,6 +607,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "release-1.11.x"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -659,6 +669,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "release-1.11.x"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -686,7 +697,9 @@ jobs:
           --repo-url="${{ env.RELEASE_REPO }}" \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
+          --manifest-file .release-please-manifest.json \
+          --debug
         
         if [[ `jq length release.json` -gt 1 ]]; then 
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
