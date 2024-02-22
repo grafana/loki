@@ -66,6 +66,13 @@
 
 * [10542](https://github.com/grafana/loki/pull/10542) **chaudum**: Remove legacy deployment mode for ingester (Deployment, without WAL) and instead always run them as StatefulSet.
 
+## [2.8.9](https://github.com/grafana/loki/compare/v2.8.8...v2.8.9) (2024-02-22)
+
+
+### Features
+
+* simulate user facing commit ([4c4ebdf](https://github.com/grafana/loki/commit/4c4ebdf0e9697f88e43216e00acae1d95a445a43))
+
 ## 2.9.2 (2023-10-16)
 
 ### All Changes
