@@ -271,7 +271,7 @@ func (t *mockCustomTracker) DiscardedBytesAdd(_ string, labels labels.Labels, va
 	t.discardedBytes[labels.String()] += value
 }
 
-// IngestedBytesAdd implements CustomTracker.
-func (t *mockCustomTracker) IngestedBytesAdd(_ string, _ time.Duration, labels labels.Labels, value float64) {
+// ReceivedBytesAdd implements CustomTracker.
+func (t *mockCustomTracker) ReceivedBytesAdd(_ string, _ time.Duration, labels labels.Labels, value float64) {
 	t.receivedBytes[labels.String()] += value
 }

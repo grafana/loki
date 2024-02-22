@@ -6,10 +6,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
-type CustomTracker interface {
+type CustomStreamsTracker interface {
 
-	// IngestedBytesAdd records ingested bytes by tenant, retention period and labels.
-	IngestedBytesAdd(tenant string, retentionPeriod time.Duration, labels labels.Labels, value float64)
+	// ReceivedBytesAdd records ingested bytes by tenant, retention period and labels.
+	ReceivedBytesAdd(tenant string, retentionPeriod time.Duration, labels labels.Labels, value float64)
 
 	// DiscardedBytesAdd records discarded bytes by tenant and labels.
 	DiscardedBytesAdd(tenant string, labels labels.Labels, value float64)

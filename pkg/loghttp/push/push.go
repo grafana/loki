@@ -96,7 +96,7 @@ type Stats struct {
 	structuredMetadataBytesCustomTrackers []customTrackerPair
 }
 
-func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker CustomTracker) (*logproto.PushRequest, error) {
+func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker CustomStreamsTracker) (*logproto.PushRequest, error) {
 	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention, limits)
 	if err != nil {
 		return nil, err
@@ -130,12 +130,12 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	if tracker != nil {
 		for _, pair := range pushStats.logLinesBytesCustomTrackers {
 			for retentionPeriod, size := range pair.Bytes {
-				tracker.IngestedBytesAdd(userID, retentionPeriod, pair.Labels, float64(size))
+				tracker.ReceivedBytesAdd(userID, retentionPeriod, pair.Labels, float64(size))
 			}
 		}
 		for _, pair := range pushStats.structuredMetadataBytesCustomTrackers {
 			for retentionPeriod, size := range pair.Bytes {
-				tracker.IngestedBytesAdd(userID, retentionPeriod, pair.Labels, float64(size))
+				tracker.ReceivedBytesAdd(userID, retentionPeriod, pair.Labels, float64(size))
 			}
 		}
 	}
