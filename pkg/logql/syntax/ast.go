@@ -54,7 +54,10 @@ func MustClone[T Expr](e T) T {
 	return copied
 }
 
-func ExtractLineFilters[T Expr](e T) []LineFilterExpr {
+func ExtractLineFilters(e Expr) []LineFilterExpr {
+	if e == nil {
+		return nil
+	}
 	var filters []LineFilterExpr
 	visitor := &DepthFirstTraversal{
 		VisitLineFilterFn: func(v RootVisitor, e *LineFilterExpr) {
