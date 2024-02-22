@@ -72,8 +72,9 @@ import (
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
 
 const (
-	pendingTasksInitialCap = 1024
-	metricsSubsystem       = "bloom_gateway"
+	pendingTasksInitialCap  = 1024
+	metricsSubsystem        = "bloom_gateway"
+	querierMetricsSubsystem = "bloom_gateway_querier"
 )
 
 var (
