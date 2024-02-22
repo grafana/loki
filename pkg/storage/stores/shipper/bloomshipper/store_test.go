@@ -278,7 +278,6 @@ func TestBloomShipper_WorkingDir(t *testing.T) {
 		fi, _ := os.Stat(wd)
 		t.Log("working directory", wd, fi.Mode())
 
-		// newMockBloomStoreWithWorkDir asserts that store creation is successful
 		_, err, _ = newMockBloomStoreWithWorkDir(t, wd)
 		require.ErrorContains(t, err, "insufficient permissions")
 	})
