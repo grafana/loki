@@ -57,6 +57,10 @@ spec:
             {{- end }}
           securityContext:
             {{- toYaml $.Values.loki.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            {{- with $.Values.monitoring.lokiCanary.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           ports:
             - name: http-metrics
               containerPort: 3500
@@ -106,6 +110,10 @@ spec:
       {{- with .tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      {{- with $.Values.monitoring.lokiCanary.extraVolumes }}
+      {{- toYaml . | nindent 8 }}
       {{- end }}
 {{- end }}
 {{- end }}

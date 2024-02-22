@@ -714,6 +714,10 @@ monitoring:
     extraEnv: []
     # -- Environment variables from secrets or configmaps to add to the canary pods
     extraEnvFrom: []
+    # -- Volume mounts to add to the canary pods
+    extraVolumeMounts: []
+    # -- Volumes to add to the canary pods
+    extraVolumes: []
     # -- Resource requests and limits for the canary
     resources: {}
     # -- DNS config for canary pods
@@ -2342,6 +2346,8 @@ gateway:
     initialDelaySeconds: 15
     timeoutSeconds: 1
   nginxConfig:
+    # -- Which schema to be used when building URLs. Can be 'http' or 'https'.
+    schema: http
     # -- Enable listener for IPv6, disable on IPv4-only systems
     enableIPv6: true
     # -- NGINX log format
@@ -2354,6 +2360,8 @@ gateway:
     # -- Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating
     httpSnippet: >-
       {{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}
+    # -- Whether ssl should be appended to the listen directive of the server block or not.
+    ssl: false
     # -- Override Read URL
     customReadUrl: null
     # -- Override Write URL
