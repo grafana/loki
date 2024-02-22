@@ -48,9 +48,15 @@ func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
 
 // convertToSearches converts a list of line filter expressions to a list of
 // byte slices that can be used with the bloom filters.
-func convertToSearches(filters []syntax.LineFilter, t *v1.NGramTokenizer) [][]byte {
+func convertToSearches(t *v1.NGramTokenizer, filters ...syntax.LineFilterExpr) [][]byte {
 	searches := make([][]byte, 0, (13-t.N)*len(filters))
 	for _, f := range filters {
+		if f.Left != nil {
+			searches = append(searches, convertToSearches(t, *f.Left)...)
+		}
+		if f.Or != nil {
+			searches = append(searches, convertToSearches(t, *f.Or)...)
+		}
 		if f.Ty == labels.MatchEqual {
 			it := t.Tokens(f.Match)
 			for it.Next() {

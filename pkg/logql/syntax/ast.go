@@ -54,6 +54,19 @@ func MustClone[T Expr](e T) T {
 	return copied
 }
 
+func ExtractLineFilterExprs[T Expr](e T) []LineFilterExpr {
+	var filters []LineFilterExpr
+	visitor := &DepthFirstTraversal{
+		VisitLineFilterFn: func(v RootVisitor, e *LineFilterExpr) {
+			if e != nil {
+				filters = append(filters, *e)
+			}
+		},
+	}
+	e.Accept(visitor)
+	return filters
+}
+
 // implicit holds default implementations
 type implicit struct{}
 

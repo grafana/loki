@@ -311,7 +311,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	// Shortcut if request does not contain filters
-	if len(req.Filters) == 0 {
+	if len(req.Plan.LineFilterExprs()) == 0 {
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: req.Refs,
 		}, nil
@@ -334,7 +334,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	tasks := make([]Task, 0, len(seriesByDay))
 	for _, seriesWithBounds := range seriesByDay {
-		task, err := NewTask(ctx, tenantID, seriesWithBounds, req.Filters)
+		task, err := NewTask(ctx, tenantID, seriesWithBounds, req.Plan.LineFilterExprs())
 		if err != nil {
 			return nil, err
 		}

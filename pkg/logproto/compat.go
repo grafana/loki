@@ -367,24 +367,8 @@ func (m *FilterChunkRefRequest) GetQuery() string {
 		chunksHash = h.Sum64()
 	}
 
-	// Short circuit if there are no filters.
-	if len(m.Filters) == 0 {
-		return fmt.Sprintf("%d", chunksHash)
-	}
-
-	var sb strings.Builder
-	for i, filter := range m.Filters {
-		if i > 0 {
-			sb.WriteString(",")
-		}
-		sb.Write(fmt.Appendf(encodeBuf[:0], "%d", filter.Ty))
-		sb.WriteString("-")
-		sb.WriteString(filter.Match)
-		sb.WriteString("-")
-		sb.WriteString(filter.Op)
-	}
-
-	return fmt.Sprintf("%d/%s", chunksHash, sb.String())
+	// TODO(salvacorts): AST.String() will return the whole query. This is not optimal since we are only interested in the filter expressions.
+	return fmt.Sprintf("%d/%s", chunksHash, m.Plan.AST.String())
 }
 
 // GetCachingOptions returns the caching options.

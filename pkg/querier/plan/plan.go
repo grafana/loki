@@ -8,6 +8,8 @@ import (
 
 type QueryPlan struct {
 	AST syntax.Expr
+
+	lineFilterExprs *[]syntax.LineFilterExpr
 }
 
 func (t QueryPlan) Marshal() ([]byte, error) {
@@ -76,6 +78,14 @@ func (t QueryPlan) Equal(other QueryPlan) bool {
 		return false
 	}
 	return bytes.Equal(left, right)
+}
+
+func (t QueryPlan) LineFilterExprs() []syntax.LineFilterExpr {
+	if t.lineFilterExprs == nil {
+		filters := syntax.ExtractLineFilterExprs(t.AST)
+		t.lineFilterExprs = &filters
+	}
+	return *t.lineFilterExprs
 }
 
 // countWriter is not writing any bytes. It just counts the bytes that would be

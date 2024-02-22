@@ -17,8 +17,8 @@ message FilterChunkRefRequest {
     (gogoproto.nullable) = false
   ];
   repeated GroupedChunkRefs refs = 3;
-  repeated logproto.LineFilter filters = 4 [
-    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logql/syntax.LineFilter",
+  Plan plan = 4 [
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan",
     (gogoproto.nullable) = false
   ];
 }
