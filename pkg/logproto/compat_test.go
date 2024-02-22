@@ -7,13 +7,12 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/plan"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/plan"
 )
 
 // This test verifies that jsoninter uses our custom method for marshalling.
@@ -280,16 +279,6 @@ func TestMergeSeriesResponses(t *testing.T) {
 	}
 }
 
-func queryToPlan(query string) plan.QueryPlan {
-	expr, err := syntax.ParseExpr(query)
-	if err != nil {
-		panic(err)
-	}
-	return plan.QueryPlan{
-		AST: expr,
-	}
-}
-
 func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 	for _, tc := range []struct {
 		desc     string
@@ -315,7 +304,9 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 		{
 			desc: "request with filters but no chunks",
 			request: FilterChunkRefRequest{
-				Plan: queryToPlan(`{foo="bar"} |= "uuid"`),
+				Plan: plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"} |= "uuid"`),
+				},
 			},
 			expected: `0/{foo="bar"} |= "uuid"`,
 		},
@@ -332,7 +323,9 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 						Tenant:      "test",
 					},
 				},
-				Plan: queryToPlan(`{foo="bar"} |= "uuid" != "trace"`),
+				Plan: plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"} |= "uuid" != "trace"`),
+				},
 			},
 			expected: `8827404902424034886/{foo="bar"} |= "uuid" != "trace"`,
 		},

@@ -58,6 +58,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/storage"
@@ -311,7 +312,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	// Shortcut if request does not contain filters
-	if len(req.Plan.LineFilterExprs()) == 0 {
+	if len(syntax.ExtractLineFilters(req.Plan.AST)) == 0 {
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: req.Refs,
 		}, nil
@@ -334,7 +335,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	tasks := make([]Task, 0, len(seriesByDay))
 	for _, seriesWithBounds := range seriesByDay {
-		task, err := NewTask(ctx, tenantID, seriesWithBounds, req.Plan.LineFilterExprs())
+		task, err := NewTask(ctx, tenantID, seriesWithBounds, syntax.ExtractLineFilters(req.Plan.AST))
 		if err != nil {
 			return nil, err
 		}
