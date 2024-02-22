@@ -61,7 +61,7 @@ type BloomQuerier struct {
 func NewQuerier(c Client, r prometheus.Registerer, logger log.Logger) *BloomQuerier {
 	return &BloomQuerier{
 		c:       c,
-		metrics: newQuerierMetrics(r, constants.Loki, "bloom_gateway_querier"),
+		metrics: newQuerierMetrics(r, constants.Loki, querierMetricsSubsystem),
 		logger:  logger,
 	}
 }
