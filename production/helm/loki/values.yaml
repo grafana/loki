@@ -1551,6 +1551,7 @@ minio:
       cpu: 100m
       memory: 128Mi
 # Create extra manifests via values. Would be passed through `tpl` for templating
+## objects can also be provided as multiline strings, useful for templating field names
 extraObjects: []
 # - apiVersion: v1
 #   kind: ConfigMap
@@ -1570,6 +1571,17 @@ extraObjects: []
 #               category: logs
 #             annotations:
 #               message: "loki has encountered errors"
+# - |
+#     apiVersion: v1
+#     kind: Secret
+#     type: Opaque
+#     metadata:
+#       name: loki-distributed-basic-auth
+#     data:
+#       {{- range .Values.loki.tenants }}
+#       {{ .name }}: {{ b64enc .password | quote }}
+#       {{- end }}
+
 
 sidecar:
   image:
