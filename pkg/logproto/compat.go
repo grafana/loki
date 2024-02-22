@@ -367,8 +367,13 @@ func (m *FilterChunkRefRequest) GetQuery() string {
 		chunksHash = h.Sum64()
 	}
 
-	// TODO(salvacorts): AST.String() will return the whole query. This is not optimal since we are only interested in the filter expressions.
-	return fmt.Sprintf("%d/%s", chunksHash, m.Plan.AST.String())
+	plan := m.Plan.String()
+	if plan == "" {
+		return fmt.Sprintf("%d", chunksHash)
+	}
+
+	// TODO(salvacorts): plan.String() will return the whole query. This is not optimal since we are only interested in the filter expressions.
+	return fmt.Sprintf("%d/%s", chunksHash, plan)
 }
 
 // GetCachingOptions returns the caching options.

@@ -81,11 +81,21 @@ func (t QueryPlan) Equal(other QueryPlan) bool {
 }
 
 func (t QueryPlan) LineFilterExprs() []syntax.LineFilterExpr {
+	if t.AST == nil {
+		return nil
+	}
 	if t.lineFilterExprs == nil {
 		filters := syntax.ExtractLineFilterExprs(t.AST)
 		t.lineFilterExprs = &filters
 	}
 	return *t.lineFilterExprs
+}
+
+func (t QueryPlan) String() string {
+	if t.AST == nil {
+		return ""
+	}
+	return t.AST.String()
 }
 
 // countWriter is not writing any bytes. It just counts the bytes that would be

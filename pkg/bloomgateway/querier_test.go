@@ -8,11 +8,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/plan"
 )
 
 type noopClient struct {
@@ -21,7 +21,7 @@ type noopClient struct {
 }
 
 // FilterChunks implements Client.
-func (c *noopClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...syntax.LineFilter) ([]*logproto.GroupedChunkRefs, error) { // nolint:revive
+func (c *noopClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) { // nolint:revive
 	c.callCount++
 	return groups, c.err
 }
@@ -42,8 +42,9 @@ func TestBloomQuerier(t *testing.T) {
 			{Fingerprint: 1000, UserID: tenant, Checksum: 2},
 			{Fingerprint: 2000, UserID: tenant, Checksum: 3},
 		}
-		filters := []syntax.LineFilter{}
-		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, chunkRefs, filters...)
+		expr, err := syntax.ParseExpr(`{foo="bar"}`)
+		require.NoError(t, err)
+		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, chunkRefs, plan.QueryPlan{AST: expr})
 		require.NoError(t, err)
 		require.Equal(t, chunkRefs, res)
 		require.Equal(t, 0, c.callCount)
@@ -57,10 +58,9 @@ func TestBloomQuerier(t *testing.T) {
 		through := model.Now()
 		from := through.Add(-12 * time.Hour)
 		chunkRefs := []*logproto.ChunkRef{}
-		filters := []syntax.LineFilter{
-			{Ty: labels.MatchEqual, Match: "uuid"},
-		}
-		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, chunkRefs, filters...)
+		expr, err := syntax.ParseExpr(`{foo="bar"} |= "uuid"`)
+		require.NoError(t, err)
+		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, chunkRefs, plan.QueryPlan{AST: expr})
 		require.NoError(t, err)
 		require.Equal(t, chunkRefs, res)
 		require.Equal(t, 0, c.callCount)
@@ -78,10 +78,9 @@ func TestBloomQuerier(t *testing.T) {
 			{Fingerprint: 1000, UserID: tenant, Checksum: 2},
 			{Fingerprint: 2000, UserID: tenant, Checksum: 3},
 		}
-		filters := []syntax.LineFilter{
-			{Ty: labels.MatchEqual, Match: "uuid"},
-		}
-		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, chunkRefs, filters...)
+		expr, err := syntax.ParseExpr(`{foo="bar"} |= "uuid"`)
+		require.NoError(t, err)
+		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, chunkRefs, plan.QueryPlan{AST: expr})
 		require.Error(t, err)
 		require.Nil(t, res)
 	})

@@ -112,8 +112,13 @@ func TestProcessor(t *testing.T) {
 			},
 			table: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilter{
-			{Ty: 0, Match: "no match"},
+		filters := []syntax.LineFilterExpr{
+			{
+				LineFilter: syntax.LineFilter{
+					Ty:    0,
+					Match: "no match",
+				},
+			},
 		}
 
 		t.Log("series", len(swb.series))
@@ -156,8 +161,13 @@ func TestProcessor(t *testing.T) {
 			},
 			table: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilter{
-			{Ty: 0, Match: "no match"},
+		filters := []syntax.LineFilterExpr{
+			{
+				LineFilter: syntax.LineFilter{
+					Ty:    0,
+					Match: "no match",
+				},
+			},
 		}
 
 		t.Log("series", len(swb.series))
