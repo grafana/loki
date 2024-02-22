@@ -1,10 +1,12 @@
 package v1
 
 import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestFiltersToBloomTests(t *testing.T) {

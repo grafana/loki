@@ -1,9 +1,10 @@
 package v1
 
 import (
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 type BloomTest interface {
