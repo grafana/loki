@@ -320,6 +320,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		prometheus.DefaultRegisterer,
 		t.Cfg.MetricsNamespace,
 		t.Tee,
+		t.UsageTracker,
 		logger,
 	)
 	if err != nil {

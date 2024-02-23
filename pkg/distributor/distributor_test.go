@@ -612,7 +612,7 @@ func TestStreamShard(t *testing.T) {
 			overrides, err := validation.NewOverrides(*distributorLimits, nil)
 			require.NoError(t, err)
 
-			validator, err := NewValidator(overrides)
+			validator, err := NewValidator(overrides, nil)
 			require.NoError(t, err)
 
 			d := Distributor{
@@ -656,7 +656,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 	overrides, err := validation.NewOverrides(*distributorLimits, nil)
 	require.NoError(t, err)
 
-	validator, err := NewValidator(overrides)
+	validator, err := NewValidator(overrides, nil)
 	require.NoError(t, err)
 
 	t.Run("it generates 4 shards across 2 calls when calculated shards = 2 * entries per call", func(t *testing.T) {
@@ -721,7 +721,7 @@ func BenchmarkShardStream(b *testing.B) {
 	overrides, err := validation.NewOverrides(*distributorLimits, nil)
 	require.NoError(b, err)
 
-	validator, err := NewValidator(overrides)
+	validator, err := NewValidator(overrides, nil)
 	require.NoError(b, err)
 
 	distributorBuilder := func(shards int) *Distributor {
@@ -1159,7 +1159,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		overrides, err := validation.NewOverrides(*limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, log.NewNopLogger())
+		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d

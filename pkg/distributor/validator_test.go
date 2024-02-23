@@ -127,7 +127,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			flagext.DefaultValues(l)
 			o, err := validation.NewOverrides(*l, tt.overrides)
 			assert.NoError(t, err)
-			v, err := NewValidator(o)
+			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
 
 			err = v.ValidateEntry(v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry)
@@ -225,7 +225,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			flagext.DefaultValues(l)
 			o, err := validation.NewOverrides(*l, tt.overrides)
 			assert.NoError(t, err)
-			v, err := NewValidator(o)
+			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
 
 			err = v.ValidateLabels(v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels})

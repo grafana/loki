@@ -128,7 +128,7 @@ type Distributor struct {
 	replicationFactor      prometheus.Gauge
 	streamShardCount       prometheus.Counter
 
-	customStreamsTracker push.UsageTracker
+	usageTracker push.UsageTracker
 }
 
 // New a distributor creates.
@@ -141,6 +141,7 @@ func New(
 	registerer prometheus.Registerer,
 	metricsNamespace string,
 	tee Tee,
+	usageTracker push.UsageTracker,
 	logger log.Logger,
 ) (*Distributor, error) {
 	factory := cfg.factory
@@ -156,7 +157,7 @@ func New(
 		return client.New(internalCfg, addr)
 	}
 
-	validator, err := NewValidator(overrides)
+	validator, err := NewValidator(overrides, usageTracker)
 	if err != nil {
 		return nil, err
 	}
@@ -188,6 +189,7 @@ func New(
 		healthyInstancesCount: atomic.NewUint32(0),
 		rateLimitStrat:        rateLimitStrat,
 		tee:                   tee,
+		usageTracker:          usageTracker,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_ingester_appends_total",
@@ -416,7 +418,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
 
-		if d.customStreamsTracker != nil {
+		if d.usageTracker != nil {
 			for _, stream := range req.Streams {
 				lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, &stream)
 				if err != nil {
@@ -428,8 +430,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					discardedStreamBytes += len(e.Line)
 				}
 
-				if d.customStreamsTracker != nil {
-					d.customStreamsTracker.DiscardedBytesAdd(tenantID, validation.RateLimited, lbs, float64(discardedStreamBytes))
+				if d.usageTracker != nil {
+					d.usageTracker.DiscardedBytesAdd(tenantID, validation.RateLimited, lbs, float64(discardedStreamBytes))
 				}
 			}
 		}
