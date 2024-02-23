@@ -107,7 +107,7 @@ func (fq *FusedQuerier) Run() error {
 			_, inBlooms := input.Chks.Compare(series.Chunks, true)
 
 			// First, see if the search passes the series level bloom before checking for chunks individually
-			if !input.Search.Test(bloom) {
+			if !input.Search.Matches(bloom) {
 				// We return all the chunks that were the intersection of the query
 				// because they for sure do not match the search and don't
 				// need to be downloaded
@@ -128,7 +128,7 @@ func (fq *FusedQuerier) Run() error {
 			for _, chk := range inBlooms {
 				// Get buf to concatenate the chunk and search token
 				tokenBuf, prefixLen = prefixedToken(schema.NGramLen(), chk, tokenBuf)
-				if !input.Search.TestWithPrefixBuf(bloom, tokenBuf, prefixLen) {
+				if !input.Search.MatchesWithPrefixBuf(bloom, tokenBuf, prefixLen) {
 					removals = append(removals, chk)
 					continue
 				}

@@ -117,23 +117,13 @@ func TestFiltersToBloomTests(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)
 			assert.NoError(t, err)
-			filters := extractLineFilters(expr)
+			filters := syntax.ExtractLineFilters(expr)
 
 			bloomTests := FiltersToBloomTest(fakeNgramBuilder{}, filters...)
 
-			assert.Equal(t, tc.expectMatch, bloomTests.Test(tc.bloom))
+			assert.Equal(t, tc.expectMatch, bloomTests.Matches(tc.bloom))
 		})
 	}
-}
-
-func extractLineFilters(expr syntax.Expr) (lineFilters []syntax.LineFilterExpr) {
-	visitor := &syntax.DepthFirstTraversal{
-		VisitLineFilterFn: func(v syntax.RootVisitor, e *syntax.LineFilterExpr) {
-			lineFilters = append(lineFilters, *e)
-		},
-	}
-	expr.Accept(visitor)
-	return lineFilters
 }
 
 type fakeNgramBuilder struct{}

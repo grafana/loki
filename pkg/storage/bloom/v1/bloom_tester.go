@@ -8,24 +8,24 @@ import (
 )
 
 type BloomTest interface {
-	Test(bloom filter.Checker) bool
-	TestWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool
+	Matches(bloom filter.Checker) bool
+	MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool
 }
 
 type BloomTests []BloomTest
 
-func (b BloomTests) Test(bloom filter.Checker) bool {
+func (b BloomTests) Matches(bloom filter.Checker) bool {
 	for _, test := range b {
-		if !test.Test(bloom) {
+		if !test.Matches(bloom) {
 			return false
 		}
 	}
 	return true
 }
 
-func (b BloomTests) TestWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
+func (b BloomTests) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
 	for _, test := range b {
-		if !test.TestWithPrefixBuf(bloom, buf, prefixLen) {
+		if !test.MatchesWithPrefixBuf(bloom, buf, prefixLen) {
 			return false
 		}
 	}
@@ -61,21 +61,21 @@ func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest
 	case labels.MatchRegexp, labels.MatchNotRegexp:
 		// TODO(salvacorts): Simplify regex similarly to how it's done at pkg/logql/log/filter.go (`simplify` function)
 		// 					 Ideally we want to extract the simplify logic into pkg/util/regex.go
-		return NoopTest
+		return MatchAll
 	default:
-		return NoopTest
+		return MatchAll
 	}
 }
 
-type noopTest struct{}
+type matchAllTest struct{}
 
-var NoopTest = noopTest{}
+var MatchAll = matchAllTest{}
 
-func (n noopTest) Test(_ filter.Checker) bool {
+func (n matchAllTest) Matches(_ filter.Checker) bool {
 	return true
 }
 
-func (n noopTest) TestWithPrefixBuf(_ filter.Checker, _ []byte, _ int) bool {
+func (n matchAllTest) MatchesWithPrefixBuf(_ filter.Checker, _ []byte, _ int) bool {
 	return true
 }
 
@@ -101,7 +101,7 @@ func newStringTest(b NGramBuilder, search string) stringTest {
 	return test
 }
 
-func (b stringTest) Test(bloom filter.Checker) bool {
+func (b stringTest) Matches(bloom filter.Checker) bool {
 	for _, ngram := range b.ngrams {
 		if !bloom.Test(ngram) {
 			return false
@@ -110,7 +110,7 @@ func (b stringTest) Test(bloom filter.Checker) bool {
 	return true
 }
 
-func (b stringTest) TestWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
+func (b stringTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
 	for _, ngram := range b.ngrams {
 		buf = append(buf[:prefixLen], ngram...)
 		if !bloom.Test(buf) {
@@ -128,12 +128,12 @@ func newNotTest(test BloomTest) BloomTest {
 	return notTest{BloomTest: test}
 }
 
-func (b notTest) Test(bloom filter.Checker) bool {
-	return !b.BloomTest.Test(bloom)
+func (b notTest) Matches(bloom filter.Checker) bool {
+	return !b.BloomTest.Matches(bloom)
 }
 
-func (b notTest) TestWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
-	return !b.BloomTest.TestWithPrefixBuf(bloom, buf, prefixLen)
+func (b notTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
+	return !b.BloomTest.MatchesWithPrefixBuf(bloom, buf, prefixLen)
 }
 
 type orTest struct {
@@ -147,10 +147,10 @@ func newOrTest(left, right BloomTest) orTest {
 	}
 }
 
-func (o orTest) Test(bloom filter.Checker) bool {
-	return o.left.Test(bloom) || o.right.Test(bloom)
+func (o orTest) Matches(bloom filter.Checker) bool {
+	return o.left.Matches(bloom) || o.right.Matches(bloom)
 }
 
-func (o orTest) TestWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
-	return o.left.TestWithPrefixBuf(bloom, buf, prefixLen) || o.right.TestWithPrefixBuf(bloom, buf, prefixLen)
+func (o orTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
+	return o.left.MatchesWithPrefixBuf(bloom, buf, prefixLen) || o.right.MatchesWithPrefixBuf(bloom, buf, prefixLen)
 }
