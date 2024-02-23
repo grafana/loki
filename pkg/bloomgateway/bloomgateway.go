@@ -333,9 +333,10 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}, nil
 	}
 
+	filters := syntax.ExtractLineFilters(req.Plan.AST)
 	tasks := make([]Task, 0, len(seriesByDay))
 	for _, seriesWithBounds := range seriesByDay {
-		task, err := NewTask(ctx, tenantID, seriesWithBounds, syntax.ExtractLineFilters(req.Plan.AST))
+		task, err := NewTask(ctx, tenantID, seriesWithBounds, filters)
 		if err != nil {
 			return nil, err
 		}

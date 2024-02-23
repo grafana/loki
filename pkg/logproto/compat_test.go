@@ -287,7 +287,7 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 	}{
 		{
 			desc:     "empty request",
-			expected: `0`,
+			expected: `0/0`,
 		},
 		{
 			desc: "request no filters",
@@ -299,7 +299,7 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 					},
 				},
 			},
-			expected: `9962287286179718960`,
+			expected: `9962287286179718960/0`,
 		},
 		{
 			desc: "request with filters but no chunks",
@@ -308,7 +308,7 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 					AST: syntax.MustParseExpr(`{foo="bar"} |= "uuid"`),
 				},
 			},
-			expected: `0/{foo="bar"} |= "uuid"`,
+			expected: `0/938557591`,
 		},
 		{
 			desc: "request with filters and chunks",
@@ -327,7 +327,7 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 					AST: syntax.MustParseExpr(`{foo="bar"} |= "uuid" != "trace"`),
 				},
 			},
-			expected: `8827404902424034886/{foo="bar"} |= "uuid" != "trace"`,
+			expected: `8827404902424034886/2710035654`,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

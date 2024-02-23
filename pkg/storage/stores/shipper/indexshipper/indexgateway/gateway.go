@@ -234,10 +234,6 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return result, nil
 	}
 
-	// TODO(chaudum): Take the chunks from the index querier's GetChunks()
-	// response and send them to the bloom gateway along with the filter
-	// expression that we got from the request object.
-	// The bloom gateway returns the list of matching ChunkRefs.
 	chunkRefs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, result.Refs, req.Plan)
 	if err != nil {
 		return nil, err
