@@ -42,6 +42,7 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 		// drop the current page if it exists
 		if it.curPage != nil {
 			it.curPage.Drop()
+			it.curPage = nil
 		}
 
 		r, err := it.b.reader.Blooms()

@@ -178,14 +178,10 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 		return nil, errors.Wrap(err, "decompressing series page")
 	}
 
-	// replace decoder's input with the now-decompressed data
-	dec.B = decompressed
-
+	// TODO(owen-d): impl `Drop()` for SeriesPageDecoder's byte slice?
 	res := &SeriesPageDecoder{
 		data:   decompressed,
 		header: header.SeriesHeader,
-
-		i: -1,
 	}
 
 	res.Reset()
