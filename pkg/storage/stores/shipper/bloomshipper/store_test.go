@@ -61,6 +61,7 @@ func newMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*BloomStore, st
 		},
 	}
 
+	reg := prometheus.NewPedanticRegistry()
 	metrics := storage.NewClientMetrics()
 	t.Cleanup(metrics.Unregister)
 	logger := log.NewLogfmtLogger(os.Stderr)
@@ -68,7 +69,7 @@ func newMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*BloomStore, st
 	metasCache := cache.NewMockCache()
 	blocksCache := NewBlocksCache(storageConfig.BloomShipperConfig.BlocksCache, prometheus.NewPedanticRegistry(), logger)
 
-	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, logger)
+	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, reg, logger)
 	if err == nil {
 		t.Cleanup(store.Stop)
 	}

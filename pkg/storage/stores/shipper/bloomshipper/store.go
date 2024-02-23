@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (
@@ -139,6 +141,7 @@ var _ Store = &BloomStore{}
 type BloomStore struct {
 	stores             []*bloomStoreEntry
 	storageConfig      storage.Config
+	metrics            *storeMetrics
 	defaultKeyResolver // TODO(owen-d): impl schema aware resolvers
 }
 
@@ -148,10 +151,12 @@ func NewBloomStore(
 	clientMetrics storage.ClientMetrics,
 	metasCache cache.Cache,
 	blocksCache cache.TypedCache[string, BlockDirectory],
+	reg prometheus.Registerer,
 	logger log.Logger,
 ) (*BloomStore, error) {
 	store := &BloomStore{
 		storageConfig: storageConfig,
+		metrics:       newStoreMetrics(reg, constants.Loki, "bloom_store"),
 	}
 
 	if metasCache == nil {
@@ -188,7 +193,8 @@ func NewBloomStore(
 			return nil, errors.Wrapf(err, "creating bloom client for period %s", periodicConfig.From)
 		}
 
-		fetcher, err := NewFetcher(cfg, bloomClient, metasCache, blocksCache, logger)
+		regWithLabels := prometheus.WrapRegistererWith(prometheus.Labels{"store": periodicConfig.From.String()}, reg)
+		fetcher, err := NewFetcher(cfg, bloomClient, metasCache, blocksCache, regWithLabels, logger)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating fetcher for period %s", periodicConfig.From)
 		}

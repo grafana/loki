@@ -66,7 +66,6 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 	if err != nil {
 		return err
 	}
-	p.metrics.metasFetched.WithLabelValues(p.id).Observe(float64(len(metas)))
 
 	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
 	return p.processBlocks(ctx, partitionTasks(tasks, blocksRefs))
@@ -82,7 +81,6 @@ func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) er
 	if err != nil {
 		return err
 	}
-	p.metrics.blocksFetched.WithLabelValues(p.id).Observe(float64(len(bqs)))
 
 	blockIter := v1.NewSliceIter(bqs)
 

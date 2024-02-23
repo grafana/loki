@@ -11,14 +11,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/utils/keymutex"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/util/constants"
 )
-
-// TODO(chaudum): Add metric for cache hits/misses, and bytes stored/retrieved
-type metrics struct{}
 
 type fetcher interface {
 	FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error)
@@ -38,16 +37,17 @@ type Fetcher struct {
 
 	q *downloadQueue[BlockRef, BlockDirectory]
 
-	metrics *metrics
+	metrics *fetcherMetrics
 	logger  log.Logger
 }
 
-func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blocksCache cache.TypedCache[string, BlockDirectory], logger log.Logger) (*Fetcher, error) {
+func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blocksCache cache.TypedCache[string, BlockDirectory], reg prometheus.Registerer, logger log.Logger) (*Fetcher, error) {
 	fetcher := &Fetcher{
 		client:          client,
 		metasCache:      metasCache,
 		blocksCache:     blocksCache,
 		localFSResolver: NewPrefixedResolver(cfg.workingDir, defaultKeyResolver{}),
+		metrics:         newFetcherMetrics(reg, constants.Loki, "bloom_store"),
 		logger:          logger,
 	}
 	fetcher.q = newDownloadQueue[BlockRef, BlockDirectory](1000, cfg.numWorkers, fetcher.processTask, logger)
@@ -83,7 +83,13 @@ func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error
 	}
 
 	err = f.writeBackMetas(ctx, fromStorage)
-	return append(fromCache, fromStorage...), err
+	if err != nil {
+		return nil, err
+	}
+
+	results := append(fromCache, fromStorage...)
+	f.metrics.metasFetched.Observe(float64(len(results)))
+	return results, nil
 }
 
 func (f *Fetcher) processMetasCacheResponse(_ context.Context, refs []MetaRef, keys []string, bufs [][]byte) ([]Meta, []MetaRef, error) {
@@ -151,6 +157,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]*Closeabl
 		}
 	}
 
+	f.metrics.blocksFetched.Observe(float64(len(results)))
 	return results, nil
 }
 
