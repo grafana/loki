@@ -16,6 +16,8 @@ import (
 
 	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/plan"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -42,7 +44,9 @@ func TestBloomGatewayClient(t *testing.T) {
 	t.Run("FilterChunks returns response", func(t *testing.T) {
 		c, err := NewClient(cfg, &mockRing{}, l, reg, logger, "loki", nil, false)
 		require.NoError(t, err)
-		res, err := c.FilterChunks(context.Background(), "tenant", model.Now(), model.Now(), nil)
+		expr, err := syntax.ParseExpr(`{foo="bar"}`)
+		require.NoError(t, err)
+		res, err := c.FilterChunks(context.Background(), "tenant", model.Now(), model.Now(), nil, plan.QueryPlan{AST: expr})
 		require.NoError(t, err)
 		require.Equal(t, []*logproto.GroupedChunkRefs{}, res)
 	})

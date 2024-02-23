@@ -17,11 +17,11 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
@@ -196,13 +196,14 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		// saturate workers
 		// then send additional request
 		for i := 0; i < gw.cfg.WorkerConcurrency+1; i++ {
+			expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+			require.NoError(t, err)
+
 			req := &logproto.FilterChunkRefRequest{
 				From:    now.Add(-24 * time.Hour),
 				Through: now,
 				Refs:    groupRefs(t, chunkRefs),
-				Filters: []syntax.LineFilter{
-					{Ty: labels.MatchEqual, Match: "does not match"},
-				},
+				Plan:    plan.QueryPlan{AST: expr},
 			}
 
 			ctx, cancelFn := context.WithTimeout(context.Background(), 10*time.Second)
@@ -243,13 +244,14 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		// saturate workers
 		// then send additional request
 		for i := 0; i < gw.cfg.WorkerConcurrency+1; i++ {
+			expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+			require.NoError(t, err)
+
 			req := &logproto.FilterChunkRefRequest{
 				From:    now.Add(-24 * time.Hour),
 				Through: now,
 				Refs:    groupRefs(t, chunkRefs),
-				Filters: []syntax.LineFilter{
-					{Ty: labels.MatchEqual, Match: "does not match"},
-				},
+				Plan:    plan.QueryPlan{AST: expr},
 			}
 
 			ctx, cancelFn := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -331,13 +333,13 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 					Checksum:    uint32(idx),
 				},
 			}
+			expr, err := syntax.ParseExpr(`{foo="bar"} |= "foo"`)
+			require.NoError(t, err)
 			req := &logproto.FilterChunkRefRequest{
 				From:    now.Add(-24 * time.Hour),
 				Through: now,
 				Refs:    groupRefs(t, chunkRefs),
-				Filters: []syntax.LineFilter{
-					{Ty: labels.MatchEqual, Match: "foo"},
-				},
+				Plan:    plan.QueryPlan{AST: expr},
 			}
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 			_, err = gw.FilterChunkRefs(ctx, req)
@@ -371,13 +373,13 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 		t.Run("no match - return empty response", func(t *testing.T) {
 			inputChunkRefs := groupRefs(t, chunkRefs)
+			expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+			require.NoError(t, err)
 			req := &logproto.FilterChunkRefRequest{
 				From:    now.Add(-8 * time.Hour),
 				Through: now,
 				Refs:    inputChunkRefs,
-				Filters: []syntax.LineFilter{
-					{Ty: labels.MatchEqual, Match: "does not match"},
-				},
+				Plan:    plan.QueryPlan{AST: expr},
 			}
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 			res, err := gw.FilterChunkRefs(ctx, req)
@@ -402,13 +404,14 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 			t.Log("x=", x, "fp=", fp, "line=", line)
 
+			expr, err := syntax.ParseExpr(fmt.Sprintf(`{foo="bar"} |= "%s"`, line))
+			require.NoError(t, err)
+
 			req := &logproto.FilterChunkRefRequest{
 				From:    now.Add(-8 * time.Hour),
 				Through: now,
 				Refs:    inputChunkRefs,
-				Filters: []syntax.LineFilter{
-					{Ty: labels.MatchEqual, Match: line},
-				},
+				Plan:    plan.QueryPlan{AST: expr},
 			}
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 			res, err := gw.FilterChunkRefs(ctx, req)
