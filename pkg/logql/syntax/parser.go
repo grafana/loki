@@ -252,7 +252,6 @@ func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
 
 // ParseLabels parses labels from a string using logql parser.
 func ParseLabels(lbs string) (labels.Labels, error) {
-	// TODO: I wonder if we should use memoization here. There's a cache in
 	ls, err := promql_parser.ParseMetric(lbs)
 	if err != nil {
 		return nil, err

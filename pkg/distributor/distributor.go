@@ -708,15 +708,14 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 }
 
 type labelData struct {
-	ls     labels.Labels
-	labels string
-	hash   uint64
+	ls   labels.Labels
+	hash uint64
 }
 
 func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (labels.Labels, string, uint64, error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		labelVal := val.(labelData)
-		return labelVal.ls, labelVal.labels, labelVal.hash, nil
+		return labelVal.ls, labelVal.ls.String(), labelVal.hash, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
@@ -728,11 +727,10 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 		return nil, "", 0, err
 	}
 
-	lsVal := ls.String()
 	lsHash := ls.Hash()
 
-	d.labelCache.Add(key, labelData{ls, lsVal, lsHash})
-	return ls, lsVal, lsHash, nil
+	d.labelCache.Add(key, labelData{ls, lsHash})
+	return ls, ls.String(), lsHash, nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.
