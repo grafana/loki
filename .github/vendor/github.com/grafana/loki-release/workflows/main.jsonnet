@@ -88,6 +88,7 @@
       shouldRelease: $.release.shouldRelease,
       createRelease: $.release.createRelease,
       publishImages: $.release.publishImages(getDockerCredsFromVault, dockerUsername),
+      publishRelease: $.release.publishRelease,
     },
   },
   check: {
