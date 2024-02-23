@@ -32,16 +32,18 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         npm install
         npm exec -- release-please release-pr \
           --consider-all-branches \
-          --label "backport main,autorelease: pending,type/docs" \
-          --pull-request-footer "%s" \
           --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --label "backport main,autorelease: pending,product-approved" \
+          --manifest-file .release-please-manifest.json \
+          --pull-request-footer "%s" \
+          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
+          --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token "${{ secrets.GH_TOKEN }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
-          --separate-pull-requests false \
-          --manifest-file .release-please-manifest.json
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+
       ||| % pullRequestFooter),
     ]),
 
@@ -102,11 +104,11 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    })
                    + step.withRun(|||
                      gh release upload ${{ needs.shouldRelease.outputs.name }} dist/*
-                     gh release edit ${{ needs.shouldRelease.outputs.name }} --draft=false
                    |||),
                  ])
                  + job.withOutputs({
                    sha: '${{ needs.shouldRelease.outputs.sha }}',
+                   name: '${{ needs.shouldRelease.outputs.name }}',
                  }),
 
   publishImages: function(getDockerCredsFromVault=false, dockerUsername='grafanabot')
@@ -141,4 +143,17 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         }),
       ]
     ),
+
+  publishRelease: job.new()
+                  + job.withNeeds(['createRelease', 'publishImages'])
+                  + job.withSteps([
+                    common.fetchReleaseRepo,
+                    releaseStep('publish release')
+                    + step.withEnv({
+                      GH_TOKEN: '${{ secrets.GH_TOKEN }}',
+                    })
+                    + step.withRun(|||
+                      gh release edit ${{ needs.createRelease.outputs.name }} --draft=false
+                    |||),
+                  ]),
 }

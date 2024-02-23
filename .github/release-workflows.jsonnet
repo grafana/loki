@@ -1,8 +1,8 @@
 local lokiRelease = import 'workflows/main.jsonnet';
 local build = lokiRelease.build;
 
-local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@v1.11.0';
-local releaseLibRef = 'v1.11.0';
+local releaseLibRef = 'v1.11.2';
+local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef;
 {
   'patch-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(

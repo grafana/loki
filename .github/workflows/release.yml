@@ -2,7 +2,7 @@ concurrency:
   group: "create-release-${{ github.sha }}"
 env:
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "v1.11.0"
+  RELEASE_LIB_REF: "v1.11.2"
   RELEASE_REPO: "grafana/loki"
 jobs:
   createRelease:
@@ -10,6 +10,7 @@ jobs:
     needs:
     - "shouldRelease"
     outputs:
+      name: "${{ needs.shouldRelease.outputs.name }}"
       sha: "${{ needs.shouldRelease.outputs.sha }}"
     runs-on: "ubuntu-latest"
     steps:
@@ -58,7 +59,6 @@ jobs:
       name: "upload artifacts"
       run: |
         gh release upload ${{ needs.shouldRelease.outputs.name }} dist/*
-        gh release edit ${{ needs.shouldRelease.outputs.name }} --draft=false
       working-directory: "release"
   publishImages:
     needs:
@@ -94,6 +94,23 @@ jobs:
       with:
         imageDir: "images"
         imagePrefix: "${{ env.IMAGE_PREFIX }}"
+  publishRelease:
+    needs:
+    - "createRelease"
+    - "publishImages"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - env:
+        GH_TOKEN: "${{ secrets.GH_TOKEN }}"
+      name: "publish release"
+      run: |
+        gh release edit ${{ needs.createRelease.outputs.name }} --draft=false
+      working-directory: "release"
   shouldRelease:
     outputs:
       branch: "${{ steps.extract_branch.outputs.branch }}"

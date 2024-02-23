@@ -3,17 +3,17 @@ concurrency:
 env:
   DOCKER_USERNAME: "grafana"
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "v1.11.0"
+  RELEASE_LIB_REF: "v1.11.2"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   VERSIONING_STRATEGY: "always-bump-patch"
 jobs:
   check:
-    uses: "grafana/loki-release/.github/workflows/check.yml@v1.11.0"
+    uses: "grafana/loki-release/.github/workflows/check.yml@v1.11.2"
     with:
       build_image: "grafana/loki-build-image:0.29.3-go1.20.10"
       golang_ci_lint_version: "v1.51.2"
-      release_lib_ref: "v1.11.0"
+      release_lib_ref: "v1.11.2"
       skip_validation: false
   create-release-pr:
     needs:
@@ -57,16 +57,18 @@ jobs:
         npm install
         npm exec -- release-please release-pr \
           --consider-all-branches \
-          --label "backport main,autorelease: pending,type/docs" \
-          --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/loki-build-artifacts/${SHA}) of ${SHA}" \
           --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --label "backport main,autorelease: pending,product-approved" \
+          --manifest-file .release-please-manifest.json \
+          --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/loki-build-artifacts/${SHA}) of ${SHA}" \
+          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
+          --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token "${{ secrets.GH_TOKEN }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
-          --separate-pull-requests false \
-          --manifest-file .release-please-manifest.json
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
       working-directory: "lib"
   dist:
     needs:
@@ -698,13 +700,14 @@ jobs:
           --dry-run \
           --dry-run-output release.json \
           --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --manifest-file .release-please-manifest.json \
+          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
           --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
-          --manifest-file .release-please-manifest.json
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         
         cat release.json
         

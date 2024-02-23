@@ -76,13 +76,14 @@ local releaseLibStep = common.releaseLibStep;
           --dry-run \
           --dry-run-output release.json \
           --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --manifest-file .release-please-manifest.json \
+          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
           --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
-          --manifest-file .release-please-manifest.json
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
 
         cat release.json
 
