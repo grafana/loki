@@ -190,11 +190,19 @@ loki:
         cert_file: *common_server_crt
         key_file: *common_server_key
         client_ca_file: *common_ca_crt
+
+        # we need to set this to VerifyClientCertIfGiven to allow for mutual TLS.
+        # we can't set it to VerifyClientCertIfGivenAndRequireAnyClientCert because
+        # it would broke k8s liveness and readiness probes.
         client_auth_type: VerifyClientCertIfGiven
       grpc_tls_config:
         cert_file: *common_server_crt
         key_file: *common_server_key
         client_ca_file: *common_ca_crt
+
+        # we need to set this to VerifyClientCertIfGiven to allow for mutual TLS.
+        # we can't set it to VerifyClientCertIfGivenAndRequireAnyClientCert because
+        # it would broke k8s liveness and readiness probes.
         client_auth_type: VerifyClientCertIfGiven
     ingester_client:
       grpc_client_config:
