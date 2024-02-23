@@ -115,11 +115,9 @@ func makePendingTasks(n int) *pendingTasks {
 type Gateway struct {
 	services.Service
 
-	cfg    Config
-	logger log.Logger
-
-	metrics      *metrics
-	queueMetrics *queue.Metrics
+	cfg     Config
+	logger  log.Logger
+	metrics *metrics
 
 	queue       *queue.RequestQueue
 	activeUsers *util.ActiveUsersCleanupService
@@ -151,11 +149,12 @@ func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus
 		workerConfig: workerConfig{
 			maxItems: 100,
 		},
-		queueMetrics: queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
-		bloomStore:   store,
+		bloomStore: store,
 	}
-	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{0}, g.queueMetrics)
-	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
+
+	queueMetrics := queue.NewMetrics(reg, constants.Loki, metricsSubsystem)
+	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{0}, queueMetrics)
+	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(queueMetrics.Cleanup)
 
 	if err := g.initServices(); err != nil {
 		return nil, err
