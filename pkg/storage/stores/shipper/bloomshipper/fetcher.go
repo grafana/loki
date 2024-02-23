@@ -89,6 +89,10 @@ func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error
 
 	results := append(fromCache, fromStorage...)
 	f.metrics.metasFetched.Observe(float64(len(results)))
+	// TODO(chaudum): get metas size from storage
+	// getting the size from the metas would require quite a bit of refactoring
+	// so leaving this for a separate PR if it's really needed
+	// f.metrics.metasFetchedSize.WithLabelValues(sourceCache).Observe(float64(fromStorage.Size()))
 	return results, nil
 }
 
@@ -102,6 +106,7 @@ func (f *Fetcher) processMetasCacheResponse(_ context.Context, refs []MetaRef, k
 	missing := make([]MetaRef, 0, len(refs)-len(keys))
 
 	var lastErr error
+	var size int64
 	for i, ref := range refs {
 		if raw, ok := found[f.client.Meta(ref).Addr()]; ok {
 			meta := Meta{
@@ -114,6 +119,7 @@ func (f *Fetcher) processMetasCacheResponse(_ context.Context, refs []MetaRef, k
 		}
 	}
 
+	f.metrics.metasFetchedSize.WithLabelValues(sourceCache).Observe(float64(size))
 	return metas, missing, lastErr
 }
 
@@ -200,6 +206,7 @@ func (f *Fetcher) fetchBlock(ctx context.Context, ref BlockRef) (BlockDirectory,
 
 	// item found in cache
 	if len(fromCache) == 1 {
+		f.metrics.blocksFetchedSize.WithLabelValues(sourceCache).Observe(float64(fromCache[0].Size()))
 		return fromCache[0], nil
 	}
 
@@ -211,6 +218,7 @@ func (f *Fetcher) fetchBlock(ctx context.Context, ref BlockRef) (BlockDirectory,
 	// item found on local file system
 	if len(fromLocalFS) == 1 {
 		err = f.writeBackBlocks(ctx, fromLocalFS)
+		f.metrics.blocksFetchedSize.WithLabelValues(sourceFilesystem).Observe(float64(fromLocalFS[0].Size()))
 		return fromLocalFS[0], err
 	}
 
@@ -221,6 +229,7 @@ func (f *Fetcher) fetchBlock(ctx context.Context, ref BlockRef) (BlockDirectory,
 
 	// item found in storage
 	err = f.writeBackBlocks(ctx, []BlockDirectory{fromStorage})
+	f.metrics.blocksFetchedSize.WithLabelValues(sourceStorage).Observe(float64(fromStorage.Size()))
 	return fromStorage, err
 }
 
