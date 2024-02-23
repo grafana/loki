@@ -98,6 +98,7 @@ func (w *worker) running(_ context.Context) error {
 			}
 			level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
 			w.pending.Delete(task.ID)
+			w.metrics.queueDuration.WithLabelValues(w.id).Observe(time.Since(task.enqueueTime).Seconds())
 			tasks = append(tasks, task)
 
 			first, last := getFirstLast(task.series)

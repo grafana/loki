@@ -13,7 +13,6 @@ type metrics struct {
 }
 
 type serverMetrics struct {
-	queueDuration    prometheus.Histogram
 	inflightRequests prometheus.Summary
 	chunkRemovals    *prometheus.CounterVec
 }
@@ -27,13 +26,6 @@ func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *
 
 func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem string) *serverMetrics {
 	return &serverMetrics{
-		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "queue_duration_seconds",
-			Help:      "Time spent by tasks in queue before getting picked up by a worker.",
-			Buckets:   prometheus.DefBuckets,
-		}),
 		inflightRequests: promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
 			Namespace:  namespace,
 			Subsystem:  subsystem,
@@ -54,6 +46,7 @@ func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 
 type workerMetrics struct {
 	dequeueDuration   *prometheus.HistogramVec
+	queueDuration     *prometheus.HistogramVec
 	processDuration   *prometheus.HistogramVec
 	metasFetched      *prometheus.HistogramVec
 	blocksFetched     *prometheus.HistogramVec
@@ -66,6 +59,12 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 	labels := []string{"worker"}
 	r := promauto.With(registerer)
 	return &workerMetrics{
+		queueDuration: r.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "queue_duration_seconds",
+			Help:      "Time spent by tasks in queue before getting picked up by a worker.",
+		}, labels),
 		dequeueDuration: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
