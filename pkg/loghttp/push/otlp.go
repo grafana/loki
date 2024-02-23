@@ -43,14 +43,14 @@ func newPushStats() *Stats {
 	}
 }
 
-func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits) (*logproto.PushRequest, *Stats, error) {
+func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker CustomStreamsTracker) (*logproto.PushRequest, *Stats, error) {
 	stats := newPushStats()
 	otlpLogs, err := extractLogs(r, stats)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	req := otlpToLokiPushRequest(otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), limits.CustomTrackersConfig(userID), stats)
+	req := otlpToLokiPushRequest(otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), tracker, stats)
 	return req, stats, nil
 }
 
@@ -101,7 +101,7 @@ func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, customTrackersConfig *CustomTrackersConfig, stats *Stats) *logproto.PushRequest {
+func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, tracker CustomStreamsTracker, stats *Stats) *logproto.PushRequest {
 	if ld.LogRecordCount() == 0 {
 		return &logproto.PushRequest{}
 	}
@@ -145,17 +145,6 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		labelsStr := streamLabels.String()
 
 		lbs := modelLabelsSetToLabelsList(streamLabels)
-
-		// Init custom streams tracking
-		trackedLabels := customTrackersConfig.MatchTrackers(lbs)
-		stats.structuredMetadataBytesCustomTrackers = make([]customTrackerPair, len(trackedLabels))
-		stats.logLinesBytesCustomTrackers = make([]customTrackerPair, len(trackedLabels))
-		for i, labels := range trackedLabels {
-			stats.structuredMetadataBytesCustomTrackers[i].Labels = labels
-			stats.structuredMetadataBytesCustomTrackers[i].Bytes = map[time.Duration]int64{}
-			stats.logLinesBytesCustomTrackers[i].Labels = labels
-			stats.logLinesBytesCustomTrackers[i].Bytes = map[time.Duration]int64{}
-		}
 
 		if _, ok := pushRequestsByStream[labelsStr]; !ok {
 			pushRequestsByStream[labelsStr] = logproto.Stream{
@@ -235,12 +224,13 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 				stream.Entries = append(stream.Entries, entry)
 				pushRequestsByStream[labelsStr] = stream
 
-				stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
+				metadataSize := int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
+				stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += metadataSize
 				stats.logLinesBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(len(entry.Line))
 
-				for i := range trackedLabels {
-					stats.logLinesBytesCustomTrackers[i].Bytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(len(entry.Line))
-					stats.structuredMetadataBytesCustomTrackers[i].Bytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
+				if tracker != nil {
+					tracker.ReceivedBytesAdd(userID, tenantsRetention.RetentionPeriodFor(userID, lbs), lbs, float64(len(entry.Line)))
+					tracker.ReceivedBytesAdd(userID, tenantsRetention.RetentionPeriodFor(userID, lbs), lbs, float64(metadataSize))
 				}
 
 				stats.numLines++

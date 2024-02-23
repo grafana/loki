@@ -3234,11 +3234,6 @@ otlp_config:
   # Configuration for log attributes to store them as Structured Metadata or
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
-
-# Defines a set of custom trackers for ingested bytes.
-# Takes a map of tracker names as keys and a list of label names as values. A
-# tracker matches a stream if all labels are present.
-custom_trackers:
 ```
 
 ### frontend_worker

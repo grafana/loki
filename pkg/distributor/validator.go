@@ -48,8 +48,6 @@ type validationContext struct {
 	maxStructuredMetadataCount int
 
 	userID string
-
-	customTrackerConfig *push.CustomTrackersConfig
 }
 
 func (v Validator) getValidationContextForTime(now time.Time, userID string) validationContext {
@@ -67,7 +65,6 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		allowStructuredMetadata:      v.AllowStructuredMetadata(userID),
 		maxStructuredMetadataSize:    v.MaxStructuredMetadataSize(userID),
 		maxStructuredMetadataCount:   v.MaxStructuredMetadataCount(userID),
-		customTrackerConfig:          v.CustomTrackersConfig(userID),
 	}
 }
 
@@ -83,9 +80,7 @@ func (v Validator) ValidateEntry(ctx validationContext, labels labels.Labels, en
 		validation.DiscardedSamples.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Add(float64(len(entry.Line)))
 		if v.customStreamsTracker != nil {
-			for _, matchedLbs := range ctx.customTrackerConfig.MatchTrackers(labels) {
-				v.customStreamsTracker.DiscardedBytesAdd(ctx.userID, matchedLbs, float64(len(entry.Line)))
-			}
+			v.customStreamsTracker.DiscardedBytesAdd(ctx.userID, validation.GreaterThanMaxSampleAge, labels, float64(len(entry.Line)))
 		}
 		return fmt.Errorf(validation.GreaterThanMaxSampleAgeErrorMsg, labels, formatedEntryTime, formatedRejectMaxAgeTime)
 	}
@@ -95,9 +90,7 @@ func (v Validator) ValidateEntry(ctx validationContext, labels labels.Labels, en
 		validation.DiscardedSamples.WithLabelValues(validation.TooFarInFuture, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.TooFarInFuture, ctx.userID).Add(float64(len(entry.Line)))
 		if v.customStreamsTracker != nil {
-			for _, matchedLbs := range ctx.customTrackerConfig.MatchTrackers(labels) {
-				v.customStreamsTracker.DiscardedBytesAdd(ctx.userID, matchedLbs, float64(len(entry.Line)))
-			}
+			v.customStreamsTracker.DiscardedBytesAdd(ctx.userID, validation.TooFarInFuture, labels, float64(len(entry.Line)))
 		}
 		return fmt.Errorf(validation.TooFarInFutureErrorMsg, labels, formatedEntryTime)
 	}
@@ -110,9 +103,7 @@ func (v Validator) ValidateEntry(ctx validationContext, labels labels.Labels, en
 		validation.DiscardedSamples.WithLabelValues(validation.LineTooLong, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.LineTooLong, ctx.userID).Add(float64(len(entry.Line)))
 		if v.customStreamsTracker != nil {
-			for _, matchedLbs := range ctx.customTrackerConfig.MatchTrackers(labels) {
-				v.customStreamsTracker.DiscardedBytesAdd(ctx.userID, matchedLbs, float64(len(entry.Line)))
-			}
+			v.customStreamsTracker.DiscardedBytesAdd(ctx.userID, validation.LineTooLong, labels, float64(len(entry.Line)))
 		}
 		return fmt.Errorf(validation.LineTooLongErrorMsg, maxSize, labels, len(entry.Line))
 	}
@@ -122,9 +113,7 @@ func (v Validator) ValidateEntry(ctx validationContext, labels labels.Labels, en
 			validation.DiscardedSamples.WithLabelValues(validation.DisallowedStructuredMetadata, ctx.userID).Inc()
 			validation.DiscardedBytes.WithLabelValues(validation.DisallowedStructuredMetadata, ctx.userID).Add(float64(len(entry.Line)))
 			if v.customStreamsTracker != nil {
-				for _, matchedLbs := range ctx.customTrackerConfig.MatchTrackers(labels) {
-					v.customStreamsTracker.DiscardedBytesAdd(ctx.userID, matchedLbs, float64(len(entry.Line)))
-				}
+				v.customStreamsTracker.DiscardedBytesAdd(ctx.userID, validation.DisallowedStructuredMetadata, labels, float64(len(entry.Line)))
 			}
 			return fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, labels)
 		}
@@ -139,9 +128,7 @@ func (v Validator) ValidateEntry(ctx validationContext, labels labels.Labels, en
 			validation.DiscardedSamples.WithLabelValues(validation.StructuredMetadataTooLarge, ctx.userID).Inc()
 			validation.DiscardedBytes.WithLabelValues(validation.StructuredMetadataTooLarge, ctx.userID).Add(float64(len(entry.Line)))
 			if v.customStreamsTracker != nil {
-				for _, matchedLbs := range ctx.customTrackerConfig.MatchTrackers(labels) {
-					v.customStreamsTracker.DiscardedBytesAdd(ctx.userID, matchedLbs, float64(len(entry.Line)))
-				}
+				v.customStreamsTracker.DiscardedBytesAdd(ctx.userID, validation.StructuredMetadataTooLarge, labels, float64(len(entry.Line)))
 			}
 			return fmt.Errorf(validation.StructuredMetadataTooLargeErrorMsg, labels, structuredMetadataSizeBytes, ctx.maxStructuredMetadataSize)
 		}
@@ -150,9 +137,7 @@ func (v Validator) ValidateEntry(ctx validationContext, labels labels.Labels, en
 			validation.DiscardedSamples.WithLabelValues(validation.StructuredMetadataTooMany, ctx.userID).Inc()
 			validation.DiscardedBytes.WithLabelValues(validation.StructuredMetadataTooMany, ctx.userID).Add(float64(len(entry.Line)))
 			if v.customStreamsTracker != nil {
-				for _, matchedLbs := range ctx.customTrackerConfig.MatchTrackers(labels) {
-					v.customStreamsTracker.DiscardedBytesAdd(ctx.userID, matchedLbs, float64(len(entry.Line)))
-				}
+				v.customStreamsTracker.DiscardedBytesAdd(ctx.userID, validation.StructuredMetadataTooMany, labels, float64(len(entry.Line)))
 			}
 			return fmt.Errorf(validation.StructuredMetadataTooManyErrorMsg, labels, structuredMetadataCount, ctx.maxStructuredMetadataCount)
 		}

@@ -199,7 +199,7 @@ func (c *Compactor) ownsTenant(tenant string) ([]v1.FingerprintBounds, bool, err
 		return nil, false, nil
 	}
 
-	// TOOD(owen-d): use <ReadRing>.GetTokenRangesForInstance()
+	// TODO(owen-d): use <ReadRing>.GetTokenRangesForInstance()
 	// when it's supported for non zone-aware rings
 	// instead of doing all this manually
 

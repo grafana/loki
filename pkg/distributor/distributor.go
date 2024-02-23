@@ -428,8 +428,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					discardedStreamBytes += len(e.Line)
 				}
 
-				for _, matchedLbs := range validationContext.customTrackerConfig.MatchTrackers(lbs) {
-					d.customStreamsTracker.DiscardedBytesAdd(tenantID, matchedLbs, float64(discardedStreamBytes))
+				if d.customStreamsTracker != nil {
+					d.customStreamsTracker.DiscardedBytesAdd(tenantID, validation.RateLimited, lbs, float64(discardedStreamBytes))
 				}
 			}
 		}

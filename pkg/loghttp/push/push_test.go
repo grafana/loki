@@ -206,15 +206,8 @@ func TestParseRequest(t *testing.T) {
 				request.Header.Add("Content-Encoding", test.contentEncoding)
 			}
 
-			customTrackersConfig := NewCustomTrackersConfig(test.customTrackers)
-			limits := &mockLimits{
-				customTrackers: customTrackersConfig,
-			}
-			tracker := &mockCustomTracker{
-				receivedBytes:  map[string]float64{},
-				discardedBytes: map[string]float64{},
-			}
-			data, err := ParseRequest(util_log.Logger, "fake", request, nil, limits, ParseLokiRequest, tracker)
+			tracker := NewMockTracker()
+			data, err := ParseRequest(util_log.Logger, "fake", request, nil, nil, ParseLokiRequest, tracker)
 
 			structuredMetadataBytesReceived := int(structuredMetadataBytesReceivedStats.Value()["total"].(int64)) - previousStructuredMetadataBytesReceived
 			previousStructuredMetadataBytesReceived += structuredMetadataBytesReceived
@@ -247,31 +240,24 @@ func TestParseRequest(t *testing.T) {
 	}
 }
 
-type mockLimits struct {
-	customTrackers *CustomTrackersConfig
-}
-
-// CustomTrackersConfig implements Limits.
-func (m *mockLimits) CustomTrackersConfig(string) *CustomTrackersConfig {
-	return m.customTrackers
-}
-
-// OTLPConfig implements Limits.
-func (*mockLimits) OTLPConfig(string) OTLPConfig {
-	return DefaultOTLPConfig
-}
-
-type mockCustomTracker struct {
+type MockCustomTracker struct {
 	receivedBytes  map[string]float64
 	discardedBytes map[string]float64
 }
 
+func NewMockTracker() *MockCustomTracker {
+	return &MockCustomTracker{
+		receivedBytes:  map[string]float64{},
+		discardedBytes: map[string]float64{},
+	}
+}
+
 // DiscardedBytesAdd implements CustomTracker.
-func (t *mockCustomTracker) DiscardedBytesAdd(_ string, labels labels.Labels, value float64) {
+func (t *MockCustomTracker) DiscardedBytesAdd(_, _ string, labels labels.Labels, value float64) {
 	t.discardedBytes[labels.String()] += value
 }
 
 // ReceivedBytesAdd implements CustomTracker.
-func (t *mockCustomTracker) ReceivedBytesAdd(_ string, _ time.Duration, labels labels.Labels, value float64) {
+func (t *MockCustomTracker) ReceivedBytesAdd(_ string, _ time.Duration, labels labels.Labels, value float64) {
 	t.receivedBytes[labels.String()] += value
 }

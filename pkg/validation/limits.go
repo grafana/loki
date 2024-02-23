@@ -206,8 +206,6 @@ type Limits struct {
 	MaxStructuredMetadataSize         flagext.ByteSize `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
 	MaxStructuredMetadataEntriesCount int              `yaml:"max_structured_metadata_entries_count" json:"max_structured_metadata_entries_count" doc:"description=Maximum number of structured metadata entries per log line."`
 	OTLPConfig                        push.OTLPConfig  `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
-
-	CustomTrackersConfig *push.CustomTrackersConfig `yaml:"custom_trackers" json:"custom_trackers" doc:"description=Defines a set of custom trackers for ingested bytes.\nTakes a map of tracker names as keys and a list of label names as values. A tracker matches a stream if all labels are present."`
 }
 
 type StreamRetention struct {
@@ -936,14 +934,6 @@ func (o *Overrides) MaxStructuredMetadataCount(userID string) int {
 
 func (o *Overrides) OTLPConfig(userID string) push.OTLPConfig {
 	return o.getOverridesForUser(userID).OTLPConfig
-}
-
-func (o *Overrides) CustomTrackersConfig(userID string) *push.CustomTrackersConfig {
-	if o.getOverridesForUser(userID).CustomTrackersConfig == nil {
-		return push.EmptyCustomTrackersConfig
-	}
-
-	return o.getOverridesForUser(userID).CustomTrackersConfig
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

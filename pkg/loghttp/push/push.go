@@ -61,7 +61,6 @@ type TenantsRetention interface {
 
 type Limits interface {
 	OTLPConfig(userID string) OTLPConfig
-	CustomTrackersConfig(userID string) *CustomTrackersConfig
 }
 
 type EmptyLimits struct{}
@@ -70,16 +69,7 @@ func (EmptyLimits) OTLPConfig(string) OTLPConfig {
 	return DefaultOTLPConfig
 }
 
-func (EmptyLimits) CustomTrackersConfig(string) *CustomTrackersConfig {
-	return EmptyCustomTrackersConfig
-}
-
-type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits) (*logproto.PushRequest, *Stats, error)
-
-type customTrackerPair struct {
-	Labels labels.Labels
-	Bytes  map[time.Duration]int64
-}
+type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker CustomStreamsTracker) (*logproto.PushRequest, *Stats, error)
 
 type Stats struct {
 	errs                     []error
@@ -91,13 +81,10 @@ type Stats struct {
 	contentType              string
 	contentEncoding          string
 	bodySize                 int64
-
-	logLinesBytesCustomTrackers           []customTrackerPair
-	structuredMetadataBytesCustomTrackers []customTrackerPair
 }
 
 func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker CustomStreamsTracker) (*logproto.PushRequest, error) {
-	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention, limits)
+	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention, limits, tracker)
 	if err != nil {
 		return nil, err
 	}
@@ -126,20 +113,6 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		structuredMetadataSize += size
 	}
 
-	// Process custom trackers
-	if tracker != nil {
-		for _, pair := range pushStats.logLinesBytesCustomTrackers {
-			for retentionPeriod, size := range pair.Bytes {
-				tracker.ReceivedBytesAdd(userID, retentionPeriod, pair.Labels, float64(size))
-			}
-		}
-		for _, pair := range pushStats.structuredMetadataBytesCustomTrackers {
-			for retentionPeriod, size := range pair.Bytes {
-				tracker.ReceivedBytesAdd(userID, retentionPeriod, pair.Labels, float64(size))
-			}
-		}
-	}
-
 	// incrementing tenant metrics if we have a tenant.
 	if pushStats.numLines != 0 && userID != "" {
 		linesIngested.WithLabelValues(userID).Add(float64(pushStats.numLines))
@@ -163,7 +136,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	return req, nil
 }
 
-func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, _ Limits, tracker CustomStreamsTracker) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
@@ -235,24 +208,12 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 	for _, s := range req.Streams {
 		pushStats.streamLabelsSize += int64(len(s.Labels))
 
-		// Init custom trackers
-		customTrackers := limits.CustomTrackersConfig(userID)
 		var lbs labels.Labels
-		if tenantsRetention != nil || len(customTrackers.source) > 0 {
+		if tenantsRetention != nil || tracker != nil {
 			lbs, err = syntax.ParseLabels(s.Labels)
 			if err != nil {
 				return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
 			}
-		}
-		trackedLabels := customTrackers.MatchTrackers(lbs)
-		// TODO: avoid allocation if if cap() <= len(trackerLabels)
-		pushStats.logLinesBytesCustomTrackers = make([]customTrackerPair, len(trackedLabels))
-		pushStats.structuredMetadataBytesCustomTrackers = make([]customTrackerPair, len(trackedLabels))
-		for i, labels := range trackedLabels {
-			pushStats.logLinesBytesCustomTrackers[i].Labels = labels
-			pushStats.logLinesBytesCustomTrackers[i].Bytes = map[time.Duration]int64{}
-			pushStats.structuredMetadataBytesCustomTrackers[i].Labels = labels
-			pushStats.structuredMetadataBytesCustomTrackers[i].Bytes = map[time.Duration]int64{}
 		}
 
 		var retentionPeriod time.Duration
@@ -268,9 +229,9 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 			pushStats.logLinesBytes[retentionPeriod] += int64(len(e.Line))
 			pushStats.structuredMetadataBytes[retentionPeriod] += entryLabelsSize
 
-			for i := range trackedLabels {
-				pushStats.logLinesBytesCustomTrackers[i].Bytes[retentionPeriod] += int64(len(e.Line))
-				pushStats.structuredMetadataBytesCustomTrackers[i].Bytes[retentionPeriod] += entryLabelsSize
+			if tracker != nil {
+				tracker.ReceivedBytesAdd(userID, retentionPeriod, lbs, float64(len(e.Line)))
+				tracker.ReceivedBytesAdd(userID, retentionPeriod, lbs, float64(entryLabelsSize))
 			}
 
 			if e.Timestamp.After(pushStats.mostRecentEntryTimestamp) {
