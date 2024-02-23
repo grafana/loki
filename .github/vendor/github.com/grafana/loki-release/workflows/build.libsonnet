@@ -75,13 +75,16 @@ local releaseLibStep = common.releaseLibStep;
           --consider-all-branches \
           --dry-run \
           --dry-run-output release.json \
+          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
+          --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
-          --manifest-file .release-please-manifest.json \
-          --debug
+          --manifest-file .release-please-manifest.json
+
+        cat release.json
 
         if [[ `jq length release.json` -gt 1 ]]; then 
           echo 'release-please would create more than 1 PR, so cannot determine correct version'

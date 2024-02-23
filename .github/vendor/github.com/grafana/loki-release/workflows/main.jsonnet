@@ -15,7 +15,7 @@
     imagePrefix='grafana',
     releaseLibRef='main',
     releaseRepo='grafana/loki-release',
-    skipArm=true,
+    skipArm=false,
     skipValidation=false,
     versioningStrategy='always-bump-patch',
                     ) {
