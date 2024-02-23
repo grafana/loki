@@ -1,5 +1,8 @@
 local lokiRelease = import 'workflows/main.jsonnet';
 local build = lokiRelease.build;
+
+local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@v1.11.0';
+local releaseLibRef = 'v1.11.0';
 {
   'patch-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
@@ -16,10 +19,10 @@ local build = lokiRelease.build;
       },
       buildImage='grafana/loki-build-image:0.29.3-go1.20.10',
       branches=['release-[0-9]+.[0-9]+.x'],
-      checkTemplate='grafana/loki-release/.github/workflows/check.yml@release-1.11.x',
+      checkTemplate=checkTemplate,
       golangCiLintVersion='v1.51.2',
       imagePrefix='grafana',
-      releaseLibRef='release-1.11.x',
+      releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
       skipArm=false,
       skipValidation=false,
@@ -41,10 +44,10 @@ local build = lokiRelease.build;
       },
       buildImage='grafana/loki-build-image:0.29.3-go1.20.10',
       branches=['k[0-9]+'],
-      checkTemplate='grafana/loki-release/.github/workflows/check.yml@release-1.11.x',
+      checkTemplate=checkTemplate,
       golangCiLintVersion='v1.51.2',
       imagePrefix='grafana',
-      releaseLibRef='release-1.11.x',
+      releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
       skipArm=false,
       skipValidation=false,
@@ -56,7 +59,7 @@ local build = lokiRelease.build;
       branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+'],
       getDockerCredsFromVault=true,
       imagePrefix='grafana',
-      releaseLibRef='release-1.11.x',
+      releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
     ), false, false
   ),

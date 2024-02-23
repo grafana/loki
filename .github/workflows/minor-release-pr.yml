@@ -3,17 +3,17 @@ concurrency:
 env:
   DOCKER_USERNAME: "grafana"
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "release-1.11.x"
+  RELEASE_LIB_REF: "v1.11.0"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   VERSIONING_STRATEGY: "always-bump-minor"
 jobs:
   check:
-    uses: "grafana/loki-release/.github/workflows/check.yml@release-1.11.x"
+    uses: "grafana/loki-release/.github/workflows/check.yml@v1.11.0"
     with:
       build_image: "grafana/loki-build-image:0.29.3-go1.20.10"
       golang_ci_lint_version: "v1.51.2"
-      release_lib_ref: "release-1.11.x"
+      release_lib_ref: "v1.11.0"
       skip_validation: false
   create-release-pr:
     needs:
@@ -59,14 +59,14 @@ jobs:
           --consider-all-branches \
           --label "backport main,autorelease: pending,type/docs" \
           --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/loki-build-artifacts/${SHA}) of ${SHA}" \
+          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token "${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
           --separate-pull-requests false \
-          --manifest-file .release-please-manifest.json \
-          --debug
+          --manifest-file .release-please-manifest.json
       working-directory: "lib"
   dist:
     needs:
@@ -697,13 +697,16 @@ jobs:
           --consider-all-branches \
           --dry-run \
           --dry-run-output release.json \
+          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --release-type simple \
           --repo-url="${{ env.RELEASE_REPO }}" \
+          --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token="${{ secrets.GH_TOKEN }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
-          --manifest-file .release-please-manifest.json \
-          --debug
+          --manifest-file .release-please-manifest.json
+        
+        cat release.json
         
         if [[ `jq length release.json` -gt 1 ]]; then 
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
