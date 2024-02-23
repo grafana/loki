@@ -66,6 +66,25 @@
 
 * [10542](https://github.com/grafana/loki/pull/10542) **chaudum**: Remove legacy deployment mode for ingester (Deployment, without WAL) and instead always run them as StatefulSet.
 
+## [2.8.10](https://github.com/grafana/loki/compare/v2.8.9...v2.8.10) (2024-02-23)
+
+
+### Features
+
+* geoip stage in promtail ([#3493](https://github.com/grafana/loki/issues/3493)) ([b94c8aa](https://github.com/grafana/loki/commit/b94c8aaf16282ebbdf6e3352b763574dde89a0b4))
+* **logql:** Support drop labels in logql pipeline ([#7975](https://github.com/grafana/loki/issues/7975)) ([8df5803](https://github.com/grafana/loki/commit/8df5803d9a088995e2f8280bab951b3b31d80e28))
+* **promtail:** add more complex options of dropping logs at the drop stage ([#6371](https://github.com/grafana/loki/issues/6371)) ([ee1aee0](https://github.com/grafana/loki/commit/ee1aee0af3f9321a557e9e11bbcf28a7f91672bf))
+
+
+### Bug Fixes
+
+* bump alpine base image and go to fix CVEs ([#12026](https://github.com/grafana/loki/issues/12026)) ([196650e](https://github.com/grafana/loki/commit/196650e4c119249016df85a50a2cced521cbe9be))
+* **deps:** update github.com/grafana/loki digest to 7fa2f6e [security] (release-2.8.x) ([#10823](https://github.com/grafana/loki/issues/10823)) ([fab341d](https://github.com/grafana/loki/commit/fab341d1e4972ceb4ad1b14889aad1fd2343244b))
+* **logql:** fix caseinsensitive search in filter ([#8037](https://github.com/grafana/loki/issues/8037)) ([a08a732](https://github.com/grafana/loki/commit/a08a7324f47f5e490003bfb4dc2a47593fffbcf4))
+* **logql:** remove __error_details__ label on drop __error__ or other way around ([#8150](https://github.com/grafana/loki/issues/8150)) ([cf23194](https://github.com/grafana/loki/commit/cf23194d05d33105958f9e1ef70da3ed9717a81c))
+* **promtail:** Fix cri tags extra new lines. ([#7997](https://github.com/grafana/loki/issues/7997)) ([d5b68c0](https://github.com/grafana/loki/commit/d5b68c025762723134dc8379c25cfeb6e6084029))
+* **promtail:** Make `cri` tags streams aware. ([#8497](https://github.com/grafana/loki/issues/8497)) ([43a21ea](https://github.com/grafana/loki/commit/43a21eac0379d7f9320cd94f2d27a3a46bd19d3f))
+
 ## [2.8.9](https://github.com/grafana/loki/compare/v2.8.8...v2.8.9) (2024-02-23)
 
 
