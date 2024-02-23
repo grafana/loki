@@ -59,12 +59,8 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/queue"
-	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
@@ -181,7 +177,7 @@ func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
 }
 
 // New returns a new instance of the Bloom Gateway.
-func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, overrides Limits, cm storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
+func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
 	g := &Gateway{
 		cfg:          cfg,
 		logger:       logger,
@@ -192,34 +188,10 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 		},
 		workerMetrics: newWorkerMetrics(reg, constants.Loki, metricsSubsystem),
 		queueMetrics:  queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
+		bloomStore:    store,
 	}
-	var err error
-
 	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{0}, g.queueMetrics)
 	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
-
-	var metasCache cache.Cache
-	mcCfg := storageCfg.BloomShipperConfig.MetasCache
-	if cache.IsCacheConfigured(mcCfg) {
-		metasCache, err = cache.New(mcCfg, reg, logger, stats.BloomMetasCache, constants.Loki)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	var blocksCache cache.TypedCache[string, bloomshipper.BlockDirectory]
-	bcCfg := storageCfg.BloomShipperConfig.BlocksCache
-	if bcCfg.IsEnabled() {
-		blocksCache = bloomshipper.NewBlocksCache(bcCfg, reg, logger)
-	}
-
-	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, metasCache, blocksCache, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	// We need to keep a reference to be able to call Stop() on shutdown of the gateway.
-	g.bloomStore = store
 
 	if err := g.initServices(); err != nil {
 		return nil, err
@@ -286,7 +258,6 @@ func (g *Gateway) running(ctx context.Context) error {
 }
 
 func (g *Gateway) stopping(_ error) error {
-	g.bloomStore.Stop()
 	return services.StopManagerAndAwaitStopped(context.Background(), g.serviceMngr)
 }
 
