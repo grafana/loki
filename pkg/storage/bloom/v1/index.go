@@ -173,12 +173,11 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 		return nil, errors.Wrap(err, "getting decompressor")
 	}
 
-	decompressed := BlockPool.Get(header.DecompressedLen)[:header.DecompressedLen]
+	decompressed := make([]byte, header.DecompressedLen)
 	if _, err = io.ReadFull(decompressor, decompressed); err != nil {
 		return nil, errors.Wrap(err, "decompressing series page")
 	}
 
-	// TODO(owen-d): impl `Drop()` for SeriesPageDecoder's byte slice?
 	res := &SeriesPageDecoder{
 		data:   decompressed,
 		header: header.SeriesHeader,
