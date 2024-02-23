@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -33,8 +34,10 @@ func (p *processor) run(ctx context.Context, tasks []Task) error {
 }
 
 func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.MultiFingerprintBounds) error {
+	tenant := tasks[0].Tenant
+	level.Info(p.logger).Log("msg", "process tasks with bounds", "tenant", tenant, "tasks", len(tasks), "bounds", bounds)
+
 	for ts, tasks := range group(tasks, func(t Task) config.DayTime { return t.table }) {
-		tenant := tasks[0].Tenant
 		err := p.processTasks(ctx, tenant, ts, bounds, tasks)
 		if err != nil {
 			for _, task := range tasks {
@@ -50,6 +53,8 @@ func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.M
 }
 
 func (p *processor) processTasks(ctx context.Context, tenant string, day config.DayTime, keyspaces v1.MultiFingerprintBounds, tasks []Task) error {
+	level.Info(p.logger).Log("msg", "process tasks for day", "tenant", tenant, "tasks", len(tasks), "day", day.String())
+
 	minFpRange, maxFpRange := getFirstLast(keyspaces)
 	interval := bloomshipper.NewInterval(day.Bounds())
 	metaSearch := bloomshipper.MetaSearchParams{
