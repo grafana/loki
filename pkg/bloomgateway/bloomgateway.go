@@ -55,7 +55,6 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -78,39 +77,6 @@ var (
 	// responsesPool pooling array of v1.Output [64, 128, 256, ..., 65536]
 	responsesPool = queue.NewSlicePool[v1.Output](1<<6, 1<<16, 2)
 )
-
-type metrics struct {
-	queueDuration    prometheus.Histogram
-	inflightRequests prometheus.Summary
-	chunkRemovals    *prometheus.CounterVec
-}
-
-func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
-	return &metrics{
-		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "queue_duration_seconds",
-			Help:      "Time spent by tasks in queue before getting picked up by a worker.",
-			Buckets:   prometheus.DefBuckets,
-		}),
-		inflightRequests: promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
-			Namespace:  namespace,
-			Subsystem:  subsystem,
-			Name:       "inflight_tasks",
-			Help:       "Number of inflight tasks (either queued or processing) sampled at a regular interval. Quantile buckets keep track of inflight tasks over the last 60s.",
-			Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.02, 0.8: 0.02, 0.9: 0.01, 0.95: 0.01, 0.99: 0.001},
-			MaxAge:     time.Minute,
-			AgeBuckets: 6,
-		}),
-		chunkRemovals: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "chunk_removals_total",
-			Help:      "Total amount of removals received from the block querier partitioned by state. The state 'accepted' means that the removals are processed, the state 'dropped' means that the removals were received after the task context was done (e.g. client timeout, etc).",
-		}, []string{"state"}),
-	}
-}
 
 // SyncMap is a map structure which can be synchronized using the RWMutex
 type SyncMap[k comparable, v any] struct {
@@ -152,9 +118,8 @@ type Gateway struct {
 	cfg    Config
 	logger log.Logger
 
-	metrics       *metrics
-	workerMetrics *workerMetrics
-	queueMetrics  *queue.Metrics
+	metrics      *metrics
+	queueMetrics *queue.Metrics
 
 	queue       *queue.RequestQueue
 	activeUsers *util.ActiveUsersCleanupService
@@ -186,9 +151,8 @@ func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus
 		workerConfig: workerConfig{
 			maxItems: 100,
 		},
-		workerMetrics: newWorkerMetrics(reg, constants.Loki, metricsSubsystem),
-		queueMetrics:  queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
-		bloomStore:    store,
+		queueMetrics: queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
+		bloomStore:   store,
 	}
 	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{0}, g.queueMetrics)
 	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
@@ -206,7 +170,7 @@ func (g *Gateway) initServices() error {
 	svcs := []services.Service{g.queue, g.activeUsers}
 	for i := 0; i < g.cfg.WorkerConcurrency; i++ {
 		id := fmt.Sprintf("bloom-query-worker-%d", i)
-		w := newWorker(id, g.workerConfig, g.queue, g.bloomStore, g.pendingTasks, g.logger, g.workerMetrics)
+		w := newWorker(id, g.workerConfig, g.queue, g.bloomStore, g.pendingTasks, g.logger, g.metrics.workerMetrics)
 		svcs = append(svcs, w)
 	}
 	g.serviceMngr, err = services.NewManager(svcs...)
