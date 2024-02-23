@@ -63,7 +63,7 @@ type Task struct {
 	// series of the original request
 	series []*logproto.GroupedChunkRefs
 	// filters of the original request
-	filters []syntax.LineFilter
+	filters []syntax.LineFilterExpr
 	// from..through date of the task's chunks
 	bounds model.Interval
 	// the context from the request
@@ -76,7 +76,7 @@ type Task struct {
 // NewTask returns a new Task that can be enqueued to the task queue.
 // In addition, it returns a result and an error channel, as well
 // as an error if the instantiation fails.
-func NewTask(ctx context.Context, tenantID string, refs seriesWithBounds, filters []syntax.LineFilter) (Task, error) {
+func NewTask(ctx context.Context, tenantID string, refs seriesWithBounds, filters []syntax.LineFilterExpr) (Task, error) {
 	key, err := ulid.New(ulid.Now(), entropy)
 	if err != nil {
 		return Task{}, err
@@ -140,7 +140,7 @@ func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 func (t Task) RequestIter(tokenizer *v1.NGramTokenizer) v1.Iterator[v1.Request] {
 	return &requestIterator{
 		series:   v1.NewSliceIter(t.series),
-		searches: convertToSearches(t.filters, tokenizer),
+		searches: convertToSearches(tokenizer, t.filters...),
 		channel:  t.resCh,
 		curr:     v1.Request{},
 	}

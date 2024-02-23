@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
@@ -70,9 +71,9 @@ func convertToShortRef(ref *logproto.ChunkRef) *logproto.ShortRef {
 	return &logproto.ShortRef{From: ref.From, Through: ref.Through, Checksum: ref.Checksum}
 }
 
-func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, filters ...syntax.LineFilter) ([]*logproto.ChunkRef, error) {
+func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, queryPlan plan.QueryPlan) ([]*logproto.ChunkRef, error) {
 	// Shortcut that does not require any filtering
-	if len(chunkRefs) == 0 || len(filters) == 0 {
+	if len(chunkRefs) == 0 || len(syntax.ExtractLineFilters(queryPlan.AST)) == 0 {
 		return chunkRefs, nil
 	}
 
@@ -84,7 +85,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	preFilterChunks := len(chunkRefs)
 	preFilterSeries := len(grouped)
 
-	refs, err := bq.c.FilterChunks(ctx, tenant, from, through, grouped, filters...)
+	refs, err := bq.c.FilterChunks(ctx, tenant, from, through, grouped, queryPlan)
 	if err != nil {
 		return nil, err
 	}
