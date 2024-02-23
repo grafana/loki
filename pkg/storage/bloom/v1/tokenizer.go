@@ -42,8 +42,8 @@ func NewNGramTokenizer(n, skip int) *NGramTokenizer {
 
 // The Token iterator uses shared buffers for performance. The []byte returned by At()
 // is not safe for use after subsequent calls to Next()
-func (t *NGramTokenizer) Tokens(line string) NGramTokenIter {
-	return NGramTokenIter{
+func (t *NGramTokenizer) Tokens(line string) Iterator[[]byte] {
+	return &NGramTokenIter{
 		n:    t.N,
 		skip: t.Skip,
 
@@ -97,17 +97,17 @@ type PrefixedTokenIter struct {
 	buf       []byte
 	prefixLen int
 
-	NGramTokenIter
+	Iterator[[]byte]
 }
 
 func (t *PrefixedTokenIter) At() []byte {
-	return append(t.buf[:t.prefixLen], t.NGramTokenIter.At()...)
+	return append(t.buf[:t.prefixLen], t.Iterator.At()...)
 }
 
-func NewPrefixedTokenIter(buf []byte, prefixLn int, iter NGramTokenIter) *PrefixedTokenIter {
+func NewPrefixedTokenIter(buf []byte, prefixLn int, iter Iterator[[]byte]) *PrefixedTokenIter {
 	return &PrefixedTokenIter{
-		buf:            buf,
-		prefixLen:      prefixLn,
-		NGramTokenIter: iter,
+		buf:       buf,
+		prefixLen: prefixLn,
+		Iterator:  iter,
 	}
 }

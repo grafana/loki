@@ -83,26 +83,7 @@ func (n noopTest) TestWithPrefixBuf(_ filter.Checker, _ []byte, _ int) bool {
 // Extracting this interface allows us to test the bloom filter without having to use the actual tokenizer
 // TODO: This should be moved to tokenizer.go
 type NGramBuilder interface {
-	Build(input string) (ngrams [][]byte)
-}
-
-type nGramTokenizerWrapper struct {
-	NGramTokenizer
-}
-
-func NewNGramBuilder(t NGramTokenizer) NGramBuilder {
-	return nGramTokenizerWrapper{NGramTokenizer: t}
-}
-
-func (n nGramTokenizerWrapper) Build(input string) (ngrams [][]byte) {
-	// TODO: preallocate ngrams
-	it := n.Tokens(input)
-	for it.Next() {
-		ngram := make([]byte, n.N)
-		copy(ngram, it.At())
-		ngrams = append(ngrams, ngram)
-	}
-	return
+	Tokens(line string) Iterator[[]byte]
 }
 
 type stringTest struct {
@@ -110,7 +91,14 @@ type stringTest struct {
 }
 
 func newStringTest(b NGramBuilder, search string) stringTest {
-	return stringTest{ngrams: b.Build(search)}
+	var test stringTest
+	it := b.Tokens(search)
+	for it.Next() {
+		ngram := make([]byte, len(it.At()))
+		copy(ngram, it.At())
+		test.ngrams = append(test.ngrams, ngram)
+	}
+	return test
 }
 
 func (b stringTest) Test(bloom filter.Checker) bool {

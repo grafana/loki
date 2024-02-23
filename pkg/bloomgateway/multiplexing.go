@@ -139,20 +139,20 @@ func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 
 func (t Task) RequestIter(tokenizer *v1.NGramTokenizer) v1.Iterator[v1.Request] {
 	return &requestIterator{
-		series:   v1.NewSliceIter(t.series),
-		searches: convertToSearches(tokenizer, t.filters...),
-		channel:  t.resCh,
-		curr:     v1.Request{},
+		series:  v1.NewSliceIter(t.series),
+		search:  v1.FiltersToBloomTest(tokenizer, t.filters...),
+		channel: t.resCh,
+		curr:    v1.Request{},
 	}
 }
 
 var _ v1.Iterator[v1.Request] = &requestIterator{}
 
 type requestIterator struct {
-	series   v1.Iterator[*logproto.GroupedChunkRefs]
-	searches [][]byte
-	channel  chan<- v1.Output
-	curr     v1.Request
+	series  v1.Iterator[*logproto.GroupedChunkRefs]
+	search  v1.BloomTest
+	channel chan<- v1.Output
+	curr    v1.Request
 }
 
 // At implements v1.Iterator.
@@ -175,7 +175,7 @@ func (it *requestIterator) Next() bool {
 	it.curr = v1.Request{
 		Fp:       model.Fingerprint(group.Fingerprint),
 		Chks:     convertToChunkRefs(group.Refs),
-		Searches: it.searches,
+		Search:   it.search,
 		Response: it.channel,
 	}
 	return true

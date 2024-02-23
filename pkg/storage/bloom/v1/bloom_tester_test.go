@@ -138,8 +138,8 @@ func extractLineFilters(expr syntax.Expr) (lineFilters []syntax.LineFilterExpr) 
 
 type fakeNgramBuilder struct{}
 
-func (f fakeNgramBuilder) Build(input string) [][]byte {
-	return [][]byte{[]byte(input)}
+func (f fakeNgramBuilder) Tokens(line string) Iterator[[]byte] {
+	return NewSliceIter[[]byte]([][]byte{[]byte(line)})
 }
 
 type fakeBloom []string
