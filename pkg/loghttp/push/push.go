@@ -69,7 +69,7 @@ func (EmptyLimits) OTLPConfig(string) OTLPConfig {
 	return DefaultOTLPConfig
 }
 
-type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker CustomStreamsTracker) (*logproto.PushRequest, *Stats, error)
+type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error)
 
 type Stats struct {
 	errs                     []error
@@ -83,7 +83,7 @@ type Stats struct {
 	bodySize                 int64
 }
 
-func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker CustomStreamsTracker) (*logproto.PushRequest, error) {
+func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker UsageTracker) (*logproto.PushRequest, error) {
 	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention, limits, tracker)
 	if err != nil {
 		return nil, err
@@ -136,7 +136,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	return req, nil
 }
 
-func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, _ Limits, tracker CustomStreamsTracker) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, _ Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body

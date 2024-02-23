@@ -121,7 +121,7 @@ type instance struct {
 
 	schemaconfig *config.SchemaConfig
 
-	customStreamsTracker push.CustomStreamsTracker
+	customStreamsTracker push.UsageTracker
 }
 
 func newInstance(

@@ -25,7 +25,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		expectedPushRequest logproto.PushRequest
 		expectedStats       Stats
 		otlpConfig          OTLPConfig
-		tracker             CustomStreamsTracker
+		tracker             UsageTracker
 	}{
 		{
 			name: "no logs",

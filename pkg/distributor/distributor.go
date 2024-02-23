@@ -128,7 +128,7 @@ type Distributor struct {
 	replicationFactor      prometheus.Gauge
 	streamShardCount       prometheus.Counter
 
-	customStreamsTracker push.CustomStreamsTracker
+	customStreamsTracker push.UsageTracker
 }
 
 // New a distributor creates.

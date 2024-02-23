@@ -19,7 +19,7 @@ const (
 
 type Validator struct {
 	Limits
-	customStreamsTracker push.CustomStreamsTracker
+	customStreamsTracker push.UsageTracker
 }
 
 func NewValidator(l Limits) (*Validator, error) {
