@@ -12,6 +12,16 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 )
 
+func keysToBloomTest(keys [][]byte) BloomTest {
+	var tokenizer fakeNgramBuilder
+	tests := make(BloomTests, 0, len(keys))
+	for _, key := range keys {
+		tests = append(tests, newStringTest(tokenizer, string(key)))
+	}
+
+	return tests
+}
+
 func TestFusedQuerier(t *testing.T) {
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
@@ -54,7 +64,7 @@ func TestFusedQuerier(t *testing.T) {
 				Fp:       data[idx].Series.Fingerprint,
 				Chks:     data[idx].Series.Chunks,
 				Response: ch,
-				Searches: keys[idx],
+				Search:   keysToBloomTest(keys[idx]),
 			})
 		}
 		inputs = append(inputs, reqs)
