@@ -173,19 +173,14 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 		return nil, errors.Wrap(err, "getting decompressor")
 	}
 
-	decompressed := BlockPool.Get(header.DecompressedLen)[:header.DecompressedLen]
+	decompressed := make([]byte, header.DecompressedLen)
 	if _, err = io.ReadFull(decompressor, decompressed); err != nil {
 		return nil, errors.Wrap(err, "decompressing series page")
 	}
 
-	// replace decoder's input with the now-decompressed data
-	dec.B = decompressed
-
 	res := &SeriesPageDecoder{
 		data:   decompressed,
 		header: header.SeriesHeader,
-
-		i: -1,
 	}
 
 	res.Reset()
@@ -218,10 +213,6 @@ type SeriesHeader struct {
 	FromTs, ThroughTs model.Time
 }
 
-func (h SeriesHeader) OverlapFingerprintRange(other SeriesHeader) bool {
-	return h.Bounds.Overlaps(other.Bounds)
-}
-
 // build one aggregated header for the entire block
 func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 	if len(xs) == 0 {
@@ -234,8 +225,8 @@ func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 		Bounds: NewBounds(fromFp, throughFP),
 	}
 
-	for _, x := range xs {
-		if x.FromTs < res.FromTs {
+	for i, x := range xs {
+		if i == 0 || x.FromTs < res.FromTs {
 			res.FromTs = x.FromTs
 		}
 		if x.ThroughTs > res.ThroughTs {

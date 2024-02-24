@@ -9,19 +9,26 @@ import (
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
+)
+
+var (
+	errNoStore = errors.New("no store found for time")
 )
 
 type Store interface {
 	ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error)
 	FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
-	FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error)
-	Fetcher(ts model.Time) *Fetcher
+	FetchBlocks(ctx context.Context, refs []BlockRef) ([]*CloseableBlockQuerier, error)
+	Fetcher(ts model.Time) (*Fetcher, error)
+	Client(ts model.Time) (Client, error)
 	Stop()
 }
 
@@ -106,13 +113,18 @@ func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParam
 }
 
 // FetchBlocks implements Store.
-func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
-	return b.fetcher.FetchBlocksWithQueue(ctx, refs)
+func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef) ([]*CloseableBlockQuerier, error) {
+	return b.fetcher.FetchBlocks(ctx, refs)
 }
 
 // Fetcher implements Store.
-func (b *bloomStoreEntry) Fetcher(_ model.Time) *Fetcher {
-	return b.fetcher
+func (b *bloomStoreEntry) Fetcher(_ model.Time) (*Fetcher, error) {
+	return b.fetcher, nil
+}
+
+// Client implements Store.
+func (b *bloomStoreEntry) Client(_ model.Time) (Client, error) {
+	return b.bloomClient, nil
 }
 
 // Stop implements Store.
@@ -135,7 +147,7 @@ func NewBloomStore(
 	storageConfig storage.Config,
 	clientMetrics storage.ClientMetrics,
 	metasCache cache.Cache,
-	blocksCache *cache.EmbeddedCache[string, BlockDirectory],
+	blocksCache cache.TypedCache[string, BlockDirectory],
 	logger log.Logger,
 ) (*BloomStore, error) {
 	store := &BloomStore{
@@ -144,6 +156,10 @@ func NewBloomStore(
 
 	if metasCache == nil {
 		metasCache = cache.NewNoopCache()
+	}
+
+	if blocksCache == nil {
+		blocksCache = cache.NewNoopTypedCache[string, BlockDirectory]()
 	}
 
 	// sort by From time
@@ -155,6 +171,10 @@ func NewBloomStore(
 	cfg := bloomStoreConfig{
 		workingDir: storageConfig.BloomShipperConfig.WorkingDirectory,
 		numWorkers: storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
+	}
+
+	if err := util.EnsureDirectory(cfg.workingDir); err != nil {
+		return nil, errors.Wrapf(err, "failed to create working directory for bloom store: '%s'", cfg.workingDir)
 	}
 
 	for _, periodicConfig := range periodicConfigs {
@@ -218,11 +238,19 @@ func (b *BloomStore) Block(ref BlockRef) (loc Location) {
 }
 
 // Fetcher implements Store.
-func (b *BloomStore) Fetcher(ts model.Time) *Fetcher {
+func (b *BloomStore) Fetcher(ts model.Time) (*Fetcher, error) {
 	if store := b.getStore(ts); store != nil {
 		return store.Fetcher(ts)
 	}
-	return nil
+	return nil, errNoStore
+}
+
+// Client implements Store.
+func (b *BloomStore) Client(ts model.Time) (Client, error) {
+	if store := b.getStore(ts); store != nil {
+		return store.Client(ts)
+	}
+	return nil, errNoStore
 }
 
 // ResolveMetas implements Store.
@@ -272,7 +300,7 @@ func (b *BloomStore) FetchMetas(ctx context.Context, params MetaSearchParams) ([
 }
 
 // FetchBlocks implements Store.
-func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]BlockDirectory, error) {
+func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*CloseableBlockQuerier, error) {
 
 	var refs [][]BlockRef
 	var fetchers []*Fetcher
@@ -293,18 +321,29 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]Bloc
 
 		if len(res) > 0 {
 			refs = append(refs, res)
-			fetchers = append(fetchers, s.Fetcher(s.start))
+			fetchers = append(fetchers, s.fetcher)
 		}
 	}
 
-	results := make([]BlockDirectory, 0, len(blocks))
+	results := make([]*CloseableBlockQuerier, 0, len(blocks))
 	for i := range fetchers {
-		res, err := fetchers[i].FetchBlocksWithQueue(ctx, refs[i])
-		results = append(results, res...)
+		res, err := fetchers[i].FetchBlocks(ctx, refs[i])
 		if err != nil {
 			return results, err
 		}
+		results = append(results, res...)
 	}
+
+	// sort responses (results []*CloseableBlockQuerier) based on requests (blocks []BlockRef)
+	slices.SortFunc(results, func(a, b *CloseableBlockQuerier) int {
+		ia, ib := slices.Index(blocks, a.BlockRef), slices.Index(blocks, b.BlockRef)
+		if ia < ib {
+			return -1
+		} else if ia > ib {
+			return +1
+		}
+		return 0
+	})
 
 	return results, nil
 }
@@ -329,6 +368,7 @@ func (b *BloomStore) getStore(ts model.Time) *bloomStoreEntry {
 		return b.stores[j]
 	}
 
+	// should in theory never happen
 	return nil
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
@@ -47,9 +48,15 @@ func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
 
 // convertToSearches converts a list of line filter expressions to a list of
 // byte slices that can be used with the bloom filters.
-func convertToSearches(filters []syntax.LineFilter, t *v1.NGramTokenizer) [][]byte {
+func convertToSearches(t *v1.NGramTokenizer, filters ...syntax.LineFilterExpr) [][]byte {
 	searches := make([][]byte, 0, (13-t.N)*len(filters))
 	for _, f := range filters {
+		if f.Left != nil {
+			searches = append(searches, convertToSearches(t, *f.Left)...)
+		}
+		if f.Or != nil {
+			searches = append(searches, convertToSearches(t, *f.Or)...)
+		}
 		if f.Ty == labels.MatchEqual {
 			it := t.Tokens(f.Match)
 			for it.Next() {
@@ -82,15 +89,17 @@ func convertToChunkRefs(refs []*logproto.ShortRef) v1.ChunkRefs {
 	return result
 }
 
-type boundedTasks struct {
-	blockRef bloomshipper.BlockRef
-	tasks    []Task
+type blockWithTasks struct {
+	ref   bloomshipper.BlockRef
+	tasks []Task
 }
 
-func partitionFingerprintRange(tasks []Task, blocks []bloomshipper.BlockRef) (result []boundedTasks) {
+func partitionTasks(tasks []Task, blocks []bloomshipper.BlockRef) []blockWithTasks {
+	result := make([]blockWithTasks, 0, len(blocks))
+
 	for _, block := range blocks {
-		bounded := boundedTasks{
-			blockRef: block,
+		bounded := blockWithTasks{
+			ref: block,
 		}
 
 		for _, task := range tasks {
@@ -121,7 +130,7 @@ func partitionFingerprintRange(tasks []Task, blocks []bloomshipper.BlockRef) (re
 
 type seriesWithBounds struct {
 	bounds model.Interval
-	day    model.Time
+	table  config.DayTime
 	series []*logproto.GroupedChunkRefs
 }
 
@@ -173,7 +182,7 @@ func partitionRequest(req *logproto.FilterChunkRefRequest) []seriesWithBounds {
 					Start: minTs,
 					End:   maxTs,
 				},
-				day:    day,
+				table:  config.NewDayTime(day),
 				series: res,
 			})
 		}

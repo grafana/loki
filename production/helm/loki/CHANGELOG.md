@@ -16,6 +16,25 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.42.3
 
 - [FEATURE] Add missing server config ingester_client
+## 5.43.3
+
+- [ENHANCEMENT] Added missing default values to support ServerSideApply
+
+## 5.43.2
+
+- [BUGFIX] Added `alibabacloud` to `isUsingObjectStorage` check.
+
+## 5.43.1
+
+- [BUGFIX] Fix `toPorts` fields in the `ciliumnetworkpolicy` template
+
+## 5.43.0
+
+- [ENHANCEMENT] Allow the definition of resources for GrafanaAgent pods
+
+## 5.42.3
+
+- [BUGFIX] Added condition for `egress-discovery` networkPolicies and ciliumNetworkPolicies.
 
 ## 5.42.2
 

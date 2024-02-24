@@ -14,18 +14,32 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
-type ClosableBlockQuerier struct {
+type CloseableBlockQuerier struct {
+	BlockRef
 	*v1.BlockQuerier
-	Close func() error
+	close func() error
 }
 
-func NewBlocksCache(config config.Config, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, BlockDirectory] {
+func (c *CloseableBlockQuerier) Close() error {
+	if c.close != nil {
+		return c.close()
+	}
+	return nil
+}
+
+func (c *CloseableBlockQuerier) SeriesIter() (v1.PeekingIterator[*v1.SeriesWithBloom], error) {
+	if err := c.Reset(); err != nil {
+		return nil, err
+	}
+	return v1.NewPeekingIter[*v1.SeriesWithBloom](c.BlockQuerier), nil
+}
+
+func NewBlocksCache(cfg cache.EmbeddedCacheConfig, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, BlockDirectory] {
 	return cache.NewTypedEmbeddedCache[string, BlockDirectory](
 		"bloom-blocks-cache",
-		config.BlocksCache.EmbeddedCacheConfig,
+		cfg,
 		reg,
 		logger,
 		stats.BloomBlocksCache,
@@ -46,7 +60,7 @@ func NewBlockDirectory(ref BlockRef, path string, logger log.Logger) BlockDirect
 	return BlockDirectory{
 		BlockRef:                    ref,
 		Path:                        path,
-		activeQueriers:              atomic.NewInt32(0),
+		refCount:                    atomic.NewInt32(0),
 		removeDirectoryTimeout:      time.Minute,
 		logger:                      logger,
 		activeQueriersCheckInterval: defaultActiveQueriersCheckInterval,
@@ -59,7 +73,7 @@ type BlockDirectory struct {
 	BlockRef
 	Path                        string
 	removeDirectoryTimeout      time.Duration
-	activeQueriers              *atomic.Int32
+	refCount                    *atomic.Int32
 	logger                      log.Logger
 	activeQueriersCheckInterval time.Duration
 }
@@ -68,17 +82,24 @@ func (b BlockDirectory) Block() *v1.Block {
 	return v1.NewBlock(v1.NewDirectoryBlockReader(b.Path))
 }
 
+func (b BlockDirectory) Acquire() {
+	_ = b.refCount.Inc()
+}
+
+func (b BlockDirectory) Release() error {
+	_ = b.refCount.Dec()
+	return nil
+}
+
 // BlockQuerier returns a new block querier from the directory.
 // It increments the counter of active queriers for this directory.
 // The counter is decreased when the returned querier is closed.
-func (b BlockDirectory) BlockQuerier() *ClosableBlockQuerier {
-	b.activeQueriers.Inc()
-	return &ClosableBlockQuerier{
+func (b BlockDirectory) BlockQuerier() *CloseableBlockQuerier {
+	b.Acquire()
+	return &CloseableBlockQuerier{
 		BlockQuerier: v1.NewBlockQuerier(b.Block()),
-		Close: func() error {
-			_ = b.activeQueriers.Dec()
-			return nil
-		},
+		BlockRef:     b.BlockRef,
+		close:        b.Release,
 	}
 }
 
@@ -92,7 +113,7 @@ func (b *BlockDirectory) removeDirectoryAsync() {
 		for {
 			select {
 			case <-ticker.C:
-				if b.activeQueriers.Load() == 0 {
+				if b.refCount.Load() == 0 {
 					err := deleteFolder(b.Path)
 					if err == nil {
 						return

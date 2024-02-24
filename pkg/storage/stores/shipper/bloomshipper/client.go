@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
@@ -15,7 +16,9 @@ import (
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
@@ -84,8 +87,66 @@ func (r MetaRef) String() string {
 type Meta struct {
 	MetaRef `json:"-"`
 
-	Tombstones []BlockRef
-	Blocks     []BlockRef
+	// The specific TSDB files used to generate the block.
+	Sources []tsdb.SingleTenantTSDBIdentifier
+
+	// A list of blocks that were generated
+	Blocks []BlockRef
+}
+
+func MetaRefFrom(
+	tenant,
+	table string,
+	bounds v1.FingerprintBounds,
+	sources []tsdb.SingleTenantTSDBIdentifier,
+	blocks []BlockRef,
+) (MetaRef, error) {
+
+	h := v1.Crc32HashPool.Get()
+	defer v1.Crc32HashPool.Put(h)
+
+	err := bounds.Hash(h)
+	if err != nil {
+		return MetaRef{}, errors.Wrap(err, "writing OwnershipRange")
+	}
+
+	for _, source := range sources {
+		err = source.Hash(h)
+		if err != nil {
+			return MetaRef{}, errors.Wrap(err, "writing Sources")
+		}
+	}
+
+	var (
+		start, end model.Time
+	)
+
+	for i, block := range blocks {
+		if i == 0 || block.StartTimestamp.Before(start) {
+			start = block.StartTimestamp
+		}
+
+		if block.EndTimestamp.After(end) {
+			end = block.EndTimestamp
+		}
+
+		err = block.Hash(h)
+		if err != nil {
+			return MetaRef{}, errors.Wrap(err, "writing Blocks")
+		}
+	}
+
+	return MetaRef{
+		Ref: Ref{
+			TenantID:       tenant,
+			TableName:      table,
+			Bounds:         bounds,
+			StartTimestamp: start,
+			EndTimestamp:   end,
+			Checksum:       h.Sum32(),
+		},
+	}, nil
+
 }
 
 type MetaSearchParams struct {
@@ -107,6 +168,46 @@ type Block struct {
 	Data io.ReadSeekCloser
 }
 
+// CloseableReadSeekerAdapter is a wrapper around io.ReadSeeker to make it io.Closer
+// if it doesn't already implement it.
+type ClosableReadSeekerAdapter struct {
+	io.ReadSeeker
+}
+
+func (c ClosableReadSeekerAdapter) Close() error {
+	if closer, ok := c.ReadSeeker.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
+func BlockFrom(tenant, table string, blk *v1.Block) (Block, error) {
+	md, _ := blk.Metadata()
+	ref := Ref{
+		TenantID:       tenant,
+		TableName:      table,
+		Bounds:         md.Series.Bounds,
+		StartTimestamp: md.Series.FromTs,
+		EndTimestamp:   md.Series.ThroughTs,
+		Checksum:       md.Checksum,
+	}
+
+	// TODO(owen-d): pool
+	buf := bytes.NewBuffer(nil)
+	err := v1.TarGz(buf, blk.Reader())
+
+	if err != nil {
+		return Block{}, errors.Wrap(err, "archiving+compressing block")
+	}
+
+	reader := bytes.NewReader(buf.Bytes())
+
+	return Block{
+		BlockRef: BlockRef{Ref: ref},
+		Data:     ClosableReadSeekerAdapter{reader},
+	}, nil
+}
+
 type BlockClient interface {
 	KeyResolver
 	GetBlock(ctx context.Context, ref BlockRef) (BlockDirectory, error)
@@ -118,6 +219,7 @@ type BlockClient interface {
 type Client interface {
 	MetaClient
 	BlockClient
+	IsObjectNotFoundErr(err error) bool
 	Stop()
 }
 
@@ -142,6 +244,10 @@ func NewBloomClient(cfg bloomStoreConfig, client client.ObjectClient, logger log
 	}, nil
 }
 
+func (b *BloomClient) IsObjectNotFoundErr(err error) bool {
+	return b.client.IsObjectNotFoundErr(err)
+}
+
 func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
 	data, err := json.Marshal(meta)
 	if err != nil {
@@ -160,18 +266,28 @@ func (b *BloomClient) DeleteMetas(ctx context.Context, refs []MetaRef) error {
 	return err
 }
 
-// GetBlock downloads the blocks from objectStorage and returns the downloaded block
+// GetBlock downloads the blocks from objectStorage and returns the directory
+// in which the block data resides
 func (b *BloomClient) GetBlock(ctx context.Context, ref BlockRef) (BlockDirectory, error) {
 	key := b.Block(ref).Addr()
-	readCloser, _, err := b.client.GetObject(ctx, key)
+
+	rc, _, err := b.client.GetObject(ctx, key)
 	if err != nil {
 		return BlockDirectory{}, fmt.Errorf("failed to get block from storage: %w", err)
 	}
+	defer rc.Close()
 
 	path := b.fsResolver.Block(ref).LocalPath()
-	err = extractBlock(readCloser, path, b.logger)
+	// the block directory should not contain the .tar.gz extension
+	path = strings.TrimSuffix(path, ".tar.gz")
+	err = util.EnsureDirectory(path)
 	if err != nil {
-		return BlockDirectory{}, fmt.Errorf("failed to extract block into directory : %w", err)
+		return BlockDirectory{}, fmt.Errorf("failed to create block directory: %w", err)
+	}
+
+	err = v1.UnTarGz(path, rc)
+	if err != nil {
+		return BlockDirectory{}, fmt.Errorf("failed to extract block: %w", err)
 	}
 
 	return NewBlockDirectory(ref, path, b.logger), nil
@@ -218,6 +334,7 @@ func (b *BloomClient) DeleteBlocks(ctx context.Context, references []BlockRef) e
 		ref := references[idx]
 		key := b.Block(ref).Addr()
 		err := b.client.DeleteObject(ctx, key)
+
 		if err != nil {
 			return fmt.Errorf("error deleting block file: %w", err)
 		}
@@ -263,7 +380,7 @@ func (b *BloomClient) GetMeta(ctx context.Context, ref MetaRef) (Meta, error) {
 func findPeriod(configs []config.PeriodConfig, ts model.Time) (config.DayTime, error) {
 	for i := len(configs) - 1; i >= 0; i-- {
 		periodConfig := configs[i]
-		if !periodConfig.From.After(ts) {
+		if !periodConfig.From.Time.After(ts) {
 			return periodConfig.From, nil
 		}
 	}
