@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.42.3
 
 - [FEATURE] Add missing server config ingester_client
+
 ## 5.43.3
 
 - [ENHANCEMENT] Added missing default values to support ServerSideApply
