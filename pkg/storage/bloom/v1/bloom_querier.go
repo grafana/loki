@@ -39,11 +39,6 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 	// load the desired page
 	if it.curPageIndex != offset.Page || it.curPage == nil {
 
-		// drop the current page if it exists
-		if it.curPage != nil {
-			it.curPage.Drop()
-		}
-
 		r, err := it.b.reader.Blooms()
 		if err != nil {
 			it.err = errors.Wrap(err, "getting blooms reader")
@@ -103,7 +98,6 @@ func (it *LazyBloomIter) next() bool {
 			}
 			// we've exhausted the current page, progress to next
 			it.curPageIndex++
-			it.curPage.Drop()
 			it.curPage = nil
 			continue
 		}

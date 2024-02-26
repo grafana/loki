@@ -62,7 +62,7 @@ func TestTask_RequestIterator(t *testing.T) {
 			bounds: model.Interval{Start: 0, End: math.MaxInt64},
 			series: []*logproto.GroupedChunkRefs{},
 		}
-		task, _ := NewTask(context.Background(), tenant, swb, []syntax.LineFilter{})
+		task, _ := NewTask(context.Background(), tenant, swb, []syntax.LineFilterExpr{})
 		it := task.RequestIter(tokenizer)
 		// nothing to iterate over
 		require.False(t, it.Next())

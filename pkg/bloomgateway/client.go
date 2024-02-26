@@ -26,8 +26,8 @@ import (
 	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -142,7 +142,7 @@ func (i *ClientConfig) Validate() error {
 }
 
 type Client interface {
-	FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...syntax.LineFilter) ([]*logproto.GroupedChunkRefs, error)
+	FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error)
 }
 
 type GatewayClient struct {
@@ -224,7 +224,7 @@ func shuffleAddrs(addrs []string) []string {
 }
 
 // FilterChunkRefs implements Client
-func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...syntax.LineFilter) ([]*logproto.GroupedChunkRefs, error) {
+func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
 	if !c.limits.BloomGatewayEnabled(tenant) {
 		return groups, nil
 	}
@@ -252,7 +252,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 				From:    from,
 				Through: through,
 				Refs:    rs.groups,
-				Filters: filters,
+				Plan:    plan,
 			}
 			resp, err := client.FilterChunkRefs(ctx, req)
 			if err != nil {
@@ -311,7 +311,7 @@ func replicationSetsWithBounds(subRing ring.ReadRing, instances []ring.InstanceD
 
 	servers := make([]rsWithRanges, 0, len(instances))
 	for _, inst := range instances {
-		tr, err := subRing.GetTokenRangesForInstance(inst.Id)
+		tr, err := bloomutils.TokenRangesForInstance(inst.Id, instances)
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
 		}

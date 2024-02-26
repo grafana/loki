@@ -67,15 +67,17 @@ func New(
 	fetcherProvider stores.ChunkFetcherProvider,
 	sharding util_ring.TenantSharding,
 	limits Limits,
+	store bloomshipper.Store,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Compactor, error) {
 	c := &Compactor{
-		cfg:       cfg,
-		schemaCfg: schemaCfg,
-		logger:    logger,
-		sharding:  sharding,
-		limits:    limits,
+		cfg:        cfg,
+		schemaCfg:  schemaCfg,
+		logger:     logger,
+		sharding:   sharding,
+		limits:     limits,
+		bloomStore: store,
 	}
 
 	tsdbStore, err := NewTSDBStores(schemaCfg, storeCfg, clientMetrics)
@@ -83,13 +85,6 @@ func New(
 		return nil, errors.Wrap(err, "failed to create TSDB store")
 	}
 	c.tsdbStore = tsdbStore
-
-	// TODO(owen-d): export bloomstore as a dependency that can be reused by the compactor & gateway rather that
-	bloomStore, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storeCfg, clientMetrics, nil, nil, logger)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create bloom store")
-	}
-	c.bloomStore = bloomStore
 
 	// initialize metrics
 	c.btMetrics = v1.NewMetrics(prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer_", r))
@@ -199,7 +194,7 @@ func (c *Compactor) ownsTenant(tenant string) ([]v1.FingerprintBounds, bool, err
 		return nil, false, nil
 	}
 
-	// TOOD(owen-d): use <ReadRing>.GetTokenRangesForInstance()
+	// TODO(owen-d): use <ReadRing>.GetTokenRangesForInstance()
 	// when it's supported for non zone-aware rings
 	// instead of doing all this manually
 
