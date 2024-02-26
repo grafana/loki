@@ -67,6 +67,8 @@ local releaseLibStep = common.releaseLibStep;
       common.fetchReleaseRepo,
       common.setupNode,
       common.extractBranchName,
+      common.githubAppToken,
+      common.setToken,
       releaseLibStep('get release version')
       + step.withId('version')
       + step.withRun(|||
@@ -79,10 +81,10 @@ local releaseLibStep = common.releaseLibStep;
           --manifest-file .release-please-manifest.json \
           --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --release-type simple \
-          --repo-url="${{ env.RELEASE_REPO }}" \
+          --repo-url "${{ env.RELEASE_REPO }}" \
           --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GH_TOKEN }}" \
+          --token "${{ steps.github_app_token.outputs.token }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
 
         cat release.json

@@ -2,14 +2,17 @@ concurrency:
   group: "create-release-${{ github.sha }}"
 env:
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "v1.11.2"
+  RELEASE_LIB_REF: "v1.11.4"
   RELEASE_REPO: "grafana/loki"
+  USE_GITHUB_APP_TOKEN: true
 jobs:
   createRelease:
     if: "${{ fromJSON(needs.shouldRelease.outputs.shouldRelease) }}"
     needs:
     - "shouldRelease"
     outputs:
+      draft: "${{ steps.check_release.outputs.draft }}"
+      exists: "${{ steps.check_release.outputs.exists }}"
       name: "${{ needs.shouldRelease.outputs.name }}"
       sha: "${{ needs.shouldRelease.outputs.sha }}"
     runs-on: "ubuntu-latest"
@@ -37,28 +40,63 @@ jobs:
       uses: "google-github-actions/setup-gcloud@v2"
       with:
         version: ">= 452.0.0"
+    - id: "get_github_app_token"
+      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
+      name: "get github app token"
+      uses: "actions/github-app-token@v1"
+      with:
+        app-id: "${{ secrets.APP_ID }}"
+        owner: "${{ github.repository_owner }}"
+        private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+    - id: "github_app_token"
+      name: "set github token"
+      run: |
+        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
+          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+        else
+          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
+        fi
     - name: "download binaries"
       run: |
         echo "downloading binaries to $(pwd)/dist"
         gsutil cp -r gs://loki-build-artifacts/${{ needs.shouldRelease.outputs.sha }}/dist .
       working-directory: "release"
+    - env:
+        GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+      id: "check_release"
+      name: "check if release exists"
+      run: |
+        set +e
+        isDraft="$(gh release view --json="isDraft" --jq=".isDraft" ${{ needs.shouldRelease.outputs.name }} 2>&1)"
+        set -e
+        if [[ "$isDraft" == "release not found" ]]; then
+          echo "exists=false" >> $GITHUB_OUTPUT
+        else
+          echo "exists=true" >> $GITHUB_OUTPUT
+        fi
+        
+        if [[ "$isDraft" == "true" ]]; then
+          echo "draft=true" >> $GITHUB_OUTPUT
+        fi
+      working-directory: "release"
     - id: "release"
+      if: "${{ !fromJSON(steps.check_release.outputs.exists) }}"
       name: "create release"
       run: |
         npm install
         npm exec -- release-please github-release \
           --draft \
           --release-type simple \
-          --repo-url="${{ env.RELEASE_REPO }}" \
+          --repo-url "${{ env.RELEASE_REPO }}" \
           --target-branch "${{ needs.shouldRelease.outputs.branch }}" \
-          --token="${{ secrets.GH_TOKEN }}"
+          --token "${{ steps.github_app_token.outputs.token }}"
       working-directory: "lib"
     - env:
-        GH_TOKEN: "${{ secrets.GH_TOKEN }}"
+        GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
       id: "upload"
       name: "upload artifacts"
       run: |
-        gh release upload ${{ needs.shouldRelease.outputs.name }} dist/*
+        gh release upload --clobber ${{ needs.shouldRelease.outputs.name }} dist/*
       working-directory: "release"
   publishImages:
     needs:
@@ -105,8 +143,25 @@ jobs:
       with:
         path: "release"
         repository: "${{ env.RELEASE_REPO }}"
+    - id: "get_github_app_token"
+      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
+      name: "get github app token"
+      uses: "actions/github-app-token@v1"
+      with:
+        app-id: "${{ secrets.APP_ID }}"
+        owner: "${{ github.repository_owner }}"
+        private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+    - id: "github_app_token"
+      name: "set github token"
+      run: |
+        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
+          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+        else
+          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
+        fi
     - env:
-        GH_TOKEN: "${{ secrets.GH_TOKEN }}"
+        GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+      if: "${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}"
       name: "publish release"
       run: |
         gh release edit ${{ needs.createRelease.outputs.name }} --draft=false
