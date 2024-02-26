@@ -1,7 +1,7 @@
 {
   local makePrefix(groups) = std.join('_', groups),
   local makeGroupBy(groups) = std.join(', ', groups),
-  
+
   _config+:: {
     // Tags for dashboards.
     tags: ['loki'],
