@@ -186,15 +186,15 @@ jobs:
       with:
         context: "release"
         file: "release/clients/cmd/fluent-bit/Dockerfile"
-        outputs: "type=docker,dest=release/images/fluent-bit-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        outputs: "type=docker,dest=release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/fluent-bit:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        tags: "${{ env.IMAGE_PREFIX }}/fluent-bit-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/fluent-bit-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        path: "release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
@@ -245,15 +245,15 @@ jobs:
       with:
         context: "release"
         file: "release/clients/cmd/fluentd/Dockerfile"
-        outputs: "type=docker,dest=release/images/fluentd-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        outputs: "type=docker,dest=release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/fluentd:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        tags: "${{ env.IMAGE_PREFIX }}/fluent-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/fluentd-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        path: "release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
@@ -365,15 +365,15 @@ jobs:
       with:
         context: "release"
         file: "release/clients/cmd/logstash/Dockerfile"
-        outputs: "type=docker,dest=release/images/logstash-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        outputs: "type=docker,dest=release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/logstash:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        tags: "${{ env.IMAGE_PREFIX }}/logstash-output-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/logstash-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        path: "release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
@@ -666,15 +666,15 @@ jobs:
       with:
         context: "release"
         file: "release/cmd/querytee/Dockerfile"
-        outputs: "type=docker,dest=release/images/querytee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        outputs: "type=docker,dest=release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/querytee:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        tags: "${{ env.IMAGE_PREFIX }}/loki-query-tee:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/querytee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        path: "release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
