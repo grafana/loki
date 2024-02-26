@@ -463,7 +463,7 @@ func (q *query) evalLiteral(_ context.Context, expr *syntax.LiteralExpr) (promql
 		return nil, err
 	}
 	s := promql.Scalar{
-		T: q.params.Start().UnixNano() / int64(time.Millisecond),
+		T: q.params.Start().UnixNano() / int64(time.Second),
 		V: value,
 	}
 
