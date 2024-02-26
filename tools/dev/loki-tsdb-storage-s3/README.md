@@ -68,6 +68,6 @@ If you use vs-code, you can add this snippet bellow in your [`launch.json`](http
 
 Then you can debug `ingester-1` with the `Launch Loki remote` configuration within the debugging tab.
 
-### goland
+### GoLand IDE
 
-If you use goland, just create a Go remote debug configuration and use the appropriate port with the process you wish to debug
+If you use the [GoLand](https://www.jetbrains.com/go/) IDE, just create a Go remote debug configuration and use the appropriate port with the process you wish to debug.
