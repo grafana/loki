@@ -20,9 +20,9 @@ This guide assumes Loki will be installed in one of the modes above and that a `
 
 **To use a managed object store:**
 
-1. Set the `type` of `storage` in `values.yaml` to `gcs` or `s3`.
+1. In the `values.yaml` file, set the value for `storage.type` to `azure`, `gcs` or `s3`.
 
-2. Configure the storage client under `loki.storage.gcs` or `loki.storage.s3`.
+2. Configure the storage client under `loki.storage.azure`, `loki.storage.gcs` or `loki.storage.s3`.
 
 
 **To install Minio alongside Loki:**
