@@ -1,7 +1,7 @@
 local lokiRelease = import 'workflows/main.jsonnet';
 local build = lokiRelease.build;
 
-local releaseLibRef = 'v1.11.2';
+local releaseLibRef = 'v1.11.4';
 local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef;
 {
   'patch-release-pr.yml': std.manifestYamlDoc(
@@ -18,14 +18,14 @@ local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % re
         querytee: build.image('querytee', 'cmd/querytee', platform=['linux/amd64']),
       },
       buildImage='grafana/loki-build-image:0.29.3-go1.20.10',
-      branches=['release-[0-9]+.[0-9]+.x'],
+      branches=['release-[0-9]+.[0-9]+.x', 'bump-release-pipeline-to-1.11.4'],
       checkTemplate=checkTemplate,
       golangCiLintVersion='v1.51.2',
       imagePrefix='grafana',
       releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
-      skipArm=false,
-      skipValidation=false,
+      skipArm=true,
+      skipValidation=true,
       versioningStrategy='always-bump-patch',
     ), false, false
   ),

@@ -18,6 +18,7 @@
     skipArm=false,
     skipValidation=false,
     versioningStrategy='always-bump-patch',
+    useGitHubAppToken=true,
                     ) {
     name: 'create release PR',
     on: {
@@ -40,6 +41,7 @@
       SKIP_VALIDATION: skipValidation,
       VERSIONING_STRATEGY: versioningStrategy,
       RELEASE_LIB_REF: releaseLibRef,
+      USE_GITHUB_APP_TOKEN: useGitHubAppToken,
     },
     local validationSteps = ['check'],
     jobs: {
@@ -49,6 +51,7 @@
                build_image: buildImage,
                golang_ci_lint_version: golangCiLintVersion,
                release_lib_ref: releaseLibRef,
+               use_github_app_token: useGitHubAppToken,
              }),
       version: $.build.version + $.common.job.withNeeds(validationSteps),
       dist: $.build.dist(buildImage, skipArm) + $.common.job.withNeeds(['version']),
@@ -64,6 +67,7 @@
     imagePrefix='grafana',
     releaseLibRef='main',
     releaseRepo='grafana/loki-release',
+    useGitHubAppToken=true,
                   ) {
     name: 'create release',
     on: {
@@ -83,6 +87,7 @@
       RELEASE_REPO: releaseRepo,
       IMAGE_PREFIX: imagePrefix,
       RELEASE_LIB_REF: releaseLibRef,
+      USE_GITHUB_APP_TOKEN: useGitHubAppToken,
     },
     jobs: {
       shouldRelease: $.release.shouldRelease,
@@ -119,6 +124,12 @@
             required: false,
             type: 'string',
           },
+          use_github_app_token: {
+            default: true,
+            description: 'whether to use the GitHub App token for GH_TOKEN secret',
+            required: false,
+            type: 'boolean',
+          },
         },
       },
     },
@@ -132,6 +143,7 @@
     },
     env: {
       RELEASE_LIB_REF: '${{ inputs.release_lib_ref }}',
+      USE_GITHUB_APP_TOKEN: '${{ inputs.use_github_app_token }}',
     },
     jobs: $.validate,
   },

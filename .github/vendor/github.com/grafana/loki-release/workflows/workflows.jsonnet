@@ -22,6 +22,7 @@ local build = lokiRelease.build;
       imagePrefix='trevorwhitney075',
       releaseLibRef='release-1.11.x',
       releaseRepo='grafana/loki-release',
+      useGitHubAppToken=false,
     ), false, false
   ),
   '.github/workflows/check.yml': std.manifestYamlDoc(
