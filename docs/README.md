@@ -8,6 +8,7 @@ Some key things to know about the Loki documentation source:
 - While you can view the documentation in GitHub, GitHub does not render the images or links correctly and cannot render the Hugo specific shortcodes. To read the Loki documentation, see the [Documentation Site](https://grafana.com/docs/loki/latest/).
 - If you have a trivial fix or improvement, go ahead and create a pull request.
 - If you plan to do something more involved, for example creating a new topic, discuss your ideas on the relevant GitHub issue.
+- Pull requests are merged to main, and published to [Upcoming release](https://grafana.com/docs/loki/next/). If your change needs to be published to the  [Latest release](https://grafana.com/docs/loki/latest/) before the next Loki release (that is, it needs to be published immediately), add the appropriate backport label to your PR.  
 
 ## Contributing
 
@@ -32,9 +33,17 @@ If you have a GitHub account and you're just making a small fix, for example fix
 
 For larger contributions, for example documenting a new feature or adding a new topic, consider running the project locally to see how the changes look like before making a pull request.
 
-The docs team has created a [Writer's Toolkit](https://grafana.com/docs/writers-toolkit/) that documents how we write documentation at Grafana Labs. The Writer's toolkit contains information about how we structure documentation at Grafana, including templates for different types of topics, information about Hugo shortcodes that extend markdown to add additional features, and information about linters and other tools that we use to write documentation. The Writers' Toolkit also includes our [Style Guide](https://grafana.com/docs/writers-toolkit/write/style-guide/).
+The docs team has created a [Writers' Toolkit](https://grafana.com/docs/writers-toolkit/) that documents how we write documentation at Grafana Labs. The Writers' toolkit contains information about how we structure documentation at Grafana, including templates for different types of topics, information about Hugo shortcodes that extend markdown to add additional features, and information about linters and other tools that we use to write documentation. The Writers' Toolkit also includes our [Style Guide](https://grafana.com/docs/writers-toolkit/write/style-guide/).
 
 Note that in Hugo the structure of the documentation is based on the folder structure of the documentation repository. The URL structure is generated based on the folder structure and file names. Try to avoid moving or renaming files, as this will break cross-references to those files. If you must move or rename files, run `make docs` as described below to find and fix broken links before you submit your pull request.
+
+## Shared content
+
+**NOTE:** As of Loki/GEL 3.0, there will be shared files between the Loki docs and the GEL docs. The Grafana Enterprise Logs documentation will pull in content from the Loki repo when publishing the GEL docs.  Files that are shared between the two doc sets will contain a comment indicating that the content is shared.
+
+For more information about shared content, see the [reuse content](https://grafana.com/docs/writers-toolkit/write/reuse-content/) section of the Writers' Toolkit.
+
+For more information about building and testing documentation, see the [build and review](https://grafana.com/docs/writers-toolkit/review/) section of the Writers' Toolkit.
 
 ## Testing documentation
 

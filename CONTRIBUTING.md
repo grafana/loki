@@ -157,3 +157,8 @@ To get a local preview of the documentation:
 Then you can go to Docker Desktop settings and open the resources, add the temporary directory path `/tmp`.
 
 > Note that `make docs` uses a lot of memory. If it crashes, increase the memory allocated to Docker and try again.
+
+Also note that PRs are merged to the main branch.  If you want to see your changes published to the latest release, add the appropriate backport label to your PR.
+
+* [Latest release](https://grafana.com/docs/loki/latest/)
+* [Upcoming release](https://grafana.com/docs/loki/next/), at the tip of the main branch
