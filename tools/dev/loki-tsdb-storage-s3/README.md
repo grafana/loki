@@ -7,7 +7,7 @@ It runs the current code base in the repository this means you can debug new fea
 To start the stack simply run:
 
 ```bash
-./tools/dev/loki-boltdb-storage-s3/compose-up.sh
+./tools/dev/loki-tsdb-storage-s3/compose-up.sh
 ```
 
 You can then access grafana locally with http://localhost:3000 (default account admin/admin). The grafana container should already have the datasource to correctly query the frontend.
@@ -15,7 +15,7 @@ You can then access grafana locally with http://localhost:3000 (default account 
 To tear it down use:
 
 ```bash
-./tools/dev/loki-boltdb-storage-s3/compose-down.sh
+./tools/dev/loki-tsdb-storage-s3/compose-down.sh
 ```
 
 > On MacOS :apple: docker can get stuck when restarting the stack, you can restart docker to workaround the problem :shrug:
@@ -58,7 +58,7 @@ If you use vs-code, you can add this snippet bellow in your [`launch.json`](http
     ],
     "port": 18002,
     "host": "127.0.0.1",
-    "cwd": "${workspaceFolder}/tools/dev/loki-boltdb-storage-s3/loki",
+    "cwd": "${workspaceFolder}/tools/dev/loki-tsdb-storage-s3/loki",
     "remotePath": "/loki/loki",
     "showLog": true,
     "trace": "log",
@@ -67,3 +67,7 @@ If you use vs-code, you can add this snippet bellow in your [`launch.json`](http
 ```
 
 Then you can debug `ingester-1` with the `Launch Loki remote` configuration within the debugging tab.
+
+### goland
+
+If you use goland, just create a Go remote debug configuration and use the appropriate port with the process you wish to debug
