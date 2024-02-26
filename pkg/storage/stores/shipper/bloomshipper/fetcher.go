@@ -240,9 +240,13 @@ func (f *Fetcher) loadBlocksFromFS(_ context.Context, refs []BlockRef) ([]BlockD
 var noopClean = func(string) error { return nil }
 
 func (f *Fetcher) isBlockDir(path string) (bool, func(string) error) {
+	return isBlockDir(path, f.logger)
+}
+
+func isBlockDir(path string, logger log.Logger) (bool, func(string) error) {
 	info, err := os.Stat(path)
 	if err != nil && os.IsNotExist(err) {
-		level.Warn(f.logger).Log("msg", "path does not exist", "path", path)
+		level.Warn(logger).Log("msg", "path does not exist", "path", path)
 		return false, noopClean
 	}
 	if !info.IsDir() {
@@ -253,7 +257,7 @@ func (f *Fetcher) isBlockDir(path string) (bool, func(string) error) {
 		filepath.Join(path, v1.SeriesFileName),
 	} {
 		if _, err := os.Stat(file); err != nil && os.IsNotExist(err) {
-			level.Warn(f.logger).Log("msg", "path does not contain required file", "path", path, "file", file)
+			level.Warn(logger).Log("msg", "path does not contain required file", "path", path, "file", file)
 			return false, os.RemoveAll
 		}
 	}
