@@ -75,11 +75,7 @@
         branches: branches,
       },
     },
-    permissions: {
-      contents: 'write',
-      'pull-requests': 'write',
-      'id-token': 'write',
-    },
+    permissions: 'write-all',
     concurrency: {
       group: 'create-release-${{ github.sha }}',
     },
