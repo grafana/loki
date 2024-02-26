@@ -1,7 +1,7 @@
 local lokiRelease = import 'workflows/main.jsonnet';
 local build = lokiRelease.build;
 
-local releaseLibRef = 'v1.11.4';
+local releaseLibRef = 'release-1.11.x';
 local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef;
 
 local imageJobs = {
