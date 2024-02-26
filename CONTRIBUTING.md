@@ -14,6 +14,8 @@ LIDs must be created as a pull request using [this template](docs/sources/commun
 
 ## Pull Request Prerequisites/Checklist
 
+**NOTE:** The Loki team has adopted the use of [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for commit messages.
+
 1. Your PR title is in the form `<Feature Area>: Your change`.
    1. It does not end the title with punctuation. It will be added in the changelog.
    1. It starts with an imperative verb. Example: Fix the latency between System A and System B.

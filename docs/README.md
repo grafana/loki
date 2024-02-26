@@ -27,9 +27,10 @@ If you have a GitHub account and you're just making a small fix, for example fix
 2. Click the pencil icon.
 3. Enter your changes.
 4. Click **Commit changes**. GitHub creates a pull request for you.
-5. If this is your first contribution to the Loki repository, you will need to sign the Contributor License Agreement (CLA) before your PR can be accepted.
-6. Add the `type/docs` label to identify your PR as a docs contribution.
-7. If your contribution needs to be added to the current release or previous releases, apply the appropriate `backport` label.  You can find more information about backporting in the [Writers' toolkit](https://grafana.com/docs/writers-toolkit/review/backporting/).
+5. The Loki team uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for commit messages. Make sure your commit messages for doc updates start with `doc:`.
+6. If this is your first contribution to the Loki repository, you will need to sign the Contributor License Agreement (CLA) before your PR can be accepted.
+7. Add the `type/docs` label to identify your PR as a docs contribution.  This helps the documentation team track our work.
+8. If your contribution needs to be added to the current release or previous releases, apply the appropriate `backport` label.  You can find more information about backporting in the [Writers' toolkit](https://grafana.com/docs/writers-toolkit/review/backporting/).
 
 For larger contributions, for example documenting a new feature or adding a new topic, consider running the project locally to see how the changes look like before making a pull request.
 
