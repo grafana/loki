@@ -129,19 +129,14 @@ func (c *Compactor) running(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			err := ctx.Err()
+			level.Debug(c.logger).Log("msg", "compactor context done", "err", err)
+			return err
 
-		case start := <-ticker.C:
-			c.metrics.compactionsStarted.Inc()
+		case <-ticker.C:
 			if err := c.runOne(ctx); err != nil {
-				level.Error(c.logger).Log("msg", "compaction iteration failed", "err", err, "duration", time.Since(start))
-				c.metrics.compactionCompleted.WithLabelValues(statusFailure).Inc()
-				c.metrics.compactionTime.WithLabelValues(statusFailure).Observe(time.Since(start).Seconds())
 				return err
 			}
-			level.Info(c.logger).Log("msg", "compaction iteration completed", "duration", time.Since(start))
-			c.metrics.compactionCompleted.WithLabelValues(statusSuccess).Inc()
-			c.metrics.compactionTime.WithLabelValues(statusSuccess).Observe(time.Since(start).Seconds())
 		}
 	}
 }
@@ -178,7 +173,7 @@ type tenantTable struct {
 	ownershipRange v1.FingerprintBounds
 }
 
-func (c *Compactor) tenants(ctx context.Context, table config.DayTable) (v1.Iterator[string], error) {
+func (c *Compactor) tenants(ctx context.Context, table config.DayTable) (*v1.SliceIter[string], error) {
 	tenants, err := c.tsdbStore.UsersForPeriod(ctx, table)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting tenants")
@@ -214,6 +209,8 @@ func (c *Compactor) ownsTenant(tenant string) ([]v1.FingerprintBounds, bool, err
 
 // runs a single round of compaction for all relevant tenants and tables
 func (c *Compactor) runOne(ctx context.Context) error {
+	c.metrics.compactionsStarted.Inc()
+	start := time.Now()
 	level.Info(c.logger).Log("msg", "running bloom compaction", "workers", c.cfg.WorkerParallelism)
 	var workersErr error
 	var wg sync.WaitGroup
@@ -227,11 +224,20 @@ func (c *Compactor) runOne(ctx context.Context) error {
 	err := c.loadWork(ctx, ch)
 
 	wg.Wait()
+	duration := time.Since(start)
 	err = multierror.New(workersErr, err, ctx.Err()).Err()
+
 	if err != nil {
-		level.Error(c.logger).Log("msg", "compaction iteration failed", "err", err)
+		level.Error(c.logger).Log("msg", "compaction iteration failed", "err", err, "duration", duration)
+		c.metrics.compactionCompleted.WithLabelValues(statusFailure).Inc()
+		c.metrics.compactionTime.WithLabelValues(statusFailure).Observe(time.Since(start).Seconds())
+		return err
 	}
-	return err
+
+	c.metrics.compactionCompleted.WithLabelValues(statusSuccess).Inc()
+	c.metrics.compactionTime.WithLabelValues(statusSuccess).Observe(time.Since(start).Seconds())
+	level.Info(c.logger).Log("msg", "compaction iteration completed", "duration", duration)
+	return nil
 }
 
 func (c *Compactor) tables(ts time.Time) *dayRangeIterator {
@@ -252,6 +258,7 @@ func (c *Compactor) tables(ts time.Time) *dayRangeIterator {
 
 func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 	tables := c.tables(time.Now())
+	level.Debug(c.logger).Log("msg", "loaded tables", "tables", tables.Len())
 
 	for tables.Next() && tables.Err() == nil && ctx.Err() == nil {
 		table := tables.At()
@@ -262,6 +269,7 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 		if err != nil {
 			return errors.Wrap(err, "getting tenants")
 		}
+		level.Debug(c.logger).Log("msg", "loaded total tenants", "table", table, "tenants", tenants.Len())
 
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
 			c.metrics.tenantsDiscovered.Inc()
@@ -357,6 +365,14 @@ type dayRangeIterator struct {
 
 func newDayRangeIterator(min, max config.DayTime, schemaCfg config.SchemaConfig) *dayRangeIterator {
 	return &dayRangeIterator{min: min, max: max, cur: min.Dec(), schemaCfg: schemaCfg}
+}
+
+func (r *dayRangeIterator) Len() int {
+	offset := r.cur
+	if r.cur.Before(r.min) {
+		offset = r.min
+	}
+	return int(r.max.Sub(offset.Time) / config.ObjectStorageIndexRequiredPeriod)
 }
 
 func (r *dayRangeIterator) Next() bool {
