@@ -4,7 +4,7 @@ env:
   IMAGE_PREFIX: "grafana"
   RELEASE_LIB_REF: "release-1.11.x"
   RELEASE_REPO: "grafana/loki"
-  USE_GITHUB_APP_TOKEN: true
+  USE_GITHUB_APP_TOKEN: false
 jobs:
   createRelease:
     if: "${{ fromJSON(needs.shouldRelease.outputs.shouldRelease) }}"
