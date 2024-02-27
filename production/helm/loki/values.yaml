@@ -150,6 +150,7 @@ loki:
           addresses: {{ .addresses }}
           {{- end }}
           service: {{ .service }}
+          timeout: {{ .timeout }}
     {{- end }}
     {{- end }}
 
@@ -332,6 +333,7 @@ loki:
       service: "memcached-client"
       batch_size: 256
       parallelism: 10
+      timeout: "500ms"      
     results_cache:
       enabled: false
       host: ""
