@@ -3069,15 +3069,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>networkPolicy.additionalCiliumEgress.enabled</td>
-			<td>bool</td>
-			<td>Enable additional cilium egress rules to external world for write, read and backend.</td>
-			<td><pre lang="json">
-true
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>networkPolicy.alertmanager.namespaceSelector</td>
 			<td>object</td>
 			<td>Specifies the namespace the alertmanager is running in</td>
@@ -3128,6 +3119,24 @@ true
 			<td>Specify the port used for discovery</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>networkPolicy.egressKubeApiserver.enabled</td>
+			<td>bool</td>
+			<td>Enable additional cilium egress rules to kube-apiserver for backend.</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>networkPolicy.egressWorld.enabled</td>
+			<td>bool</td>
+			<td>Enable additional cilium egress rules to external world for write, read and backend.</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>

@@ -158,6 +158,39 @@ spec:
   {{- end }}
 {{- end }}
 
+{{- if .Values.networkPolicy.egressWorld.enabled }}
+---
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-world-egress
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "loki.writeSelectorLabels" . | nindent 6 }}
+      {{- include "loki.readSelectorLabels" . | nindent 6 }}
+      {{- include "loki.backendSelectorLabels" . | nindent 6 }}
+  egress:
+  - toEntities:
+    - world
+{{- end }}
+
+{{- if .Values.networkPolicy.egressKubeApiserver.enabled }}
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-backend-kubeapiserver-egress
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "loki.backendSelectorLabels" . | nindent 6 }}
+  egress:
+  - toEntities:
+    - kube-apiserver
+{{- end }}
+
 {{- end }}
 
 {{- if and .Values.networkPolicy.discovery.port (eq .Values.networkPolicy.flavor "cilium") }}
