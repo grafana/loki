@@ -188,6 +188,7 @@ func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration,
 func (s *Store) Merge(m Store) {
 	s.TotalChunksRef += m.TotalChunksRef
 	s.TotalChunksDownloaded += m.TotalChunksDownloaded
+	s.CongestionControlLatency += m.CongestionControlLatency
 	s.ChunksDownloadTime += m.ChunksDownloadTime
 	s.ChunkRefsFetchTime += m.ChunkRefsFetchTime
 	s.Chunk.HeadChunkBytes += m.Chunk.HeadChunkBytes
