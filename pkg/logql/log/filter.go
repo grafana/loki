@@ -6,11 +6,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/grafana/loki/pkg/util"
-
 	"github.com/grafana/regexp"
 	"github.com/grafana/regexp/syntax"
 
+	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
@@ -448,7 +447,7 @@ func parseRegexpFilter(re string, match bool, isLabel bool) (Filterer, error) {
 	reg = reg.Simplify()
 
 	// attempt to improve regex with tricks
-	f, ok := simplify(reg, isLabel)
+	f, ok := defaultRegexSimplifier.Simplify(reg, isLabel)
 	if !ok {
 		util.AllNonGreedy(reg)
 		regex := reg.String()
@@ -465,54 +464,106 @@ func parseRegexpFilter(re string, match bool, isLabel bool) (Filterer, error) {
 	return NewNotFilter(f), nil
 }
 
-// simplify a regexp expression by replacing it, when possible, with a succession of literal filters.
+type Simplifier interface {
+	Simplify(reg *syntax.Regexp, isLabel bool) (Filterer, bool)
+}
+
+type NewFilterer func(match []byte, caseInsensitive bool) Filterer
+
+type RegexSimplifier struct {
+	trueFilter        Filterer
+	existsFilter      Filterer
+	newContainsFilter NewFilterer
+	newEqualFilter    NewFilterer
+}
+
+var defaultRegexSimplifier = NewRegexSimplifier(TrueFilter, ExistsFilter, newContainsFilter, newEqualFilter)
+
+func NewRegexSimplifier(
+	trueFilter Filterer,
+	existsFilter Filterer,
+	newContainsFilter NewFilterer,
+	newEqualFilter NewFilterer,
+) *RegexSimplifier {
+	return &RegexSimplifier{
+		trueFilter:        trueFilter,
+		existsFilter:      existsFilter,
+		newContainsFilter: newContainsFilter,
+		newEqualFilter:    newEqualFilter,
+	}
+}
+
+// Simplify a regexp expression by replacing it, when possible, with a succession of literal filters.
 // For example `(foo|bar)` will be replaced by  `containsFilter(foo) or containsFilter(bar)`
-func simplify(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
+func (s *RegexSimplifier) Simplify(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
 	switch reg.Op {
 	case syntax.OpAlternate:
-		return simplifyAlternate(reg, isLabel)
+		return s.simplifyAlternate(reg, isLabel)
 	case syntax.OpConcat:
-		return simplifyConcat(reg, nil)
+		return s.simplifyConcat(reg, nil)
 	case syntax.OpCapture:
 		util.ClearCapture(reg)
-		return simplify(reg, isLabel)
+		return s.Simplify(reg, isLabel)
 	case syntax.OpLiteral:
 		if isLabel {
-			return newEqualFilter([]byte(string(reg.Rune)), util.IsCaseInsensitive(reg)), true
+			return s.newEqualFilter([]byte(string(reg.Rune)), util.IsCaseInsensitive(reg)), true
 		}
-		return newContainsFilter([]byte(string(reg.Rune)), util.IsCaseInsensitive(reg)), true
+		return s.newContainsFilter([]byte(string(reg.Rune)), util.IsCaseInsensitive(reg)), true
 	case syntax.OpStar:
 		if reg.Sub[0].Op == syntax.OpAnyCharNotNL {
-			return TrueFilter, true
+			return s.trueFilter, true
 		}
 	case syntax.OpPlus:
 		if len(reg.Sub) == 1 && reg.Sub[0].Op == syntax.OpAnyCharNotNL { // simplify ".+"
-			return ExistsFilter, true
+			return s.existsFilter, true
 		}
 	case syntax.OpEmptyMatch:
-		return TrueFilter, true
+		return s.trueFilter, true
+	default:
+		return nil, false
 	}
 	return nil, false
 }
 
 // simplifyAlternate simplifies, when possible, alternate regexp expressions such as:
 // (foo|bar) or (foo|(bar|buzz)).
-func simplifyAlternate(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
+func (s *RegexSimplifier) simplifyAlternate(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
 	util.ClearCapture(reg.Sub...)
 	// attempt to simplify the first leg
-	f, ok := simplify(reg.Sub[0], isLabel)
+	f, ok := s.Simplify(reg.Sub[0], isLabel)
 	if !ok {
 		return nil, false
 	}
 	// merge the rest of the legs
 	for i := 1; i < len(reg.Sub); i++ {
-		f2, ok := simplify(reg.Sub[i], isLabel)
+		f2, ok := s.Simplify(reg.Sub[i], isLabel)
 		if !ok {
 			return nil, false
 		}
-		f = newOrFilter(f, f2)
+		f = s.newOrFilter(f, f2)
 	}
 	return f, true
+}
+
+// newOrFilter creates a new filter which matches only if left or right matches.
+func (s *RegexSimplifier) newOrFilter(left Filterer, right Filterer) Filterer {
+	if left == nil || left == s.trueFilter {
+		return right
+	}
+
+	if right == nil || right == s.trueFilter {
+		return left
+	}
+
+	return orFilter{
+		left:  left,
+		right: right,
+	}
+}
+
+// chainOrFilter is a syntax sugar to chain multiple `or` filters. (1 or many)
+func (s *RegexSimplifier) chainOrFilter(curr, new Filterer) Filterer {
+	return s.newOrFilter(curr, new)
 }
 
 // simplifyConcat attempt to simplify concat operations.
@@ -520,7 +571,7 @@ func simplifyAlternate(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
 // which is a literalFilter.
 // Or a literal and alternates operation (see simplifyConcatAlternate), which represent a multiplication of alternates.
 // Anything else is rejected.
-func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
+func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 	util.ClearCapture(reg.Sub...)
 	// remove empty match as we don't need them for filtering
 	i := 0
@@ -555,7 +606,7 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 		}
 		// if we have an alternate we must also have a base literal to apply the concatenation with.
 		if sub.Op == syntax.OpAlternate && baseLiteral != nil {
-			if curr, ok = simplifyConcatAlternate(sub, baseLiteral, curr, baseLiteralIsCaseInsensitive); !ok {
+			if curr, ok = s.simplifyConcatAlternate(sub, baseLiteral, curr, baseLiteralIsCaseInsensitive); !ok {
 				return nil, false
 			}
 			continue
@@ -573,7 +624,7 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 
 	// if we have only a concat with literals.
 	if baseLiteral != nil {
-		return newContainsFilter(baseLiteral, baseLiteralIsCaseInsensitive), true
+		return s.newContainsFilter(baseLiteral, baseLiteralIsCaseInsensitive), true
 	}
 
 	return nil, false
@@ -583,7 +634,7 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 // A concat alternate is found when a concat operation has a sub alternate and is preceded by a literal.
 // For instance bar|b|buzz is expressed as b(ar|(?:)|uzz) => b concat alternate(ar,(?:),uzz).
 // (?:) being an OpEmptyMatch and b being the literal to concat all alternates (ar,(?:),uzz) with.
-func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr Filterer, baseLiteralIsCaseInsensitive bool) (Filterer, bool) {
+func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr Filterer, baseLiteralIsCaseInsensitive bool) (Filterer, bool) {
 	for _, alt := range reg.Sub {
 		// we should not consider the case where baseLiteral is not marked as case insensitive
 		// and alternate expression is marked as case insensitive. For example, for the original expression
@@ -595,25 +646,25 @@ func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr Filterer, 
 		}
 		switch alt.Op {
 		case syntax.OpEmptyMatch:
-			curr = ChainOrFilter(curr, newContainsFilter(literal, baseLiteralIsCaseInsensitive))
+			curr = s.chainOrFilter(curr, s.newContainsFilter(literal, baseLiteralIsCaseInsensitive))
 		case syntax.OpLiteral:
 			// concat the root literal with the alternate one.
 			altBytes := []byte(string(alt.Rune))
 			altLiteral := make([]byte, 0, len(literal)+len(altBytes))
 			altLiteral = append(altLiteral, literal...)
 			altLiteral = append(altLiteral, altBytes...)
-			curr = ChainOrFilter(curr, newContainsFilter(altLiteral, baseLiteralIsCaseInsensitive))
+			curr = s.chainOrFilter(curr, s.newContainsFilter(altLiteral, baseLiteralIsCaseInsensitive))
 		case syntax.OpConcat:
-			f, ok := simplifyConcat(alt, literal)
+			f, ok := s.simplifyConcat(alt, literal)
 			if !ok {
 				return nil, false
 			}
-			curr = ChainOrFilter(curr, f)
+			curr = s.chainOrFilter(curr, f)
 		case syntax.OpStar:
 			if alt.Sub[0].Op != syntax.OpAnyCharNotNL {
 				return nil, false
 			}
-			curr = ChainOrFilter(curr, newContainsFilter(literal, baseLiteralIsCaseInsensitive))
+			curr = s.chainOrFilter(curr, s.newContainsFilter(literal, baseLiteralIsCaseInsensitive))
 		default:
 			return nil, false
 		}
