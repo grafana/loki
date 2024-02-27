@@ -371,7 +371,7 @@ func (c *Context) AddChunkRefsFetchTime(i time.Duration) {
 }
 
 func (c *Context) AddCongestionControlLatency(i time.Duration) {
-	atomic.AddInt64(&c.querier.Store.CongestionControlLatency, int64(i))
+	atomic.AddInt64(&c.store.CongestionControlLatency, int64(i))
 }
 
 func (c *Context) AddChunksDownloaded(i int64) {

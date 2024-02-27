@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -116,9 +115,7 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 				a.metrics.backoffSec.Add(delay.Seconds())
 			}
 
-			since := time.Since(start)
-			level.Warn(a.logger).Log("msg", "congestion control latency", "time", since.Seconds())
-			statsCtx.AddCongestionControlLatency(since)
+			statsCtx.AddCongestionControlLatency(time.Since(start))
 
 			// It is vitally important that retries are DISABLED in the inner implementation.
 			// Some object storage clients implement retries internally, and this will interfere here.
