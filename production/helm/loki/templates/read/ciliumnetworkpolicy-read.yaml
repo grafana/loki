@@ -1,0 +1,14 @@
+{{- if .Values.networkPolicy.additionalCiliumEgress.enabled }}
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-read-egress
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "loki.readSelectorLabels" . | nindent 6 }}
+  egress:
+  - toEntities:
+    - world
+{{- end }}

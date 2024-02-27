@@ -15,6 +15,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 5.43.2
 
+- [ENHANCEMENT] Add `ciliumnetworkpolicies` with egress to world for write, read and backend.
+
+## 5.43.2
+
 - [BUGFIX] Added `alibabacloud` to `isUsingObjectStorage` check.
 
 ## 5.43.1

@@ -1,0 +1,15 @@
+{{- if .Values.networkPolicy.additionalCiliumEgress.enabled }}
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-backend-egress
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "loki.backendSelectorLabels" . | nindent 6 }}
+  egress:
+  - toEntities:
+    - world
+    - kube-apiserver
+{{- end }}

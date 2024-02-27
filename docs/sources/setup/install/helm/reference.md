@@ -3069,6 +3069,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>networkPolicy.additionalCiliumEgress.enabled</td>
+			<td>bool</td>
+			<td>Enable additional cilium egress rules to external world for write, read and backend.</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>networkPolicy.alertmanager.namespaceSelector</td>
 			<td>object</td>
 			<td>Specifies the namespace the alertmanager is running in</td>
@@ -3127,7 +3136,7 @@ null
 			<td>bool</td>
 			<td>Specifies whether Network Policies should be created</td>
 			<td><pre lang="json">
-false
+true
 </pre>
 </td>
 		</tr>
@@ -3154,7 +3163,7 @@ false
 			<td>string</td>
 			<td>Specifies whether the policies created will be standard Network Policies (flavor: kubernetes) or Cilium Network Policies (flavor: cilium)</td>
 			<td><pre lang="json">
-"kubernetes"
+"cilium"
 </pre>
 </td>
 		</tr>
