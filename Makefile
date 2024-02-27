@@ -34,7 +34,7 @@ BUILD_IMAGE_VERSION := 0.29.3-go1.20.10
 # Docker image info
 IMAGE_PREFIX ?= grafana
 
-IMAGE_TAG := $(shell ./tools/image-tag)
+IMAGE_TAG ?= $(shell ./tools/image-tag)
 
 # Version info for binaries
 GIT_REVISION := $(shell git rev-parse --short HEAD)
