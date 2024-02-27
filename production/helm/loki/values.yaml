@@ -2165,20 +2165,10 @@ compactor:
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
 
-######################################################################################################################
-#
-# Ruler configuration
-#
-# Can be used with either SSD or Microservices deployment
-#
-######################################################################################################################
-
 # -- Configuration for the ruler
 ruler:
   # -- Specifies whether the ruler should be enabled
   enabled: false
-  # -- Kind of deployment [StatefulSet/Deployment]
-  kind: Deployment
   # -- Number of replicas for the ruler
   replicas: 0
   # -- hostAliases to add
