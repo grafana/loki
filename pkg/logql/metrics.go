@@ -190,7 +190,7 @@ func RecordRangeAndInstantQueryMetrics(
 		// Total lines post filtering.
 		"ingester_post_filter_lines", stats.Ingester.Store.Chunk.GetPostFilterLines(),
 		// Time spent being blocked on congestion control.
-		"congestion_control_latency", stats.CongestionControlLatency(),
+		"congestion_control_latency", stats.Querier.Store.CongestionControlLatency,
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
