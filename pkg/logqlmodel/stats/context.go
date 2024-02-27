@@ -96,6 +96,11 @@ func (c *Context) Ingester() Ingester {
 	}
 }
 
+// Querier returns the store statistics accumulated so far.
+func (c *Context) Querier() Querier {
+	return c.querier
+}
+
 // Caches returns the cache statistics accumulated so far.
 func (c *Context) Caches() Caches {
 	return Caches{
@@ -279,6 +284,10 @@ func (r Result) ChunkRefsFetchTime() time.Duration {
 	return time.Duration(r.Querier.Store.ChunkRefsFetchTime + r.Ingester.Store.ChunkRefsFetchTime)
 }
 
+func (r Result) CongestionControlLatency() time.Duration {
+	return time.Duration(r.Querier.Store.CongestionControlLatency)
+}
+
 func (r Result) TotalDuplicates() int64 {
 	return r.Querier.Store.Chunk.TotalDuplicates + r.Ingester.Store.Chunk.TotalDuplicates
 }
@@ -358,6 +367,10 @@ func (c *Context) AddChunksDownloadTime(i time.Duration) {
 
 func (c *Context) AddChunkRefsFetchTime(i time.Duration) {
 	atomic.AddInt64(&c.store.ChunkRefsFetchTime, int64(i))
+}
+
+func (c *Context) AddCongestionControlLatency(i time.Duration) {
+	atomic.AddInt64(&c.querier.Store.CongestionControlLatency, int64(i))
 }
 
 func (c *Context) AddChunksDownloaded(i int64) {
