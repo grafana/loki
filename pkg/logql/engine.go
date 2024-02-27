@@ -363,7 +363,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 			return q.JoinSampleVector(next, ts, vec, stepEvaluator, maxSeries)
 		case ProbabilisticQuantileVector:
-			return JoinQuantileSketchVector(next, vec, stepEvaluator, q.params)
+			return MergeQuantileSketchVector(next, vec, stepEvaluator, q.params)
 		default:
 			return nil, fmt.Errorf("unsupported result type: %T", r)
 		}

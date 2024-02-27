@@ -33,7 +33,7 @@ func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, fr
 		From:     from,
 		Through:  through,
 		Matchers: (&syntax.MatchersExpr{Mts: predicate.Matchers}).String(),
-		Filters:  predicate.Filters,
+		Plan:     predicate.Plan(),
 	})
 	if err != nil {
 		return nil, err

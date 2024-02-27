@@ -400,7 +400,7 @@ github.com/aws/smithy-go/rand
 github.com/aws/smithy-go/time
 github.com/aws/smithy-go/transport/http
 github.com/aws/smithy-go/transport/http/internal/io
-# github.com/axiomhq/hyperloglog v0.0.0-20230201085229-3ddf4bad03dc
+# github.com/axiomhq/hyperloglog v0.0.0-20240124082744-24bca3a5b39b
 ## explicit; go 1.12
 github.com/axiomhq/hyperloglog
 # github.com/baidubce/bce-sdk-go v0.9.141

@@ -30,6 +30,9 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		"regexp": {
 			query: `{env="prod", app=~"loki.*"} |~ ".*foo.*"`,
 		},
+		"line filter": {
+			query: `{env="prod", app=~"loki.*"} |= "foo" |= "bar" or "baz" | line_format "blip{{ .foo }}blop" |= "blip"`,
+		},
 		"vector matching": {
 			query: `(sum by (cluster)(rate({foo="bar"}[5m])) / ignoring (cluster)  count(rate({foo="bar"}[5m])))`,
 		},

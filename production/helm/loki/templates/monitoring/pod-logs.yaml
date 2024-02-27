@@ -19,7 +19,8 @@ spec:
   pipelineStages:
     - cri: { }
   relabelings:
-    - sourceLabels:
+    - action: replace
+      sourceLabels:
         - __meta_kubernetes_pod_node_name
       targetLabel: __host__
     - action: labelmap
@@ -42,7 +43,8 @@ spec:
       sourceLabels:
         - __meta_kubernetes_pod_container_name
       targetLabel: container
-    - replacement: "{{ include "loki.clusterLabel" $ }}"
+    - action: replace
+      replacement: "{{ include "loki.clusterLabel" $ }}"
       targetLabel: cluster
     {{- with .relabelings }}
     {{- toYaml . | nindent 4 }}

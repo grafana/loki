@@ -14,6 +14,7 @@ type Limits interface {
 	queryrangebase.Limits
 	logql.Limits
 	QuerySplitDuration(string) time.Duration
+	InstantMetricQuerySplitDuration(string) time.Duration
 	MetadataQuerySplitDuration(string) time.Duration
 	RecentMetadataQuerySplitDuration(string) time.Duration
 	RecentMetadataQueryWindow(string) time.Duration

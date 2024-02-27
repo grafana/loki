@@ -226,7 +226,7 @@ func TestMergeBuilder(t *testing.T) {
 	)
 
 	// Ensure that the merge builder combines all the blocks correctly
-	mergeBuilder := NewMergeBuilder(dedupedBlocks(blocks), storeItr, pop)
+	mergeBuilder := NewMergeBuilder(dedupedBlocks(blocks), storeItr, pop, NewMetrics(nil))
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
@@ -400,6 +400,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 			// We're not actually indexing new data in this test
 			return nil
 		},
+		NewMetrics(nil),
 	)
 	builder, err := NewBlockBuilder(DefaultBlockOptions, writer)
 	require.Nil(t, err)

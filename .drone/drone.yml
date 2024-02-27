@@ -8,22 +8,6 @@ steps:
 - environment:
     DOCKER_BUILDKIT: 1
   image: plugins/docker
-  name: test
-  settings:
-    context: loki-build-image
-    dockerfile: loki-build-image/Dockerfile
-    dry_run: true
-    repo: grafana/loki-build-image
-    tags:
-    - 0.33.0-amd64
-  when:
-    event:
-    - pull_request
-    paths:
-    - loki-build-image/**
-- environment:
-    DOCKER_BUILDKIT: 1
-  image: plugins/docker
   name: push
   settings:
     context: loki-build-image
@@ -58,22 +42,6 @@ platform:
   arch: arm64
   os: linux
 steps:
-- environment:
-    DOCKER_BUILDKIT: 1
-  image: plugins/docker
-  name: test
-  settings:
-    context: loki-build-image
-    dockerfile: loki-build-image/Dockerfile
-    dry_run: true
-    repo: grafana/loki-build-image
-    tags:
-    - 0.33.0-arm64
-  when:
-    event:
-    - pull_request
-    paths:
-    - loki-build-image/**
 - environment:
     DOCKER_BUILDKIT: 1
   image: plugins/docker
@@ -138,17 +106,6 @@ kind: pipeline
 name: helm-test-image
 steps:
 - image: plugins/docker
-  name: test-image
-  settings:
-    dockerfile: production/helm/loki/src/helm-test/Dockerfile
-    dry_run: true
-    repo: grafana/loki-helm-test
-  when:
-    event:
-    - pull_request
-    paths:
-    - production/helm/loki/src/helm-test/**
-- image: plugins/docker
   name: push-image
   settings:
     dockerfile: production/helm/loki/src/helm-test/Dockerfile
@@ -164,124 +121,6 @@ steps:
     - tag
     paths:
     - production/helm/loki/src/helm-test/**
-trigger:
-  ref:
-  - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
-  - refs/pull/*/head
-workspace:
-  base: /src
-  path: loki
----
-kind: pipeline
-name: check
-steps:
-- commands:
-  - make BUILD_IN_CONTAINER=false check-drone-drift
-  depends_on:
-  - clone
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: check-drone-drift
-- commands:
-  - make BUILD_IN_CONTAINER=false check-generated-files
-  depends_on:
-  - clone
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: check-generated-files
-- commands:
-  - cd ..
-  - 'echo "cloning "$DRONE_TARGET_BRANCH '
-  - git clone -b $DRONE_TARGET_BRANCH $CI_REPO_REMOTE loki-target-branch
-  - cd -
-  depends_on:
-  - clone
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: clone-target-branch
-  when:
-    event:
-    - pull_request
-- commands:
-  - make BUILD_IN_CONTAINER=false test
-  depends_on:
-  - clone-target-branch
-  - check-generated-files
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: test
-- commands:
-  - make BUILD_IN_CONTAINER=false lint
-  depends_on:
-  - check-generated-files
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: lint
-- commands:
-  - make BUILD_IN_CONTAINER=false check-mod
-  depends_on:
-  - test
-  - lint
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: check-mod
-- commands:
-  - apk add make bash && make lint-scripts
-  image: koalaman/shellcheck-alpine:stable
-  name: shellcheck
-- commands:
-  - make BUILD_IN_CONTAINER=false loki
-  depends_on:
-  - check-generated-files
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: loki
-- commands:
-  - make BUILD_IN_CONTAINER=false check-doc
-  depends_on:
-  - loki
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: check-doc
-- commands:
-  - make BUILD_IN_CONTAINER=false check-format GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"
-  depends_on:
-  - loki
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: check-format
-  when:
-    event:
-    - pull_request
-- commands:
-  - make BUILD_IN_CONTAINER=false validate-example-configs
-  depends_on:
-  - loki
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: validate-example-configs
-- commands:
-  - make BUILD_IN_CONTAINER=false validate-dev-cluster-config
-  depends_on:
-  - validate-example-configs
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: validate-dev-cluster-config
-- commands:
-  - make BUILD_IN_CONTAINER=false check-example-config-doc
-  depends_on:
-  - clone
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: check-example-config-doc
-- commands:
-  - mkdir -p /hugo/content/docs/loki/latest
-  - cp -r docs/sources/* /hugo/content/docs/loki/latest/
-  - cd /hugo && make prod
-  image: grafana/docs-base:e6ef023f8b8
-  name: build-docs-website
 trigger:
   ref:
   - refs/heads/main
@@ -344,8 +183,6 @@ workspace:
   base: /src
   path: loki
 ---
-depends_on:
-- check
 kind: pipeline
 name: docker-amd64
 platform:
@@ -361,66 +198,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-loki-image
-  settings:
-    dockerfile: cmd/loki/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-loki-canary-image
-  settings:
-    dockerfile: cmd/loki-canary/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-canary
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-loki-canary-boringcrypto-image
-  settings:
-    dockerfile: cmd/loki-canary-boringcrypto/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-canary-boringcrypto
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-logcli-image
-  settings:
-    dockerfile: cmd/logcli/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/logcli
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
@@ -489,8 +266,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: docker-arm64
 platform:
@@ -506,66 +281,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-loki-image
-  settings:
-    dockerfile: cmd/loki/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-loki-canary-image
-  settings:
-    dockerfile: cmd/loki-canary/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-canary
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-loki-canary-boringcrypto-image
-  settings:
-    dockerfile: cmd/loki-canary-boringcrypto/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-canary-boringcrypto
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-logcli-image
-  settings:
-    dockerfile: cmd/logcli/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/logcli
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
@@ -634,8 +349,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: docker-arm
 platform:
@@ -651,66 +364,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker:linux-arm
-  name: build-loki-image
-  settings:
-    dockerfile: cmd/loki/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker:linux-arm
-  name: build-loki-canary-image
-  settings:
-    dockerfile: cmd/loki-canary/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-canary
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker:linux-arm
-  name: build-loki-canary-boringcrypto-image
-  settings:
-    dockerfile: cmd/loki-canary-boringcrypto/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-canary-boringcrypto
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker:linux-arm
-  name: build-logcli-image
-  settings:
-    dockerfile: cmd/logcli/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/logcli
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker:linux-arm
   name: publish-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
@@ -779,8 +432,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: promtail-amd64
 platform:
@@ -796,21 +447,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-promtail-image
-  settings:
-    dockerfile: clients/cmd/promtail/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/promtail
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-promtail-image
   settings:
     dockerfile: clients/cmd/promtail/Dockerfile
@@ -831,8 +467,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: promtail-arm64
 platform:
@@ -848,21 +482,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-promtail-image
-  settings:
-    dockerfile: clients/cmd/promtail/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/promtail
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-promtail-image
   settings:
     dockerfile: clients/cmd/promtail/Dockerfile
@@ -883,8 +502,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: promtail-arm
 platform:
@@ -900,21 +517,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker:linux-arm
-  name: build-promtail-image
-  settings:
-    dockerfile: clients/cmd/promtail/Dockerfile.arm32
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/promtail
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker:linux-arm
   name: publish-promtail-image
   settings:
     dockerfile: clients/cmd/promtail/Dockerfile.arm32
@@ -935,8 +537,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: lokioperator-amd64
 platform:
@@ -952,22 +552,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-loki-operator-image
-  settings:
-    context: operator
-    dockerfile: operator/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-operator
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-loki-operator-image
   settings:
     context: operator
@@ -991,8 +575,6 @@ trigger:
   - refs/tags/operator/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: lokioperator-arm64
 platform:
@@ -1008,22 +590,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-loki-operator-image
-  settings:
-    context: operator
-    dockerfile: operator/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-operator
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-loki-operator-image
   settings:
     context: operator
@@ -1047,8 +613,6 @@ trigger:
   - refs/tags/operator/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: lokioperator-arm
 platform:
@@ -1064,22 +628,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker:linux-arm
-  name: build-loki-operator-image
-  settings:
-    context: operator
-    dockerfile: operator/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-operator
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker:linux-arm
   name: publish-loki-operator-image
   settings:
     context: operator
@@ -1103,8 +651,6 @@ trigger:
   - refs/tags/operator/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: fluent-bit-amd64
 platform:
@@ -1120,21 +666,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-fluent-bit-image
-  settings:
-    dockerfile: clients/cmd/fluent-bit/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/fluent-bit-plugin-loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-fluent-bit-image
   settings:
     dockerfile: clients/cmd/fluent-bit/Dockerfile
@@ -1155,8 +686,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: fluent-bit-arm64
 platform:
@@ -1172,21 +701,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-fluent-bit-image
-  settings:
-    dockerfile: clients/cmd/fluent-bit/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/fluent-bit-plugin-loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker
   name: publish-fluent-bit-image
   settings:
     dockerfile: clients/cmd/fluent-bit/Dockerfile
@@ -1207,8 +721,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: fluent-bit-arm
 platform:
@@ -1224,21 +736,6 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker:linux-arm
-  name: build-fluent-bit-image
-  settings:
-    dockerfile: clients/cmd/fluent-bit/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/fluent-bit-plugin-loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-- depends_on:
-  - image-tag
-  image: plugins/docker:linux-arm
   name: publish-fluent-bit-image
   settings:
     dockerfile: clients/cmd/fluent-bit/Dockerfile
@@ -1259,8 +756,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: fluentd-amd64
 platform:
@@ -1274,21 +769,6 @@ steps:
   - echo ",main" >> .tags
   image: alpine
   name: image-tag
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-fluentd-image
-  settings:
-    dockerfile: clients/cmd/fluentd/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/fluent-plugin-loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -1312,8 +792,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: logstash-amd64
 platform:
@@ -1327,21 +805,6 @@ steps:
   - echo ",main" >> .tags
   image: alpine
   name: image-tag
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-logstash-image
-  settings:
-    dockerfile: clients/cmd/logstash/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/logstash-output-loki
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -1365,8 +828,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: querytee-amd64
 platform:
@@ -1380,21 +841,6 @@ steps:
   - echo ",main" >> .tags
   image: alpine
   name: image-tag
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-querytee-image
-  settings:
-    dockerfile: cmd/querytee/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-query-tee
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -1645,8 +1091,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: logql-analyzer
 platform:
@@ -1659,21 +1103,6 @@ steps:
   - echo $(./tools/image-tag)-amd64 > .tags
   image: alpine
   name: image-tag
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: build-logql-analyzer-image
-  settings:
-    dockerfile: cmd/logql-analyzer/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/logql-analyzer
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -1696,103 +1125,6 @@ trigger:
   - refs/heads/k???
   - refs/tags/v*
   - refs/pull/*/head
----
-depends_on:
-- check
-image_pull_secrets:
-- dockerconfigjson
-kind: pipeline
-name: release
-services:
-- image: jrei/systemd-debian:12
-  name: systemd-debian
-  privileged: true
-  volumes:
-  - name: cgroup
-    path: /sys/fs/cgroup
-- image: jrei/systemd-centos:8
-  name: systemd-centos
-  privileged: true
-  volumes:
-  - name: cgroup
-    path: /sys/fs/cgroup
-steps:
-- commands:
-  - if [ "$${#TEST_SECRET}" -eq 0 ]; then
-  - '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed
-    as a branch in main grafana/loki repository in order to run." && exit 78'
-  - fi
-  environment:
-    TEST_SECRET:
-      from_secret: gpg_private_key
-  image: alpine
-  name: skip pipeline if missing secret
-- commands:
-  - apk add --no-cache bash git
-  - git fetch origin --tags
-  image: alpine
-  name: fetch-tags
-- commands:
-  - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
-  environment:
-    NFPM_SIGNING_KEY:
-      from_secret: gpg_private_key
-    NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.33.0
-  name: write-key
-- commands:
-  - make BUILD_IN_CONTAINER=false packages
-  environment:
-    NFPM_PASSPHRASE:
-      from_secret: gpg_passphrase
-    NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.33.0
-  name: test packaging
-- commands:
-  - ./tools/packaging/verify-deb-install.sh
-  image: docker
-  name: test deb package
-  privileged: true
-  volumes:
-  - name: docker
-    path: /var/run/docker.sock
-- commands:
-  - ./tools/packaging/verify-rpm-install.sh
-  image: docker
-  name: test rpm package
-  privileged: true
-  volumes:
-  - name: docker
-    path: /var/run/docker.sock
-- commands:
-  - make BUILD_IN_CONTAINER=false publish
-  environment:
-    GITHUB_TOKEN:
-      from_secret: github_token
-    NFPM_PASSPHRASE:
-      from_secret: gpg_passphrase
-    NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.33.0
-  name: publish
-  when:
-    event:
-    - tag
-trigger:
-  event:
-  - pull_request
-  - tag
-  ref:
-  - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
-  - refs/pull/*/head
-volumes:
-- host:
-    path: /sys/fs/cgroup
-  name: cgroup
-- host:
-    path: /var/run/docker.sock
-  name: docker
 ---
 kind: pipeline
 name: docker-driver
@@ -1827,8 +1159,6 @@ volumes:
     path: /var/run/docker.sock
   name: docker
 ---
-depends_on:
-- check
 kind: pipeline
 name: lambda-promtail-amd64
 platform:
@@ -1851,25 +1181,6 @@ steps:
       from_secret: ecr_key
   image: alpine
   name: skip pipeline if missing secret
-- depends_on:
-  - image-tag
-  - skip pipeline if missing secret
-  image: cstyan/ecr
-  name: build-lambda-promtail-image
-  privileged: true
-  settings:
-    access_key:
-      from_secret: ecr_key
-    dockerfile: tools/lambda-promtail/Dockerfile
-    dry_run: true
-    region: us-east-1
-    registry: public.ecr.aws/grafana
-    repo: public.ecr.aws/grafana/lambda-promtail
-    secret_key:
-      from_secret: ecr_secret_key
-  when:
-    event:
-    - pull_request
 - depends_on:
   - image-tag
   image: cstyan/ecr
@@ -1896,8 +1207,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
-depends_on:
-- check
 kind: pipeline
 name: lambda-promtail-arm64
 platform:
@@ -1920,25 +1229,6 @@ steps:
       from_secret: ecr_key
   image: alpine
   name: skip pipeline if missing secret
-- depends_on:
-  - image-tag
-  - skip pipeline if missing secret
-  image: cstyan/ecr
-  name: build-lambda-promtail-image
-  privileged: true
-  settings:
-    access_key:
-      from_secret: ecr_key
-    dockerfile: tools/lambda-promtail/Dockerfile
-    dry_run: true
-    region: us-east-1
-    registry: public.ecr.aws/grafana
-    repo: public.ecr.aws/grafana/lambda-promtail
-    secret_key:
-      from_secret: ecr_secret_key
-  when:
-    event:
-    - pull_request
 - depends_on:
   - image-tag
   image: cstyan/ecr
@@ -2072,6 +1362,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 51861919f0ba5370a152bdb9267828c742f2042819fb01388c6d23bf44e3cbb7
+hmac: 32b44aecaad0258ed9494225595e1016a56bea960bcd0b15b2db3449bed957e0
 
 ...

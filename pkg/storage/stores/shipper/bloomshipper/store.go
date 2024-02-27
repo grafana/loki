@@ -15,6 +15,7 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 )
 
@@ -172,6 +173,10 @@ func NewBloomStore(
 		numWorkers: storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
 	}
 
+	if err := util.EnsureDirectory(cfg.workingDir); err != nil {
+		return nil, errors.Wrapf(err, "failed to create working directory for bloom store: '%s'", cfg.workingDir)
+	}
+
 	for _, periodicConfig := range periodicConfigs {
 		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
 		if err != nil {
@@ -323,10 +328,10 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*Clo
 	results := make([]*CloseableBlockQuerier, 0, len(blocks))
 	for i := range fetchers {
 		res, err := fetchers[i].FetchBlocks(ctx, refs[i])
-		results = append(results, res...)
 		if err != nil {
 			return results, err
 		}
+		results = append(results, res...)
 	}
 
 	// sort responses (results []*CloseableBlockQuerier) based on requests (blocks []BlockRef)

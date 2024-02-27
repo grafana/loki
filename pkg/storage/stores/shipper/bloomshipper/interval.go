@@ -3,6 +3,8 @@ package bloomshipper
 import (
 	"fmt"
 	"hash"
+	"strconv"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -56,4 +58,33 @@ func (i Interval) Overlaps(target Interval) bool {
 // Within returns whether the interval is fully within the target interval
 func (i Interval) Within(target Interval) bool {
 	return i.Start >= target.Start && i.End <= target.End
+}
+
+// ParseBoundsFromAddr parses a fingerprint bounds from a string
+// Does not support negative times (times prior to Unix epoch).
+func ParseIntervalFromAddr(s string) (Interval, error) {
+	parts := strings.Split(s, "-")
+	return ParseIntervalFromParts(parts[0], parts[1])
+}
+
+// ParseIntervalFromParts parses a fingerprint bounds already separated strings
+func ParseIntervalFromParts(a, b string) (Interval, error) {
+	minTs, err := ParseTime(a)
+	if err != nil {
+		return Interval{}, fmt.Errorf("error parsing minTimestamp %s : %w", a, err)
+	}
+	maxTs, err := ParseTime(b)
+	if err != nil {
+		return Interval{}, fmt.Errorf("error parsing maxTimestamp %s : %w", b, err)
+	}
+	return NewInterval(minTs, maxTs), nil
+}
+
+// ParseFingerprint parses the input string into a model.Time.
+func ParseTime(s string) (model.Time, error) {
+	num, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return model.Time(num), nil
 }

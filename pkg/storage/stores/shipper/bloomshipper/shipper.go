@@ -55,30 +55,15 @@ func (s *Shipper) Stop() {
 }
 
 // BlocksForMetas returns all the blocks from all the metas listed that are within the requested bounds
-// and not tombstoned in any of the metas
-func BlocksForMetas(metas []Meta, interval Interval, keyspaces []v1.FingerprintBounds) []BlockRef {
-	blocks := make(map[BlockRef]bool) // block -> isTombstoned
-
+func BlocksForMetas(metas []Meta, interval Interval, keyspaces []v1.FingerprintBounds) (refs []BlockRef) {
 	for _, meta := range metas {
-		for _, tombstone := range meta.BlockTombstones {
-			blocks[tombstone] = true
-		}
 		for _, block := range meta.Blocks {
-			tombstoned, ok := blocks[block]
-			if ok && tombstoned {
-				// skip tombstoned blocks
-				continue
+			if !isOutsideRange(block, interval, keyspaces) {
+				refs = append(refs, block)
 			}
-			blocks[block] = false
 		}
 	}
 
-	refs := make([]BlockRef, 0, len(blocks))
-	for ref, tombstoned := range blocks {
-		if !tombstoned && !isOutsideRange(ref, interval, keyspaces) {
-			refs = append(refs, ref)
-		}
-	}
 	sort.Slice(refs, func(i, j int) bool {
 		return refs[i].Bounds.Less(refs[j].Bounds)
 	})

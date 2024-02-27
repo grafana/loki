@@ -11,7 +11,7 @@ If you want to experiment with Loki, you can run Loki locally using the Docker C
 
 The Docker Compose configuration instantiates the following components, each in its own container:
 
-- **Flog** a sample application which generates log lines.
+- **Flog** a sample application which generates log lines.  [Flog](https://github.com/mingrammer/flog) is a log generator for common log formats.
 - **Promtail** which scrapes the log lines from Flog, and pushes them to Loki through the gateway.
 - **Gateway** (NGINX) which receives requests and redirects them to the appropriate container based on the request's URL.
 - One Loki **read** component.

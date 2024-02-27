@@ -349,6 +349,9 @@ func (pool *SnappyPool) GetReader(src io.Reader) (io.Reader, error) {
 
 // PutReader places back in the pool a CompressionReader
 func (pool *SnappyPool) PutReader(reader io.Reader) {
+	r := reader.(*snappy.Reader)
+	// Reset to free reference to the underlying reader
+	r.Reset(nil)
 	pool.readers.Put(reader)
 }
 

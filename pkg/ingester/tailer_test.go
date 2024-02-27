@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"sync"
 	"testing"
@@ -14,6 +15,55 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 )
+
+func TestTailer_RoundTrip(t *testing.T) {
+	server := &fakeTailServer{}
+
+	lbs := makeRandomLabels()
+	expr, err := syntax.ParseLogSelector(lbs.String(), true)
+	require.NoError(t, err)
+	tail, err := newTailer("org-id", expr, server, 10)
+	require.NoError(t, err)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		tail.loop()
+		wg.Done()
+	}()
+
+	const numStreams = 1000
+	var entries []logproto.Entry
+	for i := 0; i < numStreams; i += 3 {
+		var iterEntries []logproto.Entry
+		for j := 0; j < 3; j++ {
+			iterEntries = append(iterEntries, logproto.Entry{Timestamp: time.Unix(0, int64(i+j)), Line: fmt.Sprintf("line %d", i+j)})
+		}
+		entries = append(entries, iterEntries...)
+
+		tail.send(logproto.Stream{
+			Labels:  lbs.String(),
+			Entries: iterEntries,
+		}, lbs)
+
+		// sleep a bit to allow the tailer to process the stream without dropping
+		// This should take about 5 seconds to process all the streams
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// Wait for the stream to be received by the server.
+	require.Eventually(t, func() bool {
+		return len(server.GetResponses()) > 0
+	}, 30*time.Second, 1*time.Second, "stream was not received")
+
+	var processedEntries []logproto.Entry
+	for _, response := range server.GetResponses() {
+		processedEntries = append(processedEntries, response.Stream.Entries...)
+	}
+	require.ElementsMatch(t, entries, processedEntries)
+
+	tail.close()
+	wg.Wait()
+}
 
 func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 	runs := 100

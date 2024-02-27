@@ -5436,7 +5436,8 @@ func TestBuild_ConfigAndRuntimeConfig_STS(t *testing.T) {
 	}
 	expStorageConfig := `
     s3:
-      s3: s3://my-region/my-bucket
+      bucketnames: my-bucket
+      region: my-region
       s3forcepathstyle: false`
 
 	expCfg := `

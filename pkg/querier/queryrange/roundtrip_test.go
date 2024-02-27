@@ -1247,6 +1247,7 @@ type fakeLimits struct {
 	metadataSplitDuration       map[string]time.Duration
 	recentMetadataSplitDuration map[string]time.Duration
 	recentMetadataQueryWindow   map[string]time.Duration
+	instantMetricSplitDuration  map[string]time.Duration
 	ingesterSplitDuration       map[string]time.Duration
 	minShardingLookback         time.Duration
 	queryTimeout                time.Duration
@@ -1264,6 +1265,13 @@ func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
 		return 0
 	}
 	return f.splitDuration[key]
+}
+
+func (f fakeLimits) InstantMetricQuerySplitDuration(key string) time.Duration {
+	if f.instantMetricSplitDuration == nil {
+		return 0
+	}
+	return f.instantMetricSplitDuration[key]
 }
 
 func (f fakeLimits) MetadataQuerySplitDuration(key string) time.Duration {

@@ -1,6 +1,6 @@
 auth_enabled: true 
 common:
-    compactor_address: compactor:8006
+    compactor_address: http://compactor:8006
 chunk_store_config:
     chunk_cache_config:
         memcached:
@@ -29,6 +29,7 @@ frontend:
     log_queries_longer_than: 5s
     max_outstanding_per_tenant: 512
     encoding: protobuf
+    scheduler_address: query-scheduler:9009
 frontend_worker:
     grpc_client_config:
       max_send_msg_size: 1.048576e+08
@@ -103,10 +104,10 @@ schema_config:
       - from: "2020-07-30"
         index:
             period: 24h
-            prefix: loki_boltdb_shipper_index_
+            prefix: index_
         object_store: s3
-        schema: v11
-        store: boltdb-shipper
+        schema: v13
+        store: tsdb
         row_shards: 4
 server:
     graceful_shutdown_timeout: 5s
@@ -134,6 +135,11 @@ storage_config:
             parallelism: 10
         memcached_client:
             addresses: memcached:11211
+    tsdb_shipper:
+        active_index_directory: /data/tsdb-index
+        cache_location: /data/tsdb-cache
+        index_gateway_client:
+            server_address: index-gateway:9008
 table_manager:
     creation_grace_period: 3h
     poll_interval: 10m

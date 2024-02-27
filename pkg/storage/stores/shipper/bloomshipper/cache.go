@@ -1,9 +1,12 @@
 package bloomshipper
 
 import (
+	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/go-kit/log"
@@ -47,6 +50,32 @@ func NewBlocksCache(cfg cache.EmbeddedCacheConfig, reg prometheus.Registerer, lo
 		func(_ string, value BlockDirectory) {
 			value.removeDirectoryAsync()
 		})
+}
+
+func LoadBlocksDirIntoCache(path string, c cache.TypedCache[string, BlockDirectory], logger log.Logger) error {
+	keys, values := loadBlockDirectories(path, logger)
+	return c.Store(context.Background(), keys, values)
+}
+
+func loadBlockDirectories(path string, logger log.Logger) (keys []string, values []BlockDirectory) {
+	resolver := NewPrefixedResolver(path, defaultKeyResolver{})
+	_ = filepath.WalkDir(path, func(filename string, dirEntry fs.DirEntry, _ error) error {
+		if !dirEntry.IsDir() {
+			return nil
+		}
+		ref, err := resolver.ParseBlockKey(key(filename))
+		if err != nil {
+			return nil
+		}
+		if ok, clean := isBlockDir(filename, logger); ok {
+			keys = append(keys, resolver.Block(ref).Addr())
+			values = append(values, NewBlockDirectory(ref, filename, logger))
+		} else {
+			_ = clean(filename)
+		}
+		return nil
+	})
+	return
 }
 
 func calculateBlockDirectorySize(entry *cache.Entry[string, BlockDirectory]) uint64 {

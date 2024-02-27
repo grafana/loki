@@ -85,10 +85,19 @@ func TestAzureExtract(t *testing.T) {
 			wantError: "missing secret field: environment",
 		},
 		{
+			name: "invalid environment",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"environment": []byte("invalid-environment"),
+				},
+			},
+			wantError: "azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment): invalid-environment",
+		},
+		{
 			name: "missing account_name",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
-					"environment": []byte("here"),
+					"environment": []byte("AzureGlobal"),
 				},
 			},
 			wantError: "missing secret field: account_name",
@@ -97,7 +106,7 @@ func TestAzureExtract(t *testing.T) {
 			name: "missing container",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
-					"environment":  []byte("here"),
+					"environment":  []byte("AzureGlobal"),
 					"account_name": []byte("id"),
 				},
 			},
@@ -108,7 +117,7 @@ func TestAzureExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"environment":  []byte("here"),
+					"environment":  []byte("AzureGlobal"),
 					"container":    []byte("this,that"),
 					"account_name": []byte("id"),
 				},
@@ -120,7 +129,7 @@ func TestAzureExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"environment":  []byte("here"),
+					"environment":  []byte("AzureGlobal"),
 					"container":    []byte("this,that"),
 					"account_name": []byte("test-account-name"),
 					"account_key":  []byte("test-account-key"),
@@ -134,7 +143,7 @@ func TestAzureExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"environment":  []byte("here"),
+					"environment":  []byte("AzureGlobal"),
 					"container":    []byte("this,that"),
 					"account_name": []byte("test-account-name"),
 					"client_id":    []byte("test-client-id"),
@@ -147,7 +156,7 @@ func TestAzureExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"environment":  []byte("here"),
+					"environment":  []byte("AzureGlobal"),
 					"container":    []byte("this,that"),
 					"account_name": []byte("test-account-name"),
 					"client_id":    []byte("test-client-id"),
@@ -161,7 +170,7 @@ func TestAzureExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"environment":  []byte("here"),
+					"environment":  []byte("AzureGlobal"),
 					"account_name": []byte("test-account-name"),
 					"container":    []byte("this,that"),
 					"region":       []byte("test-region"),
@@ -184,10 +193,10 @@ func TestAzureExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"environment":  []byte("here"),
+					"environment":  []byte("AzureGlobal"),
 					"container":    []byte("this,that"),
 					"account_name": []byte("id"),
-					"account_key":  []byte("secret"),
+					"account_key":  []byte("dGVzdC1hY2NvdW50LWtleQ=="), // test-account-key
 					"audience":     []byte("test-audience"),
 				},
 			},
@@ -198,10 +207,10 @@ func TestAzureExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"environment":  []byte("here"),
+					"environment":  []byte("AzureGlobal"),
 					"container":    []byte("this,that"),
 					"account_name": []byte("id"),
-					"account_key":  []byte("secret"),
+					"account_key":  []byte("dGVzdC1hY2NvdW50LWtleQ=="), // test-account-key
 				},
 			},
 			wantCredentialMode: lokiv1.CredentialModeStatic,
@@ -211,7 +220,7 @@ func TestAzureExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"environment":     []byte("here"),
+					"environment":     []byte("AzureGlobal"),
 					"container":       []byte("this,that"),
 					"account_name":    []byte("test-account-name"),
 					"client_id":       []byte("test-client-id"),
@@ -227,7 +236,7 @@ func TestAzureExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"environment":  []byte("here"),
+					"environment":  []byte("AzureGlobal"),
 					"account_name": []byte("test-account-name"),
 					"container":    []byte("this,that"),
 					"region":       []byte("test-region"),
@@ -256,10 +265,10 @@ func TestAzureExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"environment":     []byte("here"),
+					"environment":     []byte("AzureGlobal"),
 					"container":       []byte("this,that"),
 					"account_name":    []byte("id"),
-					"account_key":     []byte("secret"),
+					"account_key":     []byte("dGVzdC1hY2NvdW50LWtleQ=="), // test-account-key
 					"endpoint_suffix": []byte("suffix"),
 				},
 			},
