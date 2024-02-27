@@ -1432,8 +1432,6 @@ backend:
 
 # -- Configuration for the ingester
 ingester:
-  # -- Kind of deployment [StatefulSet/Deployment]
-  kind: StatefulSet
   # -- Number of replicas for the ingester
   replicas: 0
   # -- hostAliases to add
