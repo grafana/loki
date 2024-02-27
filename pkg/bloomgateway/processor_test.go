@@ -104,13 +104,13 @@ func TestProcessor(t *testing.T) {
 		p := newProcessor("worker", mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
-		swb := seriesWithBounds{
+		swb := seriesWithInterval{
 			series: groupRefs(t, chunkRefs),
-			bounds: model.Interval{
+			interval: model.Interval{
 				Start: now.Add(-1 * time.Hour),
 				End:   now,
 			},
-			table: config.NewDayTime(truncateDay(now)),
+			day: config.NewDayTime(truncateDay(now)),
 		}
 		filters := []syntax.LineFilterExpr{
 			{
@@ -153,13 +153,13 @@ func TestProcessor(t *testing.T) {
 		p := newProcessor("worker", mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
-		swb := seriesWithBounds{
+		swb := seriesWithInterval{
 			series: groupRefs(t, chunkRefs),
-			bounds: model.Interval{
+			interval: model.Interval{
 				Start: now.Add(-1 * time.Hour),
 				End:   now,
 			},
-			table: config.NewDayTime(truncateDay(now)),
+			day: config.NewDayTime(truncateDay(now)),
 		}
 		filters := []syntax.LineFilterExpr{
 			{

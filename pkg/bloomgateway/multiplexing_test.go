@@ -58,9 +58,9 @@ func TestTask_RequestIterator(t *testing.T) {
 	tokenizer := v1.NewNGramTokenizer(4, 0)
 
 	t.Run("empty request yields empty iterator", func(t *testing.T) {
-		swb := seriesWithBounds{
-			bounds: model.Interval{Start: 0, End: math.MaxInt64},
-			series: []*logproto.GroupedChunkRefs{},
+		swb := seriesWithInterval{
+			interval: model.Interval{Start: 0, End: math.MaxInt64},
+			series:   []*logproto.GroupedChunkRefs{},
 		}
 		task, _ := NewTask(context.Background(), tenant, swb, []syntax.LineFilterExpr{})
 		it := task.RequestIter(tokenizer)
