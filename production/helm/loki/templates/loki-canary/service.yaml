@@ -1,4 +1,4 @@
-{{- with .Values.monitoring.lokiCanary -}}
+{{- with .Values.lokiCanary -}}
 {{- if .enabled -}}
 ---
 apiVersion: v1

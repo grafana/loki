@@ -556,61 +556,61 @@ test:
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
-  # The Loki canary pushes logs to and queries from this loki installation to test
-  # that it's working correctly
-  lokiCanary:
-    enabled: true
-    # -- If true, the canary will send directly to Loki via the address configured for verification --
-    # -- If false, it will write to stdout and an Agent will be needed to scrape and send the logs --
-    push: true
-    # -- The name of the label to look for at loki when doing the checks.
-    labelname: pod
-    # -- Additional annotations for the `loki-canary` Daemonset
+# The Loki canary pushes logs to and queries from this loki installation to test
+# that it's working correctly
+lokiCanary:
+  enabled: true
+  # -- If true, the canary will send directly to Loki via the address configured for verification --
+  # -- If false, it will write to stdout and an Agent will be needed to scrape and send the logs --
+  push: true
+  # -- The name of the label to look for at loki when doing the checks.
+  labelname: pod
+  # -- Additional annotations for the `loki-canary` Daemonset
+  annotations: {}
+  # -- Additional labels for each `loki-canary` pod
+  podLabels: {}
+  service:
+    # -- Annotations for loki-canary Service
     annotations: {}
-    # -- Additional labels for each `loki-canary` pod
-    podLabels: {}
-    service:
-      # -- Annotations for loki-canary Service
-      annotations: {}
-      # -- Additional labels for loki-canary Service
-      labels: {}
-    # -- Additional CLI arguments for the `loki-canary' command
-    extraArgs: []
-    # -- Environment variables to add to the canary pods
-    extraEnv: []
-    # -- Environment variables from secrets or configmaps to add to the canary pods
-    extraEnvFrom: []
-    # -- Volume mounts to add to the canary pods
-    extraVolumeMounts: []
-    # -- Volumes to add to the canary pods
-    extraVolumes: []
-    # -- Resource requests and limits for the canary
-    resources: {}
-    # -- DNS config for canary pods
-    dnsConfig: {}
-    # -- Node selector for canary pods
-    nodeSelector: {}
-    # -- Tolerations for canary pods
-    tolerations: []
-    # -- The name of the PriorityClass for loki-canary pods
-    priorityClassName: null
-    # -- Image to use for loki canary
-    image:
-      # -- The Docker registry
-      registry: docker.io
-      # -- Docker image repository
-      repository: grafana/loki-canary
-      # -- Overrides the image tag whose default is the chart's appVersion
-      tag: null
-      # -- Overrides the image tag with an image digest
-      digest: null
-      # -- Docker image pull policy
-      pullPolicy: IfNotPresent
-    # -- Update strategy for the `loki-canary` Daemonset pods
-    updateStrategy:
-      type: RollingUpdate
-      rollingUpdate:
-        maxUnavailable: 1
+    # -- Additional labels for loki-canary Service
+    labels: {}
+  # -- Additional CLI arguments for the `loki-canary' command
+  extraArgs: []
+  # -- Environment variables to add to the canary pods
+  extraEnv: []
+  # -- Environment variables from secrets or configmaps to add to the canary pods
+  extraEnvFrom: []
+  # -- Volume mounts to add to the canary pods
+  extraVolumeMounts: []
+  # -- Volumes to add to the canary pods
+  extraVolumes: []
+  # -- Resource requests and limits for the canary
+  resources: {}
+  # -- DNS config for canary pods
+  dnsConfig: {}
+  # -- Node selector for canary pods
+  nodeSelector: {}
+  # -- Tolerations for canary pods
+  tolerations: []
+  # -- The name of the PriorityClass for loki-canary pods
+  priorityClassName: null
+  # -- Image to use for loki canary
+  image:
+    # -- The Docker registry
+    registry: docker.io
+    # -- Docker image repository
+    repository: grafana/loki-canary
+    # -- Overrides the image tag whose default is the chart's appVersion
+    tag: null
+    # -- Overrides the image tag with an image digest
+    digest: null
+    # -- Docker image pull policy
+    pullPolicy: IfNotPresent
+  # -- Update strategy for the `loki-canary` Daemonset pods
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
 
 ######################################################################################################################
 #
