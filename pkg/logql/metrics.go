@@ -189,6 +189,8 @@ func RecordRangeAndInstantQueryMetrics(
 		"ingester_chunk_decompressed_bytes", humanizeBytes(uint64(stats.Ingester.Store.Chunk.GetDecompressedBytes())),
 		// Total lines post filtering.
 		"ingester_post_filter_lines", stats.Ingester.Store.Chunk.GetPostFilterLines(),
+		// Time spent being blocked on congestion control.
+		"congestion_control_latency", stats.CongestionControlLatency(),
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
