@@ -160,7 +160,7 @@ Then you can go to Docker Desktop settings and open the resources, add the tempo
 
 > Note that `make docs` uses a lot of memory. If it crashes, increase the memory allocated to Docker and try again.
 
-Also note that PRs are merged to the main branch.  If you want to see your changes published to the latest release, add the appropriate backport label to your PR.
+Also note that PRs are merged to the main branch.  If your changes need to be immediately published to the latest release, you must add the appropriate backport label to your PR, for example, `backport-release-2.9.x`.  If the changes in your PR can be automatically backported, the backport label will trigger GrafanaBot to create the backport PR, otherwise you will need to create a PR to manually backport your changes.
 
 * [Latest release](https://grafana.com/docs/loki/latest/)
 * [Upcoming release](https://grafana.com/docs/loki/next/), at the tip of the main branch
