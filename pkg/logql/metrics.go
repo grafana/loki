@@ -94,13 +94,20 @@ func RecordRangeAndInstantQueryMetrics(
 ) {
 	var (
 		logger        = fixLogger(ctx, log)
-		rt            = string(GetRangeType(p))
+		rangeType     = GetRangeType(p)
+		rt            = string(rangeType)
 		latencyType   = latencyTypeFast
 		returnedLines = 0
 	)
 	queryType, err := QueryType(p.GetExpression())
 	if err != nil {
 		level.Warn(logger).Log("msg", "error parsing query type", "err", err)
+	}
+
+	resultCache := stats.Caches.Result
+
+	if queryType == QueryTypeMetric && rangeType == InstantType {
+		resultCache = stats.Caches.InstantMetricResult
 	}
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -135,9 +142,9 @@ func RecordRangeAndInstantQueryMetrics(
 		"status", status,
 		"limit", p.Limit(),
 		"returned_lines", returnedLines,
-		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
-		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
-		"total_bytes_structured_metadata", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalStructuredMetadataBytesProcessed)), " ", "", 1),
+		"throughput", humanizeBytes(uint64(stats.Summary.BytesProcessedPerSecond)),
+		"total_bytes", humanizeBytes(uint64(stats.Summary.TotalBytesProcessed)),
+		"total_bytes_structured_metadata", humanizeBytes(uint64(stats.Summary.TotalStructuredMetadataBytesProcessed)),
 		"lines_per_second", stats.Summary.LinesProcessedPerSecond,
 		"total_lines", stats.Summary.TotalLinesProcessed,
 		"post_filter_lines", stats.Summary.TotalPostFilterLines,
@@ -162,10 +169,28 @@ func RecordRangeAndInstantQueryMetrics(
 		"cache_volume_results_req", stats.Caches.VolumeResult.EntriesRequested,
 		"cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
 		"cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
-		"cache_result_req", stats.Caches.Result.EntriesRequested,
-		"cache_result_hit", stats.Caches.Result.EntriesFound,
-		"cache_result_download_time", stats.Caches.Result.CacheDownloadTime(),
-		"cache_result_query_length_served", stats.Caches.Result.CacheQueryLengthServed(),
+		"cache_result_req", resultCache.EntriesRequested,
+		"cache_result_hit", resultCache.EntriesFound,
+		"cache_result_download_time", resultCache.CacheDownloadTime(),
+		"cache_result_query_length_served", resultCache.CacheQueryLengthServed(),
+		// The total of chunk reference fetched from index.
+		"ingester_chunk_refs", stats.Ingester.Store.GetTotalChunksRef(),
+		// Total number of chunks fetched.
+		"ingester_chunk_downloaded", stats.Ingester.Store.GetTotalChunksDownloaded(),
+		// Total of chunks matched by the query from ingesters.
+		"ingester_chunk_matches", stats.Ingester.GetTotalChunksMatched(),
+		// Total ingester reached for this query.
+		"ingester_requests", stats.Ingester.GetTotalReached(),
+		// Total bytes processed but was already in memory (found in the headchunk). Includes structured metadata bytes.
+		"ingester_chunk_head_bytes", humanizeBytes(uint64(stats.Ingester.Store.Chunk.GetHeadChunkBytes())),
+		// Total bytes of compressed chunks (blocks) processed.
+		"ingester_chunk_compressed_bytes", humanizeBytes(uint64(stats.Ingester.Store.Chunk.GetCompressedBytes())),
+		// Total bytes decompressed and processed from chunks. Includes structured metadata bytes.
+		"ingester_chunk_decompressed_bytes", humanizeBytes(uint64(stats.Ingester.Store.Chunk.GetDecompressedBytes())),
+		// Total lines post filtering.
+		"ingester_post_filter_lines", stats.Ingester.Store.Chunk.GetPostFilterLines(),
+		// Time spent being blocked on congestion control.
+		"congestion_control_latency", stats.CongestionControlLatency(),
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
@@ -191,6 +216,10 @@ func RecordRangeAndInstantQueryMetrics(
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 
 	recordUsageStats(queryType, stats)
+}
+
+func humanizeBytes(val uint64) string {
+	return strings.Replace(humanize.Bytes(val), " ", "", 1)
 }
 
 func RecordLabelQueryMetrics(

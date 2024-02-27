@@ -45,7 +45,6 @@ type SimpleBloomGenerator struct {
 	store       v1.Iterator[*v1.Series]
 	chunkLoader ChunkLoader
 	blocksIter  v1.ResettableIterator[*v1.SeriesWithBloom]
-	skipped     []v1.BlockMetadata
 
 	// options to build blocks with
 	opts v1.BlockOptions
@@ -120,14 +119,12 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) v1.Iterator[*v1.Blo
 				schema := md.Options.Schema
 				if err != nil {
 					level.Warn(logger).Log("msg", "failed to get schema for block", "err", err)
-					s.skipped = append(s.skipped, md)
 					bq.Close() // close unused querier
 					return false
 				}
 
 				if !s.opts.Schema.Compatible(schema) {
 					level.Warn(logger).Log("msg", "block schema incompatible with options", "generator_schema", fmt.Sprintf("%+v", s.opts.Schema), "block_schema", fmt.Sprintf("%+v", schema))
-					s.skipped = append(s.skipped, md)
 					bq.Close() // close unused querier
 					return false
 				}
@@ -138,7 +135,7 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) v1.Iterator[*v1.Blo
 		)
 	}
 
-	return NewLazyBlockBuilderIterator(ctx, s.opts, s.populator(ctx), s.readWriterFn, series, s.blocksIter)
+	return NewLazyBlockBuilderIterator(ctx, s.opts, s.metrics, s.populator(ctx), s.readWriterFn, series, s.blocksIter)
 }
 
 // LazyBlockBuilderIterator is a lazy iterator over blocks that builds
@@ -146,6 +143,7 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) v1.Iterator[*v1.Blo
 type LazyBlockBuilderIterator struct {
 	ctx          context.Context
 	opts         v1.BlockOptions
+	metrics      *Metrics
 	populate     func(*v1.Series, *v1.Bloom) error
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
 	series       v1.PeekingIterator[*v1.Series]
@@ -158,6 +156,7 @@ type LazyBlockBuilderIterator struct {
 func NewLazyBlockBuilderIterator(
 	ctx context.Context,
 	opts v1.BlockOptions,
+	metrics *Metrics,
 	populate func(*v1.Series, *v1.Bloom) error,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	series v1.PeekingIterator[*v1.Series],
@@ -166,6 +165,7 @@ func NewLazyBlockBuilderIterator(
 	return &LazyBlockBuilderIterator{
 		ctx:          ctx,
 		opts:         opts,
+		metrics:      metrics,
 		populate:     populate,
 		readWriterFn: readWriterFn,
 		series:       series,
@@ -189,7 +189,7 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		return false
 	}
 
-	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate)
+	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate, b.metrics.bloomMetrics)
 	writer, reader := b.readWriterFn()
 	blockBuilder, err := v1.NewBlockBuilder(b.opts, writer)
 	if err != nil {

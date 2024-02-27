@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -222,6 +223,9 @@ func (f *Fetcher) loadBlocksFromFS(_ context.Context, refs []BlockRef) ([]BlockD
 
 	for _, ref := range refs {
 		path := f.localFSResolver.Block(ref).LocalPath()
+		// the block directory does not contain the .tar.gz extension
+		// since it is stripped when the archive is extracted into a folder
+		path = strings.TrimSuffix(path, ".tar.gz")
 		if ok, clean := f.isBlockDir(path); ok {
 			blockDirs = append(blockDirs, NewBlockDirectory(ref, path, f.logger))
 		} else {
@@ -236,9 +240,13 @@ func (f *Fetcher) loadBlocksFromFS(_ context.Context, refs []BlockRef) ([]BlockD
 var noopClean = func(string) error { return nil }
 
 func (f *Fetcher) isBlockDir(path string) (bool, func(string) error) {
+	return isBlockDir(path, f.logger)
+}
+
+func isBlockDir(path string, logger log.Logger) (bool, func(string) error) {
 	info, err := os.Stat(path)
 	if err != nil && os.IsNotExist(err) {
-		level.Warn(f.logger).Log("msg", "path does not exist", "path", path)
+		level.Warn(logger).Log("msg", "path does not exist", "path", path)
 		return false, noopClean
 	}
 	if !info.IsDir() {
@@ -249,7 +257,7 @@ func (f *Fetcher) isBlockDir(path string) (bool, func(string) error) {
 		filepath.Join(path, v1.SeriesFileName),
 	} {
 		if _, err := os.Stat(file); err != nil && os.IsNotExist(err) {
-			level.Warn(f.logger).Log("msg", "path does not contain required file", "path", path, "file", file)
+			level.Warn(logger).Log("msg", "path does not contain required file", "path", path, "file", file)
 			return false, os.RemoveAll
 		}
 	}
