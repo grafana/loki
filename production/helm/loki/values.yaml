@@ -545,8 +545,12 @@ rbac:
 # -- Section for configuring optional Helm test
 test:
   enabled: true
-  # -- Address of the prometheus server to query for the test
-  prometheusAddress: "http://prometheus:9090"
+  # -- Used to directly query the metrics endpoint of the canary for testing, this approach avoids needing prometheus for testing.
+  # This in a newer approach to using prometheusAddress such that tests do not have a dependency on prometheus
+  canaryServiceAddress: "http://loki-canary.{{ $.Release.Namespace }}.svc.cluster.local:3500/metrics"
+  # -- Address of the prometheus server to query for the test. This overrides any value set for canaryServiceAddress.
+  # This is kept for backward compatibility and may be removed in future releases. Previous value was 'http://prometheus:9090'
+  prometheusAddress: ""
   # -- Number of times to retry the test before failing
   timeout: 1m
   # -- Additional labels for the test pods
@@ -570,7 +574,7 @@ monitoring:
   # Dashboards for monitoring Loki
   dashboards:
     # -- If enabled, create configmap with dashboards for monitoring Loki
-    enabled: true
+    enabled: false
     # -- Alternative namespace to create dashboards ConfigMap in
     namespace: null
     # -- Additional annotations for the dashboards ConfigMap
@@ -581,7 +585,7 @@ monitoring:
   # Recording rules for monitoring Loki, required for some dashboards
   rules:
     # -- If enabled, create PrometheusRule resource with Loki recording rules
-    enabled: true
+    enabled: false
     # -- Include alerting rules
     alerting: true
     # -- Specify which individual alerts should be disabled
@@ -611,7 +615,7 @@ monitoring:
   # ServiceMonitor configuration
   serviceMonitor:
     # -- If enabled, ServiceMonitor resources for Prometheus Operator are created
-    enabled: true
+    enabled: false
     # -- Namespace selector for ServiceMonitor resources
     namespaceSelector: {}
     # -- ServiceMonitor annotations
@@ -650,7 +654,7 @@ monitoring:
   # It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure
   # scrape configs to scrape its own logs with the labels expected by the included dashboards.
   selfMonitoring:
-    enabled: true
+    enabled: false
     # -- Tenant to use for self monitoring
     tenant:
       # -- Name of the tenant
@@ -663,7 +667,7 @@ monitoring:
       # -- Controls whether to install the Grafana Agent Operator and its CRDs.
       # Note that helm will not install CRDs if this flag is enabled during an upgrade.
       # In that case install the CRDs manually from https://github.com/grafana/agent/tree/main/production/operator/crds
-      installOperator: true
+      installOperator: false
       # -- Grafana Agent annotations
       annotations: {}
       # -- Additional Grafana Agent labels
@@ -697,6 +701,9 @@ monitoring:
   # that it's working correctly
   lokiCanary:
     enabled: true
+    # -- If true, the canary will send directly to Loki via the address configured for verification --
+    # -- If false, it will write to stdout and an Agent will be needed to scrape and send the logs --
+    push: true
     # -- The name of the label to look for at loki when doing the checks.
     labelname: pod
     # -- Additional annotations for the `loki-canary` Daemonset

@@ -52,6 +52,9 @@ spec:
             - -user={{ $.Values.monitoring.selfMonitoring.tenant.name }}
             - -tenant-id={{ $.Values.monitoring.selfMonitoring.tenant.name }}
             {{- end }}
+            {{- if .push }}
+            - -push=true
+            {{- end }}
             {{- with .extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
