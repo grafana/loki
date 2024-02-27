@@ -147,7 +147,7 @@ metadata:
         }
       ]
     capabilities: Full Lifecycle
-    categories: OpenShift Optional, Logging & Tracing
+    categories: OpenShift Optional, Logging & Tracing, Observability
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.5.0
     createdAt: "2024-02-12T14:48:49Z"

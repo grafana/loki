@@ -147,7 +147,7 @@ metadata:
         }
       ]
     capabilities: Full Lifecycle
-    categories: OpenShift Optional, Logging & Tracing
+    categories: OpenShift Optional, Logging & Tracing, Observability
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
     createdAt: "2024-02-12T14:48:55Z"
