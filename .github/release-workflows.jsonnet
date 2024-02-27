@@ -30,6 +30,7 @@ local imageJobs = {
       skipArm=false,
       skipValidation=false,
       versioningStrategy='always-bump-patch',
+      useGitHubAppToken=true,
     ), false, false
   ),
   'minor-release-pr.yml': std.manifestYamlDoc(
@@ -45,6 +46,7 @@ local imageJobs = {
       skipArm=false,
       skipValidation=false,
       versioningStrategy='always-bump-minor',
+      useGitHubAppToken=true,
     ), false, false
   ),
   'release.yml': std.manifestYamlDoc(
@@ -54,6 +56,7 @@ local imageJobs = {
       imagePrefix='grafana',
       releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
+      useGitHubAppToken=false,
     ), false, false
   ),
 }
