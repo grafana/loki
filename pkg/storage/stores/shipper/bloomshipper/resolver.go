@@ -29,6 +29,7 @@ type KeyResolver interface {
 	Meta(MetaRef) Location
 	ParseMetaKey(Location) (MetaRef, error)
 	Block(BlockRef) Location
+	ParseBlockKey(Location) (BlockRef, error)
 }
 
 type defaultKeyResolver struct{}
@@ -83,6 +84,44 @@ func (defaultKeyResolver) Block(ref BlockRef) Location {
 		ref.Bounds.String(),
 		fmt.Sprintf("%d-%d-%x%s", ref.StartTimestamp, ref.EndTimestamp, ref.Checksum, extTarGz),
 	}
+}
+
+func (defaultKeyResolver) ParseBlockKey(loc Location) (BlockRef, error) {
+	dir, fn := path.Split(loc.Addr())
+	fnParts := strings.Split(fn, "-")
+	if len(fnParts) != 3 {
+		return BlockRef{}, fmt.Errorf("failed to split filename parts of block key %s : len must be 3, but was %d", loc, len(fnParts))
+	}
+	interval, err := ParseIntervalFromParts(fnParts[0], fnParts[1])
+	if err != nil {
+		return BlockRef{}, fmt.Errorf("failed to parse bounds of meta key %s : %w", loc, err)
+	}
+	withoutExt := strings.TrimSuffix(fnParts[2], extTarGz)
+	checksum, err := strconv.ParseUint(withoutExt, 16, 64)
+	if err != nil {
+		return BlockRef{}, fmt.Errorf("failed to parse checksum of meta key %s : %w", loc, err)
+	}
+
+	dirParts := strings.Split(path.Clean(dir), "/")
+	if len(dirParts) < 5 {
+		return BlockRef{}, fmt.Errorf("directory parts count must be 5 or greater, but was %d : [%s]", len(dirParts), loc)
+	}
+
+	bounds, err := v1.ParseBoundsFromAddr(dirParts[len(dirParts)-1])
+	if err != nil {
+		return BlockRef{}, fmt.Errorf("failed to parse bounds of block key %s : %w", loc, err)
+	}
+
+	return BlockRef{
+		Ref: Ref{
+			TenantID:       dirParts[len(dirParts)-3],
+			TableName:      dirParts[len(dirParts)-4],
+			Bounds:         bounds,
+			StartTimestamp: interval.Start,
+			EndTimestamp:   interval.End,
+			Checksum:       uint32(checksum),
+		},
+	}, nil
 }
 
 type PrefixedResolver struct {
