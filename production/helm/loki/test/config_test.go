@@ -47,8 +47,12 @@ func templateConfig(t *testing.T, vals values) error {
 	require.NoError(t, err)
 
 	cmd := exec.Command("helm", "template", "../", "--values", f.Name())
+	if cmdOutput, err := cmd.CombinedOutput(); err != nil {
+		t.Log("template failed", "err", string(cmdOutput))
+		return err
+	}
 
-	return cmd.Run()
+	return nil
 }
 func Test_InvalidConfigs(t *testing.T) {
 	t.Run("running both single binary and scalable targets", func(t *testing.T) {
