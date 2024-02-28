@@ -58,6 +58,13 @@ local validationJob = job.new()
     ])
   ),
 
+  integration: setupValidationDeps(
+    validationJob
+    + job.withSteps([
+      validationMakeStep('integration', 'test-integration'),
+    ])
+  ),
+
   lint: setupValidationDeps(
     validationJob
     + job.withSteps(

@@ -1,12 +1,16 @@
----
-name: check
-on:
-  pull_request: {}
-  push:
-    branches:
-      - main
-jobs:
-  check:
-    uses: grafana/loki-release/.github/workflows/check.yml@release-1.10.x
-    with:
-      skip_validation: false
+"jobs":
+  "check":
+    "runs-on": "ubuntu-latest"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@v1.12.0"
+    "with":
+      "build_image": "grafana/loki-build-image:0.33.0"
+      "golang_ci_lint_version": "v1.51.2"
+      "release_lib_ref": "v1.12.0"
+      "skip_validation": false
+      "use_github_app_token": true
+"name": "check"
+"on":
+  "pull_request": {}
+  "push":
+    "branches":
+    - "main"

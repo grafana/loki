@@ -1,5 +1,7 @@
 local lokiRelease = import 'workflows/main.jsonnet';
 local build = lokiRelease.build;
+local job = lokiRelease.job;
+local step = lokiRelease.step;
 
 local releaseLibRef = std.filter(
   function(dep) dep.source.git.remote == 'https://github.com/grafana/loki-release.git',
@@ -22,6 +24,7 @@ local imageJobs = {
 };
 
 local buildImage = 'grafana/loki-build-image:0.33.0';
+local golangCiLintVersion = 'v1.51.2';
 
 {
   'patch-release-pr.yml': std.manifestYamlDoc(
@@ -30,7 +33,7 @@ local buildImage = 'grafana/loki-build-image:0.33.0';
       buildImage=buildImage,
       branches=['release-[0-9]+.[0-9]+.x'],
       checkTemplate=checkTemplate,
-      golangCiLintVersion='v1.51.2',
+      golangCiLintVersion=golangCiLintVersion,
       imagePrefix='grafana',
       releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
@@ -46,7 +49,7 @@ local buildImage = 'grafana/loki-build-image:0.33.0';
       buildImage=buildImage,
       branches=['k[0-9]+'],
       checkTemplate=checkTemplate,
-      golangCiLintVersion='v1.51.2',
+      golangCiLintVersion=golangCiLintVersion,
       imagePrefix='grafana',
       releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
@@ -66,4 +69,24 @@ local buildImage = 'grafana/loki-build-image:0.33.0';
       useGitHubAppToken=false,
     ), false, false
   ),
+  'check.yml': std.manifestYamlDoc({
+    name: 'check',
+    on: {
+      pull_request: {},
+      push: {
+        branches: ['main'],
+      },
+    },
+    jobs: {
+      check: job.new()
+             + job.withUses('grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef)
+             + job.with({
+               build_image: buildImage,
+               golang_ci_lint_version: golangCiLintVersion,
+               release_lib_ref: releaseLibRef,
+               skip_validation: false,
+               use_github_app_token: true,
+             }),
+    },
+  }),
 }
