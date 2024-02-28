@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -57,6 +58,13 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 	tables := tablesForRange(b.cfg, params.Interval)
 	for _, table := range tables {
 		prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
+		level.Debug(b.fetcher.logger).Log(
+			"msg", "listing metas",
+			"store", b.cfg.From,
+			"table", table,
+			"tenant", params.TenantID,
+			"prefix", prefix,
+		)
 		list, _, err := b.objectClient.List(ctx, prefix, "")
 		if err != nil {
 			return nil, nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
