@@ -1,7 +1,6 @@
 local lokiRelease = import 'workflows/main.jsonnet';
 local build = lokiRelease.build;
 local job = lokiRelease.job;
-local step = lokiRelease.step;
 
 local releaseLibRef = std.filter(
   function(dep) dep.source.git.remote == 'https://github.com/grafana/loki-release.git',
