@@ -1,6 +1,5 @@
 "jobs":
   "check":
-    "runs-on": "ubuntu-latest"
     "uses": "grafana/loki-release/.github/workflows/check.yml@v1.12.0"
     "with":
       "build_image": "grafana/loki-build-image:0.33.0"
