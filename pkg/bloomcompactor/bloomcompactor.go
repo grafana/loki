@@ -219,7 +219,7 @@ func (c *Compactor) runOne(ctx context.Context) error {
 	level.Info(c.logger).Log("msg", "running bloom compaction", "workers", c.cfg.WorkerParallelism)
 	var workersErr error
 	var wg sync.WaitGroup
-	input := make(chan tenantTableRange)
+	input := make(chan *tenantTableRange)
 
 	tables := c.tables(time.Now())
 	level.Debug(c.logger).Log("msg", "loaded tables", "tables", tables.Len())
@@ -273,7 +273,7 @@ func (c *Compactor) tables(ts time.Time) *dayRangeIterator {
 func (c *Compactor) loadWork(
 	ctx context.Context,
 	tables *dayRangeIterator,
-	ch chan<- tenantTableRange,
+	ch chan<- *tenantTableRange,
 	tracker *compactionTracker,
 ) error {
 
@@ -306,14 +306,14 @@ func (c *Compactor) loadWork(
 			c.metrics.tenantsOwned.Inc()
 
 			// loop over ranges, registering them in the tracker
-			var inputs []tenantTableRange
+			var inputs []*tenantTableRange
 			for _, ownershipRange := range ownershipRanges {
-				tt := tenantTableRange{
+				tt := &tenantTableRange{
 					tenant:         tenant,
 					table:          table,
 					ownershipRange: ownershipRange,
 				}
-				tracker.add(&tt)
+				tracker.add(tt)
 				inputs = append(inputs, tt)
 			}
 
@@ -346,7 +346,7 @@ func (c *Compactor) loadWork(
 
 func (c *Compactor) runWorkers(
 	ctx context.Context,
-	input <-chan tenantTableRange,
+	input <-chan *tenantTableRange,
 	tracker *compactionTracker,
 ) error {
 
@@ -397,7 +397,7 @@ func (c *Compactor) runWorkers(
 
 }
 
-func (c *Compactor) compactTenantTable(ctx context.Context, tt tenantTableRange) error {
+func (c *Compactor) compactTenantTable(ctx context.Context, tt *tenantTableRange) error {
 	level.Info(c.logger).Log("msg", "compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange.String())
 	err := c.controller.compactTenant(ctx, tt.table, tt.tenant, tt.ownershipRange)
 	level.Info(c.logger).Log("msg", "finished compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange.String(), "err", err)
