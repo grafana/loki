@@ -11,14 +11,15 @@
     checkTemplate='./.github/workflows/check.yml',
     dockerUsername='grafana',
     golangCiLintVersion='v1.55.1',
+    imageBuildTimeoutMin=25,
     imageJobs={},
     imagePrefix='grafana',
     releaseLibRef='main',
     releaseRepo='grafana/loki-release',
     skipArm=false,
     skipValidation=false,
-    versioningStrategy='always-bump-patch',
     useGitHubAppToken=true,
+    versioningStrategy='always-bump-patch',
                     ) {
     name: 'create release PR',
     on: {
@@ -35,13 +36,14 @@
       group: 'create-release-pr-${{ github.sha }}',
     },
     env: {
-      RELEASE_REPO: releaseRepo,
+      BUILD_TIMEOUT: imageBuildTimeoutMin,
       DOCKER_USERNAME: dockerUsername,
       IMAGE_PREFIX: imagePrefix,
-      SKIP_VALIDATION: skipValidation,
-      VERSIONING_STRATEGY: versioningStrategy,
       RELEASE_LIB_REF: releaseLibRef,
+      RELEASE_REPO: releaseRepo,
+      SKIP_VALIDATION: skipValidation,
       USE_GITHUB_APP_TOKEN: useGitHubAppToken,
+      VERSIONING_STRATEGY: versioningStrategy,
     },
     local validationSteps = ['check'],
     jobs: {
@@ -84,9 +86,9 @@
       group: 'create-release-${{ github.sha }}',
     },
     env: {
-      RELEASE_REPO: releaseRepo,
       IMAGE_PREFIX: imagePrefix,
       RELEASE_LIB_REF: releaseLibRef,
+      RELEASE_REPO: releaseRepo,
       USE_GITHUB_APP_TOKEN: useGitHubAppToken,
     },
     jobs: {

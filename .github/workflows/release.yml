@@ -2,7 +2,7 @@ concurrency:
   group: "create-release-${{ github.sha }}"
 env:
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "v1.12.0"
+  RELEASE_LIB_REF: "v1.12.1"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: false
 jobs:

@@ -31,6 +31,7 @@ local createReleasePR = function(strategy, branches) lokiRelease.releasePRWorkfl
   branches=branches,
   checkTemplate=checkTemplate,
   golangCiLintVersion=golangCiLintVersion,
+  imageBuildTimeoutMin=30,
   imagePrefix='grafana',
   releaseLibRef=releaseLibRef,
   releaseRepo='grafana/loki',
