@@ -1,9 +1,12 @@
 package bloomshipper
 
 import (
+	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/go-kit/log"
@@ -47,6 +50,45 @@ func NewBlocksCache(cfg cache.EmbeddedCacheConfig, reg prometheus.Registerer, lo
 		func(_ string, value BlockDirectory) {
 			value.removeDirectoryAsync()
 		})
+}
+
+func LoadBlocksDirIntoCache(path string, c cache.TypedCache[string, BlockDirectory], logger log.Logger) error {
+	level.Debug(logger).Log("msg", "load bloomshipper working directory into cache", "path", path)
+	keys, values := loadBlockDirectories(path, logger)
+	return c.Store(context.Background(), keys, values)
+}
+
+func loadBlockDirectories(root string, logger log.Logger) (keys []string, values []BlockDirectory) {
+	resolver := NewPrefixedResolver(root, defaultKeyResolver{})
+	_ = filepath.WalkDir(root, func(path string, dirEntry fs.DirEntry, e error) error {
+		if dirEntry == nil || e != nil {
+			level.Warn(logger).Log("msg", "failed to walk directory", "path", path, "dirEntry", dirEntry, "err", e)
+			return nil
+		}
+
+		if !dirEntry.IsDir() {
+			level.Warn(logger).Log("msg", "skip directory entry", "err", "not a directory", "path", path)
+			return nil
+		}
+
+		ref, err := resolver.ParseBlockKey(key(path))
+		if err != nil {
+			level.Warn(logger).Log("msg", "skip directory entry", "err", err, "path", path)
+			return nil
+		}
+
+		if ok, clean := isBlockDir(path, logger); ok {
+			keys = append(keys, resolver.Block(ref).Addr())
+			values = append(values, NewBlockDirectory(ref, path, logger))
+			level.Debug(logger).Log("msg", "found block directory", "ref", ref, "path", path)
+		} else {
+			level.Warn(logger).Log("msg", "skip directory entry", "err", "not a block directory", "path", path)
+			_ = clean(path)
+		}
+
+		return nil
+	})
+	return
 }
 
 func calculateBlockDirectorySize(entry *cache.Entry[string, BlockDirectory]) uint64 {

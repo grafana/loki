@@ -2,10 +2,6 @@ package bloomcompactor
 
 import (
 	"context"
-	"fmt"
-	"math"
-	"slices"
-	"sort"
 	"sync"
 	"time"
 
@@ -71,15 +67,17 @@ func New(
 	fetcherProvider stores.ChunkFetcherProvider,
 	sharding util_ring.TenantSharding,
 	limits Limits,
+	store bloomshipper.Store,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Compactor, error) {
 	c := &Compactor{
-		cfg:       cfg,
-		schemaCfg: schemaCfg,
-		logger:    logger,
-		sharding:  sharding,
-		limits:    limits,
+		cfg:        cfg,
+		schemaCfg:  schemaCfg,
+		logger:     logger,
+		sharding:   sharding,
+		limits:     limits,
+		bloomStore: store,
 	}
 
 	tsdbStore, err := NewTSDBStores(schemaCfg, storeCfg, clientMetrics)
@@ -87,13 +85,6 @@ func New(
 		return nil, errors.Wrap(err, "failed to create TSDB store")
 	}
 	c.tsdbStore = tsdbStore
-
-	// TODO(owen-d): export bloomstore as a dependency that can be reused by the compactor & gateway rather that
-	bloomStore, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storeCfg, clientMetrics, nil, nil, logger)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create bloom store")
-	}
-	c.bloomStore = bloomStore
 
 	// initialize metrics
 	c.btMetrics = v1.NewMetrics(prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer_", r))
@@ -203,7 +194,7 @@ func (c *Compactor) ownsTenant(tenant string) ([]v1.FingerprintBounds, bool, err
 		return nil, false, nil
 	}
 
-	// TOOD(owen-d): use <ReadRing>.GetTokenRangesForInstance()
+	// TODO(owen-d): use <ReadRing>.GetTokenRangesForInstance()
 	// when it's supported for non zone-aware rings
 	// instead of doing all this manually
 
@@ -212,105 +203,13 @@ func (c *Compactor) ownsTenant(tenant string) ([]v1.FingerprintBounds, bool, err
 		return nil, false, errors.Wrap(err, "getting ring healthy instances")
 	}
 
-	ranges, err := tokenRangesForInstance(c.cfg.Ring.InstanceID, rs.Instances)
+	ranges, err := bloomutils.TokenRangesForInstance(c.cfg.Ring.InstanceID, rs.Instances)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "getting token ranges for instance")
 	}
 
 	keyspaces := bloomutils.KeyspacesFromTokenRanges(ranges)
 	return keyspaces, true, nil
-}
-
-func tokenRangesForInstance(id string, instances []ring.InstanceDesc) (ranges ring.TokenRanges, err error) {
-	var ownedTokens map[uint32]struct{}
-
-	// lifted from grafana/dskit/ring/model.go <*Desc>.GetTokens()
-	toks := make([][]uint32, 0, len(instances))
-	for _, instance := range instances {
-		if instance.Id == id {
-			ranges = make(ring.TokenRanges, 0, 2*(len(instance.Tokens)+1))
-			ownedTokens = make(map[uint32]struct{}, len(instance.Tokens))
-			for _, tok := range instance.Tokens {
-				ownedTokens[tok] = struct{}{}
-			}
-		}
-
-		// Tokens may not be sorted for an older version which, so we enforce sorting here.
-		tokens := instance.Tokens
-		if !sort.IsSorted(ring.Tokens(tokens)) {
-			sort.Sort(ring.Tokens(tokens))
-		}
-
-		toks = append(toks, tokens)
-	}
-
-	if cap(ranges) == 0 {
-		return nil, fmt.Errorf("instance %s not found", id)
-	}
-
-	allTokens := ring.MergeTokens(toks)
-	if len(allTokens) == 0 {
-		return nil, errors.New("no tokens in the ring")
-	}
-
-	// mostly lifted from grafana/dskit/ring/token_range.go <*Ring>.GetTokenRangesForInstance()
-
-	// non-zero value means we're now looking for start of the range. Zero value means we're looking for next end of range (ie. token owned by this instance).
-	rangeEnd := uint32(0)
-
-	// if this instance claimed the first token, it owns the wrap-around range, which we'll break into two separate ranges
-	firstToken := allTokens[0]
-	_, ownsFirstToken := ownedTokens[firstToken]
-
-	if ownsFirstToken {
-		// we'll start by looking for the beginning of the range that ends with math.MaxUint32
-		rangeEnd = math.MaxUint32
-	}
-
-	// walk the ring backwards, alternating looking for ends and starts of ranges
-	for i := len(allTokens) - 1; i > 0; i-- {
-		token := allTokens[i]
-		_, owned := ownedTokens[token]
-
-		if rangeEnd == 0 {
-			// we're looking for the end of the next range
-			if owned {
-				rangeEnd = token - 1
-			}
-		} else {
-			// we have a range end, and are looking for the start of the range
-			if !owned {
-				ranges = append(ranges, rangeEnd, token)
-				rangeEnd = 0
-			}
-		}
-	}
-
-	// finally look at the first token again
-	// - if we have a range end, check if we claimed token 0
-	//   - if we don't, we have our start
-	//   - if we do, the start is 0
-	// - if we don't have a range end, check if we claimed token 0
-	//   - if we don't, do nothing
-	//   - if we do, add the range of [0, token-1]
-	//     - BUT, if the token itself is 0, do nothing, because we don't own the tokens themselves (we should be covered by the already added range that ends with MaxUint32)
-
-	if rangeEnd == 0 {
-		if ownsFirstToken && firstToken != 0 {
-			ranges = append(ranges, firstToken-1, 0)
-		}
-	} else {
-		if ownsFirstToken {
-			ranges = append(ranges, rangeEnd, 0)
-		} else {
-			ranges = append(ranges, rangeEnd, firstToken)
-		}
-	}
-
-	// Ensure returned ranges are sorted.
-	slices.Sort(ranges)
-
-	return ranges, nil
 }
 
 // runs a single round of compaction for all relevant tenants and tables
