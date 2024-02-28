@@ -67,7 +67,7 @@ local golangCiLintVersion = 'v1.51.2';
       useGitHubAppToken=false,
     ), false, false
   ),
-   'check.yml': std.manifestYamlDoc({
+  'check.yml': std.manifestYamlDoc({
     name: 'check',
     on: {
       pull_request: {},
@@ -76,15 +76,16 @@ local golangCiLintVersion = 'v1.51.2';
       },
     },
     jobs: {
-      check: job.new()
-             + job.withUses('grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef)
-             + job.with({
-               build_image: buildImage,
-               golang_ci_lint_version: golangCiLintVersion,
-               release_lib_ref: releaseLibRef,
-               skip_validation: false,
-               use_github_app_token: true,
-             }),
+      check: {
+        uses: 'grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef,
+        with: {
+          build_image: buildImage,
+          golang_ci_lint_version: golangCiLintVersion,
+          release_lib_ref: releaseLibRef,
+          skip_validation: false,
+          use_github_app_token: true,
+        },
+      },
     },
   }),
 }
