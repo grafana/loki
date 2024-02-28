@@ -20,14 +20,17 @@ local imageJobs = {
   querytee: build.image('loki-query-tee', 'cmd/querytee', platform=['linux/amd64']),
 };
 
+local buildImage = 'grafana/loki-build-image:0.30.1';
+local golangCiLintVersion = 'v1.51.2';
+
 {
   'patch-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
       imageJobs=imageJobs,
-      buildImage='grafana/loki-build-image:0.29.3-go1.20.10',
+      buildImage=buildImage,
       branches=['release-[0-9]+.[0-9]+.x'],
       checkTemplate=checkTemplate,
-      golangCiLintVersion='v1.51.2',
+      golangCiLintVersion=golangCiLintVersion,
       imagePrefix='grafana',
       releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
@@ -40,10 +43,10 @@ local imageJobs = {
   'minor-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
       imageJobs=imageJobs,
-      buildImage='grafana/loki-build-image:0.29.3-go1.20.10',
+      buildImage=buildImage,
       branches=['k[0-9]+'],
       checkTemplate=checkTemplate,
-      golangCiLintVersion='v1.51.2',
+      golangCiLintVersion=golangCiLintVersion,
       imagePrefix='grafana',
       releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
