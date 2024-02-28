@@ -287,8 +287,13 @@ func (c *Compactor) loadWork(
 			return errors.Wrap(err, "getting tenants")
 		}
 		nTenants := tenants.Len()
-		level.Debug(c.logger).Log("msg", "loaded total tenants", "table", table, "tenants", nTenants)
-		tracker.registerTable(table.DayTime, nTenants)
+
+		type ownedTenant struct {
+			tenant          string
+			ownershipRanges []v1.FingerprintBounds
+		}
+
+		var ownedTenants []ownedTenant
 
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
 			c.metrics.tenantsDiscovered.Inc()
@@ -302,14 +307,27 @@ func (c *Compactor) loadWork(
 				c.metrics.tenantsSkipped.Inc()
 				continue
 			}
-			level.Debug(c.logger).Log("msg", "enqueueing work for tenant", "tenant", tenant, "table", table, "ranges", len(ownershipRanges))
 			c.metrics.tenantsOwned.Inc()
+			ownedTenants = append(ownedTenants, ownedTenant{tenant, ownershipRanges})
+		}
+		if err := tenants.Err(); err != nil {
+			level.Error(c.logger).Log("msg", "error iterating tenants", "err", err)
+			return errors.Wrap(err, "iterating tenants")
+		}
 
-			// loop over ranges, registering them in the tracker
+		level.Debug(c.logger).Log("msg", "loaded tenants", "table", table, "tenants", nTenants, "owned_tenants", len(ownedTenants))
+		tracker.registerTable(table.DayTime, len(ownedTenants))
+
+		for _, t := range ownedTenants {
+			// loop over ranges, registering them in the tracker;
+			// we add them to the tracker before queueing them
+			// so progress reporting is aware of all tenant/table
+			// pairs prior to execution. Otherwise, progress could
+			// decrease over time as more work is discovered.
 			var inputs []*tenantTableRange
-			for _, ownershipRange := range ownershipRanges {
+			for _, ownershipRange := range t.ownershipRanges {
 				tt := &tenantTableRange{
-					tenant:         tenant,
+					tenant:         t.tenant,
 					table:          table,
 					ownershipRange: ownershipRange,
 				}
@@ -319,6 +337,7 @@ func (c *Compactor) loadWork(
 
 			// iterate the inputs, queueing them
 			for _, tt := range inputs {
+				level.Debug(c.logger).Log("msg", "enqueueing work for tenant", "tenant", tt.tenant, "table", table, "ownership", tt.ownershipRange.String())
 				tt.queueTime = time.Now()
 				select {
 				case ch <- tt:
