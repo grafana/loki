@@ -1,8 +1,10 @@
 package v1
 
 import (
+	regexpsyntax "github.com/grafana/regexp/syntax"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 )
@@ -59,22 +61,68 @@ func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest
 		}
 		return test
 	case labels.MatchRegexp, labels.MatchNotRegexp:
-		// TODO(salvacorts): Simplify regex similarly to how it's done at pkg/logql/log/filter.go (`simplify` function)
-		// 					 Ideally we want to extract the simplify logic into pkg/util/regex.go
-		return MatchAll
+		reg, err := regexpsyntax.Parse(filter.Match, regexpsyntax.Perl)
+		if err != nil {
+			// TODO: log error
+			return MatchAll
+		}
+		reg = reg.Simplify()
+
+		simplifier := log.NewRegexSimplifier(newStringFilterFunc(b), newStringFilterFunc(b))
+		matcherFilter, ok := simplifier.Simplify(reg, false)
+		if !ok {
+			// If the regex simplifier fails, we default to MatchAll
+			return MatchAll
+		}
+
+		var test BloomTest = matcherFilterWrapper{filter: matcherFilter}
+		if filter.Ty == labels.MatchNotRegexp {
+			test = newNotTest(test)
+		}
+		return test
 	default:
 		return MatchAll
 	}
+}
+
+type matcherFilterWrapper struct {
+	filter log.MatcherFilter
+}
+
+// Matches implements the BloomTest interface
+func (m matcherFilterWrapper) Matches(bloom filter.Checker) bool {
+	return m.filter.Matches(bloom)
+}
+
+// MatchesWithPrefixBuf implements the BloomTest interface
+func (m matcherFilterWrapper) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
+	return m.filter.Matches(prefixedChecker{
+		checker:   bloom,
+		buf:       buf,
+		prefixLen: prefixLen,
+	})
+}
+
+type prefixedChecker struct {
+	checker   filter.Checker
+	buf       []byte
+	prefixLen int
+}
+
+func (p prefixedChecker) Test(data []byte) bool {
+	return p.checker.Test(append(p.buf[:p.prefixLen], data...))
 }
 
 type matchAllTest struct{}
 
 var MatchAll = matchAllTest{}
 
+// Matches implements the BloomTest interface
 func (n matchAllTest) Matches(_ filter.Checker) bool {
 	return true
 }
 
+// MatchesWithPrefixBuf implements the BloomTest interface
 func (n matchAllTest) MatchesWithPrefixBuf(_ filter.Checker, _ []byte, _ int) bool {
 	return true
 }
@@ -101,6 +149,7 @@ func newStringTest(b NGramBuilder, search string) stringTest {
 	return test
 }
 
+// Matches implements the BloomTest interface
 func (b stringTest) Matches(bloom filter.Checker) bool {
 	for _, ngram := range b.ngrams {
 		if !bloom.Test(ngram) {
@@ -110,6 +159,7 @@ func (b stringTest) Matches(bloom filter.Checker) bool {
 	return true
 }
 
+// MatchesWithPrefixBuf implements the BloomTest interface
 func (b stringTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
 	for _, ngram := range b.ngrams {
 		buf = append(buf[:prefixLen], ngram...)
@@ -118,6 +168,33 @@ func (b stringTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefi
 		}
 	}
 	return true
+}
+
+type stringMatcherFilter struct {
+	test stringTest
+}
+
+// Filter implements the log.Filterer interface
+func (b stringMatcherFilter) Filter(line []byte) bool {
+	panic("implement me")
+}
+
+// ToStage implements the log.Filterer interface
+func (b stringMatcherFilter) ToStage() log.Stage {
+	panic("implement me")
+}
+
+// Matches implements the log.MatcherFilter interface
+func (b stringMatcherFilter) Matches(test log.Checker) bool {
+	return b.test.Matches(test.(filter.Checker))
+}
+
+func newStringFilterFunc(b NGramBuilder) log.NewMatcherFilterFunc {
+	return func(match []byte, caseInsensitive bool) log.MatcherFilter {
+		return stringMatcherFilter{
+			test: newStringTest(b, string(match)),
+		}
+	}
 }
 
 type notTest struct {
