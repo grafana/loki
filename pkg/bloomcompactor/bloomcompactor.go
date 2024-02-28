@@ -297,11 +297,12 @@ func (c *Compactor) loadWork(
 			if err != nil {
 				return errors.Wrap(err, "checking tenant ownership")
 			}
-			level.Debug(c.logger).Log("msg", "enqueueing work for tenant", "tenant", tenant, "table", table, "ranges", len(ownershipRanges), "owns", owns)
 			if !owns {
+				level.Debug(c.logger).Log("msg", "skipping tenant", "tenant", tenant, "table", table)
 				c.metrics.tenantsSkipped.Inc()
 				continue
 			}
+			level.Debug(c.logger).Log("msg", "enqueueing work for tenant", "tenant", tenant, "table", table, "ranges", len(ownershipRanges))
 			c.metrics.tenantsOwned.Inc()
 
 			// loop over ranges, registering them in the tracker
@@ -367,7 +368,8 @@ func (c *Compactor) runWorkers(
 				tt.endTime = time.Now()
 				duration := tt.endTime.Sub(tt.startTime)
 				c.metrics.timePerTenant.WithLabelValues(tt.tenant).Add(duration.Seconds())
-				c.metrics.progress.Set(tracker.progress())
+				progress := tracker.progress()
+				c.metrics.progress.Set(progress)
 
 				if err != nil {
 					c.metrics.tenantTableRanges.WithLabelValues(statusFailure).Inc()
@@ -379,6 +381,14 @@ func (c *Compactor) runWorkers(
 						tt.ownershipRange,
 					)
 				}
+				level.Debug(c.logger).Log(
+					"msg", "finished compacting tenant table",
+					"tenant", tt.tenant,
+					"table", tt.table,
+					"ownership", tt.ownershipRange.String(),
+					"duration", duration,
+					"current_progress", progress,
+				)
 				c.metrics.tenantTableRanges.WithLabelValues(statusSuccess).Inc()
 			}
 		}
@@ -389,7 +399,9 @@ func (c *Compactor) runWorkers(
 
 func (c *Compactor) compactTenantTable(ctx context.Context, tt tenantTableRange) error {
 	level.Info(c.logger).Log("msg", "compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange.String())
-	return c.controller.compactTenant(ctx, tt.table, tt.tenant, tt.ownershipRange)
+	err := c.controller.compactTenant(ctx, tt.table, tt.tenant, tt.ownershipRange)
+	level.Info(c.logger).Log("msg", "finished compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange.String(), "err", err)
+	return err
 }
 
 type dayRangeIterator struct {
