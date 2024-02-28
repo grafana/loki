@@ -29,14 +29,14 @@ local golangCiLintVersion = 'v1.51.2';
     lokiRelease.releasePRWorkflow(
       imageJobs=imageJobs,
       buildImage=buildImage,
-      branches=['release-[0-9]+.[0-9]+.x', 'update-release-pipeline'],
+      branches=['release-[0-9]+.[0-9]+.x'],
       checkTemplate=checkTemplate,
       golangCiLintVersion=golangCiLintVersion,
       imagePrefix='grafana',
       releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
-      skipArm=true,
-      skipValidation=true,
+      skipArm=false,
+      skipValidation=false,
       versioningStrategy='always-bump-patch',
       useGitHubAppToken=true,
     ), false, false
