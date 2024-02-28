@@ -50,24 +50,21 @@ Params:
 Return if deployment mode is simple scalable
 */}}
 {{- define "loki.deployment.isScalable" -}}
-  {{- $nonZeroScalableReplicas := (or (gt (int .Values.backend.replicas) 0) (gt (int .Values.read.replicas) 0) (gt (int .Values.write.replicas) 0)) }}
-  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (eq (int .Values.singleBinary.replicas) 0) ($nonZeroScalableReplicas) }}
+  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (or (eq .Values.deploymentMode "SimpleScalable")) (eq .Values.deploymentMode "SimpleScalable-Distributed") }}
 {{- end -}}
 
 {{/*
 Return if deployment mode is single binary
 */}}
 {{- define "loki.deployment.isSingleBinary" -}}
-  {{- $nonZeroReplicas := gt (int .Values.singleBinary.replicas) 0 }}
-  {{- or (eq (include "loki.isUsingObjectStorage" . ) "false") ($nonZeroReplicas) }}
+  {{- or (eq .Values.deploymentMode "SingleBinary") (eq .Values.deploymentMode "SingleBinary-SimpleScalable") }}
 {{- end -}}
 
 {{/*
 Return if deployment mode is distributed
 */}}
 {{- define "loki.deployment.isDistributed" -}}
-  {{- $zeroScalableReplicas := (and (eq (int .Values.backend.replicas) 0) (eq (int .Values.read.replicas) 0) (eq (int .Values.write.replicas) 0)) }}
-  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") ($zeroScalableReplicas) }}
+  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (or (eq .Values.deploymentMode "Distributed") (eq .Values.deploymentMode "SimpleScalable-Distributed")) }}
 {{- end -}}
 
 
