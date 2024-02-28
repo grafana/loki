@@ -1,5 +1,5 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if and $isDistributed .Values.queryScheduler.enabled (gt (int .Values.queryScheduler.replicas) 1) }}
+{{- if and $isDistributed (gt (int .Values.queryScheduler.replicas) 1) }}
 {{- if kindIs "invalid" .Values.queryScheduler.maxUnavailable }}
 {{- fail "`.Values.queryScheduler.maxUnavailable` must be set when `.Values.queryScheduler.replicas` is greater than 1." }}
 {{- else }}

@@ -1899,8 +1899,6 @@ queryFrontend:
 
 # -- Configuration for the query-scheduler
 queryScheduler:
-  # -- Specifies whether the query-scheduler should be decoupled from the query-frontend
-  enabled: false
   # -- Number of replicas for the query-scheduler.
   # It should be lower than `-querier.max-concurrent` to avoid generating back-pressure in queriers;
   # it's also recommended that this value evenly divides the latter
@@ -1969,8 +1967,6 @@ queryScheduler:
 
 # -- Configuration for the index-gateway
 indexGateway:
-  # -- Specifies whether the index-gateway should be enabled
-  enabled: false
   # -- Number of replicas for the index-gateway
   replicas: 0
   # -- Whether the index gateway should join the memberlist hashring
@@ -2062,8 +2058,6 @@ indexGateway:
 compactor:
   # -- Number of replicas for the compactor
   replicas: 0
-  # -- Specifies whether compactor should be enabled
-  enabled: false
   # -- hostAliases to add
   hostAliases: []
   #  - ip: 1.2.3.4
@@ -2177,8 +2171,6 @@ compactor:
 
 # -- Configuration for the ruler
 ruler:
-  # -- Specifies whether the ruler should be enabled
-  enabled: false
   # -- Number of replicas for the ruler
   replicas: 0
   # -- hostAliases to add

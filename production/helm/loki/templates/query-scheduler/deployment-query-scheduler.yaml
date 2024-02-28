@@ -1,5 +1,5 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if and $isDistributed .Values.queryScheduler.enabled }}
+{{- if $isDistributed }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

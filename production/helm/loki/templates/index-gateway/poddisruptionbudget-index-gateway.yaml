@@ -1,5 +1,5 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if and $isDistributed .Values.indexGateway.enabled (gt (int .Values.indexGateway.replicas) 1) }}
+{{- if and $isDistributed (gt (int .Values.indexGateway.replicas) 1) }}
 {{- if kindIs "invalid" .Values.indexGateway.maxUnavailable }}
 {{- fail "`.Values.indexGateway.maxUnavailable` must be set when `.Values.indexGateway.replicas` is greater than 1." }}
 {{- else }}
