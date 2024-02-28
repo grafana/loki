@@ -1,5 +1,6 @@
 local lokiRelease = import 'workflows/main.jsonnet';
 local build = lokiRelease.build;
+local job = lokiRelease.job;
 
 local releaseLibRef = std.filter(
   function(dep) dep.source.git.remote == 'https://github.com/grafana/loki-release.git',
@@ -66,4 +67,24 @@ local golangCiLintVersion = 'v1.51.2';
       useGitHubAppToken=false,
     ), false, false
   ),
+   'check.yml': std.manifestYamlDoc({
+    name: 'check',
+    on: {
+      pull_request: {},
+      push: {
+        branches: ['main'],
+      },
+    },
+    jobs: {
+      check: job.new()
+             + job.withUses('grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef)
+             + job.with({
+               build_image: buildImage,
+               golang_ci_lint_version: golangCiLintVersion,
+               release_lib_ref: releaseLibRef,
+               skip_validation: false,
+               use_github_app_token: true,
+             }),
+    },
+  }),
 }
