@@ -106,7 +106,7 @@ func TestProcessor(t *testing.T) {
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
 		swb := seriesWithInterval{
 			series: groupRefs(t, chunkRefs),
-			interval: model.Interval{
+			interval: bloomshipper.Interval{
 				Start: now.Add(-1 * time.Hour),
 				End:   now,
 			},
@@ -155,7 +155,7 @@ func TestProcessor(t *testing.T) {
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
 		swb := seriesWithInterval{
 			series: groupRefs(t, chunkRefs),
-			interval: model.Interval{
+			interval: bloomshipper.Interval{
 				Start: now.Add(-1 * time.Hour),
 				End:   now,
 			},

@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
 func TestTask(t *testing.T) {
@@ -59,7 +60,7 @@ func TestTask_RequestIterator(t *testing.T) {
 
 	t.Run("empty request yields empty iterator", func(t *testing.T) {
 		swb := seriesWithInterval{
-			interval: model.Interval{Start: 0, End: math.MaxInt64},
+			interval: bloomshipper.Interval{Start: 0, End: math.MaxInt64},
 			series:   []*logproto.GroupedChunkRefs{},
 		}
 		task, _ := NewTask(context.Background(), tenant, swb, []syntax.LineFilterExpr{})
