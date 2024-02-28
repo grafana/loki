@@ -96,9 +96,9 @@ func (c *Context) Ingester() Ingester {
 	}
 }
 
-// Querier returns the store statistics accumulated so far.
-func (c *Context) Querier() Querier {
-	return c.querier
+// Store returns the store statistics accumulated so far.
+func (c *Context) Store() Store {
+	return c.store
 }
 
 // Caches returns the cache statistics accumulated so far.
