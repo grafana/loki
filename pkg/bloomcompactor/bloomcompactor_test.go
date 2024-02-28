@@ -11,10 +11,12 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/bloomutils"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
 	util_ring "github.com/grafana/loki/pkg/util/ring"
@@ -262,4 +264,72 @@ func TestTokenRangesForInstance(t *testing.T) {
 			}
 		})
 	}
+}
+
+func parseDayTime(s string) config.DayTime {
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		panic(err)
+	}
+	return config.DayTime{
+		Time: model.TimeFromUnix(t.Unix()),
+	}
+}
+
+func TestCompactionTracker(t *testing.T) {
+	// test invalid table number
+	_, err := newCompactionTracker(0)
+	require.Error(t, err)
+
+	tracker, err := newCompactionTracker(2)
+	require.NoError(t, err)
+
+	day1 := parseDayTime("2024-01-01")
+	day2 := parseDayTime("2024-01-02")
+
+	tracker.registerTable(day1, 2)
+	tracker.registerTable(day2, 3)
+	require.Equal(t, 0., tracker.progress())
+
+	// tenant_dayIndex_boundsIndex
+	mkRange := func(tenant string, tbl config.DayTime, from, through model.Fingerprint) *tenantTableRange {
+		return &tenantTableRange{
+			tenant:         tenant,
+			table:          config.NewDayTable(tbl, ""),
+			ownershipRange: v1.NewBounds(from, through),
+		}
+	}
+	a_0_0 := mkRange("a", day1, 0, 10)
+	a_0_1 := mkRange("a", day1, 40, 50)
+	b_0_0 := mkRange("b", day1, 10, 20)
+
+	tracker.add(a_0_0)
+	tracker.add(a_0_1)
+
+	require.Equal(t, 0., tracker.progress())
+	a_0_0.finished = true
+	require.Equal(t, 0.125, tracker.progress())
+	a_0_1.finished = true
+	require.Equal(t, 0.25, tracker.progress())
+
+	tracker.add(b_0_0)
+	require.Equal(t, 0.25, tracker.progress())
+	b_0_0.finished = true
+	require.Equal(t, 0.5, tracker.progress())
+
+	a_1_0 := mkRange("a", day2, 0, 10)
+	b_1_0 := mkRange("b", day2, 10, 20)
+	c_1_0 := mkRange("c", day2, 20, 30)
+	tracker.add(a_1_0)
+	tracker.add(b_1_0)
+	tracker.add(c_1_0)
+	require.Equal(t, 0.5, tracker.progress())
+
+	a_1_0.finished = true
+	b_1_0.finished = true
+	require.Equal(t, 0.833, tracker.progress())
+
+	c_1_0.finished = true
+	require.Equal(t, 1., tracker.progress())
+
 }

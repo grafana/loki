@@ -3,6 +3,7 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -303,15 +304,21 @@ func (c *Compactor) loadWork(
 			}
 			c.metrics.tenantsOwned.Inc()
 
+			// loop over ranges, registering them in the tracker
+			var inputs []tenantTableRange
 			for _, ownershipRange := range ownershipRanges {
 				tt := tenantTableRange{
 					tenant:         tenant,
 					table:          table,
 					ownershipRange: ownershipRange,
-					queueTime:      time.Now(),
 				}
 				tracker.add(&tt)
+				inputs = append(inputs, tt)
+			}
 
+			// iterate the inputs, queueing them
+			for _, tt := range inputs {
+				tt.queueTime = time.Now()
 				select {
 				case ch <- tt:
 				case <-ctx.Done():
@@ -445,8 +452,9 @@ func newCompactionTracker(nTables int) (*compactionTracker, error) {
 	}
 
 	return &compactionTracker{
-		nTables: nTables,
-		tables:  make(map[config.DayTime]map[string][]*tenantTableRange),
+		nTables:  nTables,
+		tables:   make(map[config.DayTime]map[string][]*tenantTableRange),
+		metadata: make(map[config.DayTime]int),
 	}, nil
 }
 
@@ -467,7 +475,7 @@ func (c *compactionTracker) add(tt *tenantTableRange) {
 	tbl[tt.tenant] = append(tbl[tt.tenant], tt)
 }
 
-// Returns progress in (0-1) range.
+// Returns progress in (0-1) range, bounded to 3 decimals.
 // compaction progress is measured by the following:
 // 1. The number of days of data that has been compacted
 // as a percentage of the total number of days of data that needs to be compacted.
@@ -504,10 +512,10 @@ func (c *compactionTracker) progress() (progress float64) {
 				}
 			}
 
-			tenantProgress := float64(totalKeyspace-finishedKeyspace) / float64(totalKeyspace)
+			tenantProgress := float64(finishedKeyspace) / float64(totalKeyspace)
 			progress += perTenantPct * tenantProgress
 		}
 	}
 
-	return progress
+	return math.Round(progress*1000) / 1000
 }
