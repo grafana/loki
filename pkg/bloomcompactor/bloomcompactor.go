@@ -2,6 +2,7 @@ package bloomcompactor
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -167,10 +168,13 @@ func runWithRetries(
 	return lastErr
 }
 
-type tenantTable struct {
+type tenantTableRange struct {
 	tenant         string
 	table          config.DayTable
 	ownershipRange v1.FingerprintBounds
+
+	finished                      bool
+	queueTime, startTime, endTime time.Time
 }
 
 func (c *Compactor) tenants(ctx context.Context, table config.DayTable) (*v1.SliceIter[string], error) {
@@ -214,14 +218,23 @@ func (c *Compactor) runOne(ctx context.Context) error {
 	level.Info(c.logger).Log("msg", "running bloom compaction", "workers", c.cfg.WorkerParallelism)
 	var workersErr error
 	var wg sync.WaitGroup
-	ch := make(chan tenantTable)
+	input := make(chan tenantTableRange)
+
+	tables := c.tables(time.Now())
+	level.Debug(c.logger).Log("msg", "loaded tables", "tables", tables.Len())
+
+	tracker, err := newCompactionTracker(tables.Len())
+	if err != nil {
+		return errors.Wrap(err, "creating compaction tracker")
+	}
+
 	wg.Add(1)
 	go func() {
-		workersErr = c.runWorkers(ctx, ch)
+		workersErr = c.runWorkers(ctx, input, tracker)
 		wg.Done()
 	}()
 
-	err := c.loadWork(ctx, ch)
+	err = c.loadWork(ctx, tables, input, tracker)
 
 	wg.Wait()
 	duration := time.Since(start)
@@ -256,9 +269,12 @@ func (c *Compactor) tables(ts time.Time) *dayRangeIterator {
 	return newDayRangeIterator(fromDay, throughDay, c.schemaCfg)
 }
 
-func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
-	tables := c.tables(time.Now())
-	level.Debug(c.logger).Log("msg", "loaded tables", "tables", tables.Len())
+func (c *Compactor) loadWork(
+	ctx context.Context,
+	tables *dayRangeIterator,
+	ch chan<- tenantTableRange,
+	tracker *compactionTracker,
+) error {
 
 	for tables.Next() && tables.Err() == nil && ctx.Err() == nil {
 		table := tables.At()
@@ -269,7 +285,9 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 		if err != nil {
 			return errors.Wrap(err, "getting tenants")
 		}
-		level.Debug(c.logger).Log("msg", "loaded total tenants", "table", table, "tenants", tenants.Len())
+		nTenants := tenants.Len()
+		level.Debug(c.logger).Log("msg", "loaded total tenants", "table", table, "tenants", nTenants)
+		tracker.registerTable(table.DayTime, nTenants)
 
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
 			c.metrics.tenantsDiscovered.Inc()
@@ -286,13 +304,16 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 			c.metrics.tenantsOwned.Inc()
 
 			for _, ownershipRange := range ownershipRanges {
-
-				select {
-				case ch <- tenantTable{
+				tt := tenantTableRange{
 					tenant:         tenant,
 					table:          table,
 					ownershipRange: ownershipRange,
-				}:
+					queueTime:      time.Now(),
+				}
+				tracker.add(&tt)
+
+				select {
+				case ch <- tt:
 				case <-ctx.Done():
 					return ctx.Err()
 				}
@@ -315,7 +336,11 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 	return ctx.Err()
 }
 
-func (c *Compactor) runWorkers(ctx context.Context, ch <-chan tenantTable) error {
+func (c *Compactor) runWorkers(
+	ctx context.Context,
+	input <-chan tenantTableRange,
+	tracker *compactionTracker,
+) error {
 
 	return concurrency.ForEachJob(ctx, c.cfg.WorkerParallelism, c.cfg.WorkerParallelism, func(ctx context.Context, idx int) error {
 
@@ -324,16 +349,21 @@ func (c *Compactor) runWorkers(ctx context.Context, ch <-chan tenantTable) error
 			case <-ctx.Done():
 				return ctx.Err()
 
-			case tt, ok := <-ch:
+			case tt, ok := <-input:
 				if !ok {
 					return nil
 				}
-
-				start := time.Now()
+				tt.startTime = time.Now()
 				c.metrics.tenantsStarted.Inc()
-				if err := c.compactTenantTable(ctx, tt); err != nil {
-					c.metrics.tenantsCompleted.WithLabelValues(statusFailure).Inc()
-					c.metrics.tenantsCompletedTime.WithLabelValues(statusFailure).Observe(time.Since(start).Seconds())
+				err := c.compactTenantTable(ctx, tt)
+				tt.finished = true
+				tt.endTime = time.Now()
+				duration := tt.endTime.Sub(tt.startTime)
+				c.metrics.timePerTenant.WithLabelValues(tt.tenant).Add(duration.Seconds())
+				c.metrics.progress.Set(tracker.progress())
+
+				if err != nil {
+					c.metrics.tenantTableRanges.WithLabelValues(statusFailure).Inc()
 					return errors.Wrapf(
 						err,
 						"compacting tenant table (%s) for tenant (%s) with ownership (%s)",
@@ -342,8 +372,7 @@ func (c *Compactor) runWorkers(ctx context.Context, ch <-chan tenantTable) error
 						tt.ownershipRange,
 					)
 				}
-				c.metrics.tenantsCompleted.WithLabelValues(statusSuccess).Inc()
-				c.metrics.tenantsCompletedTime.WithLabelValues(statusSuccess).Observe(time.Since(start).Seconds())
+				c.metrics.tenantTableRanges.WithLabelValues(statusSuccess).Inc()
 			}
 		}
 
@@ -351,7 +380,7 @@ func (c *Compactor) runWorkers(ctx context.Context, ch <-chan tenantTable) error
 
 }
 
-func (c *Compactor) compactTenantTable(ctx context.Context, tt tenantTable) error {
+func (c *Compactor) compactTenantTable(ctx context.Context, tt tenantTableRange) error {
 	level.Info(c.logger).Log("msg", "compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange.String())
 	return c.controller.compactTenant(ctx, tt.table, tt.tenant, tt.ownershipRange)
 }
@@ -397,4 +426,88 @@ func (r *dayRangeIterator) At() config.DayTable {
 
 func (r *dayRangeIterator) Err() error {
 	return nil
+}
+
+type compactionTracker struct {
+	sync.RWMutex
+
+	nTables int
+	// tables -> n_tenants
+	metadata map[config.DayTime]int
+
+	// table -> tenant -> []keyspace
+	tables map[config.DayTime]map[string][]*tenantTableRange
+}
+
+func newCompactionTracker(nTables int) (*compactionTracker, error) {
+	if nTables <= 0 {
+		return nil, errors.New("nTables must be positive")
+	}
+
+	return &compactionTracker{
+		nTables: nTables,
+		tables:  make(map[config.DayTime]map[string][]*tenantTableRange),
+	}, nil
+}
+
+func (c *compactionTracker) registerTable(tbl config.DayTime, nTenants int) {
+	c.Lock()
+	defer c.Unlock()
+	c.metadata[tbl] = nTenants
+	c.tables[tbl] = make(map[string][]*tenantTableRange)
+}
+
+func (c *compactionTracker) add(tt *tenantTableRange) {
+	c.Lock()
+	defer c.Unlock()
+	tbl, ok := c.tables[tt.table.DayTime]
+	if !ok {
+		panic(fmt.Sprintf("table not registered: %s", tt.table.DayTime.String()))
+	}
+	tbl[tt.tenant] = append(tbl[tt.tenant], tt)
+}
+
+// Returns progress in (0-1) range.
+// compaction progress is measured by the following:
+// 1. The number of days of data that has been compacted
+// as a percentage of the total number of days of data that needs to be compacted.
+// 2. Within each day, the number of tenants that have been compacted
+// as a percentage of the total number of tenants that need to be compacted.
+// 3. Within each tenant, the percent of the keyspaces that have been compacted.
+// NB(owen-d): this treats all tenants equally, when this may not be the case wrt
+// the work they have to do. This is a simplification and can be x-referenced with
+// the tenant_compaction_seconds_total metric to see how much time is being spent on
+// each tenant while the compaction tracker shows total compaction progress across
+// all tables and tenants.
+func (c *compactionTracker) progress() (progress float64) {
+	c.RLock()
+	defer c.RUnlock()
+
+	perTablePct := 1. / float64(c.nTables)
+
+	// for all registered tables, determine the number of registered tenants
+	for tbl, nTenants := range c.metadata {
+		perTenantPct := perTablePct / float64(nTenants)
+
+		// iterate tenants in each table
+		for _, tenant := range c.tables[tbl] {
+			var (
+				totalKeyspace    uint64
+				finishedKeyspace uint64
+			)
+
+			// iterate table ranges for each tenant+table pair
+			for _, tt := range tenant {
+				totalKeyspace += tt.ownershipRange.Range()
+				if tt.finished {
+					finishedKeyspace += tt.ownershipRange.Range()
+				}
+			}
+
+			tenantProgress := float64(totalKeyspace-finishedKeyspace) / float64(totalKeyspace)
+			progress += perTenantPct * tenantProgress
+		}
+	}
+
+	return progress
 }
