@@ -42,12 +42,12 @@ local createReleasePR = function(strategy, branches) lokiRelease.releasePRWorkfl
 
 {
   'patch-release-pr.yml': std.manifestYamlDoc(
-    createReleasePR('always-bump-patch', ['release-[0-9]+.[0-9]+.x']) {
+    createReleasePR('always-bump-patch', ['release-[0-9]+.[0-9]+.x', 'fix-vuln-scanning']) {
       name: 'create patch release PR',
     }, false, false
   ),
   'minor-release-pr.yml': std.manifestYamlDoc(
-    createReleasePR('always-bump-minor', ['k[0-9]+']) {
+    createReleasePR('always-bump-minor', ['k[0-9]+', 'fix-vuln-scanning']) {
       name: 'create minor release PR',
     }, false, false
   ),

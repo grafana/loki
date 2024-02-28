@@ -827,6 +827,7 @@ name: "create minor release PR"
   push:
     branches:
     - "k[0-9]+"
+    - "fix-vuln-scanning"
 permissions:
   contents: "write"
   id-token: "write"
