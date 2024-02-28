@@ -67,6 +67,8 @@ local releaseLibStep = common.releaseLibStep;
       common.fetchReleaseRepo,
       common.setupNode,
       common.extractBranchName,
+      common.githubAppToken,
+      common.setToken,
       releaseLibStep('get release version')
       + step.withId('version')
       + step.withRun(|||
@@ -75,11 +77,17 @@ local releaseLibStep = common.releaseLibStep;
           --consider-all-branches \
           --dry-run \
           --dry-run-output release.json \
+          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --manifest-file .release-please-manifest.json \
+          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --release-type simple \
-          --repo-url="${{ env.RELEASE_REPO }}" \
+          --repo-url "${{ env.RELEASE_REPO }}" \
+          --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GH_TOKEN }}" \
+          --token "${{ steps.github_app_token.outputs.token }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+
+        cat release.json
 
         if [[ `jq length release.json` -gt 1 ]]; then 
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
@@ -117,6 +125,7 @@ local releaseLibStep = common.releaseLibStep;
       }),
 
       releaseStep('build artifacts')
+      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.withEnv({
         BUILD_IN_CONTAINER: false,
         DRONE_TAG: '${{ needs.version.outputs.version }}',
@@ -144,7 +153,8 @@ local releaseLibStep = common.releaseLibStep;
         EOF
       ||| % buildImage),
 
-      step.new('upload build artifacts', 'google-github-actions/upload-cloud-storage@v2')
+      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
+      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/dist',
         destination: 'loki-build-artifacts/${{ github.sha }}',  //TODO: make bucket configurable

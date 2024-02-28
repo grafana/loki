@@ -19,6 +19,8 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
       common.fetchReleaseLib,
       common.setupNode,
       common.extractBranchName,
+      common.githubAppToken,
+      common.setToken,
 
       releaseLibStep('release please')
       + step.withId('release')
@@ -30,19 +32,21 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
       //TODO backport action should not bring over autorelease: pending label
       + step.withRun(|||
         npm install
-        echo "Pull request footer: %s"
         npm exec -- release-please release-pr \
           --consider-all-branches \
-          --label "backport main,autorelease: pending,type/docs" \
+          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --label "backport main,autorelease: pending,product-approved" \
+          --manifest-file .release-please-manifest.json \
           --pull-request-footer "%s" \
+          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
-          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token "${{ secrets.GH_TOKEN }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
           --separate-pull-requests false \
-          --debug
-      ||| % [pullRequestFooter, pullRequestFooter]),
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token "${{ steps.github_app_token.outputs.token }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+
+      ||| % pullRequestFooter),
     ]),
 
   shouldRelease: job.new()
@@ -73,6 +77,8 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    common.setupNode,
                    common.googleAuth,
                    common.setupGoogleCloudSdk,
+                   common.githubAppToken,
+                   common.setToken,
 
                    // exits with code 1 if the url does not match
                    // meaning there are no artifacts for that sha
@@ -83,30 +89,53 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                      gsutil cp -r gs://loki-build-artifacts/${{ needs.shouldRelease.outputs.sha }}/dist .
                    |||),
 
+                   releaseStep('check if release exists')
+                   + step.withId('check_release')
+                   + step.withEnv({
+                     GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+                   })
+                   + step.withRun(|||
+                     set +e
+                     isDraft="$(gh release view --json="isDraft" --jq=".isDraft" ${{ needs.shouldRelease.outputs.name }} 2>&1)"
+                     set -e
+                     if [[ "$isDraft" == "release not found" ]]; then
+                       echo "exists=false" >> $GITHUB_OUTPUT
+                     else
+                       echo "exists=true" >> $GITHUB_OUTPUT
+                     fi
+
+                     if [[ "$isDraft" == "true" ]]; then
+                       echo "draft=true" >> $GITHUB_OUTPUT
+                     fi
+                   |||),
+
                    releaseLibStep('create release')
                    + step.withId('release')
+                   + step.withIf('${{ !fromJSON(steps.check_release.outputs.exists) }}')
                    + step.withRun(|||
                      npm install
                      npm exec -- release-please github-release \
                        --draft \
                        --release-type simple \
-                       --repo-url="${{ env.RELEASE_REPO }}" \
+                       --repo-url "${{ env.RELEASE_REPO }}" \
                        --target-branch "${{ needs.shouldRelease.outputs.branch }}" \
-                       --token="${{ secrets.GH_TOKEN }}"
+                       --token "${{ steps.github_app_token.outputs.token }}"
                    |||),
 
                    releaseStep('upload artifacts')
                    + step.withId('upload')
                    + step.withEnv({
-                     GH_TOKEN: '${{ secrets.GH_TOKEN }}',
+                     GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
                    })
                    + step.withRun(|||
-                     gh release upload ${{ needs.shouldRelease.outputs.name }} dist/*
-                     gh release edit ${{ needs.shouldRelease.outputs.name }} --draft=false
+                     gh release upload --clobber ${{ needs.shouldRelease.outputs.name }} dist/*
                    |||),
                  ])
                  + job.withOutputs({
                    sha: '${{ needs.shouldRelease.outputs.sha }}',
+                   name: '${{ needs.shouldRelease.outputs.name }}',
+                   draft: '${{ steps.check_release.outputs.draft }}',
+                   exists: '${{ steps.check_release.outputs.exists }}',
                  }),
 
   publishImages: function(getDockerCredsFromVault=false, dockerUsername='grafanabot')
@@ -141,4 +170,20 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         }),
       ]
     ),
+
+  publishRelease: job.new()
+                  + job.withNeeds(['createRelease', 'publishImages'])
+                  + job.withSteps([
+                    common.fetchReleaseRepo,
+                    common.githubAppToken,
+                    common.setToken,
+                    releaseStep('publish release')
+                    + step.withIf('${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}')
+                    + step.withEnv({
+                      GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+                    })
+                    + step.withRun(|||
+                      gh release edit ${{ needs.createRelease.outputs.name }} --draft=false
+                    |||),
+                  ]),
 }

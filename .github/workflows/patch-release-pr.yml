@@ -3,14 +3,20 @@ concurrency:
 env:
   DOCKER_USERNAME: "grafana"
   IMAGE_PREFIX: "grafana"
+  RELEASE_LIB_REF: "v1.11.5"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
+  USE_GITHUB_APP_TOKEN: true
   VERSIONING_STRATEGY: "always-bump-patch"
 jobs:
   check:
-    uses: "grafana/loki-release/.github/workflows/check.yml@release-1.10.x"
+    uses: "grafana/loki-release/.github/workflows/check.yml@v1.11.5"
     with:
+      build_image: "grafana/loki-build-image:0.33.0"
+      golang_ci_lint_version: "v1.51.2"
+      release_lib_ref: "v1.11.5"
       skip_validation: false
+      use_github_app_token: true
   create-release-pr:
     needs:
     - "dist"
@@ -35,6 +41,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -45,24 +52,42 @@ jobs:
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
       working-directory: "release"
+    - id: "get_github_app_token"
+      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
+      name: "get github app token"
+      uses: "actions/github-app-token@v1"
+      with:
+        app-id: "${{ secrets.APP_ID }}"
+        owner: "${{ github.repository_owner }}"
+        private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+    - id: "github_app_token"
+      name: "set github token"
+      run: |
+        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
+          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+        else
+          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
+        fi
     - env:
         SHA: "${{ github.sha }}"
       id: "release"
       name: "release please"
       run: |
         npm install
-        echo "Pull request footer: Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/loki-build-artifacts/${SHA}) of ${SHA}"
         npm exec -- release-please release-pr \
           --consider-all-branches \
-          --label "backport main,autorelease: pending,type/docs" \
+          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --label "backport main,autorelease: pending,product-approved" \
+          --manifest-file .release-please-manifest.json \
           --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/loki-build-artifacts/${SHA}) of ${SHA}" \
+          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
-          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token "${{ secrets.GH_TOKEN }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
           --separate-pull-requests false \
-          --debug
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token "${{ steps.github_app_token.outputs.token }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
       working-directory: "lib"
   dist:
     needs:
@@ -91,6 +116,7 @@ jobs:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
         NFPM_SIGNING_KEY_FILE: "nfpm-private-key.key"
         SKIP_ARM: false
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "build artifacts"
       run: |
         cat <<EOF | docker run \
@@ -110,7 +136,8 @@ jobs:
           make dist packages
         EOF
       working-directory: "release"
-    - name: "upload build artifacts"
+    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "loki-build-artifacts/${{ github.sha }}"
@@ -125,6 +152,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -159,15 +187,15 @@ jobs:
       with:
         context: "release"
         file: "release/clients/cmd/fluent-bit/Dockerfile"
-        outputs: "type=docker,dest=release/images/fluent-bit-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        outputs: "type=docker,dest=release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/fluent-bit:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        tags: "${{ env.IMAGE_PREFIX }}/fluent-bit-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/fluent-bit-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        path: "release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
@@ -183,6 +211,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -217,15 +246,15 @@ jobs:
       with:
         context: "release"
         file: "release/clients/cmd/fluentd/Dockerfile"
-        outputs: "type=docker,dest=release/images/fluentd-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        outputs: "type=docker,dest=release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/fluentd:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        tags: "${{ env.IMAGE_PREFIX }}/fluent-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/fluentd-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        path: "release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
@@ -241,6 +270,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -301,6 +331,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -335,15 +366,15 @@ jobs:
       with:
         context: "release"
         file: "release/clients/cmd/logstash/Dockerfile"
-        outputs: "type=docker,dest=release/images/logstash-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        outputs: "type=docker,dest=release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/logstash:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        tags: "${{ env.IMAGE_PREFIX }}/logstash-output-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/logstash-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        path: "release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
@@ -359,6 +390,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -419,6 +451,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -479,6 +512,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -539,6 +573,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -597,6 +632,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -657,6 +693,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -691,15 +728,15 @@ jobs:
       with:
         context: "release"
         file: "release/cmd/querytee/Dockerfile"
-        outputs: "type=docker,dest=release/images/querytee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        outputs: "type=docker,dest=release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/querytee:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        tags: "${{ env.IMAGE_PREFIX }}/loki-query-tee:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/querytee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        path: "release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
@@ -718,6 +755,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -733,6 +771,22 @@ jobs:
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
       working-directory: "release"
+    - id: "get_github_app_token"
+      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
+      name: "get github app token"
+      uses: "actions/github-app-token@v1"
+      with:
+        app-id: "${{ secrets.APP_ID }}"
+        owner: "${{ github.repository_owner }}"
+        private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+    - id: "github_app_token"
+      name: "set github token"
+      run: |
+        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
+          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+        else
+          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
+        fi
     - id: "version"
       name: "get release version"
       run: |
@@ -741,11 +795,17 @@ jobs:
           --consider-all-branches \
           --dry-run \
           --dry-run-output release.json \
+          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --manifest-file .release-please-manifest.json \
+          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --release-type simple \
-          --repo-url="${{ env.RELEASE_REPO }}" \
+          --repo-url "${{ env.RELEASE_REPO }}" \
+          --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GH_TOKEN }}" \
+          --token "${{ steps.github_app_token.outputs.token }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        cat release.json
         
         if [[ `jq length release.json` -gt 1 ]]; then 
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
