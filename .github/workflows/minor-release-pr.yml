@@ -13,7 +13,7 @@ jobs:
     uses: "grafana/loki-release/.github/workflows/check.yml@v1.12.0"
     with:
       build_image: "grafana/loki-build-image:0.33.0"
-      golang_ci_lint_version: "v1.51.2"
+      golang_ci_lint_version: "v1.55.1"
       release_lib_ref: "v1.12.0"
       skip_validation: false
       use_github_app_token: true
@@ -822,7 +822,7 @@ jobs:
           echo "pr_created=true" >> $GITHUB_OUTPUT
         fi
       working-directory: "lib"
-name: "create release PR"
+name: "create minor release PR"
 "on":
   push:
     branches:

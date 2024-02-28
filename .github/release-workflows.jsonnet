@@ -23,40 +23,33 @@ local imageJobs = {
 };
 
 local buildImage = 'grafana/loki-build-image:0.33.0';
-local golangCiLintVersion = 'v1.51.2';
+local golangCiLintVersion = 'v1.55.1';
+
+local createReleasePR = function(strategy, branches) lokiRelease.releasePRWorkflow(
+  imageJobs=imageJobs,
+  buildImage=buildImage,
+  branches=branches,
+  checkTemplate=checkTemplate,
+  golangCiLintVersion=golangCiLintVersion,
+  imagePrefix='grafana',
+  releaseLibRef=releaseLibRef,
+  releaseRepo='grafana/loki',
+  skipArm=false,
+  skipValidation=false,
+  versioningStrategy=strategy,
+  useGitHubAppToken=true,
+);
 
 {
   'patch-release-pr.yml': std.manifestYamlDoc(
-    lokiRelease.releasePRWorkflow(
-      imageJobs=imageJobs,
-      buildImage=buildImage,
-      branches=['release-[0-9]+.[0-9]+.x'],
-      checkTemplate=checkTemplate,
-      golangCiLintVersion=golangCiLintVersion,
-      imagePrefix='grafana',
-      releaseLibRef=releaseLibRef,
-      releaseRepo='grafana/loki',
-      skipArm=false,
-      skipValidation=false,
-      versioningStrategy='always-bump-patch',
-      useGitHubAppToken=true,
-    ), false, false
+    createReleasePR('always-bump-patch', ['release-[0-9]+.[0-9]+.x']) {
+      name: 'create patch release PR',
+    }, false, false
   ),
   'minor-release-pr.yml': std.manifestYamlDoc(
-    lokiRelease.releasePRWorkflow(
-      imageJobs=imageJobs,
-      buildImage=buildImage,
-      branches=['k[0-9]+'],
-      checkTemplate=checkTemplate,
-      golangCiLintVersion=golangCiLintVersion,
-      imagePrefix='grafana',
-      releaseLibRef=releaseLibRef,
-      releaseRepo='grafana/loki',
-      skipArm=false,
-      skipValidation=false,
-      versioningStrategy='always-bump-minor',
-      useGitHubAppToken=true,
-    ), false, false
+    createReleasePR('always-bump-minor', ['k[0-9]+']) {
+      name: 'create minor release PR',
+    }, false, false
   ),
   'release.yml': std.manifestYamlDoc(
     lokiRelease.releaseWorkflow(
