@@ -74,6 +74,37 @@
 * [11776](https://github.com/grafana/loki/pull/11776) **ashwanthgoli** Background Cache: Fixes a bug that is causing the background queue size to be incremented twice for each enqueued item.
 * [11921](https://github.com/grafana/loki/pull/11921) **paul1r**: Parsing: String array elements were not being parsed correctly in JSON processing
 
+#### Promtail
+* [11511](https://github.com/grafana/loki/pull/11511) **kavirajk**: chore(promtail): Improve default configuration that is shipped with rpm/deb packages to avoid possible high CPU utilisation if there are lots of files inside `/var/log`.
+
+##### Security
+* [11745](https://github.com/grafana/loki/pull/11745) Update `golang.org/x/crypto` to `v0.18.0`
+
+## [2.9.5](https://github.com/grafana/loki/compare/v2.9.4...v2.9.5) (2024-02-28)
+
+
+### Features
+
+* add release please config ([#11333](https://github.com/grafana/loki/issues/11333)) ([#11789](https://github.com/grafana/loki/issues/11789)) ([e628f5d](https://github.com/grafana/loki/commit/e628f5d74d073aa0510030ce083b2eb255ef4939)), closes [#11332](https://github.com/grafana/loki/issues/11332)
+
+
+### Bug Fixes
+
+* action repo reference ([#11807](https://github.com/grafana/loki/issues/11807)) ([fb02797](https://github.com/grafana/loki/commit/fb02797a355e0d264d4cbd46045bd3ff2ab121d7))
+* bump base images and go deps to address CVEs ([#12092](https://github.com/grafana/loki/issues/12092)) ([eee3598](https://github.com/grafana/loki/commit/eee35983f38fe04543b169ffa8ece76c23c4217b))
+
+## 2.9.3 (2023-12-11)
+
+### All Changes
+
+#### Loki
+
+##### Fixes
+
+* [10375](https://github.com/grafana/loki/pull/10375) **trevorwhitney**: Fix ingester query when getting label values by passing matchers
+* [11433](https://github.com/grafana/loki/pull/11433) Upgrade otelhttp from 0.40.0 -> 0.44.0 and base alpine image from 3.18.3 -> 3.18.5 to fix a few CVES (CVE-2023-45142, CVE-2022-21698, CVE-2023-5363).
+
+
 ##### Changes
 
 * [11490](https://github.com/grafana/loki/pull/11490) **andresperezl**: Helm: Use `/ingester/shutdown` for `preStop` hook in write pods.
