@@ -505,7 +505,7 @@ overrides:
 									Pattern: `sum(rate({env="prod"}[1m]))`,
 								},
 								{
-									Pattern: `'{ kubernetes_namespace_name="my-app" }'`,
+									Pattern: `'{kubernetes_namespace_name="my-app"}'`,
 								},
 							},
 						},
