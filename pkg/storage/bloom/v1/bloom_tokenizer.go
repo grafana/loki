@@ -95,32 +95,23 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 	clearCache(bt.cache)
 
 	var (
-		tokenBuf               []byte
-		prefixLn               int
-		tokens                 int
-		successfulInserts      int
-		cachedInserts          int
-		collisionInserts       int
-		chunkSuccessfulInserts int
-		chunkCachedInserts     int
-		chunkCollisionInserts  int
+		tokenBuf []byte
+		prefixLn int
 	)
-	defer func() {
-		bt.metrics.tokensTotal.Add(float64(tokens))
-
-		bt.metrics.insertsTotal.WithLabelValues(tokenTypeRaw, collisionTypeFalse).Add(float64(successfulInserts))
-		bt.metrics.insertsTotal.WithLabelValues(tokenTypeRaw, collisionTypeCache).Add(float64(cachedInserts))
-		bt.metrics.insertsTotal.WithLabelValues(tokenTypeRaw, collisionTypeTrue).Add(float64(collisionInserts))
-
-		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeFalse).Add(float64(chunkSuccessfulInserts))
-		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeCache).Add(float64(chunkCachedInserts))
-		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeTrue).Add(float64(chunkCollisionInserts))
-	}()
-
 	// Iterate over chunks
 	for chks.Next() && chks.Err() == nil {
-		chk := chks.At()
-		itr := chk.Itr
+
+		var (
+			tokens                 int
+			successfulInserts      int
+			cachedInserts          int
+			collisionInserts       int
+			chunkSuccessfulInserts int
+			chunkCachedInserts     int
+			chunkCollisionInserts  int
+			chk                    = chks.At()
+			itr                    = chk.Itr
+		)
 		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N, chk.Ref, tokenBuf)
 
 		// Iterate over lines in the chunk
@@ -190,6 +181,15 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 			return combined
 		}
 		swb.Series.Chunks = append(swb.Series.Chunks, chk.Ref)
+
+		// update metrics after each chunk added for more consistent reporting
+		bt.metrics.tokensTotal.Add(float64(tokens))
+		bt.metrics.insertsTotal.WithLabelValues(tokenTypeRaw, collisionTypeFalse).Add(float64(successfulInserts))
+		bt.metrics.insertsTotal.WithLabelValues(tokenTypeRaw, collisionTypeCache).Add(float64(cachedInserts))
+		bt.metrics.insertsTotal.WithLabelValues(tokenTypeRaw, collisionTypeTrue).Add(float64(collisionInserts))
+		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeFalse).Add(float64(chunkSuccessfulInserts))
+		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeCache).Add(float64(chunkCachedInserts))
+		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeTrue).Add(float64(chunkCollisionInserts))
 	}
 
 	if err := chks.Err(); err != nil {
