@@ -61,6 +61,8 @@ func Build(opts Options) ([]byte, []byte, error) {
 
 func yamlBlock(indent string, in reflect.Value) string {
 	inStr := in.String()
+	inStr = strings.Replace(inStr, " ", "", -1)
+
 	lines := strings.Split(strings.TrimRight(inStr, "\n"), "\n")
 
 	for i, line := range lines {
