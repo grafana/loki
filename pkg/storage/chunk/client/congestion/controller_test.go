@@ -211,7 +211,7 @@ func TestAIMDReducedThroughput(t *testing.T) {
 	require.Less(t, success, count)
 
 	// should have registered some congestion latency in stats
-	require.NotZero(t, statsCtx.Querier().Store.CongestionControlLatency)
+	require.NotZero(t, statsCtx.Store().CongestionControlLatency)
 }
 
 func runAndMeasureRate(ctx context.Context, ctrl Controller, duration time.Duration) (float64, float64) {

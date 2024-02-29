@@ -306,13 +306,14 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	filters := syntax.ExtractLineFilters(req.Plan.AST)
 	tasks := make([]Task, 0, len(seriesByDay))
-	for _, seriesWithBounds := range seriesByDay {
-		task, err := NewTask(ctx, tenantID, seriesWithBounds, filters)
+	for _, seriesForDay := range seriesByDay {
+		task, err := NewTask(ctx, tenantID, seriesForDay, filters)
 		if err != nil {
 			return nil, err
 		}
+		level.Debug(g.logger).Log("msg", "creating task for day", "day", seriesForDay.day, "interval", seriesForDay.interval.String(), "task", task.ID)
 		tasks = append(tasks, task)
-		numSeries += len(seriesWithBounds.series)
+		numSeries += len(seriesForDay.series)
 	}
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
