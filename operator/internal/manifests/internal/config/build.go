@@ -73,7 +73,4 @@ func yamlBlock(indent string, in reflect.Value) string {
 	}
 
 	return (strings.Join(lines, "\n"+indent))
-	/* inStr := in.String()
-	lines := strings.Split(strings.TrimRight(inStr, "\n"), "\n")
-	return strings.Join(lines, "\n"+indent) */
 }
