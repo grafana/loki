@@ -117,7 +117,10 @@ func (s *SimpleBloomController) compactTenant(
 	// in preparation for removing outdated ones
 	combined := append(superset, built...)
 
-	outdated := outdatedMetas(combined)
+	outdated, err := outdatedMetas(combined)
+	if err != nil {
+		return errors.Wrap(err, "failed to find outdated metas")
+	}
 	level.Debug(logger).Log("msg", "found outdated metas", "outdated", len(outdated))
 
 	var (
