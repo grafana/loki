@@ -88,6 +88,10 @@ func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) er
 outer:
 	for blockIter.Next() {
 		bq := blockIter.At()
+		if bq == nil {
+			level.Warn(p.logger).Log("msg", "skipping not found block")
+			continue outer
+		}
 		for i, block := range data {
 			if block.ref.Bounds.Equal(bq.Bounds) {
 				err := p.processBlock(ctx, bq.BlockQuerier, block.tasks)
