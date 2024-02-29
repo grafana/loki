@@ -205,6 +205,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.persistence.dataVolumeParameters</td>
+			<td>object</td>
+			<td>Parameters used for the `data` volume when volumeClaimEnabled if false</td>
+			<td><pre lang="json">
+{
+  "emptyDir": {}
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -237,6 +248,15 @@ null
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.volumeClaimsEnabled</td>
+			<td>bool</td>
+			<td>Enable volume claims in pod spec</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -343,6 +363,15 @@ null
 			<td>backend.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for backend pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -827,7 +856,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.7.3"
+"v1.8.6"
 </pre>
 </td>
 		</tr>
@@ -944,7 +973,7 @@ null
 			<td>string</td>
 			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
 			<td><pre lang="json">
-"{{ if .Values.loki.tenants }}\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
+"{{ if .Values.loki.tenants }}\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
 </pre>
 </td>
 		</tr>
@@ -1014,6 +1043,15 @@ true
 			<td>gateway.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the gateway</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1096,7 +1134,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.23-alpine"
+"1.24-alpine"
 </pre>
 </td>
 		</tr>
@@ -1207,6 +1245,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.enableIPv6</td>
+			<td>bool</td>
+			<td>Enable listener for IPv6, disable on IPv4-only systems</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.file</td>
 			<td>string</td>
 			<td>Config file contents for Nginx. Passed through the `tpl` function to allow templating</td>
@@ -1230,6 +1277,15 @@ See values.yaml
 			<td>NGINX log format</td>
 			<td><pre lang="json">
 "main '$remote_addr - $remote_user [$time_local]  $status '\n        '\"$request\" $body_bytes_sent \"$http_referer\" '\n        '\"$http_user_agent\" \"$http_x_forwarded_for\"';"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.resolver</td>
+			<td>string</td>
+			<td>Allows overriding the DNS resolver address nginx will use.</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -1422,6 +1478,15 @@ null
 			<td>gateway.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1838,6 +1903,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.distributor</td>
+			<td>object</td>
+			<td>Optional distributor configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.enableServiceLinks</td>
 			<td>bool</td>
 			<td>Should enableServiceLinks be enabled. Default to enable</td>
@@ -1980,7 +2054,6 @@ null
 			<td>Limits config</td>
 			<td><pre lang="json">
 {
-  "enforce_metric_name": false,
   "max_cache_freshness_per_query": "10m",
   "reject_old_samples": true,
   "reject_old_samples_max_age": "168h",
@@ -2183,6 +2256,7 @@ null
   "azure": {
     "accountKey": null,
     "accountName": null,
+    "connectionString": null,
     "endpointSuffix": null,
     "requestTimeout": null,
     "useFederatedToken": false,
@@ -2205,6 +2279,7 @@ null
   },
   "s3": {
     "accessKeyId": null,
+    "backoff_config": {},
     "endpoint": null,
     "http_config": {},
     "insecure": false,
@@ -2214,8 +2289,38 @@ null
     "secretAccessKey": null,
     "signatureVersion": null
   },
+  "swift": {
+    "auth_url": null,
+    "auth_version": null,
+    "connect_timeout": null,
+    "container_name": null,
+    "domain_id": null,
+    "domain_name": null,
+    "internal": null,
+    "max_retries": null,
+    "password": null,
+    "project_domain_id": null,
+    "project_domain_name": null,
+    "project_id": null,
+    "project_name": null,
+    "region_name": null,
+    "request_timeout": null,
+    "user_domain_id": null,
+    "user_domain_name": null,
+    "user_id": null,
+    "username": null
+  },
   "type": "s3"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.storage.s3.backoff_config</td>
+			<td>object</td>
+			<td>Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2249,6 +2354,17 @@ null
 			<td>Tenants list to be created on nginx htpasswd file, with name and password keys</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.tracing</td>
+			<td>object</td>
+			<td>Enable tracing</td>
+			<td><pre lang="json">
+{
+  "enabled": false
+}
 </pre>
 </td>
 		</tr>
@@ -2621,6 +2737,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.rules.disabled</td>
+			<td>object</td>
+			<td>If you disable all the alerts and keep .monitoring.rules.alerting set to true, the chart will fail to render.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.rules.enabled</td>
 			<td>bool</td>
 			<td>If enabled, create PrometheusRule resource with Loki recording rules</td>
@@ -2702,6 +2827,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the grafanaAgent pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for GrafanaAgent pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.selfMonitoring.logsInstance.annotations</td>
 			<td>object</td>
 			<td>LogsInstance annotations</td>
@@ -2734,6 +2877,15 @@ null
 			<td>PodLogs annotations</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.podLogs.apiVersion</td>
+			<td>string</td>
+			<td>PodLogs version</td>
+			<td><pre lang="json">
+"monitoring.grafana.com/v1alpha1"
 </pre>
 </td>
 		</tr>
@@ -3012,6 +3164,15 @@ false
 			<td>Specify the port used for external storage, e.g. AWS S3</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>networkPolicy.flavor</td>
+			<td>string</td>
+			<td>Specifies whether the policies created will be standard Network Policies (flavor: kubernetes) or Cilium Network Policies (flavor: cilium)</td>
+			<td><pre lang="json">
+"kubernetes"
 </pre>
 </td>
 		</tr>
@@ -3415,6 +3576,15 @@ null
 			<td>read.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for read pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for read pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4322,15 +4492,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>tracing.jaegerAgentHost</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-""
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>write.affinity</td>
 			<td>string</td>
 			<td>Affinity for write pods. Passed through `tpl` and, thus, to be configured as string</td>
@@ -4458,6 +4619,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.extraEnv</td>
 			<td>list</td>
 			<td>Environment variables to add to the write pods</td>
@@ -4557,6 +4727,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.persistence.dataVolumeParameters</td>
+			<td>object</td>
+			<td>Parameters used for the `data` volume when volumeClaimEnabled if false</td>
+			<td><pre lang="json">
+{
+  "emptyDir": {}
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -4589,6 +4770,15 @@ null
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.volumeClaimsEnabled</td>
+			<td>bool</td>
+			<td>Enable volume claims in pod spec</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -4695,6 +4885,15 @@ null
 			<td>write.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for write pods</td>
 			<td><pre lang="json">
 []
 </pre>

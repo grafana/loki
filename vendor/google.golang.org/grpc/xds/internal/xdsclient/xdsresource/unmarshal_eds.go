@@ -27,14 +27,13 @@ import (
 	v3endpointpb "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	v3typepb "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/golang/protobuf/proto"
-	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/xds/internal"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-func unmarshalEndpointsResource(r *anypb.Any, logger *grpclog.PrefixLogger) (string, EndpointsUpdate, error) {
-	r, err := unwrapResource(r)
+func unmarshalEndpointsResource(r *anypb.Any) (string, EndpointsUpdate, error) {
+	r, err := UnwrapResource(r)
 	if err != nil {
 		return "", EndpointsUpdate{}, fmt.Errorf("failed to unwrap resource: %v", err)
 	}
@@ -47,9 +46,8 @@ func unmarshalEndpointsResource(r *anypb.Any, logger *grpclog.PrefixLogger) (str
 	if err := proto.Unmarshal(r.GetValue(), cla); err != nil {
 		return "", EndpointsUpdate{}, fmt.Errorf("failed to unmarshal resource: %v", err)
 	}
-	logger.Infof("Resource with name: %v, type: %T, contains: %v", cla.GetClusterName(), cla, pretty.ToJSON(cla))
 
-	u, err := parseEDSRespProto(cla, logger)
+	u, err := parseEDSRespProto(cla)
 	if err != nil {
 		return cla.GetClusterName(), EndpointsUpdate{}, err
 	}
@@ -109,7 +107,7 @@ func parseEndpoints(lbEndpoints []*v3endpointpb.LbEndpoint, uniqueEndpointAddrs 
 	return endpoints, nil
 }
 
-func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment, logger *grpclog.PrefixLogger) (EndpointsUpdate, error) {
+func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment) (EndpointsUpdate, error) {
 	ret := EndpointsUpdate{}
 	for _, dropPolicy := range m.GetPolicy().GetDropOverloads() {
 		ret.Drops = append(ret.Drops, parseDropPolicy(dropPolicy))
@@ -143,6 +141,17 @@ func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment, logger *grpclog.Pr
 			SubZone: l.SubZone,
 		}
 		lidStr, _ := lid.ToString()
+
+		// "Since an xDS configuration can place a given locality under multiple
+		// priorities, it is possible to see locality weight attributes with
+		// different values for the same locality." - A52
+		//
+		// This is handled in the client by emitting the locality weight
+		// specified for the priority it is specified in. If the same locality
+		// has a different weight in two priorities, each priority will specify
+		// a locality with the locality weight specified for that priority, and
+		// thus the subsequent tree of balancers linked to that priority will
+		// use that locality weight as well.
 		if localitiesWithPriority[lidStr] {
 			return EndpointsUpdate{}, fmt.Errorf("duplicate locality %s with the same priority %v", lidStr, priority)
 		}
@@ -154,7 +163,7 @@ func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment, logger *grpclog.Pr
 		ret.Localities = append(ret.Localities, Locality{
 			ID:        lid,
 			Endpoints: endpoints,
-			Weight:    locality.GetLoadBalancingWeight().GetValue(),
+			Weight:    weight,
 			Priority:  priority,
 		})
 	}

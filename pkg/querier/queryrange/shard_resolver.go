@@ -3,7 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
-	math "math"
+	"math"
 	strings "strings"
 	"time"
 
@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	utilMath "github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 	valid "github.com/grafana/loki/pkg/validation"
@@ -43,8 +44,8 @@ func shardResolverForConf(
 			logger:          logger,
 			handler:         handler,
 			limits:          limits,
-			from:            model.Time(r.GetStart()),
-			through:         model.Time(r.GetEnd()),
+			from:            model.Time(r.GetStart().UnixMilli()),
+			through:         model.Time(r.GetEnd().UnixMilli()),
 			maxParallelism:  maxParallelism,
 			maxShards:       maxShards,
 			defaultLookback: defaultLookback,
@@ -231,7 +232,7 @@ func guessShardFactor(stats stats.Stats, maxBytesPerShard, maxShards int) int {
 	// reset this edge case manually
 	factor := int(math.Pow(2, power))
 	if maxShards > 0 {
-		factor = min(factor, maxShards)
+		factor = utilMath.Min(factor, maxShards)
 	}
 
 	// shortcut: no need to run any sharding logic when factor=1
@@ -240,11 +241,4 @@ func guessShardFactor(stats stats.Stats, maxBytesPerShard, maxShards int) int {
 		factor = 0
 	}
 	return factor
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

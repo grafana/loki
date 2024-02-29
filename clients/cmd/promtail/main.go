@@ -107,7 +107,7 @@ func main() {
 		exit(1)
 	}
 	serverCfg := &config.Config.ServerConfig.Config
-	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, true, false)
+	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, false)
 
 	// Use Stderr instead of files for the klog.
 	klog.SetOutput(os.Stderr)
@@ -153,9 +153,6 @@ func main() {
 	}
 
 	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer)
-	if config.Options.StreamLagLabels.String() != "" {
-		level.Warn(util_log.Logger).Log("msg", "the stream_lag_labels setting is deprecated and the associated metric has been removed", "stream_lag_labels", config.Options.StreamLagLabels.String())
-	}
 	newConfigFunc := func() (*promtail_config.Config, error) {
 		mtx.Lock()
 		defer mtx.Unlock()

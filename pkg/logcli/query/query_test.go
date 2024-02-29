@@ -25,8 +25,6 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util/marshal"
 )
 
@@ -427,7 +425,10 @@ func (t *testQueryClient) Query(_ string, _ int, _ time.Time, _ logproto.Directi
 func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	params := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
+	params, err := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	v, err := t.engine.Query(params).Exec(ctx)
 	if err != nil {
@@ -512,19 +513,8 @@ func TestLoadFromURL(t *testing.T) {
 		},
 	}
 
-	// Missing SharedStoreType should error
 	cm := storage.NewClientMetrics()
-	client, err := GetObjectClient(conf, cm)
-	require.Error(t, err)
-	require.Nil(t, client)
-
-	conf.StorageConfig.BoltDBShipperConfig = shipper.Config{
-		Config: indexshipper.Config{
-			SharedStoreType: config.StorageTypeFileSystem,
-		},
-	}
-
-	client, err = GetObjectClient(conf, cm)
+	client, err := GetObjectClient(config.StorageTypeFileSystem, conf, cm)
 	require.NoError(t, err)
 	require.NotNil(t, client)
 

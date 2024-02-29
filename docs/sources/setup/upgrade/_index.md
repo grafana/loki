@@ -2,7 +2,7 @@
 title: Upgrade Loki
 menuTitle:  Upgrade
 description: Upgrading Grafana Loki
-aliases: 
+aliases:
   - ../upgrading/
 weight: 400
 ---
@@ -35,6 +35,241 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 
 ## Main / Unreleased
+
+### Loki
+
+#### Removed `shared_store` and `shared_store_key_prefix` from shipper configuration
+
+The following CLI flags and the corresponding YAML settings to configure shared store for TSDB and BoltDB shippers are now removed:
+- `-boltdb.shipper.shared-store`
+- `-tsdb.shipper.shared-store`
+
+Going forward the `object_store` setting in the [period_config](/docs/loki/latest/configure/#period_config) will be used to configure the store for the index.
+This enforces chunks and index files to reside together in the same storage bucket for a given period.
+
+We are removing the shared store setting in an effort to simplify storage configuration and reduce the possibility for misconfiguration.
+
+{{% admonition type="warning" %}}
+With this change Loki no longer allows storing chunks and indexes for a given period in different storage buckets.
+This is a breaking change for setups that store chunks and indexes in different storage buckets by setting `-boltdb.shipper.shared-store` or `-tsdb.shipper.shared-store` to a value
+different from `object_store` in `period_config`.
+{{% /admonition %}}
+
+- If you have not configured `-boltdb.shipper.shared-store`,`-tsdb.shipper.shared-store` or their corresponding YAML setting before, no changes are required as part of the upgrade.
+- If you have configured `-boltdb.shipper.shared-store` or its YAML setting:
+  - If it matches the value of `object_store` for all the periods that use `boltdb-shipper` as index type, no additional changes are required besides removing the usage of the deleted configuration option.
+  - If there is a mismatch, you lose access to the index for periods where `-boltdb.shipper.shared-store` does not match `object_store`.
+    - To make these indexes queryable, index tables need to moved or copied to the store configured in `object_store`.
+- If you have configured `-tsdb.shipper.shared-store` or its YAML setting:
+  - If it matches the value of `object_store` for all the periods that use `tsdb` as index type, no additional changes are required besides removing the usage of the deleted configuration option.
+  - If there is a mismatch, you lose access to the index for periods where `-tsdb.shipper.shared-store` does not match `object_store`.
+    - To make these indexes queryable, index tables need to moved or copied to the store configured in `object_store`.
+
+The following CLI flags and the corresponding YAML settings to configure a path prefix for TSDB and BoltDB shippers are now removed:
+- `-boltdb.shipper.shared-store.key-prefix`
+- `-tsdb.shipper.shared-store.key-prefix`
+
+Path prefix for storing the index can now be configured by setting `path_prefix` under `index` key in [period_config](/docs/loki/latest/configure/#period_config).
+This enables users to change the path prefix by adding a new period config.
+```
+period_config:
+  index:
+    path_prefix: "index/"
+    period: 24h
+```
+
+{{% admonition type="note" %}}
+`path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on [legacy indexes]({{< relref "../../storage#index-storage" >}}).
+{{% /admonition %}}
+
+`path_prefix` defaults to `index/` which is same as the default value of the removed configurations.
+
+- No changes are required if you have not configured `-boltdb.shipper.shared-store.key-prefix`, `-tsdb.shipper.shared-store.key-prefix` or the corresponding YAML setting previously.
+- If you have configured `-boltdb.shipper.shared-store.key-prefix` or its YAML setting to a value other than `index/`, ensure that all the existing period configs that use `boltdb-shipper` as the index have `path_prefix` set to the value previously configured.
+- If you have configured `-tsdb.shipper.shared-store.key-prefix` or its YAML setting to a value other than `index/`, ensure that all the existing period configs that use `tsdb` as the index have the `path_prefix` set to the value previously configured.
+
+#### Removed `shared_store` and `shared_store_key_prefix` from compactor configuration
+
+The following CLI flags and the corresponding YAML settings to configure the shared store and path prefix for compactor are now removed:
+- `-boltdb.shipper.compactor.shared-store`
+- `-boltdb.shipper.compactor.shared-store.key-prefix`
+
+Going forward compactor will run compaction and retention on all the object stores configured in [period configs](/docs/loki/latest/configure/#period_config) where the index type is either `tsdb` or `boltdb-shipper`.
+
+#### `delete_request_store` should be explicitly configured
+
+`-compactor.delete-request-store` or its YAML setting should be explicitly configured when retention is enabled, this is required for storing delete requests.
+The path prefix under which the delete requests are stored is decided by `-compactor.delete-request-store.key-prefix`, it defaults to `index/`.
+
+#### Configuration `use_boltdb_shipper_as_backup` is removed
+
+The setting `use_boltdb_shipper_as_backup` (`-tsdb.shipper.use-boltdb-shipper-as-backup`) was a remnant from the development of the TSDB storage.
+It was used to allow writing to both TSDB and BoltDB when TSDB was still highly experimental.
+Since TSDB is now stable and the recommended index type, the setting has become irrelevant and therefore was removed.
+The previous default value `false` is applied.
+
+#### Deprecated configuration options are removed
+
+1. Removed already deprecated `store.max-look-back-period` CLI flag and the corresponding YAML settings. Use `querier.max-query-lookback` config instead.
+1. Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting.
+1. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+1. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type.
+1. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
+1. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
+1. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+1. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
+1. `frontend.cache-split-interval` CLI flag is removed. Results caching interval is now determined by `querier.split-queries-by-interval`.
+1. `querier.worker-parallelism` CLI flag and its corresponding yaml setting are now removed as it does not offer additional value to already existing `querier.max-concurrent`.
+    We recommend configuring `querier.max-concurrent` to limit the max concurrent requests processed by the queriers.
+1. `ruler.evaluation-delay-duration` CLI flag and the corresponding YAML setting are removed.
+1. `validation.enforce-metric-name` CLI flag and the corresponding YAML setting are removed.
+1. `boltdb.shipper.compactor.deletion-mode` CLI flag and the corresponding YAML setting are removed. You can instead configure the `compactor.deletion-mode` CLI flag or `deletion_mode` YAML setting in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+1. Compactor CLI flags that use the prefix `boltdb.shipper.compactor.` are removed. You can instead use CLI flags with the `compactor.` prefix.
+
+#### Legacy ingester shutdown handler is removed
+
+The already deprecated handler `/ingester/flush_shutdown` is removed in favor of `/ingester/shutdown?flush=true`.
+
+#### Ingester configuration `max_transfer_retries` is removed.
+
+The setting `max_transfer_retries` (`-ingester.max-transfer-retries`) is removed in favor of the Write Ahead log (WAL).
+It was used to allow transferring chunks to new ingesters when the old ingester was shutting down during a rolling restart.
+Alternatives to this setting are:
+- **A. (Preferred)** Enable the WAL and rely on the new ingester to replay the WAL.
+     - Optionally, you can enable `flush_on_shutdown` (`-ingester.flush-on-shutdown`) to flush to long-term storage on shutdowns.
+- **B.** Manually flush during shutdowns via [the ingester `/shutdown?flush=true` endpoint]({{< relref "../../reference/api#flush-in-memory-chunks-and-shut-down" >}}).
+
+#### Distributor metric changes
+
+The `loki_distributor_ingester_append_failures_total` metric has been removed in favour of `loki_distributor_ingester_append_timeouts_total`.
+This new metric will provide a more clear signal that there is an issue with ingesters, and this metric can be used for high-signal alerting.
+
+#### Changes to default configuration values
+
+{{% responsive-table %}}
+| configuration                                          | new default | old default | notes |
+| ------------------------------------------------------ | ----------- | ----------- | --------
+| `compactor.delete-max-interval`                        | 24h         | 0           | splits the delete requests into intervals no longer than `delete_max_interval` |
+| `distributor.max-line-size`                            | 256KB       | 0           | - |
+| `ingester.sync-period`                                 | 1h          | 0           | ensures that the chunk cuts for a given stream are synchronized across the ingesters in the replication set. Helps with deduplicating chunks. |
+| `ingester.sync-min-utilization`                        | 0.1         | 0           | - |
+| `frontend.max-querier-bytes-read`                      | 150GB       | 0           | - |
+| `frontend.max-cache-freshness`                         | 10m         | 1m          | - |
+| `frontend.max-stats-cache-freshness`                   | 10m         | 0           | - |
+| `frontend.embedded-cache.max-size-mb`                  | 100MB       | 1GB         | embedded results cache size now defaults to 100MB |
+| `memcached.batchsize`                                  | 256         | 1024        | - |
+| `memcached.parallelism`                                | 10          | 100         | - |
+| `querier.compress-http-responses`                      | true        | false       | compress response if the request accepts gzip encoding |
+| `querier.max-concurrent`                               | 4           | 10          | Consider increasing this if queriers have access to more CPU resources. Note that you risk running into out of memory errors if you set this to a very high value. |
+| `querier.split-queries-by-interval`                    | 1h          | 30m         | - |
+| `querier.tsdb-max-query-parallelism`                   | 128         | 512         | - |
+| `query-scheduler.max-outstanding-requests-per-tenant`  | 32000       | 100         | - |
+| `validation.max-label-names-per-series`                | 15          | 30          | - |
+| `legacy-read-mode`                                     | false       | true        | Deprecated. It will be removed in the next minor release. |
+{{% /responsive-table %}}
+
+#### Write dedupe cache is deprecated
+Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB]({{< relref "../../operations/storage/tsdb" >}}) and [boltdb-shipper]({{< relref "../../operations/storage/boltdb-shipper" >}})).
+If you using a [legacy index type]({{< relref "../../storage#index-storage" >}}), consider migrating to TSDB (recommended).
+
+#### Embedded cache metric changes
+
+- The following embedded cache metrics are removed. Instead use `loki_cache_fetched_keys`, `loki_cache_hits`, `loki_cache_request_duration_seconds` which instruments requests made to the configured cache (`embeddedcache`, `memcached` or `redis`).
+  - `querier_cache_added_total`
+  - `querier_cache_gets_total`
+  - `querier_cache_misses_total`
+
+- The following embedded cache metrics are renamed:
+  - `querier_cache_added_new_total` is renamed to `loki_embeddedcache_added_new_total`
+  - `querier_cache_evicted_total` is renamed to `loki_embeddedcache_evicted_total`
+  - `querier_cache_entries` is renamed to `loki_embeddedcache_entries`
+  - `querier_cache_memory_bytes` is renamed to `loki_embeddedcache_memory_bytes`
+
+- Already deprecated metric `querier_cache_stale_gets_total` is now removed.
+
+#### Metrics namespace
+
+Some Loki metrics started with the prefix `cortex_`. In this release they will be changed so they start with `loki_`. To keep them at `cortex_` change the `metrics_namespace` from the default `loki` to `cortex`. These metrics will be changed:
+
+ - `cortex_distributor_ingester_clients`
+ - `cortex_dns_failures_total`
+ - `cortex_dns_lookups_total`
+ - `cortex_dns_provider_results`
+ - `cortex_frontend_query_range_duration_seconds_bucket`
+ - `cortex_frontend_query_range_duration_seconds_count`
+ - `cortex_frontend_query_range_duration_seconds_sum`
+ - `cortex_ingester_flush_queue_length`
+ - `cortex_kv_request_duration_seconds_bucket`
+ - `cortex_kv_request_duration_seconds_count`
+ - `cortex_kv_request_duration_seconds_sum`
+ - `cortex_member_consul_heartbeats_total`
+ - `cortex_prometheus_last_evaluation_samples`
+ - `cortex_prometheus_notifications_alertmanagers_discovered`
+ - `cortex_prometheus_notifications_dropped_total`
+ - `cortex_prometheus_notifications_errors_total`
+ - `cortex_prometheus_notifications_latency_seconds`
+ - `cortex_prometheus_notifications_latency_seconds_count`
+ - `cortex_prometheus_notifications_latency_seconds_sum`
+ - `cortex_prometheus_notifications_queue_capacity`
+ - `cortex_prometheus_notifications_queue_length`
+ - `cortex_prometheus_notifications_sent_total`
+ - `cortex_prometheus_rule_evaluation_duration_seconds`
+ - `cortex_prometheus_rule_evaluation_duration_seconds_count`
+ - `cortex_prometheus_rule_evaluation_duration_seconds_sum`
+ - `cortex_prometheus_rule_evaluation_failures_total`
+ - `cortex_prometheus_rule_evaluations_total`
+ - `cortex_prometheus_rule_group_duration_seconds`
+ - `cortex_prometheus_rule_group_duration_seconds_count`
+ - `cortex_prometheus_rule_group_duration_seconds_sum`
+ - `cortex_prometheus_rule_group_interval_seconds`
+ - `cortex_prometheus_rule_group_iterations_missed_total`
+ - `cortex_prometheus_rule_group_iterations_total`
+ - `cortex_prometheus_rule_group_last_duration_seconds`
+ - `cortex_prometheus_rule_group_last_evaluation_timestamp_seconds`
+ - `cortex_prometheus_rule_group_rules`
+ - `cortex_query_frontend_connected_schedulers`
+ - `cortex_query_frontend_queries_in_progress`
+ - `cortex_query_frontend_retries_bucket`
+ - `cortex_query_frontend_retries_count`
+ - `cortex_query_frontend_retries_sum`
+ - `cortex_query_scheduler_connected_frontend_clients`
+ - `cortex_query_scheduler_connected_querier_clients`
+ - `cortex_query_scheduler_inflight_requests`
+ - `cortex_query_scheduler_inflight_requests_count`
+ - `cortex_query_scheduler_inflight_requests_sum`
+ - `cortex_query_scheduler_queue_duration_seconds_bucket`
+ - `cortex_query_scheduler_queue_duration_seconds_count`
+ - `cortex_query_scheduler_queue_duration_seconds_sum`
+ - `cortex_query_scheduler_queue_length`
+ - `cortex_query_scheduler_running`
+ - `cortex_ring_member_heartbeats_total`
+ - `cortex_ring_member_tokens_owned`
+ - `cortex_ring_member_tokens_to_own`
+ - `cortex_ring_members`
+ - `cortex_ring_oldest_member_timestamp`
+ - `cortex_ring_tokens_total`
+ - `cortex_ruler_client_request_duration_seconds_bucket`
+ - `cortex_ruler_client_request_duration_seconds_count`
+ - `cortex_ruler_client_request_duration_seconds_sum`
+ - `cortex_ruler_clients`
+ - `cortex_ruler_config_last_reload_successful`
+ - `cortex_ruler_config_last_reload_successful_seconds`
+ - `cortex_ruler_config_updates_total`
+ - `cortex_ruler_managers_total`
+ - `cortex_ruler_ring_check_errors_total`
+ - `cortex_ruler_sync_rules_total`
+
+
+The `metrics_namespace` setting is deprecated already. It will be removed in the next minor release. The default prefix will be `loki` then.
+
+### LogCLI
+
+#### Store for retrieving remote schema
+
+Previously LogCLI used to fetch remote schema from the store configured in `-boltdb.shipper.shared-store` when `-remote-schema` is set to `true`.
+A new CLI flag `-schema-store` is introduced as a replacement to configure the store for retrieving remote schema.
+
+## 2.9.0
 
 ### Loki
 
@@ -89,6 +324,7 @@ A new config option `-boltdb.shipper.compactor.delete-request-store` decides whe
 In the case where neither of these options are set, the `object_store` configured in the latest `period_config` that uses either a tsdb or boltdb-shipper index is used for storing delete requests to ensure pending requests are processed.
 
 #### logfmt parser non-strict parsing
+
 logfmt parser now performs non-strict parsing which helps scan semi-structured log lines.
 It skips invalid tokens and tries to extract as many key/value pairs as possible from the rest of the log line.
 If you have a use-case that relies on strict parsing where you expect the parser to throw an error, use `| logfmt --strict` to enable strict mode.
@@ -96,26 +332,12 @@ If you have a use-case that relies on strict parsing where you expect the parser
 logfmt parser doesn't include standalone keys(keys without a value) in the resulting label set anymore.
 You can use `--keep-empty` flag to retain them.
 
-#### deprecated configs are now removed
-1. Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting. 
-2. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
-3. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type. 
-4. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
-5. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
-6. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
-7. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
-
-#### Distributor metric changes
-
-The `loki_distributor_ingester_append_failures_total` metric has been removed in favour of `loki_distributor_ingester_append_timeouts_total`.
-This new metric will provide a more clear signal that there is an issue with ingesters, and this metric can be used for high-signal alerting.
-
 ### Jsonnet
 
 ##### Deprecated PodDisruptionBudget definition has been removed
 
 The `policy/v1beta1` API version of PodDisruptionBudget is no longer served as of Kubernetes v1.25.
-To support the latest versions of the Kubernetes, it was necessary to replace `policy/v1beta1` with the new definition `policy/v1` that is available since v1.21. 
+To support the latest versions of the Kubernetes, it was necessary to replace `policy/v1beta1` with the new definition `policy/v1` that is available since v1.21.
 
 No impact is expected if you use Kubernetes v1.21 or newer.
 
@@ -151,8 +373,10 @@ limits_config:
   retention_period: 744h
 ```
 
-**Note:** In previous versions, the zero value of `0` or `0s` will result in **immediate deletion of all logs**,
+{{% admonition type="note" %}}
+In previous versions, the zero value of `0` or `0s` will result in **immediate deletion of all logs**,
 only in 2.8 and forward releases does the zero value disable retention.
+{{% /admonition %}}
 
 #### metrics.go log line `subqueries` replaced with `splits` and `shards`
 
@@ -166,7 +390,9 @@ In 2.8 we no longer include `subqueries` in metrics.go, it does still exist in t
 
 Instead, now you can use `splits` to see how many split by time intervals were created and `shards` to see the total number of shards created for a query.
 
-Note: currently not every query can be sharded and a shards value of zero is a good indicator the query was not able to be sharded.
+{{% admonition type="note" %}}
+Currently not every query can be sharded and a shards value of zero is a good indicator the query was not able to be sharded.
+{{% /admonition %}}
 
 ### Promtail
 
@@ -195,11 +421,13 @@ ruler:
 
 ### Querier
 
-#### query-frontend k8s headless service changed to load balanced service
+#### query-frontend Kubernetes headless service changed to load balanced service
 
-*Note:* This is relevant only if you are using [jsonnet for deploying Loki in Kubernetes](/docs/loki/latest/installation/tanka/)
+{{% admonition type="note" %}}
+This is relevant only if you are using [jsonnet for deploying Loki in Kubernetes](/docs/loki/latest/installation/tanka/).
+{{% /admonition %}}
 
-The `query-frontend` k8s service was previously headless and was used for two purposes:
+The `query-frontend` Kubernetes service was previously headless and was used for two purposes:
 * Distributing the Loki query requests amongst all the available Query Frontend pods.
 * Discover IPs of Query Frontend pods from Queriers to connect as workers.
 
@@ -207,7 +435,7 @@ The problem here is that a headless service does not support load balancing and 
 Additionally, a load-balanced service does not let us discover the IPs of the underlying pods.
 
 To meet both these requirements, we have made the following changes:
-* Changed the existing `query-frontend` k8s service from headless to load-balanced to have a fair load distribution on all the Query Frontend instances.
+* Changed the existing `query-frontend` Kubernetes service from headless to load-balanced to have a fair load distribution on all the Query Frontend instances.
 * Added `query-frontend-headless` to discover QF pod IPs from queriers to connect as workers.
 
 If you are deploying Loki with Query Scheduler by setting [query_scheduler_enabled](https://github.com/grafana/loki/blob/cc4ab7487ab3cd3b07c63601b074101b0324083b/production/ksonnet/loki/config.libsonnet#L18) config to `true`, then there is nothing to do here for this change.
@@ -425,7 +653,7 @@ This histogram reports the distribution of log line sizes by file. It has 8 buck
 
 This creates a lot of series and we don't think this metric has enough value to offset the amount of series genereated so we are removing it.
 
-While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](/docs/loki/latest/send-data/promtail/stages/metrics/#counter)
+While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs]({{< relref "../../send-data/promtail/stages/metrics#counter" >}}).
 
 #### `added Docker target` log message has been demoted from level=error to level=info
 
@@ -730,7 +958,9 @@ In Loki 2.2 we changed the internal version of our chunk format from v2 to v3, t
 
 This makes it important to first upgrade to 2.0, 2.0.1, or 2.1 **before** upgrading to 2.2 so that if you need to rollback for any reason you can do so easily.
 
-**Note:** 2.0 and 2.0.1 are identical in every aspect except 2.0.1 contains the code necessary to read the v3 chunk format. Therefor if you are on 2.0 and ugrade to 2.2, if you want to rollback, you must rollback to 2.0.1.
+{{% admonition type="note" %}}
+2.0 and 2.0.1 are identical in every aspect except 2.0.1 contains the code necessary to read the v3 chunk format. Therefor if you are on 2.0 and ugrade to 2.2, if you want to rollback, you must rollback to 2.0.1.
+{{% /admonition %}}
 
 ### Loki Config
 
@@ -874,9 +1104,14 @@ This likely only affects a small portion of tanka users because the default sche
 }
 ```
 
->**NOTE** If you had set `index_period_hours` to a value other than 168h (the previous default) you must update this in the above config `period:` to match what you chose.
+{{% admonition type="note" %}}
+If you had set `index_period_hours` to a value other than 168h (the previous default) you must update this in the above config `period:` to match what you chose.
+{{% /admonition %}}
 
->**NOTE** We have changed the default index store to `boltdb-shipper` it's important to add `using_boltdb_shipper: false,` until you are ready to change (if you want to change)
+
+{{% admonition type="note" %}}
+We have changed the default index store to `boltdb-shipper` it's important to add `using_boltdb_shipper: false,` until you are ready to change (if you want to change)
+{{% /admonition %}}
 
 Changing the jsonnet config to use the `boltdb-shipper` type is the same as [below](#upgrading-schema-to-use-boltdb-shipper-andor-v11-schema) where you need to add a new schema section.
 
@@ -918,9 +1153,9 @@ _THIS BEING SAID_ we are not expecting problems, our testing so far has not unco
 
 Report any problems via GitHub issues or reach us on the #loki slack channel.
 
-**Note if are using boltdb-shipper and were running with high availability and separate filesystems**
-
-This was a poorly documented and even more experimental mode we toyed with using boltdb-shipper. For now we removed the documentation and also any kind of support for this mode.
+{{% admonition type="note" %}}
+If are using boltdb-shipper and were running with high availability and separate filesystems, this was a poorly documented and even more experimental mode we toyed with using boltdb-shipper. For now we removed the documentation and also any kind of support for this mode.
+{{% /admonition %}}
 
 To use boltdb-shipper in 2.0 you need a shared storage (S3, GCS, etc), the mode of running with separate filesystem stores in HA using a ring is not officially supported.
 
@@ -1023,7 +1258,7 @@ and the Kubelet.
 This commit adds the same to the Loki scrape config. It also removes
 the container_name label. It is the same as the container label
 and was already added to Loki previously. However, the
-container_name label is deprecated and has disappeared in K8s 1.16,
+container_name label is deprecated and has disappeared in Kubernetes 1.16,
 so that it will soon become useless for direct joining.
 ````
 
@@ -1063,7 +1298,9 @@ schema_config:
 ```
 If you are not on `schema: v11` this would be a good opportunity to make that change _in the new schema config_ also.
 
-**NOTE** If the current time in your timezone is after midnight UTC already, set the date one additional day forward.
+{{% admonition type="note" %}}
+If the current time in your timezone is after midnight UTC already, set the date one additional day forward.
+{{% /admonition %}}
 
 There was also a significant overhaul to how boltdb-shipper internals, this should not be visible to a user but as this
 feature is experimental and under development bug are possible!
@@ -1122,7 +1359,9 @@ Defaulting to `gcs,bigtable` was confusing for anyone using ksonnet with other s
 
 ## 1.5.0
 
-Note: The required upgrade path outlined for version 1.4.0 below is still true for moving to 1.5.0 from any release older than 1.4.0 (e.g. 1.3.0->1.5.0 needs to also look at the 1.4.0 upgrade requirements).
+{{% admonition type="note" %}}
+The required upgrade path outlined for version 1.4.0 below is still true for moving to 1.5.0 from any release older than 1.4.0 (e.g. 1.3.0 -> 1.5.0 needs to also look at the 1.4.0 upgrade requirements).
+{{% /admonition %}}
 
 ### Breaking config changes!
 
@@ -1176,7 +1415,9 @@ Not every environment will allow this capability however, it's possible to restr
 
 #### Filesystem
 
-**Note the location Loki is looking for files with the provided config in the docker image has changed**
+{{% admonition type="note" %}}
+The location Loki is looking for files with the provided config in the docker image has changed.
+{{% /admonition %}}
 
 In 1.4.0 and earlier the included config file in the docker container was using directories:
 
@@ -1277,7 +1518,7 @@ The other config changes should not be relevant to Loki.
 
 The newly vendored version of Cortex removes code related to de-normalized tokens in the ring. What you need to know is this:
 
-*Note:* A "shared ring" as mentioned below refers to using *consul* or *etcd* for values in the following config:
+A "shared ring" as mentioned below refers to using *consul* or *etcd* for values in the following config:
 
 ```yaml
 kvstore:
@@ -1296,14 +1537,14 @@ There are two options for upgrade if you are not on version 1.3.0 and are using 
 
 OR
 
-**Note:** If you are running a single binary you only need to add this flag to your single binary command.
+- If you are running a single binary you only need to add this flag to your single binary command.
 
 1. Add the following configuration to your ingesters command: `-ingester.normalise-tokens=true`
 1. Restart your ingesters with this config
 1. Proceed with upgrading to v1.4.0
 1. Remove the config option (only do this after everything is running v1.4.0)
 
-**Note:** It's also possible to enable this flag via config file, see the [`lifecycler_config`](https://github.com/grafana/loki/tree/v1.3.0/docs/configuration#lifecycler_config) configuration option.
+It is also possible to enable this flag via config file, see the [`lifecycler_config`](https://github.com/grafana/loki/tree/v1.3.0/docs/configuration#lifecycler_config) configuration option.
 
 If using the Helm Loki chart:
 

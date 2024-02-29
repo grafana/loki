@@ -110,7 +110,7 @@ func TestNewMockShardedqueryable(t *testing.T) {
 		var iter chunkenc.Iterator
 		for i := 0; i < tc.shards; i++ {
 
-			set := q.Select(false, nil, &labels.Matcher{
+			set := q.Select(ctx, false, nil, &labels.Matcher{
 				Type: labels.MatchEqual,
 				Name: astmapper.ShardLabel,
 				Value: astmapper.ShardAnnotation{

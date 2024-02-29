@@ -11,12 +11,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 // BuildRuler returns a list of k8s objects for Loki Stack Ruler
@@ -26,6 +27,10 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 		if err := configureRulerHTTPServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
+	}
+
+	if err := storage.ConfigureStatefulSet(statefulSet, opts.ObjectStorage); err != nil {
+		return nil, err
 	}
 
 	if opts.Gates.GRPCEncryption {
@@ -92,7 +97,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 
 	l := ComponentLabels(LabelRulerComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
+	a := commonAnnotations(opts)
 	podSpec := corev1.PodSpec{
 		Affinity: configureAffinity(LabelRulerComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Ruler),
 		Volumes: []corev1.Volume{
@@ -197,8 +202,8 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 			UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
 				Type: appsv1.RollingUpdateStatefulSetStrategyType,
 			},
-			RevisionHistoryLimit: pointer.Int32(10),
-			Replicas:             pointer.Int32(opts.Stack.Template.Ruler.Replicas),
+			RevisionHistoryLimit: ptr.To(defaultRevHistoryLimit),
+			Replicas:             ptr.To(opts.Stack.Template.Ruler.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
@@ -226,7 +231,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.Ruler.PVCSize,
 							},
 						},
-						StorageClassName: pointer.String(opts.Stack.StorageClassName),
+						StorageClassName: ptr.To(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},
@@ -245,7 +250,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.WALStorage.PVCSize,
 							},
 						},
-						StorageClassName: pointer.String(opts.Stack.StorageClassName),
+						StorageClassName: ptr.To(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},

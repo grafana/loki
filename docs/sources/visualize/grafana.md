@@ -27,9 +27,12 @@ recent version to take advantage of [LogQL]({{< relref "../query/_index.md" >}})
 1. The http URL field should be the address of your Loki server. For example,
    when running locally or with Docker using port mapping, the address is
    likely `http://localhost:3100`. When running with docker-compose or
-   Kubernetes, the address is likely `http://loki:3100`.
+   Kubernetes, the address is likely `http://loki:3100`.\
+   When running Grafana (with Docker) and trying to connect to a locally built Loki instance, the address (for the URL field) is:\
+   On Mac: `docker.for.mac.localhost` \
+   On Windows: `docker.for.win.localhost`
 1. To see the logs, click <kbd>Explore</kbd> on the sidebar, select the Loki
-   datasource in the top-left dropdown, and then choose a log stream using the
+   data source in the top-left dropdown, and then choose a log stream using the
    <kbd>Log labels</kbd> button.
 1. Learn more about querying by reading about Loki's query language [LogQL]({{< relref "../query/_index.md" >}}).
 
@@ -37,6 +40,6 @@ Read more about Grafana's Explore feature in the
 [Grafana documentation](http://docs.grafana.org/features/explore) and on how to
 search and filter for logs with Loki.
 
-To configure Loki as a datasource via provisioning, see [Configuring Grafana via
+To configure Loki as a data source via provisioning, see [Configuring Grafana via
 Provisioning](http://docs.grafana.org/features/datasources/loki/#configure-the-datasource-with-provisioning).
 Set the URL in the provisioning.

@@ -5,6 +5,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -27,6 +28,8 @@ type Client interface {
 	RESTMapper() meta.RESTMapper
 	Scheme() *runtime.Scheme
 
+	GroupVersionKindFor(obj runtime.Object) (schema.GroupVersionKind, error)
+	IsObjectNamespaced(obj runtime.Object) (bool, error)
 	Status() client.StatusWriter
 	SubResource(subResource string) client.SubResourceClient
 }
@@ -41,7 +44,7 @@ type StatusWriter interface {
 	Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error
 }
 
-// StatusWriter is a kubernetes status writer interface used internally. It copies functions from
+// SubResourceClient is a kubernetes status writer interface used internally. It copies functions from
 // sigs.k8s.io/controller-runtime/pkg/client
 //
 //counterfeiter:generate . SubResourceClient

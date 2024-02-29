@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/opentracing/opentracing-go"
 
+	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log/level"
@@ -20,14 +22,16 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/compactor/deletion"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	querier_limits "github.com/grafana/loki/pkg/querier/limits"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
@@ -66,7 +70,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Maximum duration for which the live tailing requests are served.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "querier.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
-	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 10, "The maximum number of concurrent queries allowed.")
+	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 4, "The maximum number of queries that can be simultaneously processed by the querier.")
 	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Only query the store, and not attempt any ingesters. This is useful for running a standalone querier pool operating only against stored data.")
 	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
@@ -86,28 +90,29 @@ type Querier interface {
 	logql.Querier
 	Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error)
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
-	Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error)
+	Tail(ctx context.Context, req *logproto.TailRequest, categorizedLabels bool) (*Tailer, error)
 	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 }
 
-type Limits interface {
-	logql.Limits
-	timeRangeLimits
-	QueryTimeout(context.Context, string) time.Duration
-	MaxStreamsMatchersPerQuery(context.Context, string) int
-	MaxConcurrentTailRequests(context.Context, string) int
-	MaxEntriesLimitPerQuery(context.Context, string) int
+type Limits querier_limits.Limits
+
+// Store is the store interface we need on the querier.
+type Store interface {
+	storage.SelectStore
+	index.BaseReader
+	index.StatsReader
 }
 
 // SingleTenantQuerier handles single tenant queries.
 type SingleTenantQuerier struct {
 	cfg             Config
-	store           storage.Store
+	store           Store
 	limits          Limits
 	ingesterQuerier *IngesterQuerier
 	deleteGetter    deleteGetter
 	metrics         *Metrics
+	logger          log.Logger
 }
 
 type deleteGetter interface {
@@ -115,7 +120,7 @@ type deleteGetter interface {
 }
 
 // New makes a new Querier.
-func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits Limits, d deleteGetter, r prometheus.Registerer) (*SingleTenantQuerier, error) {
+func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits Limits, d deleteGetter, r prometheus.Registerer, logger log.Logger) (*SingleTenantQuerier, error) {
 	return &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
@@ -123,6 +128,7 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 		limits:          limits,
 		deleteGetter:    d,
 		metrics:         NewMetrics(r),
+		logger:          logger,
 	}, nil
 }
 
@@ -432,10 +438,20 @@ func (*SingleTenantQuerier) Check(_ context.Context, _ *grpc_health_v1.HealthChe
 }
 
 // Tail keeps getting matching logs from all ingesters for given query
-func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
+func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailRequest, categorizedLabels bool) (*Tailer, error) {
 	err := q.checkTailRequestLimit(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if req.Plan == nil {
+		parsed, err := syntax.ParseExpr(req.Query)
+		if err != nil {
+			return nil, err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
 	}
 
 	deletes, err := q.deletesForUser(ctx, req.Start, time.Now())
@@ -451,6 +467,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 			Limit:     req.Limit,
 			Direction: logproto.BACKWARD,
 			Deletes:   deletes,
+			Plan:      req.Plan,
 		},
 	}
 
@@ -494,7 +511,9 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 		},
 		q.cfg.TailMaxDuration,
 		tailerWaitEntryThrottle,
+		categorizedLabels,
 		q.metrics,
+		q.logger,
 	), nil
 }
 
@@ -570,22 +589,19 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 		}
 	}
 
-	deduped := make(map[string]logproto.SeriesIdentifier)
+	response := &logproto.SeriesResponse{
+		Series: make([]logproto.SeriesIdentifier, 0),
+	}
+	seen := make(map[uint64]struct{})
+	b := make([]byte, 0, 1024)
 	for _, set := range sets {
 		for _, s := range set {
-			key := loghttp.LabelSet(s.Labels).String()
-			if _, exists := deduped[key]; !exists {
-				deduped[key] = s
+			key := s.Hash(b)
+			if _, exists := seen[key]; !exists {
+				seen[key] = struct{}{}
+				response.Series = append(response.Series, s)
 			}
 		}
-	}
-
-	response := &logproto.SeriesResponse{
-		Series: make([]logproto.SeriesIdentifier, 0, len(deduped)),
-	}
-
-	for _, s := range deduped {
-		response.Series = append(response.Series, s)
 	}
 
 	return response, nil
@@ -622,6 +638,15 @@ func (q *SingleTenantQuerier) seriesForMatchers(
 
 // seriesForMatcher fetches series from the store for a given matcher
 func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string, shards []string) ([]logproto.SeriesIdentifier, error) {
+	var parsed syntax.Expr
+	var err error
+	if matcher != "" {
+		parsed, err = syntax.ParseExpr(matcher)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	ids, err := q.store.SelectSeries(ctx, logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  matcher,
@@ -630,6 +655,9 @@ func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, throug
 			End:       through,
 			Direction: logproto.FORWARD,
 			Shards:    shards,
+			Plan: &plan.QueryPlan{
+				AST: parsed,
+			},
 		},
 	})
 	if err != nil {
@@ -659,12 +687,9 @@ func (q *SingleTenantQuerier) validateQueryRequest(ctx context.Context, req logq
 	return validateQueryTimeRangeLimits(ctx, userID, q.limits, req.GetStart(), req.GetEnd())
 }
 
-type timeRangeLimits interface {
-	MaxQueryLookback(context.Context, string) time.Duration
-	MaxQueryLength(context.Context, string) time.Duration
-}
+type TimeRangeLimits querier_limits.TimeRangeLimits
 
-func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits timeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
+func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits TimeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
 	now := nowFunc()
 	// Clamp the time range based on the max query lookback.
 	maxQueryLookback := limits.MaxQueryLookback(ctx, userID)

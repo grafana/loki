@@ -1,7 +1,7 @@
 ---
 title: Loki Canary
 menuTitle:  
-description: Loki Canary audits the log-capturing performance of a Grafana Loki cluster to ensure Loki is ingesting logs without data loss.
+description: Describes how to use Loki Canary to audit the log-capturing performance of a Grafana Loki cluster to ensure Loki is ingesting logs without data loss.
 weight: 
 ---
 # Loki Canary
@@ -17,7 +17,7 @@ artificial log lines,
 such that Loki Canary forms information about the performance of the Loki cluster.
 The information is available as Prometheus time series metrics.
 
-{{< figure max-width="75%" src="./loki-canary-block.png">}}
+{{< figure max-width="75%" src="./loki-canary-block.png" alt="Loki canary">}}
 
 Loki Canary writes a log to a file and stores the timestamp in an internal
 array. The contents look something like this:
@@ -133,7 +133,7 @@ Loki Canary is also provided as a Docker container image:
 
 ```bash
 # change tag to the most recent release
-$ docker pull grafana/loki-canary:2.0.0
+$ docker pull grafana/loki-canary:2.9.2
 ```
 
 ### Kubernetes
@@ -260,16 +260,23 @@ spec:
 If the other options are not sufficient for your use case, you can compile
 `loki-canary` yourself:
 
-```bash
-# clone the source tree
-$ git clone https://github.com/grafana/loki
+1. Clone the source tree.
 
-# build the binary
-$ make loki-canary
+    ```bash
+    $ git clone https://github.com/grafana/loki
+    ```
 
-# (optionally build the container image)
-$ make loki-canary-image
-```
+1. Build the binary.
+
+    ```bash
+    $ make loki-canary
+    ```
+
+1. Optional: Build the container image.
+
+    ```bash
+    $ make loki-canary-image
+    ```
 
 ## Configuration
 

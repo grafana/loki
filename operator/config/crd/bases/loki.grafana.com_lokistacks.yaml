@@ -3,8 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.11.3
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.13.0
   name: lokistacks.loki.grafana.com
 spec:
   group: loki.grafana.com
@@ -44,6 +43,11 @@ spec:
                   memberlist:
                     description: MemberList configuration spec
                     properties:
+                      enableIPv6:
+                        description: "EnableIPv6 enables IPv6 support for the memberlist
+                          based hash ring. \n Currently this also forces the instanceAddrType
+                          to podIP to avoid local address lookup for the memberlist."
+                        type: boolean
                       instanceAddrType:
                         description: InstanceAddrType defines the type of address
                           to use to advertise to the ring. Defaults to the first address
@@ -111,6 +115,12 @@ spec:
                           maxLineSize:
                             description: MaxLineSize defines the maximum line size
                               on ingestion path. Units in Bytes.
+                            format: int32
+                            type: integer
+                          perStreamDesiredRate:
+                            description: PerStreamDesiredRate defines the desired
+                              ingestion rate per second that LokiStack should target
+                              applying automatic stream sharding. Units MB.
                             format: int32
                             type: integer
                           perStreamRateLimit:
@@ -240,6 +250,12 @@ spec:
                                 on ingestion path. Units in Bytes.
                               format: int32
                               type: integer
+                            perStreamDesiredRate:
+                              description: PerStreamDesiredRate defines the desired
+                                ingestion rate per second that LokiStack should target
+                                applying automatic stream sharding. Units MB.
+                              format: int32
+                              type: integer
                             perStreamRateLimit:
                               description: PerStreamRateLimit defines the maximum
                                 byte rate per second per stream. Units MB.
@@ -255,6 +271,43 @@ spec:
                           description: QueryLimits defines the limit applied on querying
                             log streams.
                           properties:
+                            blocked:
+                              description: Blocked defines the list of rules to block
+                                matching queries.
+                              items:
+                                description: BlockedQuerySpec defines the rule spec
+                                  for queries to be blocked.
+                                minProperties: 1
+                                properties:
+                                  hash:
+                                    description: Hash is a 32-bit FNV-1 hash of the
+                                      query string.
+                                    format: int32
+                                    type: integer
+                                  pattern:
+                                    description: Pattern defines the pattern matching
+                                      the queries to be blocked.
+                                    type: string
+                                  regex:
+                                    description: Regex defines if the pattern is a
+                                      regular expression. If false the pattern will
+                                      be used only for exact matches.
+                                    type: boolean
+                                  types:
+                                    description: Types defines the list of query types
+                                      that should be considered for blocking.
+                                    items:
+                                      description: BlockedQueryType defines which
+                                        type of query a blocked query should apply
+                                        to.
+                                      enum:
+                                      - filter
+                                      - limited
+                                      - metric
+                                      type: string
+                                    type: array
+                                type: object
+                              type: array
                             cardinalityLimit:
                               description: CardinalityLimit defines the cardinality
                                 limit for index queries.
@@ -523,6 +576,7 @@ spec:
                           enum:
                           - v11
                           - v12
+                          - v13
                           type: string
                       required:
                       - effectiveDate
@@ -3992,6 +4046,14 @@ spec:
                 description: Storage provides summary of all changes that have occurred
                   to the storage configuration.
                 properties:
+                  credentialMode:
+                    description: CredentialMode contains the authentication mode used
+                      for accessing the object storage.
+                    enum:
+                    - static
+                    - token
+                    - managed
+                    type: string
                   schemas:
                     description: Schemas is a list of schemas which have been applied
                       to the LokiStack.
@@ -4010,6 +4072,7 @@ spec:
                           enum:
                           - v11
                           - v12
+                          - v13
                           type: string
                       required:
                       - effectiveDate

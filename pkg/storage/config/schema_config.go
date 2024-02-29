@@ -19,7 +19,7 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/util/log"
 )
 
@@ -51,6 +51,8 @@ const (
 
 	// ObjectStorageIndexRequiredPeriod defines the required index period for object storage based index stores like boltdb-shipper and tsdb
 	ObjectStorageIndexRequiredPeriod = 24 * time.Hour
+
+	pathPrefixDelimiter = "/"
 )
 
 var (
@@ -158,11 +160,11 @@ type PeriodConfig struct {
 	// type of index client to use.
 	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used. Which index to use. Either tsdb or boltdb-shipper. Following stores are deprecated: aws, aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
 	// type of object client to use.
-	ObjectType  string              `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config). Following stores are deprecated: aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
-	Schema      string              `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v12."`
-	IndexTables PeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
-	ChunkTables PeriodicTableConfig `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
-	RowShards   uint32              `yaml:"row_shards" doc:"description=How many shards will be created. Only used if schema is v10 or greater."`
+	ObjectType  string                   `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config). Following stores are deprecated: aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
+	Schema      string                   `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v12."`
+	IndexTables IndexPeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
+	ChunkTables PeriodicTableConfig      `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
+	RowShards   uint32                   `yaml:"row_shards" doc:"default=16|description=How many shards will be created. Only used if schema is v10 or greater."`
 
 	// Integer representation of schema used for hot path calculation. Populated on unmarshaling.
 	schemaInt *int `yaml:"-"`
@@ -198,6 +200,10 @@ func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRa
 	}
 }
 
+func NewDayTime(d model.Time) DayTime {
+	return DayTime{d}
+}
+
 // DayTime is a model.Time what holds day-aligned values, and marshals to/from
 // YAML in YYYY-MM-DD format.
 type DayTime struct {
@@ -223,8 +229,56 @@ func (d *DayTime) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-func (d *DayTime) String() string {
+func (d DayTime) String() string {
 	return d.Time.Time().UTC().Format("2006-01-02")
+}
+
+func (d DayTime) Inc() DayTime {
+	return DayTime{d.Add(ObjectStorageIndexRequiredPeriod)}
+}
+
+func (d DayTime) Dec() DayTime {
+	return DayTime{d.Add(-ObjectStorageIndexRequiredPeriod)}
+}
+
+func (d DayTime) Before(other DayTime) bool {
+	return d.Time.Before(other.Time)
+}
+
+func (d DayTime) After(other DayTime) bool {
+	return d.Time.After(other.Time)
+}
+
+func (d DayTime) ModelTime() model.Time {
+	return d.Time
+}
+
+func (d DayTime) Bounds() (model.Time, model.Time) {
+	return d.Time, d.Inc().Time
+}
+
+type DayTable struct {
+	DayTime
+	Prefix string
+}
+
+func (d DayTable) String() string {
+	return d.Addr()
+}
+
+func NewDayTable(d DayTime, prefix string) DayTable {
+	return DayTable{
+		DayTime: d,
+		Prefix:  prefix,
+	}
+}
+
+// Addr returns the prefix (if any) and the unix day offset as a string, which is used
+// as the address for the index table in storage.
+func (d DayTable) Addr() string {
+	return fmt.Sprintf("%s%d",
+		d.Prefix,
+		d.ModelTime().Time().UnixNano()/int64(ObjectStorageIndexRequiredPeriod))
 }
 
 // SchemaConfig contains the config for our chunk index schemas
@@ -279,7 +333,7 @@ func (cfg *SchemaConfig) Validate() error {
 		periodCfg := &cfg.Configs[i]
 		periodCfg.applyDefaults()
 		if err := periodCfg.validate(); err != nil {
-			return err
+			return fmt.Errorf("validating period_config: %w", err)
 		}
 
 		if i+1 < len(cfg.Configs) {
@@ -368,6 +422,10 @@ func validateChunks(cfg PeriodConfig) error {
 }
 
 func (cfg *PeriodConfig) applyDefaults() {
+	if cfg.IndexTables.PathPrefix == "" {
+		cfg.IndexTables.PathPrefix = "index/"
+	}
+
 	if cfg.RowShards == 0 {
 		cfg.RowShards = defaultRowShards(cfg.Schema)
 	}
@@ -416,14 +474,14 @@ func (cfg PeriodConfig) validate() error {
 		return errTSDBNon24HoursIndexPeriod
 	}
 
-	// Ensure the tables period is a multiple of the bucket period
-	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%(24*time.Hour) != 0 {
-		return errInvalidTablePeriod
+	if err := cfg.IndexTables.Validate(); err != nil {
+		return fmt.Errorf("validating index tables: %w", err)
 	}
 
-	if cfg.ChunkTables.Period > 0 && cfg.ChunkTables.Period%(24*time.Hour) != 0 {
-		return errInvalidTablePeriod
+	if err := cfg.ChunkTables.Validate(); err != nil {
+		return fmt.Errorf("validating chunk tables: %w", err)
 	}
+
 	v, err := cfg.VersionAsInt()
 	if err != nil {
 		return err
@@ -472,6 +530,71 @@ func (cfg *PeriodConfig) VersionAsInt() (int, error) {
 	return n, err
 }
 
+type IndexPeriodicTableConfig struct {
+	PathPrefix          string `yaml:"path_prefix" doc:"default=index/|description=Path prefix for index tables. Prefix always needs to end with a path delimiter '/', except when the prefix is empty."`
+	PeriodicTableConfig `yaml:",inline"`
+}
+
+func (cfg *IndexPeriodicTableConfig) Validate() error {
+	if err := cfg.PeriodicTableConfig.Validate(); err != nil {
+		return err
+	}
+
+	return ValidatePathPrefix(cfg.PathPrefix)
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	g := struct {
+		PathPrefix string         `yaml:"path_prefix"`
+		Prefix     string         `yaml:"prefix"`
+		Period     model.Duration `yaml:"period"`
+		Tags       Tags           `yaml:"tags"`
+	}{}
+	if err := unmarshal(&g); err != nil {
+		return err
+	}
+
+	cfg.PathPrefix = g.PathPrefix
+	cfg.Prefix = g.Prefix
+	cfg.Period = time.Duration(g.Period)
+	cfg.Tags = g.Tags
+
+	return nil
+}
+
+// MarshalYAML implements the yaml.Marshaler interface.
+func (cfg IndexPeriodicTableConfig) MarshalYAML() (interface{}, error) {
+	g := &struct {
+		PathPrefix string         `yaml:"path_prefix"`
+		Prefix     string         `yaml:"prefix"`
+		Period     model.Duration `yaml:"period"`
+		Tags       Tags           `yaml:"tags"`
+	}{
+		PathPrefix: cfg.PathPrefix,
+		Prefix:     cfg.Prefix,
+		Period:     model.Duration(cfg.Period),
+		Tags:       cfg.Tags,
+	}
+
+	return g, nil
+}
+func ValidatePathPrefix(prefix string) error {
+	if prefix == "" {
+		return errors.New("prefix must be set")
+	} else if strings.Contains(prefix, "\\") {
+		// When using windows filesystem as object store the implementation of ObjectClient in Cortex takes care of conversion of separator.
+		// We just need to always use `/` as a path separator.
+		return fmt.Errorf("prefix should only have '%s' as a path separator", pathPrefixDelimiter)
+	} else if strings.HasPrefix(prefix, pathPrefixDelimiter) {
+		return errors.New("prefix should never start with a path separator i.e '/'")
+	} else if !strings.HasSuffix(prefix, pathPrefixDelimiter) {
+		return errors.New("prefix should end with a path separator i.e '/'")
+	}
+
+	return nil
+}
+
 // PeriodicTableConfig is configuration for a set of time-sharded tables.
 type PeriodicTableConfig struct {
 	Prefix string        `yaml:"prefix" doc:"description=Table prefix for all period tables."`
@@ -510,6 +633,15 @@ func (cfg PeriodicTableConfig) MarshalYAML() (interface{}, error) {
 	}
 
 	return g, nil
+}
+
+func (cfg PeriodicTableConfig) Validate() error {
+	// Ensure the tables period is a multiple of the bucket period
+	if cfg.Period > 0 && cfg.Period%(24*time.Hour) != 0 {
+		return errInvalidTablePeriod
+	}
+
+	return nil
 }
 
 // AutoScalingConfig for DynamoDB tables.

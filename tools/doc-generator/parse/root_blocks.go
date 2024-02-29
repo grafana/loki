@@ -14,9 +14,13 @@ import (
 	"github.com/grafana/dskit/server"
 
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/bloomcompactor"
+	"github.com/grafana/loki/pkg/bloomgateway"
+	"github.com/grafana/loki/pkg/compactor"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/loki/common"
 	frontend "github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
@@ -35,9 +39,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	storage_config "github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -98,6 +101,11 @@ var (
 			Desc:       "The index_gateway block configures the Loki index gateway server, responsible for serving index queries without the need to constantly interact with the object store.",
 		},
 		{
+			Name:       "bloom_gateway",
+			StructType: []reflect.Type{reflect.TypeOf(bloomgateway.Config{})},
+			Desc:       "The bloom_gateway block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.",
+		},
+		{
 			Name:       "storage_config",
 			StructType: []reflect.Type{reflect.TypeOf(storage.Config{})},
 			Desc:       "The storage_config block configures one of many possible stores for both the index and chunks. Which configuration to be picked should be defined in schema_config block.",
@@ -115,7 +123,12 @@ var (
 		{
 			Name:       "compactor",
 			StructType: []reflect.Type{reflect.TypeOf(compactor.Config{})},
-			Desc:       "The compactor block configures the compactor component, which compacts index shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated, please use `-compactor.` instead.",
+			Desc:       "The compactor block configures the compactor component, which compacts index shards for performance.",
+		},
+		{
+			Name:       "bloom_compactor",
+			StructType: []reflect.Type{reflect.TypeOf(bloomcompactor.Config{})},
+			Desc:       "The bloom_compactor block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks",
 		},
 		{
 			Name:       "limits_config",
@@ -260,6 +273,12 @@ storage_config:
       store-1:
         endpoint: s3://foo-bucket
         region: us-west1
-Named store from this example can be used by setting object_store to store-1 in period_config.`},
+Named store from this example can be used by setting object_store to store-1 in period_config.`,
+		},
+		{
+			Name:       "attributes_config",
+			StructType: []reflect.Type{reflect.TypeOf(push.AttributesConfig{})},
+			Desc:       "Define actions for matching OpenTelemetry (OTEL) attributes.",
+		},
 	}
 )

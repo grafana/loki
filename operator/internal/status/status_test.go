@@ -5,14 +5,15 @@ import (
 	"testing"
 	"time"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests"
 )
 
 func TestRefreshSuccess(t *testing.T) {
@@ -53,7 +54,9 @@ func TestRefreshSuccess(t *testing.T) {
 			Gateway:       map[corev1.PodPhase][]string{corev1.PodRunning: {"lokistack-gateway-pod-0"}},
 			Ruler:         map[corev1.PodPhase][]string{corev1.PodRunning: {"ruler-pod-0"}},
 		},
-		Storage: lokiv1.LokiStackStorageStatus{},
+		Storage: lokiv1.LokiStackStorageStatus{
+			CredentialMode: lokiv1.CredentialModeStatic,
+		},
 		Conditions: []metav1.Condition{
 			{
 				Type:               string(lokiv1.ConditionReady),
@@ -67,7 +70,7 @@ func TestRefreshSuccess(t *testing.T) {
 
 	k, sw := setupListClient(t, stack, componentPods)
 
-	err := Refresh(context.Background(), k, req, now)
+	err := Refresh(context.Background(), k, req, now, lokiv1.CredentialModeStatic, nil)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, k.GetCallCount())
@@ -129,7 +132,7 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 		return nil
 	}
 
-	err := Refresh(context.Background(), k, req, now)
+	err := Refresh(context.Background(), k, req, now, lokiv1.CredentialModeStatic, nil)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, k.GetCallCount())

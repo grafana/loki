@@ -17,7 +17,7 @@ import (
 // Refresh executes an aggregate update of the LokiStack Status struct, i.e.
 // - It recreates the Status.Components pod status map per component.
 // - It sets the appropriate Status.Condition to true that matches the pod status maps.
-func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time) error {
+func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time, credentialMode lokiv1.CredentialMode, degradedErr *DegradedError) error {
 	var stack lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -31,34 +31,21 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time)
 		return err
 	}
 
-	condition, err := generateCondition(ctx, cs, k, req, &stack)
+	activeConditions, err := generateConditions(ctx, cs, k, &stack, degradedErr)
 	if err != nil {
 		return err
 	}
 
-	condition.LastTransitionTime = metav1.NewTime(now)
-	condition.Status = metav1.ConditionTrue
+	metaTime := metav1.NewTime(now)
+	for _, c := range activeConditions {
+		c.LastTransitionTime = metaTime
+		c.Status = metav1.ConditionTrue
+	}
 
 	statusUpdater := func(stack *lokiv1.LokiStack) {
 		stack.Status.Components = *cs
-
-		index := -1
-		for i := range stack.Status.Conditions {
-			// Reset all other conditions first
-			stack.Status.Conditions[i].Status = metav1.ConditionFalse
-			stack.Status.Conditions[i].LastTransitionTime = metav1.NewTime(now)
-
-			// Locate existing pending condition if any
-			if stack.Status.Conditions[i].Type == condition.Type {
-				index = i
-			}
-		}
-
-		if index == -1 {
-			stack.Status.Conditions = append(stack.Status.Conditions, condition)
-		} else {
-			stack.Status.Conditions[index] = condition
-		}
+		stack.Status.Conditions = mergeConditions(stack.Status.Conditions, activeConditions, metaTime)
+		stack.Status.Storage.CredentialMode = credentialMode
 	}
 
 	statusUpdater(&stack)

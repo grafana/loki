@@ -23,7 +23,7 @@ pipeline_stages:
       app:
       msg:
 - drop:
-    sources:
+    source:
       - src
     expression: ".*test.*"
     older_than: 24h
@@ -31,7 +31,7 @@ pipeline_stages:
 - drop:
     expression: ".*app1.*"
 - drop:
-    sources:
+    source:
       - app
     expression: loki
 - drop:
@@ -42,7 +42,7 @@ func Test_dropStage_Process(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg, nil, true, false)
+	util_log.InitLogger(cfg, nil, false)
 	Debug = true
 
 	tests := []struct {

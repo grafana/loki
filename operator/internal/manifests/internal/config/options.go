@@ -29,6 +29,7 @@ type Options struct {
 	MaxConcurrent         MaxConcurrent
 	WriteAheadLog         WriteAheadLog
 	EnableRemoteReporting bool
+	Shippers              []string
 
 	ObjectStorage storage.Options
 
@@ -40,7 +41,7 @@ type Options struct {
 }
 
 type LokiOverrides struct {
-	Limits lokiv1.LimitsTemplateSpec
+	Limits lokiv1.PerTenantLimitsTemplateSpec
 	Ruler  RulerOverrides
 }
 
@@ -60,6 +61,8 @@ type Address struct {
 
 // GossipRing defines the memberlist configuration
 type GossipRing struct {
+	// EnableIPv6 is optional, memberlist IPv6 support
+	EnableIPv6 bool
 	// InstanceAddr is optional, defaults to private networks
 	InstanceAddr string
 	// InstancePort is required

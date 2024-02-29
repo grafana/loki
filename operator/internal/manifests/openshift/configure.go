@@ -8,7 +8,7 @@ import (
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
@@ -71,6 +71,19 @@ func ConfigureGatewayDeployment(
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithAppendSlice); err != nil {
 		return kverrors.Wrap(err, "failed to merge sidecar container spec ")
+	}
+
+	if mode == lokiv1.OpenshiftLogging {
+		// enable extraction of namespace selector
+		for i, c := range d.Spec.Template.Spec.Containers {
+			if c.Name != "gateway" {
+				continue
+			}
+
+			d.Spec.Template.Spec.Containers[i].Args = append(d.Spec.Template.Spec.Containers[i].Args,
+				fmt.Sprintf("--logs.auth.extract-selectors=%s", opaDefaultLabelMatcher),
+			)
+		}
 	}
 
 	return nil
@@ -276,12 +289,12 @@ func configureUserWorkloadAM(configOpt *config.Options, token, caPath, monitorSe
 		RefreshInterval: "1m",
 		Notifier: &config.NotifierConfig{
 			TLS: config.TLSConfig{
-				ServerName: pointer.String(monitorServerName),
+				ServerName: ptr.To(monitorServerName),
 				CAPath:     &caPath,
 			},
 			HeaderAuth: config.HeaderAuth{
 				CredentialsFile: &token,
-				Type:            pointer.String("Bearer"),
+				Type:            ptr.To("Bearer"),
 			},
 		},
 	}

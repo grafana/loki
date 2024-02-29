@@ -4,9 +4,6 @@ import (
 	"flag"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -15,7 +12,7 @@ import (
 type ChunkStoreConfig struct {
 	ChunkCacheConfig       cache.Config `yaml:"chunk_cache_config"`
 	ChunkCacheConfigL2     cache.Config `yaml:"chunk_cache_config_l2" doc:"hidden"`
-	WriteDedupeCacheConfig cache.Config `yaml:"write_dedupe_cache_config"`
+	WriteDedupeCacheConfig cache.Config `yaml:"write_dedupe_cache_config" doc:"description=Write dedupe cache is deprecated along with legacy index types (aws, aws-dynamo, bigtable, bigtable-hashed, cassandra, gcp, gcp-columnkey, grpc-store).\nConsider using TSDB index which does not require a write dedupe cache."`
 
 	L2ChunkCacheHandoff   time.Duration  `yaml:"l2_chunk_cache_handoff" doc:"hidden"`
 	CacheLookupsOlderThan model.Duration `yaml:"cache_lookups_older_than"`
@@ -28,10 +25,6 @@ type ChunkStoreConfig struct {
 
 	// When DisableIndexDeduplication is true and chunk is already there in cache, only index would be written to the store and not chunk.
 	DisableIndexDeduplication bool `yaml:"-"`
-
-	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
-	// Will be deprecated in the next major release.
-	MaxLookBackPeriod model.Duration `yaml:"max_look_back_period"`
 }
 
 func (cfg *ChunkStoreConfig) ChunkCacheStubs() bool {
@@ -47,16 +40,8 @@ func (cfg *ChunkStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "", f)
 
 	f.Var(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", "Cache index entries older than this period. 0 to disable.")
-	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "This flag is deprecated. Use -querier.max-query-lookback instead.")
 }
 
-func (cfg *ChunkStoreConfig) Validate(logger log.Logger) error {
-	if cfg.MaxLookBackPeriod > 0 {
-		flagext.DeprecatedFlagsUsed.Inc()
-		level.Warn(logger).Log("msg", "running with DEPRECATED flag -store.max-look-back-period, use -querier.max-query-lookback instead.")
-	}
-	if err := cfg.ChunkCacheConfig.Validate(); err != nil {
-		return err
-	}
-	return cfg.WriteDedupeCacheConfig.Validate()
+func (cfg *ChunkStoreConfig) Validate() error {
+	return nil
 }

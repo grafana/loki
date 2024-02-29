@@ -8,22 +8,24 @@ weight: 1
 
 ## Stable Releases
 
-Loki releases (this includes [Promtail](/clients/promtail), [Loki Canary](/operations/loki-canary/), etc) use the following
+Loki releases (this includes [Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/), [Loki Canary](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/loki-canary/), etc.) use the following
 naming scheme: `MAJOR`.`MINOR`.`PATCH`.
 
-- `MAJOR` (roughly once a year): these releases include large new features & possible backwards-compatibility breaks.
+- `MAJOR` (roughly once a year): these releases include large new features and possible backwards-compatibility breaks.
 - `MINOR` (roughly once a quarter): these releases include new features which generally do not break backwards-compatibility, but from time to time we might introduce _minor_ breaking changes, and we will specify these in our upgrade docs.
-- `PATCH` (roughly once or twice a month): these releases include bug & security fixes which do not break backwards-compatibility.
+- `PATCH` (roughly once or twice a month): these releases include bug and security fixes which do not break backwards-compatibility.
 
-> **NOTE:** While our naming scheme resembles [Semantic Versioning](https://semver.org/), at this time we do not strictly follow its
+{{% admonition type="note" %}}
+While our naming scheme resembles [Semantic Versioning](https://semver.org/), at this time we do not strictly follow its
 guidelines to the letter. Our goal is to provide regular releases that are as stable as possible, and we take backwards-compatibility
-seriously. As with any software, always read the [release notes](/release-notes) and the [upgrade guide](/upgrading) whenever
+seriously. As with any software, always read the [release notes](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/) and the [upgrade guide](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/) whenever
 choosing a new version of Loki to install.
+{{% /admonition %}}
 
 New releases are based of a [weekly release](#weekly-releases) which we have vetted for stability over a number of weeks.
 
 We strongly recommend keeping up-to-date with patch releases as they are released. We post updates of new releases in the `#loki` channel
-of our [Slack community](/community/getting-in-touch).
+of our [Slack community](https://grafana.com/docs/loki/<LOKI_VERSION>/community/getting-in-touch/).
 
 You can find all of our releases [on GitHub](https://github.com/grafana/loki/releases) and on [Docker Hub](https://hub.docker.com/r/grafana/loki).
 
@@ -51,8 +53,7 @@ Once your PR is merged to `main`, you can expect it to become available in the n
 
 `tools/which-release.sh`
 
-For example, [this PR](https://github.com/grafana/loki/pull/7472) was [merged](https://github.com/grafana/loki/pull/7472#event-8431624850)
-into the commit named `d434e80`. Using the tool above, we can see that is part of release 2.8 and several weekly releases:
+For example, [this PR](https://github.com/grafana/loki/pull/7472) was [merged](https://github.com/grafana/loki/pull/7472#event-8431624850) into the commit named `d434e80`. Using the tool above, we can see that is part of release 2.8 and several weekly releases:
 
 ```bash
 $ ./tools/which-release.sh d434e80                                 
