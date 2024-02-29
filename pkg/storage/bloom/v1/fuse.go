@@ -8,7 +8,7 @@ import (
 type Request struct {
 	Fp       model.Fingerprint
 	Chks     ChunkRefs
-	Searches [][]byte
+	Search   BloomTest
 	Response chan<- Output
 }
 
@@ -56,6 +56,11 @@ func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[Request]) *Fused
 }
 
 func (fq *FusedQuerier) Run() error {
+	schema, err := fq.bq.Schema()
+	if err != nil {
+		return errors.Wrap(err, "getting schema")
+	}
+
 	for fq.inputs.Next() {
 		// find all queries for the next relevant fingerprint
 		nextBatch := fq.inputs.At()
@@ -98,37 +103,34 @@ func (fq *FusedQuerier) Run() error {
 
 		bloom := fq.bq.blooms.At()
 		// test every input against this chunk
-	inputLoop:
 		for _, input := range nextBatch {
 			_, inBlooms := input.Chks.Compare(series.Chunks, true)
 
 			// First, see if the search passes the series level bloom before checking for chunks individually
-			for _, search := range input.Searches {
-				if !bloom.Test(search) {
-					// We return all the chunks that were the intersection of the query
-					// because they for sure do not match the search and don't
-					// need to be downloaded
-					input.Response <- Output{
-						Fp:       fp,
-						Removals: inBlooms,
-					}
-					continue inputLoop
+			if !input.Search.Matches(bloom) {
+				// We return all the chunks that were the intersection of the query
+				// because they for sure do not match the search and don't
+				// need to be downloaded
+				input.Response <- Output{
+					Fp:       fp,
+					Removals: inBlooms,
 				}
+				continue
 			}
 
 			// TODO(owen-d): pool
 			var removals ChunkRefs
 
-		chunkLoop:
-			for _, chk := range inBlooms {
-				for _, search := range input.Searches {
-					// TODO(owen-d): meld chunk + search into a single byte slice from the block schema
-					var combined = search
+			// TODO(salvacorts): pool tokenBuf
+			var tokenBuf []byte
+			var prefixLen int
 
-					if !bloom.ScalableBloomFilter.Test(combined) {
-						removals = append(removals, chk)
-						continue chunkLoop
-					}
+			for _, chk := range inBlooms {
+				// Get buf to concatenate the chunk and search token
+				tokenBuf, prefixLen = prefixedToken(schema.NGramLen(), chk, tokenBuf)
+				if !input.Search.MatchesWithPrefixBuf(bloom, tokenBuf, prefixLen) {
+					removals = append(removals, chk)
+					continue
 				}
 				// Otherwise, the chunk passed all the searches
 			}

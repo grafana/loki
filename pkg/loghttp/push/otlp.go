@@ -43,14 +43,14 @@ func newPushStats() *Stats {
 	}
 }
 
-func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits) (*logproto.PushRequest, *Stats, error) {
+func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error) {
 	stats := newPushStats()
 	otlpLogs, err := extractLogs(r, stats)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	req := otlpToLokiPushRequest(otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), stats)
+	req := otlpToLokiPushRequest(otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), tracker, stats)
 	return req, stats, nil
 }
 
@@ -101,7 +101,7 @@ func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, stats *Stats) *logproto.PushRequest {
+func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, tracker UsageTracker, stats *Stats) *logproto.PushRequest {
 	if ld.LogRecordCount() == 0 {
 		return &logproto.PushRequest{}
 	}
@@ -145,6 +145,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		labelsStr := streamLabels.String()
 
 		lbs := modelLabelsSetToLabelsList(streamLabels)
+
 		if _, ok := pushRequestsByStream[labelsStr]; !ok {
 			pushRequestsByStream[labelsStr] = logproto.Stream{
 				Labels: labelsStr,
@@ -223,8 +224,15 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 				stream.Entries = append(stream.Entries, entry)
 				pushRequestsByStream[labelsStr] = stream
 
-				stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
+				metadataSize := int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
+				stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += metadataSize
 				stats.logLinesBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(len(entry.Line))
+
+				if tracker != nil {
+					tracker.ReceivedBytesAdd(userID, tenantsRetention.RetentionPeriodFor(userID, lbs), lbs, float64(len(entry.Line)))
+					tracker.ReceivedBytesAdd(userID, tenantsRetention.RetentionPeriodFor(userID, lbs), lbs, float64(metadataSize))
+				}
+
 				stats.numLines++
 				if entry.Timestamp.After(stats.mostRecentEntryTimestamp) {
 					stats.mostRecentEntryTimestamp = entry.Timestamp

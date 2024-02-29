@@ -1,10 +1,13 @@
 package v1
 
 import (
+	"fmt"
 	"hash"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/pkg/util/encoding"
 )
@@ -16,6 +19,26 @@ const (
 	Overlap
 	After
 )
+
+// ParseBoundsFromAddr parses a fingerprint bounds from a string
+func ParseBoundsFromAddr(s string) (FingerprintBounds, error) {
+	parts := strings.Split(s, "-")
+	return ParseBoundsFromParts(parts[0], parts[1])
+}
+
+// ParseBoundsFromParts parses a fingerprint bounds already separated strings
+func ParseBoundsFromParts(a, b string) (FingerprintBounds, error) {
+	minFingerprint, err := model.ParseFingerprint(a)
+	if err != nil {
+		return FingerprintBounds{}, fmt.Errorf("error parsing minFingerprint %s : %w", a, err)
+	}
+	maxFingerprint, err := model.ParseFingerprint(b)
+	if err != nil {
+		return FingerprintBounds{}, fmt.Errorf("error parsing maxFingerprint %s : %w", b, err)
+	}
+
+	return NewBounds(minFingerprint, maxFingerprint), nil
+}
 
 type FingerprintBounds struct {
 	Min, Max model.Fingerprint
@@ -30,11 +53,22 @@ func (b FingerprintBounds) Hash(h hash.Hash32) error {
 	enc.PutBE64(uint64(b.Min))
 	enc.PutBE64(uint64(b.Max))
 	_, err := h.Write(enc.Get())
-	return errors.Wrap(err, "writing OwnershipRange")
+	return errors.Wrap(err, "writing FingerprintBounds")
 }
 
+// Addr returns the string representation of the fingerprint bounds for use in
+// content addressable storage.
+// TODO(owen-d): incorporate this into the schema so we can change it,
+// similar to `{,Parse}ExternalKey`
 func (b FingerprintBounds) String() string {
-	return b.Min.String() + "-" + b.Max.String()
+	return fmt.Sprintf("%016x-%016x", uint64(b.Min), uint64(b.Max))
+}
+
+func (b FingerprintBounds) Less(other FingerprintBounds) bool {
+	if b.Min != other.Min {
+		return b.Min < other.Min
+	}
+	return b.Max <= other.Max
 }
 
 // Cmp returns the fingerprint's position relative to the bounds
@@ -47,8 +81,19 @@ func (b FingerprintBounds) Cmp(fp model.Fingerprint) BoundsCheck {
 	return Overlap
 }
 
+// Overlaps returns whether the bounds (partially) overlap with the target bounds
 func (b FingerprintBounds) Overlaps(target FingerprintBounds) bool {
 	return b.Cmp(target.Min) != After && b.Cmp(target.Max) != Before
+}
+
+// Match implements TSDBs FingerprintFilter interface
+func (b FingerprintBounds) Match(fp model.Fingerprint) bool {
+	return b.Cmp(fp) == Overlap
+}
+
+// GetFromThrough implements TSDBs FingerprintFilter interface
+func (b FingerprintBounds) GetFromThrough() (model.Fingerprint, model.Fingerprint) {
+	return b.Min, b.Max
 }
 
 // Slice returns a new fingerprint bounds clipped to the target bounds or nil if there is no overlap
@@ -56,9 +101,14 @@ func (b FingerprintBounds) Slice(min, max model.Fingerprint) *FingerprintBounds 
 	return b.Intersection(FingerprintBounds{Min: min, Max: max})
 }
 
-// Returns whether the fingerprint is fully within the target bounds
+// Within returns whether the fingerprint is fully within the target bounds
 func (b FingerprintBounds) Within(target FingerprintBounds) bool {
 	return b.Min >= target.Min && b.Max <= target.Max
+}
+
+// Returns whether the fingerprint bounds is equal to the target bounds
+func (b FingerprintBounds) Equal(target FingerprintBounds) bool {
+	return b.Min == target.Min && b.Max == target.Max
 }
 
 // Intersection returns the intersection of the two bounds
@@ -76,9 +126,20 @@ func (b FingerprintBounds) Intersection(target FingerprintBounds) *FingerprintBo
 // Union returns the union of the two bounds
 func (b FingerprintBounds) Union(target FingerprintBounds) (res []FingerprintBounds) {
 	if !b.Overlaps(target) {
-		if b.Cmp(target.Min) == Before {
-			return []FingerprintBounds{target, b}
+		if target.Less(b) {
+			b, target = target, b
 		}
+
+		// special case: if the bounds are contiguous, merge them
+		if b.Max+1 == target.Min {
+			return []FingerprintBounds{
+				{
+					Min: min(b.Min, target.Min),
+					Max: max(b.Max, target.Max),
+				},
+			}
+		}
+
 		return []FingerprintBounds{b, target}
 	}
 
@@ -96,7 +157,7 @@ func (b FingerprintBounds) Unless(target FingerprintBounds) (res []FingerprintBo
 		return []FingerprintBounds{b}
 	}
 
-	if b == target {
+	if b.Within(target) {
 		return nil
 	}
 
@@ -107,6 +168,40 @@ func (b FingerprintBounds) Unless(target FingerprintBounds) (res []FingerprintBo
 		res = append(res, FingerprintBounds{Min: max(b.Min, target.Max+1), Max: b.Max})
 	}
 	return res
+}
+
+type MultiFingerprintBounds []FingerprintBounds
+
+func (mb MultiFingerprintBounds) Union(target FingerprintBounds) MultiFingerprintBounds {
+	if len(mb) == 0 {
+		return MultiFingerprintBounds{target}
+	}
+	if len(mb) == 1 {
+		return mb[0].Union(target)
+	}
+
+	mb = append(mb, target)
+	slices.SortFunc(mb, func(a, b FingerprintBounds) int {
+		if a.Less(b) {
+			return -1
+		} else if a.Equal(b) {
+			return 0
+		}
+		return 1
+	})
+
+	var union MultiFingerprintBounds
+	for i := 0; i < len(mb); i++ {
+		j := len(union) - 1 // index of last item of union
+		if j >= 0 && union[j].Max >= mb[i].Min-1 {
+			union[j] = NewBounds(union[j].Min, max(mb[i].Max, union[j].Max))
+		} else {
+			union = append(union, mb[i])
+		}
+	}
+
+	mb = union
+	return mb
 }
 
 // unused, but illustrative

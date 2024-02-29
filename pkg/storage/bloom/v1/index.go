@@ -2,6 +2,7 @@ package v1
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 
 	"github.com/pkg/errors"
@@ -15,6 +16,10 @@ type Schema struct {
 	version                byte
 	encoding               chunkenc.Encoding
 	nGramLength, nGramSkip uint64
+}
+
+func (s Schema) String() string {
+	return fmt.Sprintf("v%d,encoding=%s,ngram=%d,skip=%d", s.version, s.encoding, s.nGramLength, s.nGramSkip)
 }
 
 func (s Schema) Compatible(other Schema) bool {
@@ -89,19 +94,14 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 // Block index is a set of series pages along with
 // the headers for each page
 type BlockIndex struct {
-	schema      Schema
+	opts BlockOptions
+
 	pageHeaders []SeriesPageHeaderWithOffset // headers for each series page
 }
 
-func NewBlockIndex(encoding chunkenc.Encoding) BlockIndex {
-	return BlockIndex{
-		schema: Schema{version: DefaultSchemaVersion, encoding: encoding},
-	}
-}
-
-func (b *BlockIndex) DecodeHeaders(r io.ReadSeeker) error {
-	if err := b.schema.DecodeFrom(r); err != nil {
-		return errors.Wrap(err, "decoding schema")
+func (b *BlockIndex) DecodeHeaders(r io.ReadSeeker) (uint32, error) {
+	if err := b.opts.DecodeFrom(r); err != nil {
+		return 0, errors.Wrap(err, "decoding block options")
 	}
 
 	var (
@@ -111,24 +111,25 @@ func (b *BlockIndex) DecodeHeaders(r io.ReadSeeker) error {
 
 	// last 12 bytes are (headers offset: 8 byte u64, checksum: 4 byte u32)
 	if _, err := r.Seek(-12, io.SeekEnd); err != nil {
-		return errors.Wrap(err, "seeking to bloom headers metadata")
+		return 0, errors.Wrap(err, "seeking to bloom headers metadata")
 	}
 	dec.B, err = io.ReadAll(r)
 	if err != nil {
-		return errors.Wrap(err, "reading bloom headers metadata")
+		return 0, errors.Wrap(err, "reading bloom headers metadata")
 	}
 
 	headerOffset := dec.Be64()
+	checksum := dec.Be32()
 	if _, err := r.Seek(int64(headerOffset), io.SeekStart); err != nil {
-		return errors.Wrap(err, "seeking to index headers")
+		return 0, errors.Wrap(err, "seeking to index headers")
 	}
 	dec.B, err = io.ReadAll(r)
 	if err != nil {
-		return errors.Wrap(err, "reading index page headers")
+		return 0, errors.Wrap(err, "reading index page headers")
 	}
 
 	if err := dec.CheckCrc(castagnoliTable); err != nil {
-		return errors.Wrap(err, "checksumming page headers")
+		return 0, errors.Wrap(err, "checksumming page headers")
 	}
 
 	b.pageHeaders = make(
@@ -139,12 +140,12 @@ func (b *BlockIndex) DecodeHeaders(r io.ReadSeeker) error {
 	for i := 0; i < len(b.pageHeaders); i++ {
 		var s SeriesPageHeaderWithOffset
 		if err := s.Decode(&dec); err != nil {
-			return errors.Wrapf(err, "decoding %dth series header", i)
+			return 0, errors.Wrapf(err, "decoding %dth series header", i)
 		}
 		b.pageHeaders[i] = s
 	}
 
-	return nil
+	return checksum, nil
 }
 
 // decompress page and return an iterator over the bytes
@@ -167,24 +168,19 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 		return nil, errors.Wrap(err, "checksumming series page")
 	}
 
-	decompressor, err := b.schema.DecompressorPool().GetReader(bytes.NewReader(dec.Get()))
+	decompressor, err := b.opts.Schema.DecompressorPool().GetReader(bytes.NewReader(dec.Get()))
 	if err != nil {
 		return nil, errors.Wrap(err, "getting decompressor")
 	}
 
-	decompressed := BlockPool.Get(header.DecompressedLen)[:header.DecompressedLen]
+	decompressed := make([]byte, header.DecompressedLen)
 	if _, err = io.ReadFull(decompressor, decompressed); err != nil {
 		return nil, errors.Wrap(err, "decompressing series page")
 	}
 
-	// replace decoder's input with the now-decompressed data
-	dec.B = decompressed
-
 	res := &SeriesPageDecoder{
 		data:   decompressed,
 		header: header.SeriesHeader,
-
-		i: -1,
 	}
 
 	res.Reset()
@@ -213,12 +209,8 @@ func (h *SeriesPageHeaderWithOffset) Decode(dec *encoding.Decbuf) error {
 
 type SeriesHeader struct {
 	NumSeries         int
-	FromFp, ThroughFp model.Fingerprint
+	Bounds            FingerprintBounds
 	FromTs, ThroughTs model.Time
-}
-
-func (h SeriesHeader) OverlapFingerprintRange(other SeriesHeader) bool {
-	return h.ThroughFp >= other.FromFp && h.FromFp <= other.ThroughFp
 }
 
 // build one aggregated header for the entire block
@@ -227,13 +219,14 @@ func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 		return SeriesHeader{}
 	}
 
+	fromFp, _ := xs[0].Bounds.GetFromThrough()
+	_, throughFP := xs[len(xs)-1].Bounds.GetFromThrough()
 	res := SeriesHeader{
-		FromFp:    xs[0].FromFp,
-		ThroughFp: xs[len(xs)-1].ThroughFp,
+		Bounds: NewBounds(fromFp, throughFP),
 	}
 
-	for _, x := range xs {
-		if x.FromTs < res.FromTs {
+	for i, x := range xs {
+		if i == 0 || x.FromTs < res.FromTs {
 			res.FromTs = x.FromTs
 		}
 		if x.ThroughTs > res.ThroughTs {
@@ -245,16 +238,16 @@ func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 
 func (h *SeriesHeader) Encode(enc *encoding.Encbuf) {
 	enc.PutUvarint(h.NumSeries)
-	enc.PutUvarint64(uint64(h.FromFp))
-	enc.PutUvarint64(uint64(h.ThroughFp))
+	enc.PutUvarint64(uint64(h.Bounds.Min))
+	enc.PutUvarint64(uint64(h.Bounds.Max))
 	enc.PutVarint64(int64(h.FromTs))
 	enc.PutVarint64(int64(h.ThroughTs))
 }
 
 func (h *SeriesHeader) Decode(dec *encoding.Decbuf) error {
 	h.NumSeries = dec.Uvarint()
-	h.FromFp = model.Fingerprint(dec.Uvarint64())
-	h.ThroughFp = model.Fingerprint(dec.Uvarint64())
+	h.Bounds.Min = model.Fingerprint(dec.Uvarint64())
+	h.Bounds.Max = model.Fingerprint(dec.Uvarint64())
 	h.FromTs = model.Time(dec.Varint64())
 	h.ThroughTs = model.Time(dec.Varint64())
 	return dec.Err()
@@ -305,7 +298,7 @@ func (d *SeriesPageDecoder) Next() bool {
 }
 
 func (d *SeriesPageDecoder) Seek(fp model.Fingerprint) {
-	if fp > d.header.ThroughFp {
+	if fp > d.header.Bounds.Max {
 		// shortcut: we know the fingerprint is too large so nothing in this page
 		// will match the seek call, which returns the first found fingerprint >= fp.
 		// so masquerade the index as if we've already iterated through

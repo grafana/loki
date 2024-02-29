@@ -241,3 +241,96 @@ func PointerSlice[T any](xs []T) []*T {
 	}
 	return out
 }
+
+type CloseableIterator[T any] interface {
+	Iterator[T]
+	Close() error
+}
+
+func NewCloseableIterator[T io.Closer](itr Iterator[T]) *CloseIter[T] {
+	return &CloseIter[T]{itr}
+}
+
+type CloseIter[T io.Closer] struct {
+	Iterator[T]
+}
+
+func (i *CloseIter[T]) Close() error {
+	return i.At().Close()
+}
+
+type PeekingCloseableIterator[T any] interface {
+	PeekingIterator[T]
+	CloseableIterator[T]
+}
+
+type PeekCloseIter[T any] struct {
+	*PeekIter[T]
+	close func() error
+}
+
+func NewPeekCloseIter[T any](itr CloseableIterator[T]) *PeekCloseIter[T] {
+	return &PeekCloseIter[T]{PeekIter: NewPeekingIter[T](itr), close: itr.Close}
+}
+
+func (it *PeekCloseIter[T]) Close() error {
+	return it.close()
+}
+
+type ResettableIterator[T any] interface {
+	Reset() error
+	Iterator[T]
+}
+
+type CloseableResettableIterator[T any] interface {
+	CloseableIterator[T]
+	ResettableIterator[T]
+}
+
+type Predicate[T any] func(T) bool
+
+func NewFilterIter[T any](it Iterator[T], p Predicate[T]) *FilterIter[T] {
+	return &FilterIter[T]{
+		Iterator: it,
+		match:    p,
+	}
+}
+
+type FilterIter[T any] struct {
+	Iterator[T]
+	match Predicate[T]
+}
+
+func (i *FilterIter[T]) Next() bool {
+	hasNext := i.Iterator.Next()
+	for hasNext && !i.match(i.Iterator.At()) {
+		hasNext = i.Iterator.Next()
+	}
+	return hasNext
+}
+
+type CounterIterator[T any] interface {
+	Iterator[T]
+	Count() int
+}
+
+type CounterIter[T any] struct {
+	Iterator[T] // the underlying iterator
+	count       int
+}
+
+func NewCounterIter[T any](itr Iterator[T]) *CounterIter[T] {
+	return &CounterIter[T]{Iterator: itr}
+}
+
+func (it *CounterIter[T]) Next() bool {
+	if it.Iterator.Next() {
+		it.count++
+		return true
+	}
+	return false
+}
+
+func (it *CounterIter[T]) Count() int {
+	return it.count
+}
