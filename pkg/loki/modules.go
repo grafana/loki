@@ -673,6 +673,8 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 	var blocksCache cache.TypedCache[string, bloomshipper.BlockDirectory]
 	if bsCfg.BlocksCache.IsEnabled() {
 		blocksCache = bloomshipper.NewBlocksCache(bsCfg.BlocksCache, reg, logger)
+		err = bloomshipper.LoadBlocksDirIntoCache(t.Cfg.StorageConfig.BloomShipperConfig.WorkingDirectory, blocksCache, logger)
+		level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
 	}
 
 	t.BloomStore, err = bloomshipper.NewBloomStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.clientMetrics, metasCache, blocksCache, logger)
