@@ -552,7 +552,7 @@ func coversFullRange(bounds v1.FingerprintBounds, overlaps []v1.FingerprintBound
 func tsdbsStrictlyNewer(as, bs []tsdb.SingleTenantTSDBIdentifier) bool {
 	for _, a := range as {
 		for _, b := range bs {
-			if a.TS.Before(b.TS) {
+			if !a.TS.After(b.TS) {
 				return false
 			}
 		}

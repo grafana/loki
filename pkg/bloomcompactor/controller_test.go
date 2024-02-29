@@ -556,9 +556,59 @@ func Test_OutdatedMetas(t *testing.T) {
 				gen(v1.NewBounds(6, 10), 0, 1),
 			},
 		},
+		{
+			desc: "multi tsdbs",
+			metas: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 5), 0),
+				gen(v1.NewBounds(6, 10), 0),
+				gen(v1.NewBounds(0, 10), 1),
+			},
+			exp: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 5), 0, 1),
+				gen(v1.NewBounds(6, 10), 0, 1),
+			},
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			require.Equal(t, tc.exp, outdatedMetas(tc.metas))
+		})
+	}
+}
+
+func TestTSDBsStrictlyNewer(t *testing.T) {
+	ids := func(ts ...int) []tsdb.SingleTenantTSDBIdentifier {
+		var res []tsdb.SingleTenantTSDBIdentifier
+		for _, t := range ts {
+			res = append(res, tsdbID(t))
+		}
+		return res
+	}
+	for _, tc := range []struct {
+		desc   string
+		as, bs []tsdb.SingleTenantTSDBIdentifier
+		exp    bool
+	}{
+		{
+			desc: "same",
+			as:   ids(0),
+			bs:   ids(0),
+			exp:  false,
+		},
+		{
+			desc: "less",
+			as:   ids(0, 1),
+			bs:   ids(2),
+			exp:  false,
+		},
+		{
+			desc: "greater",
+			as:   ids(3, 4, 5),
+			bs:   ids(2),
+			exp:  true,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.exp, tsdbsStrictlyNewer(tc.as, tc.bs))
 		})
 	}
 }
