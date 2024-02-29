@@ -59,6 +59,11 @@ func (f *IPLineFilter) ToStage() Stage {
 	return f
 }
 
+// Matches implement `Filterer` interface.
+func (f *IPLineFilter) Matches(test Checker) bool {
+	panic("unimplemented")
+}
+
 // `Process` implements `Stage` interface
 func (f *IPLineFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return line, f.filterTy(line, f.ty)

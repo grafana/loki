@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"github.com/grafana/regexp"
 	regexpsyntax "github.com/grafana/regexp/syntax"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -85,22 +86,44 @@ func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest
 	}
 }
 
+type bloomCheckerWrapper struct {
+	bloom filter.Checker
+}
+
+// Test implements the log.Checker interface
+func (b bloomCheckerWrapper) Test(line []byte, _ bool, _ bool) bool {
+	return b.bloom.Test(line)
+}
+
+// TestRegex implements the log.Checker interface
+func (b bloomCheckerWrapper) TestRegex(_ *regexp.Regexp) bool {
+	// We won't support regexes in bloom filters so we just return true
+	return true
+}
+
+type logCheckerWrapper struct {
+	checker log.Checker
+}
+
+// Test implements the filter.Checker interface
+func (l logCheckerWrapper) Test(data []byte) bool {
+	return l.checker.Test(data, true, false)
+}
+
 type matcherFilterWrapper struct {
-	filter log.MatcherFilter
+	filter log.Filterer
 }
 
-// Matches implements the BloomTest interface
 func (m matcherFilterWrapper) Matches(bloom filter.Checker) bool {
-	return m.filter.Matches(bloom)
+	return m.filter.Matches(bloomCheckerWrapper{bloom})
 }
 
-// MatchesWithPrefixBuf implements the BloomTest interface
 func (m matcherFilterWrapper) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
-	return m.filter.Matches(prefixedChecker{
+	return m.filter.Matches(bloomCheckerWrapper{prefixedChecker{
 		checker:   bloom,
 		buf:       buf,
 		prefixLen: prefixLen,
-	})
+	}})
 }
 
 type prefixedChecker struct {
@@ -117,12 +140,10 @@ type matchAllTest struct{}
 
 var MatchAll = matchAllTest{}
 
-// Matches implements the BloomTest interface
 func (n matchAllTest) Matches(_ filter.Checker) bool {
 	return true
 }
 
-// MatchesWithPrefixBuf implements the BloomTest interface
 func (n matchAllTest) MatchesWithPrefixBuf(_ filter.Checker, _ []byte, _ int) bool {
 	return true
 }
@@ -175,7 +196,7 @@ type stringMatcherFilter struct {
 }
 
 // Filter implements the log.Filterer interface
-func (b stringMatcherFilter) Filter(line []byte) bool {
+func (b stringMatcherFilter) Filter(_ []byte) bool {
 	panic("implement me")
 }
 
@@ -184,13 +205,13 @@ func (b stringMatcherFilter) ToStage() log.Stage {
 	panic("implement me")
 }
 
-// Matches implements the log.MatcherFilter interface
+// Matches implements the log.Filterer interface
 func (b stringMatcherFilter) Matches(test log.Checker) bool {
-	return b.test.Matches(test.(filter.Checker))
+	return b.test.Matches(logCheckerWrapper{test})
 }
 
-func newStringFilterFunc(b NGramBuilder) log.NewMatcherFilterFunc {
-	return func(match []byte, caseInsensitive bool) log.MatcherFilter {
+func newStringFilterFunc(b NGramBuilder) log.NewFilterFunc {
+	return func(match []byte, caseInsensitive bool) log.Filterer {
 		return stringMatcherFilter{
 			test: newStringTest(b, string(match)),
 		}
