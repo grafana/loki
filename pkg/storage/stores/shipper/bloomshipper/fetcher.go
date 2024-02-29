@@ -157,13 +157,14 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]*Closeabl
 	for i := 0; i < n; i++ {
 		select {
 		case err := <-errors:
+			f.metrics.blocksFetched.Observe(float64(i + 1))
 			return results, err
 		case res := <-responses:
 			results[res.idx] = res.item.BlockQuerier()
 		}
 	}
 
-	f.metrics.blocksFetched.Observe(float64(len(results)))
+	f.metrics.blocksFetched.Observe(float64(n))
 	return results, nil
 }
 
