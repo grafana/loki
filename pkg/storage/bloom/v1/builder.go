@@ -547,13 +547,17 @@ func NewMergeBuilder(
 	}
 }
 
-func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
-	var (
-		nextInBlocks                                     *SeriesWithBloom
-		blocksFinished                                   bool
-		blockSeriesIterated, chunksIndexed, chunksCopied int
-	)
-
+func (mb *MergeBuilder) processNextSeries(
+	builder *BlockBuilder,
+	nextInBlocks *SeriesWithBloom,
+	blocksFinished bool,
+) (
+	*SeriesWithBloom, // nextInBlocks pointer update
+	bool, // blocksFinished update
+	bool, // done building block
+	error, // error
+) {
+	var blockSeriesIterated, chunksIndexed, chunksCopied int
 	defer func() {
 		mb.metrics.blockSeriesIterated.Add(float64(blockSeriesIterated))
 		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeIterated).Add(float64(chunksIndexed))
@@ -577,7 +581,7 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 			}
 
 			if err := mb.blocks.Err(); err != nil {
-				return 0, errors.Wrap(err, "iterating blocks")
+				return nil, false, false, errors.Wrap(err, "iterating blocks")
 			}
 			blockSeriesIterated++
 			nextInBlocks = mb.blocks.At()
@@ -611,15 +615,33 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 				},
 				cur.Bloom,
 			); err != nil {
-				return 0, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
+				return nil, false, false, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
 			}
 		}
 
-		blockFull, err := builder.AddSeries(*cur)
+		done, err := builder.AddSeries(*cur)
 		if err != nil {
-			return 0, errors.Wrap(err, "adding series to block")
+			return nil, false, false, errors.Wrap(err, "adding series to block")
 		}
-		if blockFull {
+		return nextInBlocks, blocksFinished, done, nil
+	}
+
+	return nil, false, true, nil
+}
+
+func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
+	var (
+		nextInBlocks   *SeriesWithBloom
+		blocksFinished bool // whether any previous blocks have been exhausted while building new block
+		done           bool
+		err            error
+	)
+	for {
+		nextInBlocks, blocksFinished, done, err = mb.processNextSeries(builder, nextInBlocks, blocksFinished)
+		if err != nil {
+			return 0, err
+		}
+		if done {
 			break
 		}
 	}
