@@ -42,7 +42,7 @@ BUILD_IMAGE_VERSION := 0.30.1
 # Docker image info
 IMAGE_PREFIX ?= grafana
 
-IMAGE_TAG := $(shell ./tools/image-tag)
+IMAGE_TAG ?= $(shell ./tools/image-tag)
 
 # Version info for binaries
 GIT_REVISION := $(shell git rev-parse --short HEAD)
@@ -847,12 +847,16 @@ dev-k3d-down:
 .PHONY: trivy
 trivy: loki-image
 	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	trivy fs go.mod
 
 # Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
 .PHONY: snyk
-snyk: loki-image
-	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
-	snyk code test
+snyk:
+	snyk test
 
 .PHONY: scan-vulnerabilities
 scan-vulnerabilities: trivy snyk
+
+.PHONY: release-workflows
+release-workflows:
+	jsonnet -SJ .github/vendor -m .github/workflows .github/release-workflows.jsonnet
