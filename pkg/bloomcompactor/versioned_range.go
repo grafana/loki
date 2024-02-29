@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/prometheus/common/model"
 )
 
@@ -208,24 +209,38 @@ func (t tsdbTokenRange) reassemble(from int) tsdbTokenRange {
 	return t[:len(t)-(reassembleTo-from)]
 }
 
-// func outdatedMetas2(metas []bloomshipper.Meta) (outdated []bloomshipper.Meta) {
-// 	// Sort metas descending by most recent source
-// 	sort.Slice(metas, func(i, j int) bool {
-// 		a, err := metas[i].MostRecentSource()
-// 		if err != nil {
-// 			panic(err.Error())
-// 		}
-// 		b, err := metas[j].MostRecentSource()
-// 		if err != nil {
-// 			panic(err.Error())
-// 		}
-// 		return !a.TS.Before(b.TS)
-// 	})
+func outdatedMetas(metas []bloomshipper.Meta) (outdated []bloomshipper.Meta, err error) {
+	// Sort metas descending by most recent source when checking
+	// for outdated metas (older metas are discarded if they don't change the range).
+	sort.Slice(metas, func(i, j int) bool {
+		a, err := metas[i].MostRecentSource()
+		if err != nil {
+			panic(err.Error())
+		}
+		b, err := metas[j].MostRecentSource()
+		if err != nil {
+			panic(err.Error())
+		}
+		return !a.TS.Before(b.TS)
+	})
 
-// 	var tokenRange tsdbTokenRange
+	var (
+		tokenRange tsdbTokenRange
+		added      bool
+	)
 
-// 	for _, meta := range metas {
+	for _, meta := range metas {
+		mostRecent, err := meta.MostRecentSource()
+		if err != nil {
+			return nil, err
+		}
+		version := int(model.TimeFromUnixNano(mostRecent.TS.UnixNano()))
+		tokenRange, added = tokenRange.Add(version, meta.Bounds)
+		if !added {
+			outdated = append(outdated, meta)
+		}
+	}
 
-// 	}
+	return outdated, nil
 
-// }
+}

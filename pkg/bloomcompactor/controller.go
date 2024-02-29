@@ -447,63 +447,6 @@ func (s *SimpleBloomController) buildGaps(
 	return created, nil
 }
 
-// outdatedMetas returns metas that are outdated and need to be removed,
-// determined by if their entire ownership range is covered by other metas with newer
-// TSDBs
-func outdatedMetas(metas []bloomshipper.Meta) (outdated []bloomshipper.Meta) {
-	// first, ensure data is sorted so we can take advantage of that
-	sort.Slice(metas, func(i, j int) bool {
-		return metas[i].Bounds.Less(metas[j].Bounds)
-	})
-
-	// NB(owen-d): time complexity shouldn't be a problem
-	// given the number of metas should be low (famous last words, i know).
-	for i := range metas {
-		a := metas[i]
-
-		var overlaps []v1.FingerprintBounds
-
-		for j := range metas {
-			if j == i {
-				continue
-			}
-
-			b := metas[j]
-			intersection := a.Bounds.Intersection(b.Bounds)
-			if intersection == nil {
-				if a.Bounds.Cmp(b.Bounds.Min) == v1.After {
-					// All subsequent metas will be newer, so we can break
-					break
-				}
-				// otherwise, just check the next meta
-				continue
-			}
-
-			// we can only remove older data, not data which may be newer
-			if !tsdbsStrictlyNewer(b.Sources, a.Sources) {
-				continue
-			}
-
-			// because we've sorted the metas, we only have to test overlaps against the last
-			// overlap we found (if any)
-			if len(overlaps) == 0 {
-				overlaps = append(overlaps, *intersection)
-				continue
-			}
-
-			// best effort at merging overlaps first pass
-			last := overlaps[len(overlaps)-1]
-			overlaps = append(overlaps[:len(overlaps)-1], last.Union(*intersection)...)
-
-		}
-
-		if coversFullRange(a.Bounds, overlaps) {
-			outdated = append(outdated, a)
-		}
-	}
-	return
-}
-
 func coversFullRange(bounds v1.FingerprintBounds, overlaps []v1.FingerprintBounds) bool {
 	// if there are no overlaps, the range is not covered
 	if len(overlaps) == 0 {
@@ -546,18 +489,6 @@ func coversFullRange(bounds v1.FingerprintBounds, overlaps []v1.FingerprintBound
 	}
 
 	return len(ignores) == len(missing)
-}
-
-// tsdbStrictlyNewer returns if all of the tsdbs in a are newer than all of the tsdbs in b
-func tsdbsStrictlyNewer(as, bs []tsdb.SingleTenantTSDBIdentifier) bool {
-	for _, a := range as {
-		for _, b := range bs {
-			if !a.TS.After(b.TS) {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 type gapWithBlocks struct {

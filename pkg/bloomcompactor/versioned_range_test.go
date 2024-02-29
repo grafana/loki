@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 )
@@ -235,6 +237,86 @@ func Test_TsdbTokenRange(t *testing.T) {
 				require.Equal(t, exp, added, "on iteration %d", i)
 			}
 			require.Equal(t, tc.result, tr)
+		})
+	}
+}
+
+func Test_OutdatedMetas(t *testing.T) {
+	gen := func(bounds v1.FingerprintBounds, tsdbTimes ...model.Time) (meta bloomshipper.Meta) {
+		for _, tsdbTime := range tsdbTimes {
+			meta.Sources = append(meta.Sources, tsdb.SingleTenantTSDBIdentifier{TS: tsdbTime.Time()})
+		}
+		meta.Bounds = bounds
+		return meta
+	}
+
+	for _, tc := range []struct {
+		desc  string
+		metas []bloomshipper.Meta
+		exp   []bloomshipper.Meta
+	}{
+		{
+			desc:  "no metas",
+			metas: nil,
+			exp:   nil,
+		},
+		{
+			desc: "single meta",
+			metas: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 10), 0),
+			},
+			exp: nil,
+		},
+		{
+			desc: "single outdated meta",
+			metas: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 10), 0),
+				gen(v1.NewBounds(0, 10), 1),
+			},
+			exp: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 10), 0),
+			},
+		},
+		{
+			desc: "single outdated via partitions",
+			metas: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 5), 0),
+				gen(v1.NewBounds(6, 10), 0),
+				gen(v1.NewBounds(0, 10), 1),
+			},
+			exp: []bloomshipper.Meta{
+				gen(v1.NewBounds(6, 10), 0),
+				gen(v1.NewBounds(0, 5), 0),
+			},
+		},
+		{
+			desc: "same tsdb versions",
+			metas: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 5), 0),
+				gen(v1.NewBounds(6, 10), 0),
+				gen(v1.NewBounds(0, 10), 1),
+			},
+			exp: []bloomshipper.Meta{
+				gen(v1.NewBounds(6, 10), 0),
+				gen(v1.NewBounds(0, 5), 0),
+			},
+		},
+		{
+			desc: "multi version ordering",
+			metas: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 5), 0),
+				gen(v1.NewBounds(0, 10), 1), // only part of the range is outdated, must keep
+				gen(v1.NewBounds(8, 10), 2),
+			},
+			exp: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 5), 0),
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			outdated, err := outdatedMetas(tc.metas)
+			require.NoError(t, err)
+			require.Equal(t, tc.exp, outdated)
 		})
 	}
 }
