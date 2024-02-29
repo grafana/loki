@@ -38,6 +38,8 @@ LIDs must be created as a pull request using [this template](docs/sources/commun
 
 Please document clearly what changed AND what needs to be done in the upgrade guide.
 
+**NOTE:** A member of the Loki repo maintainers must approve and run the continuous integration (CI) workflows for community contributions.
+
 ## Setup
 
 A common problem arises in local environments when you want your module to use a locally modified dependency:

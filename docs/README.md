@@ -8,7 +8,7 @@ Some key things to know about the Loki documentation source:
 - While you can view the documentation in GitHub, GitHub does not render the images or links correctly and cannot render the Hugo specific shortcodes. To read the Loki documentation, see the [Documentation Site](https://grafana.com/docs/loki/latest/).
 - If you have a trivial fix or improvement, go ahead and create a pull request.
 - If you plan to do something more involved, for example creating a new topic, discuss your ideas on the relevant GitHub issue.
-- Pull requests are merged to main, and published to [Upcoming release](https://grafana.com/docs/loki/next/). If your change needs to be published to the  [Latest release](https://grafana.com/docs/loki/latest/) before the next Loki release (that is, it needs to be published immediately), add the appropriate backport label to your PR.  
+- Pull requests are merged to main, and published to [Upcoming release](https://grafana.com/docs/loki/next/). If your change needs to be published to the [Latest release](https://grafana.com/docs/loki/latest/) before the next Loki release (that is, it needs to be published immediately), add the appropriate backport label to your PR.  
 
 ## Contributing
 
@@ -29,8 +29,9 @@ If you have a GitHub account and you're just making a small fix, for example fix
 4. Click **Commit changes**. GitHub creates a pull request for you.
 5. The Loki team uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for commit messages. Make sure your commit messages for doc updates start with `doc:`. 
 6. If this is your first contribution to the Loki repository, you will need to sign the Contributor License Agreement (CLA) before your PR can be accepted.
+**NOTE:** A member of the Loki repo maintainers must approve and run the continuous integration (CI) workflows for community contributions.
 7. Add the `type/docs` label to identify your PR as a docs contribution.  This helps the documentation team track our work.
-8. If your contribution needs to be added to the current release or previous releases, apply the appropriate `backport` label.  You can find more information about backporting in the [Writers' toolkit](https://grafana.com/docs/writers-toolkit/review/backporting/).
+8. If your contribution needs to be added to the current release or previous releases, apply the appropriate `backport` label. You can find more information about backporting in the [Writers' toolkit](https://grafana.com/docs/writers-toolkit/review/backporting/).
 
 For larger contributions, for example documenting a new feature or adding a new topic, consider running the project locally to see how the changes look like before making a pull request.
 
@@ -40,7 +41,7 @@ Note that in Hugo the structure of the documentation is based on the folder stru
 
 ## Shared content
 
-**NOTE:** As of Loki/GEL 3.0, there will be shared files between the Loki docs and the GEL docs. The Grafana Enterprise Logs documentation will pull in content from the Loki repo when publishing the GEL docs.  Files that are shared between the two doc sets will contain a comment indicating that the content is shared.
+**NOTE:** As of Loki/GEL 3.0, there will be shared files between the Loki docs and the GEL docs. The Grafana Enterprise Logs documentation will pull in content from the Loki repo when publishing the GEL docs. Files that are shared between the two doc sets will contain a comment indicating that the content is shared.
 
 For more information about shared content, see the [reuse content](https://grafana.com/docs/writers-toolkit/write/reuse-content/) section of the Writers' Toolkit.
 
