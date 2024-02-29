@@ -68,6 +68,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 	}
 
 	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
+	level.Info(p.logger).Log("msg", "blocks for metas", "num_metas", len(metas), "num_blocks", len(blocksRefs))
 	return p.processBlocks(ctx, partitionTasks(tasks, blocksRefs))
 }
 
