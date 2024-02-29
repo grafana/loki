@@ -816,7 +816,7 @@ validate-example-configs: loki
 	for f in $$(grep -rL $(EXAMPLES_SKIP_VALIDATION_FLAG) $(EXAMPLES_YAML_PATH)/*.yaml); do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
 
 validate-dev-cluster-config: loki
-	./cmd/loki/loki -config.file=./tools/dev/loki-boltdb-storage-s3/config/loki.yaml -verify-config
+	./cmd/loki/loki -config.file=./tools/dev/loki-tsdb-storage-s3/config/loki.yaml -verify-config
 
 # Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.

@@ -27,6 +27,7 @@ const emptyStats = `{
 	"ingester" : {
 		"store": {
 			"chunksDownloadTime": 0,
+			"congestionControlLatency": 0,
 			"totalChunksRef": 0,
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
@@ -51,6 +52,7 @@ const emptyStats = `{
 	"querier": {
 		"store": {
 			"chunksDownloadTime": 0,
+			"congestionControlLatency": 0,
 			"totalChunksRef": 0,
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
