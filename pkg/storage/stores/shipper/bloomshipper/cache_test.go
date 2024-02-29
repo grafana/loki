@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 type mockCache[K comparable, V any] struct {

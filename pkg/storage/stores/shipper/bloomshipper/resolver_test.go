@@ -3,8 +3,9 @@ package bloomshipper
 import (
 	"testing"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/stretchr/testify/require"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
 func TestResolver_ParseMetaKey(t *testing.T) {
