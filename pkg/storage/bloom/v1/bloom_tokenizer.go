@@ -94,8 +94,28 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 
 	clearCache(bt.cache)
 
-	var tokenBuf []byte
-	var prefixLn int
+	var (
+		tokenBuf               []byte
+		prefixLn               int
+		tokens                 int
+		successfulInserts      int
+		cachedInserts          int
+		collisionInserts       int
+		chunkSuccessfulInserts int
+		chunkCachedInserts     int
+		chunkCollisionInserts  int
+	)
+	defer func() {
+		bt.metrics.tokensTotal.Add(float64(tokens))
+
+		bt.metrics.insertsTotal.WithLabelValues(tokenTypeRaw, collisionTypeFalse).Add(float64(successfulInserts))
+		bt.metrics.insertsTotal.WithLabelValues(tokenTypeRaw, collisionTypeCache).Add(float64(cachedInserts))
+		bt.metrics.insertsTotal.WithLabelValues(tokenTypeRaw, collisionTypeTrue).Add(float64(collisionInserts))
+
+		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeFalse).Add(float64(chunkSuccessfulInserts))
+		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeCache).Add(float64(chunkCachedInserts))
+		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeTrue).Add(float64(chunkCollisionInserts))
+	}()
 
 	// Iterate over chunks
 	for chks.Next() && chks.Err() == nil {
@@ -112,36 +132,49 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 			chunkTokenizer := NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(line))
 			for chunkTokenizer.Next() {
 				tok := chunkTokenizer.At()
-				if tok != nil {
-					// TODO(owen-d): unsafe this?
-					str := string(tok)
-					_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
-					if !found {
-						bt.cache[str] = nil
+				tokens++
+				// TODO(owen-d): unsafe this?
+				str := string(tok)
+				_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+				if found {
+					cachedInserts++
+					continue
+				}
 
-						swb.Bloom.ScalableBloomFilter.TestAndAdd(tok)
+				bt.cache[str] = nil
+				collision := swb.Bloom.ScalableBloomFilter.TestAndAdd(tok)
+				if collision {
+					collisionInserts++
+				} else {
+					successfulInserts++
+				}
 
-						if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
-							clearCache(bt.cache)
-						}
-					}
+				if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+					clearCache(bt.cache)
 				}
 			}
+
 			lineTokenizer := bt.lineTokenizer.Tokens(line)
 			for lineTokenizer.Next() {
 				tok := lineTokenizer.At()
-				if tok != nil {
-					str := string(tok)
-					_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
-					if !found {
-						bt.cache[str] = nil
+				tokens++
+				str := string(tok)
+				_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+				if found {
+					chunkCachedInserts++
+					continue
+				}
+				bt.cache[str] = nil
 
-						swb.Bloom.ScalableBloomFilter.TestAndAdd(tok)
+				collision := swb.Bloom.ScalableBloomFilter.TestAndAdd(tok)
+				if collision {
+					chunkCollisionInserts++
+				} else {
+					chunkSuccessfulInserts++
+				}
 
-						if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
-							clearCache(bt.cache)
-						}
-					}
+				if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+					clearCache(bt.cache)
 				}
 			}
 

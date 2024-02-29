@@ -12,10 +12,20 @@ type Metrics struct {
 	estimatedCount      prometheus.Histogram // estimated number of elements in the bloom filter
 	chunksIndexed       *prometheus.CounterVec
 	blockSeriesIterated prometheus.Counter
+	tokensTotal         prometheus.Counter
+	insertsTotal        *prometheus.CounterVec
 }
 
-const chunkIndexedTypeIterated = "iterated"
-const chunkIndexedTypeCopied = "copied"
+const (
+	chunkIndexedTypeIterated = "iterated"
+	chunkIndexedTypeCopied   = "copied"
+
+	tokenTypeRaw           = "raw"
+	tokenTypeChunkPrefixed = "chunk_prefixed"
+	collisionTypeFalse     = "false"
+	collisionTypeTrue      = "true"
+	collisionTypeCache     = "cache"
+)
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
@@ -46,5 +56,13 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Name: "bloom_block_series_iterated_total",
 			Help: "Number of series iterated in existing blocks while generating new blocks",
 		}),
+		tokensTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "bloom_tokens_total",
+			Help: "Number of tokens processed",
+		}),
+		insertsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "bloom_inserts_total",
+			Help: "Number of inserts into the bloom filter. collision type may be `false` (no collision), `cache` (found in token cache) or true (found in bloom filter). token_type may be either `raw` (the original ngram) or `chunk_prefixed` (the ngram with the chunk prefix)",
+		}, []string{"token_type", "collision"}),
 	}
 }
