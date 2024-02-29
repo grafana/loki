@@ -62,5 +62,18 @@ func Build(opts Options) ([]byte, []byte, error) {
 func yamlBlock(indent string, in reflect.Value) string {
 	inStr := in.String()
 	lines := strings.Split(strings.TrimRight(inStr, "\n"), "\n")
-	return strings.Join(lines, "\n"+indent)
+
+	for i, line := range lines {
+		if strings.HasPrefix(line, "{") {
+			lines[i] = strings.ReplaceAll(line, "{", "'{")
+		}
+		if strings.HasSuffix(line, "}") {
+			lines[i] = strings.ReplaceAll(lines[i], "}", "}'")
+		}
+	}
+
+	return (strings.Join(lines, "\n"+indent))
+	/* inStr := in.String()
+	lines := strings.Split(strings.TrimRight(inStr, "\n"), "\n")
+	return strings.Join(lines, "\n"+indent) */
 }
