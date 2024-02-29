@@ -60,7 +60,7 @@ func (f *IPLineFilter) ToStage() Stage {
 }
 
 // Matches implement `Filterer` interface.
-func (f *IPLineFilter) Matches(test Checker) bool {
+func (f *IPLineFilter) Matches(_ Checker) bool {
 	panic("unimplemented")
 }
 
