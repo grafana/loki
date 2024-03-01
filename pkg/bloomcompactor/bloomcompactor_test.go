@@ -299,37 +299,36 @@ func TestCompactionTracker(t *testing.T) {
 			ownershipRange: v1.NewBounds(from, through),
 		}
 	}
-	a_0_0 := mkRange("a", day1, 0, 10)
-	a_0_1 := mkRange("a", day1, 40, 50)
-	b_0_0 := mkRange("b", day1, 10, 20)
+	aDayOneOffsetZero := mkRange("a", day1, 0, 10)
+	aDayOneOffsetOne := mkRange("a", day1, 40, 50)
+	bDayOneOffsetZero := mkRange("b", day1, 10, 20)
 
-	tracker.add(a_0_0)
-	tracker.add(a_0_1)
+	tracker.add(aDayOneOffsetZero)
+	tracker.add(aDayOneOffsetOne)
 
 	require.Equal(t, 0., tracker.progress())
-	a_0_0.finished = true
+	aDayOneOffsetZero.finished = true
 	require.Equal(t, 0.125, tracker.progress())
-	a_0_1.finished = true
+	aDayOneOffsetOne.finished = true
 	require.Equal(t, 0.25, tracker.progress())
 
-	tracker.add(b_0_0)
+	tracker.add(bDayOneOffsetZero)
 	require.Equal(t, 0.25, tracker.progress())
-	b_0_0.finished = true
+	bDayOneOffsetZero.finished = true
 	require.Equal(t, 0.5, tracker.progress())
 
-	a_1_0 := mkRange("a", day2, 0, 10)
-	b_1_0 := mkRange("b", day2, 10, 20)
-	c_1_0 := mkRange("c", day2, 20, 30)
-	tracker.add(a_1_0)
-	tracker.add(b_1_0)
-	tracker.add(c_1_0)
+	aDayTwoOffsetZero := mkRange("a", day2, 0, 10)
+	bDayTwoOffsetZero := mkRange("b", day2, 10, 20)
+	cDayTwoOffsetZero := mkRange("c", day2, 20, 30)
+	tracker.add(aDayTwoOffsetZero)
+	tracker.add(bDayTwoOffsetZero)
+	tracker.add(cDayTwoOffsetZero)
 	require.Equal(t, 0.5, tracker.progress())
 
-	a_1_0.finished = true
-	b_1_0.finished = true
+	aDayTwoOffsetZero.finished = true
+	bDayTwoOffsetZero.finished = true
 	require.Equal(t, 0.833, tracker.progress())
 
-	c_1_0.finished = true
+	cDayTwoOffsetZero.finished = true
 	require.Equal(t, 1., tracker.progress())
-
 }
