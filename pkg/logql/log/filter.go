@@ -37,7 +37,7 @@ type matcherFiltererWrapper struct {
 	Filterer
 }
 
-func (m matcherFiltererWrapper) Matches(test Checker) bool {
+func (m matcherFiltererWrapper) Matches(_ Checker) bool {
 	panic("unimplemented")
 }
 
