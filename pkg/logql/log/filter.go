@@ -599,8 +599,6 @@ func (s *RegexSimplifier) Simplify(reg *syntax.Regexp, isLabel bool) (MatcherFil
 		}
 	case syntax.OpEmptyMatch:
 		return TrueFilter, true
-	default:
-		return nil, false
 	}
 	return nil, false
 }
