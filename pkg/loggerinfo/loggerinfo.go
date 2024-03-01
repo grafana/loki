@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"github.com/grafana/loki/pkg/push"
+	"github.com/grafana/loki/pkg/util"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
@@ -26,7 +28,7 @@ type LoggerInfo struct {
 	services map[string]*serviceLoggerInfo
 }
 
-const serviceNameLabel = "service_name"
+const serviceNameLabel = "service"
 
 func Push(req *logproto.PushRequest) { loggerinfo.Push(req) }
 
@@ -91,38 +93,43 @@ func (s *serviceLoggerInfo) push(stream push.Stream) {
 	}
 }
 
-type PatternsRequest struct {
-	Expr      string `json:"query"`
-	StartTime int64  `json:"from"`
-	EndTime   int64  `json:"to"`
-}
-
 type PatternsResponse struct {
 	Patterns []*Pattern `json:"patterns"`
 }
 
 type Pattern struct {
-	Name    string     `json:"name"`
-	Pattern string     `json:"pattern"`
-	Samples []string   `json:"sampleLogLines"`
-	Volume  [][2]int64 `json:"volumeTimeSeries"`
-	Matches int64      `json:"matches"`
+	Name    string             `json:"name"`
+	Pattern string             `json:"pattern"`
+	Samples []string           `json:"sampleLogLines"`
+	Volume  []model.SamplePair `json:"volumeTimeSeries"`
+	Matches int64              `json:"matches"`
 }
 
 func Patterns(w http.ResponseWriter, r *http.Request) {
-	var req PatternsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := r.ParseForm(); err != nil {
 		_, _ = w.Write([]byte(err.Error()))
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	svcName, err := getServiceName(req.Expr)
+	from, err := util.ParseTime(r.Form.Get("from"))
 	if err != nil {
 		_, _ = w.Write([]byte(err.Error()))
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	patterns := loggerinfo.serviceInstance(svcName).getPatterns(req.StartTime, req.EndTime)
+	to, err := util.ParseTime(r.Form.Get("to"))
+	if err != nil {
+		_, _ = w.Write([]byte(err.Error()))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	svcName, err := getServiceName(r.Form.Get("query"))
+	if err != nil {
+		_, _ = w.Write([]byte(err.Error()))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	patterns := loggerinfo.serviceInstance(svcName).getPatterns(model.Time(from), model.Time(to))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(patterns)
 }
@@ -140,7 +147,8 @@ func getServiceName(expr string) (string, error) {
 	return "", errors.New("service_name matcher is required")
 }
 
-func (s *serviceLoggerInfo) getPatterns(start, end int64) PatternsResponse {
+// get patterns start and end are in milliseconds
+func (s *serviceLoggerInfo) getPatterns(start, end model.Time) PatternsResponse {
 	s.m.Lock()
 	defer s.m.Unlock()
 	resp := PatternsResponse{Patterns: make([]*Pattern, 0, 1<<10)}
