@@ -564,69 +564,69 @@ func (mb *MergeBuilder) processNextSeries(
 		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeCopied).Add(float64(chunksCopied))
 	}()
 
-	for mb.store.Next() {
-		nextInStore := mb.store.At()
-
-		// advance the merged blocks iterator until we find a series that is
-		// greater than or equal to the next series in the store.
-		// TODO(owen-d): expensive, but Seek is not implemented for this itr.
-		// It's also more efficient to build an iterator over the Series file in the index
-		// without the blooms until we find a bloom we actually need to unpack from the blooms file.
-		for !blocksFinished && (nextInBlocks == nil || nextInBlocks.Series.Fingerprint < mb.store.At().Fingerprint) {
-			if !mb.blocks.Next() {
-				// we've exhausted all the blocks
-				blocksFinished = true
-				nextInBlocks = nil
-				break
-			}
-
-			if err := mb.blocks.Err(); err != nil {
-				return nil, false, false, errors.Wrap(err, "iterating blocks")
-			}
-			blockSeriesIterated++
-			nextInBlocks = mb.blocks.At()
-		}
-
-		cur := nextInBlocks
-		chunksToAdd := nextInStore.Chunks
-		// The next series from the store doesn't exist in the blocks, so we add it
-		// in its entirety
-		if nextInBlocks == nil || nextInBlocks.Series.Fingerprint > nextInStore.Fingerprint {
-			cur = &SeriesWithBloom{
-				Series: nextInStore,
-				Bloom: &Bloom{
-					// TODO parameterise SBF options. fp_rate
-					ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
-				},
-			}
-		} else {
-			// if the series already exists in the block, we only need to add the new chunks
-			chunksToAdd = nextInStore.Chunks.Unless(nextInBlocks.Series.Chunks)
-			chunksCopied += len(nextInStore.Chunks) - len(chunksToAdd)
-		}
-
-		chunksIndexed += len(chunksToAdd)
-
-		if len(chunksToAdd) > 0 {
-			if err := mb.populate(
-				&Series{
-					Fingerprint: nextInStore.Fingerprint,
-					Chunks:      chunksToAdd,
-				},
-				cur.Bloom,
-			); err != nil {
-				return nil, false, false, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
-			}
-		}
-
-		done, err := builder.AddSeries(*cur)
-		if err != nil {
-			return nil, false, false, errors.Wrap(err, "adding series to block")
-		}
-		return nextInBlocks, blocksFinished, done, nil
+	if !mb.store.Next() {
+		return nil, false, true, nil
 	}
 
-	return nil, false, true, nil
+	nextInStore := mb.store.At()
+
+	// advance the merged blocks iterator until we find a series that is
+	// greater than or equal to the next series in the store.
+	// TODO(owen-d): expensive, but Seek is not implemented for this itr.
+	// It's also more efficient to build an iterator over the Series file in the index
+	// without the blooms until we find a bloom we actually need to unpack from the blooms file.
+	for !blocksFinished && (nextInBlocks == nil || nextInBlocks.Series.Fingerprint < mb.store.At().Fingerprint) {
+		if !mb.blocks.Next() {
+			// we've exhausted all the blocks
+			blocksFinished = true
+			nextInBlocks = nil
+			break
+		}
+
+		if err := mb.blocks.Err(); err != nil {
+			return nil, false, false, errors.Wrap(err, "iterating blocks")
+		}
+		blockSeriesIterated++
+		nextInBlocks = mb.blocks.At()
+	}
+
+	cur := nextInBlocks
+	chunksToAdd := nextInStore.Chunks
+	// The next series from the store doesn't exist in the blocks, so we add it
+	// in its entirety
+	if nextInBlocks == nil || nextInBlocks.Series.Fingerprint > nextInStore.Fingerprint {
+		cur = &SeriesWithBloom{
+			Series: nextInStore,
+			Bloom: &Bloom{
+				// TODO parameterise SBF options. fp_rate
+				ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+			},
+		}
+	} else {
+		// if the series already exists in the block, we only need to add the new chunks
+		chunksToAdd = nextInStore.Chunks.Unless(nextInBlocks.Series.Chunks)
+		chunksCopied += len(nextInStore.Chunks) - len(chunksToAdd)
+	}
+
+	chunksIndexed += len(chunksToAdd)
+
+	if len(chunksToAdd) > 0 {
+		if err := mb.populate(
+			&Series{
+				Fingerprint: nextInStore.Fingerprint,
+				Chunks:      chunksToAdd,
+			},
+			cur.Bloom,
+		); err != nil {
+			return nil, false, false, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
+		}
+	}
+
+	done, err := builder.AddSeries(*cur)
+	if err != nil {
+		return nil, false, false, errors.Wrap(err, "adding series to block")
+	}
+	return nextInBlocks, blocksFinished, done, nil
 }
 
 func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
