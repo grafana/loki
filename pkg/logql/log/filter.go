@@ -13,11 +13,16 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
+// Checker is an interface that matches against the input line or regexp.
 type Checker interface {
 	Test(line []byte, caseInsensitive bool, equal bool) bool
 	TestRegex(reg *regexp.Regexp) bool
 }
 
+// Matcher is a interface to match log lines against a Checker.
+// This works in the opposite direction of Filterer. Whereas Filterer.Filter
+// checks if an input log line satisfies the filter, Matcher.Matches checks if
+// a filter satisfies an input log line (or regexp).
 type Matcher interface {
 	Matches(test Checker) bool
 }
@@ -33,12 +38,25 @@ type MatcherFilterer interface {
 	Filterer
 }
 
-type matcherFiltererWrapper struct {
+type wrapper struct {
 	Filterer
+	Matcher
 }
 
-func (m matcherFiltererWrapper) Matches(_ Checker) bool {
-	panic("unimplemented")
+func (w wrapper) IsMatcher() bool {
+	return w.Matcher != nil
+}
+
+func (w wrapper) IsFilterer() bool {
+	return w.Filterer != nil
+}
+
+func WrapFilterer(f Filterer) MatcherFilterer {
+	return wrapper{Filterer: f}
+}
+
+func WrapMatcher(m Matcher) MatcherFilterer {
+	return wrapper{Matcher: m}
 }
 
 // LineFilterFunc is a syntax sugar for creating line filter from a function
@@ -53,7 +71,7 @@ type trueFilter struct{}
 func (trueFilter) Filter(_ []byte) bool { return true }
 func (trueFilter) ToStage() Stage       { return NoopStage }
 
-// Matches implements MatcherFilter
+// Matches implements Matcher
 func (trueFilter) Matches(_ Checker) bool { return true }
 
 // TrueFilter is a filter that returns and matches all log lines whatever their content.
@@ -68,8 +86,14 @@ func isTrueFilter(f MatcherFilterer) bool {
 		return true
 	}
 
-	if wrap, ok := f.(matcherFiltererWrapper); ok {
-		if _, ok = wrap.Filterer.(trueFilter); ok {
+	if wrap, ok := f.(wrapper); ok {
+		if wrap.IsFilterer() {
+			if _, ok = wrap.Filterer.(trueFilter); ok {
+				return true
+			}
+		}
+		// Otherwise, it's a matcher
+		if _, ok = wrap.Matcher.(trueFilter); ok {
 			return true
 		}
 	}
@@ -91,7 +115,7 @@ func (e existsFilter) ToStage() Stage {
 	}
 }
 
-// Matches implements MatcherFilter
+// Matches implements Matcher
 func (e existsFilter) Matches(_ Checker) bool { return true }
 
 // ExistsFilter is a filter that returns and matches when a line has any characters.
@@ -166,16 +190,17 @@ func (a andFilter) Matches(test Checker) bool {
 }
 
 type andFilters struct {
-	filters []MatcherFilterer
+	filters []Filterer
 }
 
-func NewAndMatcherFilters(filters []MatcherFilterer) MatcherFilterer {
+// NewAndFilters creates a new filter which matches only if all filters match
+func NewAndFilters(filters []Filterer) Filterer {
 	var containsFilterAcc *containsAllFilter
-	regexpFilters := make([]MatcherFilterer, 0)
+	regexpFilters := make([]Filterer, 0)
 	n := 0
 	for _, filter := range filters {
 		// Make sure we take care of panics in case a nil or noop filter is passed.
-		if !(filter == nil || isTrueFilter(filter)) {
+		if !(filter == nil || isTrueFilter(WrapFilterer(filter))) {
 			switch c := filter.(type) {
 			case *containsFilter:
 				// Start accumulating contains filters.
@@ -224,15 +249,6 @@ func NewAndMatcherFilters(filters []MatcherFilterer) MatcherFilterer {
 	}
 }
 
-// NewAndFilters creates a new filter which matches only if all filters match
-func NewAndFilters(filters []Filterer) Filterer {
-	filtersAsMatcherFilterer := make([]MatcherFilterer, 0, len(filters))
-	for _, f := range filters {
-		filtersAsMatcherFilterer = append(filtersAsMatcherFilterer, matcherFiltererWrapper{f})
-	}
-	return NewAndMatcherFilters(filtersAsMatcherFilterer)
-}
-
 func (a andFilters) Filter(line []byte) bool {
 	for _, filter := range a.filters {
 		if !filter.Filter(line) {
@@ -248,15 +264,6 @@ func (a andFilters) ToStage() Stage {
 			return line, a.Filter(line)
 		},
 	}
-}
-
-func (a andFilters) Matches(test Checker) bool {
-	for _, filter := range a.filters {
-		if !filter.Matches(test) {
-			return false
-		}
-	}
-	return true
 }
 
 type orFilter struct {
@@ -290,7 +297,7 @@ func ChainOrMatcherFilterer(curr, new MatcherFilterer) MatcherFilterer {
 
 // ChainOrFilter is a syntax sugar to chain multiple `or` filters. (1 or many)
 func ChainOrFilter(curr, new Filterer) Filterer {
-	return ChainOrMatcherFilterer(matcherFiltererWrapper{curr}, matcherFiltererWrapper{new})
+	return ChainOrMatcherFilterer(WrapFilterer(curr), WrapFilterer(new))
 }
 
 func (a orFilter) Filter(line []byte) bool {
@@ -305,7 +312,7 @@ func (a orFilter) ToStage() Stage {
 	}
 }
 
-// Matches implements MatcherFilter
+// Matches implements Matcher
 func (a orFilter) Matches(test Checker) bool {
 	return a.left.Matches(test) || a.right.Matches(test)
 }
@@ -447,7 +454,7 @@ func (l containsFilter) ToStage() Stage {
 	}
 }
 
-// Matches implements MatcherFilter
+// Matches implements Matcher
 func (l containsFilter) Matches(test Checker) bool {
 	return test.Test(l.match, l.caseInsensitive, false)
 }

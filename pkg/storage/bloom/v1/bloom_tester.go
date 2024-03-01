@@ -195,16 +195,6 @@ type stringMatcherFilter struct {
 	test stringTest
 }
 
-// Filter implements the log.Filterer interface
-func (b stringMatcherFilter) Filter(_ []byte) bool {
-	panic("implement me")
-}
-
-// ToStage implements the log.Filterer interface
-func (b stringMatcherFilter) ToStage() log.Stage {
-	panic("implement me")
-}
-
 // Matches implements the log.Filterer interface
 func (b stringMatcherFilter) Matches(test log.Checker) bool {
 	return b.test.Matches(logCheckerWrapper{test})
@@ -212,9 +202,9 @@ func (b stringMatcherFilter) Matches(test log.Checker) bool {
 
 func newStringFilterFunc(b NGramBuilder) log.NewMatcherFiltererFunc {
 	return func(match []byte, caseInsensitive bool) log.MatcherFilterer {
-		return stringMatcherFilter{
+		return log.WrapMatcher(stringMatcherFilter{
 			test: newStringTest(b, string(match)),
-		}
+		})
 	}
 }
 
