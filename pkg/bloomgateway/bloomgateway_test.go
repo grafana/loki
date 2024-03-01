@@ -77,7 +77,7 @@ func setupBloomStore(t *testing.T) *bloomshipper.BloomStore {
 		},
 	}
 
-	reg := prometheus.NewPedanticRegistry()
+	reg := prometheus.NewRegistry()
 	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, nil, nil, reg, logger)
 	require.NoError(t, err)
 	t.Cleanup(store.Stop)

@@ -131,6 +131,7 @@ func (b BlockDirectory) Release() error {
 }
 
 func (b BlockDirectory) Size() int64 {
+	// TODO(chaudum): Reduce syscalls by storing the size on the block directory struct
 	bloomFileStats, _ := os.Lstat(path.Join(b.Path, v1.BloomFileName))
 	seriesFileStats, _ := os.Lstat(path.Join(b.Path, v1.SeriesFileName))
 	return bloomFileStats.Size() + seriesFileStats.Size()
