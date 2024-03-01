@@ -3,6 +3,7 @@ package test
 import (
 	"os"
 	"os/exec"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -19,6 +20,7 @@ type loki struct {
 }
 
 type values struct {
+	DeploymentMode string   `yaml:"deploymentMode"`
 	Backend        replicas `yaml:"backend"`
 	Compactor      replicas `yaml:"compactor"`
 	Distributor    replicas `yaml:"distributor"`
@@ -35,6 +37,9 @@ type values struct {
 	Loki loki `yaml:"loki"`
 }
 
+// This speeds up the tests, don't think this will cause problems but if you are reading this it probably did :)
+var helmDependencyBuild sync.Once
+
 func templateConfig(t *testing.T, vals values) error {
 	y, err := yaml.Marshal(&vals)
 	require.NoError(t, err)
@@ -45,6 +50,20 @@ func templateConfig(t *testing.T, vals values) error {
 
 	_, err = f.Write(y)
 	require.NoError(t, err)
+
+	var doOnceError error
+	helmDependencyBuild.Do(func() {
+		cmd := exec.Command("helm", "dependency", "build")
+		// Dependency build needs to be run from the parent directory where the chart is located.
+		cmd.Dir = "../"
+		var cmdOutput []byte
+		if cmdOutput, doOnceError = cmd.CombinedOutput(); err != nil {
+			t.Log("dependency build failed", "err", string(cmdOutput))
+		}
+	})
+	if doOnceError != nil {
+		return doOnceError
+	}
 
 	cmd := exec.Command("helm", "template", "../", "--values", f.Name())
 	if cmdOutput, err := cmd.CombinedOutput(); err != nil {
@@ -124,6 +143,9 @@ func Test_InvalidConfigs(t *testing.T) {
 func Test_ValidConfigs(t *testing.T) {
 	t.Run("single binary", func(t *testing.T) {
 		vals := values{
+
+			DeploymentMode: "SingleBinary",
+
 			SingleBinary: replicas{Replicas: 1},
 
 			Backend:        replicas{Replicas: 0},
@@ -149,6 +171,9 @@ func Test_ValidConfigs(t *testing.T) {
 
 	t.Run("scalable", func(t *testing.T) {
 		vals := values{
+
+			DeploymentMode: "SimpleScalable",
+
 			Backend: replicas{Replicas: 1},
 			Read:    replicas{Replicas: 1},
 			Write:   replicas{Replicas: 1},
@@ -174,6 +199,8 @@ func Test_ValidConfigs(t *testing.T) {
 
 	t.Run("distributed", func(t *testing.T) {
 		vals := values{
+			DeploymentMode: "Distributed",
+
 			Compactor:      replicas{Replicas: 1},
 			Distributor:    replicas{Replicas: 1},
 			IndexGateway:   replicas{Replicas: 1},
