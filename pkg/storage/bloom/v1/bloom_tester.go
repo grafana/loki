@@ -70,13 +70,13 @@ func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest
 		reg = reg.Simplify()
 
 		simplifier := log.NewRegexSimplifier(newStringFilterFunc(b), newStringFilterFunc(b))
-		matcherFilter, ok := simplifier.Simplify(reg, false)
+		matcher, ok := simplifier.Simplify(reg, false)
 		if !ok {
 			// If the regex simplifier fails, we default to MatchAll
 			return MatchAll
 		}
 
-		var test BloomTest = matcherFilterWrapper{filter: matcherFilter}
+		var test BloomTest = matcherFilterWrapper{filter: matcher}
 		if filter.Ty == labels.MatchNotRegexp {
 			test = newNotTest(test)
 		}
@@ -111,7 +111,7 @@ func (l logCheckerWrapper) Test(data []byte) bool {
 }
 
 type matcherFilterWrapper struct {
-	filter log.Filterer
+	filter log.Matcher
 }
 
 func (m matcherFilterWrapper) Matches(bloom filter.Checker) bool {
@@ -210,8 +210,8 @@ func (b stringMatcherFilter) Matches(test log.Checker) bool {
 	return b.test.Matches(logCheckerWrapper{test})
 }
 
-func newStringFilterFunc(b NGramBuilder) log.NewFilterFunc {
-	return func(match []byte, caseInsensitive bool) log.Filterer {
+func newStringFilterFunc(b NGramBuilder) log.NewMatcherFiltererFunc {
+	return func(match []byte, caseInsensitive bool) log.MatcherFilterer {
 		return stringMatcherFilter{
 			test: newStringTest(b, string(match)),
 		}
