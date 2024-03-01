@@ -205,7 +205,7 @@ spec:
             {{- toYaml .Values.backend.resources | nindent 12 }}
       {{- with .Values.backend.affinity }}
       affinity:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.backend.dnsConfig }}
       dnsConfig:

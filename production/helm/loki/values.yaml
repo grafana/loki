@@ -816,14 +816,14 @@ gateway:
   extraContainers: []
   # -- Grace period to allow the gateway to shutdown before it is killed
   terminationGracePeriodSeconds: 30
-  # -- Affinity for gateway pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
+  # -- Affinity for gateway pods.
+  # @default -- Hard node anti-affinity
+  affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.gatewaySelectorLabels" . | nindent 10 }}
+              app.kubernetes.io/component: gateway
           topologyKey: kubernetes.io/hostname
   # -- DNS config for gateway pods
   dnsConfig: {}
@@ -1058,14 +1058,14 @@ singleBinary:
   resources: {}
   # -- Grace period to allow the single binary to shutdown before it is killed
   terminationGracePeriodSeconds: 30
-  # -- Affinity for single binary pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
+  # -- Affinity for single binary pods.
+  # @default -- Hard node anti-affinity
+  affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.singleBinarySelectorLabels" . | nindent 10 }}
+              app.kubernetes.io/component: single-binary
           topologyKey: kubernetes.io/hostname
   # -- DNS config for single binary pods
   dnsConfig: {}
@@ -1179,14 +1179,14 @@ write:
   # this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
-  # -- Affinity for write pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
+  # -- Affinity for write pods.
+  # @default -- Hard node anti-affinity
+  affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.writeSelectorLabels" . | nindent 10 }}
+              app.kubernetes.io/component: write
           topologyKey: kubernetes.io/hostname
   # -- DNS config for write pods
   dnsConfig: {}
@@ -1290,14 +1290,14 @@ read:
   resources: {}
   # -- Grace period to allow the read to shutdown before it is killed
   terminationGracePeriodSeconds: 30
-  # -- Affinity for read pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
+  # -- Affinity for read pods.
+  # @default -- Hard node anti-affinity
+  affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.readSelectorLabels" . | nindent 10 }}
+              app.kubernetes.io/component: read
           topologyKey: kubernetes.io/hostname
   # -- DNS config for read pods
   dnsConfig: {}
@@ -1394,14 +1394,14 @@ backend:
   # this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
-  # -- Affinity for backend pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
+  # -- Affinity for backend pods.
+  # @default -- Hard node anti-affinity
+  affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.backendSelectorLabels" . | nindent 10 }}
+              app.kubernetes.io/component: backend
           topologyKey: kubernetes.io/hostname
   # -- DNS config for backend pods
   dnsConfig: {}
@@ -1515,31 +1515,24 @@ ingester:
   terminationGracePeriodSeconds: 300
   # -- Lifecycle for the ingester container
   lifecycle: {}
-  # -- topologySpread for ingester pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Defaults to allow skew no more then 1 node per AZ
-  topologySpreadConstraints: |
+  # -- topologySpread for ingester pods.
+  # @default -- Defaults to allow skew no more than 1 node
+  topologySpreadConstraints:
     - maxSkew: 1
       topologyKey: kubernetes.io/hostname
       whenUnsatisfiable: ScheduleAnyway
       labelSelector:
         matchLabels:
-          {{- include "loki.ingesterSelectorLabels" . | nindent 6 }}
-  # -- Affinity for ingester pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
+          app.kubernetes.io/component: ingester
+  # -- Affinity for ingester pods.
+  # @default -- Hard node anti-affinity
+  affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.ingesterSelectorLabels" . | nindent 10 }}
+              app.kubernetes.io/component: ingester
           topologyKey: kubernetes.io/hostname
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchLabels:
-                {{- include "loki.ingesterSelectorLabels" . | nindent 12 }}
-            topologyKey: failure-domain.beta.kubernetes.io/zone
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Max Surge for ingester pods
@@ -1648,22 +1641,15 @@ distributor:
   extraContainers: []
   # -- Grace period to allow the distributor to shutdown before it is killed
   terminationGracePeriodSeconds: 30
-  # -- Affinity for distributor pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
+  # -- Affinity for distributor pods.
+  # @default -- Hard node anti-affinity
+  affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.distributorSelectorLabels" . | nindent 10 }}
+              app.kubernetes.io/component: distributor
           topologyKey: kubernetes.io/hostname
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchLabels:
-                {{- include "loki.distributorSelectorLabels" . | nindent 12 }}
-            topologyKey: failure-domain.beta.kubernetes.io/zone
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Max Surge for distributor pods
@@ -1748,31 +1734,24 @@ querier:
   initContainers: []
   # -- Grace period to allow the querier to shutdown before it is killed
   terminationGracePeriodSeconds: 30
-  # -- topologySpread for querier pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Defaults to allow skew no more then 1 node per AZ
-  topologySpreadConstraints: |
+  # -- topologySpread for querier pods.
+  # @default -- Defaults to allow skew no more then 1 node
+  topologySpreadConstraints:
     - maxSkew: 1
       topologyKey: kubernetes.io/hostname
       whenUnsatisfiable: ScheduleAnyway
       labelSelector:
         matchLabels:
-          {{- include "loki.querierSelectorLabels" . | nindent 6 }}
-  # -- Affinity for querier pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
+          app.kubernetes.io/component: querier
+  # -- Affinity for querier pods.
+  # @default -- Hard node anti-affinity
+  affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.querierSelectorLabels" . | nindent 10 }}
+              app.kubernetes.io/component: querier
           topologyKey: kubernetes.io/hostname
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchLabels:
-                {{- include "loki.querierSelectorLabels" . | nindent 12 }}
-            topologyKey: failure-domain.beta.kubernetes.io/zone
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Max Surge for querier pods
@@ -1870,22 +1849,15 @@ queryFrontend:
   extraContainers: []
   # -- Grace period to allow the query-frontend to shutdown before it is killed
   terminationGracePeriodSeconds: 30
-  # -- Affinity for query-frontend pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
+  # -- Affinity for query-frontend pods.
+  # @default -- Hard node anti-affinity
+  affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.queryFrontendSelectorLabels" . | nindent 10 }}
+              app.kubernetes.io/component: query-frontend
           topologyKey: kubernetes.io/hostname
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchLabels:
-                {{- include "loki.queryFrontendSelectorLabels" . | nindent 12 }}
-            topologyKey: failure-domain.beta.kubernetes.io/zone
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for query-frontend pods
@@ -1939,22 +1911,15 @@ queryScheduler:
   extraContainers: []
   # -- Grace period to allow the query-scheduler to shutdown before it is killed
   terminationGracePeriodSeconds: 30
-  # -- Affinity for query-scheduler pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
+  # -- Affinity for query-scheduler pods.
+  # @default -- Hard node anti-affinity
+  affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.querySchedulerSelectorLabels" . | nindent 10 }}
+              app.kubernetes.io/component: query-scheduler
           topologyKey: kubernetes.io/hostname
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchLabels:
-                {{- include "loki.querySchedulerSelectorLabels" . | nindent 12 }}
-            topologyKey: failure-domain.beta.kubernetes.io/zone
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
   # -- Node selector for query-scheduler pods
@@ -2009,22 +1974,15 @@ indexGateway:
   initContainers: []
   # -- Grace period to allow the index-gateway to shutdown before it is killed.
   terminationGracePeriodSeconds: 300
-  # -- Affinity for index-gateway pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
+  # -- Affinity for index-gateway pods.
+  # @default -- Hard node anti-affinity
+  affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.indexGatewaySelectorLabels" . | nindent 10 }}
+              app.kubernetes.io/component: index-gateway
           topologyKey: kubernetes.io/hostname
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchLabels:
-                {{- include "loki.indexGatewaySelectorLabels" . | nindent 12 }}
-            topologyKey: failure-domain.beta.kubernetes.io/zone
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for index-gateway pods
@@ -2078,22 +2036,15 @@ compactor:
   podLabels: {}
   # -- Annotations for compactor pods
   podAnnotations: {}
-  # -- Affinity for compactor pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
+  # -- Affinity for compactor pods.
+  # @default -- Hard node anti-affinity
+  affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.compactorSelectorLabels" . | nindent 10 }}
+              app.kubernetes.io/component: compactor
           topologyKey: kubernetes.io/hostname
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchLabels:
-                {{- include "loki.compactorSelectorLabels" . | nindent 12 }}
-            topologyKey: failure-domain.beta.kubernetes.io/zone
   # -- Labels for compactor service
   serviceLabels: {}
   # -- Additional CLI args for the compactor
@@ -2213,22 +2164,15 @@ ruler:
   initContainers: []
   # -- Grace period to allow the ruler to shutdown before it is killed
   terminationGracePeriodSeconds: 300
-  # -- Affinity for ruler pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
+  # -- Affinity for ruler pods.
+  # @default -- Hard node anti-affinity
+  affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.rulerSelectorLabels" . | nindent 10 }}
+              app.kubernetes.io/component: ruler
           topologyKey: kubernetes.io/hostname
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchLabels:
-                {{- include "loki.rulerSelectorLabels" . | nindent 12 }}
-            topologyKey: failure-domain.beta.kubernetes.io/zone
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for ruler pods
@@ -2614,22 +2558,15 @@ tableManager:
   extraContainers: []
   # -- Grace period to allow the table-manager to shutdown before it is killed
   terminationGracePeriodSeconds: 30
-  # -- Affinity for table-manager pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
+  # -- Affinity for table-manager pods.
+  # @default -- Hard node and anti-affinity
+  affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.tableManagerSelectorLabels" . | nindent 10 }}
+              app.kubernetes.io/component: table-manager
           topologyKey: kubernetes.io/hostname
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchLabels:
-                {{- include "loki.tableManagerSelectorLabels" . | nindent 12 }}
-            topologyKey: failure-domain.beta.kubernetes.io/zone
   # -- DNS config table-manager pods
   dnsConfig: {}
   # -- Node selector for table-manager pods

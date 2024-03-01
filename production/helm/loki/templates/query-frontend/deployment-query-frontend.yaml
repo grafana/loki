@@ -107,7 +107,7 @@ spec:
         {{- end }}
       {{- with .Values.queryFrontend.affinity }}
       affinity:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.queryFrontend.nodeSelector }}
       nodeSelector:

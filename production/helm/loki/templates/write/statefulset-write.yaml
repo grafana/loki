@@ -143,7 +143,7 @@ spec:
         {{- end }}
       {{- with .Values.write.affinity }}
       affinity:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.write.dnsConfig }}
       dnsConfig:

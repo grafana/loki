@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.0.0
 
 - [CHANGE] the lokiCanary section was moved from under monitoring to be under the root of the file.
+- [CHANGE] the definitions for topologySpreadConstraints and podAffinity were converted from string templates to objects. Also removed the soft constraint on zone.
 
 ## 5.41.8
 

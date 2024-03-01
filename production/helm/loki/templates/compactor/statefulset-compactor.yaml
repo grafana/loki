@@ -132,7 +132,7 @@ spec:
         {{- end }}
       {{- with .Values.compactor.affinity }}
       affinity:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.compactor.nodeSelector }}
       nodeSelector:

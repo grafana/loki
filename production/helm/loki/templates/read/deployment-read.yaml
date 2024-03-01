@@ -117,7 +117,7 @@ spec:
             {{- toYaml .Values.read.resources | nindent 12 }}
       {{- with .Values.read.affinity }}
       affinity:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.read.dnsConfig }}
       dnsConfig:
