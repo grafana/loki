@@ -2,8 +2,6 @@ package bloomcompactor
 
 import (
 	"context"
-	"fmt"
-	"math"
 	"sync"
 	"time"
 
@@ -326,13 +324,13 @@ func (c *Compactor) loadWork(
 			// decrease over time as more work is discovered.
 			var inputs []*tenantTableRange
 			for _, ownershipRange := range t.ownershipRanges {
-				tt := &tenantTableRange{
+				tt := tenantTableRange{
 					tenant:         t.tenant,
 					table:          table,
 					ownershipRange: ownershipRange,
 				}
-				tracker.add(tt)
-				inputs = append(inputs, tt)
+				tracker.update(tt.tenant, tt.table.DayTime, tt.ownershipRange, tt.ownershipRange.Min)
+				inputs = append(inputs, &tt)
 			}
 
 			// iterate the inputs, queueing them
@@ -387,6 +385,7 @@ func (c *Compactor) runWorkers(
 				tt.endTime = time.Now()
 				duration := tt.endTime.Sub(tt.startTime)
 				c.metrics.timePerTenant.WithLabelValues(tt.tenant).Add(duration.Seconds())
+				tracker.update(tt.tenant, tt.table.DayTime, tt.ownershipRange, tt.ownershipRange.Max)
 				progress := tracker.progress()
 				c.metrics.progress.Set(progress)
 
@@ -464,89 +463,4 @@ func (r *dayRangeIterator) At() config.DayTable {
 
 func (r *dayRangeIterator) Err() error {
 	return nil
-}
-
-type compactionTracker struct {
-	sync.RWMutex
-
-	nTables int
-	// tables -> n_tenants
-	metadata map[config.DayTime]int
-
-	// table -> tenant -> []keyspace
-	tables map[config.DayTime]map[string][]*tenantTableRange
-}
-
-func newCompactionTracker(nTables int) (*compactionTracker, error) {
-	if nTables <= 0 {
-		return nil, errors.New("nTables must be positive")
-	}
-
-	return &compactionTracker{
-		nTables:  nTables,
-		tables:   make(map[config.DayTime]map[string][]*tenantTableRange),
-		metadata: make(map[config.DayTime]int),
-	}, nil
-}
-
-func (c *compactionTracker) registerTable(tbl config.DayTime, nTenants int) {
-	c.Lock()
-	defer c.Unlock()
-	c.metadata[tbl] = nTenants
-	c.tables[tbl] = make(map[string][]*tenantTableRange)
-}
-
-func (c *compactionTracker) add(tt *tenantTableRange) {
-	c.Lock()
-	defer c.Unlock()
-	tbl, ok := c.tables[tt.table.DayTime]
-	if !ok {
-		panic(fmt.Sprintf("table not registered: %s", tt.table.DayTime.String()))
-	}
-	tbl[tt.tenant] = append(tbl[tt.tenant], tt)
-}
-
-// Returns progress in (0-1) range, bounded to 3 decimals.
-// compaction progress is measured by the following:
-// 1. The number of days of data that has been compacted
-// as a percentage of the total number of days of data that needs to be compacted.
-// 2. Within each day, the number of tenants that have been compacted
-// as a percentage of the total number of tenants that need to be compacted.
-// 3. Within each tenant, the percent of the keyspaces that have been compacted.
-// NB(owen-d): this treats all tenants equally, when this may not be the case wrt
-// the work they have to do. This is a simplification and can be x-referenced with
-// the tenant_compaction_seconds_total metric to see how much time is being spent on
-// each tenant while the compaction tracker shows total compaction progress across
-// all tables and tenants.
-func (c *compactionTracker) progress() (progress float64) {
-	c.RLock()
-	defer c.RUnlock()
-
-	perTablePct := 1. / float64(c.nTables)
-
-	// for all registered tables, determine the number of registered tenants
-	for tbl, nTenants := range c.metadata {
-		perTenantPct := perTablePct / float64(nTenants)
-
-		// iterate tenants in each table
-		for _, tenant := range c.tables[tbl] {
-			var (
-				totalKeyspace    uint64
-				finishedKeyspace uint64
-			)
-
-			// iterate table ranges for each tenant+table pair
-			for _, tt := range tenant {
-				totalKeyspace += tt.ownershipRange.Range()
-				if tt.finished {
-					finishedKeyspace += tt.ownershipRange.Range()
-				}
-			}
-
-			tenantProgress := float64(finishedKeyspace) / float64(totalKeyspace)
-			progress += perTenantPct * tenantProgress
-		}
-	}
-
-	return math.Round(progress*1000) / 1000
 }
