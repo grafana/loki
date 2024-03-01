@@ -403,13 +403,6 @@ func (b *BloomStore) forStores(ctx context.Context, interval Interval, f func(in
 		return b.stores[j].start > through
 	})
 
-	min := func(a, b model.Time) model.Time {
-		if a < b {
-			return a
-		}
-		return b
-	}
-
 	start := from
 	for ; i < j; i++ {
 		nextSchemaStarts := model.Latest
@@ -432,6 +425,12 @@ func tablesForRange(periodConfig config.PeriodConfig, interval Interval) []strin
 	step := int64(periodConfig.IndexTables.Period.Seconds())
 	lower := interval.Start.Unix() / step
 	upper := interval.End.Unix() / step
+
+	// end is exclusive, so if it's on a step boundary, we don't want to include it
+	if interval.End.Unix()%step == 0 {
+		upper--
+	}
+
 	tables := make([]string, 0, 1+upper-lower)
 	for i := lower; i <= upper; i++ {
 		tables = append(tables, fmt.Sprintf("%s%d", periodConfig.IndexTables.Prefix, i))

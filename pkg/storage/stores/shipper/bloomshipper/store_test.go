@@ -298,3 +298,45 @@ func TestBloomShipper_WorkingDir(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func TestTablesForRange(t *testing.T) {
+	conf := storageconfig.PeriodConfig{
+		From: parseDayTime("2024-01-01"),
+		IndexTables: storageconfig.IndexPeriodicTableConfig{
+			PeriodicTableConfig: storageconfig.PeriodicTableConfig{
+				Period: 24 * time.Hour,
+			},
+		},
+	}
+	for _, tc := range []struct {
+		desc     string
+		interval Interval
+		exp      []string
+	}{
+		{
+			desc: "few days",
+			interval: Interval{
+				Start: parseTime("2024-01-01 00:00"),
+				End:   parseTime("2024-01-03 00:00"),
+			},
+			exp: []string{"19723", "19724"},
+		},
+		{
+			desc: "few days with offset",
+			interval: Interval{
+				Start: parseTime("2024-01-01 00:00"),
+				End:   parseTime("2024-01-03 00:01"),
+			},
+			exp: []string{"19723", "19724", "19725"},
+		},
+		{
+			desc:     "one day",
+			interval: NewInterval(parseDayTime("2024-01-01").Bounds()),
+			exp:      []string{"19723"},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.exp, tablesForRange(conf, tc.interval))
+		})
+	}
+}
