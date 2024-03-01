@@ -59,6 +59,24 @@ func (trueFilter) Matches(_ Checker) bool { return true }
 // TrueFilter is a filter that returns and matches all log lines whatever their content.
 var TrueFilter = trueFilter{}
 
+func isTrueFilter(f MatcherFilterer) bool {
+	if f == TrueFilter {
+		return true
+	}
+
+	if _, ok := f.(trueFilter); ok {
+		return true
+	}
+
+	if wrap, ok := f.(matcherFiltererWrapper); ok {
+		if _, ok = wrap.Filterer.(trueFilter); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
 type existsFilter struct{}
 
 func (e existsFilter) Filter(line []byte) bool {
@@ -117,11 +135,11 @@ type andFilter struct {
 // NewAndFilter creates a new filter which matches only if left and right matches.
 func NewAndFilter(left MatcherFilterer, right MatcherFilterer) MatcherFilterer {
 	// Make sure we take care of panics in case a nil or noop filter is passed.
-	if right == nil || right == TrueFilter {
+	if right == nil || isTrueFilter(right) {
 		return left
 	}
 
-	if left == nil || left == TrueFilter {
+	if left == nil || isTrueFilter(left) {
 		return right
 	}
 
@@ -157,7 +175,7 @@ func NewAndMatcherFilters(filters []MatcherFilterer) MatcherFilterer {
 	n := 0
 	for _, filter := range filters {
 		// Make sure we take care of panics in case a nil or noop filter is passed.
-		if !(filter == nil || filter == TrueFilter) {
+		if !(filter == nil || isTrueFilter(filter)) {
 			switch c := filter.(type) {
 			case *containsFilter:
 				// Start accumulating contains filters.
@@ -248,11 +266,11 @@ type orFilter struct {
 
 // newOrFilter creates a new filter which matches only if left or right matches.
 func newOrFilter(left MatcherFilterer, right MatcherFilterer) MatcherFilterer {
-	if left == nil || left == TrueFilter {
+	if left == nil || isTrueFilter(left) {
 		return right
 	}
 
-	if right == nil || right == TrueFilter {
+	if right == nil || isTrueFilter(right) {
 		return left
 	}
 
