@@ -830,6 +830,10 @@ func init() {
 }
 
 func convertStatusV1(src PodStatusMap) v1.PodStatusMap {
+	if src == nil {
+		return nil
+	}
+
 	dst := v1.PodStatusMap{}
 	for k, v := range src {
 		dst[v1.PodStatus(k)] = v
@@ -838,6 +842,10 @@ func convertStatusV1(src PodStatusMap) v1.PodStatusMap {
 }
 
 func convertStatusBeta(src v1.PodStatusMap) PodStatusMap {
+	if src == nil {
+		return nil
+	}
+
 	dst := PodStatusMap{}
 	for k, v := range src {
 		dst[corev1.PodPhase(k)] = v
