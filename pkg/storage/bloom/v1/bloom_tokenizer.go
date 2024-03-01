@@ -124,7 +124,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 			for chunkTokenizer.Next() {
 				tok := chunkTokenizer.At()
 				tokens++
-				// TODO(owen-d): unsafe this?
+				// TODO(owen-d): [n]byte this
 				str := string(tok)
 				_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
 				if found {
