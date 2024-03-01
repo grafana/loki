@@ -72,6 +72,9 @@ type Task struct {
 
 	// TODO(chaudum): Investigate how to remove that.
 	table config.DayTime
+
+	// log enqueue time so we can observe the time spent in the queue
+	enqueueTime time.Time
 }
 
 // NewTask returns a new Task that can be enqueued to the task queue.
