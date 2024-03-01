@@ -1,0 +1,29 @@
+---
+loki:
+  commonConfig:
+    replication_factor: 1
+  image:
+    tag: "2.8.9"
+deploymentMode: Distributed
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 1
+querier:
+  replicas: 1
+queryFrontend:
+  replicas: 1
+queryScheduler:
+  replicas: 1
+distributor:
+  replicas: 1
+compactor:
+  replicas: 1
+indexGateway:
+  replicas: 1
+minio:
+  enabled: true

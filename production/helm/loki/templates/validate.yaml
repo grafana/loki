@@ -19,14 +19,14 @@
 {{- fail "Cannot run scalable targets (backend, read, write) or distributed targets without an object storage backend."}}
 {{- end }}
 
-{{- if and $atLeastOneScalableReplica $atLeastOneDistributedReplica (ne .Values.deploymentMode "SimpleScalable-Distributed") }}
-{{- fail "You have more than zero replicas configured for scalable targets (backend, read, write) and distributed targets. If this was intentional change the deploymentMode to the transitional 'SimpleScalable-Distributed' mode" }}
+{{- if and $atLeastOneScalableReplica $atLeastOneDistributedReplica (ne .Values.deploymentMode "SimpleScalable<->Distributed") }}
+{{- fail "You have more than zero replicas configured for scalable targets (backend, read, write) and distributed targets. If this was intentional change the deploymentMode to the transitional 'SimpleScalable<->Distributed' mode" }}
 {{- end }}
 
 {{- if and (gt $singleBinaryReplicas 0) $atLeastOneDistributedReplica }}
 {{- fail "You have more than zero replicas configured for both the single binary and distributed targets, there is no transition mode between these targets please change one or the other to zero or transition to the SimpleScalable mode first."}}
 {{- end }}
 
-{{- if and (gt $singleBinaryReplicas 0) $atLeastOneScalableReplica }}
-{{- fail "You have more than zero replicas configured for both the single binary and simple scalable targets. If this was intentional change the deploymentMode to the transitional 'SingleBinary-SimpleScalable' mode"}}
+{{- if and (gt $singleBinaryReplicas 0) $atLeastOneScalableReplica (ne .Values.deploymentMode "SingleBinary<->SimpleScalable") }}
+{{- fail "You have more than zero replicas configured for both the single binary and simple scalable targets. If this was intentional change the deploymentMode to the transitional 'SingleBinary<->SimpleScalable' mode"}}
 {{- end }}

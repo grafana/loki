@@ -50,21 +50,21 @@ Params:
 Return if deployment mode is simple scalable
 */}}
 {{- define "loki.deployment.isScalable" -}}
-  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (or (eq .Values.deploymentMode "SimpleScalable")) (eq .Values.deploymentMode "SimpleScalable-Distributed") }}
+  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (or (eq .Values.deploymentMode "SingleBinary<->SimpleScalable") (eq .Values.deploymentMode "SimpleScalable") (eq .Values.deploymentMode "SimpleScalable<->Distributed")) }}
 {{- end -}}
 
 {{/*
 Return if deployment mode is single binary
 */}}
 {{- define "loki.deployment.isSingleBinary" -}}
-  {{- or (eq .Values.deploymentMode "SingleBinary") (eq .Values.deploymentMode "SingleBinary-SimpleScalable") }}
+  {{- or (eq .Values.deploymentMode "SingleBinary") (eq .Values.deploymentMode "SingleBinary<->SimpleScalable") }}
 {{- end -}}
 
 {{/*
 Return if deployment mode is distributed
 */}}
 {{- define "loki.deployment.isDistributed" -}}
-  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (or (eq .Values.deploymentMode "Distributed") (eq .Values.deploymentMode "SimpleScalable-Distributed")) }}
+  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (or (eq .Values.deploymentMode "Distributed") (eq .Values.deploymentMode "SimpleScalable<->Distributed")) }}
 {{- end -}}
 
 

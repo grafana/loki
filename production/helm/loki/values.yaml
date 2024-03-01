@@ -25,8 +25,8 @@ imagePullSecrets: []
 # - SimpleScalable: Loki is deployed as 3 targets: read, write, and backend. Useful for medium installs easier to manage than distributed, up to a about 1TB/day.
 # - Distributed: Loki is deployed as individual microservices. The most complicated but most capable, useful for large installs, typically over 1TB/day.
 # There are also 2 additional modes used for migrating between deployment modes:
-# - SingleBinary-SimpleScalable: Migrate from SingleBinary to SimpleScalable (or vice versa)
-# - SimpleScalable-Distributed: Migrate from SimpleScalable to Distributed (or vice versa)
+# - SingleBinary<->SimpleScalable: Migrate from SingleBinary to SimpleScalable (or vice versa)
+# - SimpleScalable<->Distributed: Migrate from SimpleScalable to Distributed (or vice versa)
 # Note: SimpleScalable and Distributed REQUIRE the use of object storage.
 deploymentMode: SimpleScalable
 
