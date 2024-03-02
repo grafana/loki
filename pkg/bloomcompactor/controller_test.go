@@ -1,6 +1,7 @@
 package bloomcompactor
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -492,6 +493,70 @@ func Test_coversFullRange(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			require.Equal(t, tc.exp, coversFullRange(tc.src, tc.overlaps))
+		})
+	}
+}
+
+func TestBiasedReporter(t *testing.T) {
+	for i, tc := range []struct {
+		bounds      v1.FingerprintBounds
+		originalFPs [][]model.Fingerprint
+		expectedFPs [][]model.Fingerprint
+	}{
+		{
+			bounds: v1.NewBounds(0, 10),
+			originalFPs: [][]model.Fingerprint{
+				{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+				{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			},
+			expectedFPs: [][]model.Fingerprint{
+				{0, 0, 1, 1, 2, 2, 3, 3, 4, 4},
+				{5, 5, 6, 6, 7, 7, 8, 8, 9, 9},
+			},
+		},
+		{
+			bounds: v1.NewBounds(0, 9), // small resolution loss when dividing by 2
+			originalFPs: [][]model.Fingerprint{
+				{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+				{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			},
+			expectedFPs: [][]model.Fingerprint{
+				{0, 0, 1, 1, 2, 2, 3, 3, 4, 4},
+				{4, 4, 5, 5, 6, 6, 7, 7, 8, 8},
+			},
+		},
+		{
+			bounds: v1.NewBounds(0, 10),
+			originalFPs: [][]model.Fingerprint{
+				{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+				{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+				{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			},
+			expectedFPs: [][]model.Fingerprint{
+				{0, 0, 0, 1, 1, 1, 2, 2, 2, 3},
+				{3, 3, 3, 4, 4, 4, 5, 5, 5, 6},
+				{6, 6, 6, 7, 7, 7, 8, 8, 8, 9},
+			},
+		},
+	} {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			for i, inputs := range tc.originalFPs {
+
+				validator := func(exp []model.Fingerprint) func(model.Fingerprint) {
+					j := 0
+					return func(fp model.Fingerprint) {
+						require.Equal(t, int(exp[j]), int(fp))
+						j++
+					}
+				}(tc.expectedFPs[i])
+
+				biased := biasedReporter(validator, tc.bounds, i, len(tc.originalFPs))
+
+				for _, fp := range inputs {
+					biased(fp)
+				}
+
+			}
 		})
 	}
 }

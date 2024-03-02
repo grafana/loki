@@ -53,6 +53,7 @@ type SimpleBloomGenerator struct {
 	logger  log.Logger
 
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
+	reporter     func(model.Fingerprint)
 
 	tokenizer *v1.BloomTokenizer
 }
@@ -68,6 +69,7 @@ func NewSimpleBloomGenerator(
 	chunkLoader ChunkLoader,
 	blocksIter v1.ResettableIterator[*v1.SeriesWithBloom],
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
+	reporter func(model.Fingerprint),
 	metrics *Metrics,
 	logger log.Logger,
 ) *SimpleBloomGenerator {
@@ -80,6 +82,7 @@ func NewSimpleBloomGenerator(
 		logger:       log.With(logger, "component", "bloom_generator"),
 		readWriterFn: readWriterFn,
 		metrics:      metrics,
+		reporter:     reporter,
 
 		tokenizer: v1.NewBloomTokenizer(opts.Schema.NGramLen(), opts.Schema.NGramSkip(), metrics.bloomMetrics),
 	}
@@ -92,13 +95,18 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 			return errors.Wrapf(err, "failed to load chunks for series: %+v", series)
 		}
 
-		return s.tokenizer.Populate(
+		err = s.tokenizer.Populate(
 			&v1.SeriesWithBloom{
 				Series: series,
 				Bloom:  bloom,
 			},
 			chunkItersWithFP.itr,
 		)
+
+		if s.reporter != nil {
+			s.reporter(series.Fingerprint)
+		}
+		return err
 	}
 
 }

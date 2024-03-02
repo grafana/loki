@@ -9,7 +9,40 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCompactionTracker(t *testing.T) {
+func mkTblRange(tenant string, tbl config.DayTime, from, through model.Fingerprint) *tenantTableRange {
+	return &tenantTableRange{
+		tenant:         tenant,
+		table:          config.NewDayTable(tbl, ""),
+		ownershipRange: v1.NewBounds(from, through),
+	}
+}
+
+func updateTracker(tr *compactionTracker, tt *tenantTableRange, lastFP model.Fingerprint) {
+	tr.update(tt.tenant, tt.table.DayTime, tt.ownershipRange, lastFP)
+}
+
+func TestCompactionTrackerClipsRange(t *testing.T) {
+	// test invalid table number
+	tracker, err := newCompactionTracker(1)
+	require.NoError(t, err)
+
+	day1 := parseDayTime("2024-01-01")
+	tracker.registerTable(day1, 1)
+
+	work := mkTblRange("a", day1, 0, 10)
+	updateTracker(tracker, work, 0)
+	require.Equal(t, 0., tracker.progress())
+	updateTracker(tracker, work, work.ownershipRange.Min)
+	require.Equal(t, 0., tracker.progress())
+	updateTracker(tracker, work, 5)
+	require.Equal(t, 0.5, tracker.progress())
+	updateTracker(tracker, work, work.ownershipRange.Max*2)
+	require.Equal(t, 1., tracker.progress())
+	updateTracker(tracker, work, work.ownershipRange.Max)
+	require.Equal(t, 1., tracker.progress())
+}
+
+func TestCompactionTrackerFull(t *testing.T) {
 	// test invalid table number
 	_, err := newCompactionTracker(0)
 	require.Error(t, err)
@@ -24,21 +57,9 @@ func TestCompactionTracker(t *testing.T) {
 	tracker.registerTable(day2, 3)
 	require.Equal(t, 0., tracker.progress())
 
-	// tenant_dayIndex_boundsIndex
-	mkRange := func(tenant string, tbl config.DayTime, from, through model.Fingerprint) *tenantTableRange {
-		return &tenantTableRange{
-			tenant:         tenant,
-			table:          config.NewDayTable(tbl, ""),
-			ownershipRange: v1.NewBounds(from, through),
-		}
-	}
-	updateTracker := func(tr *compactionTracker, tt *tenantTableRange, lastFP model.Fingerprint) {
-		tr.update(tt.tenant, tt.table.DayTime, tt.ownershipRange, lastFP)
-	}
-
-	aDayOneOffsetZero := mkRange("a", day1, 0, 10)
-	aDayOneOffsetOne := mkRange("a", day1, 40, 50)
-	bDayOneOffsetZero := mkRange("b", day1, 10, 20)
+	aDayOneOffsetZero := mkTblRange("a", day1, 0, 10)
+	aDayOneOffsetOne := mkTblRange("a", day1, 40, 50)
+	bDayOneOffsetZero := mkTblRange("b", day1, 10, 20)
 
 	// register the  workloads for day0_tenantA
 	updateTracker(tracker, aDayOneOffsetZero, 0)
@@ -65,9 +86,9 @@ func TestCompactionTracker(t *testing.T) {
 	updateTracker(tracker, bDayOneOffsetZero, bDayOneOffsetZero.ownershipRange.Max)
 	require.Equal(t, 0.5, tracker.progress())
 
-	aDayTwoOffsetZero := mkRange("a", day2, 0, 10)
-	bDayTwoOffsetZero := mkRange("b", day2, 10, 20)
-	cDayTwoOffsetZero := mkRange("c", day2, 20, 30)
+	aDayTwoOffsetZero := mkTblRange("a", day2, 0, 10)
+	bDayTwoOffsetZero := mkTblRange("b", day2, 10, 20)
+	cDayTwoOffsetZero := mkTblRange("c", day2, 20, 30)
 	updateTracker(tracker, aDayTwoOffsetZero, 0)
 	updateTracker(tracker, bDayTwoOffsetZero, 0)
 	updateTracker(tracker, cDayTwoOffsetZero, 0)

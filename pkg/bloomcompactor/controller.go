@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -69,6 +70,7 @@ func (s *SimpleBloomController) compactTenant(
 	table config.DayTable,
 	tenant string,
 	ownershipRange v1.FingerprintBounds,
+	tracker *compactionTracker,
 ) error {
 	logger := log.With(s.logger, "org_id", tenant, "table", table.Addr(), "ownership", ownershipRange.String())
 
@@ -108,7 +110,7 @@ func (s *SimpleBloomController) compactTenant(
 	}
 
 	// build new blocks
-	built, err := s.buildGaps(ctx, tenant, table, client, work, logger)
+	built, err := s.buildGaps(ctx, tenant, table, ownershipRange, client, work, tracker, logger)
 	if err != nil {
 		return errors.Wrap(err, "failed to build gaps")
 	}
@@ -122,7 +124,6 @@ func (s *SimpleBloomController) compactTenant(
 		return errors.Wrap(err, "failed to find outdated metas")
 	}
 	level.Debug(logger).Log("msg", "found outdated metas", "outdated", len(outdated))
-
 	var (
 		deletedMetas  int
 		deletedBlocks int
@@ -305,8 +306,10 @@ func (s *SimpleBloomController) buildGaps(
 	ctx context.Context,
 	tenant string,
 	table config.DayTable,
+	ownershipRange v1.FingerprintBounds,
 	client bloomshipper.Client,
 	work []blockPlan,
+	tracker *compactionTracker,
 	logger log.Logger,
 ) ([]bloomshipper.Meta, error) {
 	// Generate Blooms
@@ -330,7 +333,11 @@ func (s *SimpleBloomController) buildGaps(
 		totalSeries  uint64
 	)
 
-	for _, plan := range work {
+	for i, plan := range work {
+
+		reporter := biasedReporter(func(fp model.Fingerprint) {
+			tracker.update(tenant, table.DayTime, ownershipRange, fp)
+		}, ownershipRange, i, len(work))
 
 		for i := range plan.gaps {
 			gap := plan.gaps[i]
@@ -368,6 +375,7 @@ func (s *SimpleBloomController) buildGaps(
 				s.chunkLoader,
 				blocksIter,
 				s.rwFn,
+				reporter,
 				s.metrics,
 				logger,
 			)
@@ -448,6 +456,26 @@ func (s *SimpleBloomController) buildGaps(
 	s.metrics.tenantsSeries.Observe(float64(totalSeries))
 	level.Debug(logger).Log("msg", "finished bloom generation", "blocks", blockCt, "tsdbs", tsdbCt)
 	return created, nil
+}
+
+// Simple way to ensure increasing progress reporting
+// and likely unused in practice because we don't expect to see more than 1 tsdb to compact.
+// We assume each TSDB accounts for the same amount of work and only move progress forward
+// depending on the current TSDB's index. For example, if we have 2 TSDBs and a fingerprint
+// range from 0-100 (valid for both TSDBs), we'll limit reported progress for each TSDB to 50%.
+func biasedReporter(
+	f func(model.Fingerprint),
+	ownershipRange v1.FingerprintBounds,
+	i,
+	total int,
+) func(model.Fingerprint) {
+	return func(fp model.Fingerprint) {
+		clipped := min(max(fp, ownershipRange.Min), ownershipRange.Max)
+		delta := (clipped - ownershipRange.Min) / model.Fingerprint(total)
+		step := model.Fingerprint(ownershipRange.Range() / uint64(total))
+		res := ownershipRange.Min + (step * model.Fingerprint(i)) + delta
+		f(res)
+	}
 }
 
 func coversFullRange(bounds v1.FingerprintBounds, overlaps []v1.FingerprintBounds) bool {

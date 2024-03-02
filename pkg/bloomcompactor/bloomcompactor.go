@@ -291,6 +291,8 @@ func (c *Compactor) loadWork(
 			ownershipRanges []v1.FingerprintBounds
 		}
 
+		// build owned tenants separately and load them all prior to compaction in order to
+		// accurately report progress
 		var ownedTenants []ownedTenant
 
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
@@ -336,7 +338,7 @@ func (c *Compactor) loadWork(
 			// iterate the inputs, queueing them
 			for _, tt := range inputs {
 				level.Debug(c.logger).Log("msg", "enqueueing work for tenant", "tenant", tt.tenant, "table", table, "ownership", tt.ownershipRange.String())
-				tt.queueTime = time.Now()
+				tt.queueTime = time.Now() // accurrately report queue time
 				select {
 				case ch <- tt:
 				case <-ctx.Done():
@@ -378,14 +380,10 @@ func (c *Compactor) runWorkers(
 				if !ok {
 					return nil
 				}
-				tt.startTime = time.Now()
 				c.metrics.tenantsStarted.Inc()
-				err := c.compactTenantTable(ctx, tt)
-				tt.finished = true
-				tt.endTime = time.Now()
+				err := c.compactTenantTable(ctx, tt, tracker)
 				duration := tt.endTime.Sub(tt.startTime)
 				c.metrics.timePerTenant.WithLabelValues(tt.tenant).Add(duration.Seconds())
-				tracker.update(tt.tenant, tt.table.DayTime, tt.ownershipRange, tt.ownershipRange.Max)
 				progress := tracker.progress()
 				c.metrics.progress.Set(progress)
 
@@ -415,9 +413,13 @@ func (c *Compactor) runWorkers(
 
 }
 
-func (c *Compactor) compactTenantTable(ctx context.Context, tt *tenantTableRange) error {
+func (c *Compactor) compactTenantTable(ctx context.Context, tt *tenantTableRange, tracker *compactionTracker) error {
 	level.Info(c.logger).Log("msg", "compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange.String())
-	err := c.controller.compactTenant(ctx, tt.table, tt.tenant, tt.ownershipRange)
+	tt.startTime = time.Now()
+	err := c.controller.compactTenant(ctx, tt.table, tt.tenant, tt.ownershipRange, tracker)
+	tt.finished = true
+	tt.endTime = time.Now()
+	tracker.update(tt.tenant, tt.table.DayTime, tt.ownershipRange, tt.ownershipRange.Max)
 	level.Info(c.logger).Log("msg", "finished compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange.String(), "err", err)
 	return err
 }
