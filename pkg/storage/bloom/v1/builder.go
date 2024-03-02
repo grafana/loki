@@ -562,6 +562,7 @@ func (mb *MergeBuilder) processNextSeries(
 		mb.metrics.blockSeriesIterated.Add(float64(blockSeriesIterated))
 		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeIterated).Add(float64(chunksIndexed))
 		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeCopied).Add(float64(chunksCopied))
+		mb.metrics.chunksPerSeries.Observe(float64(chunksIndexed + chunksCopied))
 	}()
 
 	if !mb.store.Next() {

@@ -58,7 +58,8 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 			Subsystem: metricsSubsystem,
 			Name:      "chunk_series_size",
 			Help:      "Uncompressed size of chunks in a series",
-			Buckets:   prometheus.ExponentialBucketsRange(1024, 1073741824, 10),
+			// 256B -> 100GB, 10 buckets
+			Buckets: prometheus.ExponentialBucketsRange(256, 100<<30, 10),
 		}),
 
 		compactionsStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{
