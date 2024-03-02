@@ -1,11 +1,14 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 
 	corev1 "k8s.io/api/core/v1"
@@ -33,9 +36,18 @@ var (
 	errAzureNoCredentials             = errors.New("azure storage secret does contain neither account_key or client_id")
 	errAzureMixedCredentials          = errors.New("azure storage secret can not contain both account_key and client_id")
 	errAzureManagedIdentityNoOverride = errors.New("when in managed mode, storage secret can not contain credentials")
+	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
+	errAzureInvalidAccountKey         = errors.New("azure account key is not valid base64")
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
+
+	azureValidEnvironments = map[string]bool{
+		"AzureGlobal":       true,
+		"AzureChinaCloud":   true,
+		"AzureGermanCloud":  true,
+		"AzureUSGovernment": true,
+	}
 )
 
 const gcpAccountTypeExternal = "external_account"
@@ -159,9 +171,13 @@ func hashSecretData(s *corev1.Secret) (string, error) {
 
 func extractAzureConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*storage.AzureStorageConfig, error) {
 	// Extract and validate mandatory fields
-	env := s.Data[storage.KeyAzureEnvironmentName]
-	if len(env) == 0 {
+	env := string(s.Data[storage.KeyAzureEnvironmentName])
+	if env == "" {
 		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureEnvironmentName)
+	}
+
+	if !azureValidEnvironments[env] {
+		return nil, fmt.Errorf("%w: %s", errAzureInvalidEnvironment, env)
 	}
 
 	accountName := s.Data[storage.KeyAzureStorageAccountName]
@@ -188,7 +204,7 @@ func extractAzureConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*stor
 	}
 
 	return &storage.AzureStorageConfig{
-		Env:              string(env),
+		Env:              env,
 		Container:        string(container),
 		EndpointSuffix:   string(endpointSuffix),
 		Audience:         string(audience),
@@ -219,6 +235,10 @@ func validateAzureCredentials(s *corev1.Secret, fg configv1.FeatureGates) (workl
 	}
 
 	if len(accountKey) > 0 {
+		if err := validateBase64(accountKey); err != nil {
+			return false, errAzureInvalidAccountKey
+		}
+
 		// have both account_name and account_key -> no workload identity federation
 		return false, nil
 	}
@@ -233,6 +253,13 @@ func validateAzureCredentials(s *corev1.Secret, fg configv1.FeatureGates) (workl
 	}
 
 	return true, nil
+}
+
+func validateBase64(data []byte) error {
+	buf := bytes.NewBuffer(data)
+	reader := base64.NewDecoder(base64.StdEncoding, buf)
+	_, err := io.ReadAll(reader)
+	return err
 }
 
 func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error) {

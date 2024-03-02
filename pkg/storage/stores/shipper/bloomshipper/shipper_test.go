@@ -142,7 +142,7 @@ func TestBloomShipper_IsOutsideRange(t *testing.T) {
 func TestBloomShipper_ForEach(t *testing.T) {
 	blockRefs := make([]BlockRef, 0, 3)
 
-	store, _ := newMockBloomStore(t)
+	store, _, _ := newMockBloomStore(t)
 	for i := 0; i < len(blockRefs); i++ {
 		block, err := createBlockInStorage(t, store, "tenant", model.Time(i*24*int(time.Hour)), 0x0000, 0x00ff)
 		require.NoError(t, err)

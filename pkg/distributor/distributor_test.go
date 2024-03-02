@@ -396,7 +396,8 @@ func Test_IncrementTimestamp(t *testing.T) {
 			distributors, _ := prepare(t, 1, 3, testData.limits, func(addr string) (ring_client.PoolClient, error) { return ing, nil })
 			_, err := distributors[0].Push(ctx, testData.push)
 			assert.NoError(t, err)
-			assert.Equal(t, testData.expectedPush, ing.pushed[0])
+			topVal := ing.Peek()
+			assert.Equal(t, testData.expectedPush, topVal)
 		})
 	}
 }
@@ -433,6 +434,8 @@ func TestDistributorPushConcurrently(t *testing.T) {
 	labels := make(map[string]int)
 
 	for i := range ingesters {
+		ingesters[i].mu.Lock()
+
 		pushed := ingesters[i].pushed
 		counter = counter + len(pushed)
 		for _, pr := range pushed {
@@ -440,6 +443,7 @@ func TestDistributorPushConcurrently(t *testing.T) {
 				labels[st.Labels] = labels[st.Labels] + 1
 			}
 		}
+		ingesters[i].mu.Unlock()
 	}
 	assert.Equal(t, numReq*3, counter) // RF=3
 	// each stream is present 3 times
@@ -500,7 +504,8 @@ func Test_SortLabelsOnPush(t *testing.T) {
 	request.Streams[0].Labels = `{buzz="f", a="b"}`
 	_, err := distributors[0].Push(ctx, request)
 	require.NoError(t, err)
-	require.Equal(t, `{a="b", buzz="f"}`, ingester.pushed[0].Streams[0].Labels)
+	topVal := ingester.Peek()
+	require.Equal(t, `{a="b", buzz="f"}`, topVal.Streams[0].Labels)
 }
 
 func Test_TruncateLogLines(t *testing.T) {
@@ -519,7 +524,8 @@ func Test_TruncateLogLines(t *testing.T) {
 
 		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
 		require.NoError(t, err)
-		require.Len(t, ingester.pushed[0].Streams[0].Entries[0].Line, 5)
+		topVal := ingester.Peek()
+		require.Len(t, topVal.Streams[0].Entries[0].Line, 5)
 	})
 }
 
@@ -606,7 +612,7 @@ func TestStreamShard(t *testing.T) {
 			overrides, err := validation.NewOverrides(*distributorLimits, nil)
 			require.NoError(t, err)
 
-			validator, err := NewValidator(overrides)
+			validator, err := NewValidator(overrides, nil)
 			require.NoError(t, err)
 
 			d := Distributor{
@@ -650,7 +656,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 	overrides, err := validation.NewOverrides(*distributorLimits, nil)
 	require.NoError(t, err)
 
-	validator, err := NewValidator(overrides)
+	validator, err := NewValidator(overrides, nil)
 	require.NoError(t, err)
 
 	t.Run("it generates 4 shards across 2 calls when calculated shards = 2 * entries per call", func(t *testing.T) {
@@ -715,7 +721,7 @@ func BenchmarkShardStream(b *testing.B) {
 	overrides, err := validation.NewOverrides(*distributorLimits, nil)
 	require.NoError(b, err)
 
-	validator, err := NewValidator(overrides)
+	validator, err := NewValidator(overrides, nil)
 	require.NoError(b, err)
 
 	distributorBuilder := func(shards int) *Distributor {
@@ -782,7 +788,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, err := d.parseStreamLabels(vCtx, stream.Labels, &stream)
+		_, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, &stream)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1153,7 +1159,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		overrides, err := validation.NewOverrides(*limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, log.NewNopLogger())
+		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
@@ -1229,6 +1235,17 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 
 	i.pushed = append(i.pushed, in)
 	return nil, nil
+}
+
+func (i *mockIngester) Peek() *logproto.PushRequest {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	if len(i.pushed) == 0 {
+		return nil
+	}
+
+	return i.pushed[0]
 }
 
 func (i *mockIngester) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest, _ ...grpc.CallOption) (*logproto.StreamRatesResponse, error) {

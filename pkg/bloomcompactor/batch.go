@@ -132,7 +132,7 @@ func newBatchedChunkLoader(
 			time.Unix(0, 0),
 			time.Unix(0, math.MaxInt64),
 			logproto.FORWARD,
-			logql_log.NewNoopPipeline().ForStream(c.Metric),
+			logql_log.NewNoopPipeline().ForStream(nil),
 		)
 
 		if err != nil {
@@ -220,16 +220,89 @@ func (i *blockLoadingIter) Err() error {
 	return i.iter.Err()
 }
 
+func (i *blockLoadingIter) init() {
+	if i.initialized {
+		return
+	}
+
+	// group overlapping blocks
+	i.overlapping = overlappingBlocksIter(i.inputs)
+
+	// set initial iter
+	i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
+
+	// set "match all" filter function if not present
+	if i.filter == nil {
+		i.filter = func(cbq *bloomshipper.CloseableBlockQuerier) bool { return true }
+	}
+
+	// done
+	i.initialized = true
+}
+
+// load next populates the underlying iter via relevant batches
+// and returns the result of iter.Next()
+func (i *blockLoadingIter) loadNext() bool {
+	for i.overlapping.Next() {
+		blockRefs := i.overlapping.At()
+
+		loader := newBatchedBlockLoader(i.ctx, i.fetcher, blockRefs, i.batchSize)
+		filtered := v1.NewFilterIter[*bloomshipper.CloseableBlockQuerier](loader, i.filter)
+
+		iters := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(blockRefs))
+		for filtered.Next() {
+			bq := loader.At()
+			i.loaded[bq] = struct{}{}
+			iter, err := bq.SeriesIter()
+			if err != nil {
+				i.err = err
+				i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
+				return false
+			}
+			iters = append(iters, iter)
+		}
+
+		if err := filtered.Err(); err != nil {
+			i.err = err
+			i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
+			return false
+		}
+
+		// edge case: we've filtered out all blocks in the batch; check next batch
+		if len(iters) == 0 {
+			continue
+		}
+
+		// Turn the list of blocks into a single iterator that returns the next series
+		mergedBlocks := v1.NewHeapIterForSeriesWithBloom(iters...)
+		// two overlapping blocks can conceivably have the same series, so we need to dedupe,
+		// preferring the one with the most chunks already indexed since we'll have
+		// to add fewer chunks to the bloom
+		i.iter = v1.NewDedupingIter[*v1.SeriesWithBloom, *v1.SeriesWithBloom](
+			func(a, b *v1.SeriesWithBloom) bool {
+				return a.Series.Fingerprint == b.Series.Fingerprint
+			},
+			v1.Identity[*v1.SeriesWithBloom],
+			func(a, b *v1.SeriesWithBloom) *v1.SeriesWithBloom {
+				if len(a.Series.Chunks) > len(b.Series.Chunks) {
+					return a
+				}
+				return b
+			},
+			v1.NewPeekingIter(mergedBlocks),
+		)
+		return i.iter.Next()
+	}
+
+	i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
+	i.err = i.overlapping.Err()
+	return false
+}
+
 // Next implements v1.Iterator.
 func (i *blockLoadingIter) Next() bool {
 	i.init()
-	// next from current batch
-	hasNext := i.iter.Next()
-	if !hasNext && !i.loadNext() {
-		return false
-	}
-	// next from next batch
-	return i.iter.Next()
+	return i.iter.Next() || i.loadNext()
 }
 
 // Close implements v1.CloseableIterator.
@@ -255,89 +328,11 @@ func (i *blockLoadingIter) Reset() error {
 	return err
 }
 
-func (i *blockLoadingIter) init() {
-	if i.initialized {
-		return
-	}
-
-	// group overlapping blocks
-	i.overlapping = overlappingBlocksIter(i.inputs)
-
-	// set "match all" filter function if not present
-	if i.filter == nil {
-		i.filter = func(cbq *bloomshipper.CloseableBlockQuerier) bool { return true }
-	}
-
-	// load first batch
-	i.loadNext()
-
-	// done
-	i.initialized = true
-}
-
 func (i *blockLoadingIter) Filter(filter func(*bloomshipper.CloseableBlockQuerier) bool) {
 	if i.initialized {
 		panic("iterator already initialized")
 	}
 	i.filter = filter
-}
-
-func (i *blockLoadingIter) loadNext() bool {
-	// check if there are more overlapping groups to load
-	if !i.overlapping.Next() {
-		i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
-		if i.overlapping.Err() != nil {
-			i.err = i.overlapping.Err()
-		}
-
-		return false
-	}
-
-	blockRefs := i.overlapping.At()
-
-	loader := newBatchedBlockLoader(i.ctx, i.fetcher, blockRefs, i.batchSize)
-	filtered := v1.NewFilterIter[*bloomshipper.CloseableBlockQuerier](loader, i.filter)
-
-	iters := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(blockRefs))
-	for filtered.Next() {
-		bq := loader.At()
-		if _, ok := i.loaded[bq]; !ok {
-			i.loaded[bq] = struct{}{}
-		}
-		iter, _ := bq.SeriesIter()
-		iters = append(iters, iter)
-	}
-
-	if err := filtered.Err(); err != nil {
-		i.err = err
-		i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
-		return false
-	}
-
-	if len(iters) == 0 {
-		i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
-		return true
-	}
-
-	// Turn the list of blocks into a single iterator that returns the next series
-	mergedBlocks := v1.NewHeapIterForSeriesWithBloom(iters...)
-	// two overlapping blocks can conceivably have the same series, so we need to dedupe,
-	// preferring the one with the most chunks already indexed since we'll have
-	// to add fewer chunks to the bloom
-	i.iter = v1.NewDedupingIter[*v1.SeriesWithBloom, *v1.SeriesWithBloom](
-		func(a, b *v1.SeriesWithBloom) bool {
-			return a.Series.Fingerprint == b.Series.Fingerprint
-		},
-		v1.Identity[*v1.SeriesWithBloom],
-		func(a, b *v1.SeriesWithBloom) *v1.SeriesWithBloom {
-			if len(a.Series.Chunks) > len(b.Series.Chunks) {
-				return a
-			}
-			return b
-		},
-		v1.NewPeekingIter(mergedBlocks),
-	)
-	return true
 }
 
 func overlappingBlocksIter(inputs []bloomshipper.BlockRef) v1.Iterator[[]bloomshipper.BlockRef] {

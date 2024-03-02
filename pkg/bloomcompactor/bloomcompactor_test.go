@@ -8,10 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/bloomutils"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
@@ -113,7 +115,7 @@ func TestCompactor_ownsTenant(t *testing.T) {
 				require.NoError(t, err)
 				if ownsTenant {
 					compactorOwnsTenant++
-					compactorOwnershipRange = append(compactorOwnershipRange, ownershipRange)
+					compactorOwnershipRange = append(compactorOwnershipRange, ownershipRange...)
 				}
 			}
 			require.Equal(t, tc.expectedCompactorsOwningTenant, compactorOwnsTenant)
@@ -135,12 +137,6 @@ func TestCompactor_ownsTenant(t *testing.T) {
 					coveredKeySpace.Max = boundsA.Max
 				}
 
-				// Assert that the fingerprint key-space is evenly distributed across the compactors
-				// We do some adjustments if the key-space is not evenly distributable, so we use a delta of 10
-				// to account for that and check that the key-space is reasonably evenly distributed.
-				fpPerTenant := math.MaxUint64 / uint64(tc.expectedCompactorsOwningTenant)
-				boundsLen := uint64(boundsA.Max - boundsA.Min)
-				require.InDelta(t, fpPerTenant, boundsLen, 10)
 			}
 			// Assert that the fingerprint key-space is complete
 			require.True(t, coveredKeySpace.Equal(v1.NewBounds(0, math.MaxUint64)))
@@ -194,4 +190,76 @@ func (m mockLimits) BloomFalsePositiveRate(_ string) float64 {
 
 func (m mockLimits) BloomCompactorMaxBlockSize(_ string) int {
 	panic("implement me")
+}
+
+func TestTokenRangesForInstance(t *testing.T) {
+	desc := func(id int, tokens ...uint32) ring.InstanceDesc {
+		return ring.InstanceDesc{Id: fmt.Sprintf("%d", id), Tokens: tokens}
+	}
+
+	tests := map[string]struct {
+		input []ring.InstanceDesc
+		exp   map[string]ring.TokenRanges
+		err   bool
+	}{
+		"no nodes": {
+			input: []ring.InstanceDesc{},
+			exp: map[string]ring.TokenRanges{
+				"0": {0, math.MaxUint32}, // have to put one in here to trigger test
+			},
+			err: true,
+		},
+		"one node": {
+			input: []ring.InstanceDesc{
+				desc(0, 0, 100),
+			},
+			exp: map[string]ring.TokenRanges{
+				"0": {0, math.MaxUint32},
+			},
+		},
+		"two nodes": {
+			input: []ring.InstanceDesc{
+				desc(0, 25, 75),
+				desc(1, 10, 50, 100),
+			},
+			exp: map[string]ring.TokenRanges{
+				"0": {10, 24, 50, 74},
+				"1": {0, 9, 25, 49, 75, math.MaxUint32},
+			},
+		},
+		"consecutive tokens": {
+			input: []ring.InstanceDesc{
+				desc(0, 99),
+				desc(1, 100),
+			},
+			exp: map[string]ring.TokenRanges{
+				"0": {0, 98, 100, math.MaxUint32},
+				"1": {99, 99},
+			},
+		},
+		"extremes": {
+			input: []ring.InstanceDesc{
+				desc(0, 0),
+				desc(1, math.MaxUint32),
+			},
+			exp: map[string]ring.TokenRanges{
+				"0": {math.MaxUint32, math.MaxUint32},
+				"1": {0, math.MaxUint32 - 1},
+			},
+		},
+	}
+
+	for desc, test := range tests {
+		t.Run(desc, func(t *testing.T) {
+			for id := range test.exp {
+				ranges, err := bloomutils.TokenRangesForInstance(id, test.input)
+				if test.err {
+					require.Error(t, err)
+					continue
+				}
+				require.NoError(t, err)
+				require.Equal(t, test.exp[id], ranges)
+			}
+		})
+	}
 }

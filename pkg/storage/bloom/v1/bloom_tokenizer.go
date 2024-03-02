@@ -6,6 +6,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
+
+	"github.com/grafana/dskit/multierror"
 
 	"github.com/grafana/loki/pkg/iter"
 
@@ -94,18 +97,19 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 	var tokenBuf []byte
 	var prefixLn int
 
+	// Iterate over chunks
 	for chks.Next() && chks.Err() == nil {
 		chk := chks.At()
 		itr := chk.Itr
 		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N, chk.Ref, tokenBuf)
 
-		defer itr.Close()
-
+		// Iterate over lines in the chunk
 		for itr.Next() && itr.Error() == nil {
 			// TODO(owen-d): rather than iterate over the line twice, once for prefixed tokenizer & once for
 			// raw tokenizer, we could iterate once and just return (prefix, token) pairs from the tokenizer.
 			// Double points for them being different-ln references to the same data.
-			chunkTokenizer := NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(itr.Entry().Line))
+			line := itr.Entry().Line
+			chunkTokenizer := NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(line))
 			for chunkTokenizer.Next() {
 				tok := chunkTokenizer.At()
 				if tok != nil {
@@ -123,7 +127,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 					}
 				}
 			}
-			lineTokenizer := bt.lineTokenizer.Tokens(itr.Entry().Line)
+			lineTokenizer := bt.lineTokenizer.Tokens(line)
 			for lineTokenizer.Next() {
 				tok := lineTokenizer.At()
 				if tok != nil {
@@ -142,11 +146,19 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 			}
 
 		}
+		var es multierror.MultiError
+		if err := itr.Close(); err != nil {
+			es.Add(errors.Wrapf(err, "error closing chunk: %#v", chk.Ref))
+		}
 		if err := itr.Error(); err != nil {
-			return fmt.Errorf("error iterating chunk: %#v, %w", chk.Ref, err)
+			es.Add(errors.Wrapf(err, "error iterating chunk: %#v", chk.Ref))
+		}
+		if combined := es.Err(); combined != nil {
+			return combined
 		}
 		swb.Series.Chunks = append(swb.Series.Chunks, chk.Ref)
 	}
+
 	if err := chks.Err(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error downloading chunks batch", "err", err)
 		return fmt.Errorf("error downloading chunks batch: %w", err)

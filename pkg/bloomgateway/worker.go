@@ -8,10 +8,10 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/queue"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
@@ -22,65 +22,6 @@ const (
 
 type workerConfig struct {
 	maxItems int
-}
-
-type workerMetrics struct {
-	dequeueDuration   *prometheus.HistogramVec
-	processDuration   *prometheus.HistogramVec
-	metasFetched      *prometheus.HistogramVec
-	blocksFetched     *prometheus.HistogramVec
-	tasksDequeued     *prometheus.CounterVec
-	tasksProcessed    *prometheus.CounterVec
-	blockQueryLatency *prometheus.HistogramVec
-}
-
-func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem string) *workerMetrics {
-	labels := []string{"worker"}
-	r := promauto.With(registerer)
-	return &workerMetrics{
-		dequeueDuration: r.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "dequeue_duration_seconds",
-			Help:      "Time spent dequeuing tasks from queue in seconds",
-		}, labels),
-		processDuration: r.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "process_duration_seconds",
-			Help:      "Time spent processing tasks in seconds",
-		}, append(labels, "status")),
-		metasFetched: r.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "metas_fetched",
-			Help:      "Amount of metas fetched",
-		}, labels),
-		blocksFetched: r.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "blocks_fetched",
-			Help:      "Amount of blocks fetched",
-		}, labels),
-		tasksDequeued: r.NewCounterVec(prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "tasks_dequeued_total",
-			Help:      "Total amount of tasks that the worker dequeued from the queue",
-		}, append(labels, "status")),
-		tasksProcessed: r.NewCounterVec(prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "tasks_processed_total",
-			Help:      "Total amount of tasks that the worker processed",
-		}, append(labels, "status")),
-		blockQueryLatency: r.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "block_query_latency",
-			Help:      "Time spent running searches against a bloom block",
-		}, append(labels, "status")),
-	}
 }
 
 // worker is a datastructure that consumes tasks from the request queue,
@@ -147,6 +88,7 @@ func (w *worker) running(_ context.Context) error {
 		w.metrics.tasksDequeued.WithLabelValues(w.id, labelSuccess).Add(float64(len(items)))
 
 		tasks := make([]Task, 0, len(items))
+		var mb v1.MultiFingerprintBounds
 		for _, item := range items {
 			task, ok := item.(Task)
 			if !ok {
@@ -156,11 +98,15 @@ func (w *worker) running(_ context.Context) error {
 			}
 			level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
 			w.pending.Delete(task.ID)
+			w.metrics.queueDuration.WithLabelValues(w.id).Observe(time.Since(task.enqueueTime).Seconds())
 			tasks = append(tasks, task)
+
+			first, last := getFirstLast(task.series)
+			mb = mb.Union(v1.NewBounds(model.Fingerprint(first.Fingerprint), model.Fingerprint(last.Fingerprint)))
 		}
 
 		start = time.Now()
-		err = p.run(taskCtx, tasks)
+		err = p.runWithBounds(taskCtx, tasks, mb)
 
 		if err != nil {
 			w.metrics.processDuration.WithLabelValues(w.id, labelFailure).Observe(time.Since(start).Seconds())

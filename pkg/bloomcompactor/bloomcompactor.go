@@ -67,15 +67,17 @@ func New(
 	fetcherProvider stores.ChunkFetcherProvider,
 	sharding util_ring.TenantSharding,
 	limits Limits,
+	store bloomshipper.Store,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Compactor, error) {
 	c := &Compactor{
-		cfg:       cfg,
-		schemaCfg: schemaCfg,
-		logger:    logger,
-		sharding:  sharding,
-		limits:    limits,
+		cfg:        cfg,
+		schemaCfg:  schemaCfg,
+		logger:     logger,
+		sharding:   sharding,
+		limits:     limits,
+		bloomStore: store,
 	}
 
 	tsdbStore, err := NewTSDBStores(schemaCfg, storeCfg, clientMetrics)
@@ -83,13 +85,6 @@ func New(
 		return nil, errors.Wrap(err, "failed to create TSDB store")
 	}
 	c.tsdbStore = tsdbStore
-
-	// TODO(owen-d): export bloomstore as a dependency that can be reused by the compactor & gateway rather that
-	bloomStore, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storeCfg, clientMetrics, nil, nil, logger)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create bloom store")
-	}
-	c.bloomStore = bloomStore
 
 	// initialize metrics
 	c.btMetrics = v1.NewMetrics(prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer_", r))
@@ -193,23 +188,28 @@ func (c *Compactor) tenants(ctx context.Context, table config.DayTable) (v1.Iter
 }
 
 // ownsTenant returns the ownership range for the tenant, if the compactor owns the tenant, and an error.
-func (c *Compactor) ownsTenant(tenant string) (v1.FingerprintBounds, bool, error) {
+func (c *Compactor) ownsTenant(tenant string) ([]v1.FingerprintBounds, bool, error) {
 	tenantRing, owned := c.sharding.OwnsTenant(tenant)
 	if !owned {
-		return v1.FingerprintBounds{}, false, nil
+		return nil, false, nil
 	}
+
+	// TODO(owen-d): use <ReadRing>.GetTokenRangesForInstance()
+	// when it's supported for non zone-aware rings
+	// instead of doing all this manually
 
 	rs, err := tenantRing.GetAllHealthy(RingOp)
 	if err != nil {
-		return v1.FingerprintBounds{}, false, errors.Wrap(err, "getting ring healthy instances")
-
+		return nil, false, errors.Wrap(err, "getting ring healthy instances")
 	}
 
-	keyRange, err := bloomutils.KeyRangeForInstance(c.cfg.Ring.InstanceID, rs.Instances, bloomutils.Uint64Range)
+	ranges, err := bloomutils.TokenRangesForInstance(c.cfg.Ring.InstanceID, rs.Instances)
 	if err != nil {
-		return v1.FingerprintBounds{}, false, errors.Wrap(err, "getting instance token range")
+		return nil, false, errors.Wrap(err, "getting token ranges for instance")
 	}
-	return v1.NewBounds(model.Fingerprint(keyRange.Min), model.Fingerprint(keyRange.Max)), true, nil
+
+	keyspaces := bloomutils.KeyspacesFromTokenRanges(ranges)
+	return keyspaces, true, nil
 }
 
 // runs a single round of compaction for all relevant tenants and tables
@@ -266,25 +266,28 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
 			c.metrics.tenantsDiscovered.Inc()
 			tenant := tenants.At()
-			ownershipRange, owns, err := c.ownsTenant(tenant)
+			ownershipRanges, owns, err := c.ownsTenant(tenant)
 			if err != nil {
 				return errors.Wrap(err, "checking tenant ownership")
 			}
-			level.Debug(c.logger).Log("msg", "enqueueing work for tenant", "tenant", tenant, "table", table, "ownership", ownershipRange.String(), "owns", owns)
+			level.Debug(c.logger).Log("msg", "enqueueing work for tenant", "tenant", tenant, "table", table, "ranges", len(ownershipRanges), "owns", owns)
 			if !owns {
 				c.metrics.tenantsSkipped.Inc()
 				continue
 			}
 			c.metrics.tenantsOwned.Inc()
 
-			select {
-			case ch <- tenantTable{
-				tenant:         tenant,
-				table:          table,
-				ownershipRange: ownershipRange,
-			}:
-			case <-ctx.Done():
-				return ctx.Err()
+			for _, ownershipRange := range ownershipRanges {
+
+				select {
+				case ch <- tenantTable{
+					tenant:         tenant,
+					table:          table,
+					ownershipRange: ownershipRange,
+				}:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			}
 		}
 
