@@ -74,6 +74,13 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=querier
+            {{- if .Values.ingester.zoneAwareReplication.enabled }}
+            {{- if and (.Values.ingester.zoneAwareReplication.migration.enabled) (not .Values.ingester.zoneAwareReplication.migration.readPath) }}
+            - -distributor.zone-awareness-enabled=false
+            {{- else }}
+            - -distributor.zone-awareness-enabled=true
+            {{- end }}
+            {{- end }}
             {{- with .Values.querier.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

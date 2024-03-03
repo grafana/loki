@@ -12,7 +12,7 @@ read:
 write:
   replicas: 0
 ingester:
-  replicas: 1
+  replicas: 2
 querier:
   replicas: 1
 queryFrontend:
