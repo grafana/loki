@@ -369,7 +369,26 @@ func (c *Compactor) runWorkers(
 	tracker *compactionTracker,
 ) error {
 
-	return concurrency.ForEachJob(ctx, c.cfg.WorkerParallelism, c.cfg.WorkerParallelism, func(ctx context.Context, idx int) error {
+	// TODO(owen-d): refactor for cleanliness
+	reporterCtx, cancel := context.WithCancel(ctx)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				c.metrics.progress.Set(tracker.progress())
+			case <-reporterCtx.Done():
+				c.metrics.progress.Set(tracker.progress())
+				wg.Done()
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+
+	err := concurrency.ForEachJob(ctx, c.cfg.WorkerParallelism, c.cfg.WorkerParallelism, func(ctx context.Context, idx int) error {
 
 		for {
 			select {
@@ -385,7 +404,6 @@ func (c *Compactor) runWorkers(
 				duration := tt.endTime.Sub(tt.startTime)
 				c.metrics.timePerTenant.WithLabelValues(tt.tenant).Add(duration.Seconds())
 				progress := tracker.progress()
-				c.metrics.progress.Set(progress)
 
 				if err != nil {
 					c.metrics.tenantTableRanges.WithLabelValues(statusFailure).Inc()
@@ -410,6 +428,10 @@ func (c *Compactor) runWorkers(
 		}
 
 	})
+	cancel()
+	wg.Wait()
+
+	return err
 
 }
 
