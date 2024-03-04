@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/dskit/multierror"
+
 	"github.com/grafana/loki/pkg/iter"
 
 	"github.com/grafana/loki/pkg/util/encoding"
