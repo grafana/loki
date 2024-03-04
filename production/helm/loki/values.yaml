@@ -120,6 +120,11 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.ingester_client }}
+    ingester_client:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
     {{- if .Values.loki.commonConfig}}
     common:
     {{- toYaml .Values.loki.commonConfig | nindent 2}}
