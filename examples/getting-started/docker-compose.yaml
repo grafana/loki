@@ -6,11 +6,11 @@ networks:
 
 services:
   loki:
-    image: kolesnikovae/loki-loggerinfo:latest
-    #  build:
-    #    context: ../../
-    #    dockerfile: cmd/loki/Dockerfile
-    #    no_cache: true
+    image: kolesnikovae/loki-loggerinfo:ae28ad
+#   build:
+#     context: ../../
+#     dockerfile: cmd/loki/Dockerfile
+#     no_cache: true
     command: "-config.file=/etc/loki/config.yaml"
     ports:
       - 3102:3100
@@ -24,7 +24,8 @@ services:
       timeout: 5s
       retries: 5
     environment:
-      LOG_CLUSTER_DEPTH: "4"
+      LOG_CLUSTER_DEPTH: "8"
+      LOG_SIM_TH: "0.3"
     depends_on:
       - minio
     networks:

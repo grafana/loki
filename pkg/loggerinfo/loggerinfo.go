@@ -9,15 +9,16 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/grafana/loki/pkg/push"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/grafana/loki/pkg/push"
+
 	"github.com/grafana/loki/pkg/loggerinfo/drain"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/util"
 )
 
 var loggerinfo LoggerInfo
@@ -63,11 +64,13 @@ type serviceLoggerInfo struct {
 
 var drainConfig = &drain.Config{
 	LogClusterDepth: readConfig[int]("LOG_CLUSTER_DEPTH", strconv.Atoi, 4),
-	SimTh:           0.4,
+	SimTh:           readConfig[float64]("LOG_SIM_TH", parseFloat, 0.4),
 	MaxChildren:     100,
 	ParamString:     "<*>",
 	MaxClusters:     0,
 }
+
+func parseFloat(s string) (float64, error) { return strconv.ParseFloat(s, 64) }
 
 func readConfig[T any](name string, fn func(string) (T, error), d T) T {
 	v := os.Getenv(name)
