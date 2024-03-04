@@ -362,7 +362,7 @@ func (s *SimpleBloomController) buildGaps(
 			level.Debug(logger).Log("msg", "loading series and blocks for gap", "blocks", len(gap.blocks))
 			seriesItr, blocksIter, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
 
-			// TODO(owen-d): more elegant error handling thatn sync.OnceFunc
+			// TODO(owen-d): more elegant error handling than sync.OnceFunc
 			closeBlocksIter := sync.OnceFunc(func() {
 				if err := blocksIter.Close(); err != nil {
 					level.Error(logger).Log("msg", "failed to close blocks iterator", "err", err)

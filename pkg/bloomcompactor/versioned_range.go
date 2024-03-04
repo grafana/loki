@@ -98,20 +98,20 @@ func (t tsdbTokenRange) Add(version int, bounds v1.FingerprintBounds) (res tsdbT
 		//      ------        # addition
 		//      ------        # src
 		// 2. `subset`: the incoming range is a subset of an existing range
-		// 		  ------        # addition
-		// 	   --------       # src
+		//     ------        # addition
+		//     --------       # src
 		// 3. `overflow_both_sides`: the incoming range is a superset of an existing range. This is not possible
 		// because the first token in the ring implicitly covers the left bound (zero) of all possible fps.
 		// Therefore, we can skip this case.
-		// 		  ------        # addition
-		//       ----			  	# src
+		//     ------        # addition
+		//       ----      # src
 		// 4. `right_overflow`: the incoming range overflows the right side of an existing range
-		// 		   ------       # addition
+		//      ------       # addition
 		//    ------          # src
 		// 5. `left_overflow`: the incoming range overflows the left side of an existing range. This can be skipped
 		// for the same reason as `superset`.
-		// 		  ------        # addition
-		// 		    ------      # src
+		//     ------        # addition
+		//       ------      # src
 
 		// 1) (`equal`): we're replacing the same bounds
 		if bounds.Equal(preExisting) {
