@@ -212,8 +212,8 @@ func TestMergeBuilder(t *testing.T) {
 	}
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(_ *Series, _ *Bloom) error {
-		return errors.New("not implemented")
+	pop := func(_ *Series, _ *Bloom) (int, error) {
+		return 0, errors.New("not implemented")
 	}
 
 	// storage should contain references to all the series we ingested,
