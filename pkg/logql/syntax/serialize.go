@@ -662,10 +662,6 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 		}
 	}
 
-	if filter == nil {
-		return &log.NoopLabelFilter{}
-	}
-
 	return filter
 }
 
