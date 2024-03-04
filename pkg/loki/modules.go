@@ -677,7 +677,7 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 		level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
 	}
 
-	t.BloomStore, err = bloomshipper.NewBloomStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.clientMetrics, metasCache, blocksCache, logger)
+	t.BloomStore, err = bloomshipper.NewBloomStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.clientMetrics, metasCache, blocksCache, reg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bloom store: %w", err)
 	}
