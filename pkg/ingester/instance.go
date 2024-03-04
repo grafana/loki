@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/loggerinfo"
 	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -216,6 +217,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	defer recordPool.PutRecord(record)
 	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
 
+	loggerinfo.Push(req)
 	var appendErr error
 	for _, reqStream := range req.Streams {
 
