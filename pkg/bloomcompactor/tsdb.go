@@ -7,6 +7,7 @@ import (
 	"math"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -130,6 +131,7 @@ type forSeries interface {
 }
 
 type TSDBSeriesIter struct {
+	mtx    sync.Mutex
 	f      forSeries
 	bounds v1.FingerprintBounds
 	ctx    context.Context
@@ -169,6 +171,9 @@ func (t *TSDBSeriesIter) At() *v1.Series {
 }
 
 func (t *TSDBSeriesIter) Err() error {
+	t.mtx.Lock()
+	defer t.mtx.Unlock()
+
 	if t.err != nil {
 		return t.err
 	}
@@ -184,7 +189,7 @@ func (t *TSDBSeriesIter) Close() error {
 // value via a channel to handle backpressure
 func (t *TSDBSeriesIter) background() {
 	go func() {
-		t.err = t.f.ForSeries(
+		err := t.f.ForSeries(
 			t.ctx,
 			t.bounds,
 			0, math.MaxInt64,
@@ -210,6 +215,9 @@ func (t *TSDBSeriesIter) background() {
 			},
 			labels.MustNewMatcher(labels.MatchEqual, "", ""),
 		)
+		t.mtx.Lock()
+		t.err = err
+		t.mtx.Unlock()
 		close(t.ch)
 	}()
 }

@@ -11,10 +11,12 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/bloomutils"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
 	util_ring "github.com/grafana/loki/pkg/util/ring"
@@ -261,5 +263,15 @@ func TestTokenRangesForInstance(t *testing.T) {
 				require.Equal(t, test.exp[id], ranges)
 			}
 		})
+	}
+}
+
+func parseDayTime(s string) config.DayTime {
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		panic(err)
+	}
+	return config.DayTime{
+		Time: model.TimeFromUnix(t.Unix()),
 	}
 }
