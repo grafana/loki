@@ -434,7 +434,8 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 			s.WriteInt(int(concrete.Type))
 		}
 		s.WriteObjectEnd()
-		return
+
+		s.WriteObjectEnd()
 	case *log.BytesLabelFilter:
 		s.WriteObjectStart()
 		s.WriteObjectField(Bytes)
