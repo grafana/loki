@@ -275,6 +275,9 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.QueryScheduler.SchedulerRing.InstanceZone = rc.InstanceZone
 		r.QueryScheduler.SchedulerRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.QueryScheduler.SchedulerRing.KVStore = rc.KVStore
+		r.QueryScheduler.SchedulerRing.TokenGenerationStrategy = rc.TokenGenerationStrategy
+		r.QueryScheduler.SchedulerRing.SpreadMinimizingZones = rc.SpreadMinimizingZones
+		r.QueryScheduler.SchedulerRing.SpreadMinimizingJoinRingInOrder = rc.SpreadMinimizingJoinRingInOrder
 	}
 
 	// Compactor
@@ -288,6 +291,9 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.CompactorConfig.CompactorRing.InstanceZone = rc.InstanceZone
 		r.CompactorConfig.CompactorRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.CompactorConfig.CompactorRing.KVStore = rc.KVStore
+		r.CompactorConfig.CompactorRing.TokenGenerationStrategy = rc.TokenGenerationStrategy
+		r.CompactorConfig.CompactorRing.SpreadMinimizingZones = rc.SpreadMinimizingZones
+		r.CompactorConfig.CompactorRing.SpreadMinimizingJoinRingInOrder = rc.SpreadMinimizingJoinRingInOrder
 	}
 
 	// IndexGateway
@@ -301,6 +307,9 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.IndexGateway.Ring.InstanceZone = rc.InstanceZone
 		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.IndexGateway.Ring.KVStore = rc.KVStore
+		r.IndexGateway.Ring.TokenGenerationStrategy = rc.TokenGenerationStrategy
+		r.IndexGateway.Ring.SpreadMinimizingZones = rc.SpreadMinimizingZones
+		r.IndexGateway.Ring.SpreadMinimizingJoinRingInOrder = rc.SpreadMinimizingJoinRingInOrder
 	}
 
 	// BloomCompactor
@@ -314,6 +323,9 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.BloomCompactor.Ring.InstanceZone = rc.InstanceZone
 		r.BloomCompactor.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.BloomCompactor.Ring.KVStore = rc.KVStore
+		r.BloomCompactor.Ring.TokenGenerationStrategy = rc.TokenGenerationStrategy
+		r.BloomCompactor.Ring.SpreadMinimizingZones = rc.SpreadMinimizingZones
+		r.BloomCompactor.Ring.SpreadMinimizingJoinRingInOrder = rc.SpreadMinimizingJoinRingInOrder
 	}
 
 	// BloomGateway
@@ -327,6 +339,9 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.BloomGateway.Ring.InstanceZone = rc.InstanceZone
 		r.BloomGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.BloomGateway.Ring.KVStore = rc.KVStore
+		r.BloomGateway.Ring.TokenGenerationStrategy = rc.TokenGenerationStrategy
+		r.BloomGateway.Ring.SpreadMinimizingZones = rc.SpreadMinimizingZones
+		r.BloomGateway.Ring.SpreadMinimizingJoinRingInOrder = rc.SpreadMinimizingJoinRingInOrder
 	}
 }
 

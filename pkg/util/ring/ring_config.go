@@ -2,9 +2,11 @@ package ring
 
 import (
 	"flag"
+	"fmt"
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -16,6 +18,11 @@ import (
 	"github.com/grafana/dskit/ring"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
+)
+
+const (
+	randomTokenGeneration           = "random"
+	spreadMinimizingTokenGeneration = "spread-minimizing"
 )
 
 // RingConfig masks the ring lifecycler config which contains
@@ -36,6 +43,11 @@ type RingConfig struct { // nolint:revive
 	InstanceAddr           string   `yaml:"instance_addr"`
 	InstanceZone           string   `yaml:"instance_availability_zone"`
 	EnableIPv6             bool     `yaml:"instance_enable_ipv6"`
+
+	// Token generation strategy
+	TokenGenerationStrategy         string                 `yaml:"token_generation_strategy"`
+	SpreadMinimizingJoinRingInOrder bool                   `yaml:"spread_minimizing_join_ring_in_order"`
+	SpreadMinimizingZones           flagext.StringSliceCSV `yaml:"spread_minimizing_zones"`
 
 	// Injected internally
 	ListenPort int `yaml:"-"`
@@ -67,6 +79,11 @@ func (cfg *RingConfig) RegisterFlagsWithPrefix(flagsPrefix, storePrefix string, 
 	f.StringVar(&cfg.InstanceID, flagsPrefix+"ring.instance-id", hostname, "Instance ID to register in the ring.")
 	f.StringVar(&cfg.InstanceZone, flagsPrefix+"ring.instance-availability-zone", "", "The availability zone where this instance is running. Required if zone-awareness is enabled.")
 	f.BoolVar(&cfg.EnableIPv6, flagsPrefix+"ring.instance-enable-ipv6", false, "Enable using a IPv6 instance address.")
+
+	// Token generation strategy
+	f.StringVar(&cfg.TokenGenerationStrategy, flagsPrefix+"ring.token-generation-strategy", randomTokenGeneration, fmt.Sprintf("Specifies the strategy used for generating tokens. Supported values are: %s.", strings.Join([]string{randomTokenGeneration, spreadMinimizingTokenGeneration}, ",")))
+	f.BoolVar(&cfg.SpreadMinimizingJoinRingInOrder, flagsPrefix+"ring.spread-minimizing-join-ring-in-order", false, fmt.Sprintf("True to allow this instances registering tokens in the ring only after all previous instances (with ID lower than the current one) have already been registered. This configuration option is supported only when the token generation strategy is set to %q.", spreadMinimizingTokenGeneration))
+	f.Var(&cfg.SpreadMinimizingZones, flagsPrefix+"ring.spread-minimizing-zones", fmt.Sprintf("Comma-separated list of zones in which spread minimizing strategy is used for token generation. This value must include all zones in which the component is deployed, and must not change over time. This configuration is used only when `token-generation-strategy` is set to %q.", spreadMinimizingTokenGeneration))
 }
 
 // ToLifecyclerConfig returns a LifecyclerConfig based on the compactor ring config.
@@ -80,6 +97,13 @@ func (cfg *RingConfig) ToLifecyclerConfig(numTokens int, logger log.Logger) (rin
 
 	instancePort := ring.GetInstancePort(cfg.InstancePort, cfg.ListenPort)
 
+	tokenGen, err := cfg.customTokenGenerator(logger)
+	if err != nil {
+		return ring.BasicLifecyclerConfig{
+			RingTokenGenerator: ring.NewRandomTokenGenerator(),
+		}, err
+	}
+
 	return ring.BasicLifecyclerConfig{
 		ID:                  cfg.InstanceID,
 		Addr:                net.JoinHostPort(instanceAddr, strconv.Itoa(instancePort)),
@@ -87,8 +111,19 @@ func (cfg *RingConfig) ToLifecyclerConfig(numTokens int, logger log.Logger) (rin
 		HeartbeatPeriod:     cfg.HeartbeatPeriod,
 		TokensObservePeriod: 0,
 		NumTokens:           numTokens,
-		RingTokenGenerator:  ring.NewRandomTokenGenerator(),
+		RingTokenGenerator:  tokenGen,
 	}, nil
+}
+
+func (cfg *RingConfig) customTokenGenerator(logger log.Logger) (ring.TokenGenerator, error) {
+	switch cfg.TokenGenerationStrategy {
+	case spreadMinimizingTokenGeneration:
+		return ring.NewSpreadMinimizingTokenGenerator(cfg.InstanceID, cfg.InstanceZone, cfg.SpreadMinimizingZones, cfg.SpreadMinimizingJoinRingInOrder, logger)
+	case randomTokenGeneration:
+		return ring.NewRandomTokenGenerator(), nil
+	default:
+		return nil, fmt.Errorf("unsupported token generation strategy (%q)", cfg.TokenGenerationStrategy)
+	}
 }
 
 func CortexLifecyclerConfigToRingConfig(cfg ring.LifecyclerConfig) RingConfig {

@@ -719,6 +719,25 @@ scheduler_ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -query-scheduler.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
+
+  # Specifies the strategy used for generating tokens. Supported values are:
+  # random,spread-minimizing.
+  # CLI flag: -query-scheduler.ring.token-generation-strategy
+  [token_generation_strategy: <string> | default = "random"]
+
+  # True to allow this instances registering tokens in the ring only after all
+  # previous instances (with ID lower than the current one) have already been
+  # registered. This configuration option is supported only when the token
+  # generation strategy is set to "spread-minimizing".
+  # CLI flag: -query-scheduler.ring.spread-minimizing-join-ring-in-order
+  [spread_minimizing_join_ring_in_order: <boolean> | default = false]
+
+  # Comma-separated list of zones in which spread minimizing strategy is used
+  # for token generation. This value must include all zones in which the
+  # component is deployed, and must not change over time. This configuration is
+  # used only when `token-generation-strategy` is set to "spread-minimizing".
+  # CLI flag: -query-scheduler.ring.spread-minimizing-zones
+  [spread_minimizing_zones: <string> | default = ""]
 ```
 
 ### frontend
@@ -1783,6 +1802,25 @@ ring:
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
+  # Specifies the strategy used for generating tokens. Supported values are:
+  # random,spread-minimizing.
+  # CLI flag: -index-gateway.ring.token-generation-strategy
+  [token_generation_strategy: <string> | default = "random"]
+
+  # True to allow this instances registering tokens in the ring only after all
+  # previous instances (with ID lower than the current one) have already been
+  # registered. This configuration option is supported only when the token
+  # generation strategy is set to "spread-minimizing".
+  # CLI flag: -index-gateway.ring.spread-minimizing-join-ring-in-order
+  [spread_minimizing_join_ring_in_order: <boolean> | default = false]
+
+  # Comma-separated list of zones in which spread minimizing strategy is used
+  # for token generation. This value must include all zones in which the
+  # component is deployed, and must not change over time. This configuration is
+  # used only when `token-generation-strategy` is set to "spread-minimizing".
+  # CLI flag: -index-gateway.ring.spread-minimizing-zones
+  [spread_minimizing_zones: <string> | default = ""]
+
   # Deprecated: How many index gateway instances are assigned to each tenant.
   # Use -index-gateway.shard-size instead. The shard size is also a per-tenant
   # setting.
@@ -1879,6 +1917,25 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -bloom-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
+
+  # Specifies the strategy used for generating tokens. Supported values are:
+  # random,spread-minimizing.
+  # CLI flag: -bloom-gateway.ring.token-generation-strategy
+  [token_generation_strategy: <string> | default = "random"]
+
+  # True to allow this instances registering tokens in the ring only after all
+  # previous instances (with ID lower than the current one) have already been
+  # registered. This configuration option is supported only when the token
+  # generation strategy is set to "spread-minimizing".
+  # CLI flag: -bloom-gateway.ring.spread-minimizing-join-ring-in-order
+  [spread_minimizing_join_ring_in_order: <boolean> | default = false]
+
+  # Comma-separated list of zones in which spread minimizing strategy is used
+  # for token generation. This value must include all zones in which the
+  # component is deployed, and must not change over time. This configuration is
+  # used only when `token-generation-strategy` is set to "spread-minimizing".
+  # CLI flag: -bloom-gateway.ring.spread-minimizing-zones
+  [spread_minimizing_zones: <string> | default = ""]
 
   # Factor for data replication.
   # CLI flag: -bloom-gateway.replication-factor
@@ -2562,6 +2619,25 @@ compactor_ring:
   # CLI flag: -compactor.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
+  # Specifies the strategy used for generating tokens. Supported values are:
+  # random,spread-minimizing.
+  # CLI flag: -compactor.ring.token-generation-strategy
+  [token_generation_strategy: <string> | default = "random"]
+
+  # True to allow this instances registering tokens in the ring only after all
+  # previous instances (with ID lower than the current one) have already been
+  # registered. This configuration option is supported only when the token
+  # generation strategy is set to "spread-minimizing".
+  # CLI flag: -compactor.ring.spread-minimizing-join-ring-in-order
+  [spread_minimizing_join_ring_in_order: <boolean> | default = false]
+
+  # Comma-separated list of zones in which spread minimizing strategy is used
+  # for token generation. This value must include all zones in which the
+  # component is deployed, and must not change over time. This configuration is
+  # used only when `token-generation-strategy` is set to "spread-minimizing".
+  # CLI flag: -compactor.ring.spread-minimizing-zones
+  [spread_minimizing_zones: <string> | default = ""]
+
 # Number of tables that compactor will try to compact. Newer tables are chosen
 # when this is less than the number of tables available.
 # CLI flag: -compactor.tables-to-compact
@@ -2662,6 +2738,25 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -bloom-compactor.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
+
+  # Specifies the strategy used for generating tokens. Supported values are:
+  # random,spread-minimizing.
+  # CLI flag: -bloom-compactor.ring.token-generation-strategy
+  [token_generation_strategy: <string> | default = "random"]
+
+  # True to allow this instances registering tokens in the ring only after all
+  # previous instances (with ID lower than the current one) have already been
+  # registered. This configuration option is supported only when the token
+  # generation strategy is set to "spread-minimizing".
+  # CLI flag: -bloom-compactor.ring.spread-minimizing-join-ring-in-order
+  [spread_minimizing_join_ring_in_order: <boolean> | default = false]
+
+  # Comma-separated list of zones in which spread minimizing strategy is used
+  # for token generation. This value must include all zones in which the
+  # component is deployed, and must not change over time. This configuration is
+  # used only when `token-generation-strategy` is set to "spread-minimizing".
+  # CLI flag: -bloom-compactor.ring.spread-minimizing-zones
+  [spread_minimizing_zones: <string> | default = ""]
 
 # Flag to enable or disable the usage of the bloom-compactor component.
 # CLI flag: -bloom-compactor.enabled
@@ -3845,6 +3940,25 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -common.storage.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
+
+  # Specifies the strategy used for generating tokens. Supported values are:
+  # random,spread-minimizing.
+  # CLI flag: -common.storage.ring.token-generation-strategy
+  [token_generation_strategy: <string> | default = "random"]
+
+  # True to allow this instances registering tokens in the ring only after all
+  # previous instances (with ID lower than the current one) have already been
+  # registered. This configuration option is supported only when the token
+  # generation strategy is set to "spread-minimizing".
+  # CLI flag: -common.storage.ring.spread-minimizing-join-ring-in-order
+  [spread_minimizing_join_ring_in_order: <boolean> | default = false]
+
+  # Comma-separated list of zones in which spread minimizing strategy is used
+  # for token generation. This value must include all zones in which the
+  # component is deployed, and must not change over time. This configuration is
+  # used only when `token-generation-strategy` is set to "spread-minimizing".
+  # CLI flag: -common.storage.ring.spread-minimizing-zones
+  [spread_minimizing_zones: <string> | default = ""]
 
 [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
