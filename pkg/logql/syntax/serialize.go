@@ -69,6 +69,7 @@ const (
 	RHS                 = "rhs"
 	Src                 = "src"
 	StringField         = "string"
+	NoopField           = "noop"
 	Type                = "type"
 	Unwrap              = "unwrap"
 	Value               = "value"
@@ -415,7 +416,24 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		s.WriteObjectEnd()
 
 		s.WriteObjectEnd()
-	case log.NoopLabelFilter:
+	case *log.NoopLabelFilter:
+		s.WriteObjectStart()
+		s.WriteObjectField(NoopField)
+
+		s.WriteObjectStart()
+		if concrete.Matcher != nil {
+			s.WriteObjectField(Name)
+			s.WriteString(concrete.Name)
+
+			s.WriteMore()
+			s.WriteObjectField(Value)
+			s.WriteString(concrete.Value)
+
+			s.WriteMore()
+			s.WriteObjectField(Type)
+			s.WriteInt(int(concrete.Type))
+		}
+		s.WriteObjectEnd()
 		return
 	case *log.BytesLabelFilter:
 		s.WriteObjectStart()
@@ -606,8 +624,7 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 			}
 
 			filter = log.NewNumericLabelFilter(t, name, value)
-		case StringField:
-
+		case StringField, NoopField:
 			var name string
 			var value string
 			var t labels.MatchType
@@ -643,6 +660,10 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 			}
 			filter = log.NewIPLabelFilter(pattern, label, t)
 		}
+	}
+
+	if filter == nil {
+		return &log.NoopLabelFilter{}
 	}
 
 	return filter

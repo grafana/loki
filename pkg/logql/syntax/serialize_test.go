@@ -53,6 +53,9 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		"multiple post filters": {
 			query: `rate({app="foo"} | json | unwrap foo | latency >= 250ms or bytes > 42B or ( status_code < 500 and status_code > 200) or source = ip("") and user = "me" [1m])`,
 		},
+		"multiple post filters where one is a noop": {
+			query: `rate({app="foo"} | json | unwrap foo | latency >= 250ms or bytes=~".*" [1m])`,
+		},
 		"empty label filter string": {
 			query: `rate({app="foo"} |= "bar" | json | unwrap latency | path!="" [5m])`,
 		},
