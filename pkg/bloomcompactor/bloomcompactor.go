@@ -220,9 +220,9 @@ func (c *Compactor) runOne(ctx context.Context) error {
 	input := make(chan *tenantTableRange)
 
 	tables := c.tables(time.Now())
-	level.Debug(c.logger).Log("msg", "loaded tables", "tables", tables.Len())
+	level.Debug(c.logger).Log("msg", "loaded tables", "tables", tables.TotalDays())
 
-	tracker, err := newCompactionTracker(tables.Len())
+	tracker, err := newCompactionTracker(tables.TotalDays())
 	if err != nil {
 		return errors.Wrap(err, "creating compaction tracker")
 	}
@@ -457,7 +457,7 @@ func newDayRangeIterator(min, max config.DayTime, schemaCfg config.SchemaConfig)
 	return &dayRangeIterator{min: min, max: max, cur: min.Dec(), schemaCfg: schemaCfg}
 }
 
-func (r *dayRangeIterator) Len() int {
+func (r *dayRangeIterator) TotalDays() int {
 	offset := r.cur
 	if r.cur.Before(r.min) {
 		offset = r.min
