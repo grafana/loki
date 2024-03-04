@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	DefaultBlockOptions = NewBlockOptions(4, 0, 50<<20) // 50MB
+	DefaultBlockOptions = NewBlockOptions(4, 1, 50<<20) // 50MB
 )
 
 type BlockOptions struct {
@@ -521,11 +521,12 @@ func (b *IndexBuilder) Close() (uint32, error) {
 // from a list of blocks and a store of series.
 type MergeBuilder struct {
 	// existing blocks
-	blocks []PeekingIterator[*SeriesWithBloom]
+	blocks Iterator[*SeriesWithBloom]
 	// store
 	store Iterator[*Series]
 	// Add chunks to a bloom
 	populate func(*Series, *Bloom) error
+	metrics  *Metrics
 }
 
 // NewMergeBuilder is a specific builder which does the following:
@@ -533,40 +534,31 @@ type MergeBuilder struct {
 //     i) When two blocks have the same series, it will prefer the one with the most chunks already indexed
 //  2. iterates through the store, adding chunks to the relevant blooms via the `populate` argument
 func NewMergeBuilder(
-	blocks []PeekingIterator[*SeriesWithBloom],
+	blocks Iterator[*SeriesWithBloom],
 	store Iterator[*Series],
 	populate func(*Series, *Bloom) error,
+	metrics *Metrics,
 ) *MergeBuilder {
 	return &MergeBuilder{
 		blocks:   blocks,
 		store:    store,
 		populate: populate,
+		metrics:  metrics,
 	}
 }
 
 func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 	var (
-		nextInBlocks *SeriesWithBloom
+		nextInBlocks                                     *SeriesWithBloom
+		blocksFinished                                   bool
+		blockSeriesIterated, chunksIndexed, chunksCopied int
 	)
 
-	// Turn the list of blocks into a single iterator that returns the next series
-	mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewHeapIterForSeriesWithBloom(mb.blocks...))
-	// two overlapping blocks can conceivably have the same series, so we need to dedupe,
-	// preferring the one with the most chunks already indexed since we'll have
-	// to add fewer chunks to the bloom
-	deduped := NewDedupingIter[*SeriesWithBloom](
-		func(a, b *SeriesWithBloom) bool {
-			return a.Series.Fingerprint == b.Series.Fingerprint
-		},
-		Identity[*SeriesWithBloom],
-		func(a, b *SeriesWithBloom) *SeriesWithBloom {
-			if len(a.Series.Chunks) > len(b.Series.Chunks) {
-				return a
-			}
-			return b
-		},
-		mergedBlocks,
-	)
+	defer func() {
+		mb.metrics.blockSeriesIterated.Add(float64(blockSeriesIterated))
+		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeIterated).Add(float64(chunksIndexed))
+		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeCopied).Add(float64(chunksCopied))
+	}()
 
 	for mb.store.Next() {
 		nextInStore := mb.store.At()
@@ -576,13 +568,19 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 		// TODO(owen-d): expensive, but Seek is not implemented for this itr.
 		// It's also more efficient to build an iterator over the Series file in the index
 		// without the blooms until we find a bloom we actually need to unpack from the blooms file.
-		for nextInBlocks == nil || nextInBlocks.Series.Fingerprint < mb.store.At().Fingerprint {
-			if !deduped.Next() {
+		for !blocksFinished && (nextInBlocks == nil || nextInBlocks.Series.Fingerprint < mb.store.At().Fingerprint) {
+			if !mb.blocks.Next() {
 				// we've exhausted all the blocks
+				blocksFinished = true
 				nextInBlocks = nil
 				break
 			}
-			nextInBlocks = deduped.At()
+
+			if err := mb.blocks.Err(); err != nil {
+				return 0, errors.Wrap(err, "iterating blocks")
+			}
+			blockSeriesIterated++
+			nextInBlocks = mb.blocks.At()
 		}
 
 		cur := nextInBlocks
@@ -600,7 +598,10 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 		} else {
 			// if the series already exists in the block, we only need to add the new chunks
 			chunksToAdd = nextInStore.Chunks.Unless(nextInBlocks.Series.Chunks)
+			chunksCopied += len(nextInStore.Chunks) - len(chunksToAdd)
 		}
+
+		chunksIndexed += len(chunksToAdd)
 
 		if len(chunksToAdd) > 0 {
 			if err := mb.populate(
@@ -621,6 +622,10 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 		if blockFull {
 			break
 		}
+	}
+
+	if err := mb.store.Err(); err != nil {
+		return 0, errors.Wrap(err, "iterating store")
 	}
 
 	checksum, err := builder.Close()

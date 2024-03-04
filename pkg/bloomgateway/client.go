@@ -7,7 +7,6 @@ import (
 	"io"
 	"math"
 	"math/rand"
-	"sort"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -20,14 +19,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -142,7 +142,7 @@ func (i *ClientConfig) Validate() error {
 }
 
 type Client interface {
-	FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...syntax.LineFilter) ([]*logproto.GroupedChunkRefs, error)
+	FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error)
 }
 
 type GatewayClient struct {
@@ -224,7 +224,7 @@ func shuffleAddrs(addrs []string) []string {
 }
 
 // FilterChunkRefs implements Client
-func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...syntax.LineFilter) ([]*logproto.GroupedChunkRefs, error) {
+func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
 	if !c.limits.BloomGatewayEnabled(tenant) {
 		return groups, nil
 	}
@@ -235,24 +235,24 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 		return nil, errors.Wrap(err, "bloom gateway get healthy instances")
 	}
 
-	servers, err := serverAddressesWithTokenRanges(subRing, rs.Instances)
+	servers, err := replicationSetsWithBounds(subRing, rs.Instances)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "bloom gateway get replication sets")
 	}
-	streamsByInst := groupFingerprintsByServer(groups, servers)
+	servers = partitionByReplicationSet(groups, servers)
 
 	filteredChunkRefs := groupedChunksRefPool.Get(len(groups))
 	defer groupedChunksRefPool.Put(filteredChunkRefs)
 
-	for _, item := range streamsByInst {
+	for _, rs := range servers {
 		// randomize order of addresses so we don't hotspot the first server in the list
-		addrs := shuffleAddrs(item.instance.addrs)
+		addrs := shuffleAddrs(rs.rs.GetAddresses())
 		err := c.doForAddrs(addrs, func(client logproto.BloomGatewayClient) error {
 			req := &logproto.FilterChunkRefRequest{
 				From:    from,
 				Through: through,
-				Refs:    item.fingerprints,
-				Filters: filters,
+				Refs:    rs.groups,
+				Plan:    plan,
 			}
 			resp, err := client.FilterChunkRefs(ctx, req)
 			if err != nil {
@@ -291,122 +291,85 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 	return err
 }
 
-func groupFingerprintsByServer(groups []*logproto.GroupedChunkRefs, servers []addrsWithTokenRange) []instanceWithFingerprints {
-	boundedFingerprints := partitionFingerprintsByAddresses(groups, servers)
-	return groupByInstance(boundedFingerprints)
+func mapTokenRangeToFingerprintRange(r bloomutils.Range[uint32]) v1.FingerprintBounds {
+	minFp := uint64(r.Min) << 32
+	maxFp := uint64(r.Max) << 32
+	return v1.NewBounds(
+		model.Fingerprint(minFp),
+		model.Fingerprint(maxFp|math.MaxUint32),
+	)
 }
 
-func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.InstanceDesc) ([]addrsWithTokenRange, error) {
+type rsWithRanges struct {
+	rs     ring.ReplicationSet
+	ranges []v1.FingerprintBounds
+	groups []*logproto.GroupedChunkRefs
+}
+
+func replicationSetsWithBounds(subRing ring.ReadRing, instances []ring.InstanceDesc) ([]rsWithRanges, error) {
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 
-	servers := make([]addrsWithTokenRange, 0, len(instances))
-	it := bloomutils.NewInstanceSortMergeIterator(instances)
-	for it.Next() {
-		// We can use on of the tokens from the token range
-		// to obtain all addresses for that token.
-		rs, err := subRing.Get(it.At().MaxToken, BlocksOwnerRead, bufDescs, bufHosts, bufZones)
+	servers := make([]rsWithRanges, 0, len(instances))
+	for _, inst := range instances {
+		tr, err := bloomutils.TokenRangesForInstance(inst.Id, instances)
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
 		}
-		servers = append(servers, addrsWithTokenRange{
-			id:       it.At().Instance.Id,
-			addrs:    rs.GetAddresses(),
-			minToken: it.At().MinToken,
-			maxToken: it.At().MaxToken,
-		})
-	}
 
-	if len(servers) > 0 && servers[len(servers)-1].maxToken < math.MaxUint32 {
-		// append the instance for the token range between the greates token and MaxUint32
-		servers = append(servers, addrsWithTokenRange{
-			id:       servers[0].id,
-			addrs:    servers[0].addrs,
-			minToken: servers[len(servers)-1].maxToken + 1,
-			maxToken: math.MaxUint32,
+		rs, err := subRing.Get(tr[0], BlocksOwnerRead, bufDescs, bufHosts, bufZones)
+		if err != nil {
+			return nil, errors.Wrap(err, "bloom gateway get ring")
+		}
+
+		bounds := make([]v1.FingerprintBounds, 0, len(tr)/2)
+		for i := 0; i < len(tr); i += 2 {
+			b := v1.NewBounds(
+				model.Fingerprint(uint64(tr[i])<<32),
+				model.Fingerprint(uint64(tr[i+1])<<32|math.MaxUint32),
+			)
+			bounds = append(bounds, b)
+		}
+
+		servers = append(servers, rsWithRanges{
+			rs:     rs,
+			ranges: bounds,
 		})
 	}
 	return servers, nil
 }
 
-type instanceWithToken struct {
-	instance ring.InstanceDesc
-	token    uint32
-}
+func partitionByReplicationSet(fingerprints []*logproto.GroupedChunkRefs, rs []rsWithRanges) (result []rsWithRanges) {
+	for _, inst := range rs {
+		for _, bounds := range inst.ranges {
+			min, _ := slices.BinarySearchFunc(fingerprints, bounds, func(g *logproto.GroupedChunkRefs, b v1.FingerprintBounds) int {
+				if g.Fingerprint < uint64(b.Min) {
+					return -1
+				} else if g.Fingerprint > uint64(b.Min) {
+					return 1
+				}
+				return 0
+			})
 
-type addrsWithTokenRange struct {
-	id                 string
-	addrs              []string
-	minToken, maxToken uint32
-}
+			max, _ := slices.BinarySearchFunc(fingerprints, bounds, func(g *logproto.GroupedChunkRefs, b v1.FingerprintBounds) int {
+				if g.Fingerprint <= uint64(b.Max) {
+					return -1
+				} else if g.Fingerprint > uint64(b.Max) {
+					return 1
+				}
+				return 0
+			})
 
-func (s addrsWithTokenRange) cmp(token uint32) v1.BoundsCheck {
-	if token < s.minToken {
-		return v1.Before
-	} else if token > s.maxToken {
-		return v1.After
-	}
-	return v1.Overlap
-}
+			// fingerprint is out of boundaries
+			if min == len(fingerprints) || max == 0 {
+				continue
+			}
 
-type instanceWithFingerprints struct {
-	instance     addrsWithTokenRange
-	fingerprints []*logproto.GroupedChunkRefs
-}
-
-func partitionFingerprintsByAddresses(fingerprints []*logproto.GroupedChunkRefs, addresses []addrsWithTokenRange) (result []instanceWithFingerprints) {
-	for _, instance := range addresses {
-
-		min := sort.Search(len(fingerprints), func(i int) bool {
-			return instance.cmp(uint32(fingerprints[i].Fingerprint)) > v1.Before
-		})
-
-		max := sort.Search(len(fingerprints), func(i int) bool {
-			return instance.cmp(uint32(fingerprints[i].Fingerprint)) == v1.After
-		})
-
-		// fingerprint is out of boundaries
-		if min == len(fingerprints) || max == 0 {
-			continue
+			inst.groups = append(inst.groups, fingerprints[min:max]...)
 		}
 
-		result = append(result, instanceWithFingerprints{instance: instance, fingerprints: fingerprints[min:max]})
-	}
-
-	return result
-}
-
-// groupByInstance groups fingerprints by server instance
-func groupByInstance(boundedFingerprints []instanceWithFingerprints) []instanceWithFingerprints {
-	if len(boundedFingerprints) == 0 {
-		return []instanceWithFingerprints{}
-	}
-
-	result := make([]instanceWithFingerprints, 0, len(boundedFingerprints))
-	pos := make(map[string]int, len(boundedFingerprints))
-
-	for _, cur := range boundedFingerprints {
-		if len(cur.fingerprints) == 0 {
-			continue
+		if len(inst.groups) > 0 {
+			result = append(result, inst)
 		}
-		// Copy fingerprint slice, otherwise we mutate the original
-		// TODO(chaudum): Use SlicePool
-		tmp := make([]*logproto.GroupedChunkRefs, len(cur.fingerprints))
-		_ = copy(tmp, cur.fingerprints)
-
-		idx, ok := pos[cur.instance.id]
-		if ok {
-			result[idx].fingerprints = append(result[idx].fingerprints, tmp...)
-			continue
-		}
-
-		pos[cur.instance.id] = len(result)
-		result = append(result, instanceWithFingerprints{
-			instance: addrsWithTokenRange{
-				id:    cur.instance.id,
-				addrs: cur.instance.addrs,
-			},
-			fingerprints: tmp,
-		})
 	}
 
 	return result

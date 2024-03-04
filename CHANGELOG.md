@@ -6,6 +6,8 @@
 
 ##### Enhancements
 
+* [11840](https://github.com/grafana/loki/pull/11840) **jeschkies**: Allow custom usage trackers for ingested and discarded bytes metric.
+* [11814](https://github.com/grafana/loki/pull/11814) **kavirajk**: feat: Support split align and caching for instant metric query results
 * [11851](https://github.com/grafana/loki/pull/11851) **elcomtik**: Helm: Allow the definition of resources for GrafanaAgent pods.
 * [11819](https://github.com/grafana/loki/pull/11819) **jburnham**: Ruler: Add the ability to disable the `X-Scope-OrgId` tenant identification header in remote write requests.
 * [11633](https://github.com/grafana/loki/pull/11633) **cyriltovena**: Add profiling integrations to tracing instrumentation.
@@ -57,6 +59,7 @@
 * [11499](https://github.com/grafana/loki/pull/11284) **jmichalek132** Config: Adds `frontend.log-query-request-headers` to enable logging of request headers in query logs.
 * [11817](https://github.com/grafana/loki/pull/11817) **ashwanthgoli** Ruler: Add support for filtering results of `/prometheus/api/v1/rules` endpoint by rule_name, rule_group, file and type.
 * [11897](https://github.com/grafana/loki/pull/11897) **ashwanthgoli** Metadata: Introduces a separate split interval of `split_recent_metadata_queries_by_interval` for `recent_metadata_query_window` to help with caching recent metadata query results.
+* [11970](https://github.com/grafana/loki/pull/11897) **masslessparticle** Ksonnet: Introduces memory limits to the compactor configuration to avoid unbounded memory usage.
 
 ##### Fixes
 * [11074](https://github.com/grafana/loki/pull/11074) **hainenber** Fix panic in lambda-promtail due to mishandling of empty DROP_LABELS env var.
@@ -69,7 +72,7 @@
 * [11657](https://github.com/grafana/loki/pull/11657) **ashwanthgoli** Log results cache: compose empty response based on the request being served to avoid returning incorrect limit or direction.
 * [11587](https://github.com/grafana/loki/pull/11587) **trevorwhitney** Fix semantics of label parsing logic of metrics and logs queries. Both only parse the first label if multiple extractions into the same label are requested.
 * [11776](https://github.com/grafana/loki/pull/11776) **ashwanthgoli** Background Cache: Fixes a bug that is causing the background queue size to be incremented twice for each enqueued item.
-* [11921](https://github.com/grafana/loki/pull/11921) **paul1r**: Parsing: String array elements were not being parsed correctly in JSON processing 
+* [11921](https://github.com/grafana/loki/pull/11921) **paul1r**: Parsing: String array elements were not being parsed correctly in JSON processing
 
 ##### Changes
 
@@ -125,6 +128,20 @@
 * [10784](https://github.com/grafana/loki/pull/10894) **slim-bean** Update index gateway client to use a headless service.
 
 * [10542](https://github.com/grafana/loki/pull/10542) **chaudum**: Remove legacy deployment mode for ingester (Deployment, without WAL) and instead always run them as StatefulSet.
+
+## [2.8.10](https://github.com/grafana/loki/compare/v2.8.9...v2.8.10) (2024-02-28)
+
+
+### Bug Fixes
+
+* image tag from env and pin release to v1.11.5 ([#12073](https://github.com/grafana/loki/issues/12073)) ([8e11cd7](https://github.com/grafana/loki/commit/8e11cd7a8222a64d60bff30a41e399ddbda3372e))
+
+## [2.8.9](https://github.com/grafana/loki/compare/v2.8.8...v2.8.9) (2024-02-23)
+
+
+### Bug Fixes
+
+* bump alpine base image and go to fix CVEs ([#12026](https://github.com/grafana/loki/issues/12026)) ([196650e](https://github.com/grafana/loki/commit/196650e4c119249016df85a50a2cced521cbe9be))
 
 ## 2.9.2 (2023-10-16)
 

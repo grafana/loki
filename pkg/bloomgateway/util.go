@@ -48,9 +48,15 @@ func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
 
 // convertToSearches converts a list of line filter expressions to a list of
 // byte slices that can be used with the bloom filters.
-func convertToSearches(filters []syntax.LineFilter, t *v1.NGramTokenizer) [][]byte {
+func convertToSearches(t *v1.NGramTokenizer, filters ...syntax.LineFilterExpr) [][]byte {
 	searches := make([][]byte, 0, (13-t.N)*len(filters))
 	for _, f := range filters {
+		if f.Left != nil {
+			searches = append(searches, convertToSearches(t, *f.Left)...)
+		}
+		if f.Or != nil {
+			searches = append(searches, convertToSearches(t, *f.Or)...)
+		}
 		if f.Ty == labels.MatchEqual {
 			it := t.Tokens(f.Match)
 			for it.Next() {
@@ -83,15 +89,17 @@ func convertToChunkRefs(refs []*logproto.ShortRef) v1.ChunkRefs {
 	return result
 }
 
-type boundedTasks struct {
-	blockRef bloomshipper.BlockRef
-	tasks    []Task
+type blockWithTasks struct {
+	ref   bloomshipper.BlockRef
+	tasks []Task
 }
 
-func partitionFingerprintRange(tasks []Task, blocks []bloomshipper.BlockRef) (result []boundedTasks) {
+func partitionTasks(tasks []Task, blocks []bloomshipper.BlockRef) []blockWithTasks {
+	result := make([]blockWithTasks, 0, len(blocks))
+
 	for _, block := range blocks {
-		bounded := boundedTasks{
-			blockRef: block,
+		bounded := blockWithTasks{
+			ref: block,
 		}
 
 		for _, task := range tasks {
@@ -120,14 +128,14 @@ func partitionFingerprintRange(tasks []Task, blocks []bloomshipper.BlockRef) (re
 	return result
 }
 
-type seriesWithBounds struct {
-	bounds model.Interval
-	table  config.DayTime
-	series []*logproto.GroupedChunkRefs
+type seriesWithInterval struct {
+	day      config.DayTime
+	series   []*logproto.GroupedChunkRefs
+	interval bloomshipper.Interval
 }
 
-func partitionRequest(req *logproto.FilterChunkRefRequest) []seriesWithBounds {
-	result := make([]seriesWithBounds, 0)
+func partitionRequest(req *logproto.FilterChunkRefRequest) []seriesWithInterval {
+	result := make([]seriesWithInterval, 0)
 
 	fromDay, throughDay := truncateDay(req.From), truncateDay(req.Through)
 
@@ -169,12 +177,12 @@ func partitionRequest(req *logproto.FilterChunkRefRequest) []seriesWithBounds {
 		}
 
 		if len(res) > 0 {
-			result = append(result, seriesWithBounds{
-				bounds: model.Interval{
+			result = append(result, seriesWithInterval{
+				interval: bloomshipper.Interval{
 					Start: minTs,
 					End:   maxTs,
 				},
-				table:  config.NewDayTime(day),
+				day:    config.NewDayTime(day),
 				series: res,
 			})
 		}

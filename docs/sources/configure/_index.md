@@ -886,6 +886,28 @@ volume_results_cache:
   # CLI flag: -frontend.volume-results-cache.compression
   [compression: <string> | default = ""]
 
+# Cache instant metric query results.
+# CLI flag: -querier.cache-instant-metric-results
+[cache_instant_metric_results: <boolean> | default = false]
+
+# If a cache config is not specified and cache_instant_metric_results is true,
+# the config for the results cache is used.
+instant_metric_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.instant-metric-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.instant-metric-results-cache.compression
+  [compression: <string> | default = ""]
+
+# Whether to align the splits of instant metric query with splitByInterval and
+# query's exec time. Useful when instant_metric_cache is enabled
+# CLI flag: -querier.instant-metric-query-split-align
+[instant_metric_query_split_align: <boolean> | default = false]
+
 # Cache series query results.
 # CLI flag: -querier.cache-series-results
 [cache_series_results: <boolean> | default = false]
@@ -2935,6 +2957,13 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -experimental.querier.recent-metadata-query-window
 [recent_metadata_query_window: <duration> | default = 0s]
 
+# Split instant metric queries by a time interval and execute in parallel. The
+# value 0 disables splitting instant metric queries by time. This also
+# determines how cache keys are chosen when instant metric query result caching
+# is enabled.
+# CLI flag: -querier.split-instant-metric-queries-by-interval
+[split_instant_metric_queries_by_interval: <duration> | default = 1h]
+
 # Interval to use for time-based splitting when a request is within the
 # `query_ingesters_within` window; defaults to `split-queries-by-interval` by
 # setting to 0.
@@ -3155,7 +3184,7 @@ shard_streams:
 
 # Skip factor for the n-grams created when computing blooms from log lines.
 # CLI flag: -bloom-compactor.ngram-skip
-[bloom_ngram_skip: <int> | default = 0]
+[bloom_ngram_skip: <int> | default = 1]
 
 # Scalable Bloom Filter desired false-positive rate.
 # CLI flag: -bloom-compactor.false-positive-rate
@@ -4403,6 +4432,7 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 - `bloom.metas-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
+- `frontend.instant-metric-results-cache`
 - `frontend.label-results-cache`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`

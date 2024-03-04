@@ -6,7 +6,6 @@ import (
 
 	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -19,7 +18,7 @@ import (
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 )
 
-func credentialsRequestFakeClient(cr *cloudcredentialv1.CredentialsRequest, lokistack *lokiv1.LokiStack, secret *corev1.Secret) *k8sfakes.FakeClient {
+func credentialsRequestFakeClient(cr *cloudcredentialv1.CredentialsRequest, lokistack *lokiv1.LokiStack) *k8sfakes.FakeClient {
 	k := &k8sfakes.FakeClient{}
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		switch object.(type) {
@@ -33,11 +32,6 @@ func credentialsRequestFakeClient(cr *cloudcredentialv1.CredentialsRequest, loki
 				return errors.NewNotFound(schema.GroupResource{}, name.Name)
 			}
 			k.SetClientObject(object, lokistack)
-		case *corev1.Secret:
-			if secret == nil {
-				return errors.NewNotFound(schema.GroupResource{}, name.Name)
-			}
-			k.SetClientObject(object, secret)
 		}
 		return nil
 	}
@@ -58,7 +52,7 @@ func TestCreateCredentialsRequest_CreateNewResource(t *testing.T) {
 		},
 	}
 
-	k := credentialsRequestFakeClient(nil, lokistack, nil)
+	k := credentialsRequestFakeClient(nil, lokistack)
 	req := ctrl.Request{
 		NamespacedName: client.ObjectKey{Name: "my-stack", Namespace: "ns"},
 	}
@@ -89,13 +83,8 @@ func TestCreateCredentialsRequest_CreateNewResourceAzure(t *testing.T) {
 			Namespace: "ns",
 		},
 	}
-	secret := &corev1.Secret{
-		Data: map[string][]byte{
-			"region": []byte(wantRegion),
-		},
-	}
 
-	k := credentialsRequestFakeClient(nil, lokistack, secret)
+	k := credentialsRequestFakeClient(nil, lokistack)
 	req := ctrl.Request{
 		NamespacedName: client.ObjectKey{Name: "my-stack", Namespace: "ns"},
 	}
@@ -105,6 +94,7 @@ func TestCreateCredentialsRequest_CreateNewResourceAzure(t *testing.T) {
 			ClientID:       "test-client-id",
 			SubscriptionID: "test-tenant-id",
 			TenantID:       "test-subscription-id",
+			Region:         "test-region",
 		},
 	}
 
@@ -120,47 +110,6 @@ func TestCreateCredentialsRequest_CreateNewResourceAzure(t *testing.T) {
 	require.NoError(t, cloudcredentialv1.Codec.DecodeProviderSpec(credReq.Spec.ProviderSpec, providerSpec))
 
 	require.Equal(t, wantRegion, providerSpec.AzureRegion)
-}
-
-func TestCreateCredentialsRequest_CreateNewResourceAzure_Errors(t *testing.T) {
-	lokistack := &lokiv1.LokiStack{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-stack",
-			Namespace: "ns",
-		},
-	}
-	req := ctrl.Request{
-		NamespacedName: client.ObjectKey{Name: "my-stack", Namespace: "ns"},
-	}
-
-	tt := []struct {
-		secret    *corev1.Secret
-		wantError string
-	}{
-		{
-			secret:    &corev1.Secret{},
-			wantError: errAzureNoRegion.Error(),
-		},
-	}
-
-	for _, tc := range tt {
-		tc := tc
-		t.Run(tc.wantError, func(t *testing.T) {
-			t.Parallel()
-
-			managedAuth := &config.ManagedAuthConfig{
-				Azure: &config.AzureEnvironment{
-					ClientID:       "test-client-id",
-					SubscriptionID: "test-tenant-id",
-					TenantID:       "test-subscription-id",
-				},
-			}
-			k := credentialsRequestFakeClient(nil, lokistack, tc.secret)
-
-			err := CreateCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
-			require.EqualError(t, err, tc.wantError)
-		})
-	}
 }
 
 func TestCreateCredentialsRequest_DoNothing_WhenCredentialsRequestExist(t *testing.T) {
@@ -187,7 +136,7 @@ func TestCreateCredentialsRequest_DoNothing_WhenCredentialsRequestExist(t *testi
 		},
 	}
 
-	k := credentialsRequestFakeClient(cr, lokistack, nil)
+	k := credentialsRequestFakeClient(cr, lokistack)
 
 	err := CreateCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
 	require.NoError(t, err)

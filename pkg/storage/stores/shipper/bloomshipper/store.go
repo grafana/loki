@@ -16,7 +16,9 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (
@@ -139,6 +141,7 @@ var _ Store = &BloomStore{}
 type BloomStore struct {
 	stores             []*bloomStoreEntry
 	storageConfig      storage.Config
+	metrics            *storeMetrics
 	defaultKeyResolver // TODO(owen-d): impl schema aware resolvers
 }
 
@@ -148,10 +151,12 @@ func NewBloomStore(
 	clientMetrics storage.ClientMetrics,
 	metasCache cache.Cache,
 	blocksCache cache.TypedCache[string, BlockDirectory],
+	reg prometheus.Registerer,
 	logger log.Logger,
 ) (*BloomStore, error) {
 	store := &BloomStore{
 		storageConfig: storageConfig,
+		metrics:       newStoreMetrics(reg, constants.Loki, "bloom_store"),
 	}
 
 	if metasCache == nil {
@@ -173,6 +178,10 @@ func NewBloomStore(
 		numWorkers: storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
 	}
 
+	if err := util.EnsureDirectory(cfg.workingDir); err != nil {
+		return nil, errors.Wrapf(err, "failed to create working directory for bloom store: '%s'", cfg.workingDir)
+	}
+
 	for _, periodicConfig := range periodicConfigs {
 		objectClient, err := storage.NewObjectClient("bloom-shipper", periodicConfig.ObjectType, storageConfig, clientMetrics, prometheus.DefaultRegisterer)
 		if err != nil {
@@ -184,7 +193,8 @@ func NewBloomStore(
 			return nil, errors.Wrapf(err, "creating bloom client for period %s", periodicConfig.From)
 		}
 
-		fetcher, err := NewFetcher(cfg, bloomClient, metasCache, blocksCache, logger)
+		regWithLabels := prometheus.WrapRegistererWith(prometheus.Labels{"store": periodicConfig.From.String()}, reg)
+		fetcher, err := NewFetcher(cfg, bloomClient, metasCache, blocksCache, regWithLabels, logger)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating fetcher for period %s", periodicConfig.From)
 		}
@@ -324,10 +334,10 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*Clo
 	results := make([]*CloseableBlockQuerier, 0, len(blocks))
 	for i := range fetchers {
 		res, err := fetchers[i].FetchBlocks(ctx, refs[i])
-		results = append(results, res...)
 		if err != nil {
 			return results, err
 		}
+		results = append(results, res...)
 	}
 
 	// sort responses (results []*CloseableBlockQuerier) based on requests (blocks []BlockRef)

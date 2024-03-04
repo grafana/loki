@@ -408,7 +408,7 @@ func applyPathPrefixDefaults(r, defaults *ConfigWrapper) {
 			r.CompactorConfig.WorkingDirectory = fmt.Sprintf("%s/compactor", prefix)
 		}
 		if r.StorageConfig.BloomShipperConfig.WorkingDirectory == defaults.StorageConfig.BloomShipperConfig.WorkingDirectory {
-			r.StorageConfig.BloomShipperConfig.WorkingDirectory = fmt.Sprintf("%s/bloom-shipper", prefix)
+			r.StorageConfig.BloomShipperConfig.WorkingDirectory = fmt.Sprintf("%s/blooms", prefix)
 		}
 	}
 }
@@ -660,6 +660,13 @@ func applyEmbeddedCacheConfig(r *ConfigWrapper) {
 		prefix := labelsCacheConfig.Prefix
 		r.QueryRange.LabelsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
 		r.QueryRange.LabelsCacheConfig.CacheConfig.Prefix = prefix
+	}
+
+	instantMetricCacheConfig := r.QueryRange.InstantMetricCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(instantMetricCacheConfig) {
+		prefix := instantMetricCacheConfig.Prefix
+		r.QueryRange.InstantMetricCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.InstantMetricCacheConfig.CacheConfig.Prefix = prefix
 	}
 }
 

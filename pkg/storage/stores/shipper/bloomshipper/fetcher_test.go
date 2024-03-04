@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,8 +35,7 @@ func makeMetas(t *testing.T, schemaCfg config.SchemaConfig, ts model.Time, keysp
 					EndTimestamp:   ts,
 				},
 			},
-			BlockTombstones: []BlockRef{},
-			Blocks:          []BlockRef{},
+			Blocks: []BlockRef{},
 		}
 	}
 	return metas
@@ -108,7 +108,7 @@ func TestMetasFetcher(t *testing.T) {
 			c, err := NewBloomClient(cfg, oc, logger)
 			require.NoError(t, err)
 
-			fetcher, err := NewFetcher(cfg, c, metasCache, nil, logger)
+			fetcher, err := NewFetcher(cfg, c, metasCache, nil, nil, logger)
 			require.NoError(t, err)
 
 			// prepare metas cache
@@ -153,9 +153,9 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x2000, 0x2fff)}},
 	}
 	dirs := []string{
-		resolver.Block(refs[0]).LocalPath(),
-		resolver.Block(refs[1]).LocalPath(),
-		resolver.Block(refs[2]).LocalPath(),
+		strings.TrimSuffix(resolver.Block(refs[0]).LocalPath(), ".tar.gz"),
+		strings.TrimSuffix(resolver.Block(refs[1]).LocalPath(), ".tar.gz"),
+		strings.TrimSuffix(resolver.Block(refs[2]).LocalPath(), ".tar.gz"),
 	}
 
 	createBlockDir(t, dirs[1])
@@ -168,7 +168,7 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 	c, err := NewBloomClient(cfg, oc, log.NewNopLogger())
 	require.NoError(t, err)
 
-	fetcher, err := NewFetcher(cfg, c, nil, nil, log.NewNopLogger())
+	fetcher, err := NewFetcher(cfg, c, nil, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	found, missing, err := fetcher.loadBlocksFromFS(context.Background(), refs)
@@ -194,7 +194,7 @@ func createBlockDir(t *testing.T, path string) {
 }
 
 func TestFetcher_IsBlockDir(t *testing.T) {
-	fetcher, _ := NewFetcher(bloomStoreConfig{}, nil, nil, nil, log.NewNopLogger())
+	fetcher, _ := NewFetcher(bloomStoreConfig{}, nil, nil, nil, nil, log.NewNopLogger())
 
 	t.Run("path does not exist", func(t *testing.T) {
 		base := t.TempDir()
