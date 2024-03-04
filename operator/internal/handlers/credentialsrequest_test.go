@@ -39,7 +39,7 @@ func credentialsRequestFakeClient(cr *cloudcredentialv1.CredentialsRequest, loki
 	return k
 }
 
-func TestUpdateCredentialsRequest_CreateNewResource(t *testing.T) {
+func TestCreateUpdateDeleteCredentialsRequest_CreateNewResource(t *testing.T) {
 	wantServiceAccountNames := []string{
 		"my-stack",
 		"my-stack-ruler",
@@ -63,7 +63,7 @@ func TestUpdateCredentialsRequest_CreateNewResource(t *testing.T) {
 		},
 	}
 
-	err := UpdateCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
+	err := CreateUpdateDeleteCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, k.CreateCallCount())
 
@@ -74,7 +74,7 @@ func TestUpdateCredentialsRequest_CreateNewResource(t *testing.T) {
 	require.Equal(t, wantServiceAccountNames, credReq.Spec.ServiceAccountNames)
 }
 
-func TestUpdateCredentialsRequest_CreateNewResourceAzure(t *testing.T) {
+func TestCreateUpdateDeleteCredentialsRequest_CreateNewResourceAzure(t *testing.T) {
 	wantRegion := "test-region"
 
 	lokistack := &lokiv1.LokiStack{
@@ -98,7 +98,7 @@ func TestUpdateCredentialsRequest_CreateNewResourceAzure(t *testing.T) {
 		},
 	}
 
-	err := UpdateCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
+	err := CreateUpdateDeleteCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, k.CreateCallCount())
@@ -112,7 +112,7 @@ func TestUpdateCredentialsRequest_CreateNewResourceAzure(t *testing.T) {
 	require.Equal(t, wantRegion, providerSpec.AzureRegion)
 }
 
-func TestUpdateCredentialsRequest_Update_WhenCredentialsRequestExist(t *testing.T) {
+func TestCreateUpdateDeleteCredentialsRequest_Update_WhenCredentialsRequestExist(t *testing.T) {
 	req := ctrl.Request{
 		NamespacedName: client.ObjectKey{Name: "my-stack", Namespace: "ns"},
 	}
@@ -138,14 +138,14 @@ func TestUpdateCredentialsRequest_Update_WhenCredentialsRequestExist(t *testing.
 
 	k := credentialsRequestFakeClient(cr, lokistack)
 
-	err := UpdateCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
+	err := CreateUpdateDeleteCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
 	require.NoError(t, err)
 	require.Equal(t, 2, k.GetCallCount())
 	require.Equal(t, 0, k.CreateCallCount())
 	require.Equal(t, 1, k.UpdateCallCount())
 }
 
-func TestUpdateCredentialsRequest_DeleteExisting_WhenNotManagedMode(t *testing.T) {
+func TestCreateUpdateDeleteCredentialsRequest_DeleteExisting_WhenNotManagedMode(t *testing.T) {
 	req := ctrl.Request{
 		NamespacedName: client.ObjectKey{Name: "my-stack", Namespace: "ns"},
 	}
@@ -178,7 +178,7 @@ func TestUpdateCredentialsRequest_DeleteExisting_WhenNotManagedMode(t *testing.T
 
 	k := credentialsRequestFakeClient(cr, lokistack)
 
-	err := UpdateCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
+	err := CreateUpdateDeleteCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
 	require.NoError(t, err)
 	require.Equal(t, 2, k.GetCallCount())
 	require.Equal(t, 0, k.CreateCallCount())
@@ -186,7 +186,7 @@ func TestUpdateCredentialsRequest_DeleteExisting_WhenNotManagedMode(t *testing.T
 	require.Equal(t, 1, k.DeleteCallCount())
 }
 
-func TestUpdateCredentialsRequest_DoNothing_WhenNotManagedMode(t *testing.T) {
+func TestCreateUpdateDeleteCredentialsRequest_DoNothing_WhenNotManagedMode(t *testing.T) {
 	req := ctrl.Request{
 		NamespacedName: client.ObjectKey{Name: "my-stack", Namespace: "ns"},
 	}
@@ -213,7 +213,7 @@ func TestUpdateCredentialsRequest_DoNothing_WhenNotManagedMode(t *testing.T) {
 
 	k := credentialsRequestFakeClient(nil, lokistack)
 
-	err := UpdateCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
+	err := CreateUpdateDeleteCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
 	require.NoError(t, err)
 	require.Equal(t, 2, k.GetCallCount())
 	require.Equal(t, 0, k.CreateCallCount())

@@ -20,9 +20,9 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
-// UpdateCredentialsRequest creates a new CredentialsRequest resource for a Lokistack
+// CreateUpdateDeleteCredentialsRequest creates a new CredentialsRequest resource for a Lokistack
 // to request a cloud credentials Secret resource from the OpenShift cloud-credentials-operator.
-func UpdateCredentialsRequest(ctx context.Context, log logr.Logger, scheme *runtime.Scheme, managedAuth *config.ManagedAuthConfig, k k8s.Client, req ctrl.Request) error {
+func CreateUpdateDeleteCredentialsRequest(ctx context.Context, log logr.Logger, scheme *runtime.Scheme, managedAuth *config.ManagedAuthConfig, k k8s.Client, req ctrl.Request) error {
 	ll := log.WithValues("lokistack", req.NamespacedName, "event", "createCredentialsRequest")
 
 	var stack lokiv1.LokiStack
