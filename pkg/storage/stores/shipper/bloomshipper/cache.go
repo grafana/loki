@@ -67,13 +67,11 @@ func loadBlockDirectories(root string, logger log.Logger) (keys []string, values
 		}
 
 		if !dirEntry.IsDir() {
-			level.Warn(logger).Log("msg", "skip directory entry", "err", "not a directory", "path", path)
 			return nil
 		}
 
 		ref, err := resolver.ParseBlockKey(key(path))
 		if err != nil {
-			level.Warn(logger).Log("msg", "skip directory entry", "err", err, "path", path)
 			return nil
 		}
 
@@ -82,7 +80,7 @@ func loadBlockDirectories(root string, logger log.Logger) (keys []string, values
 			values = append(values, NewBlockDirectory(ref, path, logger))
 			level.Debug(logger).Log("msg", "found block directory", "ref", ref, "path", path)
 		} else {
-			level.Warn(logger).Log("msg", "skip directory entry", "err", "not a block directory", "path", path)
+			level.Warn(logger).Log("msg", "skip directory entry", "err", "not a block directory containing blooms and series", "path", path)
 			_ = clean(path)
 		}
 
