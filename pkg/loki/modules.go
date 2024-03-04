@@ -1484,6 +1484,8 @@ func (t *Loki) initBloomCompactorRing() (services.Service, error) {
 
 	// TODO(owen-d): configurable num tokens, just use lifecycler config?
 	numTokens := 10
+	t.Cfg.BloomCompactor.Ring.InstanceZone = "none"
+	t.Cfg.BloomCompactor.Ring.SpreadMinimizingZones = []string{"none"}
 	rm, err := lokiring.NewRingManager(bloomCompactorRingKey, lokiring.ServerMode, t.Cfg.BloomCompactor.Ring, 1, numTokens, util_log.Logger, prometheus.DefaultRegisterer)
 
 	if err != nil {
