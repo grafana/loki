@@ -80,6 +80,6 @@ func TestRequestParserWrapping(t *testing.T) {
 	require.True(t, called)
 }
 
-func stubParser(_ string, _ *http.Request, _ push.TenantsRetention, _ push.Limits) (*logproto.PushRequest, *push.Stats, error) {
+func stubParser(_ string, _ *http.Request, _ push.TenantsRetention, _ push.Limits, _ push.UsageTracker) (*logproto.PushRequest, *push.Stats, error) {
 	return &logproto.PushRequest{}, &push.Stats{}, nil
 }

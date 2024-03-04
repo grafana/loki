@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/grafana/loki/pkg/loghttp/push"
 	"math"
 	"net/http"
 	"sort"
