@@ -42,7 +42,7 @@ var (
 	skipTlsVerify                                                                             bool
 	printLogLine                                                                              bool
 	extraHeaders                                                                              map[string]string
-	httpHeaderKeyRegex                                                                        = regexp.MustCompile("([A-Za-z0-9-])+")
+	httpHeaderKeyRegex                                                                        = regexp.MustCompile("^[-A-Za-z0-9]+$")
 )
 
 func setupArguments() {
@@ -220,7 +220,6 @@ func parseExtraHeaders(extraHeadersRaw string) (map[string]string, error) {
 		extractedHeaders[extraHeadersSplit[i]] = extraHeadersSplit[i+1]
 	}
 
-	fmt.Println("extra HTTP headers:", extractedHeaders)
 	return extractedHeaders, nil
 }
 
