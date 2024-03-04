@@ -57,12 +57,10 @@ overrides:
     {{- with $l.Blocked }}
     blocked_queries:
     {{- range $blockedQuery := . }}
-    - {{ with $blockedQuery.Pattern -}}
-      pattern: {{ . | printf "%q" }}
+    - pattern: {{ $blockedQuery.Pattern }}
+      {{ with $blockedQuery.Regex -}}
+        pattern: {{ . | printf "%q" }}
       {{ end -}}
-      {{- with $blockedQuery.Regex }}
-      regex: {{ . }}
-      {{- end }}
       {{- with $blockedQuery.Types }}
       types: {{ . }}
       {{- end }}
