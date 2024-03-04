@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -124,6 +125,7 @@ func (s *SimpleBloomController) compactTenant(
 		return errors.Wrap(err, "failed to find outdated metas")
 	}
 	level.Debug(logger).Log("msg", "found outdated metas", "outdated", len(outdated))
+
 	var (
 		deletedMetas  int
 		deletedBlocks int
@@ -330,7 +332,8 @@ func (s *SimpleBloomController) buildGaps(
 		maxBlockSize = uint64(s.limits.BloomCompactorMaxBlockSize(tenant))
 		blockOpts    = v1.NewBlockOptions(nGramSize, nGramSkip, maxBlockSize)
 		created      []bloomshipper.Meta
-		totalSeries  uint64
+		totalSeries  int
+		bytesAdded   int
 	)
 
 	for i, plan := range work {
@@ -358,6 +361,15 @@ func (s *SimpleBloomController) buildGaps(
 			// to try and accelerate bloom creation
 			level.Debug(logger).Log("msg", "loading series and blocks for gap", "blocks", len(gap.blocks))
 			seriesItr, blocksIter, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
+
+			// TODO(owen-d): more elegant error handling thatn sync.OnceFunc
+			closeBlocksIter := sync.OnceFunc(func() {
+				if err := blocksIter.Close(); err != nil {
+					level.Error(logger).Log("msg", "failed to close blocks iterator", "err", err)
+				}
+			})
+			defer closeBlocksIter()
+
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 				return nil, errors.Wrap(err, "failed to get series and blocks")
@@ -385,7 +397,6 @@ func (s *SimpleBloomController) buildGaps(
 			newBlocks := gen.Generate(ctx)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
-				blocksIter.Close()
 				return nil, errors.Wrap(err, "failed to generate bloom")
 			}
 
@@ -396,7 +407,6 @@ func (s *SimpleBloomController) buildGaps(
 				built, err := bloomshipper.BlockFrom(tenant, table.Addr(), blk)
 				if err != nil {
 					level.Error(logger).Log("msg", "failed to build block", "err", err)
-					blocksIter.Close()
 					return nil, errors.Wrap(err, "failed to build block")
 				}
 
@@ -405,7 +415,6 @@ func (s *SimpleBloomController) buildGaps(
 					built,
 				); err != nil {
 					level.Error(logger).Log("msg", "failed to write block", "err", err)
-					blocksIter.Close()
 					return nil, errors.Wrap(err, "failed to write block")
 				}
 				s.metrics.blocksCreated.Inc()
@@ -427,8 +436,10 @@ func (s *SimpleBloomController) buildGaps(
 				return nil, errors.Wrap(err, "failed to generate bloom")
 			}
 
-			// Close pre-existing blocks
-			blocksIter.Close()
+			closeBlocksIter()
+			bytesAdded += newBlocks.Bytes()
+			totalSeries += seriesItrWithCounter.Count()
+			s.metrics.blocksReused.Add(float64(len(gap.blocks)))
 
 			// Write the new meta
 			// TODO(owen-d): put total size in log, total time in metrics+log
@@ -443,18 +454,16 @@ func (s *SimpleBloomController) buildGaps(
 				level.Error(logger).Log("msg", "failed to write meta", "err", err)
 				return nil, errors.Wrap(err, "failed to write meta")
 			}
+
 			s.metrics.metasCreated.Inc()
 			level.Debug(logger).Log("msg", "uploaded meta", "meta", meta.MetaRef.String())
-
 			created = append(created, meta)
-			totalSeries += uint64(seriesItrWithCounter.Count())
-
-			s.metrics.blocksReused.Add(float64(len(gap.blocks)))
 		}
 	}
 
-	s.metrics.tenantsSeries.Observe(float64(totalSeries))
-	level.Debug(logger).Log("msg", "finished bloom generation", "blocks", blockCt, "tsdbs", tsdbCt)
+	s.metrics.seriesPerCompaction.Observe(float64(totalSeries))
+	s.metrics.bytesPerCompaction.Observe(float64(bytesAdded))
+	level.Debug(logger).Log("msg", "finished bloom generation", "blocks", blockCt, "tsdbs", tsdbCt, "series", totalSeries, "bytes_added", bytesAdded)
 	return created, nil
 }
 

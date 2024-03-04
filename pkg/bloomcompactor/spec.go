@@ -88,14 +88,14 @@ func NewSimpleBloomGenerator(
 	}
 }
 
-func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Series, bloom *v1.Bloom) error {
-	return func(series *v1.Series, bloom *v1.Bloom) error {
+func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Series, bloom *v1.Bloom) (int, error) {
+	return func(series *v1.Series, bloom *v1.Bloom) (int, error) {
 		chunkItersWithFP, err := s.chunkLoader.Load(ctx, s.userID, series)
 		if err != nil {
-			return errors.Wrapf(err, "failed to load chunks for series: %+v", series)
+			return 0, errors.Wrapf(err, "failed to load chunks for series: %+v", series)
 		}
 
-		err = s.tokenizer.Populate(
+		bytesAdded, err := s.tokenizer.Populate(
 			&v1.SeriesWithBloom{
 				Series: series,
 				Bloom:  bloom,
@@ -106,12 +106,12 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 		if s.reporter != nil {
 			s.reporter(series.Fingerprint)
 		}
-		return err
+		return bytesAdded, err
 	}
 
 }
 
-func (s *SimpleBloomGenerator) Generate(ctx context.Context) v1.Iterator[*v1.Block] {
+func (s *SimpleBloomGenerator) Generate(ctx context.Context) *LazyBlockBuilderIterator {
 	level.Debug(s.logger).Log("msg", "generating bloom filters for blocks", "schema", fmt.Sprintf("%+v", s.opts.Schema))
 
 	series := v1.NewPeekingIter(s.store)
@@ -152,20 +152,21 @@ type LazyBlockBuilderIterator struct {
 	ctx          context.Context
 	opts         v1.BlockOptions
 	metrics      *Metrics
-	populate     func(*v1.Series, *v1.Bloom) error
+	populate     func(*v1.Series, *v1.Bloom) (int, error)
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
 	series       v1.PeekingIterator[*v1.Series]
 	blocks       v1.ResettableIterator[*v1.SeriesWithBloom]
 
-	curr *v1.Block
-	err  error
+	bytesAdded int
+	curr       *v1.Block
+	err        error
 }
 
 func NewLazyBlockBuilderIterator(
 	ctx context.Context,
 	opts v1.BlockOptions,
 	metrics *Metrics,
-	populate func(*v1.Series, *v1.Bloom) error,
+	populate func(*v1.Series, *v1.Bloom) (int, error),
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	series v1.PeekingIterator[*v1.Series],
 	blocks v1.ResettableIterator[*v1.SeriesWithBloom],
@@ -179,6 +180,10 @@ func NewLazyBlockBuilderIterator(
 		series:       series,
 		blocks:       blocks,
 	}
+}
+
+func (b *LazyBlockBuilderIterator) Bytes() (bytes int) {
+	return b.bytesAdded
 }
 
 func (b *LazyBlockBuilderIterator) Next() bool {
@@ -204,7 +209,9 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		b.err = errors.Wrap(err, "failed to create bloom block builder")
 		return false
 	}
-	_, err = mergeBuilder.Build(blockBuilder)
+	_, sourceBytes, err := mergeBuilder.Build(blockBuilder)
+	b.bytesAdded += sourceBytes
+
 	if err != nil {
 		b.err = errors.Wrap(err, "failed to build bloom block")
 		return false

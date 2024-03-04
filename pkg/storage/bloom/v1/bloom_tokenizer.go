@@ -89,7 +89,7 @@ type ChunkRefWithIter struct {
 }
 
 // Populate adds the tokens from the given chunks to the given seriesWithBloom.
-func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefWithIter]) error {
+func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefWithIter]) (int, error) {
 	startTime := time.Now().UnixMilli()
 
 	clearCache(bt.cache)
@@ -97,6 +97,9 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 	var (
 		tokenBuf []byte
 		prefixLn int
+		// TODO(owen-d): slightly more efficient to expose the
+		// UncompressedSize() method on the chunk interface and use that
+		sourceBytes int // source bytes processed
 	)
 	// Iterate over chunks
 	for chks.Next() && chks.Err() == nil {
@@ -120,6 +123,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 			// raw tokenizer, we could iterate once and just return (prefix, token) pairs from the tokenizer.
 			// Double points for them being different-ln references to the same data.
 			line := itr.Entry().Line
+			sourceBytes += len(line)
 			chunkTokenizer := NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(line))
 			for chunkTokenizer.Next() {
 				tok := chunkTokenizer.At()
@@ -178,7 +182,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 			es.Add(errors.Wrapf(err, "error iterating chunk: %#v", chk.Ref))
 		}
 		if combined := es.Err(); combined != nil {
-			return combined
+			return sourceBytes, combined
 		}
 		swb.Series.Chunks = append(swb.Series.Chunks, chk.Ref)
 
@@ -194,7 +198,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 
 	if err := chks.Err(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error downloading chunks batch", "err", err)
-		return fmt.Errorf("error downloading chunks batch: %w", err)
+		return sourceBytes, fmt.Errorf("error downloading chunks batch: %w", err)
 	}
 
 	endTime := time.Now().UnixMilli()
@@ -206,7 +210,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 	)
 	bt.metrics.bloomSize.Observe(float64(swb.Bloom.ScalableBloomFilter.Capacity() / eightBits))
 	bt.metrics.sbfCreationTime.Add(float64(endTime - startTime))
-	return nil
+	return sourceBytes, nil
 }
 
 // n ≈ −m ln(1 − p).

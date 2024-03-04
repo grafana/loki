@@ -525,7 +525,7 @@ type MergeBuilder struct {
 	// store
 	store Iterator[*Series]
 	// Add chunks to a bloom
-	populate func(*Series, *Bloom) error
+	populate func(*Series, *Bloom) (int, error)
 	metrics  *Metrics
 }
 
@@ -536,7 +536,7 @@ type MergeBuilder struct {
 func NewMergeBuilder(
 	blocks Iterator[*SeriesWithBloom],
 	store Iterator[*Series],
-	populate func(*Series, *Bloom) error,
+	populate func(*Series, *Bloom) (int, error),
 	metrics *Metrics,
 ) *MergeBuilder {
 	return &MergeBuilder{
@@ -553,11 +553,12 @@ func (mb *MergeBuilder) processNextSeries(
 	blocksFinished bool,
 ) (
 	*SeriesWithBloom, // nextInBlocks pointer update
+	int, // bytes added
 	bool, // blocksFinished update
 	bool, // done building block
 	error, // error
 ) {
-	var blockSeriesIterated, chunksIndexed, chunksCopied int
+	var blockSeriesIterated, chunksIndexed, chunksCopied, bytesAdded int
 	defer func() {
 		mb.metrics.blockSeriesIterated.Add(float64(blockSeriesIterated))
 		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeIterated).Add(float64(chunksIndexed))
@@ -566,7 +567,7 @@ func (mb *MergeBuilder) processNextSeries(
 	}()
 
 	if !mb.store.Next() {
-		return nil, false, true, nil
+		return nil, 0, false, true, nil
 	}
 
 	nextInStore := mb.store.At()
@@ -585,7 +586,7 @@ func (mb *MergeBuilder) processNextSeries(
 		}
 
 		if err := mb.blocks.Err(); err != nil {
-			return nil, false, false, errors.Wrap(err, "iterating blocks")
+			return nil, 0, false, false, errors.Wrap(err, "iterating blocks")
 		}
 		blockSeriesIterated++
 		nextInBlocks = mb.blocks.At()
@@ -612,35 +613,39 @@ func (mb *MergeBuilder) processNextSeries(
 	chunksIndexed += len(chunksToAdd)
 
 	if len(chunksToAdd) > 0 {
-		if err := mb.populate(
+		sourceBytes, err := mb.populate(
 			&Series{
 				Fingerprint: nextInStore.Fingerprint,
 				Chunks:      chunksToAdd,
 			},
 			cur.Bloom,
-		); err != nil {
-			return nil, false, false, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
+		)
+		bytesAdded += sourceBytes
+
+		if err != nil {
+			return nil, bytesAdded, false, false, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
 		}
 	}
 
 	done, err := builder.AddSeries(*cur)
 	if err != nil {
-		return nil, false, false, errors.Wrap(err, "adding series to block")
+		return nil, bytesAdded, false, false, errors.Wrap(err, "adding series to block")
 	}
-	return nextInBlocks, blocksFinished, done, nil
+	return nextInBlocks, bytesAdded, blocksFinished, done, nil
 }
 
-func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
+func (mb *MergeBuilder) Build(builder *BlockBuilder) (checksum uint32, totalBytes int, err error) {
 	var (
 		nextInBlocks   *SeriesWithBloom
 		blocksFinished bool // whether any previous blocks have been exhausted while building new block
 		done           bool
-		err            error
 	)
 	for {
-		nextInBlocks, blocksFinished, done, err = mb.processNextSeries(builder, nextInBlocks, blocksFinished)
+		var bytesAdded int
+		nextInBlocks, bytesAdded, blocksFinished, done, err = mb.processNextSeries(builder, nextInBlocks, blocksFinished)
+		totalBytes += bytesAdded
 		if err != nil {
-			return 0, err
+			return 0, totalBytes, errors.Wrap(err, "processing next series")
 		}
 		if done {
 			break
@@ -648,12 +653,12 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 	}
 
 	if err := mb.store.Err(); err != nil {
-		return 0, errors.Wrap(err, "iterating store")
+		return 0, totalBytes, errors.Wrap(err, "iterating store")
 	}
 
-	checksum, err := builder.Close()
+	checksum, err = builder.Close()
 	if err != nil {
-		return 0, errors.Wrap(err, "closing block")
+		return 0, totalBytes, errors.Wrap(err, "closing block")
 	}
-	return checksum, nil
+	return checksum, totalBytes, nil
 }

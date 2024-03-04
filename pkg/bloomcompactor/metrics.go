@@ -26,12 +26,13 @@ type Metrics struct {
 	compactionCompleted *prometheus.CounterVec
 	compactionTime      *prometheus.HistogramVec
 
-	tenantsDiscovered prometheus.Counter
-	tenantsOwned      prometheus.Counter
-	tenantsSkipped    prometheus.Counter
-	tenantsStarted    prometheus.Counter
-	tenantTableRanges *prometheus.CounterVec
-	tenantsSeries     prometheus.Histogram
+	tenantsDiscovered   prometheus.Counter
+	tenantsOwned        prometheus.Counter
+	tenantsSkipped      prometheus.Counter
+	tenantsStarted      prometheus.Counter
+	tenantTableRanges   *prometheus.CounterVec
+	seriesPerCompaction prometheus.Histogram
+	bytesPerCompaction  prometheus.Histogram
 
 	blocksReused prometheus.Counter
 
@@ -112,13 +113,21 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 			Name:      "tenant_table_ranges_completed_total",
 			Help:      "Number of tenants table ranges (table, tenant, keyspace) processed during the current compaction run",
 		}, []string{"status"}),
-		tenantsSeries: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+		seriesPerCompaction: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "tenants_series",
-			Help:      "Number of series processed per tenant in the owned fingerprint-range.",
+			Name:      "series_per_compaction",
+			Help:      "Number of series during compaction (tenant, table, fingerprint-range). Includes series which copied from other blocks and don't need to be indexed",
 			// Up to 10M series per tenant, way more than what we expect given our max_global_streams_per_user limits
-			Buckets: prometheus.ExponentialBucketsRange(1, 10000000, 10),
+			Buckets: prometheus.ExponentialBucketsRange(1, 10e6, 10),
+		}),
+		bytesPerCompaction: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "compaction_bytes",
+			Help:      "Number of source bytes from chunks added during a compaction cycle (the tenant, table, keyspace tuple).",
+			// 1KB -> 100GB, 10 buckets
+			Buckets: prometheus.ExponentialBucketsRange(1<<10, 100<<30, 10),
 		}),
 		blocksReused: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
