@@ -104,16 +104,21 @@ func TestProcessor(t *testing.T) {
 		p := newProcessor("worker", mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
-		swb := seriesWithBounds{
+		swb := seriesWithInterval{
 			series: groupRefs(t, chunkRefs),
-			bounds: model.Interval{
+			interval: bloomshipper.Interval{
 				Start: now.Add(-1 * time.Hour),
 				End:   now,
 			},
-			table: config.NewDayTime(truncateDay(now)),
+			day: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilter{
-			{Ty: 0, Match: "no match"},
+		filters := []syntax.LineFilterExpr{
+			{
+				LineFilter: syntax.LineFilter{
+					Ty:    0,
+					Match: "no match",
+				},
+			},
 		}
 
 		t.Log("series", len(swb.series))
@@ -148,16 +153,21 @@ func TestProcessor(t *testing.T) {
 		p := newProcessor("worker", mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
-		swb := seriesWithBounds{
+		swb := seriesWithInterval{
 			series: groupRefs(t, chunkRefs),
-			bounds: model.Interval{
+			interval: bloomshipper.Interval{
 				Start: now.Add(-1 * time.Hour),
 				End:   now,
 			},
-			table: config.NewDayTime(truncateDay(now)),
+			day: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilter{
-			{Ty: 0, Match: "no match"},
+		filters := []syntax.LineFilterExpr{
+			{
+				LineFilter: syntax.LineFilter{
+					Ty:    0,
+					Match: "no match",
+				},
+			},
 		}
 
 		t.Log("series", len(swb.series))

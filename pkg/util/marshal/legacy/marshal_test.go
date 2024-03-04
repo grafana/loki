@@ -59,6 +59,7 @@ var queryTests = []struct {
 				"ingester" : {
 					"store": {
 						"chunksDownloadTime": 0,
+						"congestionControlLatency": 0,
 						"totalChunksRef": 0,
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
@@ -83,6 +84,7 @@ var queryTests = []struct {
 				"querier": {
 					"store": {
 						"chunksDownloadTime": 0,
+						"congestionControlLatency": 0,
 						"totalChunksRef": 0,
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,

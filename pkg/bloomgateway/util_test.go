@@ -143,7 +143,7 @@ func TestPartitionRequest(t *testing.T) {
 
 	testCases := map[string]struct {
 		inp *logproto.FilterChunkRefRequest
-		exp []seriesWithBounds
+		exp []seriesWithInterval
 	}{
 
 		"empty": {
@@ -151,7 +151,7 @@ func TestPartitionRequest(t *testing.T) {
 				From:    ts.Add(-24 * time.Hour),
 				Through: ts,
 			},
-			exp: []seriesWithBounds{},
+			exp: []seriesWithInterval{},
 		},
 
 		"all chunks within single day": {
@@ -173,10 +173,10 @@ func TestPartitionRequest(t *testing.T) {
 					},
 				},
 			},
-			exp: []seriesWithBounds{
+			exp: []seriesWithInterval{
 				{
-					bounds: model.Interval{Start: ts.Add(-60 * time.Minute), End: ts.Add(-45 * time.Minute)},
-					table:  config.NewDayTime(mktime("2024-01-24 00:00")),
+					interval: bloomshipper.Interval{Start: ts.Add(-60 * time.Minute), End: ts.Add(-45 * time.Minute)},
+					day:      config.NewDayTime(mktime("2024-01-24 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
@@ -214,10 +214,10 @@ func TestPartitionRequest(t *testing.T) {
 					},
 				},
 			},
-			exp: []seriesWithBounds{
+			exp: []seriesWithInterval{
 				{
-					bounds: model.Interval{Start: ts.Add(-23 * time.Hour), End: ts.Add(-22 * time.Hour)},
-					table:  config.NewDayTime(mktime("2024-01-23 00:00")),
+					interval: bloomshipper.Interval{Start: ts.Add(-23 * time.Hour), End: ts.Add(-22 * time.Hour)},
+					day:      config.NewDayTime(mktime("2024-01-23 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
@@ -228,8 +228,8 @@ func TestPartitionRequest(t *testing.T) {
 					},
 				},
 				{
-					bounds: model.Interval{Start: ts.Add(-2 * time.Hour), End: ts.Add(-1 * time.Hour)},
-					table:  config.NewDayTime(mktime("2024-01-24 00:00")),
+					interval: bloomshipper.Interval{Start: ts.Add(-2 * time.Hour), End: ts.Add(-1 * time.Hour)},
+					day:      config.NewDayTime(mktime("2024-01-24 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x01,
@@ -255,10 +255,10 @@ func TestPartitionRequest(t *testing.T) {
 					},
 				},
 			},
-			exp: []seriesWithBounds{
+			exp: []seriesWithInterval{
 				{
-					bounds: model.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
-					table:  config.NewDayTime(mktime("2024-01-23 00:00")),
+					interval: bloomshipper.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
+					day:      config.NewDayTime(mktime("2024-01-23 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
@@ -269,8 +269,8 @@ func TestPartitionRequest(t *testing.T) {
 					},
 				},
 				{
-					bounds: model.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
-					table:  config.NewDayTime(mktime("2024-01-24 00:00")),
+					interval: bloomshipper.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
+					day:      config.NewDayTime(mktime("2024-01-24 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
