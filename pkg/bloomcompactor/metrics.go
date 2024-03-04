@@ -124,7 +124,7 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 		bytesPerCompaction: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "compaction_bytes",
+			Name:      "bytes_per_compaction",
 			Help:      "Number of source bytes from chunks added during a compaction cycle (the tenant, table, keyspace tuple).",
 			// 1KB -> 100GB, 10 buckets
 			Buckets: prometheus.ExponentialBucketsRange(1<<10, 100<<30, 10),
