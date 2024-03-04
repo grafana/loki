@@ -3,9 +3,9 @@ package cache
 import (
 	"context"
 	"flag"
-	"fmt"
 	"net"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -253,7 +253,7 @@ func (c *memcachedClient) updateMemcacheServers() error {
 			return err
 		}
 		for _, srv := range addrs {
-			servers = append(servers, fmt.Sprintf("%s:%d", srv.Target, srv.Port))
+			servers = append(servers, net.JoinHostPort(srv.Target, strconv.Itoa(int(srv.Port))))
 		}
 	}
 
