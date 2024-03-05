@@ -118,7 +118,17 @@ func (cfg *RingConfig) ToLifecyclerConfig(numTokens int, logger log.Logger) (rin
 func (cfg *RingConfig) customTokenGenerator(logger log.Logger) (ring.TokenGenerator, error) {
 	switch cfg.TokenGenerationStrategy {
 	case spreadMinimizingTokenGeneration:
-		return ring.NewSpreadMinimizingTokenGenerator(cfg.InstanceID, cfg.InstanceZone, cfg.SpreadMinimizingZones, cfg.SpreadMinimizingJoinRingInOrder, logger)
+		zone := cfg.InstanceZone
+		zones := cfg.SpreadMinimizingZones
+
+		// The spread minimizing token generator requires the zones to be set.
+		// If we are not using zone-awareness, we will create one fake zone with the instance zone.
+		if !cfg.ZoneAwarenessEnabled && (len(zones) == 0 || zone == "") {
+			zone = "fake-zone"
+			zones = flagext.StringSliceCSV{zone}
+		}
+
+		return ring.NewSpreadMinimizingTokenGenerator(cfg.InstanceID, zone, zones, cfg.SpreadMinimizingJoinRingInOrder, logger)
 	case randomTokenGeneration:
 		return ring.NewRandomTokenGenerator(), nil
 	default:
