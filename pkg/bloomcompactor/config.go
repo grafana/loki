@@ -14,7 +14,7 @@ type Config struct {
 	// Ring configures the ring store used to save and retrieve the different Bloom-Compactor instances.
 	// In case it isn't explicitly set, it follows the same behavior of the other rings (ex: using the common configuration
 	// section and the ingester configuration by default).
-	Ring ring.RingConfig `yaml:"ring,omitempty" doc:"description=Defines the ring to be used by the bloom-compactor servers. In case this isn't configured, this block supports inheriting configuration from the common ring section."`
+	Ring RingConfig `yaml:"ring,omitempty" doc:"description=Defines the ring to be used by the bloom-compactor servers. In case this isn't configured, this block supports inheriting configuration from the common ring section."`
 	// Enabled configures whether bloom-compactors should be used to compact index values into bloomfilters
 	Enabled                  bool          `yaml:"enabled"`
 	CompactionInterval       time.Duration `yaml:"compaction_interval"`
@@ -55,6 +55,17 @@ func (cfg *Config) Validate() error {
 		return fmt.Errorf("min_compaction_age must be less than or equal to max_compaction_age")
 	}
 	return nil
+}
+
+type RingConfig struct {
+	ring.RingConfig `yaml:",inline"`
+
+	Tokens int `yaml:"tokens"`
+}
+
+func (cfg *RingConfig) RegisterFlagsWithPrefix(flagsPrefix, storePrefix string, f *flag.FlagSet) {
+	cfg.RingConfig.RegisterFlagsWithPrefix(flagsPrefix, storePrefix, f)
+	f.IntVar(&cfg.Tokens, flagsPrefix+"ring.tokens", 10, "Number of tokens to use in the ring. The bigger the number of tokens, the more fingerprint ranges the compactor will own, but the smaller these ranges will be. Bigger number of tokens will result in more and smaller metas and blocks.")
 }
 
 type Limits interface {

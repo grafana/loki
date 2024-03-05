@@ -301,16 +301,14 @@ func envVarFromValue(name, value string) corev1.EnvVar {
 }
 
 func managedAuthEnabled(opts Options) bool {
-	switch opts.SharedStore {
-	case lokiv1.ObjectStorageSecretS3:
-		return opts.S3 != nil && opts.S3.STS
-	case lokiv1.ObjectStorageSecretAzure:
-		return opts.Azure != nil && opts.Azure.WorkloadIdentity
-	case lokiv1.ObjectStorageSecretGCS:
-		return opts.GCS != nil && opts.GCS.WorkloadIdentity
+	switch opts.CredentialMode {
+	case lokiv1.CredentialModeToken, lokiv1.CredentialModeManaged:
+		return true
+	case lokiv1.CredentialModeStatic:
+		fallthrough
 	default:
-		return false
 	}
+	return false
 }
 
 func saTokenVolume(opts Options) corev1.Volume {

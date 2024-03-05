@@ -53,7 +53,8 @@ var (
 			Namespace: "some-ns",
 		},
 		Data: map[string][]byte{
-			"region": []byte("a-region"),
+			"bucketnames": []byte("bucket1,bucket2"),
+			"region":      []byte("a-region"),
 		},
 	}
 
