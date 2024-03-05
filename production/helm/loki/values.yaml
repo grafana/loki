@@ -722,6 +722,76 @@ memberlist:
 
 ######################################################################################################################
 #
+# adminAPI configuration, enterprise only.
+#
+######################################################################################################################
+
+# -- Configuration for the `admin-api` target
+adminApi:
+  # -- Define the amount of instances
+  replicas: 1
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
+  # -- Additional CLI arguments for the `admin-api` target
+  extraArgs: {}
+  # -- Additional labels for the `admin-api` Deployment
+  labels: {}
+  # -- Additional annotations for the `admin-api` Deployment
+  annotations: {}
+  # -- Additional labels and annotations for the `admin-api` Service
+  service:
+    labels: {}
+    annotations: {}
+  # -- Run container as user `enterprise-logs(uid=10001)`
+  # `fsGroup` must not be specified, because these security options are applied
+  # on container level not on Pod level.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsGroup: 10001
+    runAsUser: 10001
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+    allowPrivilegeEscalation: false
+  # -- Update strategy
+  strategy:
+    type: RollingUpdate
+  # -- Readiness probe
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: http-metrics
+    initialDelaySeconds: 45
+  # -- Request and limit Kubernetes resources
+  # -- Values are defined in small.yaml and large.yaml
+  resources: {}
+  # -- Configure optional environment variables
+  env: [ ]
+  # -- Configure optional initContainers
+  initContainers: []
+  # -- Conifgure optional extraContainers
+  extraContainers: []
+  # -- Additional volumes for Pods
+  extraVolumes: []
+  # -- Additional volume mounts for Pods
+  extraVolumeMounts: []
+  # -- Affinity for admin-api Pods
+  affinity: {}
+  # -- Node selector for admin-api Pods
+  nodeSelector: {}
+  # -- Tolerations for admin-api Pods
+  tolerations: []
+  # -- Grace period to allow the admin-api to shutdown before it is killed
+  terminationGracePeriodSeconds: 60
+
+
+######################################################################################################################
+#
 # Gateway and Ingress
 #
 # By default this chart will deploy a Nginx container to act as a gateway which handles routing of traffic
