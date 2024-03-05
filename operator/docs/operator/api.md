@@ -1103,7 +1103,7 @@ string
 ## CredentialMode { #loki-grafana-com-v1-CredentialMode }
 (<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStorageStatus">LokiStackStorageStatus</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStorageStatus">LokiStackStorageStatus</a>, <a href="#loki-grafana-com-v1-ObjectStorageSecretSpec">ObjectStorageSecretSpec</a>)
 </p>
 <div>
 <p>CredentialMode represents the type of authentication used for accessing the object storage.</p>
@@ -2706,6 +2706,22 @@ string
 <p>Name of a secret in the namespace configured for object storage secrets.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>credentialMode</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-CredentialMode">
+CredentialMode
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>CredentialMode can be used to set the desired credential mode for authenticating with the object storage.
+If this is not set, then the operator tries to infer the credential mode from the provided secret and its
+own configuration.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -3010,8 +3026,42 @@ QueryLimitSpec
 </tr></tbody>
 </table>
 
+## PodStatus { #loki-grafana-com-v1-PodStatus }
+(<code>string</code> alias)
+<div>
+<p>PodStatus is a short description of the status a Pod can be in.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;Failed&#34;</p></td>
+<td><p>PodFailed means that all containers in the pod have terminated, and at least one container has
+terminated in a failure (exited with a non-zero exit code or was stopped by the system).</p>
+</td>
+</tr><tr><td><p>&#34;Pending&#34;</p></td>
+<td><p>PodPending means the pod has been accepted by the system, but one or more of the containers
+has not been started. This includes time before being bound to a node, as well as time spent
+pulling images onto the host.</p>
+</td>
+</tr><tr><td><p>&#34;Ready&#34;</p></td>
+<td><p>PodReady means the pod has been started and the readiness probe reports a successful status.</p>
+</td>
+</tr><tr><td><p>&#34;Running&#34;</p></td>
+<td><p>PodRunning means the pod has been bound to a node and all of the containers have been started.
+At least one container is still running or is in the process of being restarted.</p>
+</td>
+</tr><tr><td><p>&#34;Unknown&#34;</p></td>
+<td><p>PodStatusUnknown is used when none of the other statuses apply or the information is not ready yet.</p>
+</td>
+</tr></tbody>
+</table>
+
 ## PodStatusMap { #loki-grafana-com-v1-PodStatusMap }
-(<code>map[k8s.io/api/core/v1.PodPhase][]string</code> alias)
+(<code>map[github.com/grafana/loki/operator/apis/loki/v1.PodStatus][]string</code> alias)
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackComponentStatus">LokiStackComponentStatus</a>)
 </p>

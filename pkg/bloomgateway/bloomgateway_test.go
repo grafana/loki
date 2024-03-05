@@ -97,13 +97,16 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 
 		cfg := Config{
 			Enabled: true,
-			Ring: lokiring.RingConfigWithRF{
-				RingConfig: lokiring.RingConfig{
-					KVStore: kv.Config{
-						Mock: kvStore,
+			Ring: RingConfig{
+				RingConfigWithRF: lokiring.RingConfigWithRF{
+					RingConfig: lokiring.RingConfig{
+						KVStore: kv.Config{
+							Mock: kvStore,
+						},
 					},
+					ReplicationFactor: 1,
 				},
-				ReplicationFactor: 1,
+				Tokens: 16,
 			},
 			WorkerConcurrency:       4,
 			MaxOutstandingPerTenant: 1024,
@@ -139,13 +142,16 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	cfg := Config{
 		Enabled: true,
-		Ring: lokiring.RingConfigWithRF{
-			RingConfig: lokiring.RingConfig{
-				KVStore: kv.Config{
-					Mock: kvStore,
+		Ring: RingConfig{
+			RingConfigWithRF: lokiring.RingConfigWithRF{
+				RingConfig: lokiring.RingConfig{
+					KVStore: kv.Config{
+						Mock: kvStore,
+					},
 				},
+				ReplicationFactor: 1,
 			},
-			ReplicationFactor: 1,
+			Tokens: 16,
 		},
 		WorkerConcurrency:       4,
 		MaxOutstandingPerTenant: 1024,
