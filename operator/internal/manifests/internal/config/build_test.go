@@ -443,16 +443,16 @@ overrides:
     max_global_streams_per_user: 1
     max_chunks_per_query: 1000000
     blocked_queries:
-    - hash: 12345
+    - pattern: ""
+      hash: 12345
       types: metric,limited
     - pattern: .*prod.*
       regex: true
-    - types: metric
+    - pattern: ""
+      types: metric
     - pattern: sum(rate({env="prod"}[1m]))
-      regex: false
     - pattern: '{kubernetes_namespace_name="my-app"}'
-      regex: false
-    - regex: true
+    - pattern: ""
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
