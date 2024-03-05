@@ -333,7 +333,7 @@ loki:
       service: "memcached-client"
       batch_size: 256
       parallelism: 10
-      timeout: "500ms"      
+      timeout: "100ms"
     results_cache:
       enabled: false
       host: ""
