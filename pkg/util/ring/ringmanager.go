@@ -232,7 +232,7 @@ func (rm *RingManager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	rm.Ring.ServeHTTP(w, req)
 }
 
-func (rm *RingManager) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, _ string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
+func (rm *RingManager) OnRingInstanceRegister(lifecycler *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, _ string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
 	// When we initialize the index gateway instance in the ring we want to start from
 	// a clean situation, so whatever is the state we set it JOINING, while we keep existing
 	// tokens (if any) or the ones loaded from file.
@@ -242,7 +242,13 @@ func (rm *RingManager) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc 
 	}
 
 	takenTokens := ringDesc.GetTokens()
-	gen := ring.NewRandomTokenGenerator()
+
+	gen := lifecycler.GetTokenGenerator()
+	if gen == nil {
+		level.Error(rm.logger).Log("msg", "failed to get token generator from lifecycler. Using random token generator.")
+		gen = ring.NewRandomTokenGenerator()
+	}
+
 	newTokens := gen.GenerateTokens(rm.tokens-len(tokens), takenTokens)
 
 	// Tokens sorting will be enforced by the parent caller.
