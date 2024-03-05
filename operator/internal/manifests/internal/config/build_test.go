@@ -611,7 +611,6 @@ overrides:
 		},
 	}
 	cfg, rCfg, err := Build(opts)
-	println(string(rCfg))
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
