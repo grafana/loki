@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -68,11 +69,12 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 	}
 
 	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
+	level.Info(p.logger).Log("msg", "blocks for metas", "num_metas", len(metas), "num_blocks", len(blocksRefs))
 	return p.processBlocks(ctx, partitionTasks(tasks, blocksRefs))
 }
 
 func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) error {
-	refs := make([]bloomshipper.BlockRef, len(data))
+	refs := make([]bloomshipper.BlockRef, 0, len(data))
 	for _, block := range data {
 		refs = append(refs, block.ref)
 	}
@@ -82,24 +84,28 @@ func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) er
 		return err
 	}
 
-	blockIter := v1.NewSliceIter(bqs)
-
-outer:
-	for blockIter.Next() {
-		bq := blockIter.At()
-		for i, block := range data {
-			if block.ref.Bounds.Equal(bq.Bounds) {
-				err := p.processBlock(ctx, bq.BlockQuerier, block.tasks)
-				bq.Close()
-				if err != nil {
-					return err
-				}
-				data = append(data[:i], data[i+1:]...)
-				continue outer
-			}
+	for i, bq := range bqs {
+		block := data[i]
+		if bq == nil {
+			level.Warn(p.logger).Log("msg", "skipping not found block", "block", block.ref)
+			continue
 		}
-		// should not happen, but close anyway
+		level.Debug(p.logger).Log(
+			"msg", "process block with tasks",
+			"block", block.ref,
+			"block_bounds", block.ref.Bounds,
+			"querier_bounds", bq.Bounds,
+			"num_tasks", len(block.tasks),
+		)
+		if !block.ref.Bounds.Equal(bq.Bounds) {
+			bq.Close()
+			return errors.Errorf("block and querier bounds differ: %s vs %s", block.ref.Bounds, bq.Bounds)
+		}
+		err := p.processBlock(ctx, bq.BlockQuerier, block.tasks)
 		bq.Close()
+		if err != nil {
+			return errors.Wrap(err, "processing block")
+		}
 	}
 	return nil
 }
