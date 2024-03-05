@@ -6,7 +6,7 @@ networks:
 
 services:
   loki:
-#   image: kolesnikovae/loki-loggerinfo:ae28ad
+#   image: kolesnikovae/loki-loggerinfo:3dd9c2
     build:
       context: ../../
       dockerfile: cmd/loki/Dockerfile
@@ -24,8 +24,9 @@ services:
       timeout: 5s
       retries: 5
     environment:
-      LOG_CLUSTER_DEPTH: "8"
-      LOG_SIM_TH: "0.3"
+      LOG_CLUSTER_DEPTH: "8" # Default: 4
+      LOG_SIM_TH: "0.3"      # Default: 0.4
+      # LOG_LOGFMT_KEYS: "msg,logger,caller"
     depends_on:
       - minio
     networks:

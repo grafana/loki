@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/grafana/loki/pkg/push"
@@ -58,7 +59,8 @@ func (s *LoggerInfo) serviceInstance(serviceName string) *serviceLoggerInfo {
 type serviceLoggerInfo struct {
 	m sync.Mutex
 
-	patterns *drain.Drain
+	logfmtTokens []string
+	patterns     *drain.Drain
 }
 
 var drainConfig = &drain.Config{
@@ -85,14 +87,24 @@ func readConfig[T any](name string, fn func(string) (T, error), d T) T {
 
 func newServiceLoggerInfo() *serviceLoggerInfo {
 	return &serviceLoggerInfo{
-		patterns: drain.New(drainConfig),
+		logfmtTokens: readConfig[[]string]("LOG_LOGFMT_KEYS", parseLogFmtKeys, nil),
+		patterns:     drain.New(drainConfig),
 	}
+}
+
+func parseLogFmtKeys(s string) ([]string, error) {
+	return strings.Split(s, ","), nil
 }
 
 func (s *serviceLoggerInfo) push(stream push.Stream) {
 	s.m.Lock()
 	defer s.m.Unlock()
 	for _, entry := range stream.Entries {
+		if len(s.logfmtTokens) > 0 && IsLogFmt(entry.Line) {
+			tokens := TokenizeLogFmt(entry.Line, s.logfmtTokens...)
+			s.patterns.TrainTokens(entry.Line, tokens, LogFmtPattern, entry.Timestamp.UnixNano())
+			continue
+		}
 		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
 	}
 }
@@ -133,7 +145,13 @@ func Patterns(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	patterns := loggerinfo.serviceInstance(svcName).getPatterns(model.Time(from), model.Time(to))
+	minMatches, err := strconv.ParseInt(r.Form.Get("minMatches"), 10, 64)
+	if err != nil {
+		_, _ = w.Write([]byte(err.Error()))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	patterns := loggerinfo.serviceInstance(svcName).getPatterns(model.Time(from), model.Time(to), minMatches)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(patterns)
 }
@@ -152,14 +170,14 @@ func getServiceName(expr string) (string, error) {
 }
 
 // get patterns start and end are in milliseconds
-func (s *serviceLoggerInfo) getPatterns(start, end model.Time) PatternsResponse {
+func (s *serviceLoggerInfo) getPatterns(start, end model.Time, minMatches int64) PatternsResponse {
 	s.m.Lock()
 	defer s.m.Unlock()
 	resp := PatternsResponse{Patterns: make([]*Pattern, 0, 1<<10)}
 	s.patterns.Iterate(func(cluster *drain.LogCluster) bool {
 		volume := cluster.Volume.ForRange(start, end)
 		matches := volume.Matches()
-		if matches == 0 {
+		if matches == 0 || (minMatches > 0 && matches < minMatches) {
 			return true
 		}
 		resp.Patterns = append(resp.Patterns, &Pattern{

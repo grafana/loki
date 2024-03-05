@@ -363,6 +363,9 @@ func (d *Drain) fastMatch(clusterIDs []int, tokens []string, simTh float64, incl
 			continue
 		}
 		curSim, paramCount := d.getSeqDistance(cluster.Tokens, tokens, includeParams)
+		if paramCount < 0 {
+			continue
+		}
 		if curSim > maxSim || (curSim == maxSim && paramCount > maxParamCount) {
 			maxSim = curSim
 			maxParamCount = paramCount
@@ -375,16 +378,20 @@ func (d *Drain) fastMatch(clusterIDs []int, tokens []string, simTh float64, incl
 	return matchCluster
 }
 
-func (d *Drain) getSeqDistance(seq1, seq2 []string, includeParams bool) (float64, int) {
-	if len(seq1) != len(seq2) {
+func (d *Drain) getSeqDistance(clusterTokens, tokens []string, includeParams bool) (float64, int) {
+	if len(clusterTokens) != len(tokens) {
 		panic("seq1 seq2 be of same length")
 	}
 
 	simTokens := 0
 	paramCount := 0
-	for i := range seq1 {
-		token1 := seq1[i]
-		token2 := seq2[i]
+	for i := range clusterTokens {
+		token1 := clusterTokens[i]
+		token2 := tokens[i]
+		// Require exact match for marked tokens
+		if token1[0] == 0 && token1 != token2 {
+			return 0, -1
+		}
 		if token1 == d.config.ParamString {
 			paramCount++
 		} else if token1 == token2 {
@@ -394,7 +401,7 @@ func (d *Drain) getSeqDistance(seq1, seq2 []string, includeParams bool) (float64
 	if includeParams {
 		simTokens += paramCount
 	}
-	retVal := float64(simTokens) / float64(len(seq1))
+	retVal := float64(simTokens) / float64(len(clusterTokens))
 	return retVal, paramCount
 }
 
@@ -433,7 +440,6 @@ func (d *Drain) addSeqToPrefixTree(rootNode *Node, cluster *LogCluster) {
 
 		// if token not matched in this layer of existing tree.
 		if _, ok = curNode.keyToChildNode[token]; !ok {
-			// if token not matched in this layer of existing tree.
 			if !d.hasNumbers(token) {
 				if _, ok = curNode.keyToChildNode[d.config.ParamString]; ok {
 					if len(curNode.keyToChildNode) < d.config.MaxChildren {
@@ -483,14 +489,14 @@ func (d *Drain) hasNumbers(s string) bool {
 	return false
 }
 
-func (d *Drain) createTemplate(seq1, seq2 []string) []string {
-	if len(seq1) != len(seq2) {
+func (d *Drain) createTemplate(tokens, matchClusterTokens []string) []string {
+	if len(tokens) != len(matchClusterTokens) {
 		panic("seq1 seq2 be of same length")
 	}
-	retVal := make([]string, len(seq2))
-	copy(retVal, seq2)
-	for i := range seq1 {
-		if seq1[i] != seq2[i] {
+	retVal := make([]string, len(matchClusterTokens))
+	copy(retVal, matchClusterTokens)
+	for i := range tokens {
+		if tokens[i] != matchClusterTokens[i] {
 			retVal[i] = d.config.ParamString
 		}
 	}
