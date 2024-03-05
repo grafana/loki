@@ -1884,6 +1884,13 @@ ring:
   # CLI flag: -bloom-gateway.replication-factor
   [replication_factor: <int> | default = 3]
 
+  # Number of tokens to use in the ring. The bigger the number of tokens, the
+  # more fingerprint ranges the compactor will own, but the smaller these ranges
+  # will be. Bigger number of tokens means that more but smaller requests will
+  # be handled by each gateway.
+  # CLI flag: -bloom-gateway.ring.tokens
+  [tokens: <int> | default = 16]
+
 # Flag to enable or disable the bloom gateway component globally.
 # CLI flag: -bloom-gateway.enabled
 [enabled: <boolean> | default = false]
