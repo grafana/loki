@@ -187,6 +187,7 @@ spec:
 {{- end }}
 
 {{- if .Values.networkPolicy.egressKubeApiserver.enabled }}
+---
 apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:

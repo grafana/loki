@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.43.5
+
+- [BUGFIX] Add `---` before the `backend-kubeapiserver-egress` ciliumnetworkpolicy to prevent the `backend-world-egress` one from being dumped if both are enabled.
+
 ## 5.43.4
 
 - [ENHANCEMENT] Add `ciliumnetworkpolicies` with egress to world for write, read and backend.
