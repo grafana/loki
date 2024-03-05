@@ -32,10 +32,10 @@ var (
 		},
 	}
 
-	// 1KB -> 8MB
+	// 4KB -> 512MB
 	BlockPool = BytePool{
 		pool: pool.New(
-			1<<10, 1<<24, 4,
+			1<<12, 1<<28, 2,
 			func(size int) interface{} {
 				return make([]byte, size)
 			}),
@@ -49,8 +49,9 @@ type BytePool struct {
 func (p *BytePool) Get(size int) []byte {
 	return p.pool.Get(size).([]byte)[:0]
 }
+
 func (p *BytePool) Put(b []byte) {
-	p.pool.Put(b)
+	p.pool.Put(b[:0])
 }
 
 func newCRC32() hash.Hash32 {
