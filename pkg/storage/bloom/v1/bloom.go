@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/pkg/errors"
 
@@ -60,8 +61,10 @@ func (b *Bloom) Decode(dec *encoding.Decbuf) error {
 }
 
 func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHeader) (*BloomPageDecoder, error) {
-	data := BlockPool.Get(page.Len)[:page.Len]
+	data := BlockPool.Get(page.Len)
 	defer BlockPool.Put(data)
+
+	fmt.Fprintf(os.Stderr, "LazyDecodeBloomPage() N=%d Len=%d DecompressedLen=%d \n", page.N, page.Len, page.DecompressedLen)
 
 	_, err := io.ReadFull(r, data)
 	if err != nil {

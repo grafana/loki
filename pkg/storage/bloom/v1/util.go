@@ -47,7 +47,7 @@ type BytePool struct {
 }
 
 func (p *BytePool) Get(size int) []byte {
-	return p.pool.Get(size).([]byte)[:0]
+	return p.pool.Get(size).([]byte)[:size]
 }
 
 func (p *BytePool) Put(b []byte) {
