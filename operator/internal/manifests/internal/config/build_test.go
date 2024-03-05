@@ -449,7 +449,10 @@ overrides:
       regex: true
     - types: metric
     - pattern: sum(rate({env="prod"}[1m]))
+      regex: false
     - pattern: '{kubernetes_namespace_name="my-app"}'
+      regex: false
+    - regex: true
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
@@ -507,6 +510,9 @@ overrides:
 								{
 									Pattern: `{kubernetes_namespace_name="my-app"}`,
 								},
+								{
+									Pattern: "",
+								},
 							},
 						},
 					},
@@ -542,6 +548,9 @@ overrides:
 							},
 							{
 								Pattern: `{kubernetes_namespace_name="my-app"}`,
+							},
+							{
+								Pattern: "",
 							},
 						},
 					},
@@ -602,6 +611,7 @@ overrides:
 		},
 	}
 	cfg, rCfg, err := Build(opts)
+	println(string(rCfg))
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
