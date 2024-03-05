@@ -389,7 +389,7 @@ func (d *Drain) getSeqDistance(clusterTokens, tokens []string, includeParams boo
 		token1 := clusterTokens[i]
 		token2 := tokens[i]
 		// Require exact match for marked tokens
-		if token1[0] == 0 && token1 != token2 {
+		if len(token1) > 0 && token1[0] == 0 && token1 != token2 {
 			return 0, -1
 		}
 		if token1 == d.config.ParamString {

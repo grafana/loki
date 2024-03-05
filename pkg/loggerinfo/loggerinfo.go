@@ -145,11 +145,13 @@ func Patterns(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	minMatches, err := strconv.ParseInt(r.Form.Get("minMatches"), 10, 64)
-	if err != nil {
-		_, _ = w.Write([]byte(err.Error()))
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	var minMatches int64
+	if s := r.Form.Get("minMatches"); s != "" {
+		if minMatches, err = strconv.ParseInt(s, 10, 64); err != nil {
+			_, _ = w.Write([]byte(err.Error()))
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 	}
 	patterns := loggerinfo.serviceInstance(svcName).getPatterns(model.Time(from), model.Time(to), minMatches)
 	w.Header().Set("Content-Type", "application/json")
