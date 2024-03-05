@@ -6,11 +6,11 @@ networks:
 
 services:
   loki:
-    image: kolesnikovae/loki-loggerinfo:ae28ad
-#   build:
-#     context: ../../
-#     dockerfile: cmd/loki/Dockerfile
-#     no_cache: true
+#   image: kolesnikovae/loki-loggerinfo:ae28ad
+    build:
+      context: ../../
+      dockerfile: cmd/loki/Dockerfile
+      no_cache: true
     command: "-config.file=/etc/loki/config.yaml"
     ports:
       - 3102:3100

@@ -46,12 +46,12 @@ type Config struct {
 }
 
 type LogCluster struct {
-	id     int
-	Size   int
-	Tokens []string
-
-	Samples []string
-	Volume  Volume
+	id       int
+	Size     int
+	Tokens   []string
+	Stringer func([]string) string
+	Samples  []string
+	Volume   Volume
 }
 
 const (
@@ -61,12 +61,11 @@ const (
 	defaultVolumeSize = 500
 )
 
-func (c *LogCluster) getTemplate() string {
-	return strings.Join(c.Tokens, " ")
-}
-
 func (c *LogCluster) String() string {
-	return c.getTemplate()
+	if c.Stringer != nil {
+		return c.Stringer(c.Tokens)
+	}
+	return strings.Join(c.Tokens, " ")
 }
 
 func truncateTimestamp(ts model.Time) model.Time { return ts - ts%timeResolution }
@@ -255,26 +254,32 @@ func (d *Drain) Iterate(fn func(*LogCluster) bool) {
 	d.idToCluster.Iterate(fn)
 }
 
-func (d *Drain) Train(content string, ts int64) *LogCluster {
-	contentTokens := d.getContentAsTokens(content)
+func (d *Drain) TrainTokens(content string, tokens []string, stringer func([]string) string, ts int64) *LogCluster {
+	return d.train(content, tokens, stringer, ts)
+}
 
-	matchCluster := d.treeSearch(d.rootNode, contentTokens, d.config.SimTh, false)
+func (d *Drain) Train(content string, ts int64) *LogCluster {
+	return d.train(content, d.getContentAsTokens(content), nil, ts)
+}
+
+func (d *Drain) train(content string, tokens []string, stringer func([]string) string, ts int64) *LogCluster {
+	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
 	// Match no existing log cluster
 	if matchCluster == nil {
 		d.clustersCounter++
 		clusterID := d.clustersCounter
 		matchCluster = &LogCluster{
-			Tokens: contentTokens,
-			id:     clusterID,
-			Size:   1,
-
-			Samples: []string{content},
-			Volume:  initVolume(model.TimeFromUnixNano(ts)),
+			Tokens:   tokens,
+			id:       clusterID,
+			Size:     1,
+			Stringer: stringer,
+			Samples:  []string{content},
+			Volume:   initVolume(model.TimeFromUnixNano(ts)),
 		}
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
 	} else {
-		newTemplateTokens := d.createTemplate(contentTokens, matchCluster.Tokens)
+		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
 		matchCluster.Tokens = newTemplateTokens
 		matchCluster.Size++
 		matchCluster.append(content, model.TimeFromUnixNano(ts))

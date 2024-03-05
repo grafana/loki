@@ -131,7 +131,9 @@ require (
 	github.com/prometheus/alertmanager v0.26.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0
+	github.com/segmentio/encoding v0.4.0
 	github.com/thanos-io/objstore v0.0.0-20230829152104-1b257a36f9a3
+	github.com/tidwall/gjson v1.17.1
 	github.com/willf/bloom v2.0.3+incompatible
 	go.opentelemetry.io/collector/pdata v1.0.0-rcv0015
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
@@ -287,6 +289,7 @@ require (
 	github.com/rootless-containers/rootlesskit v1.1.0 // indirect
 	github.com/rs/xid v1.5.0 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
+	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/sercand/kuberesolver/v5 v5.1.1 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
@@ -295,6 +298,8 @@ require (
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/objx v0.5.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/ugorji/go/codec v1.1.7 // indirect
 	github.com/willf/bitset v1.1.11 // indirect
