@@ -15,6 +15,7 @@ package pool
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 	"sync"
 )
@@ -84,4 +85,5 @@ func (p *Pool) Put(s interface{}) {
 		p.buckets[i].Put(slice.Slice(0, 0).Interface())
 		return
 	}
+	fmt.Fprintf(os.Stderr, "[ERROR] slice too big: max=%d got=%d\n", p.sizes[len(p.sizes)-1], slice.Cap())
 }

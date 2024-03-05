@@ -24,13 +24,14 @@ func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	// to indirect via a buffer
 	_, err := b.WriteTo(buf)
 	if err != nil {
+		BlockPool.Put(buf.Bytes()) // release to pool
 		return errors.Wrap(err, "encoding bloom filter")
 	}
 
 	data := buf.Bytes()
 	enc.PutUvarint(len(data)) // length of bloom filter
 	enc.PutBytes(data)
-	BlockPool.Put(data[:0]) // release to pool
+	BlockPool.Put(data) // release to pool
 	return nil
 }
 
