@@ -274,7 +274,14 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		if err != nil {
 			return nil, err
 		}
-		level.Debug(g.logger).Log("msg", "creating task for day", "day", seriesForDay.day, "interval", seriesForDay.interval.String(), "task", task.ID)
+		level.Debug(g.logger).Log(
+			"msg", "created task for day",
+			"task", task.ID,
+			"day", seriesForDay.day,
+			"interval", seriesForDay.interval.String(),
+			"nSeries", len(seriesForDay.series),
+			"filters", JoinFunc(filters, ";", func(e syntax.LineFilterExpr) string { return e.String() }),
+		)
 		tasks = append(tasks, task)
 		numSeries += len(seriesForDay.series)
 	}

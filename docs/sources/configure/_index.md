@@ -2342,6 +2342,11 @@ bloom_shipper:
   # CLI flag: -bloom.shipper.working-directory
   [working_directory: <string> | default = "bloom-shipper"]
 
+  # In an eventually consistent system like the bloom components, we usually
+  # want to ignore blocks that are missing in storage.
+  # CLI flag: -bloom.shipper.ignore-missing-blocks
+  [ignore_missing_blocks: <boolean> | default = true]
+
   blocks_downloading_queue:
     # The count of parallel workers that download Bloom Blocks.
     # CLI flag: -bloom.shipper.blocks-downloading-queue.workers-count
@@ -3154,7 +3159,7 @@ shard_streams:
 # The shard size defines how many bloom gateways should be used by a tenant for
 # querying.
 # CLI flag: -bloom-gateway.shard-size
-[bloom_gateway_shard_size: <int> | default = 1]
+[bloom_gateway_shard_size: <int> | default = 0]
 
 # Whether to use the bloom gateway component in the read path to filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering

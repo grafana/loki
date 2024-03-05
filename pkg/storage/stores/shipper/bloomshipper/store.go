@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -35,8 +36,9 @@ type Store interface {
 }
 
 type bloomStoreConfig struct {
-	workingDir string
-	numWorkers int
+	workingDir          string
+	numWorkers          int
+	ignoreMissingBlocks bool
 }
 
 // Compiler check to ensure bloomStoreEntry implements the Store interface
@@ -57,6 +59,13 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 	tables := tablesForRange(b.cfg, params.Interval)
 	for _, table := range tables {
 		prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
+		level.Debug(b.fetcher.logger).Log(
+			"msg", "listing metas",
+			"store", b.cfg.From,
+			"table", table,
+			"tenant", params.TenantID,
+			"prefix", prefix,
+		)
 		list, _, err := b.objectClient.List(ctx, prefix, "")
 		if err != nil {
 			return nil, nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
@@ -142,6 +151,7 @@ type BloomStore struct {
 	stores             []*bloomStoreEntry
 	storageConfig      storage.Config
 	metrics            *storeMetrics
+	logger             log.Logger
 	defaultKeyResolver // TODO(owen-d): impl schema aware resolvers
 }
 
@@ -157,6 +167,7 @@ func NewBloomStore(
 	store := &BloomStore{
 		storageConfig: storageConfig,
 		metrics:       newStoreMetrics(reg, constants.Loki, "bloom_store"),
+		logger:        logger,
 	}
 
 	if metasCache == nil {
@@ -174,8 +185,9 @@ func NewBloomStore(
 
 	// TODO(chaudum): Remove wrapper
 	cfg := bloomStoreConfig{
-		workingDir: storageConfig.BloomShipperConfig.WorkingDirectory,
-		numWorkers: storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
+		workingDir:          storageConfig.BloomShipperConfig.WorkingDirectory,
+		numWorkers:          storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
+		ignoreMissingBlocks: storageConfig.BloomShipperConfig.IgnoreMissingBlocks,
 	}
 
 	if err := util.EnsureDirectory(cfg.workingDir); err != nil {
@@ -319,9 +331,9 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*Clo
 		}
 
 		var res []BlockRef
-		for _, meta := range blocks {
-			if meta.StartTimestamp >= from && meta.StartTimestamp < through {
-				res = append(res, meta)
+		for _, ref := range blocks {
+			if ref.StartTimestamp >= from && ref.StartTimestamp < through {
+				res = append(res, ref)
 			}
 		}
 
@@ -340,18 +352,30 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*Clo
 		results = append(results, res...)
 	}
 
+	level.Debug(b.logger).Log("msg", "fetch blocks", "num_req", len(blocks), "num_resp", len(results))
+
 	// sort responses (results []*CloseableBlockQuerier) based on requests (blocks []BlockRef)
-	slices.SortFunc(results, func(a, b *CloseableBlockQuerier) int {
-		ia, ib := slices.Index(blocks, a.BlockRef), slices.Index(blocks, b.BlockRef)
-		if ia < ib {
-			return -1
-		} else if ia > ib {
-			return +1
-		}
-		return 0
-	})
+	sortBlocks(results, blocks)
 
 	return results, nil
+}
+
+func sortBlocks(bqs []*CloseableBlockQuerier, refs []BlockRef) {
+	tmp := make([]*CloseableBlockQuerier, len(refs))
+	for _, bq := range bqs {
+		if bq == nil {
+			// ignore responses with nil values
+			continue
+		}
+		idx := slices.Index(refs, bq.BlockRef)
+		if idx < 0 {
+			// not found
+			// should not happen in the context of sorting responses based on requests
+			continue
+		}
+		tmp[idx] = bq
+	}
+	copy(bqs, tmp)
 }
 
 // Stop implements Store.
