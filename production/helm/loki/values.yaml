@@ -410,6 +410,8 @@ enterprise:
   externalLicenseName: null
   # -- Name of the external config secret to use
   externalConfigName: ""
+  # -- Use GEL gateway, if false will use the default nginx gateway
+  gelGateway: true
   # -- If enabled, the correct admin_client storage will be configured. If disabled while running enterprise,
   # make sure auth is set to `type: trust`, or that `auth_enabled` is set to `false`.
   adminApi:
@@ -929,6 +931,72 @@ gateway:
     # @default -- See values.yaml
     file: |
       {{- include "loki.nginxFile" . | indent 2 -}}
+
+# -- If running enterprise and using the default enterprise gateway, configs go here.
+enterpriseGateway:
+  # -- Define the amount of instances
+  replicas: 1
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
+  # -- Additional CLI arguments for the `gateway` target
+  extraArgs: {}
+  # -- Additional labels for the `gateway` Pod
+  labels: {}
+  # -- Additional annotations for the `gateway` Pod
+  annotations: {}
+  # -- Additional labels and annotations for the `gateway` Service
+  # -- Service overriding service type
+  service:
+    type: ClusterIP
+    labels: {}
+    annotations: {}
+  # -- Run container as user `enterprise-logs(uid=10001)`
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsGroup: 10001
+    runAsUser: 10001
+    fsGroup: 10001
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+    allowPrivilegeEscalation: false
+  # -- If you want to use your own proxy URLs, set this to false.
+  useDefaultProxyURLs: true
+  # -- update strategy
+  strategy:
+    type: RollingUpdate
+  # -- Readiness probe
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: http-metrics
+    initialDelaySeconds: 45
+  # -- Request and limit Kubernetes resources
+  # -- Values are defined in small.yaml and large.yaml
+  resources: {}
+  # -- Configure optional environment variables
+  env: []
+  # -- Configure optional initContainers
+  initContainers: []
+  # -- Conifgure optional extraContainers
+  extraContainers: []
+  # -- Additional volumes for Pods
+  extraVolumes: []
+  # -- Additional volume mounts for Pods
+  extraVolumeMounts: []
+  # -- Affinity for gateway Pods
+  affinity: {}
+  # -- Node selector for gateway Pods
+  nodeSelector: {}
+  # -- Tolerations for gateway Pods
+  tolerations: []
+  # -- Grace period to allow the gateway to shutdown before it is killed
+  terminationGracePeriodSeconds: 60
 
 # -- Ingress configuration Use either this ingress or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.

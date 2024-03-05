@@ -1,4 +1,4 @@
-{{- if .Values.gateway.enabled }}
+{{- if and .Values.gateway.enabled (not .Values.enterprise.gelGateway) }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
