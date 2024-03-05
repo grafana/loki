@@ -2668,6 +2668,13 @@ ring:
   # CLI flag: -bloom-compactor.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
+  # Number of tokens to use in the ring. The bigger the number of tokens, the
+  # more fingerprint ranges the compactor will own, but the smaller these ranges
+  # will be. Bigger number of tokens will result in more and smaller metas and
+  # blocks.
+  # CLI flag: -bloom-compactor.ring.tokens
+  [tokens: <int> | default = 10]
+
 # Flag to enable or disable the usage of the bloom-compactor component.
 # CLI flag: -bloom-compactor.enabled
 [enabled: <boolean> | default = false]

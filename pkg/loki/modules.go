@@ -1482,10 +1482,7 @@ func (t *Loki) initBloomCompactorRing() (services.Service, error) {
 	// is LegacyMode needed?
 	// legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
 
-	// TODO(owen-d): configurable num tokens, just use lifecycler config?
-	numTokens := 10
-	rm, err := lokiring.NewRingManager(bloomCompactorRingKey, lokiring.ServerMode, t.Cfg.BloomCompactor.Ring, 1, numTokens, util_log.Logger, prometheus.DefaultRegisterer)
-
+	rm, err := lokiring.NewRingManager(bloomCompactorRingKey, lokiring.ServerMode, t.Cfg.BloomCompactor.Ring.RingConfig, 1, t.Cfg.BloomCompactor.Ring.Tokens, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "error initializing bloom-compactor ring manager")
 	}
