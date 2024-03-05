@@ -1103,7 +1103,7 @@ string
 ## CredentialMode { #loki-grafana-com-v1-CredentialMode }
 (<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStorageStatus">LokiStackStorageStatus</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStorageStatus">LokiStackStorageStatus</a>, <a href="#loki-grafana-com-v1-ObjectStorageSecretSpec">ObjectStorageSecretSpec</a>)
 </p>
 <div>
 <p>CredentialMode represents the type of authentication used for accessing the object storage.</p>
@@ -2704,6 +2704,22 @@ string
 </td>
 <td>
 <p>Name of a secret in the namespace configured for object storage secrets.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>credentialMode</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-CredentialMode">
+CredentialMode
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>CredentialMode can be used to set the desired credential mode for authenticating with the object storage.
+If this is not set, then the operator tries to infer the credential mode from the provided secret and its
+own configuration.</p>
 </td>
 </tr>
 </tbody>

@@ -27,7 +27,7 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 		return storage.Options{}, err
 	}
 
-	objStore, err := extractSecrets(stack.Spec.Storage.Secret.Type, storageSecret, managedAuthSecret, fg)
+	objStore, err := extractSecrets(stack.Spec.Storage.Secret, storageSecret, managedAuthSecret, fg)
 	if err != nil {
 		return storage.Options{}, &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
@@ -35,7 +35,15 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 			Requeue: false,
 		}
 	}
-	objStore.OpenShift.Enabled = fg.OpenShift.Enabled
+
+	if objStore.CredentialMode == lokiv1.CredentialModeManaged && managedAuthSecret == nil {
+		// If we have no managed-auth secret at this point, it is an error
+		return storage.Options{}, &status.DegradedError{
+			Message: "Missing OpenShift cloud credentials secret",
+			Reason:  lokiv1.ReasonMissingManagedAuthSecret,
+			Requeue: true,
+		}
+	}
 
 	storageSchemas, err := storage.BuildSchemaConfig(
 		time.Now().UTC(),
