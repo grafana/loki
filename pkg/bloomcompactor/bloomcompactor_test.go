@@ -68,13 +68,13 @@ func TestCompactor_ownsTenant(t *testing.T) {
 			var ringManagers []*lokiring.RingManager
 			var compactors []*Compactor
 			for i := 0; i < tc.compactors; i++ {
-				var ringCfg lokiring.RingConfig
+				var ringCfg RingConfig
 				ringCfg.RegisterFlagsWithPrefix("", "", flag.NewFlagSet("ring", flag.PanicOnError))
 				ringCfg.KVStore.Store = "inmemory"
 				ringCfg.InstanceID = fmt.Sprintf("bloom-compactor-%d", i)
 				ringCfg.InstanceAddr = fmt.Sprintf("localhost-%d", i)
 
-				ringManager, err := lokiring.NewRingManager("bloom-compactor", lokiring.ServerMode, ringCfg, 1, 1, util_log.Logger, prometheus.NewRegistry())
+				ringManager, err := lokiring.NewRingManager("bloom-compactor", lokiring.ServerMode, ringCfg.RingConfig, 1, ringCfg.Tokens, util_log.Logger, prometheus.NewRegistry())
 				require.NoError(t, err)
 				require.NoError(t, ringManager.StartAsync(context.Background()))
 
