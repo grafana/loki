@@ -2,7 +2,6 @@ package bloomgateway
 
 import (
 	"context"
-	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -81,10 +80,6 @@ func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef
 			}
 		}
 	}
-
-	rand.Shuffle(len(result), func(i, j int) {
-		result[i], result[j] = result[j], result[i]
-	})
 
 	time.Sleep(s.delay)
 

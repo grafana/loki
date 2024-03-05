@@ -37,12 +37,14 @@ type Fetcher struct {
 
 	q *downloadQueue[BlockRef, BlockDirectory]
 
+	cfg     bloomStoreConfig
 	metrics *fetcherMetrics
 	logger  log.Logger
 }
 
 func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blocksCache cache.TypedCache[string, BlockDirectory], reg prometheus.Registerer, logger log.Logger) (*Fetcher, error) {
 	fetcher := &Fetcher{
+		cfg:             cfg,
 		client:          client,
 		metasCache:      metasCache,
 		blocksCache:     blocksCache,
@@ -153,18 +155,23 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]*Closeabl
 		})
 	}
 
+	count := 0
 	results := make([]*CloseableBlockQuerier, n)
 	for i := 0; i < n; i++ {
 		select {
 		case err := <-errors:
-			f.metrics.blocksFetched.Observe(float64(i + 1))
-			return results, err
+			if !f.cfg.ignoreMissingBlocks && !f.client.IsObjectNotFoundErr(err) {
+				f.metrics.blocksFetched.Observe(float64(count))
+				return results, err
+			}
+			level.Warn(f.logger).Log("msg", "ignore missing block", "err", err)
 		case res := <-responses:
+			count++
 			results[res.idx] = res.item.BlockQuerier()
 		}
 	}
 
-	f.metrics.blocksFetched.Observe(float64(n))
+	f.metrics.blocksFetched.Observe(float64(count))
 	return results, nil
 }
 
