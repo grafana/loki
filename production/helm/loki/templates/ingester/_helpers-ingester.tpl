@@ -54,3 +54,21 @@ livenessProbe:
 {{- end }}
 {{- end }}
 {{- end -}}
+
+{{/*
+expects global context
+*/}}
+{{- define "loki.ingester.replicaCount" -}}
+{{- ceil (divf .Values.ingester.replicas 3) -}}
+{{- end -}}
+
+{{/*
+expects a dict
+{
+  "replicas": replicas in a zone,
+  "ctx": global context
+}
+*/}}
+{{- define "loki.ingester.maxUnavailable" -}}
+{{- ceil (mulf .replicas (divf (int .ctx.Values.ingester.zoneAwareReplication.maxUnavailablePct) 100)) -}}
+{{- end -}}

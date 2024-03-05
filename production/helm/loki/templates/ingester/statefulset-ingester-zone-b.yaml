@@ -1,5 +1,6 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
 {{- if and $isDistributed .Values.ingester.zoneAwareReplication.enabled }}
+{{- $replicas := (include "loki.ingester.replicaCount" .) -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -10,13 +11,14 @@ metadata:
     app.kubernetes.io/part-of: memberlist
     rollout-group: ingester
     name: ingester-zone-b
-  {{- with .Values.loki.annotations }}
   annotations:
+    rollout-max-unavailable: "{{ include "loki.ingester.maxUnavailable" (dict "ctx" . "replicas" $replicas)}}"
+    {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
 spec:
 {{- if not .Values.ingester.autoscaling.enabled }}
-  replicas: {{ .Values.ingester.replicas }}
+  replicas: {{ $replicas }}
 {{- end }}
   podManagementPolicy: Parallel
   serviceName: {{ include "loki.ingesterFullname" . }}-zone-b
@@ -93,6 +95,8 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -ingester.availability-zone=zone-b
+            - -ingester.unregister-on-shutdown=false
+            - -ingester.tokens-file-path=/var/loki/ring-tokens
             - -target=ingester
             {{- with .Values.ingester.extraArgs }}
             {{- toYaml . | nindent 12 }}

@@ -1442,7 +1442,8 @@ backend:
 
 # -- Configuration for the ingester
 ingester:
-  # -- Number of replicas for the ingester
+  # -- Number of replicas for the ingester, when zoneAwareReplication.enabled is true, the total
+  # number of replicas will match this value with each zone having 1/3rd of the total replicas.
   replicas: 0
   # -- hostAliases to add
   hostAliases: []
@@ -1570,24 +1571,34 @@ ingester:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
   # -- Enabling zone awareness on ingesters will create 3 statefulests where all writes will send a replica to each zone.
-  # This is primarily intended to accellerate rollout operations by allowing for multiple ingesters within a single
+  # This is primarily intended to accelerate rollout operations by allowing for multiple ingesters within a single
   # zone to be shutdown and restart simultaneously (the remaining 2 zones will be guaranteed to have at least one copy
   # of the data).
   # Note: This can be used to run Loki over multiple cloud provider availability zones however this is not currently
   # recommended as Loki is not optimized for this and cross zone network traffic costs can become extremely high
   # extremely quickly. Even with zone awareness enabled, it is recommended to run Loki in a single availability zone.
   zoneAwareReplication:
+    # -- Enable zone awareness.
     enabled: true
-    topologyKey: 'kubernetes.io/hostname'
+    # -- The percent of replicas in each zone that will be restarted at once. In a value of 0-100
+    maxUnavailablePct: 33
+    # -- zoneA configuration
     zoneA:
+      # -- optionally define a node selector for this zone
       nodeSelector: null
+      # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
       extraAffinity: {}
     zoneB:
+      # -- optionally define a node selector for this zone
       nodeSelector: null
+      # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
       extraAffinity: {}
     zoneC:
+      # -- optionally define a node selector for this zone
       nodeSelector: null
+      # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
       extraAffinity: {}
+    # -- The migration block allows migrating non zone aware ingesters to zone aware ingesters.
     migration:
       enabled: false
       excludeDefaultZone: false
@@ -2292,6 +2303,33 @@ ruler:
 # Subchart configurations
 #
 ######################################################################################################################
+# -- Setting for the Grafana Rollout Operator https://github.com/grafana/helm-charts/tree/main/charts/rollout-operator
+rollout_operator:
+  enabled: true
+
+  # -- podSecurityContext is the pod security context for the rollout operator.
+  # When installing on OpenShift, override podSecurityContext settings with
+  #
+  # rollout_operator:
+  #   podSecurityContext:
+  #     fsGroup: null
+  #     runAsGroup: null
+  #     runAsUser: null
+  podSecurityContext:
+    fsGroup: 10001
+    runAsGroup: 10001
+    runAsNonRoot: true
+    runAsUser: 10001
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Set the container security context
+  securityContext:
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+    allowPrivilegeEscalation: false
+
 # -- Configuration for the minio subchart
 minio:
   enabled: false
