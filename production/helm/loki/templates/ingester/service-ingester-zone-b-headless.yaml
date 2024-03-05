@@ -3,11 +3,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "loki.ingesterFullname" . }}-zone-b
+  name: {{ include "loki.ingesterFullname" . }}-zone-b-headless
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "loki.ingesterLabels" . | nindent 4 }}
-    name: ingester-zone-b
     {{- with .Values.ingester.serviceLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
