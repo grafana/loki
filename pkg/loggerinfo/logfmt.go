@@ -53,7 +53,7 @@ func markToken(t []byte) []byte {
 func restoreTokens(s []string) {
 	for i := range s {
 		b := []byte(s[i])
-		if b[0] == 0 {
+		if len(b) > 0 && b[0] == 0 {
 			b = b[1:]
 			s[i] = string(b)
 		}
