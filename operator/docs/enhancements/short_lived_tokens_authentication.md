@@ -347,15 +347,6 @@ gcloud iam workload-identity-pools create-cred-config \
 
 __Note:__ The workload identity pool and associated OIDC provider needs to be the same that manages your other Kubernetes cluster's managed identities.
 
-4. Use the contents from `/tmp/google-application-credentials.json` as `key.json` when creating the GCS object storage secret for LokiStack:
-
-```yaml
-data:
-  bucketname: # A comma-separated list of bucket names
-  audience: # Configured audience for GCS WIF
-  key.json:   # The file contents of the newly created GCP credentials configuration
-```
-
 ## Implementation History
 
 - AWS Support https://github.com/grafana/loki/pull/11481
