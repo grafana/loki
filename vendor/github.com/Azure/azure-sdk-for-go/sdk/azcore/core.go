@@ -22,6 +22,24 @@ type AccessToken = exported.AccessToken
 // TokenCredential represents a credential capable of providing an OAuth token.
 type TokenCredential = exported.TokenCredential
 
+// KeyCredential contains an authentication key used to authenticate to an Azure service.
+type KeyCredential = exported.KeyCredential
+
+// NewKeyCredential creates a new instance of [KeyCredential] with the specified values.
+//   - key is the authentication key
+func NewKeyCredential(key string) *KeyCredential {
+	return exported.NewKeyCredential(key)
+}
+
+// SASCredential contains a shared access signature used to authenticate to an Azure service.
+type SASCredential = exported.SASCredential
+
+// NewSASCredential creates a new instance of [SASCredential] with the specified values.
+//   - sas is the shared access signature
+func NewSASCredential(sas string) *SASCredential {
+	return exported.NewSASCredential(sas)
+}
+
 // holds sentinel values used to send nulls
 var nullables map[reflect.Type]interface{} = map[reflect.Type]interface{}{}
 

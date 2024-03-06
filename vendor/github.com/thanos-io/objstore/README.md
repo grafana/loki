@@ -67,7 +67,7 @@ type Bucket interface {
 
 All [provider implementations](providers) have to implement `Bucket` interface that allows common read and write operations that all supported by all object providers. If you want to limit the code that will do bucket operation to only read access (smart idea, allowing to limit access permissions), you can use the [`BucketReader` interface](objstore.go):
 
-```go mdox-exec="sed -n '68,88p' objstore.go"
+```go mdox-exec="sed -n '68,93p' objstore.go"
 
 // BucketReader provides read access to an object storage bucket.
 type BucketReader interface {
@@ -90,6 +90,10 @@ type BucketReader interface {
 
 	// IsAccessDeniedErr returns true if access to object is denied.
 	IsAccessDeniedErr(err error) bool
+
+	// Attributes returns information about the specified object.
+	Attributes(ctx context.Context, name string) (ObjectAttributes, error)
+}
 ```
 
 Those interfaces represent the object storage operations your code can use from `objstore` clients.
@@ -176,6 +180,7 @@ config:
     enable: false
   list_objects_version: ""
   bucket_lookup_type: auto
+  send_content_md5: true
   part_size: 67108864
   sse_config:
     type: ""
@@ -347,6 +352,8 @@ type: GCS
 config:
   bucket: ""
   service_account: ""
+  use_grpc: false
+  grpc_conn_pool_size: 0
 prefix: ""
 ```
 

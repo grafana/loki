@@ -85,7 +85,7 @@ type BucketReader interface {
 	// IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 	IsObjNotFoundErr(err error) bool
 
-	// IsAccessDeniedErr returns true if acces to object is denied.
+	// IsAccessDeniedErr returns true if access to object is denied.
 	IsAccessDeniedErr(err error) bool
 
 	// Attributes returns information about the specified object.
@@ -433,7 +433,7 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 
 		opsDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:        "objstore_bucket_operation_duration_seconds",
-			Help:        "Duration of successful operations against the bucket",
+			Help:        "Duration of successful operations against the bucket per operation - iter operations include time spent on each callback.",
 			ConstLabels: prometheus.Labels{"bucket": name},
 			Buckets:     []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 		}, []string{"operation"}),
@@ -458,11 +458,12 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 		bkt.opsDuration.WithLabelValues(op)
 		bkt.opsFetchedBytes.WithLabelValues(op)
 	}
-	// fetched bytes only relevant for get and getrange
+
+	// fetched bytes only relevant for get, getrange and upload
 	for _, op := range []string{
 		OpGet,
 		OpGetRange,
-		// TODO: Add uploads
+		OpUpload,
 	} {
 		bkt.opsTransferredBytes.WithLabelValues(op)
 	}
@@ -503,12 +504,14 @@ func (b *metricBucket) Iter(ctx context.Context, dir string, f func(name string)
 	const op = OpIter
 	b.ops.WithLabelValues(op).Inc()
 
+	start := time.Now()
 	err := b.bkt.Iter(ctx, dir, f, options...)
 	if err != nil {
 		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.opsFailures.WithLabelValues(op).Inc()
 		}
 	}
+	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 	return err
 }
 
@@ -539,8 +542,9 @@ func (b *metricBucket) Get(ctx context.Context, name string) (io.ReadCloser, err
 		}
 		return nil, err
 	}
-	return newTimingReadCloser(
+	return newTimingReader(
 		rc,
+		true,
 		op,
 		b.opsDuration,
 		b.opsFailures,
@@ -561,8 +565,9 @@ func (b *metricBucket) GetRange(ctx context.Context, name string, off, length in
 		}
 		return nil, err
 	}
-	return newTimingReadCloser(
+	return newTimingReader(
 		rc,
+		true,
 		op,
 		b.opsDuration,
 		b.opsFailures,
@@ -592,15 +597,26 @@ func (b *metricBucket) Upload(ctx context.Context, name string, r io.Reader) err
 	const op = OpUpload
 	b.ops.WithLabelValues(op).Inc()
 
-	start := time.Now()
-	if err := b.bkt.Upload(ctx, name, r); err != nil {
+	trc := newTimingReader(
+		r,
+		false,
+		op,
+		b.opsDuration,
+		b.opsFailures,
+		b.isOpFailureExpected,
+		nil,
+		b.opsTransferredBytes,
+	)
+	defer trc.Close()
+	err := b.bkt.Upload(ctx, name, trc)
+	if err != nil {
 		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.opsFailures.WithLabelValues(op).Inc()
 		}
 		return err
 	}
 	b.lastSuccessfulUploadTime.SetToCurrentTime()
-	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
+
 	return nil
 }
 
@@ -636,8 +652,13 @@ func (b *metricBucket) Name() string {
 	return b.bkt.Name()
 }
 
-type timingReadCloser struct {
-	io.ReadCloser
+type timingReader struct {
+	io.Reader
+
+	// closeReader holds whether the wrapper io.Reader should be closed when
+	// Close() is called on the timingReader.
+	closeReader bool
+
 	objSize    int64
 	objSizeErr error
 
@@ -653,13 +674,15 @@ type timingReadCloser struct {
 	transferredBytes  *prometheus.HistogramVec
 }
 
-func newTimingReadCloser(rc io.ReadCloser, op string, dur *prometheus.HistogramVec, failed *prometheus.CounterVec, isFailureExpected IsOpFailureExpectedFunc, fetchedBytes *prometheus.CounterVec, transferredBytes *prometheus.HistogramVec) *timingReadCloser {
+func newTimingReader(r io.Reader, closeReader bool, op string, dur *prometheus.HistogramVec, failed *prometheus.CounterVec, isFailureExpected IsOpFailureExpectedFunc, fetchedBytes *prometheus.CounterVec, transferredBytes *prometheus.HistogramVec) io.ReadCloser {
 	// Initialize the metrics with 0.
 	dur.WithLabelValues(op)
 	failed.WithLabelValues(op)
-	objSize, objSizeErr := TryToGetSize(rc)
-	return &timingReadCloser{
-		ReadCloser:        rc,
+	objSize, objSizeErr := TryToGetSize(r)
+
+	trc := timingReader{
+		Reader:            r,
+		closeReader:       closeReader,
 		objSize:           objSize,
 		objSizeErr:        objSizeErr,
 		start:             time.Now(),
@@ -671,35 +694,80 @@ func newTimingReadCloser(rc io.ReadCloser, op string, dur *prometheus.HistogramV
 		transferredBytes:  transferredBytes,
 		readBytes:         0,
 	}
-}
 
-func (t *timingReadCloser) ObjectSize() (int64, error) {
-	return t.objSize, t.objSizeErr
-}
+	_, isSeeker := r.(io.Seeker)
+	_, isReaderAt := r.(io.ReaderAt)
 
-func (rc *timingReadCloser) Close() error {
-	err := rc.ReadCloser.Close()
-	if !rc.alreadyGotErr && err != nil {
-		rc.failed.WithLabelValues(rc.op).Inc()
+	if isSeeker && isReaderAt {
+		// The assumption is that in most cases when io.ReaderAt() is implemented then
+		// io.Seeker is implemented too (e.g. os.File).
+		return &timingReaderSeekerReaderAt{timingReaderSeeker: timingReaderSeeker{timingReader: trc}}
 	}
-	if !rc.alreadyGotErr && err == nil {
-		rc.duration.WithLabelValues(rc.op).Observe(time.Since(rc.start).Seconds())
-		rc.transferredBytes.WithLabelValues(rc.op).Observe(float64(rc.readBytes))
-		rc.alreadyGotErr = true
+	if isSeeker {
+		return &timingReaderSeeker{timingReader: trc}
 	}
-	return err
+
+	return &trc
 }
 
-func (rc *timingReadCloser) Read(b []byte) (n int, err error) {
-	n, err = rc.ReadCloser.Read(b)
-	rc.fetchedBytes.WithLabelValues(rc.op).Add(float64(n))
-	rc.readBytes += int64(n)
-	// Report metric just once.
-	if !rc.alreadyGotErr && err != nil && err != io.EOF {
-		if !rc.isFailureExpected(err) {
-			rc.failed.WithLabelValues(rc.op).Inc()
+func (r *timingReader) ObjectSize() (int64, error) {
+	return r.objSize, r.objSizeErr
+}
+
+func (r *timingReader) Close() error {
+	var closeErr error
+
+	// Call the wrapped reader if it implements Close(), only if we've been asked to close it.
+	if closer, ok := r.Reader.(io.Closer); r.closeReader && ok {
+		closeErr = closer.Close()
+
+		if !r.alreadyGotErr && closeErr != nil {
+			r.failed.WithLabelValues(r.op).Inc()
+			r.alreadyGotErr = true
 		}
-		rc.alreadyGotErr = true
+	}
+
+	// Track duration and transferred bytes only if no error occurred.
+	if !r.alreadyGotErr {
+		r.duration.WithLabelValues(r.op).Observe(time.Since(r.start).Seconds())
+		r.transferredBytes.WithLabelValues(r.op).Observe(float64(r.readBytes))
+
+		// Trick to tracking metrics multiple times in case Close() gets called again.
+		r.alreadyGotErr = true
+	}
+
+	return closeErr
+}
+
+func (r *timingReader) Read(b []byte) (n int, err error) {
+	n, err = r.Reader.Read(b)
+	if r.fetchedBytes != nil {
+		r.fetchedBytes.WithLabelValues(r.op).Add(float64(n))
+	}
+
+	r.readBytes += int64(n)
+	// Report metric just once.
+	if !r.alreadyGotErr && err != nil && err != io.EOF {
+		if !r.isFailureExpected(err) {
+			r.failed.WithLabelValues(r.op).Inc()
+		}
+		r.alreadyGotErr = true
 	}
 	return n, err
+}
+
+type timingReaderSeeker struct {
+	timingReader
+}
+
+func (rsc *timingReaderSeeker) Seek(offset int64, whence int) (int64, error) {
+	return (rsc.Reader).(io.Seeker).Seek(offset, whence)
+}
+
+type timingReaderSeekerReaderAt struct {
+	timingReaderSeeker
+}
+
+func (rsc *timingReaderSeekerReaderAt) ReadAt(p []byte, off int64) (int, error) {
+	return (rsc.Reader).(io.ReaderAt).ReadAt(p, off)
 }

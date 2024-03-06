@@ -6,6 +6,7 @@ package runtime
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
@@ -72,6 +73,9 @@ func (b *BearerTokenPolicy) authenticateAndAuthorize(req *policy.Request) func(p
 
 // Do authorizes a request with a bearer token
 func (b *BearerTokenPolicy) Do(req *policy.Request) (*http.Response, error) {
+	if strings.ToLower(req.Raw().URL.Scheme) != "https" {
+		return nil, shared.NonRetriableError(errors.New("bearer token authentication is not permitted for non TLS protected (https) endpoints"))
+	}
 	var err error
 	if b.authzHandler.OnRequest != nil {
 		err = b.authzHandler.OnRequest(req, b.authenticateAndAuthorize(req))

@@ -25,9 +25,7 @@ const credNameOBO = "OnBehalfOfCredential"
 //
 // [Azure Active Directory documentation]: https://docs.microsoft.com/azure/active-directory/develop/v2-oauth2-on-behalf-of-flow
 type OnBehalfOfCredential struct {
-	assertion string
-	client    confidentialClient
-	s         *syncer
+	client *confidentialClient
 }
 
 // OnBehalfOfCredentialOptions contains optional parameters for OnBehalfOfCredential
@@ -72,28 +70,23 @@ func newOnBehalfOfCredential(tenantID, clientID, userAssertion string, cred conf
 	if options == nil {
 		options = &OnBehalfOfCredentialOptions{}
 	}
-	opts := []confidential.Option{}
-	if options.SendCertificateChain {
-		opts = append(opts, confidential.WithX5C())
+	opts := confidentialClientOptions{
+		AdditionallyAllowedTenants: options.AdditionallyAllowedTenants,
+		Assertion:                  userAssertion,
+		ClientOptions:              options.ClientOptions,
+		DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
+		SendX5C:                    options.SendCertificateChain,
 	}
-	opts = append(opts, confidential.WithInstanceDiscovery(!options.DisableInstanceDiscovery))
-	c, err := getConfidentialClient(clientID, tenantID, cred, &options.ClientOptions, opts...)
+	c, err := newConfidentialClient(tenantID, clientID, credNameOBO, cred, opts)
 	if err != nil {
 		return nil, err
 	}
-	obo := OnBehalfOfCredential{assertion: userAssertion, client: c}
-	obo.s = newSyncer(credNameOBO, tenantID, options.AdditionallyAllowedTenants, obo.requestToken, obo.requestToken)
-	return &obo, nil
+	return &OnBehalfOfCredential{c}, nil
 }
 
 // GetToken requests an access token from Azure Active Directory. This method is called automatically by Azure SDK clients.
 func (o *OnBehalfOfCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	return o.s.GetToken(ctx, opts)
-}
-
-func (o *OnBehalfOfCredential) requestToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	ar, err := o.client.AcquireTokenOnBehalfOf(ctx, o.assertion, opts.Scopes, confidential.WithTenantID(opts.TenantID))
-	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
+	return o.client.GetToken(ctx, opts)
 }
 
 var _ azcore.TokenCredential = (*OnBehalfOfCredential)(nil)

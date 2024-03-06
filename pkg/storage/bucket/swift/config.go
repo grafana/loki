@@ -2,8 +2,17 @@ package swift
 
 import (
 	"flag"
+	"net/http"
 	"time"
+
+	bucket_http "github.com/grafana/loki/pkg/storage/bucket/http"
 )
+
+// HTTPConfig stores the http.Transport configuration for the swift minio client.
+type HTTPConfig struct {
+	bucket_http.Config `yaml:",inline"`
+	Transport          http.RoundTripper `yaml:"-"`
+}
 
 // Config holds the config options for Swift backend
 type Config struct {
@@ -26,6 +35,12 @@ type Config struct {
 	MaxRetries        int           `yaml:"max_retries"`
 	ConnectTimeout    time.Duration `yaml:"connect_timeout"`
 	RequestTimeout    time.Duration `yaml:"request_timeout"`
+	HTTP              HTTPConfig    `yaml:"http"`
+}
+
+// RegisterFlagsWithPrefix registers the flags for swift storage with the provided prefix
+func (cfg *HTTPConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.Config.RegisterFlagsWithPrefix(prefix+"swift.", f)
 }
 
 // RegisterFlags registers the flags for Swift storage
@@ -54,6 +69,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRetries, prefix+"swift.max-retries", 3, "Max retries on requests error.")
 	f.DurationVar(&cfg.ConnectTimeout, prefix+"swift.connect-timeout", 10*time.Second, "Time after which a connection attempt is aborted.")
 	f.DurationVar(&cfg.RequestTimeout, prefix+"swift.request-timeout", 5*time.Second, "Time after which an idle request is aborted. The timeout watchdog is reset each time some data is received, so the timeout triggers after X time no data is received on a request.")
+	cfg.HTTP.RegisterFlagsWithPrefix(prefix, f)
 }
 
 func (cfg *Config) Validate() error {

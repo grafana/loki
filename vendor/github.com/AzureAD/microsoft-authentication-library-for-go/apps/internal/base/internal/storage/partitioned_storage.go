@@ -84,7 +84,7 @@ func (m *PartitionedManager) Read(ctx context.Context, authParameters authority.
 
 // Write writes a token response to the cache and returns the account information the token is stored with.
 func (m *PartitionedManager) Write(authParameters authority.AuthParams, tokenResponse accesstokens.TokenResponse) (shared.Account, error) {
-	authParameters.HomeAccountID = tokenResponse.ClientInfo.HomeAccountID()
+	authParameters.HomeAccountID = tokenResponse.HomeAccountID()
 	homeAccountID := authParameters.HomeAccountID
 	environment := authParameters.AuthorityInfo.Host
 	realm := authParameters.AuthorityInfo.Tenant

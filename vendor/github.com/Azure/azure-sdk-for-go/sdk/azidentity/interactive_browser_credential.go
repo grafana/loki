@@ -11,7 +11,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
-	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
 )
 
 const credNameBrowser = "InteractiveBrowserCredential"
@@ -56,10 +55,7 @@ func (o *InteractiveBrowserCredentialOptions) init() {
 
 // InteractiveBrowserCredential opens a browser to interactively authenticate a user.
 type InteractiveBrowserCredential struct {
-	account public.Account
-	client  publicClient
-	options InteractiveBrowserCredentialOptions
-	s       *syncer
+	client *publicClient
 }
 
 // NewInteractiveBrowserCredential constructs a new InteractiveBrowserCredential. Pass nil to accept default options.
@@ -69,38 +65,22 @@ func NewInteractiveBrowserCredential(options *InteractiveBrowserCredentialOption
 		cp = *options
 	}
 	cp.init()
-	c, err := getPublicClient(cp.ClientID, cp.TenantID, &cp.ClientOptions, public.WithInstanceDiscovery(!cp.DisableInstanceDiscovery))
+	msalOpts := publicClientOptions{
+		ClientOptions:            cp.ClientOptions,
+		DisableInstanceDiscovery: cp.DisableInstanceDiscovery,
+		LoginHint:                cp.LoginHint,
+		RedirectURL:              cp.RedirectURL,
+	}
+	c, err := newPublicClient(cp.TenantID, cp.ClientID, credNameBrowser, msalOpts)
 	if err != nil {
 		return nil, err
 	}
-	ibc := InteractiveBrowserCredential{client: c, options: cp}
-	ibc.s = newSyncer(credNameBrowser, cp.TenantID, cp.AdditionallyAllowedTenants, ibc.requestToken, ibc.silentAuth)
-	return &ibc, nil
+	return &InteractiveBrowserCredential{client: c}, nil
 }
 
 // GetToken requests an access token from Azure Active Directory. This method is called automatically by Azure SDK clients.
 func (c *InteractiveBrowserCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	return c.s.GetToken(ctx, opts)
-}
-
-func (c *InteractiveBrowserCredential) requestToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	ar, err := c.client.AcquireTokenInteractive(ctx, opts.Scopes,
-		public.WithLoginHint(c.options.LoginHint),
-		public.WithRedirectURI(c.options.RedirectURL),
-		public.WithTenantID(opts.TenantID),
-	)
-	if err == nil {
-		c.account = ar.Account
-	}
-	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
-}
-
-func (c *InteractiveBrowserCredential) silentAuth(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	ar, err := c.client.AcquireTokenSilent(ctx, opts.Scopes,
-		public.WithSilentAccount(c.account),
-		public.WithTenantID(opts.TenantID),
-	)
-	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
+	return c.client.GetToken(ctx, opts)
 }
 
 var _ azcore.TokenCredential = (*InteractiveBrowserCredential)(nil)

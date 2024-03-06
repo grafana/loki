@@ -12,7 +12,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
-	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
 )
 
 const credNameDeviceCode = "DeviceCodeCredential"
@@ -74,10 +73,7 @@ type DeviceCodeMessage struct {
 // If a web browser is available, InteractiveBrowserCredential is more convenient because it
 // automatically opens a browser to the login page.
 type DeviceCodeCredential struct {
-	account public.Account
-	client  publicClient
-	s       *syncer
-	prompt  func(context.Context, DeviceCodeMessage) error
+	client *publicClient
 }
 
 // NewDeviceCodeCredential creates a DeviceCodeCredential. Pass nil to accept default options.
@@ -87,50 +83,24 @@ func NewDeviceCodeCredential(options *DeviceCodeCredentialOptions) (*DeviceCodeC
 		cp = *options
 	}
 	cp.init()
-	c, err := getPublicClient(
-		cp.ClientID, cp.TenantID, &cp.ClientOptions, public.WithInstanceDiscovery(!cp.DisableInstanceDiscovery),
-	)
+	msalOpts := publicClientOptions{
+		AdditionallyAllowedTenants: cp.AdditionallyAllowedTenants,
+		ClientOptions:              cp.ClientOptions,
+		DeviceCodePrompt:           cp.UserPrompt,
+		DisableInstanceDiscovery:   cp.DisableInstanceDiscovery,
+	}
+	c, err := newPublicClient(cp.TenantID, cp.ClientID, credNameDeviceCode, msalOpts)
 	if err != nil {
 		return nil, err
 	}
-	cred := DeviceCodeCredential{client: c, prompt: cp.UserPrompt}
-	cred.s = newSyncer(credNameDeviceCode, cp.TenantID, cp.AdditionallyAllowedTenants, cred.requestToken, cred.silentAuth)
-	return &cred, nil
+	c.name = credNameDeviceCode
+	return &DeviceCodeCredential{client: c}, nil
 }
 
 // GetToken requests an access token from Azure Active Directory. It will begin the device code flow and poll until the user completes authentication.
 // This method is called automatically by Azure SDK clients.
 func (c *DeviceCodeCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	return c.s.GetToken(ctx, opts)
-}
-
-func (c *DeviceCodeCredential) requestToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	dc, err := c.client.AcquireTokenByDeviceCode(ctx, opts.Scopes, public.WithTenantID(opts.TenantID))
-	if err != nil {
-		return azcore.AccessToken{}, err
-	}
-	err = c.prompt(ctx, DeviceCodeMessage{
-		Message:         dc.Result.Message,
-		UserCode:        dc.Result.UserCode,
-		VerificationURL: dc.Result.VerificationURL,
-	})
-	if err != nil {
-		return azcore.AccessToken{}, err
-	}
-	ar, err := dc.AuthenticationResult(ctx)
-	if err != nil {
-		return azcore.AccessToken{}, err
-	}
-	c.account = ar.Account
-	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
-}
-
-func (c *DeviceCodeCredential) silentAuth(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	ar, err := c.client.AcquireTokenSilent(ctx, opts.Scopes,
-		public.WithSilentAccount(c.account),
-		public.WithTenantID(opts.TenantID),
-	)
-	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
+	return c.client.GetToken(ctx, opts)
 }
 
 var _ azcore.TokenCredential = (*DeviceCodeCredential)(nil)
