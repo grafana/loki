@@ -53,7 +53,44 @@ The following proposal describes the required changes and validations for each o
 
 ### API Extensions
 
-The implementation of this proposal does not require any custom resource extension or such.
+The present proposal introduces a new field in the `ObjectStorageSecretSpec` namely `CredentialsMode`:
+
+```go
+/ CredentialMode represents the type of authentication used for accessing the object storage.
+//
+// +kubebuilder:validation:Enum=static;token;managed
+type CredentialMode string
+
+const (
+    // CredentialModeStatic represents the usage of static, long-lived credentials stored in a Secret.
+    // This is the default authentication mode and available for all supported object storage types.
+    CredentialModeStatic CredentialMode = "static"
+    // CredentialModeToken represents the usage of short-lived tokens retrieved from a credential source.
+    // In this mode the static configuration does not contain credentials needed for the object storage.
+    // Instead, they are generated during runtime using a service, which allows for shorter-lived credentials and
+    // much more granular control. This authentication mode is not supported for all object storage types.
+    CredentialModeToken CredentialMode = "token"
+    // CredentialModeManaged represents the usage of short-lived tokens retrieved from a credential source.
+    // This mode is similar to CredentialModeToken,but instead of having a user-configured credential source,
+    // it is configured by the environment, for example the Cloud Credential Operator in OpenShift.
+    // This mode is only supported for certain object storage types in certain runtime environments.
+    CredentialModeManaged CredentialMode = "managed"
+)
+
+// ObjectStorageSecretSpec is a secret reference containing name only, no namespace.
+type ObjectStorageSecretSpec struct {
+...
+    // CredentialMode can be used to set the desired credential mode for authenticating with the object storage.
+    // If this is not set, then the operator tries to infer the credential mode from the provided secret and its
+    // own configuration.
+    //
+    // +optional
+    // +kubebuilder:validation:Optional
+    CredentialMode CredentialMode `json:"credentialMode,omitempty"`
+}
+```
+
+The purpose of the `CredentialMode` is to override the detected credentials type of object storage secrects, e.g. in environments like STS-managed OpenShift clusters, where the operator is automatically setup to use `managed` but the user might want to use `static` to storage logs for example to Minio on the same cluster instead to AWS S3.
 
 ### Implementation Details/Notes/Constraints
 
@@ -210,7 +247,24 @@ aws iam attach-role-policy \
 
 #### GCP Workload Identity Federation
 
-There is no change required for GCP WIF as a provider service for short-lived token authentication. However specific validation of the provided `serviceaccount.json` field will ensure that WIF is used only with GCP external services accounts, i.e. the following format will be validated:
+The current GCS object storage secret requires the following mandatory set of fields to be available:
+
+```yaml
+data:
+  bucketname: # The GCS bucket name
+  key.json:   # The static serviceaccount json
+```
+
+In contrast, a minimal configuration set of fields for short-lived token authentication requires:
+
+```yaml
+data:
+  audience:   # The audience configured for Loki's k8s serviceacount
+  bucketname: # The GCS bucket name
+  key.json:   # The serviceacount json file for type external_account
+```
+
+The following format will be validated for the `key.json` and in particular the `credential_source.file` having the default value `/var/run/secrets/storage/serviceaccount/token`.
 
 ```json
 {
@@ -220,15 +274,13 @@ There is no change required for GCP WIF as a provider service for short-lived to
    "token_url": "https://sts.googleapis.com/v1/token",
    "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/test-service-account-42ssv@test-project.iam.gserviceaccount.com:generateAccessToken",
    "credential_source": {
-      "file": "/path/to/oidc/token",
+      "file": "/var/run/secrets/storage/serviceaccount/token",
       "format": {
          "type": "text"
       }
    }
 }
 ```
-
-__Note:__ As a credentials source file the Loki Operator will overwrite any user provider input with using the Kubernetes ServiceAccount token per container.
 
 ##### Pre-requisites
 
