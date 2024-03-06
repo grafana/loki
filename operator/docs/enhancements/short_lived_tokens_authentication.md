@@ -18,16 +18,16 @@ toc: true
 
 ## Summary
 
-LokiStack object storage access on all public cloud providers supports currently only providing credentials for a static cloud service account (i.e. a pair of client id and secret). Provisioning static cloud service account represent a simple and automation-friendly approach to control access to each provider's resources (e.g. access to S3/GCS/etc.). However the administrator of such needs to consider manual handling of certain security aspects, i.e. secret rotation, account rotation on expiry, etc.
+LokiStack object storage access on all public cloud providers currently only supports credentials for a static cloud service account (i.e. a pair of client id and secret). Provisioning a static cloud service account represents a simple and automation-friendly approach to control access to each provider's resources (e.g. access to S3/GCS/etc.). However, the administrator of such needs to consider manual handling of certain security aspects, i.e. secret rotation, account rotation on expiry, etc.
 
 To enhance IAM automation across the entire lifetime of access credentials all public cloud providers offer specific services (e.g. named STS, Workload Identity Federation):
-1. Automate creation and rotation of credentials per Kubernetes workload using one OIDC authorization server per Kubernetes cluster for it's service accounts.
+1. Automate creation and rotation of credentials per Kubernetes workload using one OIDC authorization server per Kubernetes cluster for its service accounts.
 2. Each workload on the managed Kubernetes cluster must be bound to a specific IAM role to access any provider service (e.g. S3/GCS/Azure Storage)
 3. The OIDC-based workflow ensures issuing only short-lived tokens to each workload and in turn frequent credentials rotation.
 
-Such an approach ensures that each Kubernetes workload requests access to the IAM controlled resources by it's Kubernetes service account only. Each valid request is further secured by providing only rotated short lived tokens. Thus any Kubernetes workload access can be controlled through the same IAM mechanisms as with static service accounts (e.g. disable on security breaches) plus using automatic rotation to minimize the impact vector on security incidents.
+Such an approach ensures that each Kubernetes workload requests access to the IAM controlled resources by its Kubernetes service account only. Each valid request is further secured by providing only rotated short lived tokens. Thus any Kubernetes workload access can be controlled through the same IAM mechanisms as with static service accounts (e.g. disable on security breaches) plus using automatic rotation to minimize the impact vector on security incidents.
 
-The following proposal discusses the implemented support of the above workflow in the Loki Operator for all three public cloud providers (AWS, GCP, Azure). Furthermore it provides instructions on how to create IAM resources upfront to control LokiStack object storage access using AWS STS or GCP Workload Identity or Azure Workload Identity Federation.
+The following proposal discusses the implemented support of the above workflow in the Loki Operator for all three public cloud providers (AWS, GCP, Azure). Furthermore, it provides instructions on how to create IAM resources upfront to control LokiStack object storage access using AWS STS, GCP Workload Identity or Azure Workload Identity Federation.
 
 __Note:__ Short-lived Token authentication is picked in this proposal as a generic term that maps well enough to the following public cloud providers IAM offerings:
 - Azure: [Workload Identity Federation](https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation)
@@ -83,7 +83,6 @@ data:
   client_id:       # The Azure Workload Identity's Client ID
   tenant_id:       # The Azure Account's Tenant ID holding the workload identity for LokiStack
   subscription_id: # The Azure Account's Subscription ID holding the workload identity for LokiStack
-  region:          # The Azure Location hosting the Kubernetes cluster and in turn LokiStack
 ```
 
 ##### Pre-requisites
@@ -164,7 +163,7 @@ data:
 
 The LokiStack administrator is required to create a custom AWS IAM Role associated with a trust relationship to the LokiStack's Kubernetes ServiceAccount
 
-1. Trust relationship: Ensures that each Lokistack container authenticating to AWS STS is using as identity it's serviceaccount token.
+1. Trust relationship: Ensures that each Lokistack container authenticating to AWS STS is using as identity its serviceaccount token.
 
 ```json
 {
@@ -301,9 +300,13 @@ __Note:__ The workload identity pool and associated OIDC provider needs to be th
 ```yaml
 data:
   bucketname: # A comma-separated list of bucket names
+  audience: # Configured audience for GCS WIF
   key.json:   # The file contents of the newly created GCP credentials configuration
 ```
 
 ## Implementation History
 
-- https://github.com/grafana/loki/pull/11481
+- AWS Support https://github.com/grafana/loki/pull/11481
+- GCS Support https://github.com/grafana/loki/pull/11869
+- Azure Support https://github.com/grafana/loki/pull/11802
+- Refactoring https://github.com/grafana/loki/pull/12106
