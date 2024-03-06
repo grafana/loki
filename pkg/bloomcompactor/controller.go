@@ -301,7 +301,7 @@ func (s *SimpleBloomController) loadWorkForGap(
 	// NB(owen-d): we filter out nil blocks here to avoid panics in the bloom generator since the fetcher
 	// input->output length and indexing in its contract
 	f := FetchFunc[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier](func(ctx context.Context, refs []bloomshipper.BlockRef) ([]*bloomshipper.CloseableBlockQuerier, error) {
-		blks, err := fetcher.FetchBlocks(ctx, refs)
+		blks, err := fetcher.FetchBlocks(ctx, refs, bloomshipper.WithFetchAsync(false), bloomshipper.WithIgnoreNotFound(false))
 		if err != nil {
 			return nil, err
 		}

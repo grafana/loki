@@ -19,9 +19,28 @@ import (
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
+type options struct {
+	ignoreNotFound bool // ignore 404s from object storage; default=true
+	fetchAsync     bool // dispatch downloading of block and return immediately; default=false
+}
+
+type FetchOption func(opts *options)
+
+func WithIgnoreNotFound(v bool) FetchOption {
+	return func(opts *options) {
+		opts.ignoreNotFound = v
+	}
+}
+
+func WithFetchAsync(v bool) FetchOption {
+	return func(opts *options) {
+		opts.fetchAsync = v
+	}
+}
+
 type fetcher interface {
 	FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error)
-	FetchBlocks(ctx context.Context, refs []BlockRef) ([]*CloseableBlockQuerier, error)
+	FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error)
 	Close()
 }
 
@@ -139,7 +158,16 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 	return f.metasCache.Store(ctx, keys, data)
 }
 
-func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]*CloseableBlockQuerier, error) {
+func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error) {
+	cfg := &options{
+		ignoreNotFound: true,
+		fetchAsync:     false,
+	}
+
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
 	n := len(refs)
 
 	responses := make(chan downloadResponse[BlockDirectory], n)
@@ -161,11 +189,13 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]*Closeabl
 		select {
 		case err := <-errors:
 			// TODO(owen-d): add metrics for missing blocks
-			if !f.cfg.ignoreMissingBlocks && !f.client.IsObjectNotFoundErr(err) {
-				f.metrics.blocksFetched.Observe(float64(count))
-				return results, err
+			if f.client.IsObjectNotFoundErr(err) && cfg.ignoreNotFound {
+				level.Warn(f.logger).Log("msg", "ignore not found block", "err", err)
+				continue
 			}
-			level.Warn(f.logger).Log("msg", "ignore missing block", "err", err)
+
+			f.metrics.blocksFetched.Observe(float64(count))
+			return results, err
 		case res := <-responses:
 			count++
 			results[res.idx] = res.item.BlockQuerier()
