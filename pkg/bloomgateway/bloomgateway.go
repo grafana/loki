@@ -52,9 +52,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -68,7 +68,6 @@ import (
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
 
 const (
-	pendingTasksInitialCap  = 1024
 	metricsSubsystem        = "bloom_gateway"
 	querierMetricsSubsystem = "bloom_gateway_querier"
 )
@@ -84,36 +83,6 @@ type SyncMap[k comparable, v any] struct {
 	Map map[k]v
 }
 
-// TODO(owen-d): pendingTasks is only used for length calculations;
-// we can replace it with an atomic int
-type pendingTasks SyncMap[ulid.ULID, Task]
-
-func (t *pendingTasks) Len() int {
-	t.RLock()
-	defer t.RUnlock()
-	return len(t.Map)
-}
-
-func (t *pendingTasks) Add(k ulid.ULID, v Task) {
-	t.Lock()
-	t.Map[k] = v
-	t.Unlock()
-}
-
-func (t *pendingTasks) Delete(k ulid.ULID) {
-	t.Lock()
-	delete(t.Map, k)
-	t.Unlock()
-}
-
-// makePendingTasks creates a SyncMap that holds pending tasks
-func makePendingTasks(n int) *pendingTasks {
-	return &pendingTasks{
-		RWMutex: sync.RWMutex{},
-		Map:     make(map[ulid.ULID]Task, n),
-	}
-}
-
 type Gateway struct {
 	services.Service
 
@@ -125,7 +94,7 @@ type Gateway struct {
 	activeUsers *util.ActiveUsersCleanupService
 	bloomStore  bloomshipper.Store
 
-	pendingTasks *pendingTasks
+	pendingTasks *atomic.Int64
 
 	serviceMngr    *services.Manager
 	serviceWatcher *services.FailureWatcher
@@ -147,13 +116,14 @@ func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
 // New returns a new instance of the Bloom Gateway.
 func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
 	g := &Gateway{
-		cfg:          cfg,
-		logger:       logger,
-		metrics:      newMetrics(reg, constants.Loki, metricsSubsystem),
-		pendingTasks: makePendingTasks(pendingTasksInitialCap),
+		cfg:     cfg,
+		logger:  logger,
+		metrics: newMetrics(reg, constants.Loki, metricsSubsystem),
 		workerConfig: workerConfig{
 			maxItems: 100,
 		},
+		pendingTasks: &atomic.Int64{},
+
 		bloomStore: store,
 	}
 
@@ -219,7 +189,7 @@ func (g *Gateway) running(ctx context.Context) error {
 		case err := <-g.serviceWatcher.Chan():
 			return errors.Wrap(err, "bloom gateway subservice failed")
 		case <-inflightTasksTicker.C:
-			inflight := g.pendingTasks.Len()
+			inflight := g.pendingTasks.Load()
 			g.metrics.inflightRequests.Observe(float64(inflight))
 		}
 	}
@@ -299,7 +269,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "table", task.table, "series", len(task.series))
 		g.queue.Enqueue(tenantID, nil, task, func() {
 			// When enqueuing, we also add the task to the pending tasks
-			g.pendingTasks.Add(task.ID, task)
+			_ = g.pendingTasks.Inc()
 		})
 		go g.consumeTask(ctx, task, tasksCh)
 	}
