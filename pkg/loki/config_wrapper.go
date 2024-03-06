@@ -314,6 +314,8 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.BloomCompactor.Ring.InstanceZone = rc.InstanceZone
 		r.BloomCompactor.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.BloomCompactor.Ring.KVStore = rc.KVStore
+		r.BloomCompactor.Ring.NumTokens = rc.NumTokens
+		r.BloomCompactor.Ring.ReplicationFactor = rc.ReplicationFactor
 	}
 
 	// BloomGateway
@@ -327,6 +329,8 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.BloomGateway.Ring.InstanceZone = rc.InstanceZone
 		r.BloomGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.BloomGateway.Ring.KVStore = rc.KVStore
+		r.BloomGateway.Ring.NumTokens = rc.NumTokens
+		r.BloomGateway.Ring.ReplicationFactor = rc.ReplicationFactor
 	}
 }
 

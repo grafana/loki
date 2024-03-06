@@ -111,7 +111,16 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QuerierForgetDelay, "query-scheduler.querier-forget-delay", 0, "If a querier disconnects without sending notification about graceful shutdown, the query-scheduler will keep the querier in the tenant's shard until the forget delay has passed. This feature is useful to reduce the blast radius when shuffle-sharding is enabled.")
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("query-scheduler.grpc-client-config", f)
 	f.BoolVar(&cfg.UseSchedulerRing, "query-scheduler.use-scheduler-ring", false, "Set to true to have the query schedulers create and place themselves in a ring. If no frontend_address or scheduler_address are present anywhere else in the configuration, Loki will toggle this value to true.")
-	cfg.SchedulerRing.RegisterFlagsWithPrefix("query-scheduler.", "collectors/", f)
+
+	// Ring
+	skipFlags := []string{
+		"query-scheduler.ring.num-tokens",
+		"query-scheduler.ring.replication-factor",
+	}
+	cfg.SchedulerRing.RegisterFlagsWithPrefix("query-scheduler.", "collectors/", f, skipFlags...)
+	f.IntVar(&cfg.SchedulerRing.NumTokens, "query-scheduler.ring.num-tokens", 1, "IGNORED: Num tokens is hardcoded to 1")
+	f.IntVar(&cfg.SchedulerRing.ReplicationFactor, "query-scheduler.ring.replication-factor", 2, "IGNORED: Replication factor is hardcoded to 2")
+
 }
 
 // NewScheduler creates a new Scheduler.
