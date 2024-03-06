@@ -251,7 +251,7 @@ func (i *blockLoadingIter) loadNext() bool {
 
 		iters := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(blockRefs))
 		for filtered.Next() {
-			bq := loader.At()
+			bq := filtered.At()
 			i.loaded[bq] = struct{}{}
 			iter, err := bq.SeriesIter()
 			if err != nil {
