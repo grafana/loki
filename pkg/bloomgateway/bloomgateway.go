@@ -257,13 +257,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}, nil
 	}
 
-	// Sort ChunkRefs by fingerprint in ascending order
-	// TODO(owen-d): pretty sure this should already be sorted.
-	// verify & then check with IsSorted() -> remove
-	sort.Slice(req.Refs, func(i, j int) bool {
-		return req.Refs[i].Fingerprint < req.Refs[j].Fingerprint
-	})
-
 	var numSeries int
 	seriesByDay := partitionRequest(req)
 
