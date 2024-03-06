@@ -1884,6 +1884,13 @@ ring:
   # CLI flag: -bloom-gateway.replication-factor
   [replication_factor: <int> | default = 3]
 
+  # Number of tokens to use in the ring. The bigger the number of tokens, the
+  # more fingerprint ranges the compactor will own, but the smaller these ranges
+  # will be. Bigger number of tokens means that more but smaller requests will
+  # be handled by each gateway.
+  # CLI flag: -bloom-gateway.ring.tokens
+  [tokens: <int> | default = 16]
+
 # Flag to enable or disable the bloom gateway component globally.
 # CLI flag: -bloom-gateway.enabled
 [enabled: <boolean> | default = false]
@@ -2342,6 +2349,11 @@ bloom_shipper:
   # CLI flag: -bloom.shipper.working-directory
   [working_directory: <string> | default = "bloom-shipper"]
 
+  # In an eventually consistent system like the bloom components, we usually
+  # want to ignore blocks that are missing in storage.
+  # CLI flag: -bloom.shipper.ignore-missing-blocks
+  [ignore_missing_blocks: <boolean> | default = true]
+
   blocks_downloading_queue:
     # The count of parallel workers that download Bloom Blocks.
     # CLI flag: -bloom.shipper.blocks-downloading-queue.workers-count
@@ -2663,6 +2675,13 @@ ring:
   # CLI flag: -bloom-compactor.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
+  # Number of tokens to use in the ring. The bigger the number of tokens, the
+  # more fingerprint ranges the compactor will own, but the smaller these ranges
+  # will be. Bigger number of tokens will result in more and smaller metas and
+  # blocks.
+  # CLI flag: -bloom-compactor.ring.tokens
+  [tokens: <int> | default = 10]
+
 # Flag to enable or disable the usage of the bloom-compactor component.
 # CLI flag: -bloom-compactor.enabled
 [enabled: <boolean> | default = false]
@@ -2671,15 +2690,15 @@ ring:
 # CLI flag: -bloom-compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
-# How many index periods (days) to wait before compacting a table. This can be
-# used to lower cost by not re-writing data to object storage too frequently
-# since recent data changes more often.
+# How many index periods (days) to wait before building bloom filters for a
+# table. This can be used to lower cost by not re-writing data to object storage
+# too frequently since recent data changes more often.
 # CLI flag: -bloom-compactor.min-table-compaction-period
 [min_table_compaction_period: <int> | default = 1]
 
-# How many index periods (days) to wait before compacting a table. This can be
-# used to lower cost by not trying to compact older data which doesn't change.
-# This can be optimized by aligning it with the maximum
+# The maximum number of index periods (days) to build bloom filters for a table.
+# This can be used to lower cost by not trying to compact older data which
+# doesn't change. This can be optimized by aligning it with the maximum
 # `reject_old_samples_max_age` setting of any tenant.
 # CLI flag: -bloom-compactor.max-table-compaction-period
 [max_table_compaction_period: <int> | default = 7]
@@ -3154,7 +3173,7 @@ shard_streams:
 # The shard size defines how many bloom gateways should be used by a tenant for
 # querying.
 # CLI flag: -bloom-gateway.shard-size
-[bloom_gateway_shard_size: <int> | default = 1]
+[bloom_gateway_shard_size: <int> | default = 0]
 
 # Whether to use the bloom gateway component in the read path to filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering

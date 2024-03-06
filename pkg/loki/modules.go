@@ -677,7 +677,7 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 		level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
 	}
 
-	t.BloomStore, err = bloomshipper.NewBloomStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.clientMetrics, metasCache, blocksCache, logger)
+	t.BloomStore, err = bloomshipper.NewBloomStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.clientMetrics, metasCache, blocksCache, reg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bloom store: %w", err)
 	}
@@ -1333,8 +1333,7 @@ func (t *Loki) initBloomGatewayRing() (services.Service, error) {
 	if t.Cfg.isModuleEnabled(BloomGateway) || t.Cfg.isModuleEnabled(Backend) || legacyReadMode {
 		mode = lokiring.ServerMode
 	}
-	manager, err := lokiring.NewRingManager(bloomGatewayRingKey, mode, t.Cfg.BloomGateway.Ring.RingConfig, t.Cfg.BloomGateway.Ring.ReplicationFactor, 128, util_log.Logger, prometheus.DefaultRegisterer)
-
+	manager, err := lokiring.NewRingManager(bloomGatewayRingKey, mode, t.Cfg.BloomGateway.Ring.RingConfig, t.Cfg.BloomGateway.Ring.ReplicationFactor, t.Cfg.BloomGateway.Ring.Tokens, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "error initializing bloom gateway ring manager")
 	}
@@ -1482,10 +1481,7 @@ func (t *Loki) initBloomCompactorRing() (services.Service, error) {
 	// is LegacyMode needed?
 	// legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
 
-	// TODO(owen-d): configurable num tokens, just use lifecycler config?
-	numTokens := 10
-	rm, err := lokiring.NewRingManager(bloomCompactorRingKey, lokiring.ServerMode, t.Cfg.BloomCompactor.Ring, 1, numTokens, util_log.Logger, prometheus.DefaultRegisterer)
-
+	rm, err := lokiring.NewRingManager(bloomCompactorRingKey, lokiring.ServerMode, t.Cfg.BloomCompactor.Ring.RingConfig, 1, t.Cfg.BloomCompactor.Ring.Tokens, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "error initializing bloom-compactor ring manager")
 	}

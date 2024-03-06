@@ -124,7 +124,7 @@ func TestTokenizerPopulate(t *testing.T) {
 		Series: &series,
 	}
 
-	err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
+	_, err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
 	require.NoError(t, err)
 	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
 	toks := tokenizer.Tokens(testLine)
@@ -168,7 +168,7 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 			Series: &series,
 		}
 
-		err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
+		_, err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
 		require.NoError(b, err)
 	}
 }

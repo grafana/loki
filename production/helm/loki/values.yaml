@@ -1522,6 +1522,12 @@ networkPolicy:
     podSelector: {}
     # -- Specifies the namespace the discovery Pods are running in
     namespaceSelector: {}
+  egressWorld:
+    # -- Enable additional cilium egress rules to external world for write, read and backend.
+    enabled: false
+  egressKubeApiserver:
+    # -- Enable additional cilium egress rules to kube-apiserver for backend.
+    enabled: false
 # -------------------------------------
 # Configuration for `minio` child chart
 # -------------------------------------

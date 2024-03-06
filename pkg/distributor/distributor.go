@@ -122,6 +122,8 @@ type Distributor struct {
 	// Push failures rate limiter.
 	writeFailuresManager *writefailures.Manager
 
+	RequestParserWrapper push.RequestParserWrapper
+
 	// metrics
 	ingesterAppends        *prometheus.CounterVec
 	ingesterAppendTimeouts *prometheus.CounterVec

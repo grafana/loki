@@ -214,7 +214,7 @@ func CreateOrUpdateLokiStack(
 		metrics.Collect(&opts.Stack, opts.Name)
 	}
 
-	return objStore.CredentialMode(), nil
+	return objStore.CredentialMode, nil
 }
 
 func dependentAnnotations(ctx context.Context, k k8s.Client, obj client.Object) (map[string]string, error) {

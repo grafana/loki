@@ -180,7 +180,7 @@ func (r *LokiStackReconciler) updateResources(ctx context.Context, req ctrl.Requ
 	}
 
 	if r.FeatureGates.OpenShift.ManagedAuthEnv {
-		if err := handlers.CreateCredentialsRequest(ctx, r.Log, r.Scheme, r.AuthConfig, r.Client, req); err != nil {
+		if err := handlers.CreateUpdateDeleteCredentialsRequest(ctx, r.Log, r.Scheme, r.AuthConfig, r.Client, req); err != nil {
 			return "", err
 		}
 	}

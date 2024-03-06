@@ -7,7 +7,9 @@ import (
 	"sort"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (
@@ -33,8 +36,9 @@ type Store interface {
 }
 
 type bloomStoreConfig struct {
-	workingDir string
-	numWorkers int
+	workingDir          string
+	numWorkers          int
+	ignoreMissingBlocks bool
 }
 
 // Compiler check to ensure bloomStoreEntry implements the Store interface
@@ -55,6 +59,13 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 	tables := tablesForRange(b.cfg, params.Interval)
 	for _, table := range tables {
 		prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
+		level.Debug(b.fetcher.logger).Log(
+			"msg", "listing metas",
+			"store", b.cfg.From,
+			"table", table,
+			"tenant", params.TenantID,
+			"prefix", prefix,
+		)
 		list, _, err := b.objectClient.List(ctx, prefix, "")
 		if err != nil {
 			return nil, nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
@@ -139,6 +150,8 @@ var _ Store = &BloomStore{}
 type BloomStore struct {
 	stores             []*bloomStoreEntry
 	storageConfig      storage.Config
+	metrics            *storeMetrics
+	logger             log.Logger
 	defaultKeyResolver // TODO(owen-d): impl schema aware resolvers
 }
 
@@ -148,10 +161,13 @@ func NewBloomStore(
 	clientMetrics storage.ClientMetrics,
 	metasCache cache.Cache,
 	blocksCache cache.TypedCache[string, BlockDirectory],
+	reg prometheus.Registerer,
 	logger log.Logger,
 ) (*BloomStore, error) {
 	store := &BloomStore{
 		storageConfig: storageConfig,
+		metrics:       newStoreMetrics(reg, constants.Loki, "bloom_store"),
+		logger:        logger,
 	}
 
 	if metasCache == nil {
@@ -169,8 +185,9 @@ func NewBloomStore(
 
 	// TODO(chaudum): Remove wrapper
 	cfg := bloomStoreConfig{
-		workingDir: storageConfig.BloomShipperConfig.WorkingDirectory,
-		numWorkers: storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
+		workingDir:          storageConfig.BloomShipperConfig.WorkingDirectory,
+		numWorkers:          storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
+		ignoreMissingBlocks: storageConfig.BloomShipperConfig.IgnoreMissingBlocks,
 	}
 
 	if err := util.EnsureDirectory(cfg.workingDir); err != nil {
@@ -188,7 +205,8 @@ func NewBloomStore(
 			return nil, errors.Wrapf(err, "creating bloom client for period %s", periodicConfig.From)
 		}
 
-		fetcher, err := NewFetcher(cfg, bloomClient, metasCache, blocksCache, logger)
+		regWithLabels := prometheus.WrapRegistererWith(prometheus.Labels{"store": periodicConfig.From.String()}, reg)
+		fetcher, err := NewFetcher(cfg, bloomClient, metasCache, blocksCache, regWithLabels, logger)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating fetcher for period %s", periodicConfig.From)
 		}
@@ -313,9 +331,9 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*Clo
 		}
 
 		var res []BlockRef
-		for _, meta := range blocks {
-			if meta.StartTimestamp >= from && meta.StartTimestamp < through {
-				res = append(res, meta)
+		for _, ref := range blocks {
+			if ref.StartTimestamp >= from && ref.StartTimestamp < through {
+				res = append(res, ref)
 			}
 		}
 
@@ -334,18 +352,30 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*Clo
 		results = append(results, res...)
 	}
 
+	level.Debug(b.logger).Log("msg", "fetch blocks", "num_req", len(blocks), "num_resp", len(results))
+
 	// sort responses (results []*CloseableBlockQuerier) based on requests (blocks []BlockRef)
-	slices.SortFunc(results, func(a, b *CloseableBlockQuerier) int {
-		ia, ib := slices.Index(blocks, a.BlockRef), slices.Index(blocks, b.BlockRef)
-		if ia < ib {
-			return -1
-		} else if ia > ib {
-			return +1
-		}
-		return 0
-	})
+	sortBlocks(results, blocks)
 
 	return results, nil
+}
+
+func sortBlocks(bqs []*CloseableBlockQuerier, refs []BlockRef) {
+	tmp := make([]*CloseableBlockQuerier, len(refs))
+	for _, bq := range bqs {
+		if bq == nil {
+			// ignore responses with nil values
+			continue
+		}
+		idx := slices.Index(refs, bq.BlockRef)
+		if idx < 0 {
+			// not found
+			// should not happen in the context of sorting responses based on requests
+			continue
+		}
+		tmp[idx] = bq
+	}
+	copy(bqs, tmp)
 }
 
 // Stop implements Store.
@@ -403,13 +433,6 @@ func (b *BloomStore) forStores(ctx context.Context, interval Interval, f func(in
 		return b.stores[j].start > through
 	})
 
-	min := func(a, b model.Time) model.Time {
-		if a < b {
-			return a
-		}
-		return b
-	}
-
 	start := from
 	for ; i < j; i++ {
 		nextSchemaStarts := model.Latest
@@ -432,6 +455,12 @@ func tablesForRange(periodConfig config.PeriodConfig, interval Interval) []strin
 	step := int64(periodConfig.IndexTables.Period.Seconds())
 	lower := interval.Start.Unix() / step
 	upper := interval.End.Unix() / step
+
+	// end is exclusive, so if it's on a step boundary, we don't want to include it
+	if interval.End.Unix()%step == 0 {
+		upper--
+	}
+
 	tables := make([]string, 0, 1+upper-lower)
 	for i := lower; i <= upper; i++ {
 		tables = append(tables, fmt.Sprintf("%s%d", periodConfig.IndexTables.Prefix, i))
