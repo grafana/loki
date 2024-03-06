@@ -57,6 +57,10 @@ message Caches {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "labelResult"
   ];
+  Cache instantMetricResult = 8 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "instantMetricResult"
+  ];
 }
 
 // Summary is the summary of a query statistics.
@@ -132,6 +136,9 @@ message Store {
 
   // Time spent fetching chunk refs from index.
   int64 chunkRefsFetchTime = 5 [(gogoproto.jsontag) = "chunkRefsFetchTime"];
+
+  // Time spent being blocked on congestion control.
+  int64 congestionControlLatency = 6 [(gogoproto.jsontag) = "congestionControlLatency"];
 }
 
 message Chunk {

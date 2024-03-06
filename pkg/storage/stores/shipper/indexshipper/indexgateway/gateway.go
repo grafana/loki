@@ -6,9 +6,6 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
@@ -20,9 +17,12 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/plan"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/index"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	seriesindex "github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
@@ -49,7 +49,7 @@ type IndexClientWithRange struct {
 }
 
 type BloomQuerier interface {
-	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunks []*logproto.ChunkRef, filters ...syntax.LineFilter) ([]*logproto.ChunkRef, error)
+	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunks []*logproto.ChunkRef, plan plan.QueryPlan) ([]*logproto.ChunkRef, error)
 }
 
 type Gateway struct {
@@ -204,7 +204,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return nil, err
 	}
 
-	predicate := chunk.NewPredicate(matchers, req.Filters)
+	predicate := chunk.NewPredicate(matchers, &req.Plan)
 	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, predicate)
 	if err != nil {
 		return nil, err
@@ -221,17 +221,20 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 
 	initialChunkCount := len(result.Refs)
 
-	// Return unfiltered results if there is no bloom querier (Bloom Gateway disabled) or if there are not filters.
-	if g.bloomQuerier == nil || len(req.Filters) == 0 {
-		level.Info(g.log).Log("msg", "chunk filtering is not enabled or there is no line filter", "filters", len(req.Filters))
+	// Return unfiltered results if there is no bloom querier (Bloom Gateway disabled)
+	if g.bloomQuerier == nil {
+		level.Info(g.log).Log("msg", "chunk filtering is not enabled")
 		return result, nil
 	}
 
-	// TODO(chaudum): Take the chunks from the index querier's GetChunks()
-	// response and send them to the bloom gateway along with the filter
-	// expression that we got from the request object.
-	// The bloom gateway returns the list of matching ChunkRefs.
-	chunkRefs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, result.Refs, req.Filters...)
+	// Extract LineFiltersExpr from the plan. If there is none, we can short-circuit and return before making a req
+	// to the bloom-gateway (through the g.bloomQuerier)
+	// TODO(owen-d): metrics for number of filters seen
+	if len(syntax.ExtractLineFilters(req.Plan.AST)) == 0 {
+		return result, nil
+	}
+
+	chunkRefs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, result.Refs, req.Plan)
 	if err != nil {
 		return nil, err
 	}

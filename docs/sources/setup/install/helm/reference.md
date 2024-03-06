@@ -2809,6 +2809,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the grafanaAgent pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.selfMonitoring.grafanaAgent.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for GrafanaAgent pods</td>
@@ -3110,6 +3119,24 @@ null
 			<td>Specify the port used for discovery</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>networkPolicy.egressKubeApiserver.enabled</td>
+			<td>bool</td>
+			<td>Enable additional cilium egress rules to kube-apiserver for backend.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>networkPolicy.egressWorld.enabled</td>
+			<td>bool</td>
+			<td>Enable additional cilium egress rules to external world for write, read and backend.</td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>

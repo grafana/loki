@@ -2,12 +2,14 @@ package tsdb
 
 import (
 	"fmt"
+	"hash"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 )
 
@@ -23,7 +25,7 @@ type Identifier interface {
 // identifierFromPath will detect whether this is a single or multitenant TSDB
 func identifierFromPath(p string) (Identifier, error) {
 	// try parsing as single tenant since the filename is more deterministic without an arbitrary nodename for uploader
-	id, ok := parseSingleTenantTSDBPath(p)
+	id, ok := ParseSingleTenantTSDBPath(p)
 	if ok {
 		return NewPrefixedIdentifier(id, filepath.Dir(p), ""), nil
 	}
@@ -67,6 +69,12 @@ type SingleTenantTSDBIdentifier struct {
 	Checksum      uint32
 }
 
+// implement Hash
+func (i SingleTenantTSDBIdentifier) Hash(h hash.Hash32) (err error) {
+	_, err = h.Write([]byte(i.str()))
+	return errors.Wrap(err, "writing SingleTenantTSDBIdentifier")
+}
+
 // str builds filename with format <file-creation-ts> + `-` + `compactor` + `-` + <oldest-chunk-start-ts> + `-` + <latest-chunk-end-ts> `-` + <index-checksum>
 func (i SingleTenantTSDBIdentifier) str() string {
 	return fmt.Sprintf(
@@ -87,7 +95,7 @@ func (i SingleTenantTSDBIdentifier) Path() string {
 	return i.str()
 }
 
-func parseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool) {
+func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool) {
 	// parsing as multitenant didn't work, so try single tenant
 
 	// incorrect suffix
@@ -120,7 +128,7 @@ func parseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 		return
 	}
 
-	checksum, err := strconv.ParseInt(elems[4], 16, 32)
+	checksum, err := strconv.ParseUint(elems[4], 16, 32)
 	if err != nil {
 		return
 	}

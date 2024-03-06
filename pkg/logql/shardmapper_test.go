@@ -1598,3 +1598,32 @@ func TestStringTrimming(t *testing.T) {
 func float64p(v float64) *float64 {
 	return &v
 }
+
+func TestShardTopk(t *testing.T) {
+	expr := `topk(
+		10,
+		sum by (ip) (
+			sum_over_time({job="foo"} | json | unwrap bytes(bytes)[1m])
+		)
+	)`
+	m := NewShardMapper(ConstantShards(5), nilShardMetrics, []string{ShardQuantileOverTime})
+	_, _, mappedExpr, err := m.Parse(syntax.MustParseExpr(expr))
+	require.NoError(t, err)
+
+	expected := `topk(
+  10,
+  sum by (ip)(
+    concat(
+      downstream<sum by (ip)(sum_over_time({job="foo"} | json | unwrap bytes(bytes)[1m])), shard=0_of_5>
+      ++
+      downstream<sum by (ip)(sum_over_time({job="foo"} | json | unwrap bytes(bytes)[1m])), shard=1_of_5>
+      ++
+      downstream<sum by (ip)(sum_over_time({job="foo"} | json | unwrap bytes(bytes)[1m])), shard=2_of_5>
+      ++
+      downstream<sum by (ip)(sum_over_time({job="foo"} | json | unwrap bytes(bytes)[1m])), shard=3_of_5>
+      ++ ...
+    )
+  )
+)`
+	require.Equal(t, expected, mappedExpr.Pretty(0))
+}

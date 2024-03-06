@@ -47,7 +47,7 @@ const relativeAccuracy = 0.01
 var ddsketchPool = sync.Pool{
 	New: func() any {
 		m, _ := mapping.NewCubicallyInterpolatedMapping(relativeAccuracy)
-		return ddsketch.NewDDSketchFromStoreProvider(m, store.DefaultProvider)
+		return ddsketch.NewDDSketch(m, store.NewCollapsingLowestDenseStore(2048), store.NewCollapsingLowestDenseStore(2048))
 	},
 }
 

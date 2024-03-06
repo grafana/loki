@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
@@ -119,6 +120,8 @@ type instance struct {
 	writeFailures *writefailures.Manager
 
 	schemaconfig *config.SchemaConfig
+
+	customStreamsTracker push.UsageTracker
 }
 
 func newInstance(
@@ -262,6 +265,20 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
 	// reducing the stream limits, for instance.
 	var err error
+
+	labels, err := syntax.ParseLabels(pushReqStream.Labels)
+	if err != nil {
+		if i.configs.LogStreamCreation(i.instanceID) {
+			level.Debug(util_log.Logger).Log(
+				"msg", "failed to create stream, failed to parse labels",
+				"org_id", i.instanceID,
+				"err", err,
+				"stream", pushReqStream.Labels,
+			)
+		}
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
 	if record != nil {
 		err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, i.streams.Len())
 	}
@@ -282,21 +299,12 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
+		if i.customStreamsTracker != nil {
+			i.customStreamsTracker.DiscardedBytesAdd(i.instanceID, validation.StreamLimit, labels, float64(bytes))
+		}
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, i.instanceID)
 	}
 
-	labels, err := syntax.ParseLabels(pushReqStream.Labels)
-	if err != nil {
-		if i.configs.LogStreamCreation(i.instanceID) {
-			level.Debug(util_log.Logger).Log(
-				"msg", "failed to create stream, failed to parse labels",
-				"org_id", i.instanceID,
-				"err", err,
-				"stream", pushReqStream.Labels,
-			)
-		}
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
 	fp := i.getHashForLabels(labels)
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
@@ -949,9 +957,8 @@ type QuerierQueryServer interface {
 	Send(res *logproto.QueryResponse) error
 }
 
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) (int32, error) {
+func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) error {
 	stats := stats.FromContext(ctx)
-	var lines int32
 
 	// send until the limit is reached.
 	for limit != 0 && !isDone(ctx) {
@@ -961,7 +968,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		}
 		batch, batchSize, err := iter.ReadBatch(i, fetchSize)
 		if err != nil {
-			return lines, err
+			return err
 		}
 
 		if limit > 0 {
@@ -970,49 +977,46 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
-		lines += int32(batchSize)
 
 		if isDone(ctx) {
 			break
 		}
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
-			return lines, err
+			return err
 		}
 
 		// We check this after sending an empty batch to make sure stats are sent
 		if len(batch.Streams) == 0 {
-			return lines, err
+			return nil
 		}
 
 		stats.Reset()
 	}
-	return lines, nil
+	return nil
 }
 
-func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) (int32, error) {
-	var lines int32
+func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
 	sp := opentracing.SpanFromContext(ctx)
 
 	stats := stats.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
 		if err != nil {
-			return lines, err
+			return err
 		}
 
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
-		lines += int32(size)
 		if isDone(ctx) {
 			break
 		}
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
-			return lines, err
+			return err
 		}
 
 		// We check this after sending an empty batch to make sure stats are sent
 		if len(batch.Series) == 0 {
-			return lines, nil
+			return nil
 		}
 
 		stats.Reset()
@@ -1021,7 +1025,7 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		}
 	}
 
-	return lines, nil
+	return nil
 }
 
 func shouldConsiderStream(stream *stream, reqFrom, reqThrough time.Time) bool {

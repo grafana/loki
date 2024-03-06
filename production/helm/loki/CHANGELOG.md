@@ -13,6 +13,42 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.43.5
+
+- [BUGFIX] Add `---` before the `backend-kubeapiserver-egress` ciliumnetworkpolicy to prevent the `backend-world-egress` one from being dumped if both are enabled.
+
+## 5.43.4
+
+- [ENHANCEMENT] Add `ciliumnetworkpolicies` with egress to world for write, read and backend.
+
+## 5.43.3
+
+- [ENHANCEMENT] Added missing default values to support ServerSideApply
+
+## 5.43.2
+
+- [BUGFIX] Added `alibabacloud` to `isUsingObjectStorage` check.
+
+## 5.43.1
+
+- [BUGFIX] Fix `toPorts` fields in the `ciliumnetworkpolicy` template
+
+## 5.43.0
+
+- [ENHANCEMENT] Allow the definition of resources for GrafanaAgent pods
+
+## 5.42.3
+
+- [BUGFIX] Added condition for `egress-discovery` networkPolicies and ciliumNetworkPolicies.
+
+## 5.42.2
+
+- [BUGFIX] Remove trailing tab character in statefulset templates
+
+## 5.42.1
+
+- [BUGFIX] Added missing annotations to loki-read StatefulSet.
+
 ## 5.42.0
 
 - [CHANGE] Changed versions of Loki v2.9.4 and GEL v1.8.6

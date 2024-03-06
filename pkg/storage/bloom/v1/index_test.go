@@ -10,6 +10,7 @@ import (
 )
 
 func TestBloomOffsetEncoding(t *testing.T) {
+	t.Parallel()
 	src := BloomOffset{Page: 1, ByteOffset: 2}
 	enc := &encoding.Encbuf{}
 	src.Encode(enc, BloomOffset{})
@@ -22,6 +23,7 @@ func TestBloomOffsetEncoding(t *testing.T) {
 }
 
 func TestSeriesEncoding(t *testing.T) {
+	t.Parallel()
 	src := SeriesWithOffset{
 		Series: Series{
 			Fingerprint: model.Fingerprint(1),
@@ -54,6 +56,7 @@ func TestSeriesEncoding(t *testing.T) {
 }
 
 func TestChunkRefCompare(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		desc                              string
 		left, right, exclusive, inclusive ChunkRefs
