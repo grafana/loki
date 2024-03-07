@@ -17,12 +17,21 @@ jobs:
   create-operator-pull-request:
     runs-on: ubuntu-latest
     steps:
+      - name: Set redhat-openshift-ecosystem specific variables
+        if: ${{ inputs.org == 'redhat-openshift-ecosystem' }}
+        env:
+          ocpDir: '/path/to/openshift/directory'
+          ocpSupportedVersions: 'v4.12'
+        run: |
+          echo "ocpDir=${ocpDir}" >> $GITHUB_ENV
+          echo "ocpSupportedVersions=${ocpSupportedVersions}" >> $GITHUB_ENV
+
       - name: Set version as env variable
         env:
           TAG: ${{ github.ref_name }}
         run: |
           echo $TAG
-          TAG=${TAG:1} # remove v (prefix)
+          TAG=${TAG:10} # remove "operator/v" (prefix)
           echo version=${TAG} >> $GITHUB_ENV # update GitHub ENV vars
 
       - name: Sync fork
@@ -52,10 +61,23 @@ jobs:
       - name: Update version
         env:
           VERSION: ${{ env.version }}
+          OCP_DIR: ${{ env.ocpDir || ''}}
         run: |
           mkdir operators/loki-operator/${VERSION} 
-          cp -R ./tmp/bundle/* operators/loki-operator/${VERSION} 
+          cp -R ./tmp/operator/bundle/community${OCP_DIR}/* oOCP_DIR}/* opperators/loki-operator/${VERSION}
+          rm -f "operators/loki-operator/${VERSION}/bundle.Dockerfile"
           rm -rf ./tmp
+
+      - name: Add OpenShift Supported versions to redhat catalog
+        if: ${{ inputs.org == 'redhat-openshift-ecosystem' }}
+        env:
+          VERSION: ${{ env.version }} 
+          OCP_SUPPORTED_VERSIONS: ${{ env.ocpSupportedVersions || ''}}
+        uses: fjogeleit/yaml-update-action@main
+        with:
+          valueFile: "./operators/loki-operator/${VERSION}/metadata/annotations.yaml"
+          propertyPath: "annotations['com.redhat.openshift.versions']"
+          value: ${OCP_SUPPORTED_VERSIONS}
 
       - name: Use CLA approved github bot
         run: |
