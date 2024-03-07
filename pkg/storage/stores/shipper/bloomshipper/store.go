@@ -353,8 +353,6 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef, opts ..
 		results = append(results, res...)
 	}
 
-	level.Debug(b.logger).Log("msg", "fetch blocks", "num_req", len(blocks), "num_resp", len(results))
-
 	// sort responses (results []*CloseableBlockQuerier) based on requests (blocks []BlockRef)
 	sortBlocks(results, blocks)
 

@@ -79,7 +79,10 @@ func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) er
 		refs = append(refs, block.ref)
 	}
 
+	start := time.Now()
 	bqs, err := p.store.FetchBlocks(ctx, refs, bloomshipper.WithFetchAsync(true), bloomshipper.WithIgnoreNotFound(true))
+	level.Debug(p.logger).Log("msg", "fetch blocks", "count", len(bqs), "duration", time.Since(start), "err", err)
+
 	if err != nil {
 		return err
 	}
@@ -87,7 +90,7 @@ func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) er
 	for i, bq := range bqs {
 		block := data[i]
 		if bq == nil {
-			level.Warn(p.logger).Log("msg", "skipping not found block", "block", block.ref)
+			// TODO(chaudum): Add metric for skipped blocks
 			continue
 		}
 		level.Debug(p.logger).Log(
