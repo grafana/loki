@@ -57,7 +57,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	// Overrides
 	f.IntVar(&cfg.Ring.NumTokens, "bloom-compactor.ring.num-tokens", 10, "Number of tokens to use in the ring. The bigger the number of tokens, the more fingerprint ranges the compactor will own, but the smaller these ranges will be. Bigger number of tokens will result in more and smaller metas and blocks.")
 	// Ignored
-	f.IntVar(&cfg.Ring.ReplicationFactor, "bloom-compactor.ring.replication-factor", 1, "IGNORED: Replication factor is hardcoded to 1")
+	f.IntVar(&cfg.Ring.ReplicationFactor, "bloom-compactor.ring.replication-factor", 1, "IGNORED: Replication factor is fixed to 1")
 }
 
 func (cfg *Config) Validate() error {
