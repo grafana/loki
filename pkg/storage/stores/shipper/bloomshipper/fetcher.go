@@ -183,8 +183,13 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 
 	found, missing := 0, 0
 
+	// TODO(chaudum): Can fetching items from cache be made more efficient
+	// by fetching all keys at once.
+	// The problem is keeping the order of the responses.
+
 	for i := 0; i < n; i++ {
-		dir, isFound, err := f.getBlockDir(ctx, refs[i])
+		key := f.client.Block(refs[i]).Addr()
+		dir, isFound, err := f.getBlockDir(ctx, key)
 		if err != nil {
 			return results, err
 		}
@@ -192,7 +197,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 			f.q.enqueue(downloadRequest[BlockRef, BlockDirectory]{
 				ctx:     ctx,
 				item:    refs[i],
-				key:     f.client.Block(refs[i]).Addr(),
+				key:     key,
 				idx:     i,
 				results: responses,
 				errors:  errors,
@@ -243,12 +248,33 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 		return
 	}
 
-	result, err := f.fetchBlock(ctx, task.item)
+	// check if block was fetched while task was waiting in queue
+	result, exists, err := f.getBlockDir(ctx, task.key)
 	if err != nil {
 		task.errors <- err
 		return
 	}
 
+	// return item from cache
+	if exists {
+		level.Debug(f.logger).Log("msg", "send download response", "reason", "cache")
+		task.results <- downloadResponse[BlockDirectory]{
+			item: result,
+			key:  task.key,
+			idx:  task.idx,
+		}
+		return
+	}
+
+	// fetch from storage
+	result, err = f.fetchBlock(ctx, task.item)
+	if err != nil {
+		task.errors <- err
+		return
+	}
+
+	// return item from storage
+	level.Debug(f.logger).Log("msg", "send download response", "reason", "storage")
 	task.results <- downloadResponse[BlockDirectory]{
 		item: result,
 		key:  task.key,
@@ -258,18 +284,15 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 
 // getBlockDir resolves a block directory without fetching the block from
 // remote object storage. Returns three arguments: the block directory, a
-// boolean whether the block was found in cache or on filesystem, and
-// optionally an error.
-func (f *Fetcher) getBlockDir(ctx context.Context, ref BlockRef) (BlockDirectory, bool, error) {
+// boolean whether the block was found in cache, and optionally an error.
+func (f *Fetcher) getBlockDir(ctx context.Context, key string) (BlockDirectory, bool, error) {
 	var zero BlockDirectory
 
 	if ctx.Err() != nil {
 		return zero, false, errors.Wrap(ctx.Err(), "get block")
 	}
 
-	keys := []string{f.client.Block(ref).Addr()}
-
-	_, fromCache, _, err := f.blocksCache.Fetch(ctx, keys)
+	_, fromCache, _, err := f.blocksCache.Fetch(ctx, []string{key})
 	if err != nil {
 		return zero, false, err
 	}
