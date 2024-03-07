@@ -44,7 +44,7 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -344,34 +344,34 @@ func (g *Gateway) processResponses(req *logproto.FilterChunkRefRequest, response
 }
 
 func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output) (filtered int) {
-
-	// binary search index of fingerprint
-	// TODO(owen-d): there's a bug here because the same fingerprint and chunks can exist over multiple day buckets.
-	// If all requested chunks are in both days, the first day could technically remove _all_ chunks from consideration.
-	// The sort.Search for the _next_ chunk would return an index where fingerprint is greater than the target fingerprint.
-	idx := sort.Search(len(req.Refs), func(i int) bool {
-		return req.Refs[i].Fingerprint >= uint64(res.Fp)
+	idx, found := slices.BinarySearchFunc(req.Refs, uint64(res.Fp), func(g *logproto.GroupedChunkRefs, b uint64) int {
+		if g.Fingerprint < b {
+			return -1
+		}
+		if g.Fingerprint > b {
+			return 1
+		}
+		return 0
 	})
 
 	// fingerprint not found
-	if idx >= len(req.Refs) {
-		level.Error(g.logger).Log("msg", "index out of range", "idx", idx, "len", len(req.Refs), "fp", uint64(res.Fp))
+	if !found {
+		level.Warn(g.logger).Log("msg", "index out of range", "idx", idx, "len", len(req.Refs), "fp", uint64(res.Fp))
 		return
 	}
 
-	// if all chunks of a fingerprint are are removed
-	// then remove the whole group from the response
-
-	// TODO(owen-d): there's a bug here because the same fingerprint and chunks can exist over multiple day buckets.
-	// A later day bucket could happen to request removals with len=remaining, but whose chunk references were
-	// partially removed in an earlier round. Just checking the length here could cause us to discard chunks
-	// that shouldn't be.
+	// Since responses are partitioned by day, and we check the From/Through of the chunks (see loop below),
+	// any previous response will only remove the chunks for its day. If the current response has as many removals
+	// as the number of chunks remaining, we can safely assume that the remaining chunks are for the day of the response.
+	// Note: this is an optimization to avoid the loop below. If the assumption above is no longer valid,
+	//       we will need to iterate the loop below to check each chunk against the removals.
 	if len(req.Refs[idx].Refs) == res.Removals.Len() {
 		filtered += len(req.Refs[idx].Refs)
 
 		req.Refs[idx] = nil // avoid leaking pointer
 		// TODO(owen-d): this is O(n^2);
 		// use more specialized data structure that doesn't reslice
+		// alternatively, just set to nil, and handle outside of this function
 		req.Refs = append(req.Refs[:idx], req.Refs[idx+1:]...)
 		return
 	}
@@ -379,9 +379,7 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 	for i := range res.Removals {
 		toRemove := res.Removals[i]
 		for j := 0; j < len(req.Refs[idx].Refs); j++ {
-			// TODO(owen-d): These should check start/end/checksum, not just checksum.
-			// TODO(owen-d): These structs have equivalent data -- can we combine them?
-			if toRemove.Checksum == req.Refs[idx].Refs[j].Checksum {
+			if equalChunks(toRemove, req.Refs[idx].Refs[j]) {
 				filtered += 1
 
 				// TODO(owen-d): usually not a problem (n is small), but I've seen some series have
@@ -394,4 +392,9 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 		}
 	}
 	return
+}
+
+// TODO(owen-d): These structs have equivalent data -- can we combine them?
+func equalChunks(a v1.ChunkRef, b *logproto.ShortRef) bool {
+	return a.Checksum == b.Checksum && a.Start == b.From && a.End == b.Through
 }

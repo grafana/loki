@@ -411,65 +411,184 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	})
 }
 
-func TestBloomGateway_RemoveNotMatchingChunks(t *testing.T) {
+func TestBloomGateway_ProcessResponses(t *testing.T) {
 	g := &Gateway{
 		logger: log.NewNopLogger(),
 	}
-	t.Run("removing chunks partially", func(t *testing.T) {
-		req := &logproto.FilterChunkRefRequest{
-			Refs: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
-					{Checksum: 0x1},
-					{Checksum: 0x2},
-					{Checksum: 0x3},
-					{Checksum: 0x4},
-					{Checksum: 0x5},
-				}},
-			},
-		}
-		res := v1.Output{
-			Fp: 0x00, Removals: v1.ChunkRefs{
-				{Checksum: 0x2},
-				{Checksum: 0x4},
-			},
-		}
-		expected := &logproto.FilterChunkRefRequest{
-			Refs: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
-					{Checksum: 0x1},
-					{Checksum: 0x3},
-					{Checksum: 0x5},
-				}},
-			},
-		}
-		n := g.removeNotMatchingChunks(req, res)
-		require.Equal(t, 2, n)
-		require.Equal(t, expected, req)
-	})
 
-	t.Run("removing all chunks removed fingerprint ref", func(t *testing.T) {
-		req := &logproto.FilterChunkRefRequest{
-			Refs: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
-					{Checksum: 0x1},
-					{Checksum: 0x2},
-					{Checksum: 0x3},
-				}},
+	for _, tc := range []struct {
+		name             string
+		req              *logproto.FilterChunkRefRequest
+		responses        []v1.Output
+		expected         *logproto.FilterChunkRefRequest
+		expectedFiltered int
+	}{
+		{
+			name: "removing chunks partially",
+			req: &logproto.FilterChunkRefRequest{
+				Refs: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
+						{From: 0, Through: 100, Checksum: 0x1},
+						{From: 0, Through: 100, Checksum: 0x2},
+						{From: 0, Through: 100, Checksum: 0x3},
+						{From: 0, Through: 100, Checksum: 0x4},
+						{From: 0, Through: 100, Checksum: 0x5},
+					}},
+				},
 			},
-		}
-		res := v1.Output{
-			Fp: 0x00, Removals: v1.ChunkRefs{
-				{Checksum: 0x1},
-				{Checksum: 0x2},
-				{Checksum: 0x2},
+			responses: []v1.Output{
+				{
+					Fp: 0x00, Removals: v1.ChunkRefs{
+						{Start: 0, End: 100, Checksum: 0x2},
+						{Start: 0, End: 100, Checksum: 0x4},
+					},
+				},
 			},
-		}
-		expected := &logproto.FilterChunkRefRequest{
-			Refs: []*logproto.GroupedChunkRefs{},
-		}
-		n := g.removeNotMatchingChunks(req, res)
-		require.Equal(t, 3, n)
-		require.Equal(t, expected, req)
-	})
-
+			expected: &logproto.FilterChunkRefRequest{
+				Refs: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
+						{From: 0, Through: 100, Checksum: 0x1},
+						{From: 0, Through: 100, Checksum: 0x3},
+						{From: 0, Through: 100, Checksum: 0x5},
+					}},
+				},
+			},
+			expectedFiltered: 2,
+		},
+		{
+			name: "removing all chunks removed fingerprint ref",
+			req: &logproto.FilterChunkRefRequest{
+				Refs: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
+						{From: 0, Through: 100, Checksum: 0x1},
+						{From: 0, Through: 100, Checksum: 0x2},
+						{From: 0, Through: 100, Checksum: 0x3},
+					}},
+				},
+			},
+			responses: []v1.Output{
+				{
+					Fp: 0x00, Removals: v1.ChunkRefs{
+						{Start: 0, End: 100, Checksum: 0x1},
+						{Start: 0, End: 100, Checksum: 0x2},
+						{Start: 0, End: 100, Checksum: 0x2},
+					},
+				},
+			},
+			expected: &logproto.FilterChunkRefRequest{
+				Refs: []*logproto.GroupedChunkRefs{},
+			},
+			expectedFiltered: 3,
+		},
+		{
+			name: "removing some chunks through different responses",
+			req: &logproto.FilterChunkRefRequest{
+				Refs: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
+						{From: 0, Through: 100, Checksum: 0x1},
+						{From: 0, Through: 100, Checksum: 0x2},
+						{From: 0, Through: 100, Checksum: 0x3},
+						{From: 0, Through: 100, Checksum: 0x4},
+						{From: 0, Through: 100, Checksum: 0x5},
+					}},
+				},
+			},
+			responses: []v1.Output{
+				{
+					Fp: 0x00, Removals: v1.ChunkRefs{
+						{Start: 0, End: 100, Checksum: 0x2},
+						{Start: 0, End: 100, Checksum: 0x4},
+					},
+				},
+				{
+					Fp: 0x00, Removals: v1.ChunkRefs{
+						{Start: 0, End: 100, Checksum: 0x1},
+						{Start: 0, End: 100, Checksum: 0x5},
+					},
+				},
+			},
+			expected: &logproto.FilterChunkRefRequest{
+				Refs: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
+						{From: 0, Through: 100, Checksum: 0x3},
+					}},
+				},
+			},
+			expectedFiltered: 4,
+		},
+		{
+			name: "removing chunks from given time span",
+			req: &logproto.FilterChunkRefRequest{
+				Refs: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
+						{From: 0, Through: 100, Checksum: 0x1},
+						{From: 200, Through: 300, Checksum: 0x1},
+						{From: 0, Through: 100, Checksum: 0x2},
+						{From: 200, Through: 300, Checksum: 0x2},
+					}},
+				},
+			},
+			responses: []v1.Output{
+				{
+					Fp: 0x00, Removals: v1.ChunkRefs{
+						{Start: 0, End: 100, Checksum: 0x1},
+						{Start: 200, End: 300, Checksum: 0x2},
+					},
+				},
+			},
+			expected: &logproto.FilterChunkRefRequest{
+				Refs: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
+						{From: 200, Through: 300, Checksum: 0x1},
+						{From: 0, Through: 100, Checksum: 0x2},
+					}},
+				},
+			},
+			expectedFiltered: 2,
+		},
+		{
+			name: "first output removes whole fingerprint",
+			req: &logproto.FilterChunkRefRequest{
+				Refs: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
+						{From: 0, Through: 100, Checksum: 0x1},
+						{From: 0, Through: 100, Checksum: 0x2},
+					}},
+					{Fingerprint: 0x01, Tenant: "fake", Refs: []*logproto.ShortRef{
+						{From: 0, Through: 100, Checksum: 0x1},
+						{From: 0, Through: 100, Checksum: 0x2},
+					}},
+				},
+			},
+			responses: []v1.Output{
+				{
+					Fp: 0x00, Removals: v1.ChunkRefs{
+						{Start: 0, End: 100, Checksum: 0x1},
+						{Start: 0, End: 100, Checksum: 0x2},
+					},
+				},
+				{
+					Fp: 0x00, Removals: v1.ChunkRefs{
+						{Start: 0, End: 100, Checksum: 0x1},
+						{Start: 0, End: 100, Checksum: 0x2},
+					},
+				},
+			},
+			expected: &logproto.FilterChunkRefRequest{
+				Refs: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 0x01, Tenant: "fake", Refs: []*logproto.ShortRef{
+						{From: 0, Through: 100, Checksum: 0x1},
+						{From: 0, Through: 100, Checksum: 0x2},
+					}},
+				},
+			},
+			expectedFiltered: 2,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			filtered := g.processResponses(tc.req, tc.responses)
+			require.Equal(t, tc.expectedFiltered, filtered)
+			require.Equal(t, tc.expected, tc.req)
+		})
+	}
 }
