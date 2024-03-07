@@ -141,8 +141,8 @@ func newBatchedChunkLoader(
 
 		return v1.ChunkRefWithIter{
 			Ref: v1.ChunkRef{
-				Start:    c.From,
-				End:      c.Through,
+				From:     c.From,
+				Through:  c.Through,
 				Checksum: c.Checksum,
 			},
 			Itr: itr,
