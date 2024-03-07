@@ -79,7 +79,7 @@ func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) er
 		refs = append(refs, block.ref)
 	}
 
-	bqs, err := p.store.FetchBlocks(ctx, refs)
+	bqs, err := p.store.FetchBlocks(ctx, refs, bloomshipper.WithFetchAsync(true), bloomshipper.WithIgnoreNotFound(true))
 	if err != nil {
 		return err
 	}
