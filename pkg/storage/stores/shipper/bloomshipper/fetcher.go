@@ -175,8 +175,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 	cfg := &options{ignoreNotFound: true, fetchAsync: false}
 	cfg.apply(opts...)
 
-	// first, resolve blocks from cache or from filesystem
-	// enqueue missing blocks to download queue
+	// first, resolve blocks from cache and enqueue missing blocks to download queue
 	n := len(refs)
 	results := make([]*CloseableBlockQuerier, n)
 	responses := make(chan downloadResponse[BlockDirectory], n)
@@ -277,18 +276,6 @@ func (f *Fetcher) getBlockDir(ctx context.Context, ref BlockRef) (BlockDirectory
 	if len(fromCache) == 1 {
 		f.metrics.blocksFetchedSize.WithLabelValues(sourceCache).Observe(float64(fromCache[0].Size()))
 		return fromCache[0], true, nil
-	}
-
-	fromLocalFS, _, err := f.loadBlocksFromFS(ctx, []BlockRef{ref})
-	if err != nil {
-		return zero, false, err
-	}
-
-	// item found on local file system
-	if len(fromLocalFS) == 1 {
-		err = f.writeBackBlocks(ctx, fromLocalFS)
-		f.metrics.blocksFetchedSize.WithLabelValues(sourceFilesystem).Observe(float64(fromLocalFS[0].Size()))
-		return fromLocalFS[0], true, err
 	}
 
 	// item wasn't found
