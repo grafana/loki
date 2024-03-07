@@ -438,14 +438,14 @@ func (b *IndexBuilder) Append(series SeriesWithOffset) error {
 
 // must be > 1
 func chkBounds(chks []ChunkRef) (from, through model.Time) {
-	from, through = chks[0].Start, chks[0].End
+	from, through = chks[0].From, chks[0].Through
 	for _, chk := range chks[1:] {
-		if chk.Start.Before(from) {
-			from = chk.Start
+		if chk.From.Before(from) {
+			from = chk.From
 		}
 
-		if chk.End.After(through) {
-			through = chk.End
+		if chk.Through.After(through) {
+			through = chk.Through
 		}
 	}
 	return

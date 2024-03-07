@@ -35,6 +35,8 @@ func (b BloomTests) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefi
 	return true
 }
 
+// TODO(owen-d): limits the number of bloom lookups run.
+// An arbitrarily high number can overconsume cpu and is a DoS vector.
 func FiltersToBloomTest(b NGramBuilder, filters ...syntax.LineFilterExpr) BloomTest {
 	tests := make(BloomTests, 0, len(filters))
 	for _, f := range filters {

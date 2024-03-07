@@ -52,9 +52,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -68,7 +68,6 @@ import (
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
 
 const (
-	pendingTasksInitialCap  = 1024
 	metricsSubsystem        = "bloom_gateway"
 	querierMetricsSubsystem = "bloom_gateway_querier"
 )
@@ -84,34 +83,6 @@ type SyncMap[k comparable, v any] struct {
 	Map map[k]v
 }
 
-type pendingTasks SyncMap[ulid.ULID, Task]
-
-func (t *pendingTasks) Len() int {
-	t.RLock()
-	defer t.RUnlock()
-	return len(t.Map)
-}
-
-func (t *pendingTasks) Add(k ulid.ULID, v Task) {
-	t.Lock()
-	t.Map[k] = v
-	t.Unlock()
-}
-
-func (t *pendingTasks) Delete(k ulid.ULID) {
-	t.Lock()
-	delete(t.Map, k)
-	t.Unlock()
-}
-
-// makePendingTasks creates a SyncMap that holds pending tasks
-func makePendingTasks(n int) *pendingTasks {
-	return &pendingTasks{
-		RWMutex: sync.RWMutex{},
-		Map:     make(map[ulid.ULID]Task, n),
-	}
-}
-
 type Gateway struct {
 	services.Service
 
@@ -123,7 +94,7 @@ type Gateway struct {
 	activeUsers *util.ActiveUsersCleanupService
 	bloomStore  bloomshipper.Store
 
-	pendingTasks *pendingTasks
+	pendingTasks *atomic.Int64
 
 	serviceMngr    *services.Manager
 	serviceWatcher *services.FailureWatcher
@@ -131,6 +102,9 @@ type Gateway struct {
 	workerConfig workerConfig
 }
 
+// fixedQueueLimits is a queue.Limits implementation that returns a fixed value for MaxConsumers.
+// Notably this lets us run with "disabled" max consumers (0) for the bloom gateway meaning it will
+// distribute any request to any receiver.
 type fixedQueueLimits struct {
 	maxConsumers int
 }
@@ -142,13 +116,14 @@ func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
 // New returns a new instance of the Bloom Gateway.
 func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
 	g := &Gateway{
-		cfg:          cfg,
-		logger:       logger,
-		metrics:      newMetrics(reg, constants.Loki, metricsSubsystem),
-		pendingTasks: makePendingTasks(pendingTasksInitialCap),
+		cfg:     cfg,
+		logger:  logger,
+		metrics: newMetrics(reg, constants.Loki, metricsSubsystem),
 		workerConfig: workerConfig{
 			maxItems: 100,
 		},
+		pendingTasks: &atomic.Int64{},
+
 		bloomStore: store,
 	}
 
@@ -214,7 +189,7 @@ func (g *Gateway) running(ctx context.Context) error {
 		case err := <-g.serviceWatcher.Chan():
 			return errors.Wrap(err, "bloom gateway subservice failed")
 		case <-inflightTasksTicker.C:
-			inflight := g.pendingTasks.Len()
+			inflight := g.pendingTasks.Load()
 			g.metrics.inflightRequests.Observe(float64(inflight))
 		}
 	}
@@ -245,17 +220,14 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, errors.New("from time must not be after through time")
 	}
 
+	filters := syntax.ExtractLineFilters(req.Plan.AST)
+
 	// Shortcut if request does not contain filters
-	if len(syntax.ExtractLineFilters(req.Plan.AST)) == 0 {
+	if len(filters) == 0 {
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: req.Refs,
 		}, nil
 	}
-
-	// Sort ChunkRefs by fingerprint in ascending order
-	sort.Slice(req.Refs, func(i, j int) bool {
-		return req.Refs[i].Fingerprint < req.Refs[j].Fingerprint
-	})
 
 	var numSeries int
 	seriesByDay := partitionRequest(req)
@@ -267,7 +239,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}, nil
 	}
 
-	filters := syntax.ExtractLineFilters(req.Plan.AST)
 	tasks := make([]Task, 0, len(seriesByDay))
 	for _, seriesForDay := range seriesByDay {
 		task, err := NewTask(ctx, tenantID, seriesForDay, filters)
@@ -297,9 +268,9 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		task := task
 		task.enqueueTime = time.Now()
 		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "table", task.table, "series", len(task.series))
-		g.queue.Enqueue(tenantID, []string{}, task, func() {
+		g.queue.Enqueue(tenantID, nil, task, func() {
 			// When enqueuing, we also add the task to the pending tasks
-			g.pendingTasks.Add(task.ID, task)
+			_ = g.pendingTasks.Inc()
 		})
 		go g.consumeTask(ctx, task, tasksCh)
 	}
@@ -376,6 +347,9 @@ func (g *Gateway) processResponses(req *logproto.FilterChunkRefRequest, response
 func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output) (filtered int) {
 
 	// binary search index of fingerprint
+	// TODO(owen-d): there's a bug here because the same fingerprint and chunks can exist over multiple day buckets.
+	// If all requested chunks are in both days, the first day could technically remove _all_ chunks from consideration.
+	// The sort.Search for the _next_ chunk would return an index where fingerprint is greater than the target fingerprint.
 	idx := sort.Search(len(req.Refs), func(i int) bool {
 		return req.Refs[i].Fingerprint >= uint64(res.Fp)
 	})
@@ -388,10 +362,17 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 
 	// if all chunks of a fingerprint are are removed
 	// then remove the whole group from the response
+
+	// TODO(owen-d): there's a bug here because the same fingerprint and chunks can exist over multiple day buckets.
+	// A later day bucket could happen to request removals with len=remaining, but whose chunk references were
+	// partially removed in an earlier round. Just checking the length here could cause us to discard chunks
+	// that shouldn't be.
 	if len(req.Refs[idx].Refs) == res.Removals.Len() {
 		filtered += len(req.Refs[idx].Refs)
 
 		req.Refs[idx] = nil // avoid leaking pointer
+		// TODO(owen-d): this is O(n^2);
+		// use more specialized data structure that doesn't reslice
 		req.Refs = append(req.Refs[:idx], req.Refs[idx+1:]...)
 		return
 	}
@@ -399,9 +380,17 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 	for i := range res.Removals {
 		toRemove := res.Removals[i]
 		for j := 0; j < len(req.Refs[idx].Refs); j++ {
-			if toRemove.Checksum == req.Refs[idx].Refs[j].Checksum {
+			if req.Refs[idx].Refs[j] == nil {
+				continue
+			}
+
+			// TODO(owen-d): These should check start/end/checksum, not just checksum.
+			if logproto.ShortRef(toRemove) == *req.Refs[idx].Refs[j] {
 				filtered += 1
 
+				// TODO(owen-d): usually not a problem (n is small), but I've seen some series have
+				// many thousands of chunks per day, so would be good to not reslice.
+				// See `labels.NewBuilder()` for an example
 				req.Refs[idx].Refs[j] = nil // avoid leaking pointer
 				req.Refs[idx].Refs = append(req.Refs[idx].Refs[:j], req.Refs[idx].Refs[j+1:]...)
 				j-- // since we removed the current item at index, we have to redo the same index

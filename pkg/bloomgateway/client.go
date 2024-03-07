@@ -295,6 +295,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 // doForAddrs sequetially calls the provided callback function fn for each
 // address in given slice addrs until the callback function does not return an
 // error.
+// TODO(owen-d): parallelism
 func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGatewayClient) error) error {
 	var err error
 	var poolClient ringclient.PoolClient
@@ -340,6 +341,8 @@ func replicationSetsWithBounds(subRing ring.ReadRing, instances []ring.InstanceD
 			return nil, errors.Wrap(err, "bloom gateway get ring")
 		}
 
+		// NB(owen-d): this will send requests to the wrong nodes if RF>1 since it only checks the
+		// first token when assigning replicasets
 		rs, err := subRing.Get(tr[0], BlocksOwnerRead, bufDescs, bufHosts, bufZones)
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
