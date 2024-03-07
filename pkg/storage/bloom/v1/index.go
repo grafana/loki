@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
@@ -399,18 +400,15 @@ func (s *SeriesWithOffset) Decode(dec *encoding.Decbuf, previousFp model.Fingerp
 	return s.Fingerprint, s.Offset, dec.Err()
 }
 
-type ChunkRef struct {
-	Start, End model.Time
-	Checksum   uint32
-}
+type ChunkRef logproto.ShortRef
 
 func (r *ChunkRef) Less(other ChunkRef) bool {
-	if r.Start != other.Start {
-		return r.Start < other.Start
+	if r.From != other.From {
+		return r.From < other.From
 	}
 
-	if r.End != other.End {
-		return r.End < other.End
+	if r.Through != other.Through {
+		return r.Through < other.Through
 	}
 
 	return r.Checksum < other.Checksum
@@ -418,17 +416,17 @@ func (r *ChunkRef) Less(other ChunkRef) bool {
 
 func (r *ChunkRef) Encode(enc *encoding.Encbuf, previousEnd model.Time) model.Time {
 	// delta encode start time
-	enc.PutVarint64(int64(r.Start - previousEnd))
-	enc.PutVarint64(int64(r.End - r.Start))
+	enc.PutVarint64(int64(r.From - previousEnd))
+	enc.PutVarint64(int64(r.Through - r.From))
 	enc.PutBE32(r.Checksum)
-	return r.End
+	return r.Through
 }
 
 func (r *ChunkRef) Decode(dec *encoding.Decbuf, previousEnd model.Time) (model.Time, error) {
-	r.Start = previousEnd + model.Time(dec.Varint64())
-	r.End = r.Start + model.Time(dec.Varint64())
+	r.From = previousEnd + model.Time(dec.Varint64())
+	r.Through = r.From + model.Time(dec.Varint64())
 	r.Checksum = dec.Be32()
-	return r.End, dec.Err()
+	return r.Through, dec.Err()
 }
 
 type BloomOffset struct {

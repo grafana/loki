@@ -265,13 +265,13 @@ func (s *StoreChunkLoader) Load(ctx context.Context, userID string, series *v1.S
 	// us in the case of refactoring/changing this and likely isn't a perf bottleneck.
 	chksByFetcher := make(map[*fetcher.Fetcher][]chunk.Chunk)
 	for _, chk := range series.Chunks {
-		fetcher := s.fetcherProvider.GetChunkFetcher(chk.Start)
+		fetcher := s.fetcherProvider.GetChunkFetcher(chk.From)
 		chksByFetcher[fetcher] = append(chksByFetcher[fetcher], chunk.Chunk{
 			ChunkRef: logproto.ChunkRef{
 				Fingerprint: uint64(series.Fingerprint),
 				UserID:      userID,
-				From:        chk.Start,
-				Through:     chk.End,
+				From:        chk.From,
+				Through:     chk.Through,
 				Checksum:    chk.Checksum,
 			},
 		})

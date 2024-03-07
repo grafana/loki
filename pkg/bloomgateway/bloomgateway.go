@@ -380,9 +380,12 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 	for i := range res.Removals {
 		toRemove := res.Removals[i]
 		for j := 0; j < len(req.Refs[idx].Refs); j++ {
+			if req.Refs[idx].Refs[j] == nil {
+				continue
+			}
+
 			// TODO(owen-d): These should check start/end/checksum, not just checksum.
-			// TODO(owen-d): These structs have equivalent data -- can we combine them?
-			if toRemove.Checksum == req.Refs[idx].Refs[j].Checksum {
+			if logproto.ShortRef(toRemove) == *req.Refs[idx].Refs[j] {
 				filtered += 1
 
 				// TODO(owen-d): usually not a problem (n is small), but I've seen some series have

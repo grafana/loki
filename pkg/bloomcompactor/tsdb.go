@@ -201,8 +201,8 @@ func (t *TSDBSeriesIter) background() {
 				}
 				for _, chk := range chks {
 					res.Chunks = append(res.Chunks, v1.ChunkRef{
-						Start:    model.Time(chk.MinTime),
-						End:      model.Time(chk.MaxTime),
+						From:     model.Time(chk.MinTime),
+						Through:  model.Time(chk.MaxTime),
 						Checksum: chk.Checksum,
 					})
 				}
