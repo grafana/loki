@@ -126,7 +126,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	}
 	cfg.SchedulerRing.RegisterFlagsWithPrefix("query-scheduler.", "collectors/", f, skipFlags...)
 	f.IntVar(&cfg.SchedulerRing.NumTokens, "query-scheduler.ring.num-tokens", NumTokens, fmt.Sprintf("IGNORED: Num tokens is fixed to %d", NumTokens))
-	// ringReplicationFactor should be 2 because we want 2 schedulers.
 	f.IntVar(&cfg.SchedulerRing.ReplicationFactor, "query-scheduler.ring.replication-factor", ReplicationFactor, fmt.Sprintf("IGNORED: Replication factor is fixed to %d", ReplicationFactor))
 }
 
