@@ -7,7 +7,7 @@ reviewers:
   - "@JoaoBraveCoding"
   - "@btaani"
 creation-date: 2023-10-26
-last-updated: 2023-10-26
+last-updated: 2024-03-07
 draft: false
 menu:
   docs:
@@ -53,7 +53,7 @@ The following proposal describes the required changes and validations for each o
 
 ### API Extensions
 
-The present proposal introduces a new field in the `ObjectStorageSecretSpec` namely `CredentialsMode`:
+The present proposal introduces a new optional field in the `ObjectStorageSecretSpec` namely `CredentialsMode`. If the user does not provide a value the `CredentialsMode` is automatically detected either from the provided secret fields or the operator environment variables (latter applies only in OpenShift cluters.). The selected or detected `CredentialsMode` is populated in addition in the `status.storage.credentialMode` field.
 
 ```go
 / CredentialMode represents the type of authentication used for accessing the object storage.
@@ -90,7 +90,7 @@ type ObjectStorageSecretSpec struct {
 }
 ```
 
-The purpose of the `CredentialMode` is to override the detected credentials type of object storage secrects, e.g. in environments like STS-managed OpenShift clusters, where the operator is automatically setup to use `managed` but the user might want to use `static` to storage logs for example to Minio on the same cluster instead to AWS S3.
+The purpose of the `CredentialMode` is to override the detected credentials type from object storage secrets or the operator environment variables. Latter is only supported on AWS-STS/Azure-WIF managed OpenShift clusters, where the operator is using CredetialMode `managed` by default. However, the user might want to use `static` to store logs for example to Minio on the same cluster instead to AWS S3.
 
 ### Implementation Details/Notes/Constraints
 
