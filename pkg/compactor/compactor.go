@@ -126,6 +126,14 @@ func (cfg *Config) Validate() error {
 		return errors.New("max compaction parallelism must be >= 1")
 	}
 
+	if cfg.CompactorRing.NumTokens != ringNumTokens {
+		return errors.New("Num tokens must not be changed as it will not surge effect")
+	}
+
+	if cfg.CompactorRing.ReplicationFactor != ringReplicationFactor {
+		return errors.New("Replication factor must not be changed as it will not surge effect")
+	}
+
 	if cfg.RetentionEnabled {
 		if cfg.DeleteRequestStore == "" {
 			return fmt.Errorf("compactor.delete-request-store should be configured when retention is enabled")

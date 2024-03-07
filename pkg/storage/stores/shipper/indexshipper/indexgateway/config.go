@@ -3,8 +3,14 @@ package indexgateway
 import (
 	"flag"
 	"fmt"
+	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/util/ring"
+)
+
+const (
+	NumTokens         = 128
+	ReplicationFactor = 3
 )
 
 // Mode represents in which mode an Index Gateway instance is running.
@@ -69,11 +75,18 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		"index-gateway.ring.replication-factor",
 	}
 	cfg.Ring.RegisterFlagsWithPrefix("index-gateway.", "collectors/", f, skipFlags...)
-	f.IntVar(&cfg.Ring.NumTokens, "index-gateway.ring.num-tokens", 128, "IGNORED: Num tokens is hardcoded to 128")
+	f.IntVar(&cfg.Ring.NumTokens, "index-gateway.ring.num-tokens", NumTokens, fmt.Sprintf("IGNORED: Num tokens is fixed to %d", NumTokens))
 	// ReplicationFactor defines how many Index Gateway instances are assigned to each tenant.
 	//
 	// Whenever the store queries the ring key-value store for the Index Gateway instance responsible for tenant X,
 	// multiple Index Gateway instances are expected to be returned as Index Gateway might be busy/locked for specific
 	// reasons (this is assured by the spikey behavior of Index Gateway latencies).
-	f.IntVar(&cfg.Ring.ReplicationFactor, "replication-factor", 3, "Deprecated: How many index gateway instances are assigned to each tenant. Use -index-gateway.shard-size instead. The shard size is also a per-tenant setting.")
+	f.IntVar(&cfg.Ring.ReplicationFactor, "replication-factor", ReplicationFactor, "Deprecated: How many index gateway instances are assigned to each tenant. Use -index-gateway.shard-size instead. The shard size is also a per-tenant setting.")
+}
+
+func (cfg *Config) Validate() error {
+	if cfg.Ring.NumTokens != NumTokens {
+		return errors.New("Num tokens must not be changed as it will not surge effect")
+	}
+	return nil
 }

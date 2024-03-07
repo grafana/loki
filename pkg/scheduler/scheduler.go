@@ -39,6 +39,13 @@ import (
 	lokiring "github.com/grafana/loki/pkg/util/ring"
 )
 
+const (
+	// NumTokens is 1 since we only need to insert 1 token to be used for leader election purposes.
+	NumTokens = 1
+	// ReplicationFactor should be 2 because we want 2 schedulers.
+	ReplicationFactor = 2
+)
+
 var errSchedulerIsNotRunning = errors.New("scheduler is not running")
 
 // Scheduler is responsible for queueing and dispatching queries to Queriers.
@@ -118,9 +125,19 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		"query-scheduler.ring.replication-factor",
 	}
 	cfg.SchedulerRing.RegisterFlagsWithPrefix("query-scheduler.", "collectors/", f, skipFlags...)
-	f.IntVar(&cfg.SchedulerRing.NumTokens, "query-scheduler.ring.num-tokens", 1, "IGNORED: Num tokens is hardcoded to 1")
-	f.IntVar(&cfg.SchedulerRing.ReplicationFactor, "query-scheduler.ring.replication-factor", 2, "IGNORED: Replication factor is hardcoded to 2")
+	f.IntVar(&cfg.SchedulerRing.NumTokens, "query-scheduler.ring.num-tokens", NumTokens, fmt.Sprintf("IGNORED: Num tokens is fixed to %d", NumTokens))
+	// ringReplicationFactor should be 2 because we want 2 schedulers.
+	f.IntVar(&cfg.SchedulerRing.ReplicationFactor, "query-scheduler.ring.replication-factor", ReplicationFactor, fmt.Sprintf("IGNORED: Replication factor is fixed to %d", ReplicationFactor))
+}
 
+func (cfg *Config) Validate() error {
+	if cfg.SchedulerRing.NumTokens != NumTokens {
+		return errors.New("Num tokens must not be changed as it will not surge effect")
+	}
+	if cfg.SchedulerRing.ReplicationFactor != ReplicationFactor {
+		return errors.New("Replication factor must not be changed as it will not surge effect")
+	}
+	return nil
 }
 
 // NewScheduler creates a new Scheduler.
