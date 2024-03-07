@@ -695,8 +695,6 @@ scheduler_ring:
   # CLI flag: -query-scheduler.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
-
-
   # Instance ID to register in the ring.
   # CLI flag: -query-scheduler.ring.instance-id
   [instance_id: <string> | default = "<hostname>"]
@@ -1760,7 +1758,6 @@ ring:
   # CLI flag: -index-gateway.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
-
   # Deprecated: How many index gateway instances are assigned to each tenant.
   # Use -index-gateway.shard-size instead. The shard size is also a per-tenant
   # setting.
@@ -2552,8 +2549,6 @@ compactor_ring:
   # CLI flag: -compactor.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
-
-
   # Instance ID to register in the ring.
   # CLI flag: -compactor.ring.instance-id
   [instance_id: <string> | default = "<hostname>"]
@@ -2661,7 +2656,6 @@ ring:
   # blocks.
   # CLI flag: -bloom-compactor.ring.num-tokens
   [num_tokens: <int> | default = 10]
-
 
   # Instance ID to register in the ring.
   # CLI flag: -bloom-compactor.ring.instance-id
