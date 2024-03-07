@@ -609,6 +609,16 @@ spec:
                       Secret for object storage authentication.
                       Name of a secret in the same namespace as the LokiStack custom resource.
                     properties:
+                      credentialMode:
+                        description: CredentialMode can be used to set the desired
+                          credential mode for authenticating with the object storage.
+                          If this is not set, then the operator tries to infer the
+                          credential mode from the provided secret and its own configuration.
+                        enum:
+                        - static
+                        - token
+                        - managed
+                        type: string
                       name:
                         description: Name of a secret in the namespace configured
                           for object storage secrets.

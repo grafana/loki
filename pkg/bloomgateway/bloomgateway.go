@@ -52,10 +52,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -69,7 +68,6 @@ import (
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
 
 const (
-	pendingTasksInitialCap  = 1024
 	metricsSubsystem        = "bloom_gateway"
 	querierMetricsSubsystem = "bloom_gateway_querier"
 )
@@ -79,88 +77,24 @@ var (
 	responsesPool = queue.NewSlicePool[v1.Output](1<<6, 1<<16, 2)
 )
 
-type metrics struct {
-	queueDuration    prometheus.Histogram
-	inflightRequests prometheus.Summary
-	chunkRemovals    *prometheus.CounterVec
-}
-
-func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
-	return &metrics{
-		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "queue_duration_seconds",
-			Help:      "Time spent by tasks in queue before getting picked up by a worker.",
-			Buckets:   prometheus.DefBuckets,
-		}),
-		inflightRequests: promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
-			Namespace:  namespace,
-			Subsystem:  subsystem,
-			Name:       "inflight_tasks",
-			Help:       "Number of inflight tasks (either queued or processing) sampled at a regular interval. Quantile buckets keep track of inflight tasks over the last 60s.",
-			Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.02, 0.8: 0.02, 0.9: 0.01, 0.95: 0.01, 0.99: 0.001},
-			MaxAge:     time.Minute,
-			AgeBuckets: 6,
-		}),
-		chunkRemovals: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "chunk_removals_total",
-			Help:      "Total amount of removals received from the block querier partitioned by state. The state 'accepted' means that the removals are processed, the state 'dropped' means that the removals were received after the task context was done (e.g. client timeout, etc).",
-		}, []string{"state"}),
-	}
-}
-
 // SyncMap is a map structure which can be synchronized using the RWMutex
 type SyncMap[k comparable, v any] struct {
 	sync.RWMutex
 	Map map[k]v
 }
 
-type pendingTasks SyncMap[ulid.ULID, Task]
-
-func (t *pendingTasks) Len() int {
-	t.RLock()
-	defer t.RUnlock()
-	return len(t.Map)
-}
-
-func (t *pendingTasks) Add(k ulid.ULID, v Task) {
-	t.Lock()
-	t.Map[k] = v
-	t.Unlock()
-}
-
-func (t *pendingTasks) Delete(k ulid.ULID) {
-	t.Lock()
-	delete(t.Map, k)
-	t.Unlock()
-}
-
-// makePendingTasks creates a SyncMap that holds pending tasks
-func makePendingTasks(n int) *pendingTasks {
-	return &pendingTasks{
-		RWMutex: sync.RWMutex{},
-		Map:     make(map[ulid.ULID]Task, n),
-	}
-}
-
 type Gateway struct {
 	services.Service
 
-	cfg    Config
-	logger log.Logger
-
-	metrics       *metrics
-	workerMetrics *workerMetrics
-	queueMetrics  *queue.Metrics
+	cfg     Config
+	logger  log.Logger
+	metrics *metrics
 
 	queue       *queue.RequestQueue
 	activeUsers *util.ActiveUsersCleanupService
 	bloomStore  bloomshipper.Store
 
-	pendingTasks *pendingTasks
+	pendingTasks *atomic.Int64
 
 	serviceMngr    *services.Manager
 	serviceWatcher *services.FailureWatcher
@@ -168,6 +102,9 @@ type Gateway struct {
 	workerConfig workerConfig
 }
 
+// fixedQueueLimits is a queue.Limits implementation that returns a fixed value for MaxConsumers.
+// Notably this lets us run with "disabled" max consumers (0) for the bloom gateway meaning it will
+// distribute any request to any receiver.
 type fixedQueueLimits struct {
 	maxConsumers int
 }
@@ -179,19 +116,20 @@ func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
 // New returns a new instance of the Bloom Gateway.
 func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
 	g := &Gateway{
-		cfg:          cfg,
-		logger:       logger,
-		metrics:      newMetrics(reg, constants.Loki, metricsSubsystem),
-		pendingTasks: makePendingTasks(pendingTasksInitialCap),
+		cfg:     cfg,
+		logger:  logger,
+		metrics: newMetrics(reg, constants.Loki, metricsSubsystem),
 		workerConfig: workerConfig{
 			maxItems: 100,
 		},
-		workerMetrics: newWorkerMetrics(reg, constants.Loki, metricsSubsystem),
-		queueMetrics:  queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
-		bloomStore:    store,
+		pendingTasks: &atomic.Int64{},
+
+		bloomStore: store,
 	}
-	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{0}, g.queueMetrics)
-	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
+
+	queueMetrics := queue.NewMetrics(reg, constants.Loki, metricsSubsystem)
+	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{0}, queueMetrics)
+	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(queueMetrics.Cleanup)
 
 	if err := g.initServices(); err != nil {
 		return nil, err
@@ -206,7 +144,7 @@ func (g *Gateway) initServices() error {
 	svcs := []services.Service{g.queue, g.activeUsers}
 	for i := 0; i < g.cfg.WorkerConcurrency; i++ {
 		id := fmt.Sprintf("bloom-query-worker-%d", i)
-		w := newWorker(id, g.workerConfig, g.queue, g.bloomStore, g.pendingTasks, g.logger, g.workerMetrics)
+		w := newWorker(id, g.workerConfig, g.queue, g.bloomStore, g.pendingTasks, g.logger, g.metrics.workerMetrics)
 		svcs = append(svcs, w)
 	}
 	g.serviceMngr, err = services.NewManager(svcs...)
@@ -251,7 +189,7 @@ func (g *Gateway) running(ctx context.Context) error {
 		case err := <-g.serviceWatcher.Chan():
 			return errors.Wrap(err, "bloom gateway subservice failed")
 		case <-inflightTasksTicker.C:
-			inflight := g.pendingTasks.Len()
+			inflight := g.pendingTasks.Load()
 			g.metrics.inflightRequests.Observe(float64(inflight))
 		}
 	}
@@ -289,11 +227,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}, nil
 	}
 
-	// Sort ChunkRefs by fingerprint in ascending order
-	sort.Slice(req.Refs, func(i, j int) bool {
-		return req.Refs[i].Fingerprint < req.Refs[j].Fingerprint
-	})
-
 	var numSeries int
 	seriesByDay := partitionRequest(req)
 
@@ -311,7 +244,14 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		if err != nil {
 			return nil, err
 		}
-		level.Debug(g.logger).Log("msg", "creating task for day", "day", seriesForDay.day, "interval", seriesForDay.interval.String(), "task", task.ID)
+		level.Debug(g.logger).Log(
+			"msg", "created task for day",
+			"task", task.ID,
+			"day", seriesForDay.day,
+			"interval", seriesForDay.interval.String(),
+			"nSeries", len(seriesForDay.series),
+			"filters", JoinFunc(filters, ";", func(e syntax.LineFilterExpr) string { return e.String() }),
+		)
 		tasks = append(tasks, task)
 		numSeries += len(seriesForDay.series)
 	}
@@ -325,10 +265,11 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	tasksCh := make(chan Task, len(tasks))
 	for _, task := range tasks {
 		task := task
+		task.enqueueTime = time.Now()
 		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "table", task.table, "series", len(task.series))
-		g.queue.Enqueue(tenantID, []string{}, task, func() {
+		g.queue.Enqueue(tenantID, nil, task, func() {
 			// When enqueuing, we also add the task to the pending tasks
-			g.pendingTasks.Add(task.ID, task)
+			_ = g.pendingTasks.Inc()
 		})
 		go g.consumeTask(ctx, task, tasksCh)
 	}
@@ -405,6 +346,9 @@ func (g *Gateway) processResponses(req *logproto.FilterChunkRefRequest, response
 func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output) (filtered int) {
 
 	// binary search index of fingerprint
+	// TODO(owen-d): there's a bug here because the same fingerprint and chunks can exist over multiple day buckets.
+	// If all requested chunks are in both days, the first day could technically remove _all_ chunks from consideration.
+	// The sort.Search for the _next_ chunk would return an index where fingerprint is greater than the target fingerprint.
 	idx := sort.Search(len(req.Refs), func(i int) bool {
 		return req.Refs[i].Fingerprint >= uint64(res.Fp)
 	})
@@ -417,10 +361,17 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 
 	// if all chunks of a fingerprint are are removed
 	// then remove the whole group from the response
+
+	// TODO(owen-d): there's a bug here because the same fingerprint and chunks can exist over multiple day buckets.
+	// A later day bucket could happen to request removals with len=remaining, but whose chunk references were
+	// partially removed in an earlier round. Just checking the length here could cause us to discard chunks
+	// that shouldn't be.
 	if len(req.Refs[idx].Refs) == res.Removals.Len() {
 		filtered += len(req.Refs[idx].Refs)
 
 		req.Refs[idx] = nil // avoid leaking pointer
+		// TODO(owen-d): this is O(n^2);
+		// use more specialized data structure that doesn't reslice
 		req.Refs = append(req.Refs[:idx], req.Refs[idx+1:]...)
 		return
 	}
@@ -428,9 +379,14 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 	for i := range res.Removals {
 		toRemove := res.Removals[i]
 		for j := 0; j < len(req.Refs[idx].Refs); j++ {
+			// TODO(owen-d): These should check start/end/checksum, not just checksum.
+			// TODO(owen-d): These structs have equivalent data -- can we combine them?
 			if toRemove.Checksum == req.Refs[idx].Refs[j].Checksum {
 				filtered += 1
 
+				// TODO(owen-d): usually not a problem (n is small), but I've seen some series have
+				// many thousands of chunks per day, so would be good to not reslice.
+				// See `labels.NewBuilder()` for an example
 				req.Refs[idx].Refs[j] = nil // avoid leaking pointer
 				req.Refs[idx].Refs = append(req.Refs[idx].Refs[:j], req.Refs[idx].Refs[j+1:]...)
 				j-- // since we removed the current item at index, we have to redo the same index

@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"math/rand"
+	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -216,6 +217,14 @@ func NewClient(
 	}, nil
 }
 
+func JoinFunc[S ~[]E, E any](elems S, sep string, f func(e E) string) string {
+	res := make([]string, len(elems))
+	for i := range elems {
+		res[i] = f(elems[i])
+	}
+	return strings.Join(res, sep)
+}
+
 func shuffleAddrs(addrs []string) []string {
 	rand.Shuffle(len(addrs), func(i, j int) {
 		addrs[i], addrs[j] = addrs[j], addrs[i]
@@ -236,6 +245,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 	}
 
 	servers, err := replicationSetsWithBounds(subRing, rs.Instances)
+
 	if err != nil {
 		return nil, errors.Wrap(err, "bloom gateway get replication sets")
 	}
@@ -244,9 +254,23 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 	filteredChunkRefs := groupedChunksRefPool.Get(len(groups))
 	defer groupedChunksRefPool.Put(filteredChunkRefs)
 
-	for _, rs := range servers {
+	for i, rs := range servers {
 		// randomize order of addresses so we don't hotspot the first server in the list
 		addrs := shuffleAddrs(rs.rs.GetAddresses())
+		level.Info(c.logger).Log(
+			"msg", "do FilterChunkRefs for addresses",
+			"progress", fmt.Sprintf("%d/%d", i+1, len(servers)),
+			"bounds", JoinFunc(rs.ranges, ",", func(e v1.FingerprintBounds) string { return e.String() }),
+			"addrs", strings.Join(addrs, ","),
+			"from", from.Time(),
+			"through", through.Time(),
+			"num_refs", len(rs.groups),
+			"refs", JoinFunc(rs.groups, ",", func(e *logproto.GroupedChunkRefs) string {
+				return model.Fingerprint(e.Fingerprint).String()
+			}),
+			"plan", plan.String(),
+			"plan_hash", plan.Hash(),
+		)
 		err := c.doForAddrs(addrs, func(client logproto.BloomGatewayClient) error {
 			req := &logproto.FilterChunkRefRequest{
 				From:    from,
@@ -271,6 +295,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 // doForAddrs sequetially calls the provided callback function fn for each
 // address in given slice addrs until the callback function does not return an
 // error.
+// TODO(owen-d): parallelism
 func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGatewayClient) error) error {
 	var err error
 	var poolClient ringclient.PoolClient
@@ -278,12 +303,12 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 	for _, addr := range addrs {
 		poolClient, err = c.pool.GetClientFor(addr)
 		if err != nil {
-			level.Error(c.logger).Log("msg", fmt.Sprintf("failed to get client for instance %s", addr), "err", err)
+			level.Error(c.logger).Log("msg", "failed to get client for instance", "addr", addr, "err", err)
 			continue
 		}
 		err = fn(poolClient.(logproto.BloomGatewayClient))
 		if err != nil {
-			level.Error(c.logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err)
+			level.Error(c.logger).Log("msg", "client do failed for instance", "addr", addr, "err", err)
 			continue
 		}
 		return nil
@@ -316,6 +341,8 @@ func replicationSetsWithBounds(subRing ring.ReadRing, instances []ring.InstanceD
 			return nil, errors.Wrap(err, "bloom gateway get ring")
 		}
 
+		// NB(owen-d): this will send requests to the wrong nodes if RF>1 since it only checks the
+		// first token when assigning replicasets
 		rs, err := subRing.Get(tr[0], BlocksOwnerRead, bufDescs, bufHosts, bufZones)
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
