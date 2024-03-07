@@ -189,7 +189,6 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 			return results, err
 		}
 		if !isFound {
-			level.Debug(f.logger).Log("msg", "requested block not found in cache or on filesystem", "ref", refs[i])
 			f.q.enqueue(downloadRequest[BlockRef, BlockDirectory]{
 				ctx:     ctx,
 				item:    refs[i],
@@ -209,9 +208,11 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 	// should wait for responses from the download queue
 	if cfg.fetchAsync {
 		f.metrics.blocksFetched.Observe(float64(found))
+		level.Debug(f.logger).Log("msg", "request unavailable blocks in the background", "missing", missing, "found", found)
 		return results, nil
 	}
 
+	level.Debug(f.logger).Log("msg", "wait for unavailable blocks", "missing", missing, "found", found)
 	// second, wait for missing blocks to be fetched and append them to the
 	// results
 	for i := 0; i < missing; i++ {
@@ -231,6 +232,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 		}
 	}
 
+	level.Debug(f.logger).Log("msg", "return found blocks", "found", found)
 	f.metrics.blocksFetched.Observe(float64(found))
 	return results, nil
 }
