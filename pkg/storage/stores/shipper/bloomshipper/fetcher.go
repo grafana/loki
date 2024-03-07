@@ -160,6 +160,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]*Closeabl
 	for i := 0; i < n; i++ {
 		select {
 		case err := <-errors:
+			// TODO(owen-d): add metrics for missing blocks
 			if !f.cfg.ignoreMissingBlocks && !f.client.IsObjectNotFoundErr(err) {
 				f.metrics.blocksFetched.Observe(float64(count))
 				return results, err
