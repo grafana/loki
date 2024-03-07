@@ -220,8 +220,10 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, errors.New("from time must not be after through time")
 	}
 
+	filters := syntax.ExtractLineFilters(req.Plan.AST)
+
 	// Shortcut if request does not contain filters
-	if len(syntax.ExtractLineFilters(req.Plan.AST)) == 0 {
+	if len(filters) == 0 {
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: req.Refs,
 		}, nil
@@ -237,7 +239,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}, nil
 	}
 
-	filters := syntax.ExtractLineFilters(req.Plan.AST)
 	tasks := make([]Task, 0, len(seriesByDay))
 	for _, seriesForDay := range seriesByDay {
 		task, err := NewTask(ctx, tenantID, seriesForDay, filters)
