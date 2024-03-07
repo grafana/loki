@@ -64,6 +64,11 @@ func (w *specWriter) writeConfigEntry(e *parse.ConfigEntry, indent int) {
 	}
 
 	if e.Kind == parse.KindField || e.Kind == parse.KindSlice || e.Kind == parse.KindMap {
+		if strings.HasPrefix(e.Description(), "IGNORED:") {
+			// We skip documenting any field whose description starts with "IGNORED:".
+			return
+		}
+
 		// Description
 		w.writeComment(e.Description(), indent, 0)
 		w.writeExample(e.FieldExample, indent)

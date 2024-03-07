@@ -695,13 +695,7 @@ scheduler_ring:
   # CLI flag: -query-scheduler.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
-  # IGNORED: Num tokens is hardcoded to 1
-  # CLI flag: -query-scheduler.ring.num-tokens
-  [num_tokens: <int> | default = 1]
 
-  # IGNORED: Replication factor is hardcoded to 2
-  # CLI flag: -query-scheduler.ring.replication-factor
-  [replication_factor: <int> | default = 2]
 
   # Instance ID to register in the ring.
   # CLI flag: -query-scheduler.ring.instance-id
@@ -1766,9 +1760,6 @@ ring:
   # CLI flag: -index-gateway.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
-  # IGNORED: Num tokens is hardcoded to 128
-  # CLI flag: -index-gateway.ring.num-tokens
-  [num_tokens: <int> | default = 128]
 
   # Deprecated: How many index gateway instances are assigned to each tenant.
   # Use -index-gateway.shard-size instead. The shard size is also a per-tenant
@@ -2561,13 +2552,7 @@ compactor_ring:
   # CLI flag: -compactor.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
-  # IGNORED: Num tokens is hardcoded to 1
-  # CLI flag: -compactor.ring.num-tokens
-  [num_tokens: <int> | default = 1]
 
-  # IGNORED: Replication factor is hardcoded to 1
-  # CLI flag: -compactor.ring.replication-factor
-  [replication_factor: <int> | default = 1]
 
   # Instance ID to register in the ring.
   # CLI flag: -compactor.ring.instance-id
@@ -2677,9 +2662,6 @@ ring:
   # CLI flag: -bloom-compactor.ring.num-tokens
   [num_tokens: <int> | default = 10]
 
-  # IGNORED: Replication factor is hardcoded to 1
-  # CLI flag: -bloom-compactor.ring.replication-factor
-  [replication_factor: <int> | default = 1]
 
   # Instance ID to register in the ring.
   # CLI flag: -bloom-compactor.ring.instance-id
