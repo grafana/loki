@@ -150,6 +150,23 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 	}
 }
 
+func dedupedBlocks(blocks []PeekingIterator[*SeriesWithBloom]) Iterator[*SeriesWithBloom] {
+	orderedBlocks := NewHeapIterForSeriesWithBloom(blocks...)
+	return NewDedupingIter[*SeriesWithBloom](
+		func(a *SeriesWithBloom, b *SeriesWithBloom) bool {
+			return a.Series.Fingerprint == b.Series.Fingerprint
+		},
+		Identity[*SeriesWithBloom],
+		func(a *SeriesWithBloom, b *SeriesWithBloom) *SeriesWithBloom {
+			if len(a.Series.Chunks) > len(b.Series.Chunks) {
+				return a
+			}
+			return b
+		},
+		NewPeekingIter[*SeriesWithBloom](orderedBlocks),
+	)
+}
+
 func TestMergeBuilder(t *testing.T) {
 	t.Parallel()
 
@@ -195,8 +212,8 @@ func TestMergeBuilder(t *testing.T) {
 	}
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(_ *Series, _ *Bloom) error {
-		return errors.New("not implemented")
+	pop := func(_ *Series, _ *Bloom) (int, error) {
+		return 0, errors.New("not implemented")
 	}
 
 	// storage should contain references to all the series we ingested,
@@ -209,7 +226,7 @@ func TestMergeBuilder(t *testing.T) {
 	)
 
 	// Ensure that the merge builder combines all the blocks correctly
-	mergeBuilder := NewMergeBuilder(blocks, storeItr, pop)
+	mergeBuilder := NewMergeBuilder(dedupedBlocks(blocks), storeItr, pop, NewMetrics(nil))
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
@@ -221,7 +238,7 @@ func TestMergeBuilder(t *testing.T) {
 	)
 	require.Nil(t, err)
 
-	_, err = mergeBuilder.Build(builder)
+	_, _, err = mergeBuilder.Build(builder)
 	require.Nil(t, err)
 
 	block := NewBlock(reader)
@@ -377,17 +394,18 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	writer := NewMemoryBlockWriter(indexBuf, bloomBuf)
 	reader := NewByteReader(indexBuf, bloomBuf)
 	mb := NewMergeBuilder(
-		blocks,
+		dedupedBlocks(blocks),
 		dedupedStore,
-		func(s *Series, b *Bloom) error {
+		func(s *Series, b *Bloom) (int, error) {
 			// We're not actually indexing new data in this test
-			return nil
+			return 0, nil
 		},
+		NewMetrics(nil),
 	)
 	builder, err := NewBlockBuilder(DefaultBlockOptions, writer)
 	require.Nil(t, err)
 
-	checksum, err := mb.Build(builder)
+	checksum, _, err := mb.Build(builder)
 	require.Nil(t, err)
 	require.Equal(t, uint32(0x30712486), checksum)
 

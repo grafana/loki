@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	DefaultBlockOptions = NewBlockOptions(4, 0, 50<<20) // 50MB
+	DefaultBlockOptions = NewBlockOptions(4, 1, 50<<20) // 50MB
 )
 
 type BlockOptions struct {
@@ -521,11 +521,12 @@ func (b *IndexBuilder) Close() (uint32, error) {
 // from a list of blocks and a store of series.
 type MergeBuilder struct {
 	// existing blocks
-	blocks []PeekingIterator[*SeriesWithBloom]
+	blocks Iterator[*SeriesWithBloom]
 	// store
 	store Iterator[*Series]
 	// Add chunks to a bloom
-	populate func(*Series, *Bloom) error
+	populate func(*Series, *Bloom) (int, error)
+	metrics  *Metrics
 }
 
 // NewMergeBuilder is a specific builder which does the following:
@@ -533,99 +534,131 @@ type MergeBuilder struct {
 //     i) When two blocks have the same series, it will prefer the one with the most chunks already indexed
 //  2. iterates through the store, adding chunks to the relevant blooms via the `populate` argument
 func NewMergeBuilder(
-	blocks []PeekingIterator[*SeriesWithBloom],
+	blocks Iterator[*SeriesWithBloom],
 	store Iterator[*Series],
-	populate func(*Series, *Bloom) error,
+	populate func(*Series, *Bloom) (int, error),
+	metrics *Metrics,
 ) *MergeBuilder {
 	return &MergeBuilder{
 		blocks:   blocks,
 		store:    store,
 		populate: populate,
+		metrics:  metrics,
 	}
 }
 
-func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
-	var (
-		nextInBlocks *SeriesWithBloom
-	)
+func (mb *MergeBuilder) processNextSeries(
+	builder *BlockBuilder,
+	nextInBlocks *SeriesWithBloom,
+	blocksFinished bool,
+) (
+	*SeriesWithBloom, // nextInBlocks pointer update
+	int, // bytes added
+	bool, // blocksFinished update
+	bool, // done building block
+	error, // error
+) {
+	var blockSeriesIterated, chunksIndexed, chunksCopied, bytesAdded int
+	defer func() {
+		mb.metrics.blockSeriesIterated.Add(float64(blockSeriesIterated))
+		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeIterated).Add(float64(chunksIndexed))
+		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeCopied).Add(float64(chunksCopied))
+		mb.metrics.chunksPerSeries.Observe(float64(chunksIndexed + chunksCopied))
+	}()
 
-	// Turn the list of blocks into a single iterator that returns the next series
-	mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewHeapIterForSeriesWithBloom(mb.blocks...))
-	// two overlapping blocks can conceivably have the same series, so we need to dedupe,
-	// preferring the one with the most chunks already indexed since we'll have
-	// to add fewer chunks to the bloom
-	deduped := NewDedupingIter[*SeriesWithBloom](
-		func(a, b *SeriesWithBloom) bool {
-			return a.Series.Fingerprint == b.Series.Fingerprint
-		},
-		Identity[*SeriesWithBloom],
-		func(a, b *SeriesWithBloom) *SeriesWithBloom {
-			if len(a.Series.Chunks) > len(b.Series.Chunks) {
-				return a
-			}
-			return b
-		},
-		mergedBlocks,
-	)
+	if !mb.store.Next() {
+		return nil, 0, false, true, nil
+	}
 
-	for mb.store.Next() {
-		nextInStore := mb.store.At()
+	nextInStore := mb.store.At()
 
-		// advance the merged blocks iterator until we find a series that is
-		// greater than or equal to the next series in the store.
-		// TODO(owen-d): expensive, but Seek is not implemented for this itr.
-		// It's also more efficient to build an iterator over the Series file in the index
-		// without the blooms until we find a bloom we actually need to unpack from the blooms file.
-		for nextInBlocks == nil || nextInBlocks.Series.Fingerprint < mb.store.At().Fingerprint {
-			if !deduped.Next() {
-				// we've exhausted all the blocks
-				nextInBlocks = nil
-				break
-			}
-			nextInBlocks = deduped.At()
+	// advance the merged blocks iterator until we find a series that is
+	// greater than or equal to the next series in the store.
+	// TODO(owen-d): expensive, but Seek is not implemented for this itr.
+	// It's also more efficient to build an iterator over the Series file in the index
+	// without the blooms until we find a bloom we actually need to unpack from the blooms file.
+	for !blocksFinished && (nextInBlocks == nil || nextInBlocks.Series.Fingerprint < mb.store.At().Fingerprint) {
+		if !mb.blocks.Next() {
+			// we've exhausted all the blocks
+			blocksFinished = true
+			nextInBlocks = nil
+			break
 		}
 
-		cur := nextInBlocks
-		chunksToAdd := nextInStore.Chunks
-		// The next series from the store doesn't exist in the blocks, so we add it
-		// in its entirety
-		if nextInBlocks == nil || nextInBlocks.Series.Fingerprint > nextInStore.Fingerprint {
-			cur = &SeriesWithBloom{
-				Series: nextInStore,
-				Bloom: &Bloom{
-					// TODO parameterise SBF options. fp_rate
-					ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
-				},
-			}
-		} else {
-			// if the series already exists in the block, we only need to add the new chunks
-			chunksToAdd = nextInStore.Chunks.Unless(nextInBlocks.Series.Chunks)
+		if err := mb.blocks.Err(); err != nil {
+			return nil, 0, false, false, errors.Wrap(err, "iterating blocks")
 		}
+		blockSeriesIterated++
+		nextInBlocks = mb.blocks.At()
+	}
 
-		if len(chunksToAdd) > 0 {
-			if err := mb.populate(
-				&Series{
-					Fingerprint: nextInStore.Fingerprint,
-					Chunks:      chunksToAdd,
-				},
-				cur.Bloom,
-			); err != nil {
-				return 0, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
-			}
+	cur := nextInBlocks
+	chunksToAdd := nextInStore.Chunks
+	// The next series from the store doesn't exist in the blocks, so we add it
+	// in its entirety
+	if nextInBlocks == nil || nextInBlocks.Series.Fingerprint > nextInStore.Fingerprint {
+		cur = &SeriesWithBloom{
+			Series: nextInStore,
+			Bloom: &Bloom{
+				// TODO parameterise SBF options. fp_rate
+				ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+			},
 		}
+	} else {
+		// if the series already exists in the block, we only need to add the new chunks
+		chunksToAdd = nextInStore.Chunks.Unless(nextInBlocks.Series.Chunks)
+		chunksCopied += len(nextInStore.Chunks) - len(chunksToAdd)
+	}
 
-		blockFull, err := builder.AddSeries(*cur)
+	chunksIndexed += len(chunksToAdd)
+
+	if len(chunksToAdd) > 0 {
+		sourceBytes, err := mb.populate(
+			&Series{
+				Fingerprint: nextInStore.Fingerprint,
+				Chunks:      chunksToAdd,
+			},
+			cur.Bloom,
+		)
+		bytesAdded += sourceBytes
+
 		if err != nil {
-			return 0, errors.Wrap(err, "adding series to block")
+			return nil, bytesAdded, false, false, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
 		}
-		if blockFull {
+	}
+
+	done, err := builder.AddSeries(*cur)
+	if err != nil {
+		return nil, bytesAdded, false, false, errors.Wrap(err, "adding series to block")
+	}
+	return nextInBlocks, bytesAdded, blocksFinished, done, nil
+}
+
+func (mb *MergeBuilder) Build(builder *BlockBuilder) (checksum uint32, totalBytes int, err error) {
+	var (
+		nextInBlocks   *SeriesWithBloom
+		blocksFinished bool // whether any previous blocks have been exhausted while building new block
+		done           bool
+	)
+	for {
+		var bytesAdded int
+		nextInBlocks, bytesAdded, blocksFinished, done, err = mb.processNextSeries(builder, nextInBlocks, blocksFinished)
+		totalBytes += bytesAdded
+		if err != nil {
+			return 0, totalBytes, errors.Wrap(err, "processing next series")
+		}
+		if done {
 			break
 		}
 	}
 
-	checksum, err := builder.Close()
-	if err != nil {
-		return 0, errors.Wrap(err, "closing block")
+	if err := mb.store.Err(); err != nil {
+		return 0, totalBytes, errors.Wrap(err, "iterating store")
 	}
-	return checksum, nil
+
+	checksum, err = builder.Close()
+	if err != nil {
+		return 0, totalBytes, errors.Wrap(err, "closing block")
+	}
+	return checksum, totalBytes, nil
 }

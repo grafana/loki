@@ -2,7 +2,6 @@ package bloomgateway
 
 import (
 	"context"
-	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/util/constants"
 )
@@ -81,10 +81,6 @@ func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef
 		}
 	}
 
-	rand.Shuffle(len(result), func(i, j int) {
-		result[i], result[j] = result[j], result[i]
-	})
-
 	time.Sleep(s.delay)
 
 	return result, nil
@@ -103,16 +99,21 @@ func TestProcessor(t *testing.T) {
 		p := newProcessor("worker", mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
-		swb := seriesWithBounds{
+		swb := seriesWithInterval{
 			series: groupRefs(t, chunkRefs),
-			bounds: model.Interval{
+			interval: bloomshipper.Interval{
 				Start: now.Add(-1 * time.Hour),
 				End:   now,
 			},
-			day: truncateDay(now),
+			day: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilter{
-			{Ty: 0, Match: "no match"},
+		filters := []syntax.LineFilterExpr{
+			{
+				LineFilter: syntax.LineFilter{
+					Ty:    0,
+					Match: "no match",
+				},
+			},
 		}
 
 		t.Log("series", len(swb.series))
@@ -147,16 +148,21 @@ func TestProcessor(t *testing.T) {
 		p := newProcessor("worker", mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
-		swb := seriesWithBounds{
+		swb := seriesWithInterval{
 			series: groupRefs(t, chunkRefs),
-			bounds: model.Interval{
+			interval: bloomshipper.Interval{
 				Start: now.Add(-1 * time.Hour),
 				End:   now,
 			},
-			day: truncateDay(now),
+			day: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilter{
-			{Ty: 0, Match: "no match"},
+		filters := []syntax.LineFilterExpr{
+			{
+				LineFilter: syntax.LineFilter{
+					Ty:    0,
+					Match: "no match",
+				},
+			},
 		}
 
 		t.Log("series", len(swb.series))

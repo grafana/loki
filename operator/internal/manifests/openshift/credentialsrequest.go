@@ -12,6 +12,8 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
+const azureFallbackRegion = "centralus"
+
 func BuildCredentialsRequest(opts Options) (*cloudcredentialv1.CredentialsRequest, error) {
 	stack := client.ObjectKey{Name: opts.BuildOpts.LokiStackName, Namespace: opts.BuildOpts.LokiStackNamespace}
 
@@ -62,6 +64,15 @@ func encodeProviderSpec(env *config.ManagedAuthConfig) (*runtime.RawExtension, e
 		}
 	case env.Azure != nil:
 		azure := env.Azure
+		if azure.Region == "" {
+			// The OpenShift Console currently does not provide a UI to configure the Azure Region
+			// for an operator using managed credentials. Because the CredentialsRequest is currently
+			// not used to create a Managed Identity, the region is actually never used.
+			// We default to the US region if nothing is set, so that the CredentialsRequest can be
+			// created. This should have no effect on the generated credential secret.
+			// The region can be configured by setting an environment variable on the operator Subscription.
+			azure.Region = azureFallbackRegion
+		}
 
 		spec = &cloudcredentialv1.AzureProviderSpec{
 			Permissions: []string{

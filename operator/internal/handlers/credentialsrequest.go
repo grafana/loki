@@ -2,12 +2,11 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
+	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -19,14 +18,11 @@ import (
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
-var errAzureNoRegion = errors.New("can not create CredentialsRequest: missing secret field: region")
-
-// CreateCredentialsRequest creates a new CredentialsRequest resource for a Lokistack
+// CreateUpdateDeleteCredentialsRequest creates a new CredentialsRequest resource for a Lokistack
 // to request a cloud credentials Secret resource from the OpenShift cloud-credentials-operator.
-func CreateCredentialsRequest(ctx context.Context, log logr.Logger, scheme *runtime.Scheme, managedAuth *config.ManagedAuthConfig, k k8s.Client, req ctrl.Request) error {
+func CreateUpdateDeleteCredentialsRequest(ctx context.Context, log logr.Logger, scheme *runtime.Scheme, managedAuth *config.ManagedAuthConfig, k k8s.Client, req ctrl.Request) error {
 	ll := log.WithValues("lokistack", req.NamespacedName, "event", "createCredentialsRequest")
 
 	var stack lokiv1.LokiStack
@@ -39,30 +35,22 @@ func CreateCredentialsRequest(ctx context.Context, log logr.Logger, scheme *runt
 		return kverrors.Wrap(err, "failed to lookup LokiStack", "name", req.String())
 	}
 
-	if managedAuth.Azure != nil && managedAuth.Azure.Region == "" {
-		// Managed environment for Azure does not provide Region, but we need this for the CredentialsRequest.
-		// This looks like an oversight when creating the UI in OpenShift, but for now we need to pull this data
-		// from somewhere else -> the Azure Storage Secret
-		storageSecretName := client.ObjectKey{
-			Namespace: stack.Namespace,
-			Name:      stack.Spec.Storage.Secret.Name,
-		}
-		storageSecret := &corev1.Secret{}
-		if err := k.Get(ctx, storageSecretName, storageSecret); err != nil {
+	if !hasManagedCredentialMode(&stack) {
+		// Operator is running in managed-mode, but stack specifies non-managed mode -> skip CredentialsRequest
+		var credReq cloudcredentialv1.CredentialsRequest
+		if err := k.Get(ctx, req.NamespacedName, &credReq); err != nil {
 			if apierrors.IsNotFound(err) {
-				// Skip this error here as it will be picked up by the LokiStack handler instead
-				ll.Error(err, "could not find secret for LokiStack", "name", req.String())
+				// CredentialsRequest does not exist -> this is what we want
 				return nil
 			}
-			return err
+
+			return kverrors.Wrap(err, "failed to lookup CredentialsRequest", "name", req.String())
 		}
 
-		region := storageSecret.Data[storage.KeyAzureRegion]
-		if len(region) == 0 {
-			return errAzureNoRegion
+		if err := k.Delete(ctx, &credReq); err != nil {
+			return kverrors.Wrap(err, "failed to remove CredentialsRequest", "name", req.String())
 		}
-
-		managedAuth.Azure.Region = string(region)
+		return nil
 	}
 
 	opts := openshift.Options{
@@ -101,4 +89,20 @@ func CreateCredentialsRequest(ctx context.Context, log logr.Logger, scheme *runt
 	}
 
 	return nil
+}
+
+// hasManagedCredentialMode returns true, if the LokiStack is configured to run in managed-mode.
+// This function assumes only being called when the operator is running in managed-credentials mode, so it is
+// only returning false when the credential-mode has been explicitly configured, even if the target storage
+// is not supporting managed-mode at all.
+func hasManagedCredentialMode(stack *lokiv1.LokiStack) bool {
+	switch stack.Spec.Storage.Secret.CredentialMode {
+	case lokiv1.CredentialModeStatic, lokiv1.CredentialModeToken:
+		return false
+	case lokiv1.CredentialModeManaged:
+		return true
+	default:
+	}
+
+	return true
 }

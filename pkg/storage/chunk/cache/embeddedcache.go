@@ -259,11 +259,12 @@ func (c *EmbeddedCache[K, V]) GetCacheType() stats.CacheType {
 
 func (c *EmbeddedCache[K, V]) remove(key K, element *list.Element, reason string) {
 	entry := c.lru.Remove(element).(*Entry[K, V])
+	sz := c.cacheEntrySizeCalculator(entry)
 	delete(c.entries, key)
 	if c.onEntryRemoved != nil {
 		c.onEntryRemoved(entry.Key, entry.Value)
 	}
-	c.currSizeBytes -= c.cacheEntrySizeCalculator(entry)
+	c.currSizeBytes -= sz
 	c.entriesCurrent.Dec()
 	c.entriesEvicted.WithLabelValues(reason).Inc()
 }

@@ -26,9 +26,6 @@
 // BoltDB and TSDB Shipper support. Anything that modifies the compactor must be imported after this.
 (import 'shipper.libsonnet') +
 
-// Accelerated search using bloom filters
-(import 'bloomfilters.libsonnet') +
-
 (import 'table-manager.libsonnet') +
 
 // Multi-zone ingester related config
