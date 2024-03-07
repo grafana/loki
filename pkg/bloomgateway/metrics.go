@@ -90,9 +90,8 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 		blockQueryLatency: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			// TODO(owen-d): rename to block_query_latency_seconds
-			Name: "block_query_latency",
-			Help: "Time spent running searches against a bloom block",
+			Name:      "block_query_latency_seconds",
+			Help:      "Time spent running searches against a bloom block",
 		}, append(labels, "status")),
 	}
 }
