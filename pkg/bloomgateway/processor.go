@@ -87,6 +87,7 @@ func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) er
 		return err
 	}
 
+	// TODO(chaudum): use `concurrency` lib with bound parallelism
 	for i, bq := range bqs {
 		block := data[i]
 		if bq == nil {
