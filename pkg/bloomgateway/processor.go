@@ -37,7 +37,12 @@ func (p *processor) run(ctx context.Context, tasks []Task) error {
 
 func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.MultiFingerprintBounds) error {
 	tenant := tasks[0].Tenant
-	level.Info(p.logger).Log("msg", "process tasks with bounds", "tenant", tenant, "tasks", len(tasks), "bounds", bounds)
+	level.Info(p.logger).Log(
+		"msg", "process tasks with bounds",
+		"tenant", tenant,
+		"tasks", len(tasks),
+		"bounds", JoinFunc(bounds, ",", func(e v1.FingerprintBounds) string { return e.String() }),
+	)
 
 	for ts, tasks := range group(tasks, func(t Task) config.DayTime { return t.table }) {
 		err := p.processTasks(ctx, tenant, ts, bounds, tasks)
