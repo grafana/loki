@@ -6,12 +6,21 @@ metadata:
   name: metrics-monitor
 spec:
   endpoints:
-    - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
-      path: /metrics
+    - path: /metrics
       targetPort: 8443
       scheme: https
       interval: 30s
       scrapeTimeout: 10s
       tlsConfig:
-        caFile: /etc/prometheus/configmaps/serving-certs-ca-bundle/service-ca.crt
+        ca:
+          configMap:
+            key: service-ca.crt
+            name: loki-operator-controller-manager-metrics-ca
+        cert:
+          secret:
+            key: tls.crt
+            name: loki-operator-controller-manager-metrics-service
+        keySecret:
+          key: tls.key
+          name: loki-operator-controller-manager-metrics-service
         serverName: loki-operator-controller-manager-metrics-service.openshift-operators-redhat.svc
