@@ -229,7 +229,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}, nil
 	}
 
-	var numSeries int
 	seriesByDay := partitionRequest(req)
 
 	// no tasks --> empty response
@@ -240,11 +239,16 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	tasks := make([]Task, 0, len(seriesByDay))
+	responses := make([][]v1.Output, 0, len(seriesByDay))
 	for _, seriesForDay := range seriesByDay {
 		task, err := NewTask(ctx, tenantID, seriesForDay, filters)
 		if err != nil {
 			return nil, err
 		}
+
+		// TODO(owen-d): include capacity in constructor?
+		task.responses = responsesPool.Get(len(seriesForDay.series))
+
 		level.Debug(g.logger).Log(
 			"msg", "created task for day",
 			"task", task.ID,
@@ -254,7 +258,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			"filters", JoinFunc(filters, ";", func(e syntax.LineFilterExpr) string { return e.String() }),
 		)
 		tasks = append(tasks, task)
-		numSeries += len(seriesForDay.series)
 	}
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
@@ -272,11 +275,10 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			// When enqueuing, we also add the task to the pending tasks
 			_ = g.pendingTasks.Inc()
 		})
+		// TODO(owen-d): use `concurrency` lib, bound parallelism
 		go g.consumeTask(ctx, task, tasksCh)
 	}
 
-	responses := responsesPool.Get(numSeries)
-	defer responsesPool.Put(responses)
 	remaining := len(tasks)
 
 	preFilterSeries := len(req.Refs)
@@ -295,12 +297,18 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			if task.Err() != nil {
 				return nil, errors.Wrap(task.Err(), "request failed")
 			}
-			responses = append(responses, task.responses...)
+			responses = append(responses, task.responses)
 			remaining--
 		}
 	}
 
 	filtered := filterChunkRefs(req, responses)
+
+	// free up the responses
+	for _, resp := range responses {
+		responsesPool.Put(resp)
+	}
+
 	postFilterSeries := len(filtered)
 
 	for _, group := range req.Refs {
@@ -415,8 +423,22 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 	return
 }
 
+// merges a list of responses via a heap. The same fingerprints and chunks can be present in multiple responses,
+// but each response must be ordered by fingerprint
+func orderedResponsesByFP(responses [][]v1.Output) *v1.HeapIterator[v1.Output] {
+	itrs := make([]v1.PeekingIterator[v1.Output], 0, len(responses))
+	for _, r := range responses {
+		itrs = append(itrs, v1.NewPeekingIter(v1.NewSliceIter(r)))
+	}
+	return v1.NewHeapIterator[v1.Output](
+		func(o1, o2 v1.Output) bool { return o1.Fp <= o2.Fp },
+		itrs...,
+	)
+}
+
 // TODO(owen-d): improve perf. This can be faster with a more specialized impl
-func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses []v1.Output) []*logproto.GroupedChunkRefs {
+// NB(owen-d): `req` is mutated in place for performance, but `responses` is not
+func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses [][]v1.Output) []*logproto.GroupedChunkRefs {
 	res := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
 
 	// dedupe outputs, merging the same series.
@@ -429,7 +451,8 @@ func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses []v1.Output)
 		// from
 		v1.Identity[v1.Output],
 		// merge two removal sets for the same series, deduping
-		func(o1, o2 v1.Output) (res v1.Output) {
+		func(o1, o2 v1.Output) v1.Output {
+			res := v1.Output{Fp: o1.Fp}
 
 			var chks v1.ChunkRefs
 			var i, j int
@@ -463,7 +486,7 @@ func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses []v1.Output)
 			res.Removals = chks
 			return res
 		},
-		v1.NewPeekingIter(v1.NewSliceIter(responses)),
+		v1.NewPeekingIter(orderedResponsesByFP(responses)),
 	)
 
 	// Iterate through the requested and filtered series/chunks,
