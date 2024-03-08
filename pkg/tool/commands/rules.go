@@ -431,7 +431,7 @@ func (r *RuleCommand) shouldCheckNamespace(namespace string) bool {
 	return !ignored
 }
 
-func (r *RuleCommand) diffRules(k *kingpin.ParseContext) error {
+func (r *RuleCommand) diffRules(_ *kingpin.ParseContext) error {
 	err := r.setupFiles()
 	if err != nil {
 		return errors.Wrap(err, "diff operation unsuccessful, unable to load rules files")
@@ -494,7 +494,7 @@ func (r *RuleCommand) diffRules(k *kingpin.ParseContext) error {
 	return p.PrintComparisonResult(changes, r.Verbose)
 }
 
-func (r *RuleCommand) syncRules(k *kingpin.ParseContext) error {
+func (r *RuleCommand) syncRules(_ *kingpin.ParseContext) error {
 	err := r.setupFiles()
 	if err != nil {
 		return errors.Wrap(err, "sync operation unsuccessful, unable to load rules files")
@@ -616,7 +616,7 @@ func (r *RuleCommand) executeChanges(ctx context.Context, changes []rules.Namesp
 	return nil
 }
 
-func (r *RuleCommand) prepare(k *kingpin.ParseContext) error {
+func (r *RuleCommand) prepare(_ *kingpin.ParseContext) error {
 	err := r.setupFiles()
 	if err != nil {
 		return errors.Wrap(err, "prepare operation unsuccessful, unable to load rules files")
@@ -654,7 +654,7 @@ func (r *RuleCommand) prepare(k *kingpin.ParseContext) error {
 	return nil
 }
 
-func (r *RuleCommand) lint(k *kingpin.ParseContext) error {
+func (r *RuleCommand) lint(_ *kingpin.ParseContext) error {
 	err := r.setupFiles()
 	if err != nil {
 		return errors.Wrap(err, "prepare operation unsuccessful, unable to load rules files")
@@ -688,7 +688,7 @@ func (r *RuleCommand) lint(k *kingpin.ParseContext) error {
 	return nil
 }
 
-func (r *RuleCommand) checkRecordingRuleNames(k *kingpin.ParseContext) error {
+func (r *RuleCommand) checkRecordingRuleNames(_ *kingpin.ParseContext) error {
 	err := r.setupFiles()
 	if err != nil {
 		return errors.Wrap(err, "check operation unsuccessful, unable to load rules files")
