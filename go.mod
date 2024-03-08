@@ -127,6 +127,7 @@ require (
 	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
+	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus v0.86.0
 	github.com/prometheus/alertmanager v0.26.0
 	github.com/prometheus/common/sigv4 v0.1.0
@@ -139,9 +140,12 @@ require (
 	golang.org/x/oauth2 v0.11.0
 	golang.org/x/text v0.14.0
 	google.golang.org/protobuf v1.31.0
+	gotest.tools v2.2.0+incompatible
 	k8s.io/apimachinery v0.28.1
 	k8s.io/utils v0.0.0-20230711102312-30195339c3c7
 )
+
+require github.com/dlclark/regexp2 v1.4.0 // indirect
 
 require (
 	cloud.google.com/go v0.110.7 // indirect
@@ -167,6 +171,7 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.2.0 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
+	github.com/alecthomas/chroma v0.10.0
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
 	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
@@ -289,7 +294,7 @@ require (
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sercand/kuberesolver/v5 v5.1.1 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
+	github.com/sirupsen/logrus v1.9.3
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/cast v1.3.1 // indirect

@@ -1,0 +1,11 @@
+groups:
+  - name: testgrp2
+    interval: 0s
+    rules:
+      - alert: HTTPCredentialsLeaked
+        expr: sum by (cluster, job, pod) (rate({namespace=~"%s"} |~ "http(s?)://(\\w+):(\\w+)@" [5m]) > 0)
+        for: 2m
+        labels:
+            severity: page
+        annotations:
+            summary: High request latency
