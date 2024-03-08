@@ -116,12 +116,11 @@ spec:
       {{- end }}
       volumes:
         - name: config
-          {{- if .Values.enterprise.useExternalConfig }}
+          {{- if .Values.loki.existingSecretForConfig }}
           secret:
-            secretName: {{ .Values.enterprise.externalConfigName }}
+            secretName: {{ .Values.loki.existingSecretForConfig }}
           {{- else }}
-          configMap:
-            name: {{ include "loki.name" . }}
+          {{- include "loki.configVolume" . | nindent 10 }}
           {{- end }}
         - name: runtime-config
           configMap:
