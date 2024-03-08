@@ -425,7 +425,14 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 
 // merges a list of responses via a heap. The same fingerprints and chunks can be present in multiple responses,
 // but each response must be ordered by fingerprint
-func orderedResponsesByFP(responses [][]v1.Output) *v1.HeapIterator[v1.Output] {
+func orderedResponsesByFP(responses [][]v1.Output) v1.Iterator[v1.Output] {
+	if len(responses) == 0 {
+		return v1.NewEmptyIter[v1.Output]()
+	}
+	if len(responses) == 1 {
+		return v1.NewSliceIter(responses[0])
+	}
+
 	itrs := make([]v1.PeekingIterator[v1.Output], 0, len(responses))
 	for _, r := range responses {
 		itrs = append(itrs, v1.NewPeekingIter(v1.NewSliceIter(r)))
