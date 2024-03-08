@@ -37,8 +37,8 @@ type Config struct {
 	AuthToken       string `yaml:"auth_token"`
 }
 
-// CortexClient is used to get and load rules into a cortex ruler
-type CortexClient struct {
+// LokiClient is used to get and load rules into a Loki ruler
+type LokiClient struct {
 	user      string
 	key       string
 	id        string
@@ -49,7 +49,7 @@ type CortexClient struct {
 }
 
 // New returns a new Client
-func New(cfg Config) (*CortexClient, error) {
+func New(cfg Config) (*LokiClient, error) {
 	endpoint, err := url.Parse(cfg.Address)
 	if err != nil {
 		return nil, err
@@ -86,7 +86,7 @@ func New(cfg Config) (*CortexClient, error) {
 		path = legacyAPIPath
 	}
 
-	return &CortexClient{
+	return &LokiClient{
 		user:      cfg.User,
 		key:       cfg.Key,
 		id:        cfg.ID,
@@ -98,7 +98,7 @@ func New(cfg Config) (*CortexClient, error) {
 }
 
 // Query executes a PromQL query against the Cortex cluster.
-func (r *CortexClient) Query(ctx context.Context, query string) (*http.Response, error) {
+func (r *LokiClient) Query(ctx context.Context, query string) (*http.Response, error) {
 
 	query = fmt.Sprintf("query=%s&time=%d", query, time.Now().Unix())
 	escapedQuery := url.PathEscape(query)
@@ -111,7 +111,7 @@ func (r *CortexClient) Query(ctx context.Context, query string) (*http.Response,
 	return res, nil
 }
 
-func (r *CortexClient) doRequest(ctx context.Context, path, method string, payload []byte) (*http.Response, error) {
+func (r *LokiClient) doRequest(ctx context.Context, path, method string, payload []byte) (*http.Response, error) {
 	req, err := buildRequest(ctx, path, method, *r.endpoint, payload)
 	if err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ func (r *CortexClient) doRequest(ctx context.Context, path, method string, paylo
 			"url":    req.URL.String(),
 			"method": req.Method,
 			"error":  err,
-		}).Errorln("error during request to cortex api")
+		}).Errorln("error during request to the loki api")
 		return nil, err
 	}
 
@@ -142,7 +142,7 @@ func (r *CortexClient) doRequest(ctx context.Context, path, method string, paylo
 	log.WithFields(log.Fields{
 		"url":    req.URL.String(),
 		"method": req.Method,
-	}).Debugln("sending request to cortex api")
+	}).Debugln("sending request to the loki api")
 
 	resp, err := r.Client.Do(req)
 	if err != nil {
@@ -150,7 +150,7 @@ func (r *CortexClient) doRequest(ctx context.Context, path, method string, paylo
 			"url":    req.URL.String(),
 			"method": req.Method,
 			"error":  err.Error(),
-		}).Errorln("error during request to cortex api")
+		}).Errorln("error during request to the loki api")
 		return nil, err
 	}
 

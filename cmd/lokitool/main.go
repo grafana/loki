@@ -16,10 +16,10 @@ var (
 )
 
 func main() {
-	app := kingpin.New("cortextool", "A command-line tool to manage cortex.")
+	app := kingpin.New("cortextool", "A command-line tool to manage Loki.")
 	ruleCommand.Register(app)
 
-	app.Command("version", "Get the version of the cortextool CLI").Action(func(k *kingpin.ParseContext) error {
+	app.Command("version", "Get the version of the lokitool CLI").Action(func(k *kingpin.ParseContext) error {
 		fmt.Println(version.Print("loki"))
 		return nil
 	})

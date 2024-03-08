@@ -17,7 +17,7 @@ type configCompat struct {
 }
 
 // CreateAlertmanagerConfig creates a new alertmanager config
-func (r *CortexClient) CreateAlertmanagerConfig(ctx context.Context, cfg string, templates map[string]string) error {
+func (r *LokiClient) CreateAlertmanagerConfig(ctx context.Context, cfg string, templates map[string]string) error {
 	payload, err := yaml.Marshal(&configCompat{
 		TemplateFiles:      templates,
 		AlertmanagerConfig: cfg,
@@ -37,7 +37,7 @@ func (r *CortexClient) CreateAlertmanagerConfig(ctx context.Context, cfg string,
 }
 
 // DeleteAlermanagerConfig deletes the users alertmanagerconfig
-func (r *CortexClient) DeleteAlermanagerConfig(ctx context.Context) error {
+func (r *LokiClient) DeleteAlermanagerConfig(ctx context.Context) error {
 	res, err := r.doRequest(ctx, alertmanagerAPIPath, "DELETE", nil)
 	if err != nil {
 		return err
@@ -49,7 +49,7 @@ func (r *CortexClient) DeleteAlermanagerConfig(ctx context.Context) error {
 }
 
 // GetAlertmanagerConfig retrieves a rule group
-func (r *CortexClient) GetAlertmanagerConfig(ctx context.Context) (string, map[string]string, error) {
+func (r *LokiClient) GetAlertmanagerConfig(ctx context.Context) (string, map[string]string, error) {
 	res, err := r.doRequest(ctx, alertmanagerAPIPath, "GET", nil)
 	if err != nil {
 		log.Debugln("no alert config present in response")

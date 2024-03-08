@@ -301,11 +301,7 @@ func TestLintExpressions(t *testing.T) {
 			},
 			}
 
-			backend := CortexBackend
-			if tc.logql {
-				backend = LokiBackend
-			}
-			c, m, err := r.LintExpressions(backend)
+			c, m, err := r.LintExpressions()
 			rexpr := r.Groups[0].Rules[0].Expr.Value
 
 			require.Equal(t, tc.count, c)

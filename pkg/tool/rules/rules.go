@@ -25,23 +25,12 @@ type RuleNamespace struct {
 
 // LintExpressions runs the `expr` from a rule through the PromQL or LogQL parser and
 // compares its output. If it differs from the parser, it uses the parser's instead.
-func (r RuleNamespace) LintExpressions(backend string) (int, int, error) {
+func (r RuleNamespace) LintExpressions() (int, int, error) {
 	var parseFn func(string) (fmt.Stringer, error)
-	var queryLanguage string
+	queryLanguage := "LogQL"
 
-	switch backend {
-	case CortexBackend:
-		queryLanguage = "PromQL"
-		parseFn = func(s string) (fmt.Stringer, error) {
-			return parser.ParseExpr(s)
-		}
-	case LokiBackend:
-		queryLanguage = "LogQL"
-		parseFn = func(s string) (fmt.Stringer, error) {
-			return logql.ParseExpr(s)
-		}
-	default:
-		return 0, 0, errInvalidBackend
+	parseFn = func(s string) (fmt.Stringer, error) {
+		return logql.ParseExpr(s)
 	}
 
 	// `count` represents the number of rules we evalated.
@@ -227,7 +216,7 @@ func (r RuleNamespace) Validate() []error {
 
 	for _, g := range r.Groups {
 		if g.Name == "" {
-			errs = append(errs, fmt.Errorf("Groupname should not be empty"))
+			errs = append(errs, fmt.Errorf("groupname should not be empty"))
 		}
 
 		if _, ok := set[g.Name]; ok {

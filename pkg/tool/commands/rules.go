@@ -27,27 +27,26 @@ const (
 
 var (
 	ruleLoadTimestamp = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "last_rule_load_timestamp_seconds",
 		Help:      "The timestamp of the last rule load.",
 	})
 	ruleLoadSuccessTimestamp = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "last_rule_load_success_timestamp_seconds",
 		Help:      "The timestamp of the last successful rule load.",
 	})
 
-	backends = []string{rules.CortexBackend, rules.LokiBackend} // list of supported backend types
-	formats  = []string{"json", "yaml", "table"}                // list of supported formats for the list command
+	formats = []string{"json", "yaml", "table"} // list of supported formats for the list command
 )
 
-// RuleCommand configures and executes rule related cortex operations
+// RuleCommand configures and executes rule related Loki operations
 type RuleCommand struct {
 	ClientConfig client.Config
 
-	cli *client.CortexClient
+	cli *client.LokiClient
 
-	// Backend type (cortex | loki)
+	// Backend type (loki only)
 	Backend string
 
 	// Get Rule Groups Configs
@@ -88,18 +87,17 @@ type RuleCommand struct {
 
 // Register rule related commands and flags with the kingpin application
 func (r *RuleCommand) Register(app *kingpin.Application) {
-	rulesCmd := app.Command("rules", "View & edit rules stored in cortex.").PreAction(r.setup)
+	rulesCmd := app.Command("rules", "View & edit rules stored in loki.").PreAction(r.setup)
 	rulesCmd.Flag("authToken", "Authentication token for bearer token or JWT auth, alternatively set CORTEX_AUTH_TOKEN.").Default("").Envar("CORTEX_AUTH_TOKEN").StringVar(&r.ClientConfig.AuthToken)
-	rulesCmd.Flag("user", "API user to use when contacting cortex, alternatively set CORTEX_API_USER. If empty, CORTEX_TENANT_ID will be used instead.").Default("").Envar("CORTEX_API_USER").StringVar(&r.ClientConfig.User)
-	rulesCmd.Flag("key", "API key to use when contacting cortex, alternatively set CORTEX_API_KEY.").Default("").Envar("CORTEX_API_KEY").StringVar(&r.ClientConfig.Key)
-	rulesCmd.Flag("backend", "Backend type to interact with: <cortex|loki>").Default("cortex").EnumVar(&r.Backend, backends...)
+	rulesCmd.Flag("user", "API user to use when contacting loki, alternatively set CORTEX_API_USER. If empty, CORTEX_TENANT_ID will be used instead.").Default("").Envar("CORTEX_API_USER").StringVar(&r.ClientConfig.User)
+	rulesCmd.Flag("key", "API key to use when contacting loki, alternatively set CORTEX_API_KEY.").Default("").Envar("CORTEX_API_KEY").StringVar(&r.ClientConfig.Key)
 
 	// Register rule commands
 	listCmd := rulesCmd.
-		Command("list", "List the rules currently in the cortex ruler.").
+		Command("list", "List the rules currently in the loki ruler.").
 		Action(r.listRules)
 	printRulesCmd := rulesCmd.
-		Command("print", "Print the rules currently in the cortex ruler.").
+		Command("print", "Print the rules currently in the loki ruler.").
 		Action(r.printRules)
 	getRuleGroupCmd := rulesCmd.
 		Command("get", "Retrieve a rulegroup from the ruler.").
@@ -108,13 +106,13 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 		Command("delete", "Delete a rulegroup from the ruler.").
 		Action(r.deleteRuleGroup)
 	loadRulesCmd := rulesCmd.
-		Command("load", "load a set of rules to a designated cortex endpoint").
+		Command("load", "load a set of rules to a designated loki endpoint").
 		Action(r.loadRules)
 	diffRulesCmd := rulesCmd.
-		Command("diff", "diff a set of rules to a designated cortex endpoint").
+		Command("diff", "diff a set of rules to a designated loki endpoint").
 		Action(r.diffRules)
 	syncRulesCmd := rulesCmd.
-		Command("sync", "sync a set of rules to a designated cortex endpoint").
+		Command("sync", "sync a set of rules to a designated loki endpoint").
 		Action(r.syncRules)
 	prepareCmd := rulesCmd.
 		Command("prepare", "modifies a set of rules by including an specific label in aggregations.").
@@ -128,34 +126,34 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 
 	// Require Cortex cluster address and tentant ID on all these commands
 	for _, c := range []*kingpin.CmdClause{listCmd, printRulesCmd, getRuleGroupCmd, deleteRuleGroupCmd, loadRulesCmd, diffRulesCmd, syncRulesCmd} {
-		c.Flag("address", "Address of the cortex cluster, alternatively set CORTEX_ADDRESS.").
-			Envar("CORTEX_ADDRESS").
+		c.Flag("address", "Address of the loki cluster, alternatively set LOKI_ADDRESS.").
+			Envar("LOKI_ADDRESS").
 			Required().
 			StringVar(&r.ClientConfig.Address)
 
-		c.Flag("id", "Cortex tenant id, alternatively set CORTEX_TENANT_ID.").
-			Envar("CORTEX_TENANT_ID").
+		c.Flag("id", "Loki tenant id, alternatively set LOKI_TENANT_ID.").
+			Envar("LOKI_TENANT_ID").
 			Required().
 			StringVar(&r.ClientConfig.ID)
 
-		c.Flag("use-legacy-routes", "If set, API requests to cortex will use the legacy /api/prom/ routes, alternatively set CORTEX_USE_LEGACY_ROUTES.").
+		c.Flag("use-legacy-routes", "If set, API requests to loki will use the legacy /api/prom/ routes, alternatively set LOKI_USE_LEGACY_ROUTES.").
 			Default("false").
-			Envar("CORTEX_USE_LEGACY_ROUTES").
+			Envar("LOKI_USE_LEGACY_ROUTES").
 			BoolVar(&r.ClientConfig.UseLegacyRoutes)
 
-		c.Flag("tls-ca-path", "TLS CA certificate to verify cortex API as part of mTLS, alternatively set CORTEX_TLS_CA_PATH.").
+		c.Flag("tls-ca-path", "TLS CA certificate to verify Loki API as part of mTLS, alternatively set LOKI_TLS_CA_PATH.").
 			Default("").
-			Envar("CORTEX_TLS_CA_CERT").
+			Envar("LOKI_TLS_CA_CERT").
 			StringVar(&r.ClientConfig.TLS.CAPath)
 
-		c.Flag("tls-cert-path", "TLS client certificate to authenticate with cortex API as part of mTLS, alternatively set CORTEX_TLS_CERT_PATH.").
+		c.Flag("tls-cert-path", "TLS client certificate to authenticate with Loki API as part of mTLS, alternatively set Loki_TLS_CERT_PATH.").
 			Default("").
-			Envar("CORTEX_TLS_CLIENT_CERT").
+			Envar("LOKI_TLS_CLIENT_CERT").
 			StringVar(&r.ClientConfig.TLS.CertPath)
 
-		c.Flag("tls-key-path", "TLS client certificate private key to authenticate with cortex API as part of mTLS, alternatively set CORTEX_TLS_KEY_PATH.").
+		c.Flag("tls-key-path", "TLS client certificate private key to authenticate with Loki API as part of mTLS, alternatively set LOKI_TLS_KEY_PATH.").
 			Default("").
-			Envar("CORTEX_TLS_CLIENT_KEY").
+			Envar("LOKI_TLS_CLIENT_KEY").
 			StringVar(&r.ClientConfig.TLS.KeyPath)
 
 	}
@@ -332,7 +330,7 @@ func (r *RuleCommand) setupFiles() error {
 func (r *RuleCommand) listRules(_ *kingpin.ParseContext) error {
 	rules, err := r.cli.ListRules(context.Background(), "")
 	if err != nil {
-		log.Fatalf("unable to read rules from cortex, %v", err)
+		log.Fatalf("unable to read rules from loki, %v", err)
 
 	}
 
@@ -347,37 +345,37 @@ func (r *RuleCommand) printRules(_ *kingpin.ParseContext) error {
 			log.Infof("no rule groups currently exist for this user")
 			return nil
 		}
-		log.Fatalf("unable to read rules from cortex, %v", err)
+		log.Fatalf("unable to read rules from loki, %v", err)
 	}
 
 	p := printer.New(r.DisableColor)
 	return p.PrintRuleGroups(rules)
 }
 
-func (r *RuleCommand) getRuleGroup(k *kingpin.ParseContext) error {
+func (r *RuleCommand) getRuleGroup(_ *kingpin.ParseContext) error {
 	group, err := r.cli.GetRuleGroup(context.Background(), r.Namespace, r.RuleGroup)
 	if err != nil {
 		if err == client.ErrResourceNotFound {
 			log.Infof("this rule group does not currently exist")
 			return nil
 		}
-		log.Fatalf("unable to read rules from cortex, %v", err)
+		log.Fatalf("unable to read rules from loki, %v", err)
 	}
 
 	p := printer.New(r.DisableColor)
 	return p.PrintRuleGroup(*group)
 }
 
-func (r *RuleCommand) deleteRuleGroup(k *kingpin.ParseContext) error {
+func (r *RuleCommand) deleteRuleGroup(_ *kingpin.ParseContext) error {
 	err := r.cli.DeleteRuleGroup(context.Background(), r.Namespace, r.RuleGroup)
 	if err != nil && err != client.ErrResourceNotFound {
-		log.Fatalf("unable to delete rule group from cortex, %v", err)
+		log.Fatalf("unable to delete rule group from loki, %v", err)
 	}
 	return nil
 }
 
-func (r *RuleCommand) loadRules(k *kingpin.ParseContext) error {
-	nss, err := rules.ParseFiles(r.Backend, r.RuleFilesList)
+func (r *RuleCommand) loadRules(_ *kingpin.ParseContext) error {
+	nss, err := rules.ParseFiles(r.RuleFilesList)
 	if err != nil {
 		return errors.Wrap(err, "load operation unsuccessful, unable to parse rules files")
 	}
@@ -388,7 +386,7 @@ func (r *RuleCommand) loadRules(k *kingpin.ParseContext) error {
 			fmt.Printf("group: '%v', ns: '%v'\n", group.Name, ns.Namespace)
 			curGroup, err := r.cli.GetRuleGroup(context.Background(), ns.Namespace, group.Name)
 			if err != nil && err != client.ErrResourceNotFound {
-				return errors.Wrap(err, "load operation unsuccessful, unable to contact cortex api")
+				return errors.Wrap(err, "load operation unsuccessful, unable to contact the loki api")
 			}
 			if curGroup != nil {
 				err = rules.CompareGroups(*curGroup, group)
@@ -439,7 +437,7 @@ func (r *RuleCommand) diffRules(k *kingpin.ParseContext) error {
 		return errors.Wrap(err, "diff operation unsuccessful, unable to load rules files")
 	}
 
-	nss, err := rules.ParseFiles(r.Backend, r.RuleFilesList)
+	nss, err := rules.ParseFiles(r.RuleFilesList)
 	if err != nil {
 		return errors.Wrap(err, "diff operation unsuccessful, unable to parse rules files")
 	}
@@ -449,7 +447,7 @@ func (r *RuleCommand) diffRules(k *kingpin.ParseContext) error {
 	// If we're unable to reach the Cortex API due to a bad URL, we'll assume no rules are
 	// part of the namespace and provide a diff of the whole ruleset.
 	if err != nil && err != client.ErrResourceNotFound {
-		return errors.Wrap(err, "diff operation unsuccessful, unable to contact cortex api")
+		return errors.Wrap(err, "diff operation unsuccessful, unable to contact the loki api")
 	}
 
 	changes := []rules.NamespaceChange{}
@@ -502,7 +500,7 @@ func (r *RuleCommand) syncRules(k *kingpin.ParseContext) error {
 		return errors.Wrap(err, "sync operation unsuccessful, unable to load rules files")
 	}
 
-	nss, err := rules.ParseFiles(r.Backend, r.RuleFilesList)
+	nss, err := rules.ParseFiles(r.RuleFilesList)
 	if err != nil {
 		return errors.Wrap(err, "sync operation unsuccessful, unable to parse rules files")
 	}
@@ -512,7 +510,7 @@ func (r *RuleCommand) syncRules(k *kingpin.ParseContext) error {
 	// If we're unable to reach the Cortex API due to a bad URL, we'll assume no rules are
 	// part of the namespace and provide a diff of the whole ruleset.
 	if err != nil && err != client.ErrResourceNotFound {
-		return errors.Wrap(err, "sync operation unsuccessful, unable to contact cortex api")
+		return errors.Wrap(err, "sync operation unsuccessful, unable to contact the loki api")
 	}
 
 	changes := []rules.NamespaceChange{}
@@ -624,7 +622,7 @@ func (r *RuleCommand) prepare(k *kingpin.ParseContext) error {
 		return errors.Wrap(err, "prepare operation unsuccessful, unable to load rules files")
 	}
 
-	namespaces, err := rules.ParseFiles(r.Backend, r.RuleFilesList)
+	namespaces, err := rules.ParseFiles(r.RuleFilesList)
 	if err != nil {
 		return errors.Wrap(err, "prepare operation unsuccessful, unable to parse rules files")
 	}
@@ -662,14 +660,14 @@ func (r *RuleCommand) lint(k *kingpin.ParseContext) error {
 		return errors.Wrap(err, "prepare operation unsuccessful, unable to load rules files")
 	}
 
-	namespaces, err := rules.ParseFiles(r.Backend, r.RuleFilesList)
+	namespaces, err := rules.ParseFiles(r.RuleFilesList)
 	if err != nil {
 		return errors.Wrap(err, "prepare operation unsuccessful, unable to parse rules files")
 	}
 
 	var count, mod int
 	for _, ruleNamespace := range namespaces {
-		c, m, err := ruleNamespace.LintExpressions(r.Backend)
+		c, m, err := ruleNamespace.LintExpressions()
 		if err != nil {
 			return err
 		}
@@ -696,7 +694,7 @@ func (r *RuleCommand) checkRecordingRuleNames(k *kingpin.ParseContext) error {
 		return errors.Wrap(err, "check operation unsuccessful, unable to load rules files")
 	}
 
-	namespaces, err := rules.ParseFiles(r.Backend, r.RuleFilesList)
+	namespaces, err := rules.ParseFiles(r.RuleFilesList)
 	if err != nil {
 		return errors.Wrap(err, "check operation unsuccessful, unable to parse rules files")
 	}

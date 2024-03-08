@@ -15,27 +15,17 @@ import (
 )
 
 const (
-	CortexBackend = "cortex"
-	LokiBackend   = "loki"
+	LokiBackend = "loki"
 )
 
 var (
-	errFileReadError  = errors.New("file read error")
-	errInvalidBackend = errors.New("invalid backend type")
+	errFileReadError = errors.New("file read error")
 )
 
 // ParseFiles returns a formatted set of prometheus rule groups
-func ParseFiles(backend string, files []string) (map[string]RuleNamespace, error) {
+func ParseFiles(files []string) (map[string]RuleNamespace, error) {
 	ruleSet := map[string]RuleNamespace{}
-	var parseFn func(f string) ([]RuleNamespace, []error)
-	switch backend {
-	case CortexBackend:
-		parseFn = Parse
-	case LokiBackend:
-		parseFn = ParseLoki
-	default:
-		return nil, errInvalidBackend
-	}
+	var parseFn = ParseLoki
 
 	for _, f := range files {
 		nss, errs := parseFn(f)

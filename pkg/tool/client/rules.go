@@ -14,7 +14,7 @@ import (
 )
 
 // CreateRuleGroup creates a new rule group
-func (r *CortexClient) CreateRuleGroup(ctx context.Context, namespace string, rg rwrulefmt.RuleGroup) error {
+func (r *LokiClient) CreateRuleGroup(ctx context.Context, namespace string, rg rwrulefmt.RuleGroup) error {
 	payload, err := yaml.Marshal(&rg)
 	if err != nil {
 		return err
@@ -34,7 +34,7 @@ func (r *CortexClient) CreateRuleGroup(ctx context.Context, namespace string, rg
 }
 
 // DeleteRuleGroup creates a new rule group
-func (r *CortexClient) DeleteRuleGroup(ctx context.Context, namespace, groupName string) error {
+func (r *LokiClient) DeleteRuleGroup(ctx context.Context, namespace, groupName string) error {
 	escapedNamespace := url.PathEscape(namespace)
 	escapedGroupName := url.PathEscape(groupName)
 	path := r.apiPath + "/" + escapedNamespace + "/" + escapedGroupName
@@ -50,7 +50,7 @@ func (r *CortexClient) DeleteRuleGroup(ctx context.Context, namespace, groupName
 }
 
 // GetRuleGroup retrieves a rule group
-func (r *CortexClient) GetRuleGroup(ctx context.Context, namespace, groupName string) (*rwrulefmt.RuleGroup, error) {
+func (r *LokiClient) GetRuleGroup(ctx context.Context, namespace, groupName string) (*rwrulefmt.RuleGroup, error) {
 	escapedNamespace := url.PathEscape(namespace)
 	escapedGroupName := url.PathEscape(groupName)
 	path := r.apiPath + "/" + escapedNamespace + "/" + escapedGroupName
@@ -82,7 +82,7 @@ func (r *CortexClient) GetRuleGroup(ctx context.Context, namespace, groupName st
 }
 
 // ListRules retrieves a rule group
-func (r *CortexClient) ListRules(ctx context.Context, namespace string) (map[string][]rwrulefmt.RuleGroup, error) {
+func (r *LokiClient) ListRules(ctx context.Context, namespace string) (map[string][]rwrulefmt.RuleGroup, error) {
 	path := r.apiPath
 	if namespace != "" {
 		path = path + "/" + namespace
