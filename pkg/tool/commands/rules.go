@@ -234,7 +234,7 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 	listCmd.Flag("disable-color", "disable colored output").BoolVar(&r.DisableColor)
 }
 
-func (r *RuleCommand) setup(k *kingpin.ParseContext) error {
+func (r *RuleCommand) setup(_ *kingpin.ParseContext) error {
 	prometheus.MustRegister(
 		ruleLoadTimestamp,
 		ruleLoadSuccessTimestamp,
@@ -329,7 +329,7 @@ func (r *RuleCommand) setupFiles() error {
 	return nil
 }
 
-func (r *RuleCommand) listRules(k *kingpin.ParseContext) error {
+func (r *RuleCommand) listRules(_ *kingpin.ParseContext) error {
 	rules, err := r.cli.ListRules(context.Background(), "")
 	if err != nil {
 		log.Fatalf("unable to read rules from cortex, %v", err)
@@ -340,7 +340,7 @@ func (r *RuleCommand) listRules(k *kingpin.ParseContext) error {
 	return p.PrintRuleSet(rules, r.Format, os.Stdout)
 }
 
-func (r *RuleCommand) printRules(k *kingpin.ParseContext) error {
+func (r *RuleCommand) printRules(_ *kingpin.ParseContext) error {
 	rules, err := r.cli.ListRules(context.Background(), "")
 	if err != nil {
 		if err == client.ErrResourceNotFound {
@@ -557,7 +557,7 @@ func (r *RuleCommand) syncRules(k *kingpin.ParseContext) error {
 
 	err = r.executeChanges(context.Background(), changes)
 	if err != nil {
-		return errors.Wrap(err, "sync operation unsuccessful, unable to complete executing changes.")
+		return errors.Wrap(err, "sync operation unsuccessful, unable to complete executing changes")
 	}
 
 	return nil

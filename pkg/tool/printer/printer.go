@@ -57,7 +57,7 @@ func (p *Printer) PrintAlertmanagerConfig(config string, templates map[string]st
 			return err
 		}
 	} else {
-		fmt.Println(string(config))
+		fmt.Println(config)
 	}
 
 	fmt.Printf("\nTemplates:\n")
