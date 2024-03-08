@@ -3,11 +3,12 @@ package bloomcompactor
 import (
 	"testing"
 
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
+
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
-	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/require"
 )
 
 func Test_TsdbTokenRange(t *testing.T) {
