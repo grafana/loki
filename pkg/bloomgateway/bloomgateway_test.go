@@ -413,69 +413,6 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	})
 }
 
-func TestBloomGateway_RemoveNotMatchingChunks(t *testing.T) {
-	g := &Gateway{
-		logger: log.NewNopLogger(),
-	}
-	t.Run("removing chunks partially", func(t *testing.T) {
-		req := &logproto.FilterChunkRefRequest{
-			Refs: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
-					{Checksum: 0x1},
-					{Checksum: 0x2},
-					{Checksum: 0x3},
-					{Checksum: 0x4},
-					{Checksum: 0x5},
-				}},
-			},
-		}
-		res := v1.Output{
-			Fp: 0x00, Removals: v1.ChunkRefs{
-				{Checksum: 0x2},
-				{Checksum: 0x4},
-			},
-		}
-		expected := &logproto.FilterChunkRefRequest{
-			Refs: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
-					{Checksum: 0x1},
-					{Checksum: 0x3},
-					{Checksum: 0x5},
-				}},
-			},
-		}
-		n := g.removeNotMatchingChunks(req, res)
-		require.Equal(t, 2, n)
-		require.Equal(t, expected, req)
-	})
-
-	t.Run("removing all chunks removed fingerprint ref", func(t *testing.T) {
-		req := &logproto.FilterChunkRefRequest{
-			Refs: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
-					{Checksum: 0x1},
-					{Checksum: 0x2},
-					{Checksum: 0x3},
-				}},
-			},
-		}
-		res := v1.Output{
-			Fp: 0x00, Removals: v1.ChunkRefs{
-				{Checksum: 0x1},
-				{Checksum: 0x2},
-				{Checksum: 0x2},
-			},
-		}
-		expected := &logproto.FilterChunkRefRequest{
-			Refs: []*logproto.GroupedChunkRefs{},
-		}
-		n := g.removeNotMatchingChunks(req, res)
-		require.Equal(t, 3, n)
-		require.Equal(t, expected, req)
-	})
-
-}
-
 func TestFilterChunkRefsForSeries(t *testing.T) {
 	mkInput := func(xs []uint32) *logproto.GroupedChunkRefs {
 		out := &logproto.GroupedChunkRefs{Refs: make([]*logproto.ShortRef, len(xs))}
@@ -768,13 +705,6 @@ func BenchmarkFilterChunkRefs(b *testing.B) {
 			desc: "filterChunkRefs",
 			f: func(req *logproto.FilterChunkRefRequest, responses []v1.Output) {
 				filterChunkRefs(req, [][]v1.Output{responses})
-			},
-		},
-		{
-			desc: "Gateway.processResponses",
-			f: func(req *logproto.FilterChunkRefRequest, responses []v1.Output) {
-				var g Gateway
-				g.processResponses(req, responses)
 			},
 		},
 	} {

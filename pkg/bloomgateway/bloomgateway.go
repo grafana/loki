@@ -44,7 +44,6 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -355,72 +354,6 @@ func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Tas
 		// notify request handler about finished task
 		tasksCh <- task
 	}
-}
-
-func (g *Gateway) processResponses(req *logproto.FilterChunkRefRequest, responses []v1.Output) (filtered int) {
-	for _, o := range responses {
-		if o.Removals.Len() == 0 {
-			continue
-		}
-		filtered += g.removeNotMatchingChunks(req, o)
-	}
-	return
-}
-
-func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output) (filtered int) {
-
-	// binary search index of fingerprint
-	// TODO(owen-d): there's a bug here because the same fingerprint and chunks can exist over multiple day buckets.
-	// If all requested chunks are in both days, the first day could technically remove _all_ chunks from consideration.
-	// The sort.Search for the _next_ chunk would return an index where fingerprint is greater than the target fingerprint.
-	idx := sort.Search(len(req.Refs), func(i int) bool {
-		return req.Refs[i].Fingerprint >= uint64(res.Fp)
-	})
-
-	// fingerprint not found
-	if idx >= len(req.Refs) {
-		level.Error(g.logger).Log("msg", "index out of range", "idx", idx, "len", len(req.Refs), "fp", uint64(res.Fp))
-		return
-	}
-
-	// if all chunks of a fingerprint are are removed
-	// then remove the whole group from the response
-
-	// TODO(owen-d): there's a bug here because the same fingerprint and chunks can exist over multiple day buckets.
-	// A later day bucket could happen to request removals with len=remaining, but whose chunk references were
-	// partially removed in an earlier round. Just checking the length here could cause us to discard chunks
-	// that shouldn't be.
-	if len(req.Refs[idx].Refs) == res.Removals.Len() {
-		filtered += len(req.Refs[idx].Refs)
-
-		req.Refs[idx] = nil // avoid leaking pointer
-		// TODO(owen-d): this is O(n^2);
-		// use more specialized data structure that doesn't reslice
-		req.Refs = append(req.Refs[:idx], req.Refs[idx+1:]...)
-		return
-	}
-
-	for i := range res.Removals {
-		toRemove := res.Removals[i]
-		for j := 0; j < len(req.Refs[idx].Refs); j++ {
-			if req.Refs[idx].Refs[j] == nil {
-				continue
-			}
-
-			// TODO(owen-d): These should check start/end/checksum, not just checksum.
-			if logproto.ShortRef(toRemove) == *req.Refs[idx].Refs[j] {
-				filtered += 1
-
-				// TODO(owen-d): usually not a problem (n is small), but I've seen some series have
-				// many thousands of chunks per day, so would be good to not reslice.
-				// See `labels.NewBuilder()` for an example
-				req.Refs[idx].Refs[j] = nil // avoid leaking pointer
-				req.Refs[idx].Refs = append(req.Refs[idx].Refs[:j], req.Refs[idx].Refs[j+1:]...)
-				j-- // since we removed the current item at index, we have to redo the same index
-			}
-		}
-	}
-	return
 }
 
 // merges a list of responses via a heap. The same fingerprints and chunks can be present in multiple responses,
