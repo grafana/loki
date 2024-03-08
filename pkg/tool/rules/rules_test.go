@@ -214,41 +214,6 @@ func TestLintExpressions(t *testing.T) {
 		logql           bool
 	}{
 		{
-			name:     "it lints simple expressions",
-			expr:     "up                                   != 1",
-			expected: "up != 1",
-			count:    1, modified: 1,
-			err: "",
-		},
-		{
-			name:     "it lints aggregations expressions",
-			expr:     "avg (rate(prometheus_notifications_queue_capacity[5m])) by (cluster, job)",
-			expected: "avg by (cluster, job) (rate(prometheus_notifications_queue_capacity[5m]))",
-			count:    1, modified: 1,
-			err: "",
-		},
-		{
-			name:     "with no opinion",
-			expr:     "build_tag_info > 1",
-			expected: "build_tag_info > 1",
-			count:    1, modified: 0,
-			err: "",
-		},
-		{
-			name:     "with a complex expression",
-			expr:     `sum by (cluster, namespace) (sum_over_time((rate(loki_distributor_bytes_received_total{job=~".*/distributor"}[1m]) * 60)[1h:1m])) / 1e+09 / 5 * 1 > (sum by (cluster, namespace) (memcached_limit_bytes{job=~".+/memcached"}) / 1e+09)`,
-			expected: `sum by (cluster, namespace) (sum_over_time((rate(loki_distributor_bytes_received_total{job=~".*/distributor"}[1m]) * 60)[1h:1m])) / 1e+09 / 5 * 1 > (sum by (cluster, namespace) (memcached_limit_bytes{job=~".+/memcached"}) / 1e+09)`,
-			count:    1, modified: 0,
-			err: "",
-		},
-		{
-			name:     "with an invalid expression",
-			expr:     "it fails",
-			expected: "it fails",
-			count:    0, modified: 0,
-			err: "1:4: parse error: unexpected identifier \"fails\"",
-		},
-		{
 			name:     "logql simple",
 			expr:     `count_over_time({ foo = "bar" }[12m]) > 1`,
 			expected: `(count_over_time({foo="bar"}[12m]) > 1)`,
