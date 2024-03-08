@@ -1070,12 +1070,12 @@ const (
 	ReasonMissingObjectStorageSecret LokiStackConditionReason = "MissingObjectStorageSecret"
 	// ReasonInvalidObjectStorageSecret when the format of the secret is invalid.
 	ReasonInvalidObjectStorageSecret LokiStackConditionReason = "InvalidObjectStorageSecret"
-	// ReasonMissingCredentialsRequest when the required request for managed auth credentials to object
+	// ReasonMissingCredentialsRequest when the required request for token cco auth credentials to object
 	// storage is missing.
 	ReasonMissingCredentialsRequest LokiStackConditionReason = "MissingCredentialsRequest"
-	// ReasonMissingManagedAuthSecret when the required secret for managed auth credentials to object
+	// ReasonMissingTokenCCOAuthSecret when the required secret for token cco auth credentials to object
 	// storage is missing.
-	ReasonMissingManagedAuthSecret LokiStackConditionReason = "MissingManagedAuthenticationSecret"
+	ReasonMissingTokenCCOAuthSecret LokiStackConditionReason = "MissingTokenCCOAuthenticationSecret"
 	// ReasonInvalidObjectStorageSchema when the spec contains an invalid schema(s).
 	ReasonInvalidObjectStorageSchema LokiStackConditionReason = "InvalidObjectStorageSchema"
 	// ReasonMissingObjectStorageCAConfigMap when the required configmap to verify object storage
@@ -1216,11 +1216,11 @@ const (
 	// Instead, they are generated during runtime using a service, which allows for shorter-lived credentials and
 	// much more granular control. This authentication mode is not supported for all object storage types.
 	CredentialModeToken CredentialMode = "token"
-	// CredentialModeManaged represents the usage of short-lived tokens retrieved from a credential source.
+	// CredentialModeTokenCCO represents the usage of short-lived tokens retrieved from a credential source.
 	// This mode is similar to CredentialModeToken,but instead of having a user-configured credential source,
 	// it is configured by the environment, for example the Cloud Credential Operator in OpenShift.
 	// This mode is only supported for certain object storage types in certain runtime environments.
-	CredentialModeManaged CredentialMode = "managed"
+	CredentialModeTokenCCO CredentialMode = "token-coo"
 )
 
 // LokiStackStorageStatus defines the observed state of

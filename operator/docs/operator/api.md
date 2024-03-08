@@ -1115,13 +1115,7 @@ string
 <th>Description</th>
 </tr>
 </thead>
-<tbody><tr><td><p>&#34;managed&#34;</p></td>
-<td><p>CredentialModeManaged represents the usage of short-lived tokens retrieved from a credential source.
-This mode is similar to CredentialModeToken,but instead of having a user-configured credential source,
-it is configured by the environment, for example the Cloud Credential Operator in OpenShift.
-This mode is only supported for certain object storage types in certain runtime environments.</p>
-</td>
-</tr><tr><td><p>&#34;static&#34;</p></td>
+<tbody><tr><td><p>&#34;static&#34;</p></td>
 <td><p>CredentialModeStatic represents the usage of static, long-lived credentials stored in a Secret.
 This is the default authentication mode and available for all supported object storage types.</p>
 </td>
@@ -1130,6 +1124,12 @@ This is the default authentication mode and available for all supported object s
 In this mode the static configuration does not contain credentials needed for the object storage.
 Instead, they are generated during runtime using a service, which allows for shorter-lived credentials and
 much more granular control. This authentication mode is not supported for all object storage types.</p>
+</td>
+</tr><tr><td><p>&#34;token-coo&#34;</p></td>
+<td><p>CredentialModeTokenCCO represents the usage of short-lived tokens retrieved from a credential source.
+This mode is similar to CredentialModeToken,but instead of having a user-configured credential source,
+it is configured by the environment, for example the Cloud Credential Operator in OpenShift.
+This mode is only supported for certain object storage types in certain runtime environments.</p>
 </td>
 </tr></tbody>
 </table>
@@ -1780,7 +1780,7 @@ with the select cluster size.</p>
 <td><p>ReasonInvalidTenantsConfiguration when the tenant configuration provided is invalid.</p>
 </td>
 </tr><tr><td><p>&#34;MissingCredentialsRequest&#34;</p></td>
-<td><p>ReasonMissingCredentialsRequest when the required request for managed auth credentials to object
+<td><p>ReasonMissingCredentialsRequest when the required request for token cco auth credentials to object
 storage is missing.</p>
 </td>
 </tr><tr><td><p>&#34;MissingGatewayTenantAuthenticationConfig&#34;</p></td>
@@ -1797,10 +1797,6 @@ for authentication is missing.</p>
 <td><p>ReasonMissingGatewayTenantSecret when the required tenant secret
 for authentication is missing.</p>
 </td>
-</tr><tr><td><p>&#34;MissingManagedAuthenticationSecret&#34;</p></td>
-<td><p>ReasonMissingManagedAuthSecret when the required secret for managed auth credentials to object
-storage is missing.</p>
-</td>
 </tr><tr><td><p>&#34;MissingObjectStorageCAConfigMap&#34;</p></td>
 <td><p>ReasonMissingObjectStorageCAConfigMap when the required configmap to verify object storage
 certificates is missing.</p>
@@ -1812,6 +1808,10 @@ storage is missing.</p>
 </tr><tr><td><p>&#34;MissingRulerSecret&#34;</p></td>
 <td><p>ReasonMissingRulerSecret when the required secret to authorization remote write connections
 for the ruler is missing.</p>
+</td>
+</tr><tr><td><p>&#34;MissingTokenCCOAuthenticationSecret&#34;</p></td>
+<td><p>ReasonMissingTokenCCOAuthSecret when the required secret for token cco auth credentials to object
+storage is missing.</p>
 </td>
 </tr><tr><td><p>&#34;PendingComponents&#34;</p></td>
 <td><p>ReasonPendingComponents when all/some LokiStack components pending dependencies</p>
