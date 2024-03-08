@@ -1125,7 +1125,7 @@ In this mode the static configuration does not contain credentials needed for th
 Instead, they are generated during runtime using a service, which allows for shorter-lived credentials and
 much more granular control. This authentication mode is not supported for all object storage types.</p>
 </td>
-</tr><tr><td><p>&#34;token-coo&#34;</p></td>
+</tr><tr><td><p>&#34;token-cco&#34;</p></td>
 <td><p>CredentialModeTokenCCO represents the usage of short-lived tokens retrieved from a credential source.
 This mode is similar to CredentialModeToken,but instead of having a user-configured credential source,
 it is configured by the environment, for example the Cloud Credential Operator in OpenShift.

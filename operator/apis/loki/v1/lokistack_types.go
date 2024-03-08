@@ -1204,7 +1204,7 @@ type LokiStackComponentStatus struct {
 
 // CredentialMode represents the type of authentication used for accessing the object storage.
 //
-// +kubebuilder:validation:Enum=static;token;managed
+// +kubebuilder:validation:Enum=static;token;token-cco
 type CredentialMode string
 
 const (
@@ -1220,7 +1220,7 @@ const (
 	// This mode is similar to CredentialModeToken,but instead of having a user-configured credential source,
 	// it is configured by the environment, for example the Cloud Credential Operator in OpenShift.
 	// This mode is only supported for certain object storage types in certain runtime environments.
-	CredentialModeTokenCCO CredentialMode = "token-coo"
+	CredentialModeTokenCCO CredentialMode = "token-cco"
 )
 
 // LokiStackStorageStatus defines the observed state of
