@@ -677,7 +677,7 @@ func BenchmarkFilterChunkRefs(b *testing.B) {
 	// responses aren't mutated, so we add a pool to mitigate the alloc
 	// effect on the benchmark
 	var responseP sync.Pool
-	mkOutputs := func() []v1.Output {
+	mkOutputs := func() *[]v1.Output {
 		// remove half the chunks from half the series, so 25% of the volume
 		outputs := make([]v1.Output, nSeries/2)
 		for i := range outputs {
@@ -690,7 +690,7 @@ func BenchmarkFilterChunkRefs(b *testing.B) {
 
 			outputs[i] = output
 		}
-		return outputs
+		return &outputs
 	}
 	responseP.New = func() interface{} {
 		return mkOutputs()
@@ -711,11 +711,12 @@ func BenchmarkFilterChunkRefs(b *testing.B) {
 		b.Run(tc.desc, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				req := mkInput()
-				resps := responseP.Get().([]v1.Output)
+				ptr := responseP.Get().(*[]v1.Output)
+				resps := *ptr
 
 				tc.f(req, resps)
 
-				responseP.Put(resps)
+				responseP.Put(ptr)
 			}
 		})
 	}
