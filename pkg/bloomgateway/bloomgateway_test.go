@@ -73,6 +73,9 @@ func setupBloomStore(t *testing.T) *bloomshipper.BloomStore {
 	storageCfg := storage.Config{
 		BloomShipperConfig: bloomshipperconfig.Config{
 			WorkingDirectory: t.TempDir(),
+			BlocksDownloadingQueue: bloomshipperconfig.DownloadingQueueConfig{
+				WorkersCount: 1,
+			},
 		},
 		FSConfig: local.FSConfig{
 			Directory: t.TempDir(),
