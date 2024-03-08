@@ -123,7 +123,7 @@ func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParam
 }
 
 // FetchBlocks implements Store.
-func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error) {
+func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef, _ ...FetchOption) ([]*CloseableBlockQuerier, error) {
 	return b.fetcher.FetchBlocks(ctx, refs)
 }
 
