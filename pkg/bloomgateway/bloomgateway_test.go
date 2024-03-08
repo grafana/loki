@@ -686,6 +686,26 @@ func TestFilterChunkRefs(t *testing.T) {
 				{fp: 3, checksums: []uint32{0, 1, 2}},
 			}),
 		},
+		{
+			desc:  "middle duplicates across 2 days",
+			input: mkInput(4, 3),
+			removals: [][]instruction{
+				{
+					{fp: 0, checksums: []uint32{1}},
+					{fp: 2, checksums: []uint32{1}},
+				},
+				{
+					{fp: 0, checksums: []uint32{1}},
+					{fp: 2, checksums: []uint32{1}},
+				},
+			},
+			expected: mkResult([]instruction{
+				{fp: 0, checksums: []uint32{0, 2}},
+				{fp: 1, checksums: []uint32{0, 1, 2}},
+				{fp: 2, checksums: []uint32{0, 2}},
+				{fp: 3, checksums: []uint32{0, 1, 2}},
+			}),
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			res := filterChunkRefs(tc.input, mkRemovals(tc.removals))
