@@ -65,9 +65,9 @@ spec:
               mountPath: {{ .Values.minio.configPathmc }}certs
           {{ end }}
         {{- end }}
-      {{- if .Values.image.pullSecrets }}
+      {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
-      {{- range .Values.image.pullSecrets }}
+      {{- range .Values.imagePullSecrets }}
         - name: {{ . }}
       {{- end }}
       {{- end }}
@@ -78,7 +78,7 @@ spec:
       containers:
         - name: admin-api
           image: "{{ template "loki.image" . }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.enterprise.image.pullPolicy }}
           args:
             - -target=admin-api
             - -config.file=/etc/loki/config/config.yaml

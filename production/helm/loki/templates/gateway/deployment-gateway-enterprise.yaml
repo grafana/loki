@@ -44,9 +44,9 @@ spec:
         {{- toYaml .Values.enterpriseGateway.podSecurityContext | nindent 8 }}
       initContainers:
         {{- toYaml .Values.enterpriseGateway.initContainers | nindent 8 }}
-      {{- if .Values.image.pullSecrets }}
+      {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
-      {{- range .Values.image.pullSecrets }}
+      {{- range .Values.imagePullSecrets }}
         - name: {{ . }}
       {{- end }}
       {{- end }}
@@ -57,7 +57,7 @@ spec:
       containers:
         - name: gateway
           image: "{{ template "loki.image" . }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.enterprise.image.pullPolicy }}
           args:
             - -target=gateway
             - -config.file=/etc/loki/config/config.yaml
