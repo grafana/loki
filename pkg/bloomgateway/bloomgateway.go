@@ -279,6 +279,13 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	defer responsesPool.Put(responses)
 	remaining := len(tasks)
 
+	preFilterSeries := len(req.Refs)
+	var preFilterChunks, postFilterChunks int
+
+	for _, series := range req.Refs {
+		preFilterChunks += len(series.Refs)
+	}
+
 	for remaining > 0 {
 		select {
 		case <-ctx.Done():
@@ -293,14 +300,24 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}
 	}
 
-	preFilterSeries := len(req.Refs)
+	filtered := filterChunkRefs(req, responses)
+	postFilterSeries := len(filtered)
 
-	// TODO(chaudum): Don't wait for all responses before starting to filter chunks.
-	filtered := g.processResponses(req, responses)
+	for _, group := range req.Refs {
+		postFilterChunks += len(group.Refs)
+	}
+	g.metrics.requestedSeries.Observe(float64(preFilterSeries))
+	g.metrics.filteredSeries.Observe(float64(preFilterSeries - postFilterSeries))
+	g.metrics.requestedChunks.Observe(float64(preFilterChunks))
+	g.metrics.filteredChunks.Observe(float64(preFilterChunks - postFilterChunks))
 
-	postFilterSeries := len(req.Refs)
-
-	level.Info(logger).Log("msg", "return filtered chunk refs", "pre_filter_series", preFilterSeries, "post_filter_series", postFilterSeries, "filtered_chunks", filtered)
+	level.Info(logger).Log(
+		"msg", "return filtered chunk refs",
+		"requested_series", preFilterSeries,
+		"filtered_series", preFilterSeries-postFilterSeries,
+		"requested_chunks", preFilterChunks,
+		"filtered_chunks", preFilterChunks-postFilterChunks,
+	)
 	return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
 }
 
@@ -317,11 +334,9 @@ func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Tas
 		select {
 		case <-ctx.Done():
 			level.Debug(logger).Log("msg", "drop partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
-			g.metrics.chunkRemovals.WithLabelValues("dropped").Add(float64(res.Removals.Len()))
 		default:
 			level.Debug(logger).Log("msg", "accept partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
 			task.responses = append(task.responses, res)
-			g.metrics.chunkRemovals.WithLabelValues("accepted").Add(float64(res.Removals.Len()))
 		}
 	}
 
@@ -398,4 +413,122 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 		}
 	}
 	return
+}
+
+// TODO(owen-d): improve perf. This can be faster with a more specialized impl
+func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses []v1.Output) []*logproto.GroupedChunkRefs {
+	res := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
+
+	// dedupe outputs, merging the same series.
+	// This returns an Iterator[v1.Output]
+	dedupedResps := v1.NewDedupingIter[v1.Output, v1.Output](
+		// eq
+		func(o1, o2 v1.Output) bool {
+			return o1.Fp == o2.Fp
+		},
+		// from
+		v1.Identity[v1.Output],
+		// merge two removal sets for the same series, deduping
+		func(o1, o2 v1.Output) (res v1.Output) {
+
+			var chks v1.ChunkRefs
+			var i, j int
+			for i < len(o1.Removals) && j < len(o2.Removals) {
+
+				a, b := o1.Removals[i], o2.Removals[j]
+
+				if a == b {
+					chks = append(chks, a)
+					i++
+					j++
+					continue
+				}
+
+				if a.Less(b) {
+					chks = append(chks, a)
+					i++
+					continue
+				}
+				chks = append(chks, b)
+				j++
+			}
+
+			if i < len(o1.Removals) {
+				chks = append(chks, o1.Removals[i:]...)
+			}
+			if j < len(o2.Removals) {
+				chks = append(chks, o2.Removals[j:]...)
+			}
+
+			res.Removals = chks
+			return res
+		},
+		v1.NewPeekingIter(v1.NewSliceIter(responses)),
+	)
+
+	// Iterate through the requested and filtered series/chunks,
+	// removing chunks that were filtered out.
+	var next bool
+	var at v1.Output
+	if next = dedupedResps.Next(); next {
+		at = dedupedResps.At()
+	}
+
+	for i := 0; i < len(req.Refs); i++ {
+		// we've hit the end of the removals -- append the rest of the
+		// requested series and return
+		if !next {
+			res = append(res, req.Refs[i:]...)
+			return res
+		}
+
+		// the current series had no removals
+		cur := req.Refs[i]
+		if cur.Fingerprint < uint64(at.Fp) {
+			res = append(res, cur)
+			continue
+		}
+
+		// the current series had removals. No need to check for equality
+		// b/c removals must be present in input
+		filterChunkRefsForSeries(cur, at.Removals)
+		if len(cur.Refs) > 0 {
+			res = append(res, cur)
+		}
+
+		// advance removals
+		if next = dedupedResps.Next(); next {
+			at = dedupedResps.At()
+		}
+	}
+
+	return res
+}
+
+// mutates cur
+func filterChunkRefsForSeries(cur *logproto.GroupedChunkRefs, removals v1.ChunkRefs) {
+	// use same backing array to avoid allocations
+	res := cur.Refs[:0]
+
+	var i, j int
+	for i < len(cur.Refs) && j < len(removals) {
+
+		if (*v1.ChunkRef)(cur.Refs[i]).Less(removals[j]) {
+			// chunk was not removed
+			res = append(res, cur.Refs[i])
+			i++
+		} else {
+			// Since all removals must exist in the series, we can assume that if the removal
+			// is not less, it must be equal to the current chunk (a match). Skip this chunk.
+			i++
+			j++
+		}
+
+	}
+
+	if i < len(cur.Refs) {
+		res = append(res, cur.Refs[i:]...)
+	}
+
+	cur.Refs = cur.Refs[:len(res)]
 }
