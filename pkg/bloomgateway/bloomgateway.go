@@ -326,7 +326,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		"requested_chunks", preFilterChunks,
 		"filtered_chunks", preFilterChunks-postFilterChunks,
 	)
-	return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
+	return &logproto.FilterChunkRefResponse{ChunkRefs: filtered}, nil
 }
 
 // consumeTask receives v1.Output yielded from the block querier on the task's
