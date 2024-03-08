@@ -312,7 +312,9 @@ func createBlockDir(t *testing.T, path string) {
 }
 
 func TestFetcher_IsBlockDir(t *testing.T) {
-	fetcher, _ := NewFetcher(bloomStoreConfig{}, nil, nil, nil, nil, log.NewNopLogger())
+	cfg := bloomStoreConfig{numWorkers: 1}
+
+	fetcher, _ := NewFetcher(cfg, nil, nil, nil, nil, log.NewNopLogger())
 
 	t.Run("path does not exist", func(t *testing.T) {
 		base := t.TempDir()
