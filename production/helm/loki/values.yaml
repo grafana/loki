@@ -671,6 +671,13 @@ monitoring:
       enableConfigReadAPI: false
       # -- The name of the PriorityClass for GrafanaAgent pods
       priorityClassName: null
+      # -- Resource requests and limits for the grafanaAgent pods
+      resources: {}
+      #   limits:
+      #     memory: 200Mi
+      #   requests:
+      #     cpu: 50m
+      #     memory: 100Mi
       # -- Tolerations for GrafanaAgent pods
       tolerations: []
     # PodLogs configuration
@@ -1515,6 +1522,12 @@ networkPolicy:
     podSelector: {}
     # -- Specifies the namespace the discovery Pods are running in
     namespaceSelector: {}
+  egressWorld:
+    # -- Enable additional cilium egress rules to external world for write, read and backend.
+    enabled: false
+  egressKubeApiserver:
+    # -- Enable additional cilium egress rules to kube-apiserver for backend.
+    enabled: false
 # -------------------------------------
 # Configuration for `minio` child chart
 # -------------------------------------

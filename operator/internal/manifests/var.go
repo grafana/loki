@@ -144,7 +144,6 @@ func commonAnnotations(opts Options) map[string]string {
 	if opts.ObjectStorage.SecretSHA1 != "" {
 		a[AnnotationLokiObjectStoreHash] = opts.ObjectStorage.SecretSHA1
 	}
-
 	if opts.ObjectStorage.OpenShift.CloudCredentials.SHA1 != "" {
 		a[AnnotationLokiManagedAuthHash] = opts.ObjectStorage.OpenShift.CloudCredentials.SHA1
 	}
@@ -501,11 +500,14 @@ func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace
 			Port:   portName,
 			Path:   "/metrics",
 			Scheme: "https",
-			BearerTokenSecret: corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: gatewayTokenSecretName(gatewayName),
+			Authorization: &monitoringv1.SafeAuthorization{
+				Type: "Bearer",
+				Credentials: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: gatewayTokenSecretName(gatewayName),
+					},
+					Key: corev1.ServiceAccountTokenKey,
 				},
-				Key: corev1.ServiceAccountTokenKey,
 			},
 			TLSConfig: &tlsConfig,
 		}

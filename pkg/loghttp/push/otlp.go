@@ -38,28 +38,28 @@ func init() {
 
 func newPushStats() *Stats {
 	return &Stats{
-		logLinesBytes:           map[time.Duration]int64{},
-		structuredMetadataBytes: map[time.Duration]int64{},
+		LogLinesBytes:           map[time.Duration]int64{},
+		StructuredMetadataBytes: map[time.Duration]int64{},
 	}
 }
 
-func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits) (*logproto.PushRequest, *Stats, error) {
+func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error) {
 	stats := newPushStats()
 	otlpLogs, err := extractLogs(r, stats)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	req := otlpToLokiPushRequest(otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), stats)
+	req := otlpToLokiPushRequest(otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), tracker, stats)
 	return req, stats, nil
 }
 
 func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
-	pushStats.contentEncoding = r.Header.Get(contentEnc)
+	pushStats.ContentEncoding = r.Header.Get(contentEnc)
 	// bodySize should always reflect the compressed size of the request body
 	bodySize := loki_util.NewSizeReader(r.Body)
 	var body io.Reader = bodySize
-	if pushStats.contentEncoding == gzipContentEncoding {
+	if pushStats.ContentEncoding == gzipContentEncoding {
 		r, err := gzip.NewReader(bodySize)
 		if err != nil {
 			return plog.NewLogs(), err
@@ -74,12 +74,12 @@ func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
 		return plog.NewLogs(), err
 	}
 
-	pushStats.bodySize = bodySize.Size()
+	pushStats.BodySize = bodySize.Size()
 
 	req := plogotlp.NewExportRequest()
 
-	pushStats.contentType = r.Header.Get(contentType)
-	switch pushStats.contentType {
+	pushStats.ContentType = r.Header.Get(contentType)
+	switch pushStats.ContentType {
 	case pbContentType:
 		err := req.UnmarshalProto(buf)
 		if err != nil {
@@ -101,7 +101,7 @@ func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, stats *Stats) *logproto.PushRequest {
+func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, tracker UsageTracker, stats *Stats) *logproto.PushRequest {
 	if ld.LogRecordCount() == 0 {
 		return &logproto.PushRequest{}
 	}
@@ -139,21 +139,22 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		})
 
 		if err := streamLabels.Validate(); err != nil {
-			stats.errs = append(stats.errs, fmt.Errorf("invalid labels: %w", err))
+			stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels: %w", err))
 			continue
 		}
 		labelsStr := streamLabels.String()
 
 		lbs := modelLabelsSetToLabelsList(streamLabels)
+
 		if _, ok := pushRequestsByStream[labelsStr]; !ok {
 			pushRequestsByStream[labelsStr] = logproto.Stream{
 				Labels: labelsStr,
 			}
-			stats.streamLabelsSize += int64(labelsSize(logproto.FromLabelsToLabelAdapters(lbs)))
+			stats.StreamLabelsSize += int64(labelsSize(logproto.FromLabelsToLabelAdapters(lbs)))
 		}
 
 		resourceAttributesAsStructuredMetadataSize := labelsSize(resourceAttributesAsStructuredMetadata)
-		stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(resourceAttributesAsStructuredMetadataSize)
+		stats.StructuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(resourceAttributesAsStructuredMetadataSize)
 
 		for j := 0; j < sls.Len(); j++ {
 			scope := sls.At(j).Scope()
@@ -203,7 +204,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 			}
 
 			scopeAttributesAsStructuredMetadataSize := labelsSize(scopeAttributesAsStructuredMetadata)
-			stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(scopeAttributesAsStructuredMetadataSize)
+			stats.StructuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(scopeAttributesAsStructuredMetadataSize)
 			for k := 0; k < logs.Len(); k++ {
 				log := logs.At(k)
 
@@ -223,11 +224,18 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 				stream.Entries = append(stream.Entries, entry)
 				pushRequestsByStream[labelsStr] = stream
 
-				stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
-				stats.logLinesBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(len(entry.Line))
-				stats.numLines++
-				if entry.Timestamp.After(stats.mostRecentEntryTimestamp) {
-					stats.mostRecentEntryTimestamp = entry.Timestamp
+				metadataSize := int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
+				stats.StructuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += metadataSize
+				stats.LogLinesBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(len(entry.Line))
+
+				if tracker != nil {
+					tracker.ReceivedBytesAdd(userID, tenantsRetention.RetentionPeriodFor(userID, lbs), lbs, float64(len(entry.Line)))
+					tracker.ReceivedBytesAdd(userID, tenantsRetention.RetentionPeriodFor(userID, lbs), lbs, float64(metadataSize))
+				}
+
+				stats.NumLines++
+				if entry.Timestamp.After(stats.MostRecentEntryTimestamp) {
+					stats.MostRecentEntryTimestamp = entry.Timestamp
 				}
 			}
 		}

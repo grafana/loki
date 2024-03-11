@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"math/rand"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -20,9 +22,12 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
-func newMockBloomStore(t *testing.T) (*BloomStore, string) {
+func newMockBloomStore(t *testing.T) (*BloomStore, string, error) {
 	workDir := t.TempDir()
+	return newMockBloomStoreWithWorkDir(t, workDir)
+}
 
+func newMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*BloomStore, string, error) {
 	periodicConfigs := []storageconfig.PeriodConfig{
 		{
 			ObjectType: storageconfig.StorageTypeInMemory,
@@ -30,8 +35,7 @@ func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 			IndexTables: storageconfig.IndexPeriodicTableConfig{
 				PeriodicTableConfig: storageconfig.PeriodicTableConfig{
 					Period: 24 * time.Hour,
-					// TODO(chaudum): Integrate {,Parse}MetaKey into schema config
-					// Prefix: "schema_a_table_",
+					Prefix: "schema_a_table_",
 				}},
 		},
 		{
@@ -40,8 +44,7 @@ func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 			IndexTables: storageconfig.IndexPeriodicTableConfig{
 				PeriodicTableConfig: storageconfig.PeriodicTableConfig{
 					Period: 24 * time.Hour,
-					// TODO(chaudum): Integrate {,Parse}MetaKey into schema config
-					// Prefix: "schema_b_table_",
+					Prefix: "schema_b_table_",
 				}},
 		},
 	}
@@ -52,26 +55,27 @@ func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 			BlocksDownloadingQueue: config.DownloadingQueueConfig{
 				WorkersCount: 1,
 			},
-			BlocksCache: config.BlocksCacheConfig{
-				EmbeddedCacheConfig: cache.EmbeddedCacheConfig{
-					MaxSizeItems: 1000,
-					TTL:          1 * time.Hour,
-				},
+			BlocksCache: cache.EmbeddedCacheConfig{
+				MaxSizeItems: 1000,
+				TTL:          1 * time.Hour,
 			},
 		},
 	}
 
+	reg := prometheus.NewPedanticRegistry()
 	metrics := storage.NewClientMetrics()
 	t.Cleanup(metrics.Unregister)
 	logger := log.NewLogfmtLogger(os.Stderr)
 
 	metasCache := cache.NewMockCache()
-	blocksCache := NewBlocksCache(storageConfig.BloomShipperConfig, prometheus.NewPedanticRegistry(), logger)
-	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, logger)
-	require.NoError(t, err)
-	t.Cleanup(store.Stop)
+	blocksCache := NewBlocksCache(storageConfig.BloomShipperConfig.BlocksCache, prometheus.NewPedanticRegistry(), logger)
 
-	return store, workDir
+	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, reg, logger)
+	if err == nil {
+		t.Cleanup(store.Stop)
+	}
+
+	return store, workDir, err
 }
 
 func createMetaInStorage(store *BloomStore, tenant string, start model.Time, minFp, maxFp model.Fingerprint) (Meta, error) {
@@ -85,8 +89,7 @@ func createMetaInStorage(store *BloomStore, tenant string, start model.Time, min
 				// EndTimestamp:   start.Add(12 * time.Hour),
 			},
 		},
-		Blocks:     []BlockRef{},
-		Tombstones: []BlockRef{},
+		Blocks: []BlockRef{},
 	}
 	err := store.storeDo(start, func(s *bloomStoreEntry) error {
 		raw, _ := json.Marshal(meta)
@@ -128,7 +131,8 @@ func createBlockInStorage(t *testing.T, store *BloomStore, tenant string, start 
 }
 
 func TestBloomStore_ResolveMetas(t *testing.T) {
-	store, _ := newMockBloomStore(t)
+	store, _, err := newMockBloomStore(t)
+	require.NoError(t, err)
 
 	// schema 1
 	// outside of interval, outside of bounds
@@ -183,7 +187,8 @@ func TestBloomStore_ResolveMetas(t *testing.T) {
 }
 
 func TestBloomStore_FetchMetas(t *testing.T) {
-	store, _ := newMockBloomStore(t)
+	store, _, err := newMockBloomStore(t)
+	require.NoError(t, err)
 
 	// schema 1
 	// outside of interval, outside of bounds
@@ -236,7 +241,8 @@ func TestBloomStore_FetchMetas(t *testing.T) {
 }
 
 func TestBloomStore_FetchBlocks(t *testing.T) {
-	store, _ := newMockBloomStore(t)
+	store, _, err := newMockBloomStore(t)
+	require.NoError(t, err)
 
 	// schema 1
 	b1, _ := createBlockInStorage(t, store, "tenant", parseTime("2024-01-20 00:00"), 0x00000000, 0x0000ffff)
@@ -263,4 +269,117 @@ func TestBloomStore_FetchBlocks(t *testing.T) {
 		[]BlockRef{b1.BlockRef, b2.BlockRef, b3.BlockRef, b4.BlockRef},
 		[]BlockRef{bqs[0].BlockRef, bqs[1].BlockRef, bqs[2].BlockRef, bqs[3].BlockRef},
 	)
+}
+
+func TestBloomShipper_WorkingDir(t *testing.T) {
+	t.Run("insufficient permissions on directory yields error", func(t *testing.T) {
+		base := t.TempDir()
+		wd := filepath.Join(base, "notpermitted")
+		err := os.MkdirAll(wd, 0500)
+		require.NoError(t, err)
+		fi, _ := os.Stat(wd)
+		t.Log("working directory", wd, fi.Mode())
+
+		_, _, err = newMockBloomStoreWithWorkDir(t, wd)
+		require.ErrorContains(t, err, "insufficient permissions")
+	})
+
+	t.Run("not existing directory will be created", func(t *testing.T) {
+		base := t.TempDir()
+		// if the base directory does not exist, it will be created
+		wd := filepath.Join(base, "doesnotexist")
+		t.Log("working directory", wd)
+
+		store, _, err := newMockBloomStoreWithWorkDir(t, wd)
+		require.NoError(t, err)
+		b, err := createBlockInStorage(t, store, "tenant", parseTime("2024-01-20 00:00"), 0x00000000, 0x0000ffff)
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		_, err = store.FetchBlocks(ctx, []BlockRef{b.BlockRef})
+		require.NoError(t, err)
+	})
+}
+
+func TestTablesForRange(t *testing.T) {
+	conf := storageconfig.PeriodConfig{
+		From: parseDayTime("2024-01-01"),
+		IndexTables: storageconfig.IndexPeriodicTableConfig{
+			PeriodicTableConfig: storageconfig.PeriodicTableConfig{
+				Period: 24 * time.Hour,
+			},
+		},
+	}
+	for _, tc := range []struct {
+		desc     string
+		interval Interval
+		exp      []string
+	}{
+		{
+			desc: "few days",
+			interval: Interval{
+				Start: parseTime("2024-01-01 00:00"),
+				End:   parseTime("2024-01-03 00:00"),
+			},
+			exp: []string{"19723", "19724"},
+		},
+		{
+			desc: "few days with offset",
+			interval: Interval{
+				Start: parseTime("2024-01-01 00:00"),
+				End:   parseTime("2024-01-03 00:01"),
+			},
+			exp: []string{"19723", "19724", "19725"},
+		},
+		{
+			desc:     "one day",
+			interval: NewInterval(parseDayTime("2024-01-01").Bounds()),
+			exp:      []string{"19723"},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.exp, tablesForRange(conf, tc.interval))
+		})
+	}
+}
+
+func TestBloomStore_SortBlocks(t *testing.T) {
+	now := parseTime("2024-02-01 00:00")
+
+	refs := make([]BlockRef, 10)
+	bqs := make([]*CloseableBlockQuerier, 10)
+
+	for i := 0; i < 10; i++ {
+		refs[i] = BlockRef{
+			Ref: Ref{
+				TenantID: "fake",
+				Bounds: v1.NewBounds(
+					model.Fingerprint(i*1000),
+					model.Fingerprint((i+1)*1000-1),
+				),
+				StartTimestamp: now,
+				EndTimestamp:   now.Add(12 * time.Hour),
+			},
+		}
+		if i%2 == 0 {
+			bqs[i] = &CloseableBlockQuerier{
+				BlockRef: refs[i],
+			}
+		}
+	}
+
+	// shuffle the slice of block queriers
+	rand.Shuffle(len(bqs), func(i, j int) { bqs[i], bqs[j] = bqs[j], bqs[i] })
+
+	// sort the block queriers based on the refs
+	sortBlocks(bqs, refs)
+
+	// assert order of block queriers
+	for i := 0; i < 10; i++ {
+		if i%2 == 0 {
+			require.Equal(t, refs[i], bqs[i].BlockRef)
+		} else {
+			require.Nil(t, nil, bqs[i])
+		}
+	}
 }

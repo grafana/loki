@@ -1,6 +1,8 @@
 package tsdb
 
 import (
+	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -9,11 +11,10 @@ import (
 
 func TestParseSingleTenantTSDBPath(t *testing.T) {
 	for _, tc := range []struct {
-		desc   string
-		input  string
-		id     SingleTenantTSDBIdentifier
-		parent string
-		ok     bool
+		desc  string
+		input string
+		id    SingleTenantTSDBIdentifier
+		ok    bool
 	}{
 		{
 			desc:  "simple_works",
@@ -24,8 +25,18 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 				Through:  10,
 				Checksum: 255,
 			},
-			parent: "parent",
-			ok:     true,
+			ok: true,
+		},
+		{
+			desc:  "uint32_max_checksum_works",
+			input: fmt.Sprintf("1-compactor-1-10-%x.tsdb", math.MaxUint32),
+			id: SingleTenantTSDBIdentifier{
+				TS:       time.Unix(1, 0),
+				From:     1,
+				Through:  10,
+				Checksum: math.MaxUint32,
+			},
+			ok: true,
 		},
 		{
 			desc:  "wrong uploader name",
@@ -44,9 +55,9 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			id, ok := parseSingleTenantTSDBPath(tc.input)
-			require.Equal(t, tc.id, id)
+			id, ok := ParseSingleTenantTSDBPath(tc.input)
 			require.Equal(t, tc.ok, ok)
+			require.Equal(t, tc.id, id)
 		})
 	}
 }

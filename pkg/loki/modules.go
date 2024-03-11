@@ -34,6 +34,7 @@ import (
 	"github.com/prometheus/common/version"
 
 	"github.com/grafana/loki/pkg/bloomcompactor"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 
 	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/bloomgateway"
@@ -64,6 +65,7 @@ import (
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
 	boltdbcompactor "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
@@ -75,6 +77,7 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/querylimits"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
+	util_ring "github.com/grafana/loki/pkg/util/ring"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -116,6 +119,7 @@ const (
 	QuerySchedulerRing       string = "query-scheduler-ring"
 	BloomCompactor           string = "bloom-compactor"
 	BloomCompactorRing       string = "bloom-compactor-ring"
+	BloomStore               string = "bloom-store"
 	All                      string = "all"
 	Read                     string = "read"
 	Write                    string = "write"
@@ -319,10 +323,15 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		prometheus.DefaultRegisterer,
 		t.Cfg.MetricsNamespace,
 		t.Tee,
+		t.UsageTracker,
 		logger,
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if t.PushParserWrapper != nil {
+		t.distributor.RequestParserWrapper = t.PushParserWrapper
 	}
 
 	// Register the distributor to receive Push requests over GRPC
@@ -605,7 +614,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "table-manager-store"}, prometheus.DefaultRegisterer)
 
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, *lastConfig, t.Cfg.StorageConfig, t.clientMetrics, reg, util_log.Logger)
+	tableClient, err := storage.NewTableClient(lastConfig.IndexType, *lastConfig, t.Cfg.StorageConfig, t.ClientMetrics, reg, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -631,7 +640,7 @@ func (t *Loki) initStore() (services.Service, error) {
 		}
 	}
 
-	store, err := storage.NewStore(t.Cfg.StorageConfig, t.Cfg.ChunkStoreConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, prometheus.DefaultRegisterer, util_log.Logger, t.Cfg.MetricsNamespace)
+	store, err := storage.NewStore(t.Cfg.StorageConfig, t.Cfg.ChunkStoreConfig, t.Cfg.SchemaConfig, t.Overrides, t.ClientMetrics, prometheus.DefaultRegisterer, util_log.Logger, t.Cfg.MetricsNamespace)
 	if err != nil {
 		return nil, err
 	}
@@ -640,6 +649,51 @@ func (t *Loki) initStore() (services.Service, error) {
 
 	return services.NewIdleService(nil, func(_ error) error {
 		t.Store.Stop()
+		return nil
+	}), nil
+}
+
+func (t *Loki) initBloomStore() (services.Service, error) {
+	if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
+		return nil, errors.New("not using shipper index type")
+	}
+
+	t.updateConfigForShipperStore()
+
+	var err error
+	logger := log.With(util_log.Logger, "component", "bloomstore")
+
+	reg := prometheus.DefaultRegisterer
+	bsCfg := t.Cfg.StorageConfig.BloomShipperConfig
+
+	var metasCache cache.Cache
+	if cache.IsCacheConfigured(bsCfg.MetasCache) {
+		metasCache, err = cache.New(bsCfg.MetasCache, reg, logger, stats.BloomMetasCache, constants.Loki)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create metas cache: %w", err)
+		}
+	} else {
+		level.Info(logger).Log("msg", "no metas cache configured")
+	}
+
+	var blocksCache cache.TypedCache[string, bloomshipper.BlockDirectory]
+	if bsCfg.BlocksCache.IsEnabled() {
+		blocksCache = bloomshipper.NewBlocksCache(bsCfg.BlocksCache, reg, logger)
+		err = bloomshipper.LoadBlocksDirIntoCache(t.Cfg.StorageConfig.BloomShipperConfig.WorkingDirectory, blocksCache, logger)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
+		}
+	} else {
+		level.Info(logger).Log("msg", "no blocks cache configured")
+	}
+
+	t.BloomStore, err = bloomshipper.NewBloomStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, metasCache, blocksCache, reg, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create bloom store: %w", err)
+	}
+
+	return services.NewIdleService(nil, func(_ error) error {
+		t.BloomStore.Stop()
 		return nil
 	}), nil
 }
@@ -691,7 +745,7 @@ func (t *Loki) updateConfigForShipperStore() {
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeWriteOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 
-	case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read), t.Cfg.isModuleEnabled(Backend), t.isModuleActive(IndexGateway), t.isModuleActive(BloomCompactor):
+	case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read), t.Cfg.isModuleEnabled(Backend), t.isModuleActive(IndexGateway), t.Cfg.isModuleEnabled(BloomCompactor):
 		// We do not want query to do any updates to index
 		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
@@ -1047,7 +1101,7 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		}
 	}
 
-	t.RulerStorage, err = base_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, t.Cfg.StorageConfig.Hedging, t.clientMetrics, ruler.GroupLoader{}, util_log.Logger)
+	t.RulerStorage, err = base_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, t.Cfg.StorageConfig.Hedging, t.ClientMetrics, ruler.GroupLoader{}, util_log.Logger)
 
 	return
 }
@@ -1221,7 +1275,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 			continue
 		}
 
-		objectClient, err := storage.NewObjectClient(periodConfig.ObjectType, t.Cfg.StorageConfig, t.clientMetrics)
+		objectClient, err := storage.NewObjectClient(periodConfig.ObjectType, t.Cfg.StorageConfig, t.ClientMetrics)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create object client: %w", err)
 		}
@@ -1232,7 +1286,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	var deleteRequestStoreClient client.ObjectClient
 	if t.Cfg.CompactorConfig.RetentionEnabled {
 		if deleteStore := t.Cfg.CompactorConfig.DeleteRequestStore; deleteStore != "" {
-			if deleteRequestStoreClient, err = storage.NewObjectClient(deleteStore, t.Cfg.StorageConfig, t.clientMetrics); err != nil {
+			if deleteRequestStoreClient, err = storage.NewObjectClient(deleteStore, t.Cfg.StorageConfig, t.ClientMetrics); err != nil {
 				return nil, fmt.Errorf("failed to create delete request store object client: %w", err)
 			}
 		} else {
@@ -1271,9 +1325,7 @@ func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
 func (t *Loki) initBloomGateway() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "bloom-gateway")
 
-	shuffleSharding := bloomgateway.NewShuffleShardingStrategy(t.bloomGatewayRingManager.Ring, t.bloomGatewayRingManager.RingLifecycler, t.Overrides, logger)
-
-	gateway, err := bloomgateway.New(t.Cfg.BloomGateway, t.Cfg.SchemaConfig, t.Cfg.StorageConfig, t.Overrides, shuffleSharding, t.clientMetrics, logger, prometheus.DefaultRegisterer)
+	gateway, err := bloomgateway.New(t.Cfg.BloomGateway, t.BloomStore, logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -1291,8 +1343,7 @@ func (t *Loki) initBloomGatewayRing() (services.Service, error) {
 	if t.Cfg.isModuleEnabled(BloomGateway) || t.Cfg.isModuleEnabled(Backend) || legacyReadMode {
 		mode = lokiring.ServerMode
 	}
-	manager, err := lokiring.NewRingManager(bloomGatewayRingKey, mode, t.Cfg.BloomGateway.Ring.RingConfig, t.Cfg.BloomGateway.Ring.ReplicationFactor, 128, util_log.Logger, prometheus.DefaultRegisterer)
-
+	manager, err := lokiring.NewRingManager(bloomGatewayRingKey, mode, t.Cfg.BloomGateway.Ring.RingConfig, t.Cfg.BloomGateway.Ring.ReplicationFactor, t.Cfg.BloomGateway.Ring.Tokens, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "error initializing bloom gateway ring manager")
 	}
@@ -1325,7 +1376,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		}
 		tableRange := period.GetIndexTableNumberRange(periodEndTime)
 
-		indexClient, err := storage.NewIndexClient(period, tableRange, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, shardingStrategy,
+		indexClient, err := storage.NewIndexClient(period, tableRange, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.Overrides, t.ClientMetrics, shardingStrategy,
 			prometheus.DefaultRegisterer, log.With(util_log.Logger, "index-store", fmt.Sprintf("%s-%s", period.IndexType, period.From.String())), t.Cfg.MetricsNamespace,
 		)
 		if err != nil {
@@ -1355,7 +1406,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		if err != nil {
 			return nil, err
 		}
-		bloomQuerier = bloomgateway.NewQuerier(bloomGatewayClient, logger)
+		bloomQuerier = bloomgateway.NewQuerier(bloomGatewayClient, prometheus.DefaultRegisterer, logger)
 	}
 
 	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier)
@@ -1416,25 +1467,22 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 }
 
 func (t *Loki) initBloomCompactor() (services.Service, error) {
-	t.updateConfigForShipperStore()
-
 	logger := log.With(util_log.Logger, "component", "bloom-compactor")
 
-	shuffleSharding := bloomcompactor.NewShuffleShardingStrategy(t.bloomCompactorRingManager.Ring, t.bloomCompactorRingManager.RingLifecycler, t.Overrides)
+	shuffleSharding := util_ring.NewTenantShuffleSharding(t.bloomCompactorRingManager.Ring, t.bloomCompactorRingManager.RingLifecycler, t.Overrides.BloomCompactorShardSize)
 
-	compactor, err := bloomcompactor.New(
+	return bloomcompactor.New(
 		t.Cfg.BloomCompactor,
-		nil, // StoreAndClient placeholder. TODO(owen-d): remove this once we have a proper store and client
+		t.Cfg.SchemaConfig,
+		t.Cfg.StorageConfig,
+		t.ClientMetrics,
+		t.Store,
 		shuffleSharding,
 		t.Overrides,
+		t.BloomStore,
 		logger,
-		prometheus.DefaultRegisterer)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return compactor, nil
+		prometheus.DefaultRegisterer,
+	)
 }
 
 func (t *Loki) initBloomCompactorRing() (services.Service, error) {
@@ -1443,8 +1491,7 @@ func (t *Loki) initBloomCompactorRing() (services.Service, error) {
 	// is LegacyMode needed?
 	// legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
 
-	rm, err := lokiring.NewRingManager(bloomCompactorRingKey, lokiring.ServerMode, t.Cfg.BloomCompactor.Ring, 1, 1, util_log.Logger, prometheus.DefaultRegisterer)
-
+	rm, err := lokiring.NewRingManager(bloomCompactorRingKey, lokiring.ServerMode, t.Cfg.BloomCompactor.Ring.RingConfig, 1, t.Cfg.BloomCompactor.Ring.Tokens, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "error initializing bloom-compactor ring manager")
 	}
@@ -1534,7 +1581,7 @@ func (t *Loki) initAnalytics() (services.Service, error) {
 		return nil, err
 	}
 
-	objectClient, err := storage.NewObjectClient(period.ObjectType, t.Cfg.StorageConfig, t.clientMetrics)
+	objectClient, err := storage.NewObjectClient(period.ObjectType, t.Cfg.StorageConfig, t.ClientMetrics)
 	if err != nil {
 		level.Info(util_log.Logger).Log("msg", "failed to initialize usage report", "err", err)
 		return nil, nil
