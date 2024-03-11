@@ -316,7 +316,7 @@ type mockStoreLimits struct {
 	MaxChunksPerQuery int
 }
 
-func (ml mockStoreLimits) MaxChunksPerQueryFromStore(string) int {
+func (ml mockStoreLimits) MaxChunksPerQuery(string) int {
 	return ml.MaxChunksPerQuery
 }
 

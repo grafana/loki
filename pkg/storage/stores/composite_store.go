@@ -175,7 +175,7 @@ func (c CompositeStore) GetChunks(ctx context.Context, userID string, from, thro
 	})
 
 	// Protect ourselves against OOMing.
-	maxChunksPerQuery := c.limits.MaxChunksPerQueryFromStore(userID)
+	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
 	if maxChunksPerQuery > 0 && len(chunkIDs) > maxChunksPerQuery {
 		err := errors.QueryError(fmt.Sprintf("Query %v fetched too many chunks (%d > %d)", predicate, len(chunkIDs), maxChunksPerQuery))
 		return nil, nil, err
