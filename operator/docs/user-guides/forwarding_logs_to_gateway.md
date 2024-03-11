@@ -16,7 +16,7 @@ toc: true
 
 This document will describe how to send application, infrastructure, audit and network logs to the LokiStack Gateway as different tenants using Promtail or Fluentd. The built-in gateway provides secure access to the distributor (and query-frontend) via consulting an OAuth/OIDC endpoint for the request subject.
 
-__Please read the [hacking guide](./hack_loki_operator.md) before proceeding with the following instructions.__
+__Please read the [hacking guide](../operator/hack_loki_operator.md) before proceeding with the following instructions.__
 
 _Note: While this document will only give instructions for two methods of log forwarding into the gateway, the examples given in the Promtail and Fluentd sections can be extrapolated to other log forwarders._
 
