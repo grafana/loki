@@ -78,7 +78,7 @@ func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blo
 		metrics:         newFetcherMetrics(reg, constants.Loki, "bloom_store"),
 		logger:          logger,
 	}
-	q, err := newDownloadQueue[BlockRef, BlockDirectory](10000, cfg.numWorkers, fetcher.processTask, logger)
+	q, err := newDownloadQueue[BlockRef, BlockDirectory](100000, cfg.numWorkers, fetcher.processTask, logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating download queue for fetcher")
 	}
@@ -196,6 +196,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 			return results, err
 		}
 		if !isFound {
+			f.metrics.downloadQueueSize.Observe(float64(len(f.q.queue)))
 			start := time.Now()
 			f.q.enqueue(downloadRequest[BlockRef, BlockDirectory]{
 				ctx:     ctx,
@@ -206,10 +207,13 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 				errors:  errors,
 			})
 			missing++
+			f.metrics.blocksMissing.Inc()
 			enqueueTime += time.Since(start)
+			f.metrics.downloadQueueEnqueueTime.Observe(time.Since(start).Seconds())
 			continue
 		}
 		found++
+		f.metrics.blocksFound.Inc()
 		results[i] = dir.BlockQuerier()
 	}
 
