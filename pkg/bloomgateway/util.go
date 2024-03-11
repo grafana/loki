@@ -44,22 +44,12 @@ func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
 	return refs[0].From, maxItem.Through
 }
 
-// convertToShortRefs converts a v1.ChunkRefs into []*logproto.ShortRef
-// TODO(chaudum): Avoid conversion by transferring v1.ChunkRefs in gRPC request.
-func convertToShortRefs(refs v1.ChunkRefs) []*logproto.ShortRef {
-	result := make([]*logproto.ShortRef, 0, len(refs))
-	for _, ref := range refs {
-		result = append(result, &logproto.ShortRef{From: ref.Start, Through: ref.End, Checksum: ref.Checksum})
-	}
-	return result
-}
-
 // convertToChunkRefs converts a []*logproto.ShortRef into v1.ChunkRefs
 // TODO(chaudum): Avoid conversion by transferring v1.ChunkRefs in gRPC request.
 func convertToChunkRefs(refs []*logproto.ShortRef) v1.ChunkRefs {
 	result := make(v1.ChunkRefs, 0, len(refs))
 	for _, ref := range refs {
-		result = append(result, v1.ChunkRef{Start: ref.From, End: ref.Through, Checksum: ref.Checksum})
+		result = append(result, v1.ChunkRef{From: ref.From, Through: ref.Through, Checksum: ref.Checksum})
 	}
 	return result
 }
