@@ -11,7 +11,12 @@ metadata:
   name: loki-operator-metrics-monitor
 spec:
   endpoints:
-  - interval: 30s
+  - authorization:
+      credentials:
+        key: token
+        name: loki-operator-controller-manager-metrics-token
+      type: bearer
+    interval: 30s
     path: /metrics
     scheme: https
     scrapeTimeout: 10s
@@ -21,13 +26,6 @@ spec:
         configMap:
           key: service-ca.crt
           name: loki-operator-controller-manager-metrics-ca
-      cert:
-        secret:
-          key: tls.crt
-          name: loki-operator-metrics
-      keySecret:
-        key: tls.key
-        name: loki-operator-metrics
       serverName: loki-operator-controller-manager-metrics-service.openshift-operators-redhat.svc
   selector:
     matchLabels:
