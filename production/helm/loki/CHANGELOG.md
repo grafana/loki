@@ -206,6 +206,9 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.6.6
 
 - [BUGFIX] Fix HPA ingester typo
+## 6.7.0
+
+- [ENHANCEMENT] Avoid unnecessary pod restart on each helm chart version
 
 ## 6.6.5
 
