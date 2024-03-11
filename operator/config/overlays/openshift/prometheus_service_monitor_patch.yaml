@@ -19,8 +19,8 @@ spec:
         cert:
           secret:
             key: tls.crt
-            name: loki-operator-controller-manager-metrics-service
+            name: loki-operator-metrics
         keySecret:
           key: tls.key
-          name: loki-operator-controller-manager-metrics-service
+          name: loki-operator-metrics
         serverName: loki-operator-controller-manager-metrics-service.openshift-operators-redhat.svc
