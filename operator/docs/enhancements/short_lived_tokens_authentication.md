@@ -58,7 +58,7 @@ The present proposal introduces a new optional field in the `ObjectStorageSecret
 ```go
 / CredentialMode represents the type of authentication used for accessing the object storage.
 //
-// +kubebuilder:validation:Enum=static;token;managed
+// +kubebuilder:validation:Enum=static;token;token-cco
 type CredentialMode string
 
 const (
@@ -70,11 +70,11 @@ const (
     // Instead, they are generated during runtime using a service, which allows for shorter-lived credentials and
     // much more granular control. This authentication mode is not supported for all object storage types.
     CredentialModeToken CredentialMode = "token"
-    // CredentialModeManaged represents the usage of short-lived tokens retrieved from a credential source.
-    // This mode is similar to CredentialModeToken,but instead of having a user-configured credential source,
-    // it is configured by the environment, for example the Cloud Credential Operator in OpenShift.
-    // This mode is only supported for certain object storage types in certain runtime environments.
-    CredentialModeManaged CredentialMode = "managed"
+    // CredentialModeTokenCCO represents the usage of short-lived tokens retrieved from a credential source.
+    // This mode is similar to CredentialModeToken, but instead of having a user-configured credential source,
+    // it is configured by the environment and the operator relies on the Cloud Credential Operator to provide
+    // a secret. This mode is only supported for certain object storage types in certain runtime environments.
+    CredentialModeTokenCCO CredentialMode = "token-cco"
 )
 
 // ObjectStorageSecretSpec is a secret reference containing name only, no namespace.
@@ -90,7 +90,7 @@ type ObjectStorageSecretSpec struct {
 }
 ```
 
-The purpose of the `CredentialMode` is to override the detected credentials type from object storage secrets or the operator environment variables. Latter is only supported on AWS-STS/Azure-WIF managed OpenShift clusters, where the operator is using CredetialMode `managed` by default. However, the user might want to use `static` to store logs for example to Minio on the same cluster instead to AWS S3.
+The purpose of the `CredentialMode` is to override the detected credentials type from object storage secrets or the operator environment variables. Latter is only supported on AWS-STS/Azure-WIF managed OpenShift clusters, where the operator is using CredetialMode `token-cco` by default. However, the user might want to use `static` to store logs for example to Minio on the same cluster instead to AWS S3.
 
 ### Implementation Details/Notes/Constraints
 
