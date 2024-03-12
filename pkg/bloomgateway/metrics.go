@@ -15,7 +15,7 @@ type metrics struct {
 type serverMetrics struct {
 	inflightRequests prometheus.Summary
 	chunkRemovals    *prometheus.CounterVec
-	receivedFilters  prometheus.Summary
+	receivedFilters  prometheus.Histogram
 }
 
 func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -42,12 +42,12 @@ func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Name:      "chunk_removals_total",
 			Help:      "Total amount of removals received from the block querier partitioned by state. The state 'accepted' means that the removals are processed, the state 'dropped' means that the removals were received after the task context was done (e.g. client timeout, etc).",
 		}, []string{"state"}),
-		receivedFilters: promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
-			Namespace:  namespace,
-			Subsystem:  subsystem,
-			Name:       "request_filters",
-			Help:       "Number of filters per request.",
-			Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.02, 0.8: 0.02, 0.9: 0.01, 0.95: 0.01, 0.99: 0.001},
+		receivedFilters: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "request_filters",
+			Help:      "Number of filters per request.",
+			Buckets:   prometheus.LinearBuckets(0, 1, 20),
 		}),
 	}
 }

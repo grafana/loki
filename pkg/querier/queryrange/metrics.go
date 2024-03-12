@@ -46,16 +46,16 @@ func NewMetrics(registerer prometheus.Registerer, metricsNamespace string) *Metr
 }
 
 type QueryMetrics struct {
-	receivedFilters prometheus.Summary
+	receivedFilters prometheus.Histogram
 }
 
 func NewMiddlewareQueryMetrics(registerer prometheus.Registerer, metricsNamespace string) *QueryMetrics {
 	return &QueryMetrics{
-		receivedFilters: promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
-			Namespace:  metricsNamespace,
-			Name:       "query_frontend_query_filters",
-			Help:       "Number of filters per query.",
-			Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.02, 0.8: 0.02, 0.9: 0.01, 0.95: 0.01, 0.99: 0.001},
+		receivedFilters: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Name:      "query_frontend_query_filters",
+			Help:      "Number of filters per query.",
+			Buckets:   prometheus.LinearBuckets(0, 1, 20),
 		}),
 	}
 }
