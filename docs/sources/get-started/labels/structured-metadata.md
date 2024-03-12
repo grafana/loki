@@ -17,6 +17,15 @@ to extract at query time.
 
 Structured metadata can also be used to query commonly needed metadata from log lines without needing to apply a parser at query time. Large json blobs or a poorly written query using complex regex patterns, for example, come with a high performance cost. Examples of useful metadata include trace IDs or user IDs.
 
+## When to use structured metadata
+
+You should use structured metadata only in the following situations:
+
+    • If you are ingesting data in OpenTelemetry format, using the Grafana Agent or an OpenTelemetry Collector. Structured metadata was designed to support native ingestion of OpenTelemetry data.
+    • If you have high cardinality metadata that should not be used as a label and does not exist in the log line.
+ 
+It is an antipattern to extract information that already exists in your log lines and put it into structured metadata. 
+
 
 ## Attaching structured metadata to log lines
 
