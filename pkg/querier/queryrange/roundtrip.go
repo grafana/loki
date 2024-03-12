@@ -426,6 +426,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 		statsHandler := indexStatsTripperware.Wrap(next)
 
 		queryRangeMiddleware := []base.Middleware{
+			QueryMetricsMiddleware(metrics.QueryMetrics),
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
@@ -703,6 +704,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 		statsHandler := indexStatsTripperware.Wrap(next)
 
 		queryRangeMiddleware := []base.Middleware{
+			QueryMetricsMiddleware(metrics.QueryMetrics),
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
 		}

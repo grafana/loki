@@ -46,7 +46,7 @@ func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Namespace:  namespace,
 			Subsystem:  subsystem,
 			Name:       "request_filters",
-			Help:       "Number of filters per request",
+			Help:       "Number of filters per request.",
 			Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.02, 0.8: 0.02, 0.9: 0.01, 0.95: 0.01, 0.99: 0.001},
 		}),
 	}
