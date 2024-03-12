@@ -157,7 +157,7 @@ spec:
                     operator: NotIn
                     values:
                       - ingester-zone-c
-              topologyKey: {{ .Values.ingester.zoneAwareReplication.topologyKey }}
+              topologyKey: kubernetes.io/hostname
         {{- with .Values.ingester.zoneAwareReplication.zoneA.extraAffinity }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
