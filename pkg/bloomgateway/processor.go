@@ -150,7 +150,7 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 		iters = append(iters, it)
 	}
 
-	fq := blockQuerier.Fuse(iters)
+	fq := blockQuerier.Fuse(iters, p.logger)
 
 	start := time.Now()
 	err = fq.Run()

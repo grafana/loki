@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/pkg/errors"
 
@@ -17,8 +16,9 @@ import (
 // bigger), and loading multiple pages into memory in parallel can cause the
 // gateways to OOM.
 // Figure out a decent maximum page size that we can process.
+// TODO(chaudum): Make max page size configurable
 var maxPageSize = 32 << 20 // 32MB
-var errPageTooLarge = errors.New("bloom page too large to process")
+var errPageTooLarge = "bloom page too large to process: N=%d Offset=%d Len=%d DecompressedLen=%d"
 
 type Bloom struct {
 	filter.ScalableBloomFilter
@@ -248,13 +248,7 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int) (*BloomPageD
 	page := b.pageHeaders[pageIdx]
 
 	if page.Len > maxPageSize {
-		// TODO(chaudum): Remove print statement or replace it with a log message.
-		fmt.Fprintf(
-			os.Stderr,
-			"msg=\"ignore too large bloom page\" N=%d Offset=%d Len=%d DecompressedLen=%d\n",
-			page.N, page.Offset, page.Len, page.DecompressedLen,
-		)
-		return nil, errPageTooLarge
+		return nil, fmt.Errorf(errPageTooLarge, page.N, page.Offset, page.Len, page.DecompressedLen)
 	}
 
 	if _, err := r.Seek(int64(page.Offset), io.SeekStart); err != nil {
