@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.20']
+        go: ['1.21']
     steps:
     - name: Set up Go 1.x
       uses: actions/setup-go@v4

@@ -1,5 +1,7 @@
 ## Main
 
+- [12157](https://github.com/grafana/loki/pull/12157) **periklis**: Fix managed auth features annotation for community-openshift bundle
+- [12104](https://github.com/grafana/loki/pull/12104) **periklis**: Upgrade build and runtime dependencies
 - [11928](https://github.com/grafana/loki/pull/11928) **periklis**: Fix remote write client timeout config rename
 - [12097](https://github.com/grafana/loki/pull/12097) **btaani**: Fix encoding of blocked query pattern in configuration
 - [12106](https://github.com/grafana/loki/pull/12106) **xperimental**: Allow setting explicit CredentialMode in LokiStack storage spec

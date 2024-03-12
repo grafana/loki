@@ -15,7 +15,7 @@ metadata:
     features.operators.openshift.io/proxy-aware: "true"
     features.operators.openshift.io/tls-profiles: "true"
     features.operators.openshift.io/token-auth-aws: "true"
-    features.operators.openshift.io/token-auth-azure: "false"
+    features.operators.openshift.io/token-auth-azure: "true"
     features.operators.openshift.io/token-auth-gcp: "false"
     repository: https://github.com/grafana/loki/tree/main/operator
     support: Grafana Loki SIG Operator
