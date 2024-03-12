@@ -4,8 +4,12 @@ package frontendv2pb;
 
 import "github.com/grafana/dskit/httpgrpc/httpgrpc.proto";
 import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+import "pkg/logproto/logproto.proto";
 import "pkg/querier/queryrange/queryrange.proto";
 import "pkg/querier/stats/stats.proto";
+import "pkg/logqlmodel/stats/stats.proto";
+import "pkg/push/push.proto";
 
 option go_package = "frontendv2pb";
 option (gogoproto.marshaler_all) = true;
@@ -29,3 +33,50 @@ message QueryResultRequest {
 }
 
 message QueryResultResponse {}
+
+
+message LokiStreamingRequest {
+    string query = 1;
+    uint32 limit = 2;
+    int64 step = 3;
+    int64 interval = 4;
+    google.protobuf.Timestamp startTs = 5 [
+      (gogoproto.stdtime) = true,
+      (gogoproto.nullable) = false
+    ];
+    google.protobuf.Timestamp endTs = 6 [
+      (gogoproto.stdtime) = true,
+      (gogoproto.nullable) = false
+    ];
+}
+
+
+message LokiDataStream {
+  string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
+  repeated logproto.StreamAdapter Result = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "result",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/push.Stream"
+  ];
+}
+
+message LokiStreamingResponse {
+  string Status = 1 [(gogoproto.jsontag) = "status"];
+  LokiDataStream Data = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "data,omitempty"
+  ];
+  string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
+  string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
+  uint32 limit = 6;
+  uint32 version = 7;
+  stats.Result statistics = 8 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "statistics"
+  ];
+}
+
+
+service StreamService {
+  rpc FetchResponse(LokiStreamingRequest) returns (stream LokiStreamingResponse) {}
+}

@@ -19,28 +19,30 @@ import (
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"github.com/opentracing/opentracing-go"
-	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.uber.org/atomic"
-
 	"github.com/grafana/dskit/tenant"
-
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/stats"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/atomic"
 )
 
 const (
 	EncodingJSON     = "json"
 	EncodingProtobuf = "protobuf"
 )
+
+type streamingQueryHandler func(*frontendv2pb.LokiStreamingRequest, frontendv2pb.StreamService_FetchResponseServer) error
 
 // Config for a Frontend.
 type Config struct {
@@ -93,7 +95,8 @@ type Frontend struct {
 	schedulerWorkers *frontendSchedulerWorkers
 	requests         *requestsInProgress
 
-	codec transport.Codec
+	codec            transport.Codec
+	GrpcRoundTripper queryrangebase.Handler // unexport this field after draft
 }
 
 var _ queryrangebase.Handler = &Frontend{}
@@ -496,4 +499,57 @@ func (r *requestsInProgress) get(queryID uint64) *frontendRequest {
 	req := r.requests[i][queryID]
 	r.locks[i].Unlock()
 	return req
+}
+
+func (f *Frontend) FetchResponse(req *frontendv2pb.LokiStreamingRequest, srv frontendv2pb.StreamService_FetchResponseServer) error {
+	level.Debug(f.log).Log("msg", "started streaming")
+	ctx := srv.Context()
+	parsed, err := syntax.ParseExpr(req.Query)
+
+	if err != nil {
+		level.Error(f.log).Log("Error parsing expression")
+	}
+
+	lokiRequest := &queryrange.LokiRequest{
+		Query:   req.Query,
+		Limit:   req.Limit,
+		Step:    req.Step,
+		StartTs: req.StartTs.UTC(),
+		EndTs:   req.EndTs.UTC(),
+		Plan: &plan.QueryPlan{
+			AST: parsed,
+		},
+	} // shantanu: Check why is streamingreq is still not accepted directly
+	r, err := f.GrpcRoundTripper.Do(ctx, lokiRequest)
+	level.Info(f.log).Log(r)
+	if err != nil {
+		return err
+	}
+
+	p := &frontendv2pb.LokiStreamingResponse{
+		Status: "ok",
+	}
+
+	if err := srv.SendMsg(&p); err != nil {
+		level.Error(f.log).Log("msg", "error sending response to server")
+	}
+
+	// for {
+	// 	select {
+	// 	case <-srv.Context().Done():
+	// 		return status.Error(codes.Canceled, "Stream ended")
+	// 	default:
+	// 		time.Sleep(1 * time.Second)
+	// 		value := 30 + rand.Int31n(80)
+	// 		resp := queryrange.LokiResponse{
+	// 			Status: queryrangebase.StatusSuccess,
+	// 			Data:   queryrange.LokiData{},
+	// 			Limit:  uint32(value),
+	// 		}
+	// 		if err := srv.SendMsg(&resp); err != nil {
+	// 			level.Error(f.log).Log("msg", "something bad happened")
+	// 		}
+	// 	}
+	// }
+	return nil
 }

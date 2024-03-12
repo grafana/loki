@@ -206,6 +206,7 @@ services:
     ports:
       - 8007:8007
       - 18007:18007
+      - 9007:9007
     volumes:
       - ./config:/loki/config
 

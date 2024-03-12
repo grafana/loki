@@ -8,7 +8,13 @@ import (
 	fmt "fmt"
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
+	_ "github.com/gogo/protobuf/types"
+	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
 	httpgrpc "github.com/grafana/dskit/httpgrpc"
+	_ "github.com/grafana/loki/pkg/logproto"
+	stats1 "github.com/grafana/loki/pkg/logqlmodel/stats"
+	_ "github.com/grafana/loki/pkg/push"
+	github_com_grafana_loki_pkg_push "github.com/grafana/loki/pkg/push"
 	queryrange "github.com/grafana/loki/pkg/querier/queryrange"
 	stats "github.com/grafana/loki/pkg/querier/stats"
 	grpc "google.golang.org/grpc"
@@ -19,12 +25,14 @@ import (
 	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
+	time "time"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
+var _ = time.Kitchen
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the proto package it is being compiled against.
@@ -169,9 +177,230 @@ func (m *QueryResultResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_QueryResultResponse proto.InternalMessageInfo
 
+type LokiStreamingRequest struct {
+	Query    string    `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	Limit    uint32    `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Step     int64     `protobuf:"varint,3,opt,name=step,proto3" json:"step,omitempty"`
+	Interval int64     `protobuf:"varint,4,opt,name=interval,proto3" json:"interval,omitempty"`
+	StartTs  time.Time `protobuf:"bytes,5,opt,name=startTs,proto3,stdtime" json:"startTs"`
+	EndTs    time.Time `protobuf:"bytes,6,opt,name=endTs,proto3,stdtime" json:"endTs"`
+}
+
+func (m *LokiStreamingRequest) Reset()      { *m = LokiStreamingRequest{} }
+func (*LokiStreamingRequest) ProtoMessage() {}
+func (*LokiStreamingRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_85a7e5cdf8261f06, []int{2}
+}
+func (m *LokiStreamingRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *LokiStreamingRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_LokiStreamingRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *LokiStreamingRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_LokiStreamingRequest.Merge(m, src)
+}
+func (m *LokiStreamingRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *LokiStreamingRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_LokiStreamingRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_LokiStreamingRequest proto.InternalMessageInfo
+
+func (m *LokiStreamingRequest) GetQuery() string {
+	if m != nil {
+		return m.Query
+	}
+	return ""
+}
+
+func (m *LokiStreamingRequest) GetLimit() uint32 {
+	if m != nil {
+		return m.Limit
+	}
+	return 0
+}
+
+func (m *LokiStreamingRequest) GetStep() int64 {
+	if m != nil {
+		return m.Step
+	}
+	return 0
+}
+
+func (m *LokiStreamingRequest) GetInterval() int64 {
+	if m != nil {
+		return m.Interval
+	}
+	return 0
+}
+
+func (m *LokiStreamingRequest) GetStartTs() time.Time {
+	if m != nil {
+		return m.StartTs
+	}
+	return time.Time{}
+}
+
+func (m *LokiStreamingRequest) GetEndTs() time.Time {
+	if m != nil {
+		return m.EndTs
+	}
+	return time.Time{}
+}
+
+type LokiDataStream struct {
+	ResultType string                                    `protobuf:"bytes,1,opt,name=ResultType,proto3" json:"resultType"`
+	Result     []github_com_grafana_loki_pkg_push.Stream `protobuf:"bytes,2,rep,name=Result,proto3,customtype=github.com/grafana/loki/pkg/push.Stream" json:"result"`
+}
+
+func (m *LokiDataStream) Reset()      { *m = LokiDataStream{} }
+func (*LokiDataStream) ProtoMessage() {}
+func (*LokiDataStream) Descriptor() ([]byte, []int) {
+	return fileDescriptor_85a7e5cdf8261f06, []int{3}
+}
+func (m *LokiDataStream) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *LokiDataStream) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_LokiDataStream.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *LokiDataStream) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_LokiDataStream.Merge(m, src)
+}
+func (m *LokiDataStream) XXX_Size() int {
+	return m.Size()
+}
+func (m *LokiDataStream) XXX_DiscardUnknown() {
+	xxx_messageInfo_LokiDataStream.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_LokiDataStream proto.InternalMessageInfo
+
+func (m *LokiDataStream) GetResultType() string {
+	if m != nil {
+		return m.ResultType
+	}
+	return ""
+}
+
+type LokiStreamingResponse struct {
+	Status     string         `protobuf:"bytes,1,opt,name=Status,proto3" json:"status"`
+	Data       LokiDataStream `protobuf:"bytes,2,opt,name=Data,proto3" json:"data,omitempty"`
+	ErrorType  string         `protobuf:"bytes,3,opt,name=ErrorType,proto3" json:"errorType,omitempty"`
+	Error      string         `protobuf:"bytes,4,opt,name=Error,proto3" json:"error,omitempty"`
+	Limit      uint32         `protobuf:"varint,6,opt,name=limit,proto3" json:"limit,omitempty"`
+	Version    uint32         `protobuf:"varint,7,opt,name=version,proto3" json:"version,omitempty"`
+	Statistics stats1.Result  `protobuf:"bytes,8,opt,name=statistics,proto3" json:"statistics"`
+}
+
+func (m *LokiStreamingResponse) Reset()      { *m = LokiStreamingResponse{} }
+func (*LokiStreamingResponse) ProtoMessage() {}
+func (*LokiStreamingResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_85a7e5cdf8261f06, []int{4}
+}
+func (m *LokiStreamingResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *LokiStreamingResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_LokiStreamingResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *LokiStreamingResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_LokiStreamingResponse.Merge(m, src)
+}
+func (m *LokiStreamingResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *LokiStreamingResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_LokiStreamingResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_LokiStreamingResponse proto.InternalMessageInfo
+
+func (m *LokiStreamingResponse) GetStatus() string {
+	if m != nil {
+		return m.Status
+	}
+	return ""
+}
+
+func (m *LokiStreamingResponse) GetData() LokiDataStream {
+	if m != nil {
+		return m.Data
+	}
+	return LokiDataStream{}
+}
+
+func (m *LokiStreamingResponse) GetErrorType() string {
+	if m != nil {
+		return m.ErrorType
+	}
+	return ""
+}
+
+func (m *LokiStreamingResponse) GetError() string {
+	if m != nil {
+		return m.Error
+	}
+	return ""
+}
+
+func (m *LokiStreamingResponse) GetLimit() uint32 {
+	if m != nil {
+		return m.Limit
+	}
+	return 0
+}
+
+func (m *LokiStreamingResponse) GetVersion() uint32 {
+	if m != nil {
+		return m.Version
+	}
+	return 0
+}
+
+func (m *LokiStreamingResponse) GetStatistics() stats1.Result {
+	if m != nil {
+		return m.Statistics
+	}
+	return stats1.Result{}
+}
+
 func init() {
 	proto.RegisterType((*QueryResultRequest)(nil), "frontendv2pb.QueryResultRequest")
 	proto.RegisterType((*QueryResultResponse)(nil), "frontendv2pb.QueryResultResponse")
+	proto.RegisterType((*LokiStreamingRequest)(nil), "frontendv2pb.LokiStreamingRequest")
+	proto.RegisterType((*LokiDataStream)(nil), "frontendv2pb.LokiDataStream")
+	proto.RegisterType((*LokiStreamingResponse)(nil), "frontendv2pb.LokiStreamingResponse")
 }
 
 func init() {
@@ -179,31 +408,58 @@ func init() {
 }
 
 var fileDescriptor_85a7e5cdf8261f06 = []byte{
-	// 379 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x7c, 0x52, 0xbd, 0x4e, 0xc3, 0x30,
-	0x18, 0xb4, 0x4b, 0xf9, 0x91, 0x5b, 0x16, 0xf3, 0xa3, 0x50, 0x09, 0xab, 0x74, 0xa1, 0x53, 0x82,
-	0xc2, 0xc2, 0x08, 0x11, 0xaa, 0xca, 0x46, 0x43, 0x27, 0xb6, 0xb4, 0x75, 0xd3, 0xd0, 0x12, 0xa7,
-	0x8e, 0x53, 0x89, 0x8d, 0x47, 0xe0, 0x31, 0x78, 0x14, 0xc6, 0x8e, 0x1d, 0x69, 0xb2, 0x30, 0xf6,
-	0x11, 0x50, 0xe2, 0x34, 0x72, 0x84, 0xc4, 0xe2, 0x9c, 0x7d, 0x77, 0x5f, 0xee, 0xf3, 0x67, 0x74,
-	0x13, 0x4c, 0x5d, 0x63, 0xc6, 0xa6, 0xde, 0x98, 0x33, 0x5f, 0x50, 0x7f, 0x64, 0x14, 0x60, 0x61,
-	0x16, 0x78, 0x61, 0x06, 0x83, 0x62, 0xa3, 0x07, 0x9c, 0x09, 0x86, 0xeb, 0x2a, 0xd9, 0xb8, 0x72,
-	0x3d, 0x31, 0x89, 0x06, 0xfa, 0x90, 0xbd, 0x1a, 0x2e, 0x77, 0xc6, 0x8e, 0xef, 0x18, 0xa3, 0x70,
-	0xea, 0x09, 0x63, 0x22, 0x44, 0xe0, 0xf2, 0x60, 0x58, 0x00, 0xe9, 0x6f, 0x1c, 0xbb, 0xcc, 0x65,
-	0x19, 0x34, 0x52, 0x94, 0x9f, 0x5e, 0xa6, 0x79, 0xe6, 0x11, 0xe5, 0x1e, 0xe5, 0xd9, 0xf7, 0x8d,
-	0x3b, 0xbe, 0x4b, 0x15, 0x98, 0x0b, 0xcf, 0x55, 0x61, 0x28, 0x1c, 0x11, 0xca, 0x55, 0xd2, 0xad,
-	0x04, 0x22, 0xdc, 0x4b, 0x3d, 0x36, 0x0d, 0xa3, 0x99, 0xb0, 0xe9, 0x3c, 0xa2, 0xa1, 0xc0, 0x1a,
-	0xda, 0xcf, 0x2a, 0x3d, 0xdc, 0x6b, 0xb0, 0x09, 0xdb, 0x55, 0x7b, 0xbb, 0xc5, 0xb7, 0xa8, 0x9e,
-	0x06, 0xb4, 0x69, 0x18, 0x30, 0x3f, 0xa4, 0x5a, 0xa5, 0x09, 0xdb, 0x35, 0xf3, 0x54, 0x2f, 0x52,
-	0x77, 0xfb, 0xfd, 0xc7, 0x2d, 0x6b, 0x55, 0x34, 0xd8, 0x05, 0x76, 0xc9, 0x81, 0xef, 0xd0, 0xe1,
-	0x3c, 0xff, 0xa3, 0x2c, 0x51, 0xcd, 0x4a, 0x9c, 0xe9, 0x4a, 0xf6, 0x9e, 0x2a, 0xe8, 0x02, 0xbb,
-	0xec, 0xc0, 0x2d, 0xb4, 0x9b, 0x35, 0xa1, 0xed, 0x64, 0xd6, 0xba, 0x2e, 0x5b, 0x7a, 0x4a, 0x57,
-	0x5b, 0x52, 0x16, 0x42, 0x07, 0x3c, 0xd7, 0xb7, 0x4e, 0xd0, 0x51, 0xa9, 0x49, 0x79, 0x6c, 0xbe,
-	0x20, 0xdc, 0xc9, 0x87, 0xd3, 0x61, 0xbc, 0x27, 0x2f, 0x09, 0xf7, 0x51, 0x4d, 0x11, 0xe3, 0xa6,
-	0xae, 0x0e, 0x50, 0xff, 0x7b, 0x59, 0x8d, 0x8b, 0x7f, 0x14, 0x79, 0x00, 0x60, 0x59, 0xcb, 0x35,
-	0x01, 0xab, 0x35, 0x01, 0x9b, 0x35, 0x81, 0xef, 0x31, 0x81, 0x9f, 0x31, 0x81, 0x5f, 0x31, 0x81,
-	0xcb, 0x98, 0xc0, 0xef, 0x98, 0xc0, 0x9f, 0x98, 0x80, 0x4d, 0x4c, 0xe0, 0x47, 0x42, 0xc0, 0x32,
-	0x21, 0x60, 0x95, 0x10, 0xf0, 0x5c, 0x7a, 0x3c, 0x83, 0xbd, 0x6c, 0x66, 0xd7, 0xbf, 0x01, 0x00,
-	0x00, 0xff, 0xff, 0x8f, 0x20, 0x57, 0xb2, 0x8d, 0x02, 0x00, 0x00,
+	// 812 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x55, 0xcd, 0x6e, 0xdb, 0x46,
+	0x10, 0xe6, 0x5a, 0x96, 0x6c, 0x8f, 0x2d, 0x17, 0x58, 0x3b, 0x09, 0xab, 0xb6, 0xa4, 0xaa, 0x1e,
+	0xe2, 0x02, 0x05, 0x19, 0xa8, 0x28, 0xd0, 0xf6, 0x50, 0xd4, 0x44, 0x6a, 0xa8, 0x40, 0x0f, 0xf5,
+	0x5a, 0xa7, 0xa2, 0x17, 0x4a, 0x5a, 0x53, 0x8c, 0x44, 0x2e, 0xb5, 0xbb, 0x12, 0xe0, 0x5b, 0x1f,
+	0x21, 0x8f, 0xd1, 0x43, 0x1f, 0x24, 0x47, 0x1f, 0x83, 0x1c, 0xd4, 0x5a, 0xba, 0x14, 0x3a, 0x14,
+	0x79, 0x84, 0x82, 0xbb, 0x4b, 0x9a, 0x4a, 0x82, 0x00, 0xb9, 0xac, 0xe6, 0xe7, 0x9b, 0x9d, 0xf9,
+	0x66, 0x67, 0x28, 0xf8, 0x36, 0x9b, 0x44, 0xfe, 0x94, 0x4d, 0xe2, 0x6b, 0xce, 0x52, 0x49, 0xd3,
+	0x91, 0x5f, 0x0a, 0x8b, 0x6e, 0x29, 0x2f, 0xba, 0xd9, 0xa0, 0x54, 0xbc, 0x8c, 0x33, 0xc9, 0xf0,
+	0x51, 0xd5, 0xd9, 0x7a, 0x12, 0xc5, 0x72, 0x3c, 0x1f, 0x78, 0x43, 0x96, 0xf8, 0x11, 0x0f, 0xaf,
+	0xc3, 0x34, 0xf4, 0x47, 0x62, 0x12, 0x4b, 0x7f, 0x2c, 0x65, 0x16, 0xf1, 0x6c, 0x58, 0x0a, 0x3a,
+	0xbe, 0x75, 0x1a, 0xb1, 0x88, 0x29, 0xd1, 0xcf, 0x25, 0x63, 0x75, 0x23, 0xc6, 0xa2, 0x29, 0xf5,
+	0x95, 0x36, 0x98, 0x5f, 0xfb, 0x32, 0x4e, 0xa8, 0x90, 0x61, 0x92, 0x19, 0xc0, 0x27, 0xba, 0xe0,
+	0x48, 0x47, 0x16, 0x82, 0x71, 0x3e, 0xce, 0x9d, 0xb3, 0x39, 0xe5, 0x31, 0xe5, 0xea, 0xf7, 0x86,
+	0x87, 0x69, 0x44, 0x2b, 0xa2, 0x01, 0x7e, 0x56, 0x05, 0x0a, 0x19, 0x4a, 0xa1, 0x4f, 0xe3, 0x6e,
+	0x9b, 0x24, 0xb3, 0x69, 0xc2, 0x46, 0x74, 0xfa, 0x0e, 0xc4, 0x49, 0x8e, 0xc8, 0xe6, 0x62, 0xac,
+	0x0e, 0x6d, 0xec, 0xac, 0x11, 0xe0, 0xcb, 0x3c, 0x15, 0xa1, 0x62, 0x3e, 0x95, 0x84, 0xce, 0xe6,
+	0x54, 0x48, 0x6c, 0xc3, 0x9e, 0x2a, 0xe0, 0xe7, 0xa7, 0x36, 0x6a, 0xa3, 0xb3, 0x5d, 0x52, 0xa8,
+	0xf8, 0x47, 0x38, 0xca, 0xbb, 0x42, 0xa8, 0xc8, 0x58, 0x2a, 0xa8, 0xbd, 0xd3, 0x46, 0x67, 0x87,
+	0xdd, 0x87, 0x5e, 0xd9, 0xaa, 0x5e, 0xbf, 0xff, 0x6b, 0xe1, 0x0d, 0x76, 0x6c, 0xd4, 0xb3, 0xc8,
+	0x56, 0x04, 0x3e, 0x87, 0xe6, 0xcc, 0x64, 0xd4, 0x57, 0xec, 0xaa, 0x2b, 0x3e, 0xf6, 0x2a, 0x94,
+	0x2f, 0xab, 0x80, 0x9e, 0x45, 0xb6, 0x23, 0x70, 0x07, 0xea, 0x8a, 0x99, 0x5d, 0x53, 0xa1, 0x47,
+	0x9e, 0xe6, 0x79, 0x95, 0x9f, 0x44, 0xbb, 0x02, 0x80, 0x7d, 0x6e, 0xf0, 0x9d, 0x07, 0x70, 0xb2,
+	0x45, 0xd2, 0x98, 0xff, 0x43, 0x70, 0xfa, 0x0b, 0x9b, 0xc4, 0x57, 0x92, 0xd3, 0x30, 0x89, 0xd3,
+	0xa8, 0xa0, 0x7f, 0x0a, 0x75, 0x95, 0x50, 0x91, 0x3f, 0x20, 0x5a, 0xc9, 0xad, 0xd3, 0x38, 0x89,
+	0xa5, 0xe2, 0xdc, 0x24, 0x5a, 0xc1, 0x18, 0x76, 0x85, 0xa4, 0x99, 0x2a, 0xa5, 0x46, 0x94, 0x8c,
+	0x5b, 0xb0, 0x1f, 0xa7, 0x92, 0xf2, 0x45, 0x38, 0x55, 0xec, 0x6a, 0xa4, 0xd4, 0xf1, 0x0f, 0xb0,
+	0x27, 0x64, 0xc8, 0x65, 0x5f, 0xd8, 0x75, 0x55, 0x7d, 0xcb, 0xd3, 0x03, 0xe4, 0x15, 0x03, 0xe4,
+	0xf5, 0x8b, 0x01, 0x0a, 0xf6, 0x5f, 0x2c, 0x5d, 0xeb, 0xf9, 0xdf, 0x2e, 0x22, 0x45, 0x10, 0xfe,
+	0x1e, 0xea, 0x34, 0x1d, 0xf5, 0x85, 0xdd, 0xf8, 0x80, 0x68, 0x1d, 0xd2, 0xf9, 0x0b, 0xc1, 0x71,
+	0x4e, 0xf8, 0x69, 0x28, 0x43, 0x4d, 0x1a, 0x7b, 0x00, 0xba, 0x2b, 0xfd, 0x9b, 0x8c, 0x6a, 0xbe,
+	0xc1, 0xf1, 0x66, 0xe9, 0x02, 0x2f, 0xad, 0xa4, 0x82, 0xc0, 0xcf, 0xa0, 0xa1, 0x35, 0x7b, 0xa7,
+	0x5d, 0x3b, 0x3b, 0xec, 0x3e, 0xf2, 0xca, 0x81, 0xd6, 0x37, 0x9e, 0x8f, 0xc2, 0x4c, 0x52, 0x1e,
+	0x7c, 0x97, 0x27, 0x7f, 0xb5, 0x74, 0x1f, 0xbf, 0x63, 0xcd, 0xf2, 0xed, 0xf5, 0x8b, 0x71, 0x34,
+	0x71, 0x9b, 0xa5, 0xdb, 0xd0, 0x39, 0x89, 0xc9, 0xd0, 0x79, 0xb5, 0x03, 0x0f, 0xde, 0x78, 0x9f,
+	0x72, 0x00, 0x1a, 0xf9, 0x63, 0xcf, 0x85, 0xa9, 0x18, 0xf2, 0x68, 0xa1, 0x2c, 0xc4, 0x78, 0x70,
+	0x0f, 0x76, 0x73, 0x9e, 0x66, 0x42, 0x3f, 0xf5, 0xaa, 0xcb, 0xef, 0x6d, 0x77, 0x21, 0x78, 0x98,
+	0x17, 0xbb, 0x59, 0xba, 0xc7, 0xa3, 0x50, 0x86, 0x5f, 0xb1, 0x24, 0x96, 0x34, 0xc9, 0xe4, 0x0d,
+	0x51, 0x37, 0xe0, 0x6f, 0xe0, 0xe0, 0x27, 0xce, 0x19, 0x57, 0x2d, 0xaa, 0xa9, 0x84, 0x8f, 0x36,
+	0x4b, 0xf7, 0x84, 0x16, 0xc6, 0x4a, 0xc4, 0x3d, 0x12, 0x7f, 0x09, 0x75, 0xa5, 0xa8, 0x11, 0x38,
+	0x08, 0x4e, 0x36, 0x4b, 0xf7, 0x23, 0x15, 0x52, 0x81, 0x6b, 0xc4, 0xfd, 0x68, 0x35, 0xaa, 0xa3,
+	0x65, 0xc3, 0xde, 0x82, 0x72, 0x11, 0xb3, 0xd4, 0xde, 0x53, 0xf6, 0x42, 0xc5, 0xe7, 0x00, 0x39,
+	0xdb, 0x58, 0xc8, 0x78, 0x28, 0xec, 0x7d, 0xc5, 0xb0, 0x69, 0xb6, 0x40, 0x37, 0x2f, 0xc0, 0x86,
+	0x52, 0x05, 0x48, 0x2a, 0x72, 0xf7, 0x19, 0xe0, 0x0b, 0xd3, 0x91, 0x0b, 0xc6, 0x2f, 0xf5, 0x87,
+	0x05, 0xf7, 0xe1, 0xb0, 0xb2, 0x29, 0xb8, 0xbd, 0xdd, 0xb5, 0xb7, 0xbf, 0x14, 0xad, 0xcf, 0xdf,
+	0x83, 0x30, 0x6b, 0x66, 0x75, 0x13, 0x68, 0xea, 0x46, 0x5f, 0x51, 0xbe, 0x88, 0x87, 0x14, 0xff,
+	0x0e, 0xcd, 0x0b, 0x2a, 0x87, 0xe3, 0xfb, 0x07, 0x7d, 0xfb, 0x79, 0xde, 0xdc, 0xca, 0xd6, 0x17,
+	0xef, 0xc5, 0x14, 0xc9, 0x9e, 0xa0, 0x20, 0xb8, 0xbd, 0x73, 0xac, 0x97, 0x77, 0x8e, 0xf5, 0xfa,
+	0xce, 0x41, 0x7f, 0xac, 0x1c, 0xf4, 0xe7, 0xca, 0x41, 0x2f, 0x56, 0x0e, 0xba, 0x5d, 0x39, 0xe8,
+	0x9f, 0x95, 0x83, 0xfe, 0x5d, 0x39, 0xd6, 0xeb, 0x95, 0x83, 0x9e, 0xaf, 0x1d, 0xeb, 0x76, 0xed,
+	0x58, 0x2f, 0xd7, 0x8e, 0xf5, 0xdb, 0xd6, 0xbf, 0xc3, 0xa0, 0xa1, 0x66, 0xfa, 0xeb, 0xff, 0x03,
+	0x00, 0x00, 0xff, 0xff, 0xa3, 0xbd, 0x93, 0xaf, 0x6e, 0x06, 0x00, 0x00,
 }
 
 func (this *QueryResultRequest) Equal(that interface{}) bool {
@@ -311,6 +567,119 @@ func (this *QueryResultResponse) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *LokiStreamingRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*LokiStreamingRequest)
+	if !ok {
+		that2, ok := that.(LokiStreamingRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Query != that1.Query {
+		return false
+	}
+	if this.Limit != that1.Limit {
+		return false
+	}
+	if this.Step != that1.Step {
+		return false
+	}
+	if this.Interval != that1.Interval {
+		return false
+	}
+	if !this.StartTs.Equal(that1.StartTs) {
+		return false
+	}
+	if !this.EndTs.Equal(that1.EndTs) {
+		return false
+	}
+	return true
+}
+func (this *LokiDataStream) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*LokiDataStream)
+	if !ok {
+		that2, ok := that.(LokiDataStream)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.ResultType != that1.ResultType {
+		return false
+	}
+	if len(this.Result) != len(that1.Result) {
+		return false
+	}
+	for i := range this.Result {
+		if !this.Result[i].Equal(that1.Result[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *LokiStreamingResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*LokiStreamingResponse)
+	if !ok {
+		that2, ok := that.(LokiStreamingResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Status != that1.Status {
+		return false
+	}
+	if !this.Data.Equal(&that1.Data) {
+		return false
+	}
+	if this.ErrorType != that1.ErrorType {
+		return false
+	}
+	if this.Error != that1.Error {
+		return false
+	}
+	if this.Limit != that1.Limit {
+		return false
+	}
+	if this.Version != that1.Version {
+		return false
+	}
+	if !this.Statistics.Equal(&that1.Statistics) {
+		return false
+	}
+	return true
+}
 func (this *QueryResultRequest) GoString() string {
 	if this == nil {
 		return "nil"
@@ -349,6 +718,48 @@ func (this *QueryResultResponse) GoString() string {
 	}
 	s := make([]string, 0, 4)
 	s = append(s, "&frontendv2pb.QueryResultResponse{")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *LokiStreamingRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 10)
+	s = append(s, "&frontendv2pb.LokiStreamingRequest{")
+	s = append(s, "Query: "+fmt.Sprintf("%#v", this.Query)+",\n")
+	s = append(s, "Limit: "+fmt.Sprintf("%#v", this.Limit)+",\n")
+	s = append(s, "Step: "+fmt.Sprintf("%#v", this.Step)+",\n")
+	s = append(s, "Interval: "+fmt.Sprintf("%#v", this.Interval)+",\n")
+	s = append(s, "StartTs: "+fmt.Sprintf("%#v", this.StartTs)+",\n")
+	s = append(s, "EndTs: "+fmt.Sprintf("%#v", this.EndTs)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *LokiDataStream) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&frontendv2pb.LokiDataStream{")
+	s = append(s, "ResultType: "+fmt.Sprintf("%#v", this.ResultType)+",\n")
+	s = append(s, "Result: "+fmt.Sprintf("%#v", this.Result)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *LokiStreamingResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 11)
+	s = append(s, "&frontendv2pb.LokiStreamingResponse{")
+	s = append(s, "Status: "+fmt.Sprintf("%#v", this.Status)+",\n")
+	s = append(s, "Data: "+strings.Replace(this.Data.GoString(), `&`, ``, 1)+",\n")
+	s = append(s, "ErrorType: "+fmt.Sprintf("%#v", this.ErrorType)+",\n")
+	s = append(s, "Error: "+fmt.Sprintf("%#v", this.Error)+",\n")
+	s = append(s, "Limit: "+fmt.Sprintf("%#v", this.Limit)+",\n")
+	s = append(s, "Version: "+fmt.Sprintf("%#v", this.Version)+",\n")
+	s = append(s, "Statistics: "+strings.Replace(this.Statistics.GoString(), `&`, ``, 1)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -438,6 +849,105 @@ var _FrontendForQuerier_serviceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
+	Metadata: "pkg/lokifrontend/frontend/v2/frontendv2pb/frontend.proto",
+}
+
+// StreamServiceClient is the client API for StreamService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
+type StreamServiceClient interface {
+	FetchResponse(ctx context.Context, in *LokiStreamingRequest, opts ...grpc.CallOption) (StreamService_FetchResponseClient, error)
+}
+
+type streamServiceClient struct {
+	cc *grpc.ClientConn
+}
+
+func NewStreamServiceClient(cc *grpc.ClientConn) StreamServiceClient {
+	return &streamServiceClient{cc}
+}
+
+func (c *streamServiceClient) FetchResponse(ctx context.Context, in *LokiStreamingRequest, opts ...grpc.CallOption) (StreamService_FetchResponseClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_StreamService_serviceDesc.Streams[0], "/frontendv2pb.StreamService/FetchResponse", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &streamServiceFetchResponseClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type StreamService_FetchResponseClient interface {
+	Recv() (*LokiStreamingResponse, error)
+	grpc.ClientStream
+}
+
+type streamServiceFetchResponseClient struct {
+	grpc.ClientStream
+}
+
+func (x *streamServiceFetchResponseClient) Recv() (*LokiStreamingResponse, error) {
+	m := new(LokiStreamingResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// StreamServiceServer is the server API for StreamService service.
+type StreamServiceServer interface {
+	FetchResponse(*LokiStreamingRequest, StreamService_FetchResponseServer) error
+}
+
+// UnimplementedStreamServiceServer can be embedded to have forward compatible implementations.
+type UnimplementedStreamServiceServer struct {
+}
+
+func (*UnimplementedStreamServiceServer) FetchResponse(req *LokiStreamingRequest, srv StreamService_FetchResponseServer) error {
+	return status.Errorf(codes.Unimplemented, "method FetchResponse not implemented")
+}
+
+func RegisterStreamServiceServer(s *grpc.Server, srv StreamServiceServer) {
+	s.RegisterService(&_StreamService_serviceDesc, srv)
+}
+
+func _StreamService_FetchResponse_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(LokiStreamingRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StreamServiceServer).FetchResponse(m, &streamServiceFetchResponseServer{stream})
+}
+
+type StreamService_FetchResponseServer interface {
+	Send(*LokiStreamingResponse) error
+	grpc.ServerStream
+}
+
+type streamServiceFetchResponseServer struct {
+	grpc.ServerStream
+}
+
+func (x *streamServiceFetchResponseServer) Send(m *LokiStreamingResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+var _StreamService_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "frontendv2pb.StreamService",
+	HandlerType: (*StreamServiceServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "FetchResponse",
+			Handler:       _StreamService_FetchResponse_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "pkg/lokifrontend/frontend/v2/frontendv2pb/frontend.proto",
 }
 
@@ -553,6 +1063,185 @@ func (m *QueryResultResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *LokiStreamingRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *LokiStreamingRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LokiStreamingRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	n4, err4 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.EndTs, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.EndTs):])
+	if err4 != nil {
+		return 0, err4
+	}
+	i -= n4
+	i = encodeVarintFrontend(dAtA, i, uint64(n4))
+	i--
+	dAtA[i] = 0x32
+	n5, err5 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.StartTs, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.StartTs):])
+	if err5 != nil {
+		return 0, err5
+	}
+	i -= n5
+	i = encodeVarintFrontend(dAtA, i, uint64(n5))
+	i--
+	dAtA[i] = 0x2a
+	if m.Interval != 0 {
+		i = encodeVarintFrontend(dAtA, i, uint64(m.Interval))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.Step != 0 {
+		i = encodeVarintFrontend(dAtA, i, uint64(m.Step))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Limit != 0 {
+		i = encodeVarintFrontend(dAtA, i, uint64(m.Limit))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Query) > 0 {
+		i -= len(m.Query)
+		copy(dAtA[i:], m.Query)
+		i = encodeVarintFrontend(dAtA, i, uint64(len(m.Query)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *LokiDataStream) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *LokiDataStream) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LokiDataStream) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Result) > 0 {
+		for iNdEx := len(m.Result) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Result[iNdEx].Size()
+				i -= size
+				if _, err := m.Result[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintFrontend(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.ResultType) > 0 {
+		i -= len(m.ResultType)
+		copy(dAtA[i:], m.ResultType)
+		i = encodeVarintFrontend(dAtA, i, uint64(len(m.ResultType)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *LokiStreamingResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *LokiStreamingResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LokiStreamingResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	{
+		size, err := m.Statistics.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintFrontend(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x42
+	if m.Version != 0 {
+		i = encodeVarintFrontend(dAtA, i, uint64(m.Version))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.Limit != 0 {
+		i = encodeVarintFrontend(dAtA, i, uint64(m.Limit))
+		i--
+		dAtA[i] = 0x30
+	}
+	if len(m.Error) > 0 {
+		i -= len(m.Error)
+		copy(dAtA[i:], m.Error)
+		i = encodeVarintFrontend(dAtA, i, uint64(len(m.Error)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.ErrorType) > 0 {
+		i -= len(m.ErrorType)
+		copy(dAtA[i:], m.ErrorType)
+		i = encodeVarintFrontend(dAtA, i, uint64(len(m.ErrorType)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	{
+		size, err := m.Data.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintFrontend(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x12
+	if len(m.Status) > 0 {
+		i -= len(m.Status)
+		copy(dAtA[i:], m.Status)
+		i = encodeVarintFrontend(dAtA, i, uint64(len(m.Status)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintFrontend(dAtA []byte, offset int, v uint64) int {
 	offset -= sovFrontend(v)
 	base := offset
@@ -616,6 +1305,82 @@ func (m *QueryResultResponse) Size() (n int) {
 	return n
 }
 
+func (m *LokiStreamingRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Query)
+	if l > 0 {
+		n += 1 + l + sovFrontend(uint64(l))
+	}
+	if m.Limit != 0 {
+		n += 1 + sovFrontend(uint64(m.Limit))
+	}
+	if m.Step != 0 {
+		n += 1 + sovFrontend(uint64(m.Step))
+	}
+	if m.Interval != 0 {
+		n += 1 + sovFrontend(uint64(m.Interval))
+	}
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.StartTs)
+	n += 1 + l + sovFrontend(uint64(l))
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.EndTs)
+	n += 1 + l + sovFrontend(uint64(l))
+	return n
+}
+
+func (m *LokiDataStream) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.ResultType)
+	if l > 0 {
+		n += 1 + l + sovFrontend(uint64(l))
+	}
+	if len(m.Result) > 0 {
+		for _, e := range m.Result {
+			l = e.Size()
+			n += 1 + l + sovFrontend(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *LokiStreamingResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Status)
+	if l > 0 {
+		n += 1 + l + sovFrontend(uint64(l))
+	}
+	l = m.Data.Size()
+	n += 1 + l + sovFrontend(uint64(l))
+	l = len(m.ErrorType)
+	if l > 0 {
+		n += 1 + l + sovFrontend(uint64(l))
+	}
+	l = len(m.Error)
+	if l > 0 {
+		n += 1 + l + sovFrontend(uint64(l))
+	}
+	if m.Limit != 0 {
+		n += 1 + sovFrontend(uint64(m.Limit))
+	}
+	if m.Version != 0 {
+		n += 1 + sovFrontend(uint64(m.Version))
+	}
+	l = m.Statistics.Size()
+	n += 1 + l + sovFrontend(uint64(l))
+	return n
+}
+
 func sovFrontend(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
 }
@@ -659,6 +1424,48 @@ func (this *QueryResultResponse) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&QueryResultResponse{`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *LokiStreamingRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&LokiStreamingRequest{`,
+		`Query:` + fmt.Sprintf("%v", this.Query) + `,`,
+		`Limit:` + fmt.Sprintf("%v", this.Limit) + `,`,
+		`Step:` + fmt.Sprintf("%v", this.Step) + `,`,
+		`Interval:` + fmt.Sprintf("%v", this.Interval) + `,`,
+		`StartTs:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.StartTs), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`EndTs:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EndTs), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *LokiDataStream) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&LokiDataStream{`,
+		`ResultType:` + fmt.Sprintf("%v", this.ResultType) + `,`,
+		`Result:` + fmt.Sprintf("%v", this.Result) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *LokiStreamingResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&LokiStreamingResponse{`,
+		`Status:` + fmt.Sprintf("%v", this.Status) + `,`,
+		`Data:` + strings.Replace(strings.Replace(this.Data.String(), "LokiDataStream", "LokiDataStream", 1), `&`, ``, 1) + `,`,
+		`ErrorType:` + fmt.Sprintf("%v", this.ErrorType) + `,`,
+		`Error:` + fmt.Sprintf("%v", this.Error) + `,`,
+		`Limit:` + fmt.Sprintf("%v", this.Limit) + `,`,
+		`Version:` + fmt.Sprintf("%v", this.Version) + `,`,
+		`Statistics:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Statistics), "Result", "stats1.Result", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -878,6 +1685,586 @@ func (m *QueryResultResponse) Unmarshal(dAtA []byte) error {
 			return fmt.Errorf("proto: QueryResultResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipFrontend(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *LokiStreamingRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowFrontend
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: LokiStreamingRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: LokiStreamingRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Query", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Query = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Limit", wireType)
+			}
+			m.Limit = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Limit |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Step", wireType)
+			}
+			m.Step = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Step |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Interval", wireType)
+			}
+			m.Interval = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Interval |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StartTs", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.StartTs, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field EndTs", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.EndTs, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipFrontend(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *LokiDataStream) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowFrontend
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: LokiDataStream: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: LokiDataStream: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ResultType", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ResultType = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Result", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Result = append(m.Result, github_com_grafana_loki_pkg_push.Stream{})
+			if err := m.Result[len(m.Result)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipFrontend(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *LokiStreamingResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowFrontend
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: LokiStreamingResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: LokiStreamingResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Status = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Data", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.Data.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ErrorType", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ErrorType = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Error = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Limit", wireType)
+			}
+			m.Limit = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Limit |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
+			}
+			m.Version = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Version |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Statistics", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.Statistics.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipFrontend(dAtA[iNdEx:])

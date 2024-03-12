@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
+	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	gerrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -50,7 +51,6 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -966,6 +966,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	if err != nil {
 		return nil, err
 	}
+	grpcRoundTripper := t.QueryFrontEndMiddleware.Wrap(frontendTripper)
 
 	if frontendV1 != nil {
 		frontendv1pb.RegisterFrontendServer(t.Server.GRPC, frontendV1)
@@ -973,6 +974,8 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		level.Debug(util_log.Logger).Log("msg", "using query frontend", "version", "v1")
 	} else if frontendV2 != nil {
 		frontendv2pb.RegisterFrontendForQuerierServer(t.Server.GRPC, frontendV2)
+		frontendv2pb.RegisterStreamServiceServer(t.Server.GRPC, frontendV2)
+		frontendV2.GrpcRoundTripper = grpcRoundTripper
 		t.frontend = frontendV2
 		level.Debug(util_log.Logger).Log("msg", "using query frontend", "version", "v2")
 	} else {
