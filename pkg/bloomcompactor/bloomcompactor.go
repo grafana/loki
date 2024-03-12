@@ -176,22 +176,20 @@ type tenantTableRange struct {
 	queueTime, startTime, endTime time.Time
 }
 
-func (c *Compactor) tenants(ctx context.Context, table config.DayTable) (*v1.FilterIter[string], error) {
+func (c *Compactor) tenants(ctx context.Context, table config.DayTable) (*v1.SliceIter[string], error) {
 	tenants, err := c.tsdbStore.UsersForPeriod(ctx, table)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting tenants")
 	}
 
-	return v1.NewFilterIter(
-		v1.NewSliceIter(tenants),
-		func(tenant string) bool {
-			return c.limits.BloomCompactorEnabled(tenant)
-		},
-	), nil
+	return v1.NewSliceIter(tenants), nil
 }
 
 // ownsTenant returns the ownership range for the tenant, if the compactor owns the tenant, and an error.
 func (c *Compactor) ownsTenant(tenant string) ([]v1.FingerprintBounds, bool, error) {
+	if !c.limits.BloomCompactorEnabled(tenant) {
+		return nil, false, nil
+	}
 	tenantRing, owned := c.sharding.OwnsTenant(tenant)
 	if !owned {
 		return nil, false, nil

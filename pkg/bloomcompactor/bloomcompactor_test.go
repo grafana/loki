@@ -167,7 +167,7 @@ func (m mockLimits) BloomCompactorShardSize(_ string) int {
 }
 
 func (m mockLimits) BloomCompactorEnabled(_ string) bool {
-	panic("implement me")
+	return true
 }
 
 func (m mockLimits) BloomNGramLength(_ string) int {
