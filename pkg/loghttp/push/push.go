@@ -66,7 +66,7 @@ type Limits interface {
 type EmptyLimits struct{}
 
 func (EmptyLimits) OTLPConfig(string) OTLPConfig {
-	return DefaultOTLPConfig
+	return DefaultOTLPConfig(GlobalOTLPConfig{})
 }
 
 type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error)

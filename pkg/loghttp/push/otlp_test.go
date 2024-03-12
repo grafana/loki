@@ -34,7 +34,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 			expectedPushRequest: logproto.PushRequest{},
 			expectedStats:       *newPushStats(),
-			otlpConfig:          DefaultOTLPConfig,
+			otlpConfig:          DefaultOTLPConfig(defaultGlobalOTLPConfig),
 		},
 		{
 			name: "resource with no logs",
@@ -45,11 +45,11 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 			expectedPushRequest: logproto.PushRequest{},
 			expectedStats:       *newPushStats(),
-			otlpConfig:          DefaultOTLPConfig,
+			otlpConfig:          DefaultOTLPConfig(defaultGlobalOTLPConfig),
 		},
 		{
 			name:       "resource with a log entry",
-			otlpConfig: DefaultOTLPConfig,
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("service.name", "service-1")
@@ -85,7 +85,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		},
 		{
 			name:       "no resource attributes defined",
-			otlpConfig: DefaultOTLPConfig,
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty()
@@ -121,7 +121,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		},
 		{
 			name:       "service.name not defined in resource attributes",
-			otlpConfig: DefaultOTLPConfig,
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 			tracker:    NewMockTracker(),
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
@@ -183,7 +183,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		},
 		{
 			name:       "resource attributes and scope attributes stored as structured metadata",
-			otlpConfig: DefaultOTLPConfig,
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty()
@@ -258,7 +258,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		},
 		{
 			name:       "attributes with nested data",
-			otlpConfig: DefaultOTLPConfig,
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty()
@@ -573,7 +573,7 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expectedResp, otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig))
+			require.Equal(t, tc.expectedResp, otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig)))
 		})
 	}
 

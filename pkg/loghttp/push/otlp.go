@@ -28,14 +28,6 @@ const (
 	attrServiceName     = "service.name"
 )
 
-var blessedAttributesNormalized = make([]string, len(blessedAttributes))
-
-func init() {
-	for i := range blessedAttributes {
-		blessedAttributesNormalized[i] = prometheustranslator.NormalizeLabel(blessedAttributes[i])
-	}
-}
-
 func newPushStats() *Stats {
 	return &Stats{
 		LogLinesBytes:           map[time.Duration]int64{},
@@ -118,7 +110,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 			resAttrs.PutStr(attrServiceName, "unknown_service")
 		}
 		resourceAttributesAsStructuredMetadata := make(push.LabelsAdapter, 0, resAttrs.Len())
-		streamLabels := make(model.LabelSet, len(blessedAttributesNormalized))
+		streamLabels := make(model.LabelSet, 30) // we have a default labels limit of 30 so just initialize the map of same size
 
 		resAttrs.Range(func(k string, v pcommon.Value) bool {
 			action := otlpConfig.ActionForResourceAttribute(k)
