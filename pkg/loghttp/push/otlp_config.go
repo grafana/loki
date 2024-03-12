@@ -75,12 +75,12 @@ func (cfg *GlobalOTLPConfig) RegisterFlags(fs *flag.FlagSet) {
 
 func (c *OTLPConfig) ApplyGlobalOTLPConfig(config GlobalOTLPConfig) {
 	if !c.ResourceAttributes.IgnoreDefaults && len(config.DefaultOTLPResourceAttributesAsIndexLabels) != 0 {
-		c.ResourceAttributes.AttributesConfig = append(append([]AttributesConfig{
+		c.ResourceAttributes.AttributesConfig = append([]AttributesConfig{
 			{
 				Action:     IndexLabel,
 				Attributes: config.DefaultOTLPResourceAttributesAsIndexLabels,
 			},
-		}, c.ResourceAttributes.AttributesConfig...))
+		}, c.ResourceAttributes.AttributesConfig...)
 	}
 }
 
