@@ -168,6 +168,7 @@ func (f *fakeTailServer) cloneTailResponse(response logproto.TailResponse) logpr
 	if response.Stream != nil {
 		clone.Stream = &logproto.Stream{}
 		clone.Stream.Labels = response.Stream.Labels
+		clone.Stream.Hash = response.Stream.Hash
 		if response.Stream.Entries != nil {
 			clone.Stream.Entries = make([]logproto.Entry, len(response.Stream.Entries))
 			copy(clone.Stream.Entries, response.Stream.Entries)
