@@ -64,31 +64,31 @@ func NewMiddlewareQueryMetrics(registerer prometheus.Registerer, metricsNamespac
 func QueryMetricsMiddleware(metrics *QueryMetrics) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-			var expr syntax.Expr = nil
-			var err error
+			var expr syntax.Expr
 			switch r := req.(type) {
 			case *LokiRequest:
 				if r.Plan != nil {
 					expr = r.Plan.AST
 				}
-				expr, err = syntax.ParseExpr(req.GetQuery())
-				if err != nil {
-					return nil, err
-				}
 			case *LokiInstantRequest:
 				if r.Plan != nil {
 					expr = r.Plan.AST
 				}
+			default:
+				return next.Do(ctx, req)
+			}
+
+			// The plan should always be present, but if it's not, we'll parse the query to get the filters.
+			if expr == nil {
+				var err error
 				expr, err = syntax.ParseExpr(req.GetQuery())
 				if err != nil {
 					return nil, err
 				}
 			}
 
-			if expr != nil {
-				filters := syntax.ExtractLineFilters(expr)
-				metrics.receivedFilters.Observe(float64(len(filters)))
-			}
+			filters := syntax.ExtractLineFilters(expr)
+			metrics.receivedFilters.Observe(float64(len(filters)))
 
 			return next.Do(ctx, req)
 		})
