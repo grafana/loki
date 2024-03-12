@@ -139,6 +139,124 @@ func TestMetasFetcher(t *testing.T) {
 	}
 }
 
+func TestFetchOptions(t *testing.T) {
+	options := &options{
+		ignoreNotFound: false,
+		fetchAsync:     false,
+	}
+
+	options.apply(WithFetchAsync(true), WithIgnoreNotFound(true))
+
+	require.True(t, options.fetchAsync)
+	require.True(t, options.ignoreNotFound)
+}
+
+func TestFetcher_DownloadQueue(t *testing.T) {
+	t.Run("invalid arguments", func(t *testing.T) {
+		for _, tc := range []struct {
+			size, workers int
+			err           string
+		}{
+			{
+				size: 0, workers: 1, err: "queue size needs to be greater than 0",
+			},
+			{
+				size: 1, workers: 0, err: "queue requires at least 1 worker",
+			},
+		} {
+			tc := tc
+			t.Run(tc.err, func(t *testing.T) {
+				_, err := newDownloadQueue[bool, bool](
+					tc.size,
+					tc.workers,
+					func(ctx context.Context, r downloadRequest[bool, bool]) {},
+					log.NewNopLogger(),
+				)
+				require.ErrorContains(t, err, tc.err)
+			})
+		}
+	})
+
+	t.Run("cancelled context", func(t *testing.T) {
+		ctx := context.Background()
+
+		q, err := newDownloadQueue[bool, bool](
+			100,
+			1,
+			func(_ context.Context, _ downloadRequest[bool, bool]) {},
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+		t.Cleanup(q.close)
+
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		resultsCh := make(chan downloadResponse[bool], 1)
+		errorsCh := make(chan error, 1)
+
+		r := downloadRequest[bool, bool]{
+			ctx:     ctx,
+			item:    false,
+			key:     "test",
+			idx:     0,
+			results: resultsCh,
+			errors:  errorsCh,
+		}
+		q.enqueue(r)
+
+		select {
+		case err := <-errorsCh:
+			require.Error(t, err)
+		case res := <-resultsCh:
+			require.False(t, true, "got %+v should have received an error instead", res)
+		}
+
+	})
+
+	t.Run("process function is called with context and request as arguments", func(t *testing.T) {
+		ctx := context.Background()
+
+		q, err := newDownloadQueue[bool, bool](
+			100,
+			1,
+			func(_ context.Context, r downloadRequest[bool, bool]) {
+				r.results <- downloadResponse[bool]{
+					key:  r.key,
+					idx:  r.idx,
+					item: true,
+				}
+			},
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+		t.Cleanup(q.close)
+
+		resultsCh := make(chan downloadResponse[bool], 1)
+		errorsCh := make(chan error, 1)
+
+		r := downloadRequest[bool, bool]{
+			ctx:     ctx,
+			item:    false,
+			key:     "test",
+			idx:     0,
+			results: resultsCh,
+			errors:  errorsCh,
+		}
+		q.enqueue(r)
+
+		select {
+		case err := <-errorsCh:
+			require.False(t, true, "got %+v should have received a response instead", err)
+		case res := <-resultsCh:
+			require.True(t, res.item)
+			require.Equal(t, r.key, res.key)
+			require.Equal(t, r.idx, res.idx)
+		}
+
+	})
+}
+
 func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 	base := t.TempDir()
 	cfg := bloomStoreConfig{workingDir: base, numWorkers: 1}
@@ -194,7 +312,9 @@ func createBlockDir(t *testing.T, path string) {
 }
 
 func TestFetcher_IsBlockDir(t *testing.T) {
-	fetcher, _ := NewFetcher(bloomStoreConfig{}, nil, nil, nil, nil, log.NewNopLogger())
+	cfg := bloomStoreConfig{numWorkers: 1}
+
+	fetcher, _ := NewFetcher(cfg, nil, nil, nil, nil, log.NewNopLogger())
 
 	t.Run("path does not exist", func(t *testing.T) {
 		base := t.TempDir()

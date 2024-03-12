@@ -65,7 +65,7 @@ func (s *dummyStore) Client(_ model.Time) (bloomshipper.Client, error) {
 func (s *dummyStore) Stop() {
 }
 
-func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef) ([]*bloomshipper.CloseableBlockQuerier, error) {
+func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef, _ ...bloomshipper.FetchOption) ([]*bloomshipper.CloseableBlockQuerier, error) {
 	result := make([]*bloomshipper.CloseableBlockQuerier, 0, len(s.querieres))
 
 	if s.err != nil {
