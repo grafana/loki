@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"regexp"
 	"sort"
 
@@ -39,8 +40,9 @@ var (
 	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
 	errAzureInvalidAccountKey         = errors.New("azure account key is not valid base64")
 
-	errS3InvalidEndpoint       = errors.New("s3 endpoint format is invalid")
-	errS3InvalidRegexpMatching = errors.New("failed to match endpoint to pattern")
+	errS3InvalidEndpoint     = errors.New("AWS s3 endpoint format is invalid")
+	errS3UnparseableEndpoint = errors.New("s3 endpoint is not parseable")
+	errS3RegexpMatching      = errors.New("failed to match endpoint to pattern")
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
@@ -422,6 +424,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		}
 
 		err := validateS3Endpoint(endpoint, region)
+
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
@@ -452,6 +455,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		cfg.Audience = string(audience)
 
 		err := validateS3Endpoint(endpoint, region)
+
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
@@ -465,13 +469,17 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 }
 
 func validateS3Endpoint(endpoint []byte, region []byte) error {
-	pattern := fmt.Sprintf(`https://s3.%s.amazonaws.com`, region)
+	parsedURL, err := url.Parse(string(endpoint))
+	if err != nil || parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return errS3UnparseableEndpoint
+	}
+	pattern := fmt.Sprintf(`s3.%s.amazonaws.com`, region)
 	matched, err := regexp.MatchString(pattern, string(endpoint))
 	if !matched {
 		return errS3InvalidEndpoint
 	}
 	if err != nil {
-		return errS3InvalidRegexpMatching
+		return errS3RegexpMatching
 	}
 
 	return nil
