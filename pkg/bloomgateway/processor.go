@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -123,6 +124,14 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), 0)
 	iters := make([]v1.PeekingIterator[v1.Request], 0, len(tasks))
 	for _, task := range tasks {
+
+		// add spans for each task context for this block
+		sp, _ := opentracing.StartSpanFromContext(task.ctx, "bloomgateway.ProcessBlock")
+		md, _ := blockQuerier.Metadata()
+		blk := bloomshipper.BlockRefFrom(task.Tenant, task.table.String(), md)
+		sp.LogKV("block", blk.String())
+		defer sp.Finish()
+
 		it := v1.NewPeekingIter(task.RequestIter(tokenizer))
 		iters = append(iters, it)
 	}
