@@ -3183,18 +3183,9 @@ shard_streams:
 # CLI flag: -bloom-compactor.shard-size
 [bloom_compactor_shard_size: <int> | default = 1]
 
-# The maximum age of a table before it is compacted. Do not compact tables older
-# than the the configured time. Default to 7 days. 0s means no limit.
-# CLI flag: -bloom-compactor.max-table-age
-[bloom_compactor_max_table_age: <duration> | default = 168h]
-
 # Whether to compact chunks into bloom filters.
 # CLI flag: -bloom-compactor.enable-compaction
 [bloom_compactor_enable_compaction: <boolean> | default = false]
-
-# The batch size of the chunks the bloom-compactor downloads at once.
-# CLI flag: -bloom-compactor.chunks-batch-size
-[bloom_compactor_chunks_batch_size: <int> | default = 100]
 
 # Length of the n-grams created when computing blooms from log lines.
 # CLI flag: -bloom-compactor.ngram-length
