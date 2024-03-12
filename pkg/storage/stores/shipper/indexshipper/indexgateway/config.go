@@ -86,7 +86,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 func (cfg *Config) Validate() error {
 	if cfg.Ring.NumTokens != NumTokens {
-		return errors.New("Num tokens must not be changed as it will not surge effect")
+		return errors.New("Num tokens must not be changed as it will not take effect")
 	}
 	return nil
 }

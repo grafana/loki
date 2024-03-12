@@ -3,10 +3,15 @@ package bloomcompactor
 import (
 	"flag"
 	"fmt"
+	"github.com/pkg/errors"
 	"time"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/util/ring"
+)
+
+const (
+	ringReplicationFactor = 1
 )
 
 // Config configures the bloom-compactor component.
@@ -57,12 +62,15 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	// Overrides
 	f.IntVar(&cfg.Ring.NumTokens, "bloom-compactor.ring.num-tokens", 10, "Number of tokens to use in the ring per compactor. Higher number of tokens will result in more and smaller files (metas and blocks.)")
 	// Ignored
-	f.IntVar(&cfg.Ring.ReplicationFactor, "bloom-compactor.ring.replication-factor", 1, "IGNORED: Replication factor is fixed to 1")
+	f.IntVar(&cfg.Ring.ReplicationFactor, "bloom-compactor.ring.replication-factor", ringReplicationFactor, fmt.Sprintf("IGNORED: Replication factor is fixed to %d", ringReplicationFactor))
 }
 
 func (cfg *Config) Validate() error {
 	if cfg.MinTableCompactionPeriod > cfg.MaxTableCompactionPeriod {
 		return fmt.Errorf("min_compaction_age must be less than or equal to max_compaction_age")
+	}
+	if cfg.Ring.ReplicationFactor != ringReplicationFactor {
+		return errors.New("Replication factor must not be changed as it will not take effect")
 	}
 	return nil
 }

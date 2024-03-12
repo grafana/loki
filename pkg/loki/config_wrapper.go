@@ -178,10 +178,11 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 	}
 }
 
-// applyCommonReplicationFactor apply the common replication factor to the Index Gateway ring.
+// applyCommonReplicationFactor apply the common replication factor to the Index Gateway and Bloom Gateway rings.
 func applyCommonReplicationFactor(r, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(r.Common.ReplicationFactor, defaults.Common.ReplicationFactor) {
 		r.IndexGateway.Ring.ReplicationFactor = r.Common.ReplicationFactor
+		r.BloomGateway.Ring.ReplicationFactor = r.Common.ReplicationFactor
 	}
 }
 
@@ -315,7 +316,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.BloomCompactor.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.BloomCompactor.Ring.KVStore = rc.KVStore
 		r.BloomCompactor.Ring.NumTokens = rc.NumTokens
-		r.BloomCompactor.Ring.ReplicationFactor = rc.ReplicationFactor
 	}
 
 	// BloomGateway
@@ -330,7 +330,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.BloomGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.BloomGateway.Ring.KVStore = rc.KVStore
 		r.BloomGateway.Ring.NumTokens = rc.NumTokens
-		r.BloomGateway.Ring.ReplicationFactor = rc.ReplicationFactor
 	}
 }
 

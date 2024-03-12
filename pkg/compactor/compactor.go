@@ -127,11 +127,11 @@ func (cfg *Config) Validate() error {
 	}
 
 	if cfg.CompactorRing.NumTokens != ringNumTokens {
-		return errors.New("Num tokens must not be changed as it will not surge effect")
+		return errors.New("Num tokens must not be changed as it will not take effect")
 	}
 
 	if cfg.CompactorRing.ReplicationFactor != ringReplicationFactor {
-		return errors.New("Replication factor must not be changed as it will not surge effect")
+		return errors.New("Replication factor must not be changed as it will not take effect")
 	}
 
 	if cfg.RetentionEnabled {

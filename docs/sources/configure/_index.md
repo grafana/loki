@@ -2650,10 +2650,8 @@ ring:
   # CLI flag: -bloom-compactor.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
-  # Number of tokens to use in the ring. The bigger the number of tokens, the
-  # more fingerprint ranges the compactor will own, but the smaller these ranges
-  # will be. Bigger number of tokens will result in more and smaller metas and
-  # blocks.
+  # Number of tokens to use in the ring per compactor. Higher number of tokens
+  # will result in more and smaller files (metas and blocks.)
   # CLI flag: -bloom-compactor.ring.num-tokens
   [num_tokens: <int> | default = 10]
 

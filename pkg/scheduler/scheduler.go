@@ -131,10 +131,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 func (cfg *Config) Validate() error {
 	if cfg.SchedulerRing.NumTokens != NumTokens {
-		return errors.New("Num tokens must not be changed as it will not surge effect")
+		return errors.New("Num tokens must not be changed as it will not take effect")
 	}
 	if cfg.SchedulerRing.ReplicationFactor != ReplicationFactor {
-		return errors.New("Replication factor must not be changed as it will not surge effect")
+		return errors.New("Replication factor must not be changed as it will not take effect")
 	}
 	return nil
 }
