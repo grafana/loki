@@ -18,14 +18,14 @@ spec:
       type: bearer
     interval: 30s
     path: /metrics
+    port: "8443"
     scheme: https
     scrapeTimeout: 10s
-    targetPort: 8443
     tlsConfig:
       ca:
-        configMap:
+        secret:
           key: service-ca.crt
-          name: loki-operator-controller-manager-metrics-ca
+          name: loki-operator-controller-manager-metrics-token
       serverName: loki-operator-controller-manager-metrics-service.openshift-operators-redhat.svc
   selector:
     matchLabels:
