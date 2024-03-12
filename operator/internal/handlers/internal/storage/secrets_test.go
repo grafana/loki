@@ -542,7 +542,7 @@ func TestS3Extract(t *testing.T) {
 					"access_key_secret": []byte("secret"),
 				},
 			},
-			wantError: "s3 endpoint format is invalid: invalid",
+			wantError: "s3 endpoint format is invalid",
 		},
 	}
 	for _, tst := range table {

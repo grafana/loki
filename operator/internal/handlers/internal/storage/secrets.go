@@ -39,7 +39,8 @@ var (
 	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
 	errAzureInvalidAccountKey         = errors.New("azure account key is not valid base64")
 
-	errS3EndpointInvalid = errors.New("s3 endpoint format is invalid")
+	errS3InvalidEndpoint       = errors.New("s3 endpoint format is invalid")
+	errS3InvalidRegexpMatching = errors.New("failed to match endpoint to pattern")
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
@@ -425,7 +426,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		} else if len(endpoint) != 0 && err != nil {
-			return nil, fmt.Errorf("%w: %s", errS3EndpointInvalid, endpoint)
+			return nil, err
 		}
 		return cfg, nil
 	case lokiv1.CredentialModeStatic:
@@ -436,7 +437,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		if len(endpoint) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSEndpoint)
 		} else if len(region) != 0 && err != nil {
-			return nil, fmt.Errorf("%w: %s", errS3EndpointInvalid, endpoint)
+			return nil, err
 		}
 		if len(id) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSAccessKeyID)
@@ -455,7 +456,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		} else if len(endpoint) != 0 && err != nil {
-			return nil, fmt.Errorf("%w: %s", errS3EndpointInvalid, endpoint)
+			return nil, err
 		}
 		return cfg, nil
 	default:
@@ -467,10 +468,10 @@ func validateS3Endpoint(endpoint []byte, region []byte) error {
 	pattern := fmt.Sprintf(`https://s3.%s.amazonaws.com`, region)
 	matched, err := regexp.MatchString(pattern, string(endpoint))
 	if !matched {
-		return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSBucketNames)
+		return errS3InvalidEndpoint
 	}
 	if err != nil {
-		return fmt.Errorf("failed to match endpoint to pattern")
+		return errS3InvalidRegexpMatching
 	}
 
 	return nil
