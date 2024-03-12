@@ -166,14 +166,6 @@ func (m mockLimits) BloomCompactorShardSize(_ string) int {
 	return m.shardSize
 }
 
-func (m mockLimits) BloomCompactorChunksBatchSize(_ string) int {
-	panic("implement me")
-}
-
-func (m mockLimits) BloomCompactorMaxTableAge(_ string) time.Duration {
-	panic("implement me")
-}
-
 func (m mockLimits) BloomCompactorEnabled(_ string) bool {
 	panic("implement me")
 }
