@@ -1937,6 +1937,10 @@ client:
 # Maximum number of outstanding tasks per tenant.
 # CLI flag: -bloom-gateway.max-outstanding-per-tenant
 [max_outstanding_per_tenant: <int> | default = 1024]
+
+# How many tasks are multiplexed at once.
+# CLI flag: -bloom-gateway.num-multiplex-tasks
+[num_multiplex_tasks: <int> | default = 512]
 ```
 
 ### storage_config

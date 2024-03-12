@@ -15,7 +15,7 @@ toc: true
 
 This document describes how to send application, infrastructure, and audit logs to the Loki Distributor as different tenants using Fluentd or Vector.
 
-__Please read the [hacking guide](./hack_loki_operator.md) before proceeding with the following instructions.__
+__Please read the [hacking guide](../operator/hack_loki_operator.md) before proceeding with the following instructions.__
 
 _Note:_ This document only applies to OpenShift-based deployments.
 

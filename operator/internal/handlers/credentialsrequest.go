@@ -22,7 +22,7 @@ import (
 
 // CreateUpdateDeleteCredentialsRequest creates a new CredentialsRequest resource for a Lokistack
 // to request a cloud credentials Secret resource from the OpenShift cloud-credentials-operator.
-func CreateUpdateDeleteCredentialsRequest(ctx context.Context, log logr.Logger, scheme *runtime.Scheme, managedAuth *config.ManagedAuthConfig, k k8s.Client, req ctrl.Request) error {
+func CreateUpdateDeleteCredentialsRequest(ctx context.Context, log logr.Logger, scheme *runtime.Scheme, tokenCCOAuth *config.TokenCCOAuthConfig, k k8s.Client, req ctrl.Request) error {
 	ll := log.WithValues("lokistack", req.NamespacedName, "event", "createCredentialsRequest")
 
 	var stack lokiv1.LokiStack
@@ -59,7 +59,7 @@ func CreateUpdateDeleteCredentialsRequest(ctx context.Context, log logr.Logger, 
 			LokiStackNamespace: stack.Namespace,
 			RulerName:          manifests.RulerName(stack.Name),
 		},
-		ManagedAuth: managedAuth,
+		TokenCCOAuth: tokenCCOAuth,
 	}
 
 	credReq, err := openshift.BuildCredentialsRequest(opts)
@@ -99,7 +99,7 @@ func hasManagedCredentialMode(stack *lokiv1.LokiStack) bool {
 	switch stack.Spec.Storage.Secret.CredentialMode {
 	case lokiv1.CredentialModeStatic, lokiv1.CredentialModeToken:
 		return false
-	case lokiv1.CredentialModeManaged:
+	case lokiv1.CredentialModeTokenCCO:
 		return true
 	default:
 	}

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/stretchr/testify/require"
 
@@ -94,7 +95,7 @@ func TestFusedQuerier(t *testing.T) {
 		g.Done()
 	}()
 
-	fused := querier.Fuse(itrs)
+	fused := querier.Fuse(itrs, log.NewNopLogger())
 
 	require.Nil(t, fused.Run())
 	for _, input := range inputs {
@@ -211,7 +212,7 @@ func BenchmarkBlockQuerying(b *testing.B) {
 			for _, reqs := range requestChains {
 				itrs = append(itrs, NewPeekingIter[Request](NewSliceIter[Request](reqs)))
 			}
-			fused := querier.Fuse(itrs)
+			fused := querier.Fuse(itrs, log.NewNopLogger())
 			_ = fused.Run()
 		}
 	})

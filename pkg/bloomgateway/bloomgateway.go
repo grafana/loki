@@ -44,13 +44,13 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
@@ -75,12 +75,6 @@ var (
 	// responsesPool pooling array of v1.Output [64, 128, 256, ..., 65536]
 	responsesPool = queue.NewSlicePool[v1.Output](1<<6, 1<<16, 2)
 )
-
-// SyncMap is a map structure which can be synchronized using the RWMutex
-type SyncMap[k comparable, v any] struct {
-	sync.RWMutex
-	Map map[k]v
-}
 
 type Gateway struct {
 	services.Service
@@ -119,7 +113,7 @@ func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus
 		logger:  logger,
 		metrics: newMetrics(reg, constants.Loki, metricsSubsystem),
 		workerConfig: workerConfig{
-			maxItems: 100,
+			maxItems: cfg.NumMultiplexItems,
 		},
 		pendingTasks: &atomic.Int64{},
 
@@ -200,6 +194,9 @@ func (g *Gateway) stopping(_ error) error {
 
 // FilterChunkRefs implements BloomGatewayServer
 func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest) (*logproto.FilterChunkRefResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomgateway.FilterChunkRefs")
+	defer sp.Finish()
+
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -237,6 +234,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}, nil
 	}
 
+	sp.LogKV(
+		"filters", len(filters),
+		"days", len(seriesByDay),
+		"series_requested", len(req.Refs),
+	)
+
 	tasks := make([]Task, 0, len(seriesByDay))
 	responses := make([][]v1.Output, 0, len(seriesByDay))
 	for _, seriesForDay := range seriesByDay {
@@ -265,18 +268,25 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	// request on the first error, there can be cases where the request context
 	// is not done yet and the consumeTask() function wants to send to the
 	// tasksCh, but nobody reads from it any more.
+	queueStart := time.Now()
 	tasksCh := make(chan Task, len(tasks))
 	for _, task := range tasks {
 		task := task
 		task.enqueueTime = time.Now()
 		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "table", task.table, "series", len(task.series))
-		g.queue.Enqueue(tenantID, nil, task, func() {
+
+		// TODO(owen-d): gracefully handle full queues
+		if err := g.queue.Enqueue(tenantID, nil, task, func() {
 			// When enqueuing, we also add the task to the pending tasks
 			_ = g.pendingTasks.Inc()
-		})
+		}); err != nil {
+			return nil, errors.Wrap(err, "failed to enqueue task")
+		}
 		// TODO(owen-d): use `concurrency` lib, bound parallelism
 		go g.consumeTask(ctx, task, tasksCh)
 	}
+
+	sp.LogKV("enqueue_duration", time.Since(queueStart).String())
 
 	remaining := len(tasks)
 
@@ -300,6 +310,8 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			remaining--
 		}
 	}
+
+	sp.LogKV("msg", "received all responses")
 
 	filtered := filterChunkRefs(req, responses)
 

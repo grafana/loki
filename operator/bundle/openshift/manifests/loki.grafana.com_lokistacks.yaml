@@ -635,7 +635,7 @@ spec:
                         enum:
                         - static
                         - token
-                        - managed
+                        - token-cco
                         type: string
                       name:
                         description: Name of a secret in the namespace configured
@@ -3819,7 +3819,7 @@ spec:
                     enum:
                     - static
                     - token
-                    - managed
+                    - token-cco
                     type: string
                   schemas:
                     description: |-

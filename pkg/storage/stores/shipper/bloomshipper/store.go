@@ -3,7 +3,7 @@ package bloomshipper
 import (
 	"context"
 	"fmt"
-	"path/filepath"
+	"path"
 	"sort"
 
 	"github.com/go-kit/log"
@@ -57,7 +57,7 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 	var refs []MetaRef
 	tables := tablesForRange(b.cfg, params.Interval)
 	for _, table := range tables {
-		prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
+		prefix := path.Join(rootFolder, table, params.TenantID, metasFolder)
 		level.Debug(b.fetcher.logger).Log(
 			"msg", "listing metas",
 			"store", b.cfg.From,
