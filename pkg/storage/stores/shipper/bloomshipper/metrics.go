@@ -64,14 +64,14 @@ func newFetcherMetrics(registerer prometheus.Registerer, namespace, subsystem st
 		downloadQueueEnqueueTime: r.NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "downloadqueue_enqueue_time_seconds",
+			Name:      "download_queue_enqueue_time_seconds",
 			Buckets:   prometheus.ExponentialBuckets(0.0001, 5, 8), // [0.0001, 0.0005, ... 7.8125]
 			Help:      "Time in seconds it took to enqueue item to download queue",
 		}),
 		downloadQueueSize: r.NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "downloadqueue_size",
+			Name:      "download_queue_size",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 20), // [1, 2, 4, ... 524288]
 			Help:      "Number of enqueued items in download queue",
 		}),
