@@ -141,8 +141,8 @@ func newBatchedChunkLoader(
 
 		return v1.ChunkRefWithIter{
 			Ref: v1.ChunkRef{
-				Start:    c.From,
-				End:      c.Through,
+				From:     c.From,
+				Through:  c.Through,
 				Checksum: c.Checksum,
 			},
 			Itr: itr,
@@ -251,7 +251,7 @@ func (i *blockLoadingIter) loadNext() bool {
 
 		iters := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(blockRefs))
 		for filtered.Next() {
-			bq := loader.At()
+			bq := filtered.At()
 			i.loaded[bq] = struct{}{}
 			iter, err := bq.SeriesIter()
 			if err != nil {

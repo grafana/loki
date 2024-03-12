@@ -1937,6 +1937,10 @@ client:
 # Maximum number of outstanding tasks per tenant.
 # CLI flag: -bloom-gateway.max-outstanding-per-tenant
 [max_outstanding_per_tenant: <int> | default = 1024]
+
+# How many tasks are multiplexed at once.
+# CLI flag: -bloom-gateway.num-multiplex-tasks
+[num_multiplex_tasks: <int> | default = 512]
 ```
 
 ### storage_config
@@ -2348,11 +2352,6 @@ bloom_shipper:
   # Working directory to store downloaded Bloom Blocks.
   # CLI flag: -bloom.shipper.working-directory
   [working_directory: <string> | default = "bloom-shipper"]
-
-  # In an eventually consistent system like the bloom components, we usually
-  # want to ignore blocks that are missing in storage.
-  # CLI flag: -bloom.shipper.ignore-missing-blocks
-  [ignore_missing_blocks: <boolean> | default = true]
 
   blocks_downloading_queue:
     # The count of parallel workers that download Bloom Blocks.

@@ -60,8 +60,8 @@ func MkBasicSeriesWithBlooms(nSeries, _ int, fromFp, throughFp model.Fingerprint
 		from := fromTs.Add(timeDelta * time.Duration(i))
 		series.Chunks = []ChunkRef{
 			{
-				Start:    from,
-				End:      from.Add(timeDelta),
+				From:     from,
+				Through:  from.Add(timeDelta),
 				Checksum: uint32(i),
 			},
 		}

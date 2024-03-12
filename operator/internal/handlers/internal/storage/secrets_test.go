@@ -143,7 +143,7 @@ func TestAzureExtract(t *testing.T) {
 			wantError: "missing secret field: subscription_id",
 		},
 		{
-			name: "managed auth - no auth override",
+			name: "token cco auth - no auth override",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
@@ -159,8 +159,8 @@ func TestAzureExtract(t *testing.T) {
 			},
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
-					Enabled:        true,
-					ManagedAuthEnv: true,
+					Enabled:         true,
+					TokenCCOAuthEnv: true,
 				},
 			},
 			wantError: errAzureManagedIdentityNoOverride.Error(),
@@ -231,11 +231,11 @@ func TestAzureExtract(t *testing.T) {
 			},
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
-					Enabled:        true,
-					ManagedAuthEnv: true,
+					Enabled:         true,
+					TokenCCOAuthEnv: true,
 				},
 			},
-			wantCredentialMode: lokiv1.CredentialModeManaged,
+			wantCredentialMode: lokiv1.CredentialModeTokenCCO,
 		},
 		{
 			name: "all set including optional",
@@ -554,25 +554,25 @@ func TestS3Extract(t *testing.T) {
 	}
 }
 
-func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
+func TestS3Extract_WithOpenShiftTokenCCOAuth(t *testing.T) {
 	fg := configv1.FeatureGates{
 		OpenShift: configv1.OpenShiftFeatureGates{
-			Enabled:        true,
-			ManagedAuthEnv: true,
+			Enabled:         true,
+			TokenCCOAuthEnv: true,
 		},
 	}
 	type test struct {
-		name              string
-		secret            *corev1.Secret
-		managedAuthSecret *corev1.Secret
-		wantError         string
+		name               string
+		secret             *corev1.Secret
+		tokenCCOAuthSecret *corev1.Secret
+		wantError          string
 	}
 	table := []test{
 		{
-			name:              "missing bucketnames",
-			secret:            &corev1.Secret{},
-			managedAuthSecret: &corev1.Secret{},
-			wantError:         "missing secret field: bucketnames",
+			name:               "missing bucketnames",
+			secret:             &corev1.Secret{},
+			tokenCCOAuthSecret: &corev1.Secret{},
+			wantError:          "missing secret field: bucketnames",
 		},
 		{
 			name: "missing region",
@@ -581,8 +581,8 @@ func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
 					"bucketnames": []byte("this,that"),
 				},
 			},
-			managedAuthSecret: &corev1.Secret{},
-			wantError:         "missing secret field: region",
+			tokenCCOAuthSecret: &corev1.Secret{},
+			wantError:          "missing secret field: region",
 		},
 		{
 			name: "override role_arn not allowed",
@@ -593,8 +593,8 @@ func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
 					"role_arn":    []byte("role-arn"),
 				},
 			},
-			managedAuthSecret: &corev1.Secret{},
-			wantError:         "secret field not allowed: role_arn",
+			tokenCCOAuthSecret: &corev1.Secret{},
+			wantError:          "secret field not allowed: role_arn",
 		},
 		{
 			name: "STS all set",
@@ -605,8 +605,8 @@ func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
 					"region":      []byte("a-region"),
 				},
 			},
-			managedAuthSecret: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "managed-auth"},
+			tokenCCOAuthSecret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "token-cco-auth"},
 			},
 		},
 	}
@@ -619,16 +619,16 @@ func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
 				Type: lokiv1.ObjectStorageSecretS3,
 			}
 
-			opts, err := extractSecrets(spec, tst.secret, tst.managedAuthSecret, fg)
+			opts, err := extractSecrets(spec, tst.secret, tst.tokenCCOAuthSecret, fg)
 			if tst.wantError == "" {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
 				require.NotEmpty(t, opts.SecretSHA1)
 				require.Equal(t, lokiv1.ObjectStorageSecretS3, opts.SharedStore)
 				require.True(t, opts.S3.STS)
-				require.Equal(t, tst.managedAuthSecret.Name, opts.OpenShift.CloudCredentials.SecretName)
+				require.Equal(t, tst.tokenCCOAuthSecret.Name, opts.OpenShift.CloudCredentials.SecretName)
 				require.NotEmpty(t, opts.OpenShift.CloudCredentials.SHA1)
-				require.Equal(t, lokiv1.CredentialModeManaged, opts.CredentialMode)
+				require.Equal(t, lokiv1.CredentialModeTokenCCO, opts.CredentialMode)
 			} else {
 				require.EqualError(t, err, tst.wantError)
 			}
