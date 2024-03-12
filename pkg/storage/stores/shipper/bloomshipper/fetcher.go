@@ -20,6 +20,8 @@ import (
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
+var downloadQueueCapacity = 100000
+
 type options struct {
 	ignoreNotFound bool // ignore 404s from object storage; default=true
 	fetchAsync     bool // dispatch downloading of block and return immediately; default=false
@@ -78,7 +80,7 @@ func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blo
 		metrics:         newFetcherMetrics(reg, constants.Loki, "bloom_store"),
 		logger:          logger,
 	}
-	q, err := newDownloadQueue[BlockRef, BlockDirectory](100000, cfg.numWorkers, fetcher.processTask, logger)
+	q, err := newDownloadQueue[BlockRef, BlockDirectory](downloadQueueCapacity, cfg.numWorkers, fetcher.processTask, logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating download queue for fetcher")
 	}
