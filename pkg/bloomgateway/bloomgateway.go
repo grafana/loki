@@ -113,7 +113,7 @@ func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus
 		logger:  logger,
 		metrics: newMetrics(reg, constants.Loki, metricsSubsystem),
 		workerConfig: workerConfig{
-			maxItems: 100,
+			maxItems: cfg.NumMultiplexItems,
 		},
 		pendingTasks: &atomic.Int64{},
 
