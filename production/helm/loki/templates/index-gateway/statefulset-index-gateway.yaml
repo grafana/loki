@@ -133,16 +133,7 @@ spec:
       {{- end }}
       volumes:
         - name: config
-          {{- if .Values.loki.existingSecretForConfig }}
-          secret:
-            secretName: {{ .Values.loki.existingSecretForConfig }}
-          {{- else if .Values.loki.configAsSecret }}
-          secret:
-            secretName: {{ include "loki.fullname" . }}-config
-          {{- else }}
-          configMap:
-            name: {{ include "loki.fullname" . }}
-          {{- end }}
+          {{- include "loki.configVolume" . | nindent 10 }}
         - name: runtime-config
           configMap:
             name: {{ template "loki.fullname" . }}-runtime

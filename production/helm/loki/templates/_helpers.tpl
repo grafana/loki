@@ -464,10 +464,10 @@ The volume to mount for loki configuration
 {{- define "loki.configVolume" -}}
 {{- if eq .Values.loki.configStorageType "Secret" -}}
 secret:
-  secretName: {{ tpl .Values.loki.externalConfigSecretName . }}
-{{- else if eq .Values.loki.configStorageType "ConfigMap" -}}
+  secretName: {{ tpl .Values.loki.configObjectName . }}
+{{- else -}}
 configMap:
-  name: {{ tpl .Values.loki.externalConfigSecretName . }}
+  name: {{ tpl .Values.loki.configObjectName . }}
   items:
     - key: "config.yaml"
       path: "config.yaml"

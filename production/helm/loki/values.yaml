@@ -32,7 +32,8 @@ deploymentMode: SimpleScalable
 
 ######################################################################################################################
 #
-# Base Loki Configs
+# Base Loki Configs including kubernetes configurations and configurations for Loki itself,
+# see below for more specifics on Loki's configuration.
 #
 ######################################################################################################################
 # -- Configuration for running Loki
@@ -84,14 +85,44 @@ loki:
     allowPrivilegeEscalation: false
   # -- Should enableServiceLinks be enabled. Default to enable
   enableServiceLinks: true
-  # -- Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`
-  existingSecretForConfig: ""
+  ######################################################################################################################
+  #
+  # Loki Configuration
+  #
+  # There are several ways to pass configuration to Loki, listing them here in order of our preference for how
+  # you should use this chart.
+  # 1. Use the templated value of loki.config below and the corresponding override sections which follow.
+  #    This allows us to set a lot of important Loki configurations and defaults and also allows us to maintain them
+  #    over time as Loki changes and evolves.
+  # 2. Use the loki.structuredConfig section.
+  #    This will completely override the templated value of loki.config, so you MUST provide the entire Loki config
+  #    including any configuration that we set in loki.config unless you explicitly are trying to change one of those
+  #    values and are not able to do so with the templated sections.
+  #    If you choose this approach the burden is on you to maintain any changes we make to the templated config.
+  # 3. Use an existing secret or configmap to provide the configuration.
+  #    This option is mostly provided for folks who have external processes which provide or modify the configuration.
+  #    When using this option you can specify a different name for loki.generatedConfigObjectName and configObjectName
+  #    if you have a process which takes the generated config and modifies it, or you can stop the chart from generating
+  #    a config entirely by setting loki.generatedConfigObjectName to
+  #
+  ######################################################################################################################
+
   # -- Defines what kind of object stores the configuration, a ConfigMap or a Secret.
   # In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use [environment variables in the configuration](https://grafana.com/docs/loki/latest/configuration/#use-environment-variables-in-the-configuration).
   # Such environment variables can be then stored in a separate Secret and injected via the global.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).
   configStorageType: ConfigMap
-  # -- Name of the Secret or ConfigMap that contains the configuration (used for naming even if config is internal).
-  externalConfigSecretName: '{{ include "loki.name" . }}'
+
+  # -- The name of the object which Loki will mount as a volume containing the config.
+  # If the configStorageType is Secret, this will be the name of the Secret, if it is ConfigMap, this will be the name of the ConfigMap.
+  # The value will be passed through tpl.
+  configObjectName: '{{ include "loki.name" . }}'
+
+  # -- The name of the Secret or ConfigMap that will be created by this chart.
+  # If empty, no configmap or secret will be created.
+  # The value will be passed through tpl.
+  generatedConfigObjectName: '{{ include "loki.name" . }}'
+
+
   # -- Config file contents for Loki
   # @default -- See values.yaml
   config: |

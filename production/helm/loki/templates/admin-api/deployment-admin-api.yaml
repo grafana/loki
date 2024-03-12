@@ -135,12 +135,7 @@ spec:
       terminationGracePeriodSeconds: {{ .Values.adminApi.terminationGracePeriodSeconds }}
       volumes:
         - name: config
-          secret:
-          {{- if .Values.useExternalConfig }}
-            secretName: {{ .Values.externalConfigName }}
-          {{- else }}
-            secretName: enterprise-logs-config
-          {{- end }}
+          {{- include "loki.configVolume" . | nindent 10 }}
         - name: license
           secret:
           {{- if .Values.useExternalLicense }}
