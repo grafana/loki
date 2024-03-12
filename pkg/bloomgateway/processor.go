@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -36,7 +37,12 @@ func (p *processor) run(ctx context.Context, tasks []Task) error {
 
 func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.MultiFingerprintBounds) error {
 	tenant := tasks[0].Tenant
-	level.Info(p.logger).Log("msg", "process tasks with bounds", "tenant", tenant, "tasks", len(tasks), "bounds", bounds)
+	level.Info(p.logger).Log(
+		"msg", "process tasks with bounds",
+		"tenant", tenant,
+		"tasks", len(tasks),
+		"bounds", JoinFunc(bounds, ",", func(e v1.FingerprintBounds) string { return e.String() }),
+	)
 
 	for ts, tasks := range group(tasks, func(t Task) config.DayTime { return t.table }) {
 		err := p.processTasks(ctx, tenant, ts, bounds, tasks)
@@ -122,12 +128,29 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 
 	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), 0)
 	iters := make([]v1.PeekingIterator[v1.Request], 0, len(tasks))
+
+	// collect spans & run single defer to avoid blowing call stack
+	// if there are many tasks
+	spans := make([]opentracing.Span, 0, len(tasks))
+	defer func() {
+		for _, sp := range spans {
+			sp.Finish()
+		}
+	}()
+
 	for _, task := range tasks {
+		// add spans for each task context for this block
+		sp, _ := opentracing.StartSpanFromContext(task.ctx, "bloomgateway.ProcessBlock")
+		spans = append(spans, sp)
+		md, _ := blockQuerier.Metadata()
+		blk := bloomshipper.BlockRefFrom(task.Tenant, task.table.String(), md)
+		sp.LogKV("block", blk.String())
+
 		it := v1.NewPeekingIter(task.RequestIter(tokenizer))
 		iters = append(iters, it)
 	}
 
-	fq := blockQuerier.Fuse(iters)
+	fq := blockQuerier.Fuse(iters, p.logger)
 
 	start := time.Now()
 	err = fq.Run()
