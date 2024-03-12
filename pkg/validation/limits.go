@@ -206,7 +206,7 @@ type Limits struct {
 	MaxStructuredMetadataSize         flagext.ByteSize      `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
 	MaxStructuredMetadataEntriesCount int                   `yaml:"max_structured_metadata_entries_count" json:"max_structured_metadata_entries_count" doc:"description=Maximum number of structured metadata entries per log line."`
 	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
-	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-"`
+	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 }
 
 type StreamRetention struct {
