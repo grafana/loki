@@ -392,6 +392,22 @@ func TestMappingStrings(t *testing.T) {
 				)
 			)`,
 		},
+		{
+			in: `avg_over_time({job=~"myapps.*"} |= "stats" | json | keep busy | unwrap busy [5m])`,
+			out: `(
+				sum without() (
+					downstream<sum without() (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=0_of_2>
+					++
+					downstream<sum without() (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=1_of_2>
+				)
+				/
+				sum without() (
+					downstream<sum without() (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=0_of_2>
+					++
+					downstream<sum without() (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=1_of_2>
+				)
+			)`,
+		},
 		// should be noop if VectorExpr
 		{
 			in:  `vector(0)`,
