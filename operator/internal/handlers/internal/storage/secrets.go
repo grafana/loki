@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 
 	corev1 "k8s.io/api/core/v1"
@@ -37,6 +38,8 @@ var (
 	errAzureManagedIdentityNoOverride = errors.New("when in managed mode, storage secret can not contain credentials")
 	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
 	errAzureInvalidAccountKey         = errors.New("azure account key is not valid base64")
+
+	errS3EndpointInvalid = errors.New("s3 endpoint format is invalid")
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
@@ -416,17 +419,24 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		if len(roleArn) != 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAWSRoleArn)
 		}
+
+		err := validateS3Endpoint(endpoint, region)
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
+		} else if len(endpoint) != 0 && err != nil {
+			return nil, fmt.Errorf("%w: %s", errS3EndpointInvalid, endpoint)
 		}
-
 		return cfg, nil
 	case lokiv1.CredentialModeStatic:
 		cfg.Endpoint = string(endpoint)
 
+		err := validateS3Endpoint(endpoint, region)
+
 		if len(endpoint) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSEndpoint)
+		} else if len(region) != 0 && err != nil {
+			return nil, fmt.Errorf("%w: %s", errS3EndpointInvalid, endpoint)
 		}
 		if len(id) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSAccessKeyID)
@@ -440,14 +450,30 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		cfg.STS = true
 		cfg.Audience = string(audience)
 
+		err := validateS3Endpoint(endpoint, region)
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
+		} else if len(endpoint) != 0 && err != nil {
+			return nil, fmt.Errorf("%w: %s", errS3EndpointInvalid, endpoint)
 		}
 		return cfg, nil
 	default:
 		return nil, fmt.Errorf("%w: %s", errSecretUnknownCredentialMode, credentialMode)
 	}
+}
+
+func validateS3Endpoint(endpoint []byte, region []byte) error {
+	pattern := fmt.Sprintf(`https://s3.%s.amazonaws.com`, region)
+	matched, err := regexp.MatchString(pattern, string(endpoint))
+	if !matched {
+		return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSBucketNames)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to match endpoint to pattern")
+	}
+
+	return nil
 }
 
 func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
