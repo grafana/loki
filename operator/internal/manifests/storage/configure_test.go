@@ -424,7 +424,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 			opts: Options{
 				SecretName:     "test",
 				SharedStore:    lokiv1.ObjectStorageSecretAzure,
-				CredentialMode: lokiv1.CredentialModeManaged,
+				CredentialMode: lokiv1.CredentialModeTokenCCO,
 				Azure: &AzureStorageConfig{
 					WorkloadIdentity: true,
 				},
@@ -861,7 +861,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 			opts: Options{
 				SecretName:     "test",
 				SharedStore:    lokiv1.ObjectStorageSecretS3,
-				CredentialMode: lokiv1.CredentialModeManaged,
+				CredentialMode: lokiv1.CredentialModeTokenCCO,
 				S3: &S3StorageConfig{
 					STS: true,
 				},
@@ -904,12 +904,12 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 											ReadOnly:  false,
 											MountPath: saTokenVolumeMountPath,
 										},
-										managedAuthConfigVolumeMount,
+										tokenCCOAuthConfigVolumeMount,
 									},
 									Env: []corev1.EnvVar{
 										{
 											Name:  "AWS_SHARED_CREDENTIALS_FILE",
-											Value: "/etc/storage/managed-auth/credentials",
+											Value: "/etc/storage/token-auth/credentials",
 										},
 										{
 											Name:  "AWS_SDK_LOAD_CONFIG",
@@ -944,7 +944,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 									},
 								},
 								{
-									Name: managedAuthConfigVolumeName,
+									Name: tokenAuthConfigVolumeName,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: "cloud-credentials",
@@ -1623,7 +1623,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 			opts: Options{
 				SecretName:     "test",
 				SharedStore:    lokiv1.ObjectStorageSecretAzure,
-				CredentialMode: lokiv1.CredentialModeManaged,
+				CredentialMode: lokiv1.CredentialModeTokenCCO,
 				Azure: &AzureStorageConfig{
 					WorkloadIdentity: true,
 				},
@@ -1811,7 +1811,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 			opts: Options{
 				SecretName:     "test",
 				SharedStore:    lokiv1.ObjectStorageSecretGCS,
-				CredentialMode: lokiv1.CredentialModeManaged,
+				CredentialMode: lokiv1.CredentialModeTokenCCO,
 				GCS: &GCSStorageConfig{
 					Audience:         "test",
 					WorkloadIdentity: true,
@@ -1967,7 +1967,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 			opts: Options{
 				SecretName:     "test",
 				SharedStore:    lokiv1.ObjectStorageSecretS3,
-				CredentialMode: lokiv1.CredentialModeManaged,
+				CredentialMode: lokiv1.CredentialModeTokenCCO,
 				S3: &S3StorageConfig{
 					STS: true,
 				},
@@ -2010,12 +2010,12 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 											ReadOnly:  false,
 											MountPath: saTokenVolumeMountPath,
 										},
-										managedAuthConfigVolumeMount,
+										tokenCCOAuthConfigVolumeMount,
 									},
 									Env: []corev1.EnvVar{
 										{
 											Name:  "AWS_SHARED_CREDENTIALS_FILE",
-											Value: "/etc/storage/managed-auth/credentials",
+											Value: "/etc/storage/token-auth/credentials",
 										},
 										{
 											Name:  "AWS_SDK_LOAD_CONFIG",
@@ -2050,7 +2050,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 									},
 								},
 								{
-									Name: managedAuthConfigVolumeName,
+									Name: tokenAuthConfigVolumeName,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: "cloud-credentials",
