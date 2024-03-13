@@ -1,6 +1,7 @@
 package manifests
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -126,6 +127,11 @@ type TLSProfileSpec struct {
 	MinTLSVersion string
 }
 
+var (
+	ErrInvalidQueryTimeout    error = errors.New("failed to parse query timeout")
+	ErrInvalidPerTenantConfig error = errors.New("invalid per-tenant config")
+)
+
 // TLSCipherSuites transforms TLSProfileSpec.Ciphers from a slice
 // to a string of elements joined with a comma.
 func (o Options) TLSCipherSuites() string {
@@ -142,12 +148,20 @@ func NewTimeoutConfig(s *lokiv1.LimitsSpec) (TimeoutConfig, error) {
 		return defaultTimeoutConfig, nil
 	}
 
+	for _, config := range s.Tenants {
+		c := lokiv1.PerTenantLimitsTemplateSpec{}
+		if config == c {
+			return TimeoutConfig{}, ErrInvalidPerTenantConfig
+
+		}
+	}
+
 	queryTimeout := lokiDefaultQueryTimeout
 	if s.Global != nil && s.Global.QueryLimits != nil && s.Global.QueryLimits.QueryTimeout != "" {
 		var err error
 		globalQueryTimeout, err := time.ParseDuration(s.Global.QueryLimits.QueryTimeout)
 		if err != nil {
-			return TimeoutConfig{}, err
+			return TimeoutConfig{}, ErrInvalidQueryTimeout
 		}
 
 		if globalQueryTimeout > queryTimeout {
@@ -162,7 +176,7 @@ func NewTimeoutConfig(s *lokiv1.LimitsSpec) (TimeoutConfig, error) {
 
 		tenantQueryTimeout, err := time.ParseDuration(tLimit.QueryLimits.QueryTimeout)
 		if err != nil {
-			return TimeoutConfig{}, err
+			return TimeoutConfig{}, ErrInvalidQueryTimeout
 		}
 
 		if tenantQueryTimeout > queryTimeout {

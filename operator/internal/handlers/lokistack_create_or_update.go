@@ -84,11 +84,18 @@ func CreateOrUpdateLokiStack(
 	}
 
 	timeoutConfig, err := manifests.NewTimeoutConfig(stack.Spec.Limits)
-	if err != nil {
+	if err == manifests.ErrInvalidQueryTimeout {
 		ll.Error(err, "failed to parse query timeout")
 		return "", &status.DegradedError{
 			Message: fmt.Sprintf("Error parsing query timeout: %s", err),
 			Reason:  lokiv1.ReasonQueryTimeoutInvalid,
+			Requeue: false,
+		}
+	} else if err == manifests.ErrInvalidPerTenantConfig {
+		ll.Error(err, "invalid per-tenant config")
+		return "", &status.DegradedError{
+			Message: fmt.Sprintf("Error validating per-tenant config"),
+			Reason:  lokiv1.ReasonInvalidPerTenantConfig,
 			Requeue: false,
 		}
 	}

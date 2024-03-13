@@ -740,3 +740,73 @@ func TestCreateOrUpdateLokiStack_WhenInvalidQueryTimeout_SetDegraded(t *testing.
 	require.Error(t, err)
 	require.Equal(t, degradedErr, err)
 }
+
+func TestCreateOrUpdateLokiStack_WhenInvalidPerTenantLimits_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Error validating per-tenant config",
+		Reason:  lokiv1.ReasonInvalidPerTenantConfig,
+		Requeue: false,
+	}
+
+	stack := lokiv1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Storage: lokiv1.ObjectStorageSpec{
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						Version:       lokiv1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
+				Secret: lokiv1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1.ObjectStorageSecretS3,
+				},
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: "openshift",
+			},
+			Limits: &lokiv1.LimitsSpec{
+				Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+					"invalid": {},
+				},
+			},
+		},
+	}
+
+	// Create looks up the CR first, so we need to return our fake stack
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		_, isLokiStack := object.(*lokiv1.LokiStack)
+		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {
+			k.SetClientObject(object, &stack)
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(object, &defaultSecret)
+		}
+		return nil
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	_, err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
+}
