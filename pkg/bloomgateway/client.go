@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
@@ -54,6 +55,9 @@ var (
 			}
 		},
 	}
+
+	// NB(chaudum): Should probably be configurable, but I don't want yet another user setting.
+	maxQueryParallelism = 10
 )
 
 type ringGetBuffers struct {
@@ -251,10 +255,11 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 	}
 	servers = partitionByReplicationSet(groups, servers)
 
-	filteredChunkRefs := groupedChunksRefPool.Get(len(groups))
-	defer groupedChunksRefPool.Put(filteredChunkRefs)
+	results := make([][]*logproto.GroupedChunkRefs, len(servers))
+	count := 0
+	err = concurrency.ForEachJob(ctx, len(servers), maxQueryParallelism, func(ctx context.Context, i int) error {
+		rs := servers[i]
 
-	for i, rs := range servers {
 		// randomize order of addresses so we don't hotspot the first server in the list
 		addrs := shuffleAddrs(rs.rs.GetAddresses())
 		level.Info(c.logger).Log(
@@ -271,7 +276,8 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 			"plan", plan.String(),
 			"plan_hash", plan.Hash(),
 		)
-		err := c.doForAddrs(addrs, func(client logproto.BloomGatewayClient) error {
+
+		return c.doForAddrs(addrs, func(client logproto.BloomGatewayClient) error {
 			req := &logproto.FilterChunkRefRequest{
 				From:    from,
 				Through: through,
@@ -282,19 +288,30 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 			if err != nil {
 				return err
 			}
-			filteredChunkRefs = append(filteredChunkRefs, resp.ChunkRefs...)
+			results[i] = resp.ChunkRefs
+			count += len(resp.ChunkRefs)
 			return nil
 		})
-		if err != nil {
-			return nil, err
-		}
+	})
+
+	if err != nil {
+		return nil, err
 	}
-	return filteredChunkRefs, nil
+	return flatten(results, count), nil
+}
+
+func flatten(input [][]*logproto.GroupedChunkRefs, n int) []*logproto.GroupedChunkRefs {
+	result := make([]*logproto.GroupedChunkRefs, 0, n)
+	for _, res := range input {
+		result = append(result, res...)
+	}
+	return result
 }
 
 // doForAddrs sequetially calls the provided callback function fn for each
 // address in given slice addrs until the callback function does not return an
 // error.
+// TODO(owen-d): parallelism
 func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGatewayClient) error) error {
 	var err error
 	var poolClient ringclient.PoolClient
@@ -340,6 +357,8 @@ func replicationSetsWithBounds(subRing ring.ReadRing, instances []ring.InstanceD
 			return nil, errors.Wrap(err, "bloom gateway get ring")
 		}
 
+		// NB(owen-d): this will send requests to the wrong nodes if RF>1 since it only checks the
+		// first token when assigning replicasets
 		rs, err := subRing.Get(tr[0], BlocksOwnerRead, bufDescs, bufHosts, bufZones)
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
