@@ -119,8 +119,8 @@ spec:
           {{- include "loki.configVolume" . | nindent 10 }}
         - name: license
           secret:
-          {{- if .Values.useExternalLicense }}
-            secretName: {{ .Values.externalLicenseName }}
+          {{- if .Values.enterprise.useExternalLicense }}
+            secretName: {{ .Values.enterprise.externalLicenseName }}
           {{- else }}
             secretName: enterprise-logs-license
           {{- end }}
