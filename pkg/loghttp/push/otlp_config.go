@@ -73,6 +73,7 @@ func (cfg *GlobalOTLPConfig) RegisterFlags(fs *flag.FlagSet) {
 	fs.Var((*flagext.StringSlice)(&cfg.DefaultOTLPResourceAttributesAsIndexLabels), "distributor.otlp.default_resource_attributes_as_index_labels", "List of default otlp resource attributes to be picked as index labels")
 }
 
+// ApplyGlobalOTLPConfig applies global otlp config, specifically DefaultOTLPResourceAttributesAsIndexLabels for the start.
 func (c *OTLPConfig) ApplyGlobalOTLPConfig(config GlobalOTLPConfig) {
 	if !c.ResourceAttributes.IgnoreDefaults && len(config.DefaultOTLPResourceAttributesAsIndexLabels) != 0 {
 		c.ResourceAttributes.AttributesConfig = append([]AttributesConfig{
