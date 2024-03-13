@@ -71,59 +71,46 @@ func (w *worker) running(_ context.Context) error {
 	for st := w.State(); st == services.Running || st == services.Stopping; {
 		taskCtx := context.Background()
 		start := time.Now()
-		items, newIdx, err := w.queue.DequeueMany(taskCtx, idx, w.id, w.cfg.maxItems)
+		item, newIdx, err := w.queue.Dequeue(taskCtx, idx, w.id)
 		w.metrics.dequeueDuration.WithLabelValues(w.id).Observe(time.Since(start).Seconds())
 		if err != nil {
 			// We only return an error if the queue is stopped and dequeuing did not yield any items
-			if err == queue.ErrStopped && len(items) == 0 {
+			if err == queue.ErrStopped {
 				return err
 			}
 			w.metrics.tasksDequeued.WithLabelValues(w.id, labelFailure).Inc()
-			level.Error(w.logger).Log("msg", "failed to dequeue tasks", "err", err, "items", len(items))
+			level.Error(w.logger).Log("msg", "failed to dequeue tasks", "err", err)
 		}
 		idx = newIdx
 
-		if len(items) == 0 {
-			w.queue.ReleaseRequests(items)
-			continue
+		w.metrics.tasksDequeued.WithLabelValues(w.id, labelSuccess).Inc()
+
+		task, ok := item.(Task)
+		if !ok {
+			// This really should never happen, because only the bloom gateway itself can enqueue tasks.
+			return errors.Errorf("failed to cast dequeued item to Task: %v", item)
 		}
-
-		level.Debug(w.logger).Log("msg", "dequeued tasks", "count", len(items))
-		w.metrics.tasksDequeued.WithLabelValues(w.id, labelSuccess).Add(float64(len(items)))
-
-		tasks := make([]Task, 0, len(items))
-		var mb v1.MultiFingerprintBounds
-		for _, item := range items {
-			task, ok := item.(Task)
-			if !ok {
-				// This really should never happen, because only the bloom gateway itself can enqueue tasks.
-				w.queue.ReleaseRequests(items)
-				return errors.Errorf("failed to cast dequeued item to Task: %v", item)
-			}
-			level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
-			_ = w.pending.Dec()
-			w.metrics.queueDuration.WithLabelValues(w.id).Observe(time.Since(task.enqueueTime).Seconds())
-			FromContext(task.ctx).AddQueueTime(time.Since(task.enqueueTime))
-			tasks = append(tasks, task)
-
-			first, last := getFirstLast(task.series)
-			mb = mb.Union(v1.NewBounds(model.Fingerprint(first.Fingerprint), model.Fingerprint(last.Fingerprint)))
-		}
+		level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
+		_ = w.pending.Dec()
+		w.metrics.queueDuration.WithLabelValues(w.id).Observe(time.Since(task.enqueueTime).Seconds())
+		FromContext(task.ctx).AddQueueTime(time.Since(task.enqueueTime))
+		first, last := getFirstLast(task.series)
 
 		start = time.Now()
-		err = p.runWithBounds(taskCtx, tasks, mb)
+		err = p.runWithBounds(
+			task.ctx,
+			[]Task{task},
+			[]v1.FingerprintBounds{v1.NewBounds(model.Fingerprint(first.Fingerprint), model.Fingerprint(last.Fingerprint))},
+		)
 
 		if err != nil {
 			w.metrics.processDuration.WithLabelValues(w.id, labelFailure).Observe(time.Since(start).Seconds())
-			w.metrics.tasksProcessed.WithLabelValues(w.id, labelFailure).Add(float64(len(tasks)))
+			w.metrics.tasksProcessed.WithLabelValues(w.id, labelFailure).Inc()
 			level.Error(w.logger).Log("msg", "failed to process tasks", "err", err)
 		} else {
 			w.metrics.processDuration.WithLabelValues(w.id, labelSuccess).Observe(time.Since(start).Seconds())
-			w.metrics.tasksProcessed.WithLabelValues(w.id, labelSuccess).Add(float64(len(tasks)))
+			w.metrics.tasksProcessed.WithLabelValues(w.id, labelSuccess).Inc()
 		}
-
-		// return dequeued items back to the pool
-		w.queue.ReleaseRequests(items)
 	}
 
 	return nil
