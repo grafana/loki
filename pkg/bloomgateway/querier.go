@@ -87,11 +87,9 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	}
 
 	// The indexes of the chunks slice correspond to the indexes of the fingerprint slice.
-	sp1, ctx := opentracing.StartSpanFromContext(ctx, "bloomquerier.GroupChunksByFingerprint")
 	grouped := groupedChunksRefPool.Get(len(chunkRefs))
 	defer groupedChunksRefPool.Put(grouped)
 	grouped = groupChunkRefs(chunkRefs, grouped)
-	sp1.Finish()
 
 	preFilterChunks := len(chunkRefs)
 	preFilterSeries := len(grouped)
@@ -103,7 +101,6 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	}
 
 	// Flatten response from client and return
-	sp2, _ := opentracing.StartSpanFromContext(ctx, "bloomquerier.GroupChunksByFingerprint")
 	result := make([]*logproto.ChunkRef, 0, len(chunkRefs))
 	for i := range refs {
 		for _, ref := range refs[i].Refs {
@@ -116,7 +113,6 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 			})
 		}
 	}
-	sp2.Finish()
 
 	postFilterChunks := len(result)
 	postFilterSeries := len(refs)
