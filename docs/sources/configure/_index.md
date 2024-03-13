@@ -551,6 +551,11 @@ write_failures_logging:
   # logged or not. Default: false.
   # CLI flag: -distributor.write-failures-logging.add-insights-label
   [add_insights_label: <boolean> | default = false]
+
+otlp_config:
+  # List of default otlp resource attributes to be picked as index labels
+  # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
+  [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
 ```
 
 ### querier
@@ -3230,7 +3235,8 @@ otlp_config:
   # Configuration for resource attributes to store them as index labels or
   # Structured Metadata or drop them altogether
   resource_attributes:
-    # Configure whether to ignore the default list of resource attributes to be
+    # Configure whether to ignore the default list of resource attributes set in
+    # 'distributor.otlp.default_resource_attributes_as_index_labels' to be
     # stored as index labels and only use the given resource attributes config
     [ignore_defaults: <boolean> | default = false]
 
