@@ -16,6 +16,9 @@ metadata:
     {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+    {{- with .Values.ingester.zoneAwareReplication.zoneB.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
 {{- if not .Values.ingester.autoscaling.enabled }}
   replicas: {{ $replicas }}

@@ -1757,16 +1757,22 @@ ingester:
       nodeSelector: null
       # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
       extraAffinity: {}
+      # -- Specific annotations to add to zone A
+      annotations: {}
     zoneB:
       # -- optionally define a node selector for this zone
       nodeSelector: null
       # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
       extraAffinity: {}
+      # -- Specific annotations to add to zone B
+      annotations: {}
     zoneC:
       # -- optionally define a node selector for this zone
       nodeSelector: null
       # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
       extraAffinity: {}
+      # -- Specific annotations to add to zone C
+      annotations: {}
     # -- The migration block allows migrating non zone aware ingesters to zone aware ingesters.
     migration:
       enabled: false
