@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/go-kit/log"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -72,25 +73,37 @@ func convertToShortRef(ref *logproto.ChunkRef) *logproto.ShortRef {
 }
 
 func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, queryPlan plan.QueryPlan) ([]*logproto.ChunkRef, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomquerier.FilterChunkRefs")
+	sp.LogKV(
+		"chunks", len(chunkRefs),
+		"filters", len(syntax.ExtractLineFilters(queryPlan.AST)),
+	)
+	defer sp.Finish()
+
 	// Shortcut that does not require any filtering
 	if len(chunkRefs) == 0 || len(syntax.ExtractLineFilters(queryPlan.AST)) == 0 {
+		sp.LogKV("msg", "no chunks or no filters")
 		return chunkRefs, nil
 	}
 
 	// The indexes of the chunks slice correspond to the indexes of the fingerprint slice.
+	sp1, ctx := opentracing.StartSpanFromContext(ctx, "bloomquerier.GroupChunksByFingerprint")
 	grouped := groupedChunksRefPool.Get(len(chunkRefs))
 	defer groupedChunksRefPool.Put(grouped)
 	grouped = groupChunkRefs(chunkRefs, grouped)
+	sp1.Finish()
 
 	preFilterChunks := len(chunkRefs)
 	preFilterSeries := len(grouped)
 
 	refs, err := bq.c.FilterChunks(ctx, tenant, from, through, grouped, queryPlan)
 	if err != nil {
+		sp.LogKV("msg", "failed to filter chunks")
 		return nil, err
 	}
 
 	// Flatten response from client and return
+	sp2, _ := opentracing.StartSpanFromContext(ctx, "bloomquerier.GroupChunksByFingerprint")
 	result := make([]*logproto.ChunkRef, 0, len(chunkRefs))
 	for i := range refs {
 		for _, ref := range refs[i].Refs {
@@ -103,6 +116,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 			})
 		}
 	}
+	sp2.Finish()
 
 	postFilterChunks := len(result)
 	postFilterSeries := len(refs)
@@ -111,6 +125,13 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	bq.metrics.chunksFiltered.Add(float64(preFilterChunks - postFilterChunks))
 	bq.metrics.seriesTotal.Add(float64(preFilterSeries))
 	bq.metrics.seriesFiltered.Add(float64(preFilterSeries - postFilterSeries))
+
+	sp.LogKV(
+		"pre_filter_chunks", preFilterChunks,
+		"post_filter_chunks", postFilterChunks,
+		"pre_filter_series", preFilterSeries,
+		"post_filter_series", postFilterSeries,
+	)
 
 	return result, nil
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
 	ringclient "github.com/grafana/dskit/ring/client"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -238,7 +239,11 @@ func shuffleAddrs(addrs []string) []string {
 
 // FilterChunkRefs implements Client
 func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomclient.FilterChunks")
+	defer sp.Finish()
+
 	if !c.limits.BloomGatewayEnabled(tenant) {
+		sp.LogKV("msg", "chunk filtering not enabled", "tenant", tenant)
 		return groups, nil
 	}
 
@@ -258,10 +263,19 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 	results := make([][]*logproto.GroupedChunkRefs, len(servers))
 	count := 0
 	err = concurrency.ForEachJob(ctx, len(servers), maxQueryParallelism, func(ctx context.Context, i int) error {
+		sp, ctx := opentracing.StartSpanFromContext(ctx, "concurrency.ForEachJob")
+		defer sp.Finish()
+
 		rs := servers[i]
 
 		// randomize order of addresses so we don't hotspot the first server in the list
 		addrs := shuffleAddrs(rs.rs.GetAddresses())
+
+		sp.LogKV(
+			"job", i,
+			"of", len(servers),
+			"addrs", strings.Join(addrs, ","),
+		)
 		level.Info(c.logger).Log(
 			"msg", "do FilterChunkRefs for addresses",
 			"progress", fmt.Sprintf("%d/%d", i+1, len(servers)),
