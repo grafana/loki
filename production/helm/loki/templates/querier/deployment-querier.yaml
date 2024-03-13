@@ -115,6 +115,10 @@ spec:
               mountPath: /etc/loki/runtime-config
             - name: data
               mountPath: /var/loki
+            {{- if .Values.enterprise.enabled }}
+            - name: license
+              mountPath: /etc/loki/license
+            {{- end }}
             {{- with .Values.querier.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

@@ -132,7 +132,7 @@ spec:
             {{- if .Values.enterprise.enabled }}
             - name: license
               mountPath: /etc/loki/license
-            {{- end}}
+            {{- end }}
             {{- with .Values.write.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

@@ -97,7 +97,7 @@ spec:
             - name: config
               mountPath: /etc/loki/config
             - name: license
-              mountPath: /etc/enterprise-logs/license
+              mountPath: /etc/loki/license
             - name: storage
               mountPath: /data
             {{- if .Values.adminApi.extraVolumeMounts }}
