@@ -152,7 +152,6 @@ func NewTimeoutConfig(s *lokiv1.LimitsSpec) (TimeoutConfig, error) {
 		c := lokiv1.PerTenantLimitsTemplateSpec{}
 		if config == c {
 			return TimeoutConfig{}, ErrInvalidPerTenantConfig
-
 		}
 	}
 

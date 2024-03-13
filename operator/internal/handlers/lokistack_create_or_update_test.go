@@ -752,7 +752,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidPerTenantLimits_SetDegraded(t *testi
 	}
 
 	degradedErr := &status.DegradedError{
-		Message: "Error validating per-tenant config",
+		Message: "Error validating per-tenant config: invalid per-tenant config",
 		Reason:  lokiv1.ReasonInvalidPerTenantConfig,
 		Requeue: false,
 	}

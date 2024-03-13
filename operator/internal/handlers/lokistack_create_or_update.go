@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -84,17 +85,17 @@ func CreateOrUpdateLokiStack(
 	}
 
 	timeoutConfig, err := manifests.NewTimeoutConfig(stack.Spec.Limits)
-	if err == manifests.ErrInvalidQueryTimeout {
+	if errors.Is(err, manifests.ErrInvalidQueryTimeout) {
 		ll.Error(err, "failed to parse query timeout")
 		return "", &status.DegradedError{
 			Message: fmt.Sprintf("Error parsing query timeout: %s", err),
 			Reason:  lokiv1.ReasonQueryTimeoutInvalid,
 			Requeue: false,
 		}
-	} else if err == manifests.ErrInvalidPerTenantConfig {
+	} else if errors.Is(err, manifests.ErrInvalidPerTenantConfig) {
 		ll.Error(err, "invalid per-tenant config")
 		return "", &status.DegradedError{
-			Message: fmt.Sprintf("Error validating per-tenant config"),
+			Message: fmt.Sprintf("Error validating per-tenant config: %s", err),
 			Reason:  lokiv1.ReasonInvalidPerTenantConfig,
 			Requeue: false,
 		}
