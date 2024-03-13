@@ -2330,6 +2330,8 @@ compactor:
 
 # -- Configuration for the ruler
 ruler:
+  # -- The ruler component is optional and can be disabled if desired.
+  enabled: true
   # -- Number of replicas for the ruler
   replicas: 0
   # -- hostAliases to add
