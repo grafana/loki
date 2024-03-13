@@ -44,6 +44,7 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/go-kit/log"
@@ -368,18 +369,20 @@ func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Tas
 	}
 }
 
-// merges a list of responses via a heap. The same fingerprints and chunks can be present in multiple responses,
-// but each response must be ordered by fingerprint
+// merges a list of responses via a heap. The same fingerprints and chunks can be present in multiple responses.
+// Individual responses do not need to be be ordered beforehand.
 func orderedResponsesByFP(responses [][]v1.Output) v1.Iterator[v1.Output] {
 	if len(responses) == 0 {
 		return v1.NewEmptyIter[v1.Output]()
 	}
 	if len(responses) == 1 {
+		sort.Slice(responses[0], func(i, j int) bool { return responses[0][i].Fp < responses[0][j].Fp })
 		return v1.NewSliceIter(responses[0])
 	}
 
 	itrs := make([]v1.PeekingIterator[v1.Output], 0, len(responses))
 	for _, r := range responses {
+		sort.Slice(r, func(i, j int) bool { return r[i].Fp < r[j].Fp })
 		itrs = append(itrs, v1.NewPeekingIter(v1.NewSliceIter(r)))
 	}
 	return v1.NewHeapIterator[v1.Output](
