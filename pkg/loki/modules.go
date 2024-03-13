@@ -1467,6 +1467,9 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 }
 
 func (t *Loki) initBloomCompactor() (services.Service, error) {
+	if !t.Cfg.BloomCompactor.Enabled {
+		return nil, nil
+	}
 	logger := log.With(util_log.Logger, "component", "bloom-compactor")
 
 	shuffleSharding := util_ring.NewTenantShuffleSharding(t.bloomCompactorRingManager.Ring, t.bloomCompactorRingManager.RingLifecycler, t.Overrides.BloomCompactorShardSize)
@@ -1486,6 +1489,9 @@ func (t *Loki) initBloomCompactor() (services.Service, error) {
 }
 
 func (t *Loki) initBloomCompactorRing() (services.Service, error) {
+	if !t.Cfg.BloomCompactor.Enabled {
+		return nil, nil
+	}
 	t.Cfg.BloomCompactor.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	// is LegacyMode needed?
