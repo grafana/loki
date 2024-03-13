@@ -17,19 +17,24 @@ import (
 
 // LoadConfig initializes the controller configuration, optionally overriding the defaults
 // from a provided configuration file.
-func LoadConfig(scheme *runtime.Scheme, configFile string) (*configv1.ProjectConfig, ctrl.Options, error) {
+func LoadConfig(scheme *runtime.Scheme, configFile string) (*configv1.ProjectConfig, *TokenCCOAuthConfig, ctrl.Options, error) {
 	options := ctrl.Options{Scheme: scheme}
 	if configFile == "" {
-		return &configv1.ProjectConfig{}, options, nil
+		return &configv1.ProjectConfig{}, nil, options, nil
 	}
 
 	ctrlCfg, err := loadConfigFile(scheme, configFile)
 	if err != nil {
-		return nil, options, fmt.Errorf("failed to parse controller manager config file: %w", err)
+		return nil, nil, options, fmt.Errorf("failed to parse controller manager config file: %w", err)
+	}
+
+	tokenCCOAuth := discoverTokenCCOAuthConfig()
+	if ctrlCfg.Gates.OpenShift.Enabled && tokenCCOAuth != nil {
+		ctrlCfg.Gates.OpenShift.TokenCCOAuthEnv = true
 	}
 
 	options = mergeOptionsFromFile(options, ctrlCfg)
-	return ctrlCfg, options, nil
+	return ctrlCfg, tokenCCOAuth, options, nil
 }
 
 func mergeOptionsFromFile(o manager.Options, cfg *configv1.ProjectConfig) manager.Options {

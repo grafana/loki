@@ -1,0 +1,12 @@
+---
+name: check
+on:
+  pull_request: {}
+  push:
+    branches:
+      - main
+jobs:
+  check:
+    uses: grafana/loki-release/.github/workflows/check.yml@release-1.10.x
+    with:
+      skip_validation: false

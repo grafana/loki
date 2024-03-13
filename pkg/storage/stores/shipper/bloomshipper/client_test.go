@@ -63,8 +63,7 @@ func putMeta(c *BloomClient, tenant string, start model.Time, minFp, maxFp model
 				// EndTimestamp:   start.Add(12 * time.Hour),
 			},
 		},
-		Blocks:     []BlockRef{},
-		Tombstones: []BlockRef{},
+		Blocks: []BlockRef{},
 	}
 	raw, _ := json.Marshal(meta)
 	return meta, c.client.PutObject(context.Background(), c.Meta(meta.MetaRef).Addr(), bytes.NewReader(raw))
@@ -129,8 +128,7 @@ func TestBloomClient_PutMeta(t *testing.T) {
 				// EndTimestamp:   start.Add(12 * time.Hour),
 			},
 		},
-		Blocks:     []BlockRef{},
-		Tombstones: []BlockRef{},
+		Blocks: []BlockRef{},
 	}
 
 	err := c.PutMeta(ctx, meta)

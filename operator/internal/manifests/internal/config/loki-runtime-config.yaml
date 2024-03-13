@@ -57,10 +57,7 @@ overrides:
     {{- with $l.Blocked }}
     blocked_queries:
     {{- range $blockedQuery := . }}
-    - {{ with $blockedQuery.Pattern -}}
-      pattern: |
-        {{ . | yamlBlock "        "  }}
-      {{ end -}}
+    - pattern: {{ .Pattern | printf "%q" }}
       {{- with $blockedQuery.Regex }}
       regex: {{ . }}
       {{- end }}

@@ -14,6 +14,9 @@ const (
 	BloomPrefix  = "bloom"
 	MetasPrefix  = "metas"
 	BlocksPrefix = "blocks"
+
+	extTarGz = ".tar.gz"
+	extJSON  = ".json"
 )
 
 // KeyResolver is an interface for resolving keys to locations.
@@ -26,6 +29,7 @@ type KeyResolver interface {
 	Meta(MetaRef) Location
 	ParseMetaKey(Location) (MetaRef, error)
 	Block(BlockRef) Location
+	ParseBlockKey(Location) (BlockRef, error)
 }
 
 type defaultKeyResolver struct{}
@@ -36,7 +40,7 @@ func (defaultKeyResolver) Meta(ref MetaRef) Location {
 		fmt.Sprintf("%v", ref.TableName),
 		ref.TenantID,
 		MetasPrefix,
-		fmt.Sprintf("%v-%v", ref.Bounds, ref.Checksum),
+		fmt.Sprintf("%v-%x%s", ref.Bounds, ref.Checksum, extJSON),
 	}
 }
 
@@ -50,7 +54,8 @@ func (defaultKeyResolver) ParseMetaKey(loc Location) (MetaRef, error) {
 	if err != nil {
 		return MetaRef{}, fmt.Errorf("failed to parse bounds of meta key %s : %w", loc, err)
 	}
-	checksum, err := strconv.ParseUint(fnParts[2], 16, 64)
+	withoutExt := strings.TrimSuffix(fnParts[2], extJSON)
+	checksum, err := strconv.ParseUint(withoutExt, 16, 64)
 	if err != nil {
 		return MetaRef{}, fmt.Errorf("failed to parse checksum of meta key %s : %w", loc, err)
 	}
@@ -77,8 +82,46 @@ func (defaultKeyResolver) Block(ref BlockRef) Location {
 		ref.TenantID,
 		BlocksPrefix,
 		ref.Bounds.String(),
-		fmt.Sprintf("%d-%d-%x", ref.StartTimestamp, ref.EndTimestamp, ref.Checksum),
+		fmt.Sprintf("%d-%d-%x%s", ref.StartTimestamp, ref.EndTimestamp, ref.Checksum, extTarGz),
 	}
+}
+
+func (defaultKeyResolver) ParseBlockKey(loc Location) (BlockRef, error) {
+	dir, fn := path.Split(loc.Addr())
+	fnParts := strings.Split(fn, "-")
+	if len(fnParts) != 3 {
+		return BlockRef{}, fmt.Errorf("failed to split filename parts of block key %s : len must be 3, but was %d", loc, len(fnParts))
+	}
+	interval, err := ParseIntervalFromParts(fnParts[0], fnParts[1])
+	if err != nil {
+		return BlockRef{}, fmt.Errorf("failed to parse bounds of meta key %s : %w", loc, err)
+	}
+	withoutExt := strings.TrimSuffix(fnParts[2], extTarGz)
+	checksum, err := strconv.ParseUint(withoutExt, 16, 64)
+	if err != nil {
+		return BlockRef{}, fmt.Errorf("failed to parse checksum of meta key %s : %w", loc, err)
+	}
+
+	dirParts := strings.Split(path.Clean(dir), "/")
+	if len(dirParts) < 5 {
+		return BlockRef{}, fmt.Errorf("directory parts count must be 5 or greater, but was %d : [%s]", len(dirParts), loc)
+	}
+
+	bounds, err := v1.ParseBoundsFromAddr(dirParts[len(dirParts)-1])
+	if err != nil {
+		return BlockRef{}, fmt.Errorf("failed to parse bounds of block key %s : %w", loc, err)
+	}
+
+	return BlockRef{
+		Ref: Ref{
+			TenantID:       dirParts[len(dirParts)-3],
+			TableName:      dirParts[len(dirParts)-4],
+			Bounds:         bounds,
+			StartTimestamp: interval.Start,
+			EndTimestamp:   interval.End,
+			Checksum:       uint32(checksum),
+		},
+	}, nil
 }
 
 type PrefixedResolver struct {

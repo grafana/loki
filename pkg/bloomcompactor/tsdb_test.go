@@ -27,8 +27,8 @@ func (f forSeriesTestImpl) ForSeries(
 		unmapped := make([]index.ChunkMeta, 0, len(f[i].Chunks))
 		for _, c := range f[i].Chunks {
 			unmapped = append(unmapped, index.ChunkMeta{
-				MinTime:  int64(c.Start),
-				MaxTime:  int64(c.End),
+				MinTime:  int64(c.From),
+				MaxTime:  int64(c.Through),
 				Checksum: c.Checksum,
 			})
 		}
@@ -48,13 +48,13 @@ func TestTSDBSeriesIter(t *testing.T) {
 			Fingerprint: 1,
 			Chunks: []v1.ChunkRef{
 				{
-					Start:    0,
-					End:      1,
+					From:     0,
+					Through:  1,
 					Checksum: 2,
 				},
 				{
-					Start:    3,
-					End:      4,
+					From:     3,
+					Through:  4,
 					Checksum: 5,
 				},
 			},

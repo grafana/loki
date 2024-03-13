@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"sort"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
@@ -173,19 +175,14 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 		return nil, errors.Wrap(err, "getting decompressor")
 	}
 
-	decompressed := BlockPool.Get(header.DecompressedLen)[:header.DecompressedLen]
+	decompressed := make([]byte, header.DecompressedLen)
 	if _, err = io.ReadFull(decompressor, decompressed); err != nil {
 		return nil, errors.Wrap(err, "decompressing series page")
 	}
 
-	// replace decoder's input with the now-decompressed data
-	dec.B = decompressed
-
 	res := &SeriesPageDecoder{
 		data:   decompressed,
 		header: header.SeriesHeader,
-
-		i: -1,
 	}
 
 	res.Reset()
@@ -218,10 +215,6 @@ type SeriesHeader struct {
 	FromTs, ThroughTs model.Time
 }
 
-func (h SeriesHeader) OverlapFingerprintRange(other SeriesHeader) bool {
-	return h.Bounds.Overlaps(other.Bounds)
-}
-
 // build one aggregated header for the entire block
 func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 	if len(xs) == 0 {
@@ -234,8 +227,8 @@ func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 		Bounds: NewBounds(fromFp, throughFP),
 	}
 
-	for _, x := range xs {
-		if x.FromTs < res.FromTs {
+	for i, x := range xs {
+		if i == 0 || x.FromTs < res.FromTs {
 			res.FromTs = x.FromTs
 		}
 		if x.ThroughTs > res.ThroughTs {
@@ -372,6 +365,7 @@ func (s *SeriesWithOffset) Encode(
 	previousFp model.Fingerprint,
 	previousOffset BloomOffset,
 ) (model.Fingerprint, BloomOffset) {
+	sort.Sort(s.Chunks) // ensure order
 	// delta encode fingerprint
 	enc.PutBE64(uint64(s.Fingerprint - previousFp))
 	// delta encode offsets
@@ -408,18 +402,15 @@ func (s *SeriesWithOffset) Decode(dec *encoding.Decbuf, previousFp model.Fingerp
 	return s.Fingerprint, s.Offset, dec.Err()
 }
 
-type ChunkRef struct {
-	Start, End model.Time
-	Checksum   uint32
-}
+type ChunkRef logproto.ShortRef
 
 func (r *ChunkRef) Less(other ChunkRef) bool {
-	if r.Start != other.Start {
-		return r.Start < other.Start
+	if r.From != other.From {
+		return r.From < other.From
 	}
 
-	if r.End != other.End {
-		return r.End < other.End
+	if r.Through != other.Through {
+		return r.Through < other.Through
 	}
 
 	return r.Checksum < other.Checksum
@@ -427,17 +418,17 @@ func (r *ChunkRef) Less(other ChunkRef) bool {
 
 func (r *ChunkRef) Encode(enc *encoding.Encbuf, previousEnd model.Time) model.Time {
 	// delta encode start time
-	enc.PutVarint64(int64(r.Start - previousEnd))
-	enc.PutVarint64(int64(r.End - r.Start))
+	enc.PutVarint64(int64(r.From - previousEnd))
+	enc.PutVarint64(int64(r.Through - r.From))
 	enc.PutBE32(r.Checksum)
-	return r.End
+	return r.Through
 }
 
 func (r *ChunkRef) Decode(dec *encoding.Decbuf, previousEnd model.Time) (model.Time, error) {
-	r.Start = previousEnd + model.Time(dec.Varint64())
-	r.End = r.Start + model.Time(dec.Varint64())
+	r.From = previousEnd + model.Time(dec.Varint64())
+	r.Through = r.From + model.Time(dec.Varint64())
 	r.Checksum = dec.Be32()
-	return r.End, dec.Err()
+	return r.Through, dec.Err()
 }
 
 type BloomOffset struct {

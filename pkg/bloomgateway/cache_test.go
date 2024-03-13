@@ -8,13 +8,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util/constants"
@@ -382,13 +382,13 @@ func TestCache(t *testing.T) {
 			Through:     3500,
 		},
 	}
+	expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+	require.NoError(t, err)
 	req := &logproto.FilterChunkRefRequest{
 		From:    model.Time(2000),
 		Through: model.Time(3000),
 		Refs:    groupRefs(t, chunkRefs),
-		Filters: []syntax.LineFilter{
-			{Ty: labels.MatchEqual, Match: "foo"},
-		},
+		Plan:    plan.QueryPlan{AST: expr},
 	}
 	expectedRes := &logproto.FilterChunkRefResponse{
 		ChunkRefs: groupRefs(t, chunkRefs),

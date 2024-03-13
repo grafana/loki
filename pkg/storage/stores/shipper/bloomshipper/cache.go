@@ -1,20 +1,22 @@
 package bloomshipper
 
 import (
+	"context"
 	"fmt"
+	"io/fs"
 	"os"
-	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 type CloseableBlockQuerier struct {
@@ -30,10 +32,17 @@ func (c *CloseableBlockQuerier) Close() error {
 	return nil
 }
 
-func NewBlocksCache(config config.Config, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, BlockDirectory] {
+func (c *CloseableBlockQuerier) SeriesIter() (v1.PeekingIterator[*v1.SeriesWithBloom], error) {
+	if err := c.Reset(); err != nil {
+		return nil, err
+	}
+	return v1.NewPeekingIter[*v1.SeriesWithBloom](c.BlockQuerier), nil
+}
+
+func NewBlocksCache(cfg cache.EmbeddedCacheConfig, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, BlockDirectory] {
 	return cache.NewTypedEmbeddedCache[string, BlockDirectory](
 		"bloom-blocks-cache",
-		config.BlocksCache.EmbeddedCacheConfig,
+		cfg,
 		reg,
 		logger,
 		stats.BloomBlocksCache,
@@ -43,15 +52,50 @@ func NewBlocksCache(config config.Config, reg prometheus.Registerer, logger log.
 		})
 }
 
-func calculateBlockDirectorySize(entry *cache.Entry[string, BlockDirectory]) uint64 {
-	value := entry.Value
-	bloomFileStats, _ := os.Lstat(path.Join(value.Path, v1.BloomFileName))
-	seriesFileStats, _ := os.Lstat(path.Join(value.Path, v1.SeriesFileName))
-	return uint64(bloomFileStats.Size() + seriesFileStats.Size())
+func LoadBlocksDirIntoCache(path string, c cache.TypedCache[string, BlockDirectory], logger log.Logger) error {
+	level.Debug(logger).Log("msg", "load bloomshipper working directory into cache", "path", path)
+	keys, values := loadBlockDirectories(path, logger)
+	return c.Store(context.Background(), keys, values)
 }
 
+func loadBlockDirectories(root string, logger log.Logger) (keys []string, values []BlockDirectory) {
+	resolver := NewPrefixedResolver(root, defaultKeyResolver{})
+	_ = filepath.WalkDir(root, func(path string, dirEntry fs.DirEntry, e error) error {
+		if dirEntry == nil || e != nil {
+			level.Warn(logger).Log("msg", "failed to walk directory", "path", path, "dirEntry", dirEntry, "err", e)
+			return nil
+		}
+
+		if !dirEntry.IsDir() {
+			return nil
+		}
+
+		ref, err := resolver.ParseBlockKey(key(path))
+		if err != nil {
+			return nil
+		}
+
+		if ok, clean := isBlockDir(path, logger); ok {
+			keys = append(keys, resolver.Block(ref).Addr())
+			values = append(values, NewBlockDirectory(ref, path, logger))
+			level.Debug(logger).Log("msg", "found block directory", "ref", ref, "path", path)
+		} else {
+			level.Warn(logger).Log("msg", "skip directory entry", "err", "not a block directory containing blooms and series", "path", path)
+			_ = clean(path)
+		}
+
+		return nil
+	})
+	return
+}
+
+func calculateBlockDirectorySize(entry *cache.Entry[string, BlockDirectory]) uint64 {
+	return uint64(entry.Value.Size())
+}
+
+// NewBlockDirectory creates a new BlockDirectory. Must exist on disk.
 func NewBlockDirectory(ref BlockRef, path string, logger log.Logger) BlockDirectory {
-	return BlockDirectory{
+	bd := BlockDirectory{
 		BlockRef:                    ref,
 		Path:                        path,
 		refCount:                    atomic.NewInt32(0),
@@ -59,6 +103,10 @@ func NewBlockDirectory(ref BlockRef, path string, logger log.Logger) BlockDirect
 		logger:                      logger,
 		activeQueriersCheckInterval: defaultActiveQueriersCheckInterval,
 	}
+	if err := bd.resolveSize(); err != nil {
+		panic(err)
+	}
+	return bd
 }
 
 // A BlockDirectory is a local file path that contains a bloom block.
@@ -70,10 +118,15 @@ type BlockDirectory struct {
 	refCount                    *atomic.Int32
 	logger                      log.Logger
 	activeQueriersCheckInterval time.Duration
+	size                        int64
 }
 
 func (b BlockDirectory) Block() *v1.Block {
 	return v1.NewBlock(v1.NewDirectoryBlockReader(b.Path))
+}
+
+func (b BlockDirectory) Size() int64 {
+	return b.size
 }
 
 func (b BlockDirectory) Acquire() {
@@ -82,6 +135,21 @@ func (b BlockDirectory) Acquire() {
 
 func (b BlockDirectory) Release() error {
 	_ = b.refCount.Dec()
+	return nil
+}
+
+func (b *BlockDirectory) resolveSize() error {
+	bloomPath := filepath.Join(b.Path, v1.BloomFileName)
+	bloomFileStats, err := os.Lstat(bloomPath)
+	if err != nil {
+		return errors.Wrapf(err, "failed to stat bloom file (%s)", bloomPath)
+	}
+	seriesPath := filepath.Join(b.Path, v1.SeriesFileName)
+	seriesFileStats, err := os.Lstat(seriesPath)
+	if err != nil {
+		return errors.Wrapf(err, "failed to stat series file (%s)", seriesPath)
+	}
+	b.size = (bloomFileStats.Size() + seriesFileStats.Size())
 	return nil
 }
 
