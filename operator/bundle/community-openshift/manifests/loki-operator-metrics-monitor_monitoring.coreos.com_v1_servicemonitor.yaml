@@ -26,7 +26,7 @@ spec:
         secret:
           key: service-ca.crt
           name: loki-operator-controller-manager-metrics-token
-      serverName: loki-operator-controller-manager-metrics-service.openshift-operators-redhat.svc
+      serverName: loki-operator-controller-manager-metrics-service.kubernetes-operators.svc
   selector:
     matchLabels:
       app.kubernetes.io/name: loki-operator
