@@ -163,7 +163,7 @@ func (f *fakeTailServer) Send(response *logproto.TailResponse) error {
 
 func (f *fakeTailServer) Context() context.Context { return context.Background() }
 
-func (f *fakeTailServer) cloneTailResponse(response logproto.TailResponse) logproto.TailResponse {
+func cloneTailResponse(response logproto.TailResponse) logproto.TailResponse {
 	var clone logproto.TailResponse
 	if response.Stream != nil {
 		clone.Stream = &logproto.Stream{}
@@ -187,7 +187,7 @@ func (f *fakeTailServer) GetResponses() []logproto.TailResponse {
 	defer f.responsesMu.Unlock()
 	clonedResponses := make([]logproto.TailResponse, len(f.responses))
 	for i, resp := range f.responses {
-		clonedResponses[i] = f.cloneTailResponse(resp)
+		clonedResponses[i] = cloneTailResponse(resp)
 	}
 	return f.responses
 }
