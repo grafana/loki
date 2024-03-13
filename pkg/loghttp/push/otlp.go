@@ -30,8 +30,9 @@ const (
 
 func newPushStats() *Stats {
 	return &Stats{
-		LogLinesBytes:           map[time.Duration]int64{},
-		StructuredMetadataBytes: map[time.Duration]int64{},
+		LogLinesBytes:                   map[time.Duration]int64{},
+		StructuredMetadataBytes:         map[time.Duration]int64{},
+		ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{},
 	}
 }
 
@@ -147,6 +148,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 
 		resourceAttributesAsStructuredMetadataSize := labelsSize(resourceAttributesAsStructuredMetadata)
 		stats.StructuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(resourceAttributesAsStructuredMetadataSize)
+		stats.ResourceAndSourceMetadataLabels[tenantsRetention.RetentionPeriodFor(userID, lbs)] = append(stats.ResourceAndSourceMetadataLabels[tenantsRetention.RetentionPeriodFor(userID, lbs)], resourceAttributesAsStructuredMetadata...)
 
 		for j := 0; j < sls.Len(); j++ {
 			scope := sls.At(j).Scope()
@@ -197,6 +199,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 
 			scopeAttributesAsStructuredMetadataSize := labelsSize(scopeAttributesAsStructuredMetadata)
 			stats.StructuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(scopeAttributesAsStructuredMetadataSize)
+			stats.ResourceAndSourceMetadataLabels[tenantsRetention.RetentionPeriodFor(userID, lbs)] = append(stats.ResourceAndSourceMetadataLabels[tenantsRetention.RetentionPeriodFor(userID, lbs)], scopeAttributesAsStructuredMetadata...)
 			for k := 0; k < logs.Len(); k++ {
 				log := logs.At(k)
 
