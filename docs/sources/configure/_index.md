@@ -3181,7 +3181,7 @@ shard_streams:
 # The shard size defines how many bloom compactors should be used by a tenant
 # when computing blooms. If it's set to 0, shuffle sharding is disabled.
 # CLI flag: -bloom-compactor.shard-size
-[bloom_compactor_shard_size: <int> | default = 1]
+[bloom_compactor_shard_size: <int> | default = 0]
 
 # Whether to compact chunks into bloom filters.
 # CLI flag: -bloom-compactor.enable-compaction
