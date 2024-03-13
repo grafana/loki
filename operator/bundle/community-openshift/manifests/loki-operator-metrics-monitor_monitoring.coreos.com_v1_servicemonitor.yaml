@@ -18,9 +18,9 @@ spec:
       type: bearer
     interval: 30s
     path: /metrics
-    port: "8443"
     scheme: https
     scrapeTimeout: 10s
+    targetPort: 8443
     tlsConfig:
       ca:
         secret:

@@ -7,6 +7,7 @@ spec:
     spec:
       containers:
         - name: manager
+          imagePullPolicy: Always
           env:
           - name: RELATED_IMAGE_LOKI
             value: quay.io/openshift-logging/loki:v2.9.4
