@@ -367,7 +367,7 @@ Example:
 
 ## mul
 
-Mulitply numbers. Supports multiple numbers.
+Multiply numbers. Supports multiple numbers.
 
 Signature: `func(a interface{}, v ...interface{}) int64`
 
@@ -415,7 +415,7 @@ Example:
 
 ## mulf
 
-Mulitply numbers. Supports multiple numbers
+Multiply numbers. Supports multiple numbers
 
 Signature: `func(a interface{}, v ...interface{}) float64`
 

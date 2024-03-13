@@ -17,6 +17,18 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [ENHANCEMENT] Allow the definition of PVC annotations for all volume claim templates in statefulsets
 
+## 5.43.6
+
+ [ENHANCEMENT] Add `ciliumnetworkpolicy` with egress to world for table-manager if enabled.
+
+## 5.43.5
+
+- [BUGFIX] Add `---` before the `backend-kubeapiserver-egress` ciliumnetworkpolicy to prevent the `backend-world-egress` one from being dumped if both are enabled.
+
+## 5.43.4
+
+- [ENHANCEMENT] Add `ciliumnetworkpolicies` with egress to world for write, read and backend.
+
 ## 5.43.3
 
 - [ENHANCEMENT] Added missing default values to support ServerSideApply

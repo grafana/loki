@@ -14,9 +14,9 @@ import (
 )
 
 var (
-	managedAuthConfigVolumeMount = corev1.VolumeMount{
-		Name:      managedAuthConfigVolumeName,
-		MountPath: managedAuthConfigDirectory,
+	tokenCCOAuthConfigVolumeMount = corev1.VolumeMount{
+		Name:      tokenAuthConfigVolumeName,
+		MountPath: tokenAuthConfigDirectory,
 	}
 
 	saTokenVolumeMount = corev1.VolumeMount{
@@ -136,14 +136,14 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 		MountPath: secretDirectory,
 	})
 
-	if managedAuthEnabled(opts) {
-		container.Env = append(container.Env, managedAuthCredentials(opts)...)
+	if tokenAuthEnabled(opts) {
+		container.Env = append(container.Env, tokenAuthCredentials(opts)...)
 		volumes = append(volumes, saTokenVolume(opts))
 		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount)
 
-		if opts.OpenShift.ManagedAuthEnabled() && opts.S3 != nil && opts.S3.STS {
-			volumes = append(volumes, managedAuthConfigVolume(opts))
-			container.VolumeMounts = append(container.VolumeMounts, managedAuthConfigVolumeMount)
+		if opts.OpenShift.TokenCCOAuthEnabled() && opts.S3 != nil && opts.S3.STS {
+			volumes = append(volumes, tokenCCOAuthConfigVolume(opts))
+			container.VolumeMounts = append(container.VolumeMounts, tokenCCOAuthConfigVolumeMount)
 		}
 	} else {
 		container.Env = append(container.Env, staticAuthCredentials(opts)...)
@@ -190,12 +190,12 @@ func staticAuthCredentials(opts Options) []corev1.EnvVar {
 	}
 }
 
-func managedAuthCredentials(opts Options) []corev1.EnvVar {
+func tokenAuthCredentials(opts Options) []corev1.EnvVar {
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
-		if opts.OpenShift.ManagedAuthEnabled() {
+		if opts.OpenShift.TokenCCOAuthEnabled() {
 			return []corev1.EnvVar{
-				envVarFromValue(EnvAWSCredentialsFile, path.Join(managedAuthConfigDirectory, KeyAWSCredentialsFilename)),
+				envVarFromValue(EnvAWSCredentialsFile, path.Join(tokenAuthConfigDirectory, KeyAWSCredentialsFilename)),
 				envVarFromValue(EnvAWSSdkLoadConfig, "true"),
 			}
 		} else {
@@ -205,7 +205,7 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 			}
 		}
 	case lokiv1.ObjectStorageSecretAzure:
-		if opts.OpenShift.ManagedAuthEnabled() {
+		if opts.OpenShift.TokenCCOAuthEnabled() {
 			return []corev1.EnvVar{
 				envVarFromSecret(EnvAzureStorageAccountName, opts.SecretName, KeyAzureStorageAccountName),
 				envVarFromSecret(EnvAzureClientID, opts.OpenShift.CloudCredentials.SecretName, azureManagedCredentialKeyClientID),
@@ -300,17 +300,15 @@ func envVarFromValue(name, value string) corev1.EnvVar {
 	}
 }
 
-func managedAuthEnabled(opts Options) bool {
-	switch opts.SharedStore {
-	case lokiv1.ObjectStorageSecretS3:
-		return opts.S3 != nil && opts.S3.STS
-	case lokiv1.ObjectStorageSecretAzure:
-		return opts.Azure != nil && opts.Azure.WorkloadIdentity
-	case lokiv1.ObjectStorageSecretGCS:
-		return opts.GCS != nil && opts.GCS.WorkloadIdentity
+func tokenAuthEnabled(opts Options) bool {
+	switch opts.CredentialMode {
+	case lokiv1.CredentialModeToken, lokiv1.CredentialModeTokenCCO:
+		return true
+	case lokiv1.CredentialModeStatic:
+		fallthrough
 	default:
-		return false
 	}
+	return false
 }
 
 func saTokenVolume(opts Options) corev1.Volume {
@@ -348,9 +346,9 @@ func saTokenVolume(opts Options) corev1.Volume {
 	}
 }
 
-func managedAuthConfigVolume(opts Options) corev1.Volume {
+func tokenCCOAuthConfigVolume(opts Options) corev1.Volume {
 	return corev1.Volume{
-		Name: managedAuthConfigVolumeName,
+		Name: tokenAuthConfigVolumeName,
 		VolumeSource: corev1.VolumeSource{
 			Secret: &corev1.SecretVolumeSource{
 				SecretName: opts.OpenShift.CloudCredentials.SecretName,

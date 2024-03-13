@@ -212,8 +212,8 @@ func TestMergeBuilder(t *testing.T) {
 	}
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(_ *Series, _ *Bloom) error {
-		return errors.New("not implemented")
+	pop := func(_ *Series, _ *Bloom) (int, error) {
+		return 0, errors.New("not implemented")
 	}
 
 	// storage should contain references to all the series we ingested,
@@ -238,7 +238,7 @@ func TestMergeBuilder(t *testing.T) {
 	)
 	require.Nil(t, err)
 
-	_, err = mergeBuilder.Build(builder)
+	_, _, err = mergeBuilder.Build(builder)
 	require.Nil(t, err)
 
 	block := NewBlock(reader)
@@ -396,16 +396,16 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	mb := NewMergeBuilder(
 		dedupedBlocks(blocks),
 		dedupedStore,
-		func(s *Series, b *Bloom) error {
+		func(s *Series, b *Bloom) (int, error) {
 			// We're not actually indexing new data in this test
-			return nil
+			return 0, nil
 		},
 		NewMetrics(nil),
 	)
 	builder, err := NewBlockBuilder(DefaultBlockOptions, writer)
 	require.Nil(t, err)
 
-	checksum, err := mb.Build(builder)
+	checksum, _, err := mb.Build(builder)
 	require.Nil(t, err)
 	require.Equal(t, uint32(0x30712486), checksum)
 

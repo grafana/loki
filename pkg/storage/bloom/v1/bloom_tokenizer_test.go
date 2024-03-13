@@ -37,8 +37,8 @@ func TestPrefixedKeyCreation(t *testing.T) {
 	var ones uint64 = 0xffffffffffffffff
 
 	ref := ChunkRef{
-		Start:    0,
-		End:      model.Time(int64(ones)),
+		From:     0,
+		Through:  model.Time(int64(ones)),
 		Checksum: 0xffffffff,
 	}
 	for _, tc := range []struct {
@@ -124,7 +124,7 @@ func TestTokenizerPopulate(t *testing.T) {
 		Series: &series,
 	}
 
-	err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
+	_, err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
 	require.NoError(t, err)
 	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
 	toks := tokenizer.Tokens(testLine)
@@ -168,7 +168,7 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 			Series: &series,
 		}
 
-		err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
+		_, err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
 		require.NoError(b, err)
 	}
 }
