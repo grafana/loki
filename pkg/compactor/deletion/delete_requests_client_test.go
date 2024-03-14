@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -63,6 +64,14 @@ func TestGetCacheGenNumberForUser(t *testing.T) {
 		require.Nil(t, err)
 		require.Equal(t, "different", deleteRequests[0].RequestID)
 
+		// failure in compactor calls should not wipe the cache
+		compactorClient.SetErr(fmt.Errorf("fail compactor calls"))
+		time.Sleep(200 * time.Millisecond)
+
+		deleteRequests, err = client.GetAllDeleteRequestsForUser(context.Background(), "userID")
+		require.Nil(t, err)
+		require.Equal(t, "different", deleteRequests[0].RequestID)
+
 		client.Stop()
 	})
 }
@@ -71,6 +80,7 @@ type mockCompactorClient struct {
 	mx          sync.Mutex
 	delRequests []DeleteRequest
 	cacheGenNum string
+	err         error
 }
 
 func (m *mockCompactorClient) SetDeleteRequests(d []DeleteRequest) {
@@ -80,12 +90,19 @@ func (m *mockCompactorClient) SetDeleteRequests(d []DeleteRequest) {
 }
 
 func (m *mockCompactorClient) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]DeleteRequest, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
 	m.mx.Lock()
 	defer m.mx.Unlock()
 	return m.delRequests, nil
 }
 
 func (m *mockCompactorClient) GetCacheGenerationNumber(_ context.Context, _ string) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
+
 	return m.cacheGenNum, nil
 }
 
@@ -94,3 +111,7 @@ func (m *mockCompactorClient) Name() string {
 }
 
 func (m *mockCompactorClient) Stop() {}
+
+func (m *mockCompactorClient) SetErr(err error) {
+	m.err = err
+}

@@ -3,7 +3,7 @@ package bloomshipper
 import (
 	"context"
 	"fmt"
-	"path/filepath"
+	"path"
 	"sort"
 
 	"github.com/go-kit/log"
@@ -29,16 +29,15 @@ var (
 type Store interface {
 	ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error)
 	FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
-	FetchBlocks(ctx context.Context, refs []BlockRef) ([]*CloseableBlockQuerier, error)
+	FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error)
 	Fetcher(ts model.Time) (*Fetcher, error)
 	Client(ts model.Time) (Client, error)
 	Stop()
 }
 
 type bloomStoreConfig struct {
-	workingDir          string
-	numWorkers          int
-	ignoreMissingBlocks bool
+	workingDir string
+	numWorkers int
 }
 
 // Compiler check to ensure bloomStoreEntry implements the Store interface
@@ -58,7 +57,7 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 	var refs []MetaRef
 	tables := tablesForRange(b.cfg, params.Interval)
 	for _, table := range tables {
-		prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
+		prefix := path.Join(rootFolder, table, params.TenantID, metasFolder)
 		level.Debug(b.fetcher.logger).Log(
 			"msg", "listing metas",
 			"store", b.cfg.From,
@@ -124,7 +123,7 @@ func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParam
 }
 
 // FetchBlocks implements Store.
-func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef) ([]*CloseableBlockQuerier, error) {
+func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef, _ ...FetchOption) ([]*CloseableBlockQuerier, error) {
 	return b.fetcher.FetchBlocks(ctx, refs)
 }
 
@@ -185,9 +184,8 @@ func NewBloomStore(
 
 	// TODO(chaudum): Remove wrapper
 	cfg := bloomStoreConfig{
-		workingDir:          storageConfig.BloomShipperConfig.WorkingDirectory,
-		numWorkers:          storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
-		ignoreMissingBlocks: storageConfig.BloomShipperConfig.IgnoreMissingBlocks,
+		workingDir: storageConfig.BloomShipperConfig.WorkingDirectory,
+		numWorkers: storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
 	}
 
 	if err := util.EnsureDirectory(cfg.workingDir); err != nil {
@@ -317,12 +315,8 @@ func (b *BloomStore) FetchMetas(ctx context.Context, params MetaSearchParams) ([
 	return metas, nil
 }
 
-// FetchBlocks implements Store.
-func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*CloseableBlockQuerier, error) {
-
-	var refs [][]BlockRef
-	var fetchers []*Fetcher
-
+// partitionBlocksByFetcher returns a slice of BlockRefs for each fetcher
+func (b *BloomStore) partitionBlocksByFetcher(blocks []BlockRef) (refs [][]BlockRef, fetchers []*Fetcher) {
 	for i := len(b.stores) - 1; i >= 0; i-- {
 		s := b.stores[i]
 		from, through := s.start, model.Latest
@@ -343,16 +337,21 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*Clo
 		}
 	}
 
+	return refs, fetchers
+}
+
+// FetchBlocks implements Store.
+func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error) {
+	refs, fetchers := b.partitionBlocksByFetcher(blocks)
+
 	results := make([]*CloseableBlockQuerier, 0, len(blocks))
 	for i := range fetchers {
-		res, err := fetchers[i].FetchBlocks(ctx, refs[i])
+		res, err := fetchers[i].FetchBlocks(ctx, refs[i], opts...)
 		if err != nil {
 			return results, err
 		}
 		results = append(results, res...)
 	}
-
-	level.Debug(b.logger).Log("msg", "fetch blocks", "num_req", len(blocks), "num_resp", len(results))
 
 	// sort responses (results []*CloseableBlockQuerier) based on requests (blocks []BlockRef)
 	sortBlocks(results, blocks)

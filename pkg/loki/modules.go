@@ -415,6 +415,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	volumeHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.VolumeInstant", t.Overrides)
 	volumeRangeHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.VolumeRange", t.Overrides)
+	seriesHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.Series", t.Overrides)
 
 	if t.supportIndexDeleteRequest() && t.Cfg.CompactorConfig.RetentionEnabled {
 		toMerge = append(
@@ -465,6 +466,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		indexStatsHTTPMiddleware = middleware.Merge(httpMiddleware, indexStatsHTTPMiddleware)
 		volumeHTTPMiddleware = middleware.Merge(httpMiddleware, volumeHTTPMiddleware)
 		volumeRangeHTTPMiddleware = middleware.Merge(httpMiddleware, volumeRangeHTTPMiddleware)
+		seriesHTTPMiddleware = middleware.Merge(httpMiddleware, seriesHTTPMiddleware)
 
 		// First, register the internal querier handler with the external HTTP server
 		router := t.Server.HTTP
@@ -490,7 +492,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		router.Path("/loki/api/v1/labels").Methods("GET", "POST").Handler(labelsHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/label/{name}/values").Methods("GET", "POST").Handler(labelsHTTPMiddleware.Wrap(httpHandler))
 
-		router.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(querier.WrapQuerySpanAndTimeout("query.Series", t.Overrides).Wrap(httpHandler))
+		router.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(seriesHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(indexStatsHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/volume").Methods("GET", "POST").Handler(volumeHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/volume_range").Methods("GET", "POST").Handler(volumeRangeHTTPMiddleware.Wrap(httpHandler))
@@ -504,7 +506,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 		router.Path("/api/prom/label").Methods("GET", "POST").Handler(labelsHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/api/prom/label/{name}/values").Methods("GET", "POST").Handler(labelsHTTPMiddleware.Wrap(httpHandler))
-		router.Path("/api/prom/series").Methods("GET", "POST").Handler(querier.WrapQuerySpanAndTimeout("query.Series", t.Overrides).Wrap(httpHandler))
+		router.Path("/api/prom/series").Methods("GET", "POST").Handler(seriesHTTPMiddleware.Wrap(httpHandler))
 	}
 
 	// We always want to register tail routes externally, tail requests are different from normal queries, they
@@ -672,13 +674,19 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create metas cache: %w", err)
 		}
+	} else {
+		level.Info(logger).Log("msg", "no metas cache configured")
 	}
 
 	var blocksCache cache.TypedCache[string, bloomshipper.BlockDirectory]
 	if bsCfg.BlocksCache.IsEnabled() {
 		blocksCache = bloomshipper.NewBlocksCache(bsCfg.BlocksCache, reg, logger)
 		err = bloomshipper.LoadBlocksDirIntoCache(t.Cfg.StorageConfig.BloomShipperConfig.WorkingDirectory, blocksCache, logger)
-		level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
+		}
+	} else {
+		level.Info(logger).Log("msg", "no blocks cache configured")
 	}
 
 	t.BloomStore, err = bloomshipper.NewBloomStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, metasCache, blocksCache, reg, logger)

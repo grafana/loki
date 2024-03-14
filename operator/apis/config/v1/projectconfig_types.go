@@ -52,9 +52,9 @@ type OpenShiftFeatureGates struct {
 	// Dashboards enables the loki-mixin dashboards into the OpenShift Console
 	Dashboards bool `json:"dashboards,omitempty"`
 
-	// ManagedAuthEnv is true when OpenShift-functions are enabled and the operator has detected
+	// TokenCCOAuthEnv is true when OpenShift-functions are enabled and the operator has detected
 	// that it is running with some kind of "workload identity" (AWS STS, Azure WIF) enabled.
-	ManagedAuthEnv bool
+	TokenCCOAuthEnv bool
 }
 
 // FeatureGates is the supported set of all operator feature gates.

@@ -230,7 +230,7 @@ String type work exactly like Prometheus label matchers use in [log stream selec
 
 > The string type is the only one that can filter out a log line with a label `__error__`.
 
-Using Duration, Number and Bytes will convert the label value prior to comparision and support the following comparators:
+Using Duration, Number and Bytes will convert the label value prior to comparison and support the following comparators:
 
 - `==` or `=` for equality.
 - `!=` for inequality.
@@ -626,7 +626,7 @@ the result will be
 {host="grafana.net", path="/", status="200"} {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 ```
 
-Similary, this expression can be used to drop `__error__` labels as well. For example, for the query `{job="varlogs"}|json|drop __error__`, with below log line
+Similarly, this expression can be used to drop `__error__` labels as well. For example, for the query `{job="varlogs"}|json|drop __error__`, with below log line
 
 ```
 INFO GET / loki.net 200

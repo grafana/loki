@@ -12,7 +12,6 @@ import (
 
 type Config struct {
 	WorkingDirectory       string                    `yaml:"working_directory"`
-	IgnoreMissingBlocks    bool                      `yaml:"ignore_missing_blocks"`
 	BlocksDownloadingQueue DownloadingQueueConfig    `yaml:"blocks_downloading_queue"`
 	BlocksCache            cache.EmbeddedCacheConfig `yaml:"blocks_cache"`
 	MetasCache             cache.Config              `yaml:"metas_cache"`
@@ -30,7 +29,6 @@ func (cfg *DownloadingQueueConfig) RegisterFlagsWithPrefix(prefix string, f *fla
 
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&c.WorkingDirectory, prefix+"shipper.working-directory", "bloom-shipper", "Working directory to store downloaded Bloom Blocks.")
-	f.BoolVar(&c.IgnoreMissingBlocks, prefix+"shipper.ignore-missing-blocks", true, "In an eventually consistent system like the bloom components, we usually want to ignore blocks that are missing in storage.")
 	c.BlocksDownloadingQueue.RegisterFlagsWithPrefix(prefix+"shipper.blocks-downloading-queue.", f)
 	c.BlocksCache.RegisterFlagsWithPrefixAndDefaults(prefix+"blocks-cache.", "Cache for bloom blocks. ", f, 24*time.Hour)
 	c.MetasCache.RegisterFlagsWithPrefix(prefix+"metas-cache.", "Cache for bloom metas. ", f)

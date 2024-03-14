@@ -326,7 +326,7 @@ This guide assumes a provisioned EKS cluster.
    export AWS_REGION=<region of EKS cluster>
    ```
 
-4. Save the OIDC provider in an enviroment variable:
+4. Save the OIDC provider in an environment variable:
 
    ```
    oidc_provider=$(aws eks describe-cluster --name <EKS cluster> --query "cluster.identity.oidc.issuer" --output text | sed -e "s/^https:\/\///")

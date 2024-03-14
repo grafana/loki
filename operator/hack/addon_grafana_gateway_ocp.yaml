@@ -7,30 +7,6 @@ metadata:
   namespace: openshift-logging
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: logging-logs-reader
-rules:
-- apiGroups:
-  - loki.grafana.com
-  resourceNames:
-  - logs
-  resources:
-  - application
-  - infrastructure
-  - audit
-  verbs:
-  - get
-  - create
-- apiGroups:
-  - ""
-  resources:
-  - namespaces
-  verbs:
-  - get
-  - list
----
-apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: logging-grafana-auth-delegator
@@ -46,11 +22,37 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: logging-grafana-logs-reader
+  name: logging-grafana-logs-reader-application
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: logging-logs-reader
+  name: cluster-logging-application-view
+subjects:
+- kind: ServiceAccount
+  name: grafana
+  namespace: openshift-logging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: logging-grafana-logs-reader-infrastructure
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-logging-infrastructure-view
+subjects:
+- kind: ServiceAccount
+  name: grafana
+  namespace: openshift-logging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: logging-grafana-logs-reader-audit
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-logging-audit-view
 subjects:
 - kind: ServiceAccount
   name: grafana
@@ -103,7 +105,7 @@ data:
       - name: Loki (Infrastructure)
         type: loki
         access: proxy
-        url: https://${GATEWAY_ADDRESS}/api/logs/v1/application/
+        url: https://${GATEWAY_ADDRESS}/api/logs/v1/infrastructure/
         jsonData:
           tlsAuthWithCACert: true
           httpHeaderName1: Authorization
@@ -113,7 +115,7 @@ data:
       - name: Loki (Audit)
         type: loki
         access: proxy
-        url: https://${GATEWAY_ADDRESS}/api/logs/v1/application/
+        url: https://${GATEWAY_ADDRESS}/api/logs/v1/audit/
         jsonData:
           tlsAuthWithCACert: true
           httpHeaderName1: Authorization
@@ -194,7 +196,7 @@ spec:
           value: /var/lib/provisioning
         - name: GF_SECURITY_ADMIN_USER
           value: kube:admin
-        image: docker.io/grafana/grafana:8.5.6
+        image: docker.io/grafana/grafana:8.5.27
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3

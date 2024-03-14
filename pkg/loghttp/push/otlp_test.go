@@ -34,7 +34,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 			expectedPushRequest: logproto.PushRequest{},
 			expectedStats:       *newPushStats(),
-			otlpConfig:          DefaultOTLPConfig,
+			otlpConfig:          DefaultOTLPConfig(defaultGlobalOTLPConfig),
 		},
 		{
 			name: "resource with no logs",
@@ -45,11 +45,11 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 			expectedPushRequest: logproto.PushRequest{},
 			expectedStats:       *newPushStats(),
-			otlpConfig:          DefaultOTLPConfig,
+			otlpConfig:          DefaultOTLPConfig(defaultGlobalOTLPConfig),
 		},
 		{
 			name:       "resource with a log entry",
-			otlpConfig: DefaultOTLPConfig,
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("service.name", "service-1")
@@ -79,13 +79,16 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				StructuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 0,
 				},
+				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
+					time.Hour: nil,
+				},
 				StreamLabelsSize:         21,
 				MostRecentEntryTimestamp: now,
 			},
 		},
 		{
 			name:       "no resource attributes defined",
-			otlpConfig: DefaultOTLPConfig,
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty()
@@ -115,13 +118,16 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				StructuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 0,
 				},
+				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
+					time.Hour: nil,
+				},
 				StreamLabelsSize:         27,
 				MostRecentEntryTimestamp: now,
 			},
 		},
 		{
 			name:       "service.name not defined in resource attributes",
-			otlpConfig: DefaultOTLPConfig,
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 			tracker:    NewMockTracker(),
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
@@ -151,6 +157,9 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StructuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 0,
+				},
+				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
+					time.Hour: nil,
 				},
 				StreamLabelsSize:         47,
 				MostRecentEntryTimestamp: now,
@@ -183,7 +192,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		},
 		{
 			name:       "resource attributes and scope attributes stored as structured metadata",
-			otlpConfig: DefaultOTLPConfig,
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty()
@@ -252,13 +261,20 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				StructuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 37,
 				},
+				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
+					time.Hour: []push.LabelAdapter{
+						{Name: "service_image", Value: "loki"},
+						{Name: "op", Value: "buzz"},
+						{Name: "scope_name", Value: "fizz"},
+					},
+				},
 				StreamLabelsSize:         21,
 				MostRecentEntryTimestamp: now,
 			},
 		},
 		{
 			name:       "attributes with nested data",
-			otlpConfig: DefaultOTLPConfig,
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty()
@@ -335,6 +351,13 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StructuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 97,
+				},
+				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
+					time.Hour: []push.LabelAdapter{
+						{Name: "resource_nested_foo", Value: "bar"},
+						{Name: "scope_nested_foo", Value: "bar"},
+						{Name: "scope_name", Value: "fizz"},
+					},
 				},
 				StreamLabelsSize:         21,
 				MostRecentEntryTimestamp: now,
@@ -479,6 +502,14 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				StructuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 113,
 				},
+				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
+					time.Hour: []push.LabelAdapter{
+						{Name: "pod_ip", Value: "10.200.200.200"},
+						{Name: "resource_nested_foo", Value: "bar"},
+						{Name: "scope_nested_foo", Value: "bar"},
+						{Name: "scope_name", Value: "fizz"},
+					},
+				},
 				StreamLabelsSize:         42,
 				MostRecentEntryTimestamp: now,
 			},
@@ -573,7 +604,7 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expectedResp, otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig))
+			require.Equal(t, tc.expectedResp, otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig)))
 		})
 	}
 
