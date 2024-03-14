@@ -551,6 +551,11 @@ write_failures_logging:
   # logged or not. Default: false.
   # CLI flag: -distributor.write-failures-logging.add-insights-label
   [add_insights_label: <boolean> | default = false]
+
+otlp_config:
+  # List of default otlp resource attributes to be picked as index labels
+  # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
+  [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
 ```
 
 ### querier
@@ -731,6 +736,11 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.log-queries-longer-than
 [log_queries_longer_than: <duration> | default = 0s]
 
+# Comma-separated list of request header names to include in query logs. Applies
+# to both query stats and slow queries logs.
+# CLI flag: -frontend.log-query-request-headers
+[log_query_request_headers: <string> | default = ""]
+
 # Max body size for downstream prometheus.
 # CLI flag: -frontend.max-body-size
 [max_body_size: <int> | default = 10485760]
@@ -842,6 +852,11 @@ results_cache:
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = true]
 
+# A comma-separated list of LogQL vector and range aggregations that should be
+# sharded
+# CLI flag: -querier.shard-aggregations
+[shard_aggregations: <string> | default = ""]
+
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results
 [cache_index_stats_results: <boolean> | default = false]
@@ -874,6 +889,62 @@ volume_results_cache:
   # Use compression in cache. The default is an empty value '', which disables
   # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.volume-results-cache.compression
+  [compression: <string> | default = ""]
+
+# Cache instant metric query results.
+# CLI flag: -querier.cache-instant-metric-results
+[cache_instant_metric_results: <boolean> | default = false]
+
+# If a cache config is not specified and cache_instant_metric_results is true,
+# the config for the results cache is used.
+instant_metric_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.instant-metric-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.instant-metric-results-cache.compression
+  [compression: <string> | default = ""]
+
+# Whether to align the splits of instant metric query with splitByInterval and
+# query's exec time. Useful when instant_metric_cache is enabled
+# CLI flag: -querier.instant-metric-query-split-align
+[instant_metric_query_split_align: <boolean> | default = false]
+
+# Cache series query results.
+# CLI flag: -querier.cache-series-results
+[cache_series_results: <boolean> | default = false]
+
+# If series_results_cache is not configured and cache_series_results is true,
+# the config for the results cache is used.
+series_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.series-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.series-results-cache.compression
+  [compression: <string> | default = ""]
+
+# Cache label query results.
+# CLI flag: -querier.cache-label-results
+[cache_label_results: <boolean> | default = false]
+
+# If label_results_cache is not configured and cache_label_results is true, the
+# config for the results cache is used.
+label_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.label-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.label-results-cache.compression
   [compression: <string> | default = ""]
 ```
 
@@ -947,6 +1018,187 @@ storage:
     # Directory to scan for rules
     # CLI flag: -ruler.storage.local.directory
     [directory: <string> | default = ""]
+
+  [thanos_objstore: <boolean>]
+
+  objstore_config:
+    [backend: <string> | default = ""]
+
+    s3:
+      [endpoint: <string> | default = ""]
+
+      [region: <string> | default = ""]
+
+      [bucket_name: <string> | default = ""]
+
+      secret_access_key:
+
+      session_token:
+
+      [access_key_id: <string> | default = ""]
+
+      [insecure: <boolean>]
+
+      [signature_version: <string> | default = ""]
+
+      [storage_class: <string> | default = ""]
+
+      sse:
+        [type: <string> | default = ""]
+
+        [kms_key_id: <string> | default = ""]
+
+        [kms_encryption_context: <string> | default = ""]
+
+      http:
+        [idle_conn_timeout: <duration>]
+
+        [response_header_timeout: <duration>]
+
+        [insecure_skip_verify: <boolean>]
+
+        [tls_handshake_timeout: <duration>]
+
+        [expect_continue_timeout: <duration>]
+
+        [max_idle_connections: <int>]
+
+        [max_idle_connections_per_host: <int>]
+
+        [max_connections_per_host: <int>]
+
+    gcs:
+      [bucket_name: <string> | default = ""]
+
+      service_account:
+
+    azure:
+      [account_name: <string> | default = ""]
+
+      account_key:
+
+      connection_string:
+
+      [container_name: <string> | default = ""]
+
+      [endpoint_suffix: <string> | default = ""]
+
+      [max_retries: <int>]
+
+      http:
+        [idle_conn_timeout: <duration>]
+
+        [response_header_timeout: <duration>]
+
+        [insecure_skip_verify: <boolean>]
+
+        [tls_handshake_timeout: <duration>]
+
+        [expect_continue_timeout: <duration>]
+
+        [max_idle_connections: <int>]
+
+        [max_idle_connections_per_host: <int>]
+
+        [max_connections_per_host: <int>]
+
+    swift:
+      [auth_version: <int>]
+
+      [auth_url: <string> | default = ""]
+
+      [internal: <boolean>]
+
+      [username: <string> | default = ""]
+
+      [user_domain_name: <string> | default = ""]
+
+      [user_domain_id: <string> | default = ""]
+
+      [user_id: <string> | default = ""]
+
+      [password: <string> | default = ""]
+
+      [domain_id: <string> | default = ""]
+
+      [domain_name: <string> | default = ""]
+
+      [project_id: <string> | default = ""]
+
+      [project_name: <string> | default = ""]
+
+      [project_domain_id: <string> | default = ""]
+
+      [project_domain_name: <string> | default = ""]
+
+      [region_name: <string> | default = ""]
+
+      [container_name: <string> | default = ""]
+
+      [max_retries: <int>]
+
+      [connect_timeout: <duration>]
+
+      [request_timeout: <duration>]
+
+    filesystem:
+      [dir: <string> | default = ""]
+
+    [storage_prefix: <string> | default = ""]
+
+    configdb:
+      configs_api_url:
+        [url: <url>]
+
+      [client_timeout: <duration>]
+
+      [tls_cert_path: <string> | default = ""]
+
+      [tls_key_path: <string> | default = ""]
+
+      [tls_ca_path: <string> | default = ""]
+
+      [tls_server_name: <string> | default = ""]
+
+      [tls_insecure_skip_verify: <boolean>]
+
+      # Override the default cipher suite list (separated by commas). Allowed
+      # values:
+      # 
+      # Secure Ciphers:
+      # - TLS_RSA_WITH_AES_128_CBC_SHA
+      # - TLS_RSA_WITH_AES_256_CBC_SHA
+      # - TLS_RSA_WITH_AES_128_GCM_SHA256
+      # - TLS_RSA_WITH_AES_256_GCM_SHA384
+      # - TLS_AES_128_GCM_SHA256
+      # - TLS_AES_256_GCM_SHA384
+      # - TLS_CHACHA20_POLY1305_SHA256
+      # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+      # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
+      # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+      # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+      # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+      # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+      # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+      # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+      # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+      # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+      # 
+      # Insecure Ciphers:
+      # - TLS_RSA_WITH_RC4_128_SHA
+      # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
+      # - TLS_RSA_WITH_AES_128_CBC_SHA256
+      # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
+      # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
+      # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+      # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+      # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+      [tls_cipher_suites: <string> | default = ""]
+
+      [tls_min_version: <string> | default = ""]
+
+    local:
+      [directory: <string> | default = ""]
 
 # File path to store temporary rule files.
 # CLI flag: -ruler.rule-path
@@ -1229,6 +1481,10 @@ remote_write:
   # -limits.per-user-override-period.
   # CLI flag: -ruler.remote-write.config-refresh-period
   [config_refresh_period: <duration> | default = 10s]
+
+  # Add X-Scope-OrgID header in remote write requests.
+  # CLI flag: -ruler.remote-write.add-org-id-header
+  [add_org_id_header: <boolean> | default = true]
 
 # Configuration for rule evaluation.
 evaluation:
@@ -1814,6 +2070,13 @@ ring:
   # CLI flag: -bloom-gateway.replication-factor
   [replication_factor: <int> | default = 3]
 
+  # Number of tokens to use in the ring. The bigger the number of tokens, the
+  # more fingerprint ranges the compactor will own, but the smaller these ranges
+  # will be. Bigger number of tokens means that more but smaller requests will
+  # be handled by each gateway.
+  # CLI flag: -bloom-gateway.ring.tokens
+  [tokens: <int> | default = 16]
+
 # Flag to enable or disable the bloom gateway component globally.
 # CLI flag: -bloom-gateway.enabled
 [enabled: <boolean> | default = false]
@@ -1837,6 +2100,33 @@ client:
   # not.
   # CLI flag: -bloom-gateway-client.log-gateway-requests
   [log_gateway_requests: <boolean> | default = false]
+
+  results_cache:
+    # The cache block configures the cache backend.
+    # The CLI flags prefix for this block configuration is:
+    # bloom-gateway-client.cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -bloom-gateway-client.cache.compression
+    [compression: <string> | default = ""]
+
+  # Flag to control whether to cache bloom gateway client requests/responses.
+  # CLI flag: -bloom-gateway-client.cache_results
+  [cache_results: <boolean> | default = false]
+
+# Number of workers to use for filtering chunks concurrently.
+# CLI flag: -bloom-gateway.worker-concurrency
+[worker_concurrency: <int> | default = 4]
+
+# Maximum number of outstanding tasks per tenant.
+# CLI flag: -bloom-gateway.max-outstanding-per-tenant
+[max_outstanding_per_tenant: <int> | default = 1024]
+
+# How many tasks are multiplexed at once.
+# CLI flag: -bloom-gateway.num-multiplex-tasks
+[num_multiplex_tasks: <int> | default = 512]
 ```
 
 ### storage_config
@@ -2133,6 +2423,281 @@ congestion_control:
 # CLI flag: -store.max-parallel-get-chunk
 [max_parallel_get_chunk: <int> | default = 150]
 
+# Enable the thanos.io/objstore to be the backend for object storage
+# CLI flag: -thanos.enable
+[thanos_objstore: <boolean> | default = false]
+
+objstore_config:
+  # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+  # filesystem.
+  # CLI flag: -thanos.backend
+  [backend: <string> | default = "filesystem"]
+
+  s3:
+    # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
+    # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
+    # S3-compatible service in hostname:port format.
+    # CLI flag: -thanos.s3.endpoint
+    [endpoint: <string> | default = ""]
+
+    # S3 region. If unset, the client will issue a S3 GetBucketLocation API call
+    # to autodetect it.
+    # CLI flag: -thanos.s3.region
+    [region: <string> | default = ""]
+
+    # S3 bucket name
+    # CLI flag: -thanos.s3.bucket-name
+    [bucket_name: <string> | default = ""]
+
+    # S3 secret access key
+    # CLI flag: -thanos.s3.secret-access-key
+    [secret_access_key: <string> | default = ""]
+
+    # S3 session token
+    # CLI flag: -thanos.s3.session-token
+    [session_token: <string> | default = ""]
+
+    # S3 access key ID
+    # CLI flag: -thanos.s3.access-key-id
+    [access_key_id: <string> | default = ""]
+
+    # If enabled, use http:// for the S3 endpoint instead of https://. This
+    # could be useful in local dev/test environments while using an
+    # S3-compatible backend storage, like Minio.
+    # CLI flag: -thanos.s3.insecure
+    [insecure: <boolean> | default = false]
+
+    # The signature version to use for authenticating against S3. Supported
+    # values are: v4.
+    # CLI flag: -thanos.s3.signature-version
+    [signature_version: <string> | default = "v4"]
+
+    # The S3 storage class to use. Details can be found at
+    # https://aws.amazon.com/s3/storage-classes/.
+    # CLI flag: -thanos.s3.storage-class
+    [storage_class: <string> | default = "STANDARD"]
+
+    sse:
+      # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
+      # CLI flag: -thanos.s3.sse.type
+      [type: <string> | default = ""]
+
+      # KMS Key ID used to encrypt objects in S3
+      # CLI flag: -thanos.s3.sse.kms-key-id
+      [kms_key_id: <string> | default = ""]
+
+      # KMS Encryption Context used for object encryption. It expects JSON
+      # formatted string.
+      # CLI flag: -thanos.s3.sse.kms-encryption-context
+      [kms_encryption_context: <string> | default = ""]
+
+    http:
+      # The time an idle connection will remain idle before closing.
+      # CLI flag: -thanos.s3.http.idle-conn-timeout
+      [idle_conn_timeout: <duration> | default = 1m30s]
+
+      # The amount of time the client will wait for a servers response headers.
+      # CLI flag: -thanos.s3.http.response-header-timeout
+      [response_header_timeout: <duration> | default = 2m]
+
+      # If the client connects via HTTPS and this option is enabled, the client
+      # will accept any certificate and hostname.
+      # CLI flag: -thanos.s3.http.insecure-skip-verify
+      [insecure_skip_verify: <boolean> | default = false]
+
+      # Maximum time to wait for a TLS handshake. 0 means no limit.
+      # CLI flag: -thanos.s3.tls-handshake-timeout
+      [tls_handshake_timeout: <duration> | default = 10s]
+
+      # The time to wait for a server's first response headers after fully
+      # writing the request headers if the request has an Expect header. 0 to
+      # send the request body immediately.
+      # CLI flag: -thanos.s3.expect-continue-timeout
+      [expect_continue_timeout: <duration> | default = 1s]
+
+      # Maximum number of idle (keep-alive) connections across all hosts. 0
+      # means no limit.
+      # CLI flag: -thanos.s3.max-idle-connections
+      [max_idle_connections: <int> | default = 100]
+
+      # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
+      # a built-in default value is used.
+      # CLI flag: -thanos.s3.max-idle-connections-per-host
+      [max_idle_connections_per_host: <int> | default = 100]
+
+      # Maximum number of connections per host. 0 means no limit.
+      # CLI flag: -thanos.s3.max-connections-per-host
+      [max_connections_per_host: <int> | default = 0]
+
+  gcs:
+    # GCS bucket name
+    # CLI flag: -thanos.gcs.bucket-name
+    [bucket_name: <string> | default = ""]
+
+    # JSON representing either a Google Developers Console
+    # client_credentials.json file or a Google Developers service account key
+    # file. If empty, fallback to Google default logic.
+    # CLI flag: -thanos.gcs.service-account
+    [service_account: <string> | default = ""]
+
+  azure:
+    # Azure storage account name
+    # CLI flag: -thanos.azure.account-name
+    [account_name: <string> | default = ""]
+
+    # Azure storage account key
+    # CLI flag: -thanos.azure.account-key
+    [account_key: <string> | default = ""]
+
+    # If `connection-string` is set, the values of `account-name` and
+    # `endpoint-suffix` values will not be used. Use this method over
+    # `account-key` if you need to authenticate via a SAS token. Or if you use
+    # the Azurite emulator.
+    # CLI flag: -thanos.azure.connection-string
+    [connection_string: <string> | default = ""]
+
+    # Azure storage container name
+    # CLI flag: -thanos.azure.container-name
+    [container_name: <string> | default = "loki"]
+
+    # Azure storage endpoint suffix without schema. The account name will be
+    # prefixed to this value to create the FQDN
+    # CLI flag: -thanos.azure.endpoint-suffix
+    [endpoint_suffix: <string> | default = ""]
+
+    # Number of retries for recoverable errors
+    # CLI flag: -thanos.azure.max-retries
+    [max_retries: <int> | default = 20]
+
+    http:
+      # The time an idle connection will remain idle before closing.
+      # CLI flag: -thanos.azure.http.idle-conn-timeout
+      [idle_conn_timeout: <duration> | default = 1m30s]
+
+      # The amount of time the client will wait for a servers response headers.
+      # CLI flag: -thanos.azure.http.response-header-timeout
+      [response_header_timeout: <duration> | default = 2m]
+
+      # If the client connects via HTTPS and this option is enabled, the client
+      # will accept any certificate and hostname.
+      # CLI flag: -thanos.azure.http.insecure-skip-verify
+      [insecure_skip_verify: <boolean> | default = false]
+
+      # Maximum time to wait for a TLS handshake. 0 means no limit.
+      # CLI flag: -thanos.azure.tls-handshake-timeout
+      [tls_handshake_timeout: <duration> | default = 10s]
+
+      # The time to wait for a server's first response headers after fully
+      # writing the request headers if the request has an Expect header. 0 to
+      # send the request body immediately.
+      # CLI flag: -thanos.azure.expect-continue-timeout
+      [expect_continue_timeout: <duration> | default = 1s]
+
+      # Maximum number of idle (keep-alive) connections across all hosts. 0
+      # means no limit.
+      # CLI flag: -thanos.azure.max-idle-connections
+      [max_idle_connections: <int> | default = 100]
+
+      # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
+      # a built-in default value is used.
+      # CLI flag: -thanos.azure.max-idle-connections-per-host
+      [max_idle_connections_per_host: <int> | default = 100]
+
+      # Maximum number of connections per host. 0 means no limit.
+      # CLI flag: -thanos.azure.max-connections-per-host
+      [max_connections_per_host: <int> | default = 0]
+
+  swift:
+    # OpenStack Swift authentication API version. 0 to autodetect.
+    # CLI flag: -thanos.swift.auth-version
+    [auth_version: <int> | default = 0]
+
+    # OpenStack Swift authentication URL
+    # CLI flag: -thanos.swift.auth-url
+    [auth_url: <string> | default = ""]
+
+    # Set this to true to use the internal OpenStack Swift endpoint URL
+    # CLI flag: -thanos.swift.internal
+    [internal: <boolean> | default = false]
+
+    # OpenStack Swift username.
+    # CLI flag: -thanos.swift.username
+    [username: <string> | default = ""]
+
+    # OpenStack Swift user's domain name.
+    # CLI flag: -thanos.swift.user-domain-name
+    [user_domain_name: <string> | default = ""]
+
+    # OpenStack Swift user's domain ID.
+    # CLI flag: -thanos.swift.user-domain-id
+    [user_domain_id: <string> | default = ""]
+
+    # OpenStack Swift user ID.
+    # CLI flag: -thanos.swift.user-id
+    [user_id: <string> | default = ""]
+
+    # OpenStack Swift API key.
+    # CLI flag: -thanos.swift.password
+    [password: <string> | default = ""]
+
+    # OpenStack Swift user's domain ID.
+    # CLI flag: -thanos.swift.domain-id
+    [domain_id: <string> | default = ""]
+
+    # OpenStack Swift user's domain name.
+    # CLI flag: -thanos.swift.domain-name
+    [domain_name: <string> | default = ""]
+
+    # OpenStack Swift project ID (v2,v3 auth only).
+    # CLI flag: -thanos.swift.project-id
+    [project_id: <string> | default = ""]
+
+    # OpenStack Swift project name (v2,v3 auth only).
+    # CLI flag: -thanos.swift.project-name
+    [project_name: <string> | default = ""]
+
+    # ID of the OpenStack Swift project's domain (v3 auth only), only needed if
+    # it differs the from user domain.
+    # CLI flag: -thanos.swift.project-domain-id
+    [project_domain_id: <string> | default = ""]
+
+    # Name of the OpenStack Swift project's domain (v3 auth only), only needed
+    # if it differs from the user domain.
+    # CLI flag: -thanos.swift.project-domain-name
+    [project_domain_name: <string> | default = ""]
+
+    # OpenStack Swift Region to use (v2,v3 auth only).
+    # CLI flag: -thanos.swift.region-name
+    [region_name: <string> | default = ""]
+
+    # Name of the OpenStack Swift container to put chunks in.
+    # CLI flag: -thanos.swift.container-name
+    [container_name: <string> | default = ""]
+
+    # Max retries on requests error.
+    # CLI flag: -thanos.swift.max-retries
+    [max_retries: <int> | default = 3]
+
+    # Time after which a connection attempt is aborted.
+    # CLI flag: -thanos.swift.connect-timeout
+    [connect_timeout: <duration> | default = 10s]
+
+    # Time after which an idle request is aborted. The timeout watchdog is reset
+    # each time some data is received, so the timeout triggers after X time no
+    # data is received on a request.
+    # CLI flag: -thanos.swift.request-timeout
+    [request_timeout: <duration> | default = 5s]
+
+  filesystem:
+    # Local filesystem storage directory.
+    # CLI flag: -thanos.filesystem.dir
+    [dir: <string> | default = ""]
+
+  # Prefix for all objects stored in the backend storage. For simplicity, it may
+  # only contain digits and English alphabet letters.
+  # CLI flag: -thanos.storage-prefix
+  [storage_prefix: <string> | default = ""]
+
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size
 [max_chunk_batch_size: <int> | default = 50]
@@ -2258,6 +2823,28 @@ bloom_shipper:
     # the tasks above this limit will fail an error.
     # CLI flag: -bloom.shipper.blocks-downloading-queue.max_tasks_enqueued_per_tenant
     [max_tasks_enqueued_per_tenant: <int> | default = 10000]
+
+  blocks_cache:
+    # Cache for bloom blocks. Whether embedded cache is enabled.
+    # CLI flag: -bloom.blocks-cache.enabled
+    [enabled: <boolean> | default = false]
+
+    # Cache for bloom blocks. Maximum memory size of the cache in MB.
+    # CLI flag: -bloom.blocks-cache.max-size-mb
+    [max_size_mb: <int> | default = 100]
+
+    # Cache for bloom blocks. Maximum number of entries in the cache.
+    # CLI flag: -bloom.blocks-cache.max-size-items
+    [max_size_items: <int> | default = 0]
+
+    # Cache for bloom blocks. The time to live for items in the cache before
+    # they get purged.
+    # CLI flag: -bloom.blocks-cache.ttl
+    [ttl: <duration> | default = 24h]
+
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is: bloom.metas-cache
+  [metas_cache: <cache_config>]
 ```
 
 ### chunk_store_config
@@ -2548,17 +3135,37 @@ ring:
   # CLI flag: -bloom-compactor.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
+  # Number of tokens to use in the ring. The bigger the number of tokens, the
+  # more fingerprint ranges the compactor will own, but the smaller these ranges
+  # will be. Bigger number of tokens will result in more and smaller metas and
+  # blocks.
+  # CLI flag: -bloom-compactor.ring.tokens
+  [tokens: <int> | default = 10]
+
 # Flag to enable or disable the usage of the bloom-compactor component.
 # CLI flag: -bloom-compactor.enabled
 [enabled: <boolean> | default = false]
 
-# Directory where files can be downloaded for compaction.
-# CLI flag: -bloom-compactor.working-directory
-[working_directory: <string> | default = ""]
-
 # Interval at which to re-run the compaction operation.
 # CLI flag: -bloom-compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
+
+# How many index periods (days) to wait before building bloom filters for a
+# table. This can be used to lower cost by not re-writing data to object storage
+# too frequently since recent data changes more often.
+# CLI flag: -bloom-compactor.min-table-compaction-period
+[min_table_compaction_period: <int> | default = 1]
+
+# The maximum number of index periods (days) to build bloom filters for a table.
+# This can be used to lower cost by not trying to compact older data which
+# doesn't change. This can be optimized by aligning it with the maximum
+# `reject_old_samples_max_age` setting of any tenant.
+# CLI flag: -bloom-compactor.max-table-compaction-period
+[max_table_compaction_period: <int> | default = 7]
+
+# Number of workers to run in parallel for compaction.
+# CLI flag: -bloom-compactor.worker-parallelism
+[worker_parallelism: <int> | default = 1]
 
 # Minimum backoff time between retries.
 # CLI flag: -bloom-compactor.compaction-retries-min-backoff
@@ -2745,6 +3352,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness_per_query: <duration> | default = 10m]
 
+# Do not cache metadata request if the end time is within the
+# frontend.max-metadata-cache-freshness window. Set this to 0 to apply no such
+# limits. Defaults to 24h.
+# CLI flag: -frontend.max-metadata-cache-freshness
+[max_metadata_cache_freshness: <duration> | default = 1d]
+
 # Do not cache requests with an end time that falls within Now minus this
 # duration. 0 disables this feature (default).
 # CLI flag: -frontend.max-stats-cache-freshness
@@ -2759,6 +3372,22 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # when using downstream URL.
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <int> | default = 0]
+
+# How much of the available query capacity ("querier" components in distributed
+# mode, "read" components in SSD mode) can be used by a single tenant. Allowed
+# values are 0.0 to 1.0. For example, setting this to 0.5 would allow a tenant
+# to use half of the available queriers for processing the query workload. If
+# set to 0, query capacity is determined by frontend.max-queriers-per-tenant.
+# When both frontend.max-queriers-per-tenant and frontend.max-query-capacity are
+# configured, smaller value of the resulting querier replica count is
+# considered: min(frontend.max-queriers-per-tenant, ceil(querier_replicas *
+# frontend.max-query-capacity)). *All* queriers will handle requests for the
+# tenant if neither limits are applied. This option only works with queriers
+# connecting to the query-frontend / query-scheduler, not when using downstream
+# URL. Use this feature in a multi-tenant setup where you need to limit query
+# capacity for certain tenants.
+# CLI flag: -frontend.max-query-capacity
+[max_query_capacity: <float> | default = 0]
 
 # Number of days of index to be kept always downloaded for queries. Applies only
 # to per user index in boltdb-shipper index store. 0 to disable.
@@ -2776,6 +3405,49 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # caching is enabled.
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 1h]
+
+# Split metadata queries by a time interval and execute in parallel. The value 0
+# disables splitting metadata queries by time. This also determines how cache
+# keys are chosen when label/series result caching is enabled.
+# CLI flag: -querier.split-metadata-queries-by-interval
+[split_metadata_queries_by_interval: <duration> | default = 1d]
+
+# Experimental. Split interval to use for the portion of metadata request that
+# falls within `recent_metadata_query_window`. Rest of the request which is
+# outside the window still uses `split_metadata_queries_by_interval`. If set to
+# 0, the entire request defaults to using a split interval of
+# `split_metadata_queries_by_interval.`.
+# CLI flag: -experimental.querier.split-recent-metadata-queries-by-interval
+[split_recent_metadata_queries_by_interval: <duration> | default = 1h]
+
+# Experimental. Metadata query window inside which
+# `split_recent_metadata_queries_by_interval` gets applied, portion of the
+# metadata request that falls in this window is split using
+# `split_recent_metadata_queries_by_interval`. The value 0 disables using a
+# different split interval for recent metadata queries.
+# 
+# This is added to improve cacheability of recent metadata queries. Query split
+# interval also determines the interval used in cache key. The default split
+# interval of 24h is useful for caching long queries, each cache key holding 1
+# day's results. But metadata queries are often shorter than 24h, to cache them
+# effectively we need a smaller split interval. `recent_metadata_query_window`
+# along with `split_recent_metadata_queries_by_interval` help configure a
+# shorter split interval for recent metadata queries.
+# CLI flag: -experimental.querier.recent-metadata-query-window
+[recent_metadata_query_window: <duration> | default = 0s]
+
+# Split instant metric queries by a time interval and execute in parallel. The
+# value 0 disables splitting instant metric queries by time. This also
+# determines how cache keys are chosen when instant metric query result caching
+# is enabled.
+# CLI flag: -querier.split-instant-metric-queries-by-interval
+[split_instant_metric_queries_by_interval: <duration> | default = 1h]
+
+# Interval to use for time-based splitting when a request is within the
+# `query_ingesters_within` window; defaults to `split-queries-by-interval` by
+# setting to 0.
+# CLI flag: -querier.split-ingester-queries-by-interval
+[split_ingester_queries_by_interval: <duration> | default = 0s]
 
 # Limit queries that can be sharded. Queries within the time range of now and
 # now minus this sharding lookback are not sharded. The default value of 0s
@@ -2934,6 +3606,20 @@ ruler_remote_write_sigv4_config:
 # CLI flag: -limits.per-user-override-period
 [per_tenant_override_period: <duration> | default = 10s]
 
+# S3 server-side encryption type. Required to enable server-side encryption
+# overrides for a specific tenant. If not set, the default S3 client settings
+# are used.
+[s3_sse_type: <string> | default = ""]
+
+# S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not
+# set.
+[s3_sse_kms_key_id: <string> | default = ""]
+
+# S3 server-side encryption KMS encryption context. If unset and the key ID
+# override is set, the encryption context will not be provided to S3. Ignored if
+# the SSE type override is not set.
+[s3_sse_kms_encryption_context: <string> | default = ""]
+
 # Deprecated: Use deletion_mode per tenant configuration instead.
 [allow_deletes: <boolean>]
 
@@ -2961,7 +3647,7 @@ shard_streams:
 # The shard size defines how many bloom gateways should be used by a tenant for
 # querying.
 # CLI flag: -bloom-gateway.shard-size
-[bloom_gateway_shard_size: <int> | default = 1]
+[bloom_gateway_shard_size: <int> | default = 0]
 
 # Whether to use the bloom gateway component in the read path to filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
@@ -2970,19 +3656,7 @@ shard_streams:
 # The shard size defines how many bloom compactors should be used by a tenant
 # when computing blooms. If it's set to 0, shuffle sharding is disabled.
 # CLI flag: -bloom-compactor.shard-size
-[bloom_compactor_shard_size: <int> | default = 1]
-
-# The maximum age of a table before it is compacted. Do not compact tables older
-# than the the configured time. Default to 7 days. 0s means no limit.
-# CLI flag: -bloom-compactor.max-table-age
-[bloom_compactor_max_table_age: <duration> | default = 168h]
-
-# The minimum age of a table before it is compacted. Do not compact tables newer
-# than the the configured time. Default to 1 hour. 0s means no limit. This is
-# useful to avoid compacting tables that will be updated with out-of-order
-# writes.
-# CLI flag: -bloom-compactor.min-table-age
-[bloom_compactor_min_table_age: <duration> | default = 1h]
+[bloom_compactor_shard_size: <int> | default = 0]
 
 # Whether to compact chunks into bloom filters.
 # CLI flag: -bloom-compactor.enable-compaction
@@ -2994,7 +3668,7 @@ shard_streams:
 
 # Skip factor for the n-grams created when computing blooms from log lines.
 # CLI flag: -bloom-compactor.ngram-skip
-[bloom_ngram_skip: <int> | default = 0]
+[bloom_ngram_skip: <int> | default = 1]
 
 # Scalable Bloom Filter desired false-positive rate.
 # CLI flag: -bloom-compactor.false-positive-rate
@@ -3003,6 +3677,16 @@ shard_streams:
 # Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.
 # CLI flag: -bloom-gateway.blocks-downloading-parallelism
 [bloom_gateway_blocks_downloading_parallelism: <int> | default = 50]
+
+# Interval for computing the cache key in the Bloom Gateway.
+# CLI flag: -bloom-gateway.cache-key-interval
+[bloom_gateway_cache_key_interval: <duration> | default = 15m]
+
+# The maximum bloom block size. A value of 0 sets an unlimited size. Default is
+# 200MB. The actual block size might exceed this limit since blooms will be
+# added to blocks until the block exceeds the maximum block size.
+# CLI flag: -bloom-compactor.max-block-size
+[bloom_compactor_max_block_size: <int> | default = 200MB]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
@@ -3015,6 +3699,26 @@ shard_streams:
 # Maximum number of structured metadata entries per log line.
 # CLI flag: -limits.max-structured-metadata-entries-count
 [max_structured_metadata_entries_count: <int> | default = 128]
+
+# OTLP log ingestion configurations
+otlp_config:
+  # Configuration for resource attributes to store them as index labels or
+  # Structured Metadata or drop them altogether
+  resource_attributes:
+    # Configure whether to ignore the default list of resource attributes set in
+    # 'distributor.otlp.default_resource_attributes_as_index_labels' to be
+    # stored as index labels and only use the given resource attributes config
+    [ignore_defaults: <boolean> | default = false]
+
+    [attributes_config: <list of attributes_configs>]
+
+  # Configuration for scope attributes to store them as Structured Metadata or
+  # drop them altogether
+  [scope_attributes: <list of attributes_configs>]
+
+  # Configuration for log attributes to store them as Structured Metadata or
+  # drop them altogether
+  [log_attributes: <list of attributes_configs>]
 ```
 
 ### frontend_worker
@@ -3540,6 +4244,283 @@ storage:
       # 'limited').
       # CLI flag: -common.storage.congestion-control.hedge.strategy
       [strategy: <string> | default = ""]
+
+  # Enable the thanos.io/objstore to be the backend for object storage
+  # CLI flag: -common.thanos.enable
+  [thanos_objstore: <boolean> | default = false]
+
+  objstore_config:
+    # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+    # filesystem.
+    # CLI flag: -common.storage.thanos.backend
+    [backend: <string> | default = "filesystem"]
+
+    s3:
+      # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
+      # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of
+      # an S3-compatible service in hostname:port format.
+      # CLI flag: -common.storage.thanos.s3.endpoint
+      [endpoint: <string> | default = ""]
+
+      # S3 region. If unset, the client will issue a S3 GetBucketLocation API
+      # call to autodetect it.
+      # CLI flag: -common.storage.thanos.s3.region
+      [region: <string> | default = ""]
+
+      # S3 bucket name
+      # CLI flag: -common.storage.thanos.s3.bucket-name
+      [bucket_name: <string> | default = ""]
+
+      # S3 secret access key
+      # CLI flag: -common.storage.thanos.s3.secret-access-key
+      [secret_access_key: <string> | default = ""]
+
+      # S3 session token
+      # CLI flag: -common.storage.thanos.s3.session-token
+      [session_token: <string> | default = ""]
+
+      # S3 access key ID
+      # CLI flag: -common.storage.thanos.s3.access-key-id
+      [access_key_id: <string> | default = ""]
+
+      # If enabled, use http:// for the S3 endpoint instead of https://. This
+      # could be useful in local dev/test environments while using an
+      # S3-compatible backend storage, like Minio.
+      # CLI flag: -common.storage.thanos.s3.insecure
+      [insecure: <boolean> | default = false]
+
+      # The signature version to use for authenticating against S3. Supported
+      # values are: v4.
+      # CLI flag: -common.storage.thanos.s3.signature-version
+      [signature_version: <string> | default = "v4"]
+
+      # The S3 storage class to use. Details can be found at
+      # https://aws.amazon.com/s3/storage-classes/.
+      # CLI flag: -common.storage.thanos.s3.storage-class
+      [storage_class: <string> | default = "STANDARD"]
+
+      sse:
+        # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
+        # CLI flag: -common.storage.thanos.s3.sse.type
+        [type: <string> | default = ""]
+
+        # KMS Key ID used to encrypt objects in S3
+        # CLI flag: -common.storage.thanos.s3.sse.kms-key-id
+        [kms_key_id: <string> | default = ""]
+
+        # KMS Encryption Context used for object encryption. It expects JSON
+        # formatted string.
+        # CLI flag: -common.storage.thanos.s3.sse.kms-encryption-context
+        [kms_encryption_context: <string> | default = ""]
+
+      http:
+        # The time an idle connection will remain idle before closing.
+        # CLI flag: -common.storage.thanos.s3.http.idle-conn-timeout
+        [idle_conn_timeout: <duration> | default = 1m30s]
+
+        # The amount of time the client will wait for a servers response
+        # headers.
+        # CLI flag: -common.storage.thanos.s3.http.response-header-timeout
+        [response_header_timeout: <duration> | default = 2m]
+
+        # If the client connects via HTTPS and this option is enabled, the
+        # client will accept any certificate and hostname.
+        # CLI flag: -common.storage.thanos.s3.http.insecure-skip-verify
+        [insecure_skip_verify: <boolean> | default = false]
+
+        # Maximum time to wait for a TLS handshake. 0 means no limit.
+        # CLI flag: -common.storage.thanos.s3.tls-handshake-timeout
+        [tls_handshake_timeout: <duration> | default = 10s]
+
+        # The time to wait for a server's first response headers after fully
+        # writing the request headers if the request has an Expect header. 0 to
+        # send the request body immediately.
+        # CLI flag: -common.storage.thanos.s3.expect-continue-timeout
+        [expect_continue_timeout: <duration> | default = 1s]
+
+        # Maximum number of idle (keep-alive) connections across all hosts. 0
+        # means no limit.
+        # CLI flag: -common.storage.thanos.s3.max-idle-connections
+        [max_idle_connections: <int> | default = 100]
+
+        # Maximum number of idle (keep-alive) connections to keep per-host. If
+        # 0, a built-in default value is used.
+        # CLI flag: -common.storage.thanos.s3.max-idle-connections-per-host
+        [max_idle_connections_per_host: <int> | default = 100]
+
+        # Maximum number of connections per host. 0 means no limit.
+        # CLI flag: -common.storage.thanos.s3.max-connections-per-host
+        [max_connections_per_host: <int> | default = 0]
+
+    gcs:
+      # GCS bucket name
+      # CLI flag: -common.storage.thanos.gcs.bucket-name
+      [bucket_name: <string> | default = ""]
+
+      # JSON representing either a Google Developers Console
+      # client_credentials.json file or a Google Developers service account key
+      # file. If empty, fallback to Google default logic.
+      # CLI flag: -common.storage.thanos.gcs.service-account
+      [service_account: <string> | default = ""]
+
+    azure:
+      # Azure storage account name
+      # CLI flag: -common.storage.thanos.azure.account-name
+      [account_name: <string> | default = ""]
+
+      # Azure storage account key
+      # CLI flag: -common.storage.thanos.azure.account-key
+      [account_key: <string> | default = ""]
+
+      # If `connection-string` is set, the values of `account-name` and
+      # `endpoint-suffix` values will not be used. Use this method over
+      # `account-key` if you need to authenticate via a SAS token. Or if you use
+      # the Azurite emulator.
+      # CLI flag: -common.storage.thanos.azure.connection-string
+      [connection_string: <string> | default = ""]
+
+      # Azure storage container name
+      # CLI flag: -common.storage.thanos.azure.container-name
+      [container_name: <string> | default = "loki"]
+
+      # Azure storage endpoint suffix without schema. The account name will be
+      # prefixed to this value to create the FQDN
+      # CLI flag: -common.storage.thanos.azure.endpoint-suffix
+      [endpoint_suffix: <string> | default = ""]
+
+      # Number of retries for recoverable errors
+      # CLI flag: -common.storage.thanos.azure.max-retries
+      [max_retries: <int> | default = 20]
+
+      http:
+        # The time an idle connection will remain idle before closing.
+        # CLI flag: -common.storage.thanos.azure.http.idle-conn-timeout
+        [idle_conn_timeout: <duration> | default = 1m30s]
+
+        # The amount of time the client will wait for a servers response
+        # headers.
+        # CLI flag: -common.storage.thanos.azure.http.response-header-timeout
+        [response_header_timeout: <duration> | default = 2m]
+
+        # If the client connects via HTTPS and this option is enabled, the
+        # client will accept any certificate and hostname.
+        # CLI flag: -common.storage.thanos.azure.http.insecure-skip-verify
+        [insecure_skip_verify: <boolean> | default = false]
+
+        # Maximum time to wait for a TLS handshake. 0 means no limit.
+        # CLI flag: -common.storage.thanos.azure.tls-handshake-timeout
+        [tls_handshake_timeout: <duration> | default = 10s]
+
+        # The time to wait for a server's first response headers after fully
+        # writing the request headers if the request has an Expect header. 0 to
+        # send the request body immediately.
+        # CLI flag: -common.storage.thanos.azure.expect-continue-timeout
+        [expect_continue_timeout: <duration> | default = 1s]
+
+        # Maximum number of idle (keep-alive) connections across all hosts. 0
+        # means no limit.
+        # CLI flag: -common.storage.thanos.azure.max-idle-connections
+        [max_idle_connections: <int> | default = 100]
+
+        # Maximum number of idle (keep-alive) connections to keep per-host. If
+        # 0, a built-in default value is used.
+        # CLI flag: -common.storage.thanos.azure.max-idle-connections-per-host
+        [max_idle_connections_per_host: <int> | default = 100]
+
+        # Maximum number of connections per host. 0 means no limit.
+        # CLI flag: -common.storage.thanos.azure.max-connections-per-host
+        [max_connections_per_host: <int> | default = 0]
+
+    swift:
+      # OpenStack Swift authentication API version. 0 to autodetect.
+      # CLI flag: -common.storage.thanos.swift.auth-version
+      [auth_version: <int> | default = 0]
+
+      # OpenStack Swift authentication URL
+      # CLI flag: -common.storage.thanos.swift.auth-url
+      [auth_url: <string> | default = ""]
+
+      # Set this to true to use the internal OpenStack Swift endpoint URL
+      # CLI flag: -common.storage.thanos.swift.internal
+      [internal: <boolean> | default = false]
+
+      # OpenStack Swift username.
+      # CLI flag: -common.storage.thanos.swift.username
+      [username: <string> | default = ""]
+
+      # OpenStack Swift user's domain name.
+      # CLI flag: -common.storage.thanos.swift.user-domain-name
+      [user_domain_name: <string> | default = ""]
+
+      # OpenStack Swift user's domain ID.
+      # CLI flag: -common.storage.thanos.swift.user-domain-id
+      [user_domain_id: <string> | default = ""]
+
+      # OpenStack Swift user ID.
+      # CLI flag: -common.storage.thanos.swift.user-id
+      [user_id: <string> | default = ""]
+
+      # OpenStack Swift API key.
+      # CLI flag: -common.storage.thanos.swift.password
+      [password: <string> | default = ""]
+
+      # OpenStack Swift user's domain ID.
+      # CLI flag: -common.storage.thanos.swift.domain-id
+      [domain_id: <string> | default = ""]
+
+      # OpenStack Swift user's domain name.
+      # CLI flag: -common.storage.thanos.swift.domain-name
+      [domain_name: <string> | default = ""]
+
+      # OpenStack Swift project ID (v2,v3 auth only).
+      # CLI flag: -common.storage.thanos.swift.project-id
+      [project_id: <string> | default = ""]
+
+      # OpenStack Swift project name (v2,v3 auth only).
+      # CLI flag: -common.storage.thanos.swift.project-name
+      [project_name: <string> | default = ""]
+
+      # ID of the OpenStack Swift project's domain (v3 auth only), only needed
+      # if it differs the from user domain.
+      # CLI flag: -common.storage.thanos.swift.project-domain-id
+      [project_domain_id: <string> | default = ""]
+
+      # Name of the OpenStack Swift project's domain (v3 auth only), only needed
+      # if it differs from the user domain.
+      # CLI flag: -common.storage.thanos.swift.project-domain-name
+      [project_domain_name: <string> | default = ""]
+
+      # OpenStack Swift Region to use (v2,v3 auth only).
+      # CLI flag: -common.storage.thanos.swift.region-name
+      [region_name: <string> | default = ""]
+
+      # Name of the OpenStack Swift container to put chunks in.
+      # CLI flag: -common.storage.thanos.swift.container-name
+      [container_name: <string> | default = ""]
+
+      # Max retries on requests error.
+      # CLI flag: -common.storage.thanos.swift.max-retries
+      [max_retries: <int> | default = 3]
+
+      # Time after which a connection attempt is aborted.
+      # CLI flag: -common.storage.thanos.swift.connect-timeout
+      [connect_timeout: <duration> | default = 10s]
+
+      # Time after which an idle request is aborted. The timeout watchdog is
+      # reset each time some data is received, so the timeout triggers after X
+      # time no data is received on a request.
+      # CLI flag: -common.storage.thanos.swift.request-timeout
+      [request_timeout: <duration> | default = 5s]
+
+    filesystem:
+      # Local filesystem storage directory.
+      # CLI flag: -common.storage.thanos.filesystem.dir
+      [dir: <string> | default = ""]
+
+    # Prefix for all objects stored in the backend storage. For simplicity, it
+    # may only contain digits and English alphabet letters.
+    # CLI flag: -common.storage.thanos.storage-prefix
+    [storage_prefix: <string> | default = ""]
 
 [persist_tokens: <boolean>]
 
@@ -4209,8 +5190,13 @@ The TLS configuration.
 
 The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
+- `bloom-gateway-client.cache`
+- `bloom.metas-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
+- `frontend.instant-metric-results-cache`
+- `frontend.label-results-cache`
+- `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `store.chunks-cache`
 - `store.index-cache-read`
@@ -4438,7 +5424,7 @@ chunks:
   [tags: <map of string to string>]
 
 # How many shards will be created. Only used if schema is v10 or greater.
-[row_shards: <int>]
+[row_shards: <int> | default = 16]
 ```
 
 ### aws_storage_config
@@ -5153,6 +6139,24 @@ Named store from this example can be used by setting object_store to store-1 in 
 [cos: <map of string to cos_storage_config>]
 ```
 
+### attributes_config
+
+Define actions for matching OpenTelemetry (OTEL) attributes.
+
+```yaml
+# Configures action to take on matching attributes. It allows one of
+# [structured_metadata, drop] for all attribute types. It additionally allows
+# index_label action for resource attributes
+[action: <string> | default = ""]
+
+# List of attributes to configure how to store them or drop them altogether
+[attributes: <list of strings>]
+
+# Regex to choose attributes to configure how to store them or drop them
+# altogether
+[regex: <Regexp>]
+```
+
 ## Runtime Configuration file
 
 Loki has a concept of "runtime config" file, which is simply a file that is reloaded while Loki is running. It is used by some Loki components to allow operator to change some aspects of Loki configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
@@ -5206,7 +6210,8 @@ place in the `limits_config` section:
 configure a runtime configuration file:
 
     ```
-    runtime_config: overrides.yaml
+    runtime_config:
+      file: overrides.yaml
     ```
 
     In the `overrides.yaml` file, add `unordered_writes` for each tenant

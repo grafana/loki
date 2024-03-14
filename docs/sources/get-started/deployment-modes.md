@@ -1,7 +1,7 @@
 ---
 menuTitle: Deployment modes
 title: Loki deployment modes
-description: Describes the different ways to deploy Loki.
+description: Describes the three different Loki deployment models.
 weight: 400
 aliases:
     - ../fundamentals/architecture/deployment-modes
@@ -33,7 +33,7 @@ The three execution paths in simple scalable mode are each activated by appendin
 - `-target=write` - The write target is stateful and is controlled by a Kubernetes StatefulSet. It contains the following components:
 -- Distributor
 -- Ingester
-- `-target=read` - The read target is stateless and can be run as a Kubernetes Deployment that can be scaled automatically. It contains the following components:
+- `-target=read` - The read target is stateless and can be run as a Kubernetes Deployment that can be scaled automatically (Note that in the official helm chart it is currently deployed as a stateful set). It contains the following components:
 -- Query front end
 -- Queriers
 - `-target=backend` - The backend target is stateful, and is controlled by a Kubernetes StatefulSet. Contains the following components:
@@ -75,11 +75,14 @@ For release 2.9 the components are:
 - Ruler
 - Table Manager (deprecated)
 
-TIP: You can see the complete list of targets for your version of Loki by running Loki with the flag `-list-targets`, for example:
+{{% admonition type="tip" %}}
+You can see the complete list of targets for your version of Loki by running Loki with the flag `-list-targets`, for example:
 
 ```bash
 docker run docker.io/grafana/loki:2.9.2 -config.file=/etc/loki/local-config.yaml -list-targets
 ```
+{{% /admonition %}}
+
 ![Microservices mode diagram](../microservices-mode.png "Microservices mode")
 
 Running components as individual microservices provides more granularity, letting you scale each component as individual microservices, to better match your specific use case.

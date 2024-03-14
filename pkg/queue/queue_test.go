@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -11,6 +12,8 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/util/constants"
 )
@@ -47,7 +50,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 
 			queues := make([]*RequestQueue, 0, b.N)
 			for n := 0; n < b.N; n++ {
-				queue := NewRequestQueue(maxOutstandingPerTenant, 0, NewMetrics(nil, constants.Loki, "query_scheduler"))
+				queue := NewRequestQueue(maxOutstandingPerTenant, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "query_scheduler"))
 				queues = append(queues, queue)
 
 				for ix := 0; ix < queriers; ix++ {
@@ -57,7 +60,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 				for i := 0; i < maxOutstandingPerTenant; i++ {
 					for j := 0; j < numTenants; j++ {
 						userID := strconv.Itoa(j)
-						err := queue.Enqueue(userID, benchCase.fn(j), "request", 0, nil)
+						err := queue.Enqueue(userID, benchCase.fn(j), "request", nil)
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -105,7 +108,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 	requests := make([]string, 0, numTenants)
 
 	for n := 0; n < b.N; n++ {
-		q := NewRequestQueue(maxOutstandingPerTenant, 0, NewMetrics(nil, constants.Loki, "query_scheduler"))
+		q := NewRequestQueue(maxOutstandingPerTenant, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "query_scheduler"))
 
 		for ix := 0; ix < queriers; ix++ {
 			q.RegisterConsumerConnection(fmt.Sprintf("querier-%d", ix))
@@ -123,7 +126,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		for i := 0; i < maxOutstandingPerTenant; i++ {
 			for j := 0; j < numTenants; j++ {
-				err := queues[n].Enqueue(users[j], nil, requests[j], 0, nil)
+				err := queues[n].Enqueue(users[j], nil, requests[j], nil)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -135,7 +138,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBecauseQuerierHasBeenForgotten(t *testing.T) {
 	const forgetDelay = 3 * time.Second
 
-	queue := NewRequestQueue(1, forgetDelay, NewMetrics(nil, constants.Loki, "query_scheduler"))
+	queue := NewRequestQueue(1, forgetDelay, &mockQueueLimits{maxConsumers: 1}, NewMetrics(nil, constants.Loki, "query_scheduler"))
 
 	// Start the queue service.
 	ctx := context.Background()
@@ -162,7 +165,7 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 
 	// Enqueue a request from an user which would be assigned to querier-1.
 	// NOTE: "user-1" hash falls in the querier-1 shard.
-	require.NoError(t, queue.Enqueue("user-1", nil, "request", 1, nil))
+	require.NoError(t, queue.Enqueue("user-1", nil, "request", nil))
 
 	startTime := time.Now()
 	querier2wg.Wait()
@@ -306,17 +309,17 @@ func TestContextCond(t *testing.T) {
 func TestMaxQueueSize(t *testing.T) {
 	t.Run("queue size is tracked per tenant", func(t *testing.T) {
 		maxSize := 3
-		queue := NewRequestQueue(maxSize, 0, NewMetrics(nil, constants.Loki, "query_scheduler"))
+		queue := NewRequestQueue(maxSize, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "query_scheduler"))
 		queue.RegisterConsumerConnection("querier")
 
 		// enqueue maxSize items with different actors
 		// different actors have individual channels with maxSize length
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 1, 0, nil))
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 2, 0, nil))
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-c"}, 3, 0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 1, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 2, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-c"}, 3, nil))
 
 		// max queue length per tenant is tracked globally for all actors within a tenant
-		err := queue.Enqueue("tenant", []string{"user-a"}, 4, 0, nil)
+		err := queue.Enqueue("tenant", []string{"user-a"}, 4, nil)
 		assert.Equal(t, err, ErrTooManyRequests)
 
 		// dequeue and enqueue some items
@@ -325,12 +328,224 @@ func TestMaxQueueSize(t *testing.T) {
 		_, _, err = queue.Dequeue(context.Background(), StartIndexWithLocalQueue, "querier")
 		assert.NoError(t, err)
 
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 4, 0, nil))
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 5, 0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 4, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 5, nil))
 
-		err = queue.Enqueue("tenant", []string{"user-c"}, 6, 0, nil)
+		err = queue.Enqueue("tenant", []string{"user-c"}, 6, nil)
 		assert.Equal(t, err, ErrTooManyRequests)
 	})
+}
+
+type mockLimits struct {
+	maxConsumer int
+}
+
+func (l *mockLimits) MaxConsumers(_ string, _ int) int {
+	return l.maxConsumer
+}
+
+func Test_Queue_DequeueMany(t *testing.T) {
+	tenantsQueueMaxSize := 100
+	tests := map[string]struct {
+		tenantsCount          int
+		tasksPerTenant        int
+		consumersCount        int
+		dequeueBatchSize      int
+		maxConsumersPerTenant int
+		consumerDelay         time.Duration
+		senderDelay           time.Duration
+	}{
+		"tenants-1_tasks-10_consumers-3_batch-2": {
+			tenantsCount:     1,
+			tasksPerTenant:   10,
+			consumersCount:   3,
+			dequeueBatchSize: 2,
+		},
+		"tenants-10_tasks-10_consumers-2_batch-10": {
+			tenantsCount:     10,
+			tasksPerTenant:   10,
+			consumersCount:   2,
+			dequeueBatchSize: 10,
+		},
+		"tenants-100_tasks-100_consumers-10_batch-10": {
+			tenantsCount:     100,
+			tasksPerTenant:   100,
+			consumersCount:   10,
+			dequeueBatchSize: 10,
+		},
+		"tenants-100_tasks-100_consumers-10_batch-10_consumerDelay-10": {
+			tenantsCount:     100,
+			tasksPerTenant:   100,
+			consumersCount:   10,
+			dequeueBatchSize: 10,
+			consumerDelay:    10 * time.Millisecond,
+		},
+		"tenants-100_tasks-100_consumers-10_batch-10_consumerDelay-10_senderDelay-10": {
+			tenantsCount:     100,
+			tasksPerTenant:   100,
+			consumersCount:   10,
+			dequeueBatchSize: 10,
+			consumerDelay:    10 * time.Millisecond,
+			senderDelay:      10 * time.Millisecond,
+		},
+		"tenants-10_tasks-50_consumers-10_batch-3": {
+			tenantsCount:     10,
+			tasksPerTenant:   50,
+			consumersCount:   10,
+			dequeueBatchSize: 3,
+		},
+		"tenants-10_tasks-50_consumers-1_batch-5": {
+			tenantsCount:     10,
+			tasksPerTenant:   50,
+			consumersCount:   1,
+			dequeueBatchSize: 5,
+		},
+		"tenants-5_tasks-10_consumers-1_batch-2": {
+			tenantsCount:     5,
+			tasksPerTenant:   10,
+			consumersCount:   1,
+			dequeueBatchSize: 2,
+		},
+		"tenants-1_tasks-10_consumers-1_batch-2": {
+			tenantsCount:     1,
+			tasksPerTenant:   10,
+			consumersCount:   1,
+			dequeueBatchSize: 2,
+		},
+		"tenants-1_tasks-10_consumers-10_batch-2": {
+			tenantsCount:     1,
+			tasksPerTenant:   10,
+			consumersCount:   10,
+			dequeueBatchSize: 2,
+		},
+		"tenants-100_tasks-10_consumers-10_batch-6_maxConsumersPerTenant-6": {
+			tenantsCount:          100,
+			tasksPerTenant:        10,
+			consumersCount:        10,
+			dequeueBatchSize:      6,
+			maxConsumersPerTenant: 4,
+		},
+		"tenants-200_tasks-10_consumers-100_batch-999999_maxConsumersPerTenant-4": {
+			tenantsCount:          200,
+			tasksPerTenant:        10,
+			consumersCount:        100,
+			dequeueBatchSize:      999_999,
+			maxConsumersPerTenant: 4,
+		},
+		"tenants-10_tasks-100_consumers-20_batch-5_maxConsumersPerTenant-16": {
+			tenantsCount:          10,
+			tasksPerTenant:        100,
+			consumersCount:        20,
+			dequeueBatchSize:      5,
+			maxConsumersPerTenant: 16,
+		},
+		"tenants-1_tasks-100_consumers-16_batch-5_maxConsumersPerTenant-2": {
+			tenantsCount:          1,
+			tasksPerTenant:        100,
+			consumersCount:        16,
+			dequeueBatchSize:      5,
+			maxConsumersPerTenant: 2,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			totalTasksCount := tt.tenantsCount * tt.tasksPerTenant
+			limits := &mockLimits{maxConsumer: tt.maxConsumersPerTenant}
+			require.LessOrEqual(t, tt.tasksPerTenant, tenantsQueueMaxSize, "test must be able to enqueue all the tasks without error")
+			queue := NewRequestQueue(tenantsQueueMaxSize, 0, limits, NewMetrics(nil, constants.Loki, "query_scheduler"))
+			for i := 0; i < tt.consumersCount; i++ {
+				queue.RegisterConsumerConnection(createConsumerName(i))
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			wg, _ := errgroup.WithContext(ctx)
+
+			mtx := &sync.Mutex{}
+			receivedTasksPerTenant := make(map[string]int, tt.tenantsCount)
+			receivedTasksCount := atomic.NewInt32(0)
+			for i := 0; i < tt.consumersCount; i++ {
+				consumer := createConsumerName(i)
+				wg.Go(func() error {
+					idx := StartIndexWithLocalQueue
+					for {
+						tasks, newIdx, err := queue.DequeueMany(ctx, idx, consumer, tt.dequeueBatchSize)
+
+						if err != nil && !errors.Is(err, context.Canceled) {
+							return fmt.Errorf("error while dequeueing many task by %s: %w", consumer, err)
+						}
+						if err == nil && len(tasks) == 0 {
+							return fmt.Errorf("%s must receive at least one item if there is no error, but got 0", consumer)
+						}
+						if len(tasks) > 1 && !isAllItemsSame(tasks) {
+							return fmt.Errorf("expected all items to be from the same tenant, but they were not: %v", tasks)
+						}
+
+						time.Sleep(tt.consumerDelay)
+						collectTasks(mtx, err, tasks, receivedTasksPerTenant)
+						receivedTasksTotal := receivedTasksCount.Add(int32(len(tasks)))
+						// put the slice back to the pool
+						queue.ReleaseRequests(tasks)
+						if receivedTasksTotal == int32(totalTasksCount) {
+							//cancel the context to release the rest of the consumers once we received all the tasks from all the queues
+							cancel()
+							return nil
+						}
+						idx = newIdx
+					}
+				})
+			}
+
+			enqueueTasksAsync(tt.tenantsCount, tt.tasksPerTenant, tt.senderDelay, wg, queue)
+
+			require.NoError(t, wg.Wait())
+			require.Len(t, receivedTasksPerTenant, tt.tenantsCount)
+			for tenant, actualTasksCount := range receivedTasksPerTenant {
+				require.Equalf(t, tt.tasksPerTenant, actualTasksCount, "%s received less tasks than expected", tenant)
+			}
+		})
+	}
+}
+
+func enqueueTasksAsync(tenantsCount int, tasksPerTenant int, senderDelay time.Duration, wg *errgroup.Group, queue *RequestQueue) {
+	for i := 0; i < tenantsCount; i++ {
+		tenant := fmt.Sprintf("tenant-%d", i)
+		wg.Go(func() error {
+			for j := 0; j < tasksPerTenant; j++ {
+				err := queue.Enqueue(tenant, []string{}, tenant, nil)
+				if err != nil {
+					return fmt.Errorf("error while enqueueing task for the %s : %w", tenant, err)
+				}
+				time.Sleep(senderDelay)
+			}
+			return nil
+		})
+	}
+}
+
+func collectTasks(mtx *sync.Mutex, err error, tasks []Request, receivedTasksPerTenant map[string]int) {
+	if err != nil {
+		return
+	}
+	mtx.Lock()
+	defer mtx.Unlock()
+	//tenant name is sent as task
+	tenant := tasks[0]
+	receivedTasksPerTenant[fmt.Sprintf("%v", tenant)] += len(tasks)
+}
+
+func createConsumerName(i int) string {
+	return fmt.Sprintf("consumer-%d", i)
+}
+
+func isAllItemsSame[T comparable](items []T) bool {
+	firstItem := items[0]
+	for i := 1; i < len(items); i++ {
+		if items[i] != firstItem {
+			return false
+		}
+	}
+	return true
 }
 
 func assertChanReceived(t *testing.T, c chan struct{}, timeout time.Duration, msg string) {

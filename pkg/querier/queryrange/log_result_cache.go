@@ -10,13 +10,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"golang.org/x/sync/errgroup"
-
-	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -107,7 +106,8 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 
 	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.limits.QuerySplitDuration)
 	// skip caching by if interval is unset
-	if interval == 0 {
+	// skip caching when limit is 0 as it would get registerted as empty result in the cache even if that time range contains log lines.
+	if interval == 0 || lokiReq.Limit == 0 {
 		return l.next.Do(ctx, req)
 	}
 	// The first subquery might not be aligned.
@@ -182,7 +182,7 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey string, req *L
 func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedRequest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
 	l.metrics.CacheHit.Inc()
 	// we start with an empty response
-	result := emptyResponse(cachedRequest)
+	result := emptyResponse(lokiReq)
 	// if the request is the same and cover the whole time range,
 	// we can just return the cached result.
 	if cachedRequest.StartTs.UnixNano() <= lokiReq.StartTs.UnixNano() && cachedRequest.EndTs.UnixNano() >= lokiReq.EndTs.UnixNano() {
@@ -201,7 +201,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 
 		// if the response is empty and the query is larger than what is cached, update the cache
 		if isEmpty(result) && (lokiReq.EndTs.UnixNano()-lokiReq.StartTs.UnixNano() > cachedRequest.EndTs.UnixNano()-cachedRequest.StartTs.UnixNano()) {
-			cachedRequest = cachedRequest.WithStartEndTime(lokiReq.GetStartTs(), lokiReq.GetEndTs())
+			cachedRequest = cachedRequest.WithStartEnd(lokiReq.GetStartTs(), lokiReq.GetEndTs()).(*LokiRequest)
 			updateCache = true
 		}
 	} else {
@@ -216,7 +216,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		// if we're missing data at the start, start fetching from the start to the cached start.
 		if lokiReq.GetStartTs().Before(cachedRequest.GetStartTs()) {
 			g.Go(func() error {
-				startRequest = lokiReq.WithStartEndTime(lokiReq.GetStartTs(), cachedRequest.GetStartTs())
+				startRequest = lokiReq.WithStartEnd(lokiReq.GetStartTs(), cachedRequest.GetStartTs()).(*LokiRequest)
 				resp, err := l.next.Do(ctx, startRequest)
 				if err != nil {
 					return err
@@ -233,7 +233,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		// if we're missing data at the end, start fetching from the cached end to the end.
 		if lokiReq.GetEndTs().After(cachedRequest.GetEndTs()) {
 			g.Go(func() error {
-				endRequest = lokiReq.WithStartEndTime(cachedRequest.GetEndTs(), lokiReq.GetEndTs())
+				endRequest = lokiReq.WithStartEnd(cachedRequest.GetEndTs(), lokiReq.GetEndTs()).(*LokiRequest)
 				resp, err := l.next.Do(ctx, endRequest)
 				if err != nil {
 					return err
@@ -255,7 +255,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		// If it's not empty only merge the response.
 		if startResp != nil {
 			if isEmpty(startResp) {
-				cachedRequest = cachedRequest.WithStartEndTime(startRequest.GetStartTs(), cachedRequest.GetEndTs())
+				cachedRequest = cachedRequest.WithStartEnd(startRequest.GetStartTs(), cachedRequest.GetEndTs()).(*LokiRequest)
 				updateCache = true
 			} else {
 				if startResp.Status != loghttp.QueryStatusSuccess {
@@ -269,7 +269,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		// If it's not empty only merge the response.
 		if endResp != nil {
 			if isEmpty(endResp) {
-				cachedRequest = cachedRequest.WithStartEndTime(cachedRequest.GetStartTs(), endRequest.GetEndTs())
+				cachedRequest = cachedRequest.WithStartEnd(cachedRequest.GetStartTs(), endRequest.GetEndTs()).(*LokiRequest)
 				updateCache = true
 			} else {
 				if endResp.Status != loghttp.QueryStatusSuccess {

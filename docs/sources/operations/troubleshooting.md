@@ -1,7 +1,7 @@
 ---
 title: Troubleshooting Loki
 menuTitle:  Troubleshooting
-description: Troubleshooting Grafana Loki
+description: Describes how to troubleshoot Grafana Loki.
 weight: 
 aliases:
     - /docs/loki/latest/getting-started/troubleshooting/

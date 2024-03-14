@@ -57,8 +57,6 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	f.StringVar(&c.objectStorage.S3.Endpoint, "object-storage.s3.endpoint", "", "The S3 endpoint location.")
 	f.StringVar(&c.objectStorage.S3.Buckets, "object-storage.s3.buckets", "", "A comma-separated list of S3 buckets.")
 	f.StringVar(&c.objectStorage.S3.Region, "object-storage.s3.region", "", "An S3 region.")
-	f.StringVar(&c.objectStorage.S3.AccessKeyID, "object-storage.s3.access-key-id", "", "The access key id for S3.")
-	f.StringVar(&c.objectStorage.S3.AccessKeySecret, "object-storage.s3.access-key-secret", "", "The access key secret for S3.")
 	// Input and output file/dir options
 	f.StringVar(&c.crFilepath, "custom-resource.path", "", "Path to a custom resource YAML file.")
 	f.StringVar(&c.writeToDir, "output.write-dir", "", "write each file to the specified directory.")
@@ -86,14 +84,6 @@ func (c *config) validateFlags(log logr.Logger) {
 	}
 	if cfg.objectStorage.S3.Buckets == "" {
 		log.Info("-object-storage.s3.buckets flag is required")
-		os.Exit(1)
-	}
-	if cfg.objectStorage.S3.AccessKeyID == "" {
-		log.Info("-object-storage.s3.access.key.id flag is required")
-		os.Exit(1)
-	}
-	if cfg.objectStorage.S3.AccessKeySecret == "" {
-		log.Info("-object-storage.s3.access.key.secret flag is required")
 		os.Exit(1)
 	}
 	// Validate feature flags

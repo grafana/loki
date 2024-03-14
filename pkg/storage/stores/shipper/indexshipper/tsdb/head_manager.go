@@ -144,26 +144,66 @@ func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics
 	return m
 }
 
-func (m *HeadManager) loop() {
-	defer m.wg.Done()
-
-	buildPrev := func() error {
-		if m.prev == nil {
-			return nil
-		}
-
-		if err := m.buildTSDBFromHead(m.prevHeads); err != nil {
-			return err
-		}
-
-		// Now that the tsdbManager has the updated TSDBs, we can remove our references
-		m.mtx.Lock()
-		defer m.mtx.Unlock()
-		m.prevHeads = nil
-		m.prev = nil
-
+func (m *HeadManager) buildPrev() error {
+	if m.prev == nil {
 		return nil
 	}
+
+	if err := m.buildTSDBFromHead(m.prevHeads); err != nil {
+		return err
+	}
+
+	// Now that the tsdbManager has the updated TSDBs, we can remove our references
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	// We nil-out the previous wal to signal that we've built the TSDBs from it successfully.
+	// We don't nil-out the heads because we need to keep the them around
+	// in order to serve queries for the recently rotated out period until
+	// the index-gws|queriers have time to download the new TSDBs
+	m.prev = nil
+
+	return nil
+}
+
+// tick handles one iteration for `loop()`. It builds new heads,
+// cleans up previous heads, and performs rotations.
+func (m *HeadManager) tick(now time.Time) {
+	// retry tsdb build failures from previous run
+	if err := m.buildPrev(); err != nil {
+		level.Error(m.log).Log(
+			"msg", "failed building tsdb head",
+			"period", m.period.PeriodFor(m.prev.initialized),
+			"err", err,
+		)
+		// rotating head without building prev would result in loss of index for that period (until restart)
+		return
+	}
+
+	if activePeriod := m.period.PeriodFor(m.activeHeads.start); m.period.PeriodFor(now) > activePeriod {
+		if err := m.Rotate(now); err != nil {
+			m.metrics.headRotations.WithLabelValues(statusFailure).Inc()
+			level.Error(m.log).Log(
+				"msg", "failed rotating tsdb head",
+				"period", activePeriod,
+				"err", err,
+			)
+			return
+		}
+		m.metrics.headRotations.WithLabelValues(statusSuccess).Inc()
+	}
+
+	// build tsdb from rotated-out period
+	if err := m.buildPrev(); err != nil {
+		level.Error(m.log).Log(
+			"msg", "failed building tsdb head",
+			"period", m.period.PeriodFor(m.prev.initialized),
+			"err", err,
+		)
+	}
+}
+
+func (m *HeadManager) loop() {
+	defer m.wg.Done()
 
 	ticker := time.NewTicker(defaultRotationCheckPeriod)
 	defer ticker.Stop()
@@ -171,39 +211,8 @@ func (m *HeadManager) loop() {
 	for {
 		select {
 		case <-ticker.C:
-			// retry tsdb build failures from previous run
-			if err := buildPrev(); err != nil {
-				level.Error(m.log).Log(
-					"msg", "failed building tsdb head",
-					"period", m.period.PeriodFor(m.prev.initialized),
-					"err", err,
-				)
-				// rotating head without building prev would result in loss of index for that period (until restart)
-				continue
-			}
-
 			now := time.Now()
-			if activePeriod := m.period.PeriodFor(m.activeHeads.start); m.period.PeriodFor(now) > activePeriod {
-				if err := m.Rotate(now); err != nil {
-					m.metrics.headRotations.WithLabelValues(statusFailure).Inc()
-					level.Error(m.log).Log(
-						"msg", "failed rotating tsdb head",
-						"period", activePeriod,
-						"err", err,
-					)
-					continue
-				}
-				m.metrics.headRotations.WithLabelValues(statusSuccess).Inc()
-			}
-
-			// build tsdb from rotated-out period
-			if err := buildPrev(); err != nil {
-				level.Error(m.log).Log(
-					"msg", "failed building tsdb head",
-					"period", m.period.PeriodFor(m.prev.initialized),
-					"err", err,
-				)
-			}
+			m.tick(now)
 		case <-m.cancel:
 			return
 		}
@@ -738,22 +747,22 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 
 }
 
-func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
 	}
-	return idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+	return idx.GetChunkRefs(ctx, userID, from, through, nil, fpFilter, matchers...)
 
 }
 
 // Series follows the same semantics regarding the passed slice and shard as GetChunkRefs.
-func (t *tenantHeads) Series(ctx context.Context, userID string, from, through model.Time, _ []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (t *tenantHeads) Series(ctx context.Context, userID string, from, through model.Time, _ []Series, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
 	}
-	return idx.Series(ctx, userID, from, through, nil, shard, matchers...)
+	return idx.Series(ctx, userID, from, through, nil, fpFilter, matchers...)
 
 }
 
@@ -775,20 +784,20 @@ func (t *tenantHeads) LabelValues(ctx context.Context, userID string, from, thro
 
 }
 
-func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil
 	}
-	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
+	return idx.Stats(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, matchers...)
 }
 
-func (t *tenantHeads) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
+func (t *tenantHeads) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil
 	}
-	return idx.Volume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
+	return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 }
 
 // helper only used in building TSDBs

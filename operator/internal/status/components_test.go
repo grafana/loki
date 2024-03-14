@@ -5,16 +5,17 @@ import (
 	"fmt"
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
+	"github.com/grafana/loki/operator/internal/manifests"
 )
 
-func createPodList(baseName string, phases ...corev1.PodPhase) *corev1.PodList {
+func createPodList(baseName string, ready bool, phases ...corev1.PodPhase) *corev1.PodList {
 	items := []corev1.Pod{}
 	for i, p := range phases {
 		items = append(items, corev1.Pod{
@@ -23,6 +24,11 @@ func createPodList(baseName string, phases ...corev1.PodPhase) *corev1.PodList {
 			},
 			Status: corev1.PodStatus{
 				Phase: p,
+				ContainerStatuses: []corev1.ContainerStatus{
+					{
+						Ready: ready,
+					},
+				},
 			},
 		})
 	}
@@ -77,37 +83,37 @@ func TestGenerateComponentStatus(t *testing.T) {
 				manifests.LabelGatewayComponent:       {},
 			},
 			wantComponentStatus: &lokiv1.LokiStackComponentStatus{
-				Compactor:     map[corev1.PodPhase][]string{},
-				Distributor:   map[corev1.PodPhase][]string{},
-				IndexGateway:  map[corev1.PodPhase][]string{},
-				Ingester:      map[corev1.PodPhase][]string{},
-				Querier:       map[corev1.PodPhase][]string{},
-				QueryFrontend: map[corev1.PodPhase][]string{},
-				Gateway:       map[corev1.PodPhase][]string{},
-				Ruler:         map[corev1.PodPhase][]string{},
+				Compactor:     lokiv1.PodStatusMap{},
+				Distributor:   lokiv1.PodStatusMap{},
+				IndexGateway:  lokiv1.PodStatusMap{},
+				Ingester:      lokiv1.PodStatusMap{},
+				Querier:       lokiv1.PodStatusMap{},
+				QueryFrontend: lokiv1.PodStatusMap{},
+				Gateway:       lokiv1.PodStatusMap{},
+				Ruler:         lokiv1.PodStatusMap{},
 			},
 		},
 		{
 			desc: "all one pod running",
 			componentPods: map[string]*corev1.PodList{
-				manifests.LabelCompactorComponent:     createPodList(manifests.LabelCompactorComponent, corev1.PodRunning),
-				manifests.LabelDistributorComponent:   createPodList(manifests.LabelDistributorComponent, corev1.PodRunning),
-				manifests.LabelIngesterComponent:      createPodList(manifests.LabelIngesterComponent, corev1.PodRunning),
-				manifests.LabelQuerierComponent:       createPodList(manifests.LabelQuerierComponent, corev1.PodRunning),
-				manifests.LabelQueryFrontendComponent: createPodList(manifests.LabelQueryFrontendComponent, corev1.PodRunning),
-				manifests.LabelIndexGatewayComponent:  createPodList(manifests.LabelIndexGatewayComponent, corev1.PodRunning),
-				manifests.LabelRulerComponent:         createPodList(manifests.LabelRulerComponent, corev1.PodRunning),
-				manifests.LabelGatewayComponent:       createPodList(manifests.LabelGatewayComponent, corev1.PodRunning),
+				manifests.LabelCompactorComponent:     createPodList(manifests.LabelCompactorComponent, false, corev1.PodRunning),
+				manifests.LabelDistributorComponent:   createPodList(manifests.LabelDistributorComponent, false, corev1.PodRunning),
+				manifests.LabelIngesterComponent:      createPodList(manifests.LabelIngesterComponent, false, corev1.PodRunning),
+				manifests.LabelQuerierComponent:       createPodList(manifests.LabelQuerierComponent, false, corev1.PodRunning),
+				manifests.LabelQueryFrontendComponent: createPodList(manifests.LabelQueryFrontendComponent, false, corev1.PodRunning),
+				manifests.LabelIndexGatewayComponent:  createPodList(manifests.LabelIndexGatewayComponent, false, corev1.PodRunning),
+				manifests.LabelRulerComponent:         createPodList(manifests.LabelRulerComponent, false, corev1.PodRunning),
+				manifests.LabelGatewayComponent:       createPodList(manifests.LabelGatewayComponent, false, corev1.PodRunning),
 			},
 			wantComponentStatus: &lokiv1.LokiStackComponentStatus{
-				Compactor:     map[corev1.PodPhase][]string{corev1.PodRunning: {"compactor-pod-0"}},
-				Distributor:   map[corev1.PodPhase][]string{corev1.PodRunning: {"distributor-pod-0"}},
-				IndexGateway:  map[corev1.PodPhase][]string{corev1.PodRunning: {"index-gateway-pod-0"}},
-				Ingester:      map[corev1.PodPhase][]string{corev1.PodRunning: {"ingester-pod-0"}},
-				Querier:       map[corev1.PodPhase][]string{corev1.PodRunning: {"querier-pod-0"}},
-				QueryFrontend: map[corev1.PodPhase][]string{corev1.PodRunning: {"query-frontend-pod-0"}},
-				Gateway:       map[corev1.PodPhase][]string{corev1.PodRunning: {"lokistack-gateway-pod-0"}},
-				Ruler:         map[corev1.PodPhase][]string{corev1.PodRunning: {"ruler-pod-0"}},
+				Compactor:     lokiv1.PodStatusMap{lokiv1.PodRunning: {"compactor-pod-0"}},
+				Distributor:   lokiv1.PodStatusMap{lokiv1.PodRunning: {"distributor-pod-0"}},
+				IndexGateway:  lokiv1.PodStatusMap{lokiv1.PodRunning: {"index-gateway-pod-0"}},
+				Ingester:      lokiv1.PodStatusMap{lokiv1.PodRunning: {"ingester-pod-0"}},
+				Querier:       lokiv1.PodStatusMap{lokiv1.PodRunning: {"querier-pod-0"}},
+				QueryFrontend: lokiv1.PodStatusMap{lokiv1.PodRunning: {"query-frontend-pod-0"}},
+				Gateway:       lokiv1.PodStatusMap{lokiv1.PodRunning: {"lokistack-gateway-pod-0"}},
+				Ruler:         lokiv1.PodStatusMap{lokiv1.PodRunning: {"ruler-pod-0"}},
 			},
 		},
 	}

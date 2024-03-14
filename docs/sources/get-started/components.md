@@ -1,7 +1,7 @@
 ---
 title: Loki components
 menutitle: Components
-description: An overview about the various components that Loki consists of.
+description: Describes the various components that make up Grafana Loki.
 weight: 500
 aliases:
     - ../fundamentals/architecture/components

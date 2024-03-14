@@ -1,6 +1,6 @@
 ---
 title: Storage
-description: Storage
+description: Describes Loki storage.
 weight: 475
 ---
 # Storage
@@ -82,7 +82,9 @@ You may use any substitutable services, such as those that implement the S3 API 
 
 Cassandra is a popular database and one of Loki's possible chunk stores and is production safe.
 
-> **Note:** This storage type for chunks is deprecated and may be removed in future major versions of Loki.
+{{< collapse title="Title of hidden content" >}}
+This storage type for chunks is deprecated and may be removed in future major versions of Loki.
+{{< /collapse >}}
 
 ## Index storage
 
@@ -90,19 +92,25 @@ Cassandra is a popular database and one of Loki's possible chunk stores and is p
 
 Cassandra can also be utilized for the index store and aside from the [boltdb-shipper]({{< relref "../operations/storage/boltdb-shipper" >}}), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
 
-> **Note:** This storage type for indexes is deprecated and may be removed in future major versions of Loki.
+{{< collapse title="Title of hidden content" >}}
+This storage type for indexes is deprecated and may be removed in future major versions of Loki.
+{{< /collapse >}}
 
 ### BigTable (deprecated)
 
 Bigtable is a cloud database offered by Google. It is a good candidate for a managed index store if you're already using it (due to its heavy fixed costs) or wish to run in GCP.
 
-> **Note:** This storage type for indexes is deprecated and may be removed in future major versions of Loki.
+{{< collapse title="Title of hidden content" >}}
+This storage type for indexes is deprecated and may be removed in future major versions of Loki.
+{{< /collapse >}}
 
 ### DynamoDB (deprecated)
 
 DynamoDB is a cloud database offered by AWS. It is a good candidate for a managed index store, especially if you're already running in AWS.
 
-> **Note:** This storage type for indexes is deprecated and may be removed in future major versions of Loki.
+{{< collapse title="Title of hidden content" >}}
+This storage type for indexes is deprecated and may be removed in future major versions of Loki.
+{{< /collapse >}}
 
 #### Rate limiting
 
@@ -112,7 +120,9 @@ DynamoDB is susceptible to rate limiting, particularly due to overconsuming what
 
 BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper]({{< relref "../operations/storage/boltdb-shipper" >}}) aims to support clustered deployments using `boltdb` as an index.
 
-> **Note:** This storage type for indexes is deprecated and may be removed in future major versions of Loki.
+{{< collapse title="Title of hidden content" >}}
+This storage type for indexes is deprecated and may be removed in future major versions of Loki.
+{{< /collapse >}}
 
 ## Schema Config
 
@@ -316,7 +326,7 @@ This guide assumes a provisioned EKS cluster.
    export AWS_REGION=<region of EKS cluster>
    ```
 
-4. Save the OIDC provider in an enviroment variable:
+4. Save the OIDC provider in an environment variable:
 
    ```
    oidc_provider=$(aws eks describe-cluster --name <EKS cluster> --query "cluster.identity.oidc.issuer" --output text | sed -e "s/^https:\/\///")
@@ -428,7 +438,9 @@ storage_config:
 
 ### On premise deployment (Cassandra+Cassandra)
 
-> **Note:** Cassandra as storage backend for chunks and indexes is deprecated.
+{{< collapse title="Title of hidden content" >}}
+Cassandra as storage backend for chunks and indexes is deprecated.
+{{< /collapse >}}
 
 **Keeping this for posterity, but this is likely not a common config. Cassandra should work and could be faster in some situations but is likely much more expensive.**
 

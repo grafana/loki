@@ -19,17 +19,16 @@
     compactor_pvc_class: 'fast',
     index_period_hours: if self.using_shipper_store then 24 else super.index_period_hours,
     loki+: if self.using_shipper_store then {
-      storage_config+: if $._config.using_boltdb_shipper then {
-        boltdb_shipper+: {
+      storage_config+: {
+        boltdb_shipper+: if $._config.using_boltdb_shipper then {
           active_index_directory: '/data/index',
           cache_location: '/data/boltdb-cache',
-        },
-      } else {} + if $._config.using_tsdb_shipper then {
-        tsdb_shipper+: {
+        } else {},
+        tsdb_shipper+: if $._config.using_tsdb_shipper then {
           active_index_directory: '/data/tsdb-index',
           cache_location: '/data/tsdb-cache',
-        },
-      } else {},
+        } else {},
+      },
       compactor+: {
         working_directory: '/data/compactor',
       },
@@ -63,6 +62,7 @@
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     k.util.resourcesRequests('4', '2Gi') +
+    k.util.resourcesLimits(null, '4Gi') +
     container.withEnvMixin($._config.commonEnvs)
   else {},
 

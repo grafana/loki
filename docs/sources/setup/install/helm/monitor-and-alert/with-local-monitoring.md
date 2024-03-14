@@ -1,7 +1,7 @@
 ---
 title: Configure monitoring and alerting
 menuTitle: Configure monitoring and alerting
-description: setup monitoring and alerts for the Helm chart
+description: Configuring monitoring and alerts using the Helm chart.
 aliases:
   - ../../../../installation/helm/monitor-and-alert/with-local-monitoring/
 weight: 100
@@ -17,7 +17,7 @@ By default this Helm Chart configures meta-monitoring of metrics (service monito
 
 The `ServiceMonitor` resource works with either the Prometheus Operator or the Grafana Agent Operator, and defines how Loki's metrics should be scraped. Scraping this Loki cluster using the scrape config defined in the `SerivceMonitor` resource is required for the included dashboards to work. A `MetricsInstance` can be configured to write the metrics to a remote Prometheus instance such as Grafana Cloud Metrics.
 
-_Self monitoring_ is enabled by default. This will deploy a `GrafanaAgent`, `LogsInstance`, and `PodLogs` resource which will instruct the Grafana Agent Operator (installed seperately) on how to scrape this Loki cluster's logs and send them back to itself. Scraping this Loki cluster using the scrape config defined in the `PodLogs` resource is required for the included dashboards to work.
+_Self monitoring_ is enabled by default. This will deploy a `GrafanaAgent`, `LogsInstance`, and `PodLogs` resource which will instruct the Grafana Agent Operator (installed separately) on how to scrape this Loki cluster's logs and send them back to itself. Scraping this Loki cluster using the scrape config defined in the `PodLogs` resource is required for the included dashboards to work.
 
 Rules and alerts are automatically deployed.
 

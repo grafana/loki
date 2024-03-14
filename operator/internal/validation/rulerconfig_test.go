@@ -4,15 +4,15 @@ import (
 	"context"
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/validation"
-
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/validation"
 )
 
 var rctt = []struct {
@@ -26,8 +26,8 @@ var rctt = []struct {
 			AlertManagerSpec: &lokiv1.AlertManagerSpec{
 				Client: &lokiv1.AlertManagerClientConfig{
 					BasicAuth: &lokiv1.AlertManagerClientBasicAuth{
-						Username: pointer.String("user"),
-						Password: pointer.String("pass"),
+						Username: ptr.To("user"),
+						Password: ptr.To("pass"),
 					},
 				},
 			},
@@ -36,8 +36,8 @@ var rctt = []struct {
 					AlertManagerOverrides: &lokiv1.AlertManagerSpec{
 						Client: &lokiv1.AlertManagerClientConfig{
 							BasicAuth: &lokiv1.AlertManagerClientBasicAuth{
-								Username: pointer.String("user1"),
-								Password: pointer.String("pass1"),
+								Username: ptr.To("user1"),
+								Password: ptr.To("pass1"),
 							},
 						},
 					},
@@ -51,7 +51,7 @@ var rctt = []struct {
 			AlertManagerSpec: &lokiv1.AlertManagerSpec{
 				Client: &lokiv1.AlertManagerClientConfig{
 					HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-						Credentials: pointer.String("creds"),
+						Credentials: ptr.To("creds"),
 					},
 				},
 			},
@@ -60,7 +60,7 @@ var rctt = []struct {
 					AlertManagerOverrides: &lokiv1.AlertManagerSpec{
 						Client: &lokiv1.AlertManagerClientConfig{
 							HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-								Credentials: pointer.String("creds1"),
+								Credentials: ptr.To("creds1"),
 							},
 						},
 					},
@@ -74,7 +74,7 @@ var rctt = []struct {
 			AlertManagerSpec: &lokiv1.AlertManagerSpec{
 				Client: &lokiv1.AlertManagerClientConfig{
 					HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-						CredentialsFile: pointer.String("creds-file"),
+						CredentialsFile: ptr.To("creds-file"),
 					},
 				},
 			},
@@ -83,7 +83,7 @@ var rctt = []struct {
 					AlertManagerOverrides: &lokiv1.AlertManagerSpec{
 						Client: &lokiv1.AlertManagerClientConfig{
 							HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-								CredentialsFile: pointer.String("creds-file1"),
+								CredentialsFile: ptr.To("creds-file1"),
 							},
 						},
 					},
@@ -97,7 +97,7 @@ var rctt = []struct {
 			AlertManagerSpec: &lokiv1.AlertManagerSpec{
 				Client: &lokiv1.AlertManagerClientConfig{
 					HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-						Credentials: pointer.String("creds"),
+						Credentials: ptr.To("creds"),
 					},
 				},
 			},
@@ -106,7 +106,7 @@ var rctt = []struct {
 					AlertManagerOverrides: &lokiv1.AlertManagerSpec{
 						Client: &lokiv1.AlertManagerClientConfig{
 							HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-								CredentialsFile: pointer.String("creds-file1"),
+								CredentialsFile: ptr.To("creds-file1"),
 							},
 						},
 					},
@@ -120,8 +120,8 @@ var rctt = []struct {
 			AlertManagerSpec: &lokiv1.AlertManagerSpec{
 				Client: &lokiv1.AlertManagerClientConfig{
 					HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-						Credentials:     pointer.String("creds"),
-						CredentialsFile: pointer.String("creds-file"),
+						Credentials:     ptr.To("creds"),
+						CredentialsFile: ptr.To("creds-file"),
 					},
 				},
 			},
@@ -130,8 +130,8 @@ var rctt = []struct {
 					AlertManagerOverrides: &lokiv1.AlertManagerSpec{
 						Client: &lokiv1.AlertManagerClientConfig{
 							HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-								Credentials:     pointer.String("creds1"),
-								CredentialsFile: pointer.String("creds-file1"),
+								Credentials:     ptr.To("creds1"),
+								CredentialsFile: ptr.To("creds-file1"),
 							},
 						},
 					},

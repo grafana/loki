@@ -203,7 +203,7 @@ func markForDelete(
 				// Mark the chunk for deletion only if it is completely deleted, or this is the last table that the chunk is index in.
 				// For a partially deleted chunk, if we delete the source chunk before all the tables which index it are processed then
 				// the retention would fail because it would fail to find it in the storage.
-				if filterFunc == nil || c.Through <= tableInterval.End {
+				if filterFunc == nil || c.From >= tableInterval.Start {
 					if err := marker.Put(c.ChunkID); err != nil {
 						return false, err
 					}

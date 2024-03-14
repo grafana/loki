@@ -3,7 +3,6 @@ package queryrangebase
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"testing"
 	"time"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
@@ -398,362 +398,13 @@ func TestShouldCache(t *testing.T) {
 	}
 }
 
-func TestPartition(t *testing.T) {
-	for _, tc := range []struct {
-		name                   string
-		input                  Request
-		prevCachedResponse     []Extent
-		expectedRequests       []Request
-		expectedCachedResponse []Response
-	}{
-		{
-			name: "Test a complete hit.",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(0),
-				End:   time.UnixMilli(100),
-			},
-			prevCachedResponse: []Extent{
-				mkExtent(0, 100),
-			},
-			expectedCachedResponse: []Response{
-				mkAPIResponse(0, 100, 10),
-			},
-		},
-
-		{
-			name: "Test with a complete miss.",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(0),
-				End:   time.UnixMilli(100),
-			},
-			prevCachedResponse: []Extent{
-				mkExtent(110, 210),
-			},
-			expectedRequests: []Request{
-				&PrometheusRequest{
-					Start: time.UnixMilli(0),
-					End:   time.UnixMilli(100),
-				},
-			},
-		},
-		{
-			name: "Test a partial hit.",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(0),
-				End:   time.UnixMilli(100),
-			},
-			prevCachedResponse: []Extent{
-				mkExtent(50, 100),
-			},
-			expectedRequests: []Request{
-				&PrometheusRequest{
-					Start: time.UnixMilli(0),
-					End:   time.UnixMilli(50),
-				},
-			},
-			expectedCachedResponse: []Response{
-				mkAPIResponse(50, 100, 10),
-			},
-		},
-		{
-			name: "Test multiple partial hits.",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(100),
-				End:   time.UnixMilli(200),
-			},
-			prevCachedResponse: []Extent{
-				mkExtent(50, 120),
-				mkExtent(160, 250),
-			},
-			expectedRequests: []Request{
-				&PrometheusRequest{
-					Start: time.UnixMilli(120),
-					End:   time.UnixMilli(160),
-				},
-			},
-			expectedCachedResponse: []Response{
-				mkAPIResponse(100, 120, 10),
-				mkAPIResponse(160, 200, 10),
-			},
-		},
-		{
-			name: "Partial hits with tiny gap.",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(100),
-				End:   time.UnixMilli(160),
-			},
-			prevCachedResponse: []Extent{
-				mkExtent(50, 120),
-				mkExtent(122, 130),
-			},
-			expectedRequests: []Request{
-				&PrometheusRequest{
-					Start: time.UnixMilli(120),
-					End:   time.UnixMilli(160),
-				},
-			},
-			expectedCachedResponse: []Response{
-				mkAPIResponse(100, 120, 10),
-			},
-		},
-		{
-			name: "Extent is outside the range and the request has a single step (same start and end).",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(100),
-				End:   time.UnixMilli(100),
-			},
-			prevCachedResponse: []Extent{
-				mkExtent(50, 90),
-			},
-			expectedRequests: []Request{
-				&PrometheusRequest{
-					Start: time.UnixMilli(100),
-					End:   time.UnixMilli(100),
-				},
-			},
-		},
-		{
-			name: "Test when hit has a large step and only a single sample extent.",
-			// If there is a only a single sample in the split interval, start and end will be the same.
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(100),
-				End:   time.UnixMilli(100),
-			},
-			prevCachedResponse: []Extent{
-				mkExtent(100, 100),
-			},
-			expectedCachedResponse: []Response{
-				mkAPIResponse(100, 105, 10),
-			},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			s := resultsCache{
-				extractor:      PrometheusResponseExtractor{},
-				minCacheExtent: 10,
-			}
-			reqs, resps, err := s.partition(tc.input, tc.prevCachedResponse)
-			require.Nil(t, err)
-			require.Equal(t, tc.expectedRequests, reqs)
-			require.Equal(t, tc.expectedCachedResponse, resps)
-		})
-	}
-}
-
-func TestHandleHit(t *testing.T) {
-	for _, tc := range []struct {
-		name                       string
-		input                      Request
-		cachedEntry                []Extent
-		expectedUpdatedCachedEntry []Extent
-	}{
-		{
-			name: "Should drop tiny extent that overlaps with non-tiny request only",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(100),
-				End:   time.UnixMilli(120),
-				Step:  5,
-			},
-			cachedEntry: []Extent{
-				mkExtentWithStep(0, 50, 5),
-				mkExtentWithStep(60, 65, 5),
-				mkExtentWithStep(100, 105, 5),
-				mkExtentWithStep(110, 150, 5),
-				mkExtentWithStep(160, 165, 5),
-			},
-			expectedUpdatedCachedEntry: []Extent{
-				mkExtentWithStep(0, 50, 5),
-				mkExtentWithStep(60, 65, 5),
-				mkExtentWithStep(100, 150, 5),
-				mkExtentWithStep(160, 165, 5),
-			},
-		},
-		{
-			name: "Should replace tiny extents that are cover by bigger request",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(100),
-				End:   time.UnixMilli(200),
-				Step:  5,
-			},
-			cachedEntry: []Extent{
-				mkExtentWithStep(0, 50, 5),
-				mkExtentWithStep(60, 65, 5),
-				mkExtentWithStep(100, 105, 5),
-				mkExtentWithStep(110, 115, 5),
-				mkExtentWithStep(120, 125, 5),
-				mkExtentWithStep(220, 225, 5),
-				mkExtentWithStep(240, 250, 5),
-			},
-			expectedUpdatedCachedEntry: []Extent{
-				mkExtentWithStep(0, 50, 5),
-				mkExtentWithStep(60, 65, 5),
-				mkExtentWithStep(100, 200, 5),
-				mkExtentWithStep(220, 225, 5),
-				mkExtentWithStep(240, 250, 5),
-			},
-		},
-		{
-			name: "Should not drop tiny extent that completely overlaps with tiny request",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(100),
-				End:   time.UnixMilli(105),
-				Step:  5,
-			},
-			cachedEntry: []Extent{
-				mkExtentWithStep(0, 50, 5),
-				mkExtentWithStep(60, 65, 5),
-				mkExtentWithStep(100, 105, 5),
-				mkExtentWithStep(160, 165, 5),
-			},
-			expectedUpdatedCachedEntry: nil, // no cache update need, request fulfilled using cache
-		},
-		{
-			name: "Should not drop tiny extent that partially center-overlaps with tiny request",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(106),
-				End:   time.UnixMilli(108),
-				Step:  2,
-			},
-			cachedEntry: []Extent{
-				mkExtentWithStep(60, 64, 2),
-				mkExtentWithStep(104, 110, 2),
-				mkExtentWithStep(160, 166, 2),
-			},
-			expectedUpdatedCachedEntry: nil, // no cache update need, request fulfilled using cache
-		},
-		{
-			name: "Should not drop tiny extent that partially left-overlaps with tiny request",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(100),
-				End:   time.UnixMilli(106),
-				Step:  2,
-			},
-			cachedEntry: []Extent{
-				mkExtentWithStep(60, 64, 2),
-				mkExtentWithStep(104, 110, 2),
-				mkExtentWithStep(160, 166, 2),
-			},
-			expectedUpdatedCachedEntry: []Extent{
-				mkExtentWithStep(60, 64, 2),
-				mkExtentWithStep(100, 110, 2),
-				mkExtentWithStep(160, 166, 2),
-			},
-		},
-		{
-			name: "Should not drop tiny extent that partially right-overlaps with tiny request",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(100),
-				End:   time.UnixMilli(106),
-				Step:  2,
-			},
-			cachedEntry: []Extent{
-				mkExtentWithStep(60, 64, 2),
-				mkExtentWithStep(98, 102, 2),
-				mkExtentWithStep(160, 166, 2),
-			},
-			expectedUpdatedCachedEntry: []Extent{
-				mkExtentWithStep(60, 64, 2),
-				mkExtentWithStep(98, 106, 2),
-				mkExtentWithStep(160, 166, 2),
-			},
-		},
-		{
-			name: "Should merge fragmented extents if request fills the hole",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(40),
-				End:   time.UnixMilli(80),
-				Step:  20,
-			},
-			cachedEntry: []Extent{
-				mkExtentWithStep(0, 20, 20),
-				mkExtentWithStep(80, 100, 20),
-			},
-			expectedUpdatedCachedEntry: []Extent{
-				mkExtentWithStep(0, 100, 20),
-			},
-		},
-		{
-			name: "Should left-extend extent if request starts earlier than extent in cache",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(40),
-				End:   time.UnixMilli(80),
-				Step:  20,
-			},
-			cachedEntry: []Extent{
-				mkExtentWithStep(60, 160, 20),
-			},
-			expectedUpdatedCachedEntry: []Extent{
-				mkExtentWithStep(40, 160, 20),
-			},
-		},
-		{
-			name: "Should right-extend extent if request ends later than extent in cache",
-			input: &PrometheusRequest{
-				Start: time.UnixMilli(100),
-				End:   time.UnixMilli(180),
-				Step:  20,
-			},
-			cachedEntry: []Extent{
-				mkExtentWithStep(60, 160, 20),
-			},
-			expectedUpdatedCachedEntry: []Extent{
-				mkExtentWithStep(60, 180, 20),
-			},
-		},
-		{
-			name: "Should not throw error if complete-overlapped smaller Extent is erroneous",
-			input: &PrometheusRequest{
-				// This request is carefully crated such that cachedEntry is not used to fulfill
-				// the request.
-				Start: time.UnixMilli(160),
-				End:   time.UnixMilli(180),
-				Step:  20,
-			},
-			cachedEntry: []Extent{
-				{
-					Start: 60,
-					End:   80,
-
-					// if the optimization of "sorting by End when Start of 2 Extents are equal" is not there, this nil
-					// response would cause error during Extents merge phase. With the optimization
-					// this bad Extent should be dropped. The good Extent below can be used instead.
-					Response: nil,
-				},
-				mkExtentWithStep(60, 160, 20),
-			},
-			expectedUpdatedCachedEntry: []Extent{
-				mkExtentWithStep(60, 180, 20),
-			},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			sut := resultsCache{
-				extractor:         PrometheusResponseExtractor{},
-				minCacheExtent:    10,
-				limits:            mockLimits{},
-				merger:            PrometheusCodec,
-				parallelismForReq: func(_ context.Context, tenantIDs []string, r Request) int { return 1 },
-				next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
-					return mkAPIResponse(req.GetStart().UnixMilli(), req.GetEnd().UnixMilli(), req.GetStep()), nil
-				}),
-			}
-
-			ctx := user.InjectOrgID(context.Background(), "1")
-			response, updatedExtents, err := sut.handleHit(ctx, tc.input, tc.cachedEntry, 0)
-			require.NoError(t, err)
-
-			expectedResponse := mkAPIResponse(tc.input.GetStart().UnixMilli(), tc.input.GetEnd().UnixMilli(), tc.input.GetStep())
-			require.Equal(t, expectedResponse, response, "response does not match the expectation")
-			require.Equal(t, tc.expectedUpdatedCachedEntry, updatedExtents, "updated cache entry does not match the expectation")
-		})
-	}
-}
-
 func TestResultsCache(t *testing.T) {
 	calls := 0
 	cfg := ResultsCacheConfig{
-		CacheConfig: cache.Config{
-			Cache: cache.NewMockCache(),
+		Config: resultscache.Config{
+			CacheConfig: cache.Config{
+				Cache: cache.NewMockCache(),
+			},
 		},
 	}
 	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
@@ -761,7 +412,7 @@ func TestResultsCache(t *testing.T) {
 	rcm, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		c,
-		constSplitter(day),
+		resultscache.ConstSplitter(day),
 		mockLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
@@ -770,6 +421,7 @@ func TestResultsCache(t *testing.T) {
 		func(_ context.Context, tenantIDs []string, r Request) int {
 			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 		},
+		false,
 		false,
 		nil,
 	)
@@ -807,7 +459,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	rcm, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		c,
-		constSplitter(day),
+		resultscache.ConstSplitter(day),
 		mockLimits{maxCacheFreshness: 10 * time.Minute},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
@@ -816,6 +468,7 @@ func TestResultsCacheRecent(t *testing.T) {
 		func(_ context.Context, tenantIDs []string, r Request) int {
 			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 		},
+		false,
 		false,
 		nil,
 	)
@@ -844,122 +497,6 @@ func TestResultsCacheRecent(t *testing.T) {
 	require.Equal(t, parsedResponse, resp)
 }
 
-func TestResultsCacheMaxFreshness(t *testing.T) {
-	modelNow := model.Now()
-	for i, tc := range []struct {
-		fakeLimits       Limits
-		Handler          HandlerFunc
-		expectedResponse *PrometheusResponse
-	}{
-		{
-			fakeLimits:       mockLimits{maxCacheFreshness: 5 * time.Second},
-			Handler:          nil,
-			expectedResponse: mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10),
-		},
-		{
-			// should not lookup cache because per-tenant override will be applied
-			fakeLimits: mockLimits{maxCacheFreshness: 10 * time.Minute},
-			Handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
-				return parsedResponse, nil
-			}),
-			expectedResponse: parsedResponse,
-		},
-	} {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			var cfg ResultsCacheConfig
-			flagext.DefaultValues(&cfg)
-			cfg.CacheConfig.Cache = cache.NewMockCache()
-			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
-			require.NoError(t, err)
-			fakeLimits := tc.fakeLimits
-			rcm, err := NewResultsCacheMiddleware(
-				log.NewNopLogger(),
-				c,
-				constSplitter(day),
-				fakeLimits,
-				PrometheusCodec,
-				PrometheusResponseExtractor{},
-				nil,
-				nil,
-				func(_ context.Context, tenantIDs []string, r Request) int {
-					return tc.fakeLimits.MaxQueryParallelism(context.Background(), "fake")
-				},
-				false,
-				nil,
-			)
-			require.NoError(t, err)
-
-			// create cache with handler
-			rc := rcm.Wrap(tc.Handler)
-			ctx := user.InjectOrgID(context.Background(), "1")
-
-			// create request with start end within the key extents
-			req := parsedRequest.WithStartEnd(time.UnixMilli(int64(modelNow)-(50*1e3)), time.UnixMilli(int64(modelNow)-(10*1e3)))
-
-			// fill cache
-			key := constSplitter(day).GenerateCacheKey(context.Background(), "1", req)
-			rc.(*resultsCache).put(ctx, key, []Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))})
-
-			resp, err := rc.Do(ctx, req)
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedResponse, resp)
-		})
-	}
-}
-
-func Test_resultsCache_MissingData(t *testing.T) {
-	cfg := ResultsCacheConfig{
-		CacheConfig: cache.Config{
-			Cache: cache.NewMockCache(),
-		},
-	}
-	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
-	require.NoError(t, err)
-	rm, err := NewResultsCacheMiddleware(
-		log.NewNopLogger(),
-		c,
-		constSplitter(day),
-		mockLimits{},
-		PrometheusCodec,
-		PrometheusResponseExtractor{},
-		nil,
-		nil,
-		func(_ context.Context, tenantIDs []string, r Request) int {
-			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
-		},
-		false,
-		nil,
-	)
-	require.NoError(t, err)
-	rc := rm.Wrap(nil).(*resultsCache)
-	ctx := context.Background()
-
-	// fill up the cache
-	rc.put(ctx, "empty", []Extent{{
-		Start:    100,
-		End:      200,
-		Response: nil,
-	}})
-	rc.put(ctx, "notempty", []Extent{mkExtent(100, 120)})
-	rc.put(ctx, "mixed", []Extent{mkExtent(100, 120), {
-		Start:    120,
-		End:      200,
-		Response: nil,
-	}})
-
-	extents, hit := rc.get(ctx, "empty")
-	require.Empty(t, extents)
-	require.False(t, hit)
-
-	extents, hit = rc.get(ctx, "notempty")
-	require.Equal(t, len(extents), 1)
-	require.True(t, hit)
-
-	extents, hit = rc.get(ctx, "mixed")
-	require.Equal(t, len(extents), 0)
-	require.False(t, hit)
-}
-
 func toMs(t time.Duration) int64 {
 	return t.Nanoseconds() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
@@ -984,7 +521,7 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {
-			if got := constSplitter(tt.interval).GenerateCacheKey(context.Background(), "fake", tt.r); got != tt.want {
+			if got := resultscache.ConstSplitter(tt.interval).GenerateCacheKey(context.Background(), "fake", tt.r.(resultscache.Request)); got != tt.want {
 				t.Errorf("generateKey() = %v, want %v", got, tt.want)
 			}
 		})
@@ -1033,7 +570,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 			rcm, err := NewResultsCacheMiddleware(
 				log.NewNopLogger(),
 				c,
-				constSplitter(day),
+				resultscache.ConstSplitter(day),
 				mockLimits{maxCacheFreshness: 10 * time.Minute},
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
@@ -1042,6 +579,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				func(_ context.Context, tenantIDs []string, r Request) int {
 					return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 				},
+				false,
 				false,
 				nil,
 			)

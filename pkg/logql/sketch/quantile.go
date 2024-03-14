@@ -3,109 +3,15 @@ package sketch
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/DataDog/sketches-go/ddsketch"
+	"github.com/DataDog/sketches-go/ddsketch/mapping"
+	"github.com/DataDog/sketches-go/ddsketch/store"
 	"github.com/influxdata/tdigest"
-	"github.com/prometheus/prometheus/model/labels"
-	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
-
-// QuantileSketchVector represents multiple qunatile sketches at the same point in
-// time.
-type QuantileSketchVector []quantileSketchSample
-
-// QuantileSketchMatrix contains multiples QuantileSketchVectors across many
-// points in time.
-type QuantileSketchMatrix []QuantileSketchVector
-
-// ToProto converts a quantile sketch vector to its protobuf definition.
-func (q QuantileSketchVector) ToProto() *logproto.QuantileSketchVector {
-	samples := make([]*logproto.QuantileSketchSample, len(q))
-	for i, sample := range q {
-		samples[i] = sample.ToProto()
-	}
-	return &logproto.QuantileSketchVector{Samples: samples}
-}
-
-func QuantileSketchVectorFromProto(proto *logproto.QuantileSketchVector) (QuantileSketchVector, error) {
-	out := make([]quantileSketchSample, len(proto.Samples))
-	var err error
-	for i, s := range proto.Samples {
-		out[i], err = quantileSketchSampleFromProto(s)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-
-func (QuantileSketchMatrix) String() string {
-	return "QuantileSketchMatrix()"
-}
-
-func (QuantileSketchMatrix) Type() promql_parser.ValueType { return "QuantileSketchMatrix" }
-
-func (m QuantileSketchMatrix) ToProto() *logproto.QuantileSketchMatrix {
-	values := make([]*logproto.QuantileSketchVector, len(m))
-	for i, vec := range m {
-		values[i] = vec.ToProto()
-	}
-	return &logproto.QuantileSketchMatrix{Values: values}
-}
-
-func QuantileSketchMatrixFromProto(proto *logproto.QuantileSketchMatrix) (QuantileSketchMatrix, error) {
-	out := make([]QuantileSketchVector, len(proto.Values))
-	var err error
-	for i, v := range proto.Values {
-		out[i], err = QuantileSketchVectorFromProto(v)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-
-type quantileSketchSample struct {
-	T int64
-	F QuantileSketch
-
-	Metric labels.Labels
-}
-
-func (q quantileSketchSample) ToProto() *logproto.QuantileSketchSample {
-	metric := make([]*logproto.LabelPair, len(q.Metric))
-	for i, m := range q.Metric {
-		metric[i] = &logproto.LabelPair{Name: m.Name, Value: m.Value}
-	}
-
-	sketch := q.F.ToProto()
-
-	return &logproto.QuantileSketchSample{
-		F:           sketch,
-		TimestampMs: q.T,
-		Metric:      metric,
-	}
-}
-
-func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) (quantileSketchSample, error) {
-	sketch, err := QuantileSketchFromProto(proto.F)
-	if err != nil {
-		return quantileSketchSample{}, err
-	}
-	out := quantileSketchSample{
-		T:      proto.TimestampMs,
-		F:      sketch,
-		Metric: make(labels.Labels, len(proto.Metric)),
-	}
-
-	for i, p := range proto.Metric {
-		out.Metric[i] = labels.Label{Name: p.Name, Value: p.Value}
-	}
-
-	return out, nil
-}
 
 // QuantileSketch estimates quantiles over time.
 type QuantileSketch interface {
@@ -113,6 +19,7 @@ type QuantileSketch interface {
 	Quantile(float64) (float64, error)
 	Merge(QuantileSketch) (QuantileSketch, error)
 	ToProto() *logproto.QuantileSketch
+	Release()
 }
 
 type QuantileSketchFactory func() QuantileSketch
@@ -135,8 +42,17 @@ type DDSketchQuantile struct {
 	*ddsketch.DDSketch
 }
 
+const relativeAccuracy = 0.01
+
+var ddsketchPool = sync.Pool{
+	New: func() any {
+		m, _ := mapping.NewCubicallyInterpolatedMapping(relativeAccuracy)
+		return ddsketch.NewDDSketch(m, store.NewCollapsingLowestDenseStore(2048), store.NewCollapsingLowestDenseStore(2048))
+	},
+}
+
 func NewDDSketch() *DDSketchQuantile {
-	s, _ := ddsketch.NewDefaultDDSketch(0.01)
+	s := ddsketchPool.Get().(*ddsketch.DDSketch)
 	return &DDSketchQuantile{s}
 }
 
@@ -163,6 +79,11 @@ func (d *DDSketchQuantile) ToProto() *logproto.QuantileSketch {
 	return &logproto.QuantileSketch{
 		Sketch: sketch,
 	}
+}
+
+func (d *DDSketchQuantile) Release() {
+	d.DDSketch.Clear()
+	ddsketchPool.Put(d.DDSketch)
 }
 
 func DDSketchQuantileFromProto(buf []byte) (*DDSketchQuantile, error) {
@@ -223,6 +144,8 @@ func (d *TDigestQuantile) ToProto() *logproto.QuantileSketch {
 		},
 	}
 }
+
+func (d *TDigestQuantile) Release() {}
 
 func TDigestQuantileFromProto(proto *logproto.TDigest) *TDigestQuantile {
 	q := &TDigestQuantile{tdigest.NewWithCompression(proto.Compression)}

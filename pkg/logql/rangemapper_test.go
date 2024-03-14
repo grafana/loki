@@ -93,6 +93,84 @@ func Test_SplitRangeInterval(t *testing.T) {
 	}
 }
 
+func Test_RangeMapperSplitAlign(t *testing.T) {
+	cases := []struct {
+		name             string
+		expr             string
+		queryTime        time.Time
+		splityByInterval time.Duration
+		expected         string
+		expectedSplits   int
+	}{
+		{
+			name: "query_time_aligned_with_split_by",
+			expr: `bytes_over_time({app="foo"}[3m])`,
+			expected: `sum without() (
+                               downstream<bytes_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
+                               ++ downstream<bytes_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
+                               ++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>
+                        )`,
+			queryTime:        time.Unix(60, 0), // 1970 00:01:00
+			splityByInterval: 1 * time.Minute,
+			expectedSplits:   3,
+		},
+		{
+			name: "query_time_aligned_with_split_by_with_original_offset",
+			expr: `bytes_over_time({app="foo"}[3m] offset 20m10s)`, // NOTE: original query has offset, which should be considered in all the splits subquery
+			expected: `sum without() (
+                               downstream<bytes_over_time({app="foo"}[1m] offset 22m10s), shard=<nil>>
+                               ++ downstream<bytes_over_time({app="foo"}[1m] offset 21m10s), shard=<nil>>
+                               ++ downstream<bytes_over_time({app="foo"}[1m] offset 20m10s), shard=<nil>>
+                        )`,
+			queryTime:        time.Unix(60, 0), // 1970 00:01:00
+			splityByInterval: 1 * time.Minute,
+			expectedSplits:   3,
+		},
+		{
+			name: "query_time_not_aligned_with_split_by",
+			expr: `bytes_over_time({app="foo"}[3h])`,
+			expected: `sum without() (
+                               downstream<bytes_over_time({app="foo"}[6m] offset 2h54m0s), shard=<nil>>
+                               ++ downstream<bytes_over_time({app="foo"}[1h] offset 1h54m0s), shard=<nil>>
+                               ++ downstream<bytes_over_time({app="foo"}[1h] offset 54m0s), shard=<nil>>
+                               ++ downstream<bytes_over_time({app="foo"}[54m]), shard=<nil>>
+                        )`,
+			queryTime:        time.Date(0, 0, 0, 12, 54, 0, 0, time.UTC), // 1970 12:54:00
+			splityByInterval: 1 * time.Hour,
+			expectedSplits:   4,
+		},
+		{
+			name: "query_time_not_aligned_with_split_by_with_original_offset",
+			expr: `bytes_over_time({app="foo"}[3h] offset 1h2m20s)`, // NOTE: original query has offset, which should be considered in all the splits subquery
+			expected: `sum without() (
+                               downstream<bytes_over_time({app="foo"}[6m] offset 3h56m20s), shard=<nil>>
+                               ++ downstream<bytes_over_time({app="foo"}[1h] offset 2h56m20s), shard=<nil>>
+                               ++ downstream<bytes_over_time({app="foo"}[1h] offset 1h56m20s), shard=<nil>>
+                               ++ downstream<bytes_over_time({app="foo"}[54m] offset 1h2m20s), shard=<nil>>
+                        )`,
+			queryTime:        time.Date(0, 0, 0, 12, 54, 0, 0, time.UTC), // 1970 12:54:00
+			splityByInterval: 1 * time.Hour,
+			expectedSplits:   4,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mapperStats := NewMapperStats()
+			rvm, err := NewRangeMapperWithSplitAlign(tc.splityByInterval, tc.queryTime, nilShardMetrics, mapperStats)
+			require.NoError(t, err)
+
+			noop, mappedExpr, err := rvm.Parse(syntax.MustParseExpr(tc.expr))
+			require.NoError(t, err)
+
+			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
+			require.Equal(t, tc.expectedSplits, mapperStats.GetSplitQueries())
+			require.False(t, noop)
+
+		})
+	}
+}
+
 func Test_SplitRangeVectorMapping(t *testing.T) {
 	for _, tc := range []struct {
 		expr                 string
@@ -1675,7 +1753,7 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 		// Non-splittable vector aggregators - should go deeper in the AST
 		{
 			`topk(2, count_over_time({app="foo"}[3m]))`,
-			`topk(2, 
+			`topk(2,
 				sum without () (
 					   downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
 					++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
@@ -1713,7 +1791,7 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 						++ downstream<sum by (baz) (count_over_time({app="foo"} [1m] offset 1m0s)), shard=<nil>>
 						++ downstream<sum by (baz) (count_over_time({app="foo"} [1m])), shard=<nil>>
 					)
-				), 
+				),
 				"x", "$1", "a", "(.*)"
 			)`,
 			3,
@@ -1727,7 +1805,7 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 						++ downstream<count_over_time({job="api-server",service="a:c"} |= "err" [1m] offset 1m0s), shard=<nil>>
 						++ downstream<count_over_time({job="api-server",service="a:c"} |= "err" [1m]), shard=<nil>>
 					)
-				/ 180), 
+				/ 180),
 				"foo", "$1", "service", "(.*):.*"
 			)`,
 			3,
@@ -1950,4 +2028,17 @@ func Test_FailQuery(t *testing.T) {
 	// Empty parameter to json parser
 	_, _, err = rvm.Parse(syntax.MustParseExpr(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | json [1d])))`))
 	require.NoError(t, err)
+}
+
+func Test_NoPanicOnClone(t *testing.T) {
+	rvm, err := NewRangeMapper(2*time.Minute, nilShardMetrics, NewMapperStats())
+	require.NoError(t, err)
+
+	longQuery := `count_over_time({foo="bar"} | line_format ` + "`" + `{{"looooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong query"}}` + "`" + "[1h])"
+	expr, err := syntax.ParseSampleExpr(longQuery)
+	require.NoError(t, err)
+
+	require.NotPanics(t, func() {
+		_, _ = rvm.Map(expr, nil, rvm.metrics.downstreamRecorder())
+	})
 }

@@ -245,7 +245,20 @@ s3:
     ca_file: {{ . }}
     {{- end}}
   {{- end }}
+  {{- with .backoff_config}}
+  backoff_config:
+    {{- with .min_period }}
+    min_period: {{ . }}
+    {{- end}}
+    {{- with .max_period }}
+    max_period: {{ . }}
+    {{- end}}
+    {{- with .max_retries }}
+    max_retries: {{ . }}
+    {{- end}}
+  {{- end }}
 {{- end -}}
+
 {{- else if eq .Values.loki.storage.type "gcs" -}}
 {{- with .Values.loki.storage.gcs }}
 gcs:
@@ -276,6 +289,39 @@ azure:
   {{- with .endpointSuffix }}
   endpoint_suffix: {{ . }}
   {{- end }}
+{{- end -}}
+{{- else if eq .Values.loki.storage.type "swift" -}}
+{{- with .Values.loki.storage.swift }}
+swift:
+  {{- with .auth_version }}
+  auth_version: {{ . }}
+  {{- end }}
+  auth_url: {{ .auth_url }}
+  {{- with .internal }}
+  internal: {{ . }}
+  {{- end }}
+  username: {{ .username }}
+  user_domain_name: {{ .user_domain_name }}
+  {{- with .user_domain_id }}
+  user_domain_id: {{ . }}
+  {{- end }}
+  {{- with .user_id }}
+  user_id: {{ . }}
+  {{- end }}
+  password: {{ .password }}
+  {{- with .domain_id }}
+  domain_id: {{ . }}
+  {{- end }}
+  domain_name: {{ .domain_name }}
+  project_id: {{ .project_id }}
+  project_name: {{ .project_name }}
+  project_domain_id: {{ .project_domain_id }}
+  project_domain_name: {{ .project_domain_name }}
+  region_name: {{ .region_name }}
+  container_name: {{ .container_name }}
+  max_retries: {{ .max_retries | default 3 }}
+  connect_timeout: {{ .connect_timeout | default "10s" }}
+  request_timeout: {{ .request_timeout | default "5s" }}
 {{- end -}}
 {{- else -}}
 {{- with .Values.loki.storage.filesystem }}
@@ -349,6 +395,39 @@ azure:
   {{- with .endpointSuffix }}
   endpoint_suffix: {{ . }}
   {{- end }}
+{{- end -}}
+{{- else if eq .Values.loki.storage.type "swift" -}}
+{{- with .Values.loki.storage.swift }}
+swift:
+  {{- with .auth_version }}
+  auth_version: {{ . }}
+  {{- end }}
+  auth_url: {{ .auth_url }}
+  {{- with .internal }}
+  internal: {{ . }}
+  {{- end }}
+  username: {{ .username }}
+  user_domain_name: {{ .user_domain_name }}
+  {{- with .user_domain_id }}
+  user_domain_id: {{ . }}
+  {{- end }}
+  {{- with .user_id }}
+  user_id: {{ . }}
+  {{- end }}
+  password: {{ .password }}
+  {{- with .domain_id }}
+  domain_id: {{ . }}
+  {{- end }}
+  domain_name: {{ .domain_name }}
+  project_id: {{ .project_id }}
+  project_name: {{ .project_name }}
+  project_domain_id: {{ .project_domain_id }}
+  project_domain_name: {{ .project_domain_name }}
+  region_name: {{ .region_name }}
+  container_name: {{ .container_name }}
+  max_retries: {{ .max_retries | default 3 }}
+  connect_timeout: {{ .connect_timeout | default "10s" }}
+  request_timeout: {{ .request_timeout | default "5s" }}
 {{- end -}}
 {{- else }}
 type: "local"
@@ -518,7 +597,7 @@ Create the service endpoint including port for MinIO.
 
 {{/* Determine if deployment is using object storage */}}
 {{- define "loki.isUsingObjectStorage" -}}
-{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") -}}
+{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") (eq .Values.loki.storage.type "swift") (eq .Values.loki.storage.type "alibabacloud") -}}
 {{- end -}}
 
 {{/* Configure the correct name for the memberlist service */}}
@@ -616,7 +695,9 @@ http {
 
   server {
     listen             8080;
+    {{- if .Values.gateway.nginxConfig.enableIPv6 }}
     listen             [::]:8080;
+    {{- end }}
 
     {{- if .Values.gateway.basicAuth.enabled }}
     auth_basic           "Loki";

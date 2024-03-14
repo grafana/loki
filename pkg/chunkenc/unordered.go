@@ -282,6 +282,9 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 		},
 	)
 
+	if pipeline.ReferencedStructuredMetadata() {
+		stats.FromContext(ctx).SetQueryReferencedStructuredMetadata()
+	}
 	if len(streams) == 0 {
 		return iter.NoopIterator
 	}
@@ -334,6 +337,10 @@ func (hb *unorderedHeadBlock) SampleIterator(
 			return nil
 		},
 	)
+
+	if extractor.ReferencedStructuredMetadata() {
+		stats.FromContext(ctx).SetQueryReferencedStructuredMetadata()
+	}
 
 	if len(series) == 0 {
 		return iter.NoopIterator

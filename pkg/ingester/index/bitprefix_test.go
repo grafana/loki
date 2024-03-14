@@ -90,9 +90,9 @@ func Test_BitPrefixDeleteAddLoopkup(t *testing.T) {
 
 func Test_BitPrefix_hash_mapping(t *testing.T) {
 	lbs := labels.Labels{
-		labels.Label{Name: "compose_project", Value: "loki-boltdb-storage-s3"},
+		labels.Label{Name: "compose_project", Value: "loki-tsdb-storage-s3"},
 		labels.Label{Name: "compose_service", Value: "ingester-2"},
-		labels.Label{Name: "container_name", Value: "loki-boltdb-storage-s3_ingester-2_1"},
+		labels.Label{Name: "container_name", Value: "loki-tsdb-storage-s3_ingester-2_1"},
 		labels.Label{Name: "filename", Value: "/var/log/docker/790fef4c6a587c3b386fe85c07e03f3a1613f4929ca3abaa4880e14caadb5ad1/json.log"},
 		labels.Label{Name: "host", Value: "docker-desktop"},
 		labels.Label{Name: "source", Value: "stderr"},
@@ -115,7 +115,7 @@ func Test_BitPrefix_hash_mapping(t *testing.T) {
 			res, err := ii.Lookup(
 				[]*labels.Matcher{{Type: labels.MatchEqual,
 					Name:  "compose_project",
-					Value: "loki-boltdb-storage-s3"}},
+					Value: "loki-tsdb-storage-s3"}},
 				&astmapper.ShardAnnotation{
 					Shard: int(expShard),
 					Of:    requestedFactor,

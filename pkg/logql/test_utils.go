@@ -215,7 +215,7 @@ type MockDownstreamer struct {
 
 func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return m }
 
-func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
+func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery, _ Accumulator) ([]logqlmodel.Result, error) {
 	results := make([]logqlmodel.Result, 0, len(queries))
 	for _, query := range queries {
 		res, err := m.Query(query.Params).Exec(ctx)
@@ -224,6 +224,16 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 		}
 
 		results = append(results, res)
+	}
+
+	if matrix, ok := results[0].Data.(ProbabilisticQuantileMatrix); ok {
+		if len(results) == 1 {
+			return results, nil
+		}
+		for _, m := range results[1:] {
+			matrix, _ = matrix.Merge(m.Data.(ProbabilisticQuantileMatrix))
+		}
+		return []logqlmodel.Result{{Data: matrix}}, nil
 	}
 	return results, nil
 }

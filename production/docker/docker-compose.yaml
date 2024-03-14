@@ -89,7 +89,7 @@ services:
       - |
         mkdir -p /data/loki-data && \
         mkdir -p /data/loki-ruler &&
-        minio server /data
+        minio server --address "0.0.0.0:9000" --console-address "0.0.0.0:9001" /data
     environment:
       - MINIO_ROOT_USER=loki
       - MINIO_ROOT_PASSWORD=supersecret
@@ -97,6 +97,7 @@ services:
       - MINIO_UPDATE=off
     ports:
       - "9000:9000"
+      - "9001:9001"
     volumes:
       - ./.data/minio:/data
     networks:
@@ -116,7 +117,6 @@ services:
     image: *lokiImage
     volumes:
       - ./config:/etc/loki/
-      - ./rules:/loki/rules:ro
     # only needed for interactive debugging with dlv
     # cap_add:
     #   - SYS_PTRACE
@@ -127,7 +127,7 @@ services:
       - "7946"
       # uncomment to use interactive debugging
       # - "40000-40002:40000" # makes the replicas available on ports 40000, 40001, 40002
-    command: "-config.file=/etc/loki/loki.yaml -target=read"
+    command: "-config.file=/etc/loki/loki.yaml -target=read -legacy-read-mode=false"
     networks:
       - loki
     restart: always
@@ -161,6 +161,7 @@ services:
     image: *lokiImage
     volumes:
       - ./config:/etc/loki/
+      - ./rules:/loki/rules:ro
     # only needed for interactive debugging with dlv
     # cap_add:
     #   - SYS_PTRACE

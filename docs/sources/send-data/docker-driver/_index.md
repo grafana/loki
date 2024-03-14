@@ -1,7 +1,7 @@
 ---
 title: Docker driver client
 menuTItle:  Docker driver
-description: Instructions to install, upgrade, and remove the Docker driver client to send logs to Loki.
+description: Provides instructions for how to install, upgrade, and remove the Docker driver client, used to send logs to Loki.
 aliases: 
 - ../clients/docker-driver/
 weight:  400

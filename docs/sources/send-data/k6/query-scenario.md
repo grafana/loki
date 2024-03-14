@@ -1,7 +1,7 @@
 ---
 title: Use k6 to load test log queries
 menuTitle:  Query testing
-description: Using K6 to load test the read path (queries).
+description: Using k6 to load test the read path (queries).
 aliases: 
 - ../../clients/k6/query-scenario/
 weight: 930

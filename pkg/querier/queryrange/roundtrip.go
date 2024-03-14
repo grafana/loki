@@ -3,15 +3,15 @@ package queryrange
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/grafana/dskit/user"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -29,14 +29,34 @@ import (
 	logutil "github.com/grafana/loki/pkg/util/log"
 )
 
+const (
+	// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
+	// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
+	indexStatsQuerySplitInterval = 24 * time.Hour
+
+	// Limited queries only need to fetch up to the requested line limit worth of logs,
+	// Our defaults for splitting and parallelism are much too aggressive for large customers and result in
+	// potentially GB of logs being returned by all the shards and splits which will overwhelm the frontend
+	// Therefore we force max parallelism to `1` so that these queries are executed sequentially.
+	// Below we also fix the number of shards to a static number.
+	limitedQuerySplits = 1
+)
+
 // Config is the configuration for the queryrange tripperware
 type Config struct {
-	base.Config            `yaml:",inline"`
-	Transformer            UserIDTransformer     `yaml:"-"`
-	CacheIndexStatsResults bool                  `yaml:"cache_index_stats_results"`
-	StatsCacheConfig       IndexStatsCacheConfig `yaml:"index_stats_results_cache" doc:"description=If a cache config is not specified and cache_index_stats_results is true, the config for the results cache is used."`
-	CacheVolumeResults     bool                  `yaml:"cache_volume_results"`
-	VolumeCacheConfig      VolumeCacheConfig     `yaml:"volume_results_cache" doc:"description=If a cache config is not specified and cache_volume_results is true, the config for the results cache is used."`
+	base.Config                  `yaml:",inline"`
+	Transformer                  UserIDTransformer        `yaml:"-"`
+	CacheIndexStatsResults       bool                     `yaml:"cache_index_stats_results"`
+	StatsCacheConfig             IndexStatsCacheConfig    `yaml:"index_stats_results_cache" doc:"description=If a cache config is not specified and cache_index_stats_results is true, the config for the results cache is used."`
+	CacheVolumeResults           bool                     `yaml:"cache_volume_results"`
+	VolumeCacheConfig            VolumeCacheConfig        `yaml:"volume_results_cache" doc:"description=If a cache config is not specified and cache_volume_results is true, the config for the results cache is used."`
+	CacheInstantMetricResults    bool                     `yaml:"cache_instant_metric_results"`
+	InstantMetricCacheConfig     InstantMetricCacheConfig `yaml:"instant_metric_results_cache" doc:"description=If a cache config is not specified and cache_instant_metric_results is true, the config for the results cache is used."`
+	InstantMetricQuerySplitAlign bool                     `yaml:"instant_metric_query_split_align" doc:"description=Whether to align the splits of instant metric query with splitByInterval and query's exec time. Useful when instant_metric_cache is enabled"`
+	CacheSeriesResults           bool                     `yaml:"cache_series_results"`
+	SeriesCacheConfig            SeriesCacheConfig        `yaml:"series_results_cache" doc:"description=If series_results_cache is not configured and cache_series_results is true, the config for the results cache is used."`
+	CacheLabelResults            bool                     `yaml:"cache_label_results"`
+	LabelsCacheConfig            LabelsCacheConfig        `yaml:"label_results_cache" doc:"description=If label_results_cache is not configured and cache_label_results is true, the config for the results cache is used."`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -46,6 +66,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StatsCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.CacheVolumeResults, "querier.cache-volume-results", false, "Cache volume query results.")
 	cfg.VolumeCacheConfig.RegisterFlags(f)
+	f.BoolVar(&cfg.CacheInstantMetricResults, "querier.cache-instant-metric-results", false, "Cache instant metric query results.")
+	cfg.InstantMetricCacheConfig.RegisterFlags(f)
+	f.BoolVar(&cfg.InstantMetricQuerySplitAlign, "querier.instant-metric-query-split-align", false, "Align the instant metric splits with splityByInterval and query's exec time.")
+	f.BoolVar(&cfg.CacheSeriesResults, "querier.cache-series-results", false, "Cache series query results.")
+	cfg.SeriesCacheConfig.RegisterFlags(f)
+	f.BoolVar(&cfg.CacheLabelResults, "querier.cache-label-results", false, "Cache label query results.")
+	cfg.LabelsCacheConfig.RegisterFlags(f)
 }
 
 // Validate validates the config.
@@ -99,6 +126,7 @@ func newResultsCacheFromConfig(cfg base.ResultsCacheConfig, registerer prometheu
 func NewMiddleware(
 	cfg Config,
 	engineOpts logql.EngineOpts,
+	iqo util.IngesterQueryOptions,
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
@@ -110,10 +138,13 @@ func NewMiddleware(
 	metrics := NewMetrics(registerer, metricsNamespace)
 
 	var (
-		resultsCache cache.Cache
-		statsCache   cache.Cache
-		volumeCache  cache.Cache
-		err          error
+		resultsCache       cache.Cache
+		statsCache         cache.Cache
+		volumeCache        cache.Cache
+		instantMetricCache cache.Cache
+		seriesCache        cache.Cache
+		labelsCache        cache.Cache
+		err                error
 	)
 
 	if cfg.CacheResults {
@@ -124,28 +155,35 @@ func NewMiddleware(
 	}
 
 	if cfg.CacheIndexStatsResults {
-		// If the stats cache is not configured, use the results cache config.
-		cacheCfg := cfg.StatsCacheConfig.ResultsCacheConfig
-		if !cache.IsCacheConfigured(cacheCfg.CacheConfig) {
-			level.Debug(log).Log("msg", "using results cache config for stats cache")
-			cacheCfg = cfg.ResultsCacheConfig
-		}
-
-		statsCache, err = newResultsCacheFromConfig(cacheCfg, registerer, log, stats.StatsResultCache)
+		statsCache, err = newResultsCacheFromConfig(cfg.StatsCacheConfig.ResultsCacheConfig, registerer, log, stats.StatsResultCache)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
 
 	if cfg.CacheVolumeResults {
-		// If the volume cache is not configured, use the results cache config.
-		cacheCfg := cfg.VolumeCacheConfig.ResultsCacheConfig
-		if !cache.IsCacheConfigured(cacheCfg.CacheConfig) {
-			level.Debug(log).Log("msg", "using results cache config for volume cache")
-			cacheCfg = cfg.ResultsCacheConfig
+		volumeCache, err = newResultsCacheFromConfig(cfg.VolumeCacheConfig.ResultsCacheConfig, registerer, log, stats.VolumeResultCache)
+		if err != nil {
+			return nil, nil, err
 		}
+	}
 
-		volumeCache, err = newResultsCacheFromConfig(cacheCfg, registerer, log, stats.VolumeResultCache)
+	if cfg.CacheInstantMetricResults {
+		instantMetricCache, err = newResultsCacheFromConfig(cfg.InstantMetricCacheConfig.ResultsCacheConfig, registerer, log, stats.InstantMetricResultsCache)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if cfg.CacheSeriesResults {
+		seriesCache, err = newResultsCacheFromConfig(cfg.SeriesCacheConfig.ResultsCacheConfig, registerer, log, stats.SeriesResultCache)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if cfg.CacheLabelResults {
+		labelsCache, err = newResultsCacheFromConfig(cfg.LabelsCacheConfig.ResultsCacheConfig, registerer, log, stats.LabelResultCache)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -153,46 +191,46 @@ func NewMiddleware(
 
 	var codec base.Codec = DefaultCodec
 
-	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, statsCache,
+	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, iqo, statsCache,
 		cacheGenNumLoader, retentionEnabled, metrics, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	metricsTripperware, err := NewMetricTripperware(cfg, engineOpts, log, limits, schema, codec, resultsCache,
+	metricsTripperware, err := NewMetricTripperware(cfg, engineOpts, log, limits, schema, codec, iqo, resultsCache,
 		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, metrics, indexStatsTripperware, codec)
+	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, metrics, indexStatsTripperware, codec, iqo)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 	// MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, engineOpts, log, limits, schema, codec, resultsCache, metrics, indexStatsTripperware, metricsNamespace)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, engineOpts, log, limits, schema, codec, iqo, resultsCache, metrics, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, metrics, schema, DefaultCodec, metricsNamespace)
+	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, metrics, schema, codec, iqo, seriesCache, cacheGenNumLoader, retentionEnabled, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, codec, metrics, schema, metricsNamespace)
+	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, codec, iqo, labelsCache, cacheGenNumLoader, retentionEnabled, metrics, schema, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, metrics, indexStatsTripperware, metricsNamespace)
+	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, metrics, codec, instantMetricCache, cacheGenNumLoader, retentionEnabled, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	seriesVolumeTripperware, err := NewVolumeTripperware(cfg, log, limits, schema, codec, volumeCache, cacheGenNumLoader, retentionEnabled, metrics, metricsNamespace)
+	seriesVolumeTripperware, err := NewVolumeTripperware(cfg, log, limits, schema, codec, iqo, volumeCache, cacheGenNumLoader, retentionEnabled, metrics, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -243,11 +281,6 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 
 	switch op := req.(type) {
 	case *LokiRequest:
-		expr, err := syntax.ParseExpr(op.Query)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
 		queryHash := util.HashedQuery(op.Query)
 		level.Info(logger).Log(
 			"msg", "executing query",
@@ -262,7 +295,11 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"query_hash", queryHash,
 		)
 
-		switch e := expr.(type) {
+		if op.Plan == nil {
+			return nil, errors.New("query plan is empty")
+		}
+
+		switch e := op.Plan.AST.(type) {
 		case syntax.SampleExpr:
 			// The error will be handled later.
 			groups, err := e.MatcherGroups()
@@ -303,15 +340,10 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 
 		return r.labels.Do(ctx, req)
 	case *LokiInstantRequest:
-		expr, err := syntax.ParseExpr(op.Query)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
 		queryHash := util.HashedQuery(op.Query)
 		level.Info(logger).Log("msg", "executing query", "type", "instant", "query", op.Query, "query_hash", queryHash)
 
-		switch expr.(type) {
+		switch op.Plan.AST.(type) {
 		case syntax.SampleExpr:
 			return r.instantMetric.Do(ctx, req)
 		default:
@@ -389,18 +421,7 @@ func getOperation(path string) string {
 }
 
 // NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests.
-func NewLogFilterTripperware(
-	cfg Config,
-	engineOpts logql.EngineOpts,
-	log log.Logger,
-	limits Limits,
-	schema config.SchemaConfig,
-	merger base.Merger,
-	c cache.Cache,
-	metrics *Metrics,
-	indexStatsTripperware base.Middleware,
-	metricsNamespace string,
-) (base.Middleware, error) {
+func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
 
@@ -409,7 +430,7 @@ func NewLogFilterTripperware(
 			NewLimitsMiddleware(limits),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitByTime, metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, newDefaultSplitter(limits, iqo), metrics.SplitByMetrics),
 		}
 
 		if cfg.CacheResults {
@@ -441,6 +462,7 @@ func NewLogFilterTripperware(
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
+					cfg.ShardAggregations,
 				),
 			)
 		} else {
@@ -458,24 +480,12 @@ func NewLogFilterTripperware(
 			)
 		}
 
-		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
-		}
-		return next
+		return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 	}), nil
 }
 
 // NewLimitedTripperware creates a new frontend tripperware responsible for handling log requests which are label matcher only, no filter expression.
-func NewLimitedTripperware(
-	_ Config,
-	engineOpts logql.EngineOpts,
-	log log.Logger,
-	limits Limits,
-	schema config.SchemaConfig,
-	metrics *Metrics,
-	indexStatsTripperware base.Middleware,
-	merger base.Merger,
-) (base.Middleware, error) {
+func NewLimitedTripperware(_ Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, metrics *Metrics, indexStatsTripperware base.Middleware, merger base.Merger, iqo util.IngesterQueryOptions) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
 
@@ -484,12 +494,7 @@ func NewLimitedTripperware(
 			NewLimitsMiddleware(limits),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			// Limited queries only need to fetch up to the requested line limit worth of logs,
-			// Our defaults for splitting and parallelism are much too aggressive for large customers and result in
-			// potentially GB of logs being returned by all the shards and splits which will overwhelm the frontend
-			// Therefore we force max parallelism to one so that these queries are executed sequentially.
-			// Below we also fix the number of shards to a static number.
-			SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, 1), merger, splitByTime, metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, limitedQuerySplits), merger, newDefaultSplitter(limits, iqo), metrics.SplitByMetrics),
 			NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 		}
 
@@ -508,16 +513,56 @@ func NewSeriesTripperware(
 	metrics *Metrics,
 	schema config.SchemaConfig,
 	merger base.Merger,
+	iqo util.IngesterQueryOptions,
+	c cache.Cache,
+	cacheGenNumLoader base.CacheGenNumberLoader,
+	retentionEnabled bool,
 	metricsNamespace string,
 ) (base.Middleware, error) {
+	var cacheMiddleware base.Middleware
+	if cfg.CacheSeriesResults {
+		var err error
+		cacheMiddleware, err = NewSeriesCacheMiddleware(
+			log,
+			limits,
+			merger,
+			c,
+			cacheGenNumLoader,
+			func(_ context.Context, r base.Request) bool {
+				return !r.GetCachingOptions().Disabled
+			},
+			func(ctx context.Context, tenantIDs []string, r base.Request) int {
+				return MinWeightedParallelism(
+					ctx,
+					tenantIDs,
+					schema.Configs,
+					limits,
+					model.Time(r.GetStart().UnixMilli()),
+					model.Time(r.GetEnd().UnixMilli()),
+				)
+			},
+			retentionEnabled,
+			cfg.Transformer,
+			metrics.ResultsCacheMetrics,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create series cache middleware: %w", err)
+		}
+	}
+
 	queryRangeMiddleware := []base.Middleware{
 		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-		// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
-		// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
-		// This would avoid queriers downloading chunks for same series over and over again for serving smaller queries.
-		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), merger, splitByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(schema.Configs, limits, merger, newDefaultSplitter(limits, iqo), metrics.SplitByMetrics),
+	}
+
+	if cfg.CacheSeriesResults {
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			base.InstrumentMiddleware("series_results_cache", metrics.InstrumentMiddlewareMetrics),
+			cacheMiddleware,
+		)
 	}
 
 	if cfg.MaxRetries > 0 {
@@ -541,10 +586,7 @@ func NewSeriesTripperware(
 	}
 
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
-		}
-		return next
+		return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 	}), nil
 }
 
@@ -554,17 +596,58 @@ func NewLabelsTripperware(
 	log log.Logger,
 	limits Limits,
 	merger base.Merger,
+	iqo util.IngesterQueryOptions,
+	c cache.Cache,
+	cacheGenNumLoader base.CacheGenNumberLoader,
+	retentionEnabled bool,
 	metrics *Metrics,
 	schema config.SchemaConfig,
 	metricsNamespace string,
 ) (base.Middleware, error) {
+	var cacheMiddleware base.Middleware
+	if cfg.CacheLabelResults {
+		var err error
+		cacheMiddleware, err = NewLabelsCacheMiddleware(
+			log,
+			limits,
+			merger,
+			c,
+			cacheGenNumLoader,
+			func(_ context.Context, r base.Request) bool {
+				return !r.GetCachingOptions().Disabled
+			},
+			func(ctx context.Context, tenantIDs []string, r base.Request) int {
+				return MinWeightedParallelism(
+					ctx,
+					tenantIDs,
+					schema.Configs,
+					limits,
+					model.Time(r.GetStart().UnixMilli()),
+					model.Time(r.GetEnd().UnixMilli()),
+				)
+			},
+			retentionEnabled,
+			cfg.Transformer,
+			metrics.ResultsCacheMetrics,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create labels cache middleware: %w", err)
+		}
+	}
+
 	queryRangeMiddleware := []base.Middleware{
 		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-		// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
-		// This is because the labels API is an index-only operation.
-		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), merger, splitByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(schema.Configs, limits, merger, newDefaultSplitter(limits, iqo), metrics.SplitByMetrics),
+	}
+
+	if cfg.CacheLabelResults {
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			base.InstrumentMiddleware("label_results_cache", metrics.InstrumentMiddlewareMetrics),
+			cacheMiddleware,
+		)
 	}
 
 	if cfg.MaxRetries > 0 {
@@ -575,31 +658,14 @@ func NewLabelsTripperware(
 	}
 
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		if len(queryRangeMiddleware) > 0 {
-			// Do not forward any request header.
-			return base.MergeMiddlewares(queryRangeMiddleware...).Wrap(next)
-		}
-		return next
+		// Do not forward any request header.
+		return base.MergeMiddlewares(queryRangeMiddleware...).Wrap(next)
 	}), nil
 }
 
 // NewMetricTripperware creates a new frontend tripperware responsible for handling metric queries
-func NewMetricTripperware(
-	cfg Config,
-	engineOpts logql.EngineOpts,
-	log log.Logger,
-	limits Limits,
-	schema config.SchemaConfig,
-	merger base.Merger,
-	c cache.Cache,
-	cacheGenNumLoader base.CacheGenNumberLoader,
-	retentionEnabled bool,
-	extractor base.Extractor,
-	metrics *Metrics,
-	indexStatsTripperware base.Middleware,
-	metricsNamespace string,
-) (base.Middleware, error) {
-	cacheKey := cacheKeyLimits{limits, cfg.Transformer}
+func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, cacheGenNumLoader base.CacheGenNumberLoader, retentionEnabled bool, extractor base.Extractor, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
+	cacheKey := cacheKeyLimits{limits, cfg.Transformer, iqo}
 	var queryCacheMiddleware base.Middleware
 	if cfg.CacheResults {
 		var err error
@@ -625,6 +691,7 @@ func NewMetricTripperware(
 				)
 			},
 			retentionEnabled,
+			false,
 			metrics.ResultsCacheMetrics,
 		)
 		if err != nil {
@@ -652,7 +719,7 @@ func NewMetricTripperware(
 			queryRangeMiddleware,
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitMetricByTime, metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, newMetricQuerySplitter(limits, iqo), metrics.SplitByMetrics),
 		)
 
 		if cfg.CacheResults {
@@ -674,6 +741,7 @@ func NewMetricTripperware(
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
+					cfg.ShardAggregations,
 				),
 			)
 		} else {
@@ -714,68 +782,17 @@ func NewInstantMetricTripperware(
 	limits Limits,
 	schema config.SchemaConfig,
 	metrics *Metrics,
-	indexStatsTripperware base.Middleware,
-	metricsNamespace string,
-) (base.Middleware, error) {
-	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		statsHandler := indexStatsTripperware.Wrap(next)
-
-		queryRangeMiddleware := []base.Middleware{
-			StatsCollectorMiddleware(),
-			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
-		}
-
-		if cfg.ShardedQueries {
-			queryRangeMiddleware = append(queryRangeMiddleware,
-				NewSplitByRangeMiddleware(log, engineOpts, limits, metrics.MiddlewareMapperMetrics.rangeMapper),
-				NewQueryShardMiddleware(
-					log,
-					schema.Configs,
-					engineOpts,
-					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
-					metrics.MiddlewareMapperMetrics.shardMapper,
-					limits,
-					0, // 0 is unlimited shards
-					statsHandler,
-				),
-			)
-		}
-
-		if cfg.MaxRetries > 0 {
-			queryRangeMiddleware = append(
-				queryRangeMiddleware,
-				base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
-				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
-			)
-		}
-
-		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
-		}
-		return next
-	}), nil
-}
-
-func NewVolumeTripperware(
-	cfg Config,
-	log log.Logger,
-	limits Limits,
-	schema config.SchemaConfig,
 	merger base.Merger,
 	c cache.Cache,
 	cacheGenNumLoader base.CacheGenNumberLoader,
 	retentionEnabled bool,
-	metrics *Metrics,
+	indexStatsTripperware base.Middleware,
 	metricsNamespace string,
 ) (base.Middleware, error) {
-	// Parallelize the volume requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
-	// Indices are sharded by 24 hours, so we split the volume request in 24h intervals.
-	limits = WithSplitByLimits(limits, 24*time.Hour)
 	var cacheMiddleware base.Middleware
-	if cfg.CacheVolumeResults {
+	if cfg.CacheInstantMetricResults {
 		var err error
-		cacheMiddleware, err = NewVolumeCacheMiddleware(
+		cacheMiddleware, err = NewInstantMetricCacheMiddleware(
 			log,
 			limits,
 			merger,
@@ -803,10 +820,96 @@ func NewVolumeTripperware(
 		}
 	}
 
+	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		statsHandler := indexStatsTripperware.Wrap(next)
+
+		queryRangeMiddleware := []base.Middleware{
+			StatsCollectorMiddleware(),
+			NewLimitsMiddleware(limits),
+			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			NewSplitByRangeMiddleware(log, engineOpts, limits, cfg.InstantMetricQuerySplitAlign, metrics.MiddlewareMapperMetrics.rangeMapper),
+		}
+
+		if cfg.CacheInstantMetricResults {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware,
+				base.InstrumentMiddleware("instant_metric_results_cache", metrics.InstrumentMiddlewareMetrics),
+				cacheMiddleware,
+			)
+		}
+
+		if cfg.ShardedQueries {
+			queryRangeMiddleware = append(queryRangeMiddleware,
+				NewQueryShardMiddleware(
+					log,
+					schema.Configs,
+					engineOpts,
+					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
+					metrics.MiddlewareMapperMetrics.shardMapper,
+					limits,
+					0, // 0 is unlimited shards
+					statsHandler,
+					cfg.ShardAggregations,
+				),
+			)
+		}
+
+		if cfg.MaxRetries > 0 {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware,
+				base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
+			)
+		}
+
+		if len(queryRangeMiddleware) > 0 {
+			return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
+		}
+		return next
+	}), nil
+}
+
+func NewVolumeTripperware(cfg Config, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, cacheGenNumLoader base.CacheGenNumberLoader, retentionEnabled bool, metrics *Metrics, metricsNamespace string) (base.Middleware, error) {
+	// Parallelize the volume requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
+	// Indices are sharded by 24 hours, so we split the volume request in 24h intervals.
+	limits = WithSplitByLimits(limits, indexStatsQuerySplitInterval)
+	var cacheMiddleware base.Middleware
+	if cfg.CacheVolumeResults {
+		var err error
+		cacheMiddleware, err = NewVolumeCacheMiddleware(
+			log,
+			limits,
+			merger,
+			c,
+			cacheGenNumLoader,
+			iqo,
+			func(_ context.Context, r base.Request) bool {
+				return !r.GetCachingOptions().Disabled
+			},
+			func(ctx context.Context, tenantIDs []string, r base.Request) int {
+				return MinWeightedParallelism(
+					ctx,
+					tenantIDs,
+					schema.Configs,
+					limits,
+					model.Time(r.GetStart().UnixMilli()),
+					model.Time(r.GetEnd().UnixMilli()),
+				)
+			},
+			retentionEnabled,
+			cfg.Transformer,
+			metrics.ResultsCacheMetrics,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	indexTw, err := sharedIndexTripperware(
 		cacheMiddleware,
 		cfg,
 		merger,
+		newDefaultSplitter(limits, iqo),
 		limits,
 		log,
 		metrics,
@@ -875,21 +978,8 @@ func volumeFeatureFlagRoundTripper(nextTW base.Middleware, limits Limits) base.M
 	})
 }
 
-func NewIndexStatsTripperware(
-	cfg Config,
-	log log.Logger,
-	limits Limits,
-	schema config.SchemaConfig,
-	merger base.Merger,
-	c cache.Cache,
-	cacheGenNumLoader base.CacheGenNumberLoader,
-	retentionEnabled bool,
-	metrics *Metrics,
-	metricsNamespace string,
-) (base.Middleware, error) {
-	// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
-	// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
-	limits = WithSplitByLimits(limits, 24*time.Hour)
+func NewIndexStatsTripperware(cfg Config, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, cacheGenNumLoader base.CacheGenNumberLoader, retentionEnabled bool, metrics *Metrics, metricsNamespace string) (base.Middleware, error) {
+	limits = WithSplitByLimits(limits, indexStatsQuerySplitInterval)
 
 	var cacheMiddleware base.Middleware
 	if cfg.CacheIndexStatsResults {
@@ -900,6 +990,7 @@ func NewIndexStatsTripperware(
 			merger,
 			c,
 			cacheGenNumLoader,
+			iqo,
 			func(_ context.Context, r base.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
@@ -926,6 +1017,7 @@ func NewIndexStatsTripperware(
 		cacheMiddleware,
 		cfg,
 		merger,
+		newDefaultSplitter(limits, iqo),
 		limits,
 		log,
 		metrics,
@@ -943,6 +1035,7 @@ func sharedIndexTripperware(
 	cacheMiddleware base.Middleware,
 	cfg Config,
 	merger base.Merger,
+	split splitter,
 	limits Limits,
 	log log.Logger,
 	metrics *Metrics,
@@ -953,7 +1046,7 @@ func sharedIndexTripperware(
 		middlewares := []base.Middleware{
 			NewLimitsMiddleware(limits),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitByTime, metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, split, metrics.SplitByMetrics),
 		}
 
 		if cacheMiddleware != nil {

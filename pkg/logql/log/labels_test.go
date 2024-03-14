@@ -16,8 +16,19 @@ func TestLabelsBuilder_Get(t *testing.T) {
 	b.Reset()
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	b.Set(ParsedLabel, "bar", "buzz")
+
+	_, category, ok := b.GetWithCategory("bar")
+	require.Equal(t, ParsedLabel, category)
+	require.True(t, ok)
+	require.False(t, b.referencedStructuredMetadata)
+
+	_, category, ok = b.GetWithCategory("foo")
+	require.Equal(t, StructuredMetadataLabel, category)
+	require.True(t, ok)
+	require.True(t, b.referencedStructuredMetadata)
+
 	b.Del("foo")
-	_, _, ok := b.GetWithCategory("foo")
+	_, _, ok = b.GetWithCategory("foo")
 	require.False(t, ok)
 	v, category, ok := b.GetWithCategory("bar")
 	require.True(t, ok)
@@ -55,6 +66,64 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 
 	// make sure the original labels is unchanged.
 	require.Equal(t, labels.FromStrings("already", "in"), lbs)
+}
+
+func TestLabelsBuilder_IntoMap(t *testing.T) {
+	strs := []string{
+		"namespace", "loki",
+		"job", "us-central1/loki",
+		"cluster", "us-central1",
+		"ToReplace", "text",
+	}
+	lbs := labels.FromStrings(strs...)
+
+	t.Run("it still copies the map after a Reset", func(t *testing.T) {
+		b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+
+		m := map[string]string{}
+		b.IntoMap(m)
+
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m)
+
+		b.Reset()
+
+		m2 := map[string]string{}
+		b.IntoMap(m2)
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m2)
+	})
+
+	t.Run("it can copy the map several times", func(t *testing.T) {
+		b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+
+		m := map[string]string{}
+		b.IntoMap(m)
+
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m)
+
+		m2 := map[string]string{}
+		b.IntoMap(m2)
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m2)
+	})
 }
 
 func TestLabelsBuilder_LabelsResult(t *testing.T) {
@@ -136,6 +205,12 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	b.Reset()
 	b.Set(StreamLabel, "namespace", "tempo")
 	assertLabelResult(t, labels.FromStrings("job", "us-central1/loki"), b.GroupedLabels())
+	require.False(t, b.referencedStructuredMetadata)
+
+	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, false, false).ForLabels(lbs, lbs.Hash())
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	assertLabelResult(t, labels.FromStrings("foo", "bar"), b.GroupedLabels())
+	require.True(t, b.referencedStructuredMetadata)
 
 	b = NewBaseLabelsBuilderWithGrouping([]string{"job"}, nil, true, false).ForLabels(lbs, lbs.Hash())
 	b.Del("job")
@@ -146,6 +221,16 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 		"foo", "bar",
 	)
 	assertLabelResult(t, expected, b.GroupedLabels())
+	require.False(t, b.referencedStructuredMetadata)
+
+	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, true, false).ForLabels(lbs, lbs.Hash())
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	expected = labels.FromStrings("namespace", "loki",
+		"job", "us-central1/loki",
+		"cluster", "us-central1",
+	)
+	assertLabelResult(t, expected, b.GroupedLabels())
+	require.True(t, b.referencedStructuredMetadata)
 
 	b = NewBaseLabelsBuilderWithGrouping(nil, nil, false, false).ForLabels(lbs, lbs.Hash())
 	b.Set(StructuredMetadataLabel, "foo", "bar")

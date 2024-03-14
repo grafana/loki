@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	chunkclient "github.com/grafana/loki/pkg/storage/chunk/client"
@@ -135,6 +136,9 @@ func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnota
 		End:       end,
 		Direction: logproto.FORWARD,
 		Deletes:   deletes,
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(query),
+		},
 	}
 	for _, shard := range shards {
 		req.Shards = append(req.Shards, shard.String())
@@ -148,6 +152,9 @@ func newSampleQuery(query string, start, end time.Time, deletes []*logproto.Dele
 		Start:    start,
 		End:      end,
 		Deletes:  deletes,
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(query),
+		},
 	}
 	return req
 }
@@ -233,7 +240,7 @@ func (m *mockChunkStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	refs := make([]chunk.Chunk, 0, len(m.chunks))
 	// transform real chunks into ref chunks.
 	for _, c := range m.chunks {

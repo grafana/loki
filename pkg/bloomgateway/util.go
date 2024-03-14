@@ -5,108 +5,43 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/pkg/logproto"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
-type IndexedValue[T any] struct {
-	idx int
-	val T
-}
-
-type IterWithIndex[T any] struct {
-	v1.Iterator[T]
-	zero  T // zero value of T
-	cache IndexedValue[T]
-}
-
-func (it *IterWithIndex[T]) At() IndexedValue[T] {
-	it.cache.val = it.Iterator.At()
-	return it.cache
-}
-
-func NewIterWithIndex[T any](iter v1.Iterator[T], idx int) v1.Iterator[IndexedValue[T]] {
-	return &IterWithIndex[T]{
-		Iterator: iter,
-		cache:    IndexedValue[T]{idx: idx},
-	}
-}
-
-type SliceIterWithIndex[T any] struct {
-	xs    []T // source slice
-	pos   int // position within the slice
-	zero  T   // zero value of T
-	cache IndexedValue[T]
-}
-
-func (it *SliceIterWithIndex[T]) Next() bool {
-	it.pos++
-	return it.pos < len(it.xs)
-}
-
-func (it *SliceIterWithIndex[T]) Err() error {
-	return nil
-}
-
-func (it *SliceIterWithIndex[T]) At() IndexedValue[T] {
-	it.cache.val = it.xs[it.pos]
-	return it.cache
-}
-
-func (it *SliceIterWithIndex[T]) Peek() (IndexedValue[T], bool) {
-	if it.pos+1 >= len(it.xs) {
-		it.cache.val = it.zero
-		return it.cache, false
-	}
-	it.cache.val = it.xs[it.pos+1]
-	return it.cache, true
-}
-
-func NewSliceIterWithIndex[T any](xs []T, idx int) v1.PeekingIterator[IndexedValue[T]] {
-	return &SliceIterWithIndex[T]{
-		xs:    xs,
-		pos:   -1,
-		cache: IndexedValue[T]{idx: idx},
-	}
-}
-
 func getDayTime(ts model.Time) time.Time {
-	return time.Date(ts.Time().Year(), ts.Time().Month(), ts.Time().Day(), 0, 0, 0, 0, time.UTC)
+	return ts.Time().UTC().Truncate(Day)
 }
 
-// TODO(chaudum): Fix Through time calculation
+func truncateDay(ts model.Time) model.Time {
+	// model.minimumTick is time.Millisecond
+	return ts - (ts % model.Time(24*time.Hour/time.Millisecond))
+}
+
 // getFromThrough assumes a list of ShortRefs sorted by From time
-// However, it does also assume that the last item has the highest
-// Through time, which might not be the case!
 func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
 	if len(refs) == 0 {
 		return model.Earliest, model.Latest
 	}
-	return refs[0].From, refs[len(refs)-1].Through
-}
 
-// convertToSearches converts a list of line filter expressions to a list of
-// byte slices that can be used with the bloom filters.
-// TODO(chaudum): Currently this function only supports equality matchers,
-// but we eventually also want to support regex matchers.
-func convertToSearches(filters []*logproto.LineFilterExpression) [][]byte {
-	searches := make([][]byte, 0, len(filters))
-	for _, f := range filters {
-		searches = append(searches, []byte(f.Match))
+	if len(refs) == 1 {
+		return refs[0].From, refs[0].Through
 	}
-	return searches
-}
 
-// convertToShortRefs converts a v1.ChunkRefs into []*logproto.ShortRef
-// TODO(chaudum): Avoid conversion by transferring v1.ChunkRefs in gRPC request.
-func convertToShortRefs(refs v1.ChunkRefs) []*logproto.ShortRef {
-	result := make([]*logproto.ShortRef, 0, len(refs))
-	for _, ref := range refs {
-		result = append(result, &logproto.ShortRef{From: ref.Start, Through: ref.End, Checksum: ref.Checksum})
-	}
-	return result
+	maxItem := slices.MaxFunc(refs, func(a, b *logproto.ShortRef) int {
+		if a.Through > b.Through {
+			return 1
+		} else if a.Through < b.Through {
+			return -1
+		}
+		return 0
+	})
+
+	return refs[0].From, maxItem.Through
 }
 
 // convertToChunkRefs converts a []*logproto.ShortRef into v1.ChunkRefs
@@ -114,34 +49,26 @@ func convertToShortRefs(refs v1.ChunkRefs) []*logproto.ShortRef {
 func convertToChunkRefs(refs []*logproto.ShortRef) v1.ChunkRefs {
 	result := make(v1.ChunkRefs, 0, len(refs))
 	for _, ref := range refs {
-		result = append(result, v1.ChunkRef{Start: ref.From, End: ref.Through, Checksum: ref.Checksum})
+		result = append(result, v1.ChunkRef{From: ref.From, Through: ref.Through, Checksum: ref.Checksum})
 	}
 	return result
 }
 
-// getFirstLast returns the first and last item of a fingerprint slice
-// It assumes an ascending sorted list of fingerprints.
-func getFirstLast[T any](s []T) (T, T) {
-	var zero T
-	if len(s) == 0 {
-		return zero, zero
-	}
-	return s[0], s[len(s)-1]
+type blockWithTasks struct {
+	ref   bloomshipper.BlockRef
+	tasks []Task
 }
 
-type boundedTasks struct {
-	blockRef bloomshipper.BlockRef
-	tasks    []Task
-}
+func partitionTasks(tasks []Task, blocks []bloomshipper.BlockRef) []blockWithTasks {
+	result := make([]blockWithTasks, 0, len(blocks))
 
-func partitionFingerprintRange(tasks []Task, blocks []bloomshipper.BlockRef) (result []boundedTasks) {
 	for _, block := range blocks {
-		bounded := boundedTasks{
-			blockRef: block,
+		bounded := blockWithTasks{
+			ref: block,
 		}
 
 		for _, task := range tasks {
-			refs := task.Request.Refs
+			refs := task.series
 			min := sort.Search(len(refs), func(i int) bool {
 				return block.Cmp(refs[i].Fingerprint) > v1.Before
 			})
@@ -163,5 +90,68 @@ func partitionFingerprintRange(tasks []Task, blocks []bloomshipper.BlockRef) (re
 		}
 
 	}
+	return result
+}
+
+type seriesWithInterval struct {
+	day      config.DayTime
+	series   []*logproto.GroupedChunkRefs
+	interval bloomshipper.Interval
+}
+
+func partitionRequest(req *logproto.FilterChunkRefRequest) []seriesWithInterval {
+	result := make([]seriesWithInterval, 0)
+
+	fromDay, throughDay := truncateDay(req.From), truncateDay(req.Through)
+
+	for day := fromDay; day.Equal(throughDay) || day.Before(throughDay); day = day.Add(Day) {
+		minTs, maxTs := model.Latest, model.Earliest
+		nextDay := day.Add(Day)
+		res := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
+
+		for _, series := range req.Refs {
+			chunks := series.Refs
+
+			min := sort.Search(len(chunks), func(i int) bool {
+				return chunks[i].Through >= day
+			})
+
+			max := sort.Search(len(chunks), func(i int) bool {
+				return chunks[i].From >= nextDay
+			})
+
+			// All chunks fall outside of the range
+			if min == len(chunks) || max == 0 {
+				continue
+			}
+
+			if chunks[min].From < minTs {
+				minTs = chunks[min].From
+			}
+			if chunks[max-1].Through > maxTs {
+				maxTs = chunks[max-1].Through
+			}
+			// fmt.Println("day", day, "series", series.Fingerprint, "minTs", minTs, "maxTs", maxTs)
+
+			res = append(res, &logproto.GroupedChunkRefs{
+				Fingerprint: series.Fingerprint,
+				Tenant:      series.Tenant,
+				Refs:        chunks[min:max],
+			})
+
+		}
+
+		if len(res) > 0 {
+			result = append(result, seriesWithInterval{
+				interval: bloomshipper.Interval{
+					Start: minTs,
+					End:   maxTs,
+				},
+				day:    config.NewDayTime(day),
+				series: res,
+			})
+		}
+	}
+
 	return result
 }

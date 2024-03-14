@@ -1,7 +1,7 @@
 ---
 title: Use k6 to load test the write path
 menuTitle:  Write path testing
-description: Using K6 to load test the write path (ingest).
+description: Using k6 to load test the write path (ingest).
 aliases: 
 - ../../clients/k6/write-scenario/
 weight: 920

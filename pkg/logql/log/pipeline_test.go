@@ -280,6 +280,10 @@ func (p *stubStreamPipeline) ProcessString(_ int64, _ string, _ ...labels.Label)
 	return "", nil, true
 }
 
+func (p *stubStreamPipeline) ReferencedStructuredMetadata() bool {
+	return false
+}
+
 var (
 	resMatches    bool
 	resLine       []byte

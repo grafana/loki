@@ -49,6 +49,18 @@ message Caches {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "volumeResult"
   ];
+  Cache seriesResult = 6 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "seriesResult"
+  ];
+  Cache labelResult = 7 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "labelResult"
+  ];
+  Cache instantMetricResult = 8 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "instantMetricResult"
+  ];
 }
 
 // Summary is the summary of a query statistics.
@@ -114,6 +126,8 @@ message Store {
   int64 totalChunksDownloaded = 2 [(gogoproto.jsontag) = "totalChunksDownloaded"];
   // Time spent fetching chunks in nanoseconds.
   int64 chunksDownloadTime = 3 [(gogoproto.jsontag) = "chunksDownloadTime"];
+  // Whether the query referenced structured metadata
+  bool queryReferencedStructured = 13 [(gogoproto.jsontag) = "queryReferencedStructuredMetadata"];
 
   Chunk chunk = 4 [
     (gogoproto.nullable) = false,
@@ -122,6 +136,9 @@ message Store {
 
   // Time spent fetching chunk refs from index.
   int64 chunkRefsFetchTime = 5 [(gogoproto.jsontag) = "chunkRefsFetchTime"];
+
+  // Time spent being blocked on congestion control.
+  int64 congestionControlLatency = 6 [(gogoproto.jsontag) = "congestionControlLatency"];
 }
 
 message Chunk {
@@ -153,4 +170,5 @@ message Cache {
   int64 bytesSent = 5 [(gogoproto.jsontag) = "bytesSent"];
   int32 requests = 6 [(gogoproto.jsontag) = "requests"];
   int64 downloadTime = 7 [(gogoproto.jsontag) = "downloadTime"];
+  int64 queryLengthServed = 8 [(gogoproto.jsontag) = "queryLengthServed"];
 }

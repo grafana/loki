@@ -69,7 +69,7 @@ func (ii *BitPrefixInvertedIndex) getShards(shard *astmapper.ShardAnnotation) ([
 	}
 
 	requestedShard := shard.TSDB()
-	minFp, maxFp := requestedShard.Bounds()
+	minFp, maxFp := requestedShard.GetFromThrough()
 
 	// Determine how many bits we need to take from
 	// the requested shard's min/max fingerprint values
@@ -143,7 +143,7 @@ func (ii *BitPrefixInvertedIndex) Lookup(matchers []*labels.Matcher, shard *astm
 	// Because bit prefix order is also ascending order,
 	// the merged fingerprints from ascending shards are also in order.
 	if filter {
-		minFP, maxFP := shard.TSDB().Bounds()
+		minFP, maxFP := shard.TSDB().GetFromThrough()
 		minIdx := sort.Search(len(result), func(i int) bool {
 			return result[i] >= minFP
 		})

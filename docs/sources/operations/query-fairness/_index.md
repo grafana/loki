@@ -1,7 +1,7 @@
 ---
 title: Query fairness within tenants
 menuTitle: Query fairness
-description: The scheduler can guarantee query fairness across multiple actors within a single tenant.
+description: Describes methods for guaranteeing query fairness across multiple actors within a single tenant using the scheduler.
 weight:
 ---
 
@@ -115,7 +115,7 @@ you would usually want to avoid this scenario and control yourself where the hea
 
 When using Grafana as the Loki user interface, you can, for example, create multiple data sources
 with the same tenant, but with a different additional HTTP header
-`X-Loki-Scope-Actor` and restrict which Grafana user can use which data source.
+`X-Loki-Actor-Path` and restrict which Grafana user can use which data source.
 
 Alternatively, if you have a proxy for authentication in front of Loki, you can
 pass the (hashed) user from the authentication as downstream header to Loki.

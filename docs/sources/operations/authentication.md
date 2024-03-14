@@ -18,10 +18,11 @@ A list of open-source reverse proxies you can use:
 -  [OAuth2 proxy](https://github.com/oauth2-proxy/oauth2-proxy)
 -  [HAProxy](https://www.haproxy.org/)
 
-Note that when using Loki in multi-tenant mode, Loki requires the HTTP header
+{{% admonition type="note" %}}
+When using Loki in multi-tenant mode, Loki requires the HTTP header
 `X-Scope-OrgID` to be set to a string identifying the tenant; the responsibility
 of populating this value should be handled by the authenticating reverse proxy.
-For more information, read the [multi-tenancy]({{< relref "./multi-tenancy" >}}) documentation.
+For more information, read the [multi-tenancy]({{< relref "./multi-tenancy" >}}) documentation.{{% /admonition %}}
 
 For information on authenticating Promtail, see the documentation for [how to
 configure Promtail]({{< relref "../send-data/promtail/configuration" >}}).

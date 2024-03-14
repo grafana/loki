@@ -104,7 +104,7 @@ func TestResponseFormat(t *testing.T) {
 			url:             "/loki/wrong/path",
 			response:        nil,
 			expectedCode:    http.StatusNotFound,
-			expectedRespone: "unknown request path: /loki/wrong/path\n",
+			expectedRespone: "unknown request path: /loki/wrong/path",
 		},
 	} {
 		t.Run(fmt.Sprintf("%s returns the expected format", tc.url), func(t *testing.T) {

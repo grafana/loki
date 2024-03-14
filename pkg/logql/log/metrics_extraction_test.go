@@ -485,3 +485,7 @@ func (p *stubStreamExtractor) Process(_ int64, _ []byte, _ ...labels.Label) (flo
 func (p *stubStreamExtractor) ProcessString(_ int64, _ string, _ ...labels.Label) (float64, LabelsResult, bool) {
 	return 0, nil, true
 }
+
+func (p *stubStreamExtractor) ReferencedStructuredMetadata() bool {
+	return false
+}

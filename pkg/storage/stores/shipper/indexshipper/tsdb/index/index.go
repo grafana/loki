@@ -1849,7 +1849,7 @@ func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *lab
 	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, lbls)
 }
 
-func (r *Reader) Postings(name string, shard *ShardAnnotation, values ...string) (Postings, error) {
+func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...string) (Postings, error) {
 	if r.version == FormatV1 {
 		e, ok := r.postingsV1[name]
 		if !ok {
@@ -1947,8 +1947,8 @@ func (r *Reader) Postings(name string, shard *ShardAnnotation, values ...string)
 	}
 
 	merged := Merge(res...)
-	if shard != nil {
-		return NewShardedPostings(merged, *shard, r.fingerprintOffsets), nil
+	if fpFilter != nil {
+		return NewShardedPostings(merged, fpFilter, r.fingerprintOffsets), nil
 	}
 
 	return merged, nil
