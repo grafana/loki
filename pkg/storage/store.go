@@ -6,6 +6,8 @@ import (
 	"math"
 	"time"
 
+	lokilog "github.com/grafana/loki/pkg/logql/log"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -57,10 +59,17 @@ type SchemaConfigProvider interface {
 	GetSchemaConfigs() []config.PeriodConfig
 }
 
+type Instrumentable interface {
+	SetExtractorWrapper(wrapper lokilog.SampleExtractorWrapper)
+
+	SetPipelineWrapper(wrapper lokilog.PipelineWrapper)
+}
+
 type Store interface {
 	stores.Store
 	SelectStore
 	SchemaConfigProvider
+	Instrumentable
 }
 
 type LokiStore struct {
@@ -84,6 +93,8 @@ type LokiStore struct {
 	logger log.Logger
 
 	chunkFilterer               chunk.RequestChunkFilterer
+	extractorWrapper            lokilog.SampleExtractorWrapper
+	pipelineWrapper             lokilog.PipelineWrapper
 	congestionControllerFactory func(cfg congestion.Config, logger log.Logger, metrics *congestion.Metrics) congestion.Controller
 
 	metricsNamespace string
@@ -335,9 +346,6 @@ func decodeReq(req logql.QueryParams) ([]*labels.Matcher, model.Time, model.Time
 		return nil, 0, 0, err
 	}
 	matchers = append(matchers, nameLabelMatcher)
-	if err != nil {
-		return nil, 0, 0, err
-	}
 	matchers, err = injectShardLabel(req.GetShards(), matchers)
 	if err != nil {
 		return nil, 0, 0, err
@@ -373,8 +381,16 @@ func (s *LokiStore) SetChunkFilterer(chunkFilterer chunk.RequestChunkFilterer) {
 	s.Store.SetChunkFilterer(chunkFilterer)
 }
 
+func (s *LokiStore) SetExtractorWrapper(wrapper lokilog.SampleExtractorWrapper) {
+	s.extractorWrapper = wrapper
+}
+
+func (s *LokiStore) SetPipelineWrapper(wrapper lokilog.PipelineWrapper) {
+	s.pipelineWrapper = wrapper
+}
+
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
-func (s *LokiStore) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from, through model.Time) ([]*LazyChunk, error) {
+func (s *LokiStore) lazyChunks(ctx context.Context, from, through model.Time, predicate chunk.Predicate) ([]*LazyChunk, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -383,7 +399,7 @@ func (s *LokiStore) lazyChunks(ctx context.Context, matchers []*labels.Matcher, 
 	stats := stats.FromContext(ctx)
 
 	start := time.Now()
-	chks, fetchers, err := s.GetChunks(ctx, userID, from, through, matchers...)
+	chks, fetchers, err := s.GetChunks(ctx, userID, from, through, predicate)
 	stats.AddChunkRefsFetchTime(time.Since(start))
 
 	if err != nil {
@@ -446,9 +462,7 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 	}
 	result := make([]logproto.SeriesIdentifier, len(series))
 	for i, s := range series {
-		result[i] = logproto.SeriesIdentifier{
-			Labels: s.Map(),
-		}
+		result[i] = logproto.SeriesIdentifierFromLabels(s)
 	}
 	return result, nil
 }
@@ -461,7 +475,7 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, matchers, from, through)
+	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan))
 	if err != nil {
 		return nil, err
 	}
@@ -485,6 +499,15 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 		return nil, err
 	}
 
+	if s.pipelineWrapper != nil {
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		pipeline = s.pipelineWrapper.Wrap(ctx, pipeline, expr.String(), userID)
+	}
+
 	var chunkFilterer chunk.Filterer
 	if s.chunkFilterer != nil {
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
@@ -499,7 +522,7 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, matchers, from, through)
+	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan))
 	if err != nil {
 		return nil, err
 	}
@@ -521,6 +544,15 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
+	}
+
+	if s.extractorWrapper != nil {
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		extractor = s.extractorWrapper.Wrap(ctx, extractor, expr.String(), userID)
 	}
 
 	var chunkFilterer chunk.Filterer

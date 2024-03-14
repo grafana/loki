@@ -5,16 +5,16 @@ import (
 	"errors"
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 )
 
 func setupFakesNoError(t *testing.T, stack *lokiv1.LokiStack) (*k8sfakes.FakeClient, *k8sfakes.FakeStatusWriter) {
@@ -39,128 +39,8 @@ func setupFakesNoError(t *testing.T, stack *lokiv1.LokiStack) (*k8sfakes.FakeCli
 	return k, sw
 }
 
-func TestSetDegradedCondition_WhenGetLokiStackReturnsNotFound_DoNothing(t *testing.T) {
-	msg := "tell me nothing"
-	reason := lokiv1.ReasonMissingObjectStorageSecret
-
-	r := ctrl.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      "my-stack",
-			Namespace: "some-ns",
-		},
-	}
-
-	k := &k8sfakes.FakeClient{}
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
-		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
-	}
-
-	err := SetDegradedCondition(context.Background(), k, r, msg, reason)
-	require.NoError(t, err)
-}
-
-func TestSetDegradedCondition_WhenExisting_DoNothing(t *testing.T) {
-	msg := "tell me nothing"
-	reason := lokiv1.ReasonMissingObjectStorageSecret
-	s := lokiv1.LokiStack{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-stack",
-			Namespace: "some-ns",
-		},
-		Status: lokiv1.LokiStackStatus{
-			Conditions: []metav1.Condition{
-				{
-					Type:    string(lokiv1.ConditionDegraded),
-					Reason:  string(reason),
-					Message: msg,
-					Status:  metav1.ConditionTrue,
-				},
-			},
-		},
-	}
-
-	r := ctrl.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      "my-stack",
-			Namespace: "some-ns",
-		},
-	}
-
-	k, _ := setupFakesNoError(t, &s)
-
-	err := SetDegradedCondition(context.Background(), k, r, msg, reason)
-	require.NoError(t, err)
-	require.Zero(t, k.StatusCallCount())
-}
-
-func TestSetDegradedCondition_WhenExisting_SetDegradedConditionTrue(t *testing.T) {
-	msg := "tell me something"
-	reason := lokiv1.ReasonMissingObjectStorageSecret
-	s := lokiv1.LokiStack{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-stack",
-			Namespace: "some-ns",
-		},
-		Status: lokiv1.LokiStackStatus{
-			Conditions: []metav1.Condition{
-				{
-					Type:   string(lokiv1.ConditionDegraded),
-					Reason: string(reason),
-					Status: metav1.ConditionFalse,
-				},
-			},
-		},
-	}
-
-	r := ctrl.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      "my-stack",
-			Namespace: "some-ns",
-		},
-	}
-
-	k, sw := setupFakesNoError(t, &s)
-
-	err := SetDegradedCondition(context.Background(), k, r, msg, reason)
-	require.NoError(t, err)
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
-}
-
-func TestSetDegradedCondition_WhenNoneExisting_AppendDegradedCondition(t *testing.T) {
-	msg := "tell me something"
-	reason := lokiv1.ReasonMissingObjectStorageSecret
-	s := lokiv1.LokiStack{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-stack",
-			Namespace: "some-ns",
-		},
-	}
-
-	r := ctrl.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      "my-stack",
-			Namespace: "some-ns",
-		},
-	}
-
-	k, sw := setupFakesNoError(t, &s)
-
-	err := SetDegradedCondition(context.Background(), k, r, msg, reason)
-	require.NoError(t, err)
-
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
-}
-
 func TestGenerateCondition(t *testing.T) {
 	k := &k8sfakes.FakeClient{}
-	r := ctrl.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      "test-lokistack",
-			Namespace: "some-ns",
-		},
-	}
 	lokiStack := lokiv1.LokiStack{
 		TypeMeta: metav1.TypeMeta{
 			Kind: "LokiStack",
@@ -173,6 +53,7 @@ func TestGenerateCondition(t *testing.T) {
 	tt := []struct {
 		desc            string
 		componentStatus *lokiv1.LokiStackComponentStatus
+		degradedErr     *DegradedError
 		wantCondition   metav1.Condition
 	}{
 		{
@@ -183,8 +64,8 @@ func TestGenerateCondition(t *testing.T) {
 		{
 			desc: "container pending",
 			componentStatus: &lokiv1.LokiStackComponentStatus{
-				Ingester: map[corev1.PodPhase][]string{
-					corev1.PodPending: {
+				Ingester: lokiv1.PodStatusMap{
+					lokiv1.PodPending: {
 						"pod-0",
 					},
 				},
@@ -194,13 +75,32 @@ func TestGenerateCondition(t *testing.T) {
 		{
 			desc: "container failed",
 			componentStatus: &lokiv1.LokiStackComponentStatus{
-				Ingester: map[corev1.PodPhase][]string{
-					corev1.PodFailed: {
+				Ingester: lokiv1.PodStatusMap{
+					lokiv1.PodFailed: {
 						"pod-0",
 					},
 				},
 			},
 			wantCondition: conditionFailed,
+		},
+		{
+			desc: "degraded error",
+			componentStatus: &lokiv1.LokiStackComponentStatus{
+				Ingester: lokiv1.PodStatusMap{
+					lokiv1.PodRunning: {
+						"pod-0",
+					},
+				},
+			},
+			degradedErr: &DegradedError{
+				Message: "test-message",
+				Reason:  "test-reason",
+			},
+			wantCondition: metav1.Condition{
+				Type:    "Degraded",
+				Reason:  "test-reason",
+				Message: "test-message",
+			},
 		},
 	}
 
@@ -209,7 +109,7 @@ func TestGenerateCondition(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			condition, err := generateCondition(context.TODO(), tc.componentStatus, k, r, &lokiStack)
+			condition, err := generateCondition(context.TODO(), tc.componentStatus, k, &lokiStack, tc.degradedErr)
 			require.Nil(t, err)
 			require.Equal(t, tc.wantCondition, condition)
 		})
@@ -217,7 +117,7 @@ func TestGenerateCondition(t *testing.T) {
 }
 
 func TestGenerateCondition_ZoneAwareLokiStack(t *testing.T) {
-	testError := errors.New("test-error")
+	testError := errors.New("test-error") //nolint:goerr113
 	tt := []struct {
 		desc          string
 		nodes         []corev1.Node
@@ -259,15 +159,9 @@ func TestGenerateCondition_ZoneAwareLokiStack(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			r := ctrl.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      "test-lokistack",
-					Namespace: "some-ns",
-				},
-			}
 			componentStatus := &lokiv1.LokiStackComponentStatus{
-				Ingester: map[corev1.PodPhase][]string{
-					corev1.PodPending: {
+				Ingester: lokiv1.PodStatusMap{
+					lokiv1.PodPending: {
 						"pod-0",
 					},
 				},
@@ -306,10 +200,85 @@ func TestGenerateCondition_ZoneAwareLokiStack(t *testing.T) {
 				return tc.wantErr
 			}
 
-			condition, err := generateCondition(context.TODO(), componentStatus, k, r, &lokiStack)
+			condition, err := generateCondition(context.TODO(), componentStatus, k, &lokiStack, nil)
 
 			require.Equal(t, tc.wantErr, err)
 			require.Equal(t, tc.wantCondition, condition)
+		})
+	}
+}
+
+func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
+	tt := []struct {
+		desc          string
+		schemas       []lokiv1.ObjectStorageSchema
+		wantCondition []metav1.Condition
+	}{
+		{
+			desc: "no V13 in schema config",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-11",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2023-10-11",
+				},
+			},
+			wantCondition: []metav1.Condition{{
+				Type:    string(lokiv1.ConditionWarning),
+				Reason:  string(lokiv1.ReasonStorageNeedsSchemaUpdate),
+				Message: messageWarningNeedsSchemaVersionUpdate,
+			}},
+		},
+		{
+			desc: "with V13 not as the last element in schema config",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-11",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2023-10-11",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2024-10-11",
+				},
+			},
+			wantCondition: []metav1.Condition{{
+				Type:    string(lokiv1.ConditionWarning),
+				Reason:  string(lokiv1.ReasonStorageNeedsSchemaUpdate),
+				Message: messageWarningNeedsSchemaVersionUpdate,
+			}},
+		},
+		{
+			desc: "with V13 as the last element in schema config",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-11",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2023-10-11",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-10-11",
+				},
+			},
+			wantCondition: []metav1.Condition{},
+		},
+	}
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			condition := generateWarnings(tc.schemas)
+			require.Equal(t, condition, tc.wantCondition)
 		})
 	}
 }

@@ -177,16 +177,6 @@ local promtail_win() = pipeline('promtail-windows') {
 
 local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
   steps+: [
-    // dry run for everything that is not tag or main
-    docker('amd64', 'querytee') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/loki-query-tee',
-      },
-    },
-  ] + [
     // publish for tag or main
     docker('amd64', 'querytee') {
       depends_on: ['image-tag'],
@@ -196,21 +186,10 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
       },
     },
   ],
-  depends_on: ['check'],
 };
 
 local fluentbit(arch) = pipeline('fluent-bit-' + arch) + arch_image(arch) {
   steps+: [
-    // dry run for everything that is not tag or main
-    clients_docker(arch, 'fluent-bit') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/fluent-bit-plugin-loki',
-      },
-    },
-  ] + [
     // publish for tag or main
     clients_docker(arch, 'fluent-bit') {
       depends_on: ['image-tag'],
@@ -220,21 +199,10 @@ local fluentbit(arch) = pipeline('fluent-bit-' + arch) + arch_image(arch) {
       },
     },
   ],
-  depends_on: ['check'],
 };
 
 local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'main') {
   steps+: [
-    // dry run for everything that is not tag or main
-    clients_docker('amd64', 'fluentd') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/fluent-plugin-loki',
-      },
-    },
-  ] + [
     // publish for tag or main
     clients_docker('amd64', 'fluentd') {
       depends_on: ['image-tag'],
@@ -244,21 +212,10 @@ local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'main') {
       },
     },
   ],
-  depends_on: ['check'],
 };
 
 local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'main') {
   steps+: [
-    // dry run for everything that is not tag or main
-    clients_docker('amd64', 'logstash') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/logstash-output-loki',
-      },
-    },
-  ] + [
     // publish for tag or main
     clients_docker('amd64', 'logstash') {
       depends_on: ['image-tag'],
@@ -268,20 +225,10 @@ local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'main') {
       },
     },
   ],
-  depends_on: ['check'],
 };
 
 local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
   steps+: [
-    // dry run for everything that is not tag or main
-    clients_docker(arch, 'promtail') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-      },
-    },
-  ] + [
     // publish for tag or main
     clients_docker(arch, 'promtail') {
       depends_on: ['image-tag'],
@@ -289,7 +236,6 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
       settings+: {},
     },
   ],
-  depends_on: ['check'],
 };
 
 local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(arch) {
@@ -297,15 +243,6 @@ local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(a
 
   steps+: [
     skipStep,
-    // dry run for everything that is not tag or main
-    lambda_promtail_ecr('lambda-promtail') {
-      depends_on: ['image-tag', skipStep.name],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-      },
-    },
-  ] + [
     // publish for tag or main
     lambda_promtail_ecr('lambda-promtail') {
       depends_on: ['image-tag'],
@@ -313,20 +250,10 @@ local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(a
       settings+: {},
     },
   ],
-  depends_on: ['check'],
 };
 
 local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
   steps+: [
-    // dry run for everything that is not tag or main
-    docker_operator(arch, 'loki-operator') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-      },
-    },
-  ] + [
     // publish for tag or main
     docker_operator(arch, 'loki-operator') {
       depends_on: ['image-tag'],
@@ -336,21 +263,10 @@ local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
       settings+: {},
     },
   ],
-  depends_on: ['check'],
 };
 
 local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
   steps+: [
-    // dry run for everything that is not tag or main
-    docker('amd64', 'logql-analyzer') {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-        repo: 'grafana/logql-analyzer',
-      },
-    },
-  ] + [
     // publish for tag or main
     docker('amd64', 'logql-analyzer') {
       depends_on: ['image-tag'],
@@ -360,21 +276,10 @@ local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
       },
     },
   ],
-  depends_on: ['check'],
 };
 
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
-    // dry run for everything that is not tag or main
-    docker(arch, app) {
-      depends_on: ['image-tag'],
-      when: onPRs,
-      settings+: {
-        dry_run: true,
-      },
-    }
-    for app in apps
-  ] + [
     // publish for tag or main
     docker(arch, app) {
       depends_on: ['image-tag'],
@@ -383,7 +288,6 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
     }
     for app in apps
   ],
-  depends_on: ['check'],
 };
 
 local manifest(apps) = pipeline('manifest') {
@@ -496,7 +400,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ],
 };
 
-local build_image_tag = '0.32.0';
+local build_image_tag = '0.33.0';
 [
   pipeline('loki-build-image-' + arch) {
     workspace: {
@@ -508,21 +412,6 @@ local build_image_tag = '0.32.0';
       arch: arch,
     },
     steps: [
-      {
-        name: 'test',
-        image: 'plugins/docker',
-        when: onPRs + onPath('loki-build-image/**'),
-        environment: {
-          DOCKER_BUILDKIT: 1,
-        },
-        settings: {
-          repo: 'grafana/loki-build-image',
-          context: 'loki-build-image',
-          dockerfile: 'loki-build-image/Dockerfile',
-          tags: [build_image_tag + '-' + arch],
-          dry_run: true,
-        },
-      },
       {
         name: 'push',
         image: 'plugins/docker',
@@ -572,16 +461,6 @@ local build_image_tag = '0.32.0';
     },
     steps: [
       {
-        name: 'test-image',
-        image: 'plugins/docker',
-        when: onPRs + onPath('production/helm/loki/src/helm-test/**'),
-        settings: {
-          repo: 'grafana/loki-helm-test',
-          dockerfile: 'production/helm/loki/src/helm-test/Dockerfile',
-          dry_run: true,
-        },
-      },
-      {
         name: 'push-image',
         image: 'plugins/docker',
         when: onTagOrMain + onPath('production/helm/loki/src/helm-test/**'),
@@ -592,63 +471,6 @@ local build_image_tag = '0.32.0';
           password: { from_secret: docker_password_secret.name },
           dry_run: false,
         },
-      },
-    ],
-  },
-  pipeline('check') {
-    workspace: {
-      base: '/src',
-      path: 'loki',
-    },
-    steps: [
-      make('check-drone-drift', container=false) { depends_on: ['clone'] },
-      make('check-generated-files', container=false) { depends_on: ['clone'] },
-      run('clone-target-branch', commands=[
-        'cd ..',
-        'echo "cloning "$DRONE_TARGET_BRANCH ',
-        'git clone -b $DRONE_TARGET_BRANCH $CI_REPO_REMOTE loki-target-branch',
-        'cd -',
-      ]) { depends_on: ['clone'], when: onPRs },
-      make('test', container=false) { depends_on: ['clone-target-branch', 'check-generated-files'] },
-      run('test-target-branch', commands=['cd ../loki-target-branch && BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-target-branch'], when: onPRs },
-      make('compare-coverage', container=false, args=[
-        'old=../loki-target-branch/test_results.txt',
-        'new=test_results.txt',
-        'packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki',
-        '> diff.txt',
-      ]) { depends_on: ['test', 'test-target-branch'], when: onPRs },
-      run('report-coverage', commands=[
-        "total_diff=$(sed 's/%//' diff.txt | awk '{sum+=$3;}END{print sum;}')",
-        'if [ $total_diff = 0 ]; then exit 0; fi',
-        "pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')",
-        "body=$(jq -Rs '{body: . }' diff.txt)",
-        'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments -d "$body" > /dev/null',
-      ], env={
-        USER: 'grafanabot',
-        TOKEN: { from_secret: github_secret.name },
-      }) { depends_on: ['compare-coverage'], when: onPRs },
-      make('lint', container=false) { depends_on: ['check-generated-files'] },
-      make('check-mod', container=false) { depends_on: ['test', 'lint'] },
-      {
-        name: 'shellcheck',
-        image: 'koalaman/shellcheck-alpine:stable',
-        commands: ['apk add make bash && make lint-scripts'],
-      },
-      make('loki', container=false) { depends_on: ['check-generated-files'] },
-      make('check-doc', container=false) { depends_on: ['loki'] },
-      make('check-format', container=false, args=[
-        'GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"',
-      ]) { depends_on: ['loki'], when: onPRs },
-      make('validate-example-configs', container=false) { depends_on: ['loki'] },
-      make('check-example-config-doc', container=false) { depends_on: ['clone'] },
-      {
-        name: 'build-docs-website',
-        image: 'grafana/docs-base:e6ef023f8b8',
-        commands: [
-          'mkdir -p /hugo/content/docs/loki/latest',
-          'cp -r docs/sources/* /hugo/content/docs/loki/latest/',
-          'cd /hugo && make prod',
-        ],
       },
     ],
   },
@@ -787,7 +609,7 @@ local build_image_tag = '0.32.0';
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     trigger: {
-      // wee need to run it only on Loki tags that starts with `v`.
+      // we need to run it only on Loki tags that starts with `v`.
       ref: ['refs/tags/v*'],
     },
     steps: [
@@ -834,109 +656,6 @@ local build_image_tag = '0.32.0';
   },
   promtail_win(),
   logql_analyzer(),
-  pipeline('release') {
-    trigger+: {
-      event: ['pull_request', 'tag'],
-    },
-    depends_on+: ['check'],
-    image_pull_secrets: [pull_secret.name],
-    volumes+: [
-      {
-        name: 'cgroup',
-        host: {
-          path: '/sys/fs/cgroup',
-        },
-      },
-      {
-        name: 'docker',
-        host: {
-          path: '/var/run/docker.sock',
-        },
-      },
-    ],
-    // Launch docker images with systemd
-    services: [
-      {
-        name: 'systemd-debian',
-        image: 'jrei/systemd-debian:12',
-        volumes: [
-          {
-            name: 'cgroup',
-            path: '/sys/fs/cgroup',
-          },
-        ],
-        privileged: true,
-      },
-      {
-        name: 'systemd-centos',
-        image: 'jrei/systemd-centos:8',
-        volumes: [
-          {
-            name: 'cgroup',
-            path: '/sys/fs/cgroup',
-          },
-        ],
-        privileged: true,
-      },
-    ],
-    // Package and test the packages
-    steps: [
-      skipMissingSecretPipelineStep(gpg_private_key.name),  // Needs GPG keys to run
-      {
-        name: 'fetch-tags',
-        image: 'alpine',
-        commands: [
-          'apk add --no-cache bash git',
-          'git fetch origin --tags',
-        ],
-      },
-      run('write-key',
-          commands=['printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE'],
-          env={
-            NFPM_SIGNING_KEY: { from_secret: gpg_private_key.name },
-            NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
-          }),
-      run('test packaging',
-          commands=[
-            'make BUILD_IN_CONTAINER=false packages',
-          ],
-          env={
-            NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
-            NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
-          }),
-      {
-        name: 'test deb package',
-        image: 'docker',
-        commands: ['./tools/packaging/verify-deb-install.sh'],
-        volumes: [
-          {
-            name: 'docker',
-            path: '/var/run/docker.sock',
-          },
-        ],
-        privileged: true,
-      },
-      {
-        name: 'test rpm package',
-        image: 'docker',
-        commands: ['./tools/packaging/verify-rpm-install.sh'],
-        volumes: [
-          {
-            name: 'docker',
-            path: '/var/run/docker.sock',
-          },
-        ],
-        privileged: true,
-      },
-      run('publish',
-          commands=['make BUILD_IN_CONTAINER=false publish'],
-          env={
-            GITHUB_TOKEN: { from_secret: github_secret.name },
-            NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
-            NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
-          }) { when: { event: ['tag'] } },
-    ],
-  },
   pipeline('docker-driver') {
     trigger+: onTagOrMain,
     steps: [

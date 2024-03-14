@@ -8,7 +8,7 @@ import (
 )
 
 func TestFormat(t *testing.T) {
-	maxCharsPerLine = 20
+	MaxCharsPerLine = 20
 
 	cases := []struct {
 		name string
@@ -108,7 +108,7 @@ func TestFormat(t *testing.T) {
 }
 
 func TestFormat_VectorAggregation(t *testing.T) {
-	maxCharsPerLine = 20
+	MaxCharsPerLine = 20
 
 	cases := []struct {
 		name string
@@ -147,7 +147,7 @@ func TestFormat_VectorAggregation(t *testing.T) {
 }
 
 func TestFormat_LabelReplace(t *testing.T) {
-	maxCharsPerLine = 20
+	MaxCharsPerLine = 20
 
 	cases := []struct {
 		name string
@@ -201,7 +201,7 @@ func TestFormat_LabelReplace(t *testing.T) {
 }
 
 func TestFormat_BinOp(t *testing.T) {
-	maxCharsPerLine = 20
+	MaxCharsPerLine = 20
 
 	cases := []struct {
 		name string

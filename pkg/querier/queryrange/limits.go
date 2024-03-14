@@ -14,7 +14,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
@@ -28,8 +27,10 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	queryrange_limits "github.com/grafana/loki/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -61,6 +62,15 @@ type limits struct {
 }
 
 func (l limits) QuerySplitDuration(user string) time.Duration {
+	if l.splitDuration == nil {
+		return l.Limits.QuerySplitDuration(user)
+	}
+	return *l.splitDuration
+}
+
+func (l limits) InstantMetricQuerySplitDuration(user string) time.Duration {
+	// NOTE: It returns `splitDuration` for both instant and range queries.
+	// no need to have separate limits for now.
 	if l.splitDuration == nil {
 		return l.Limits.QuerySplitDuration(user)
 	}
@@ -102,10 +112,11 @@ type UserIDTransformer func(context.Context, string) string
 type cacheKeyLimits struct {
 	Limits
 	transformer UserIDTransformer
+	iqo         util.IngesterQueryOptions
 }
 
-func (l cacheKeyLimits) GenerateCacheKey(ctx context.Context, userID string, r queryrangebase.Request) string {
-	split := l.QuerySplitDuration(userID)
+func (l cacheKeyLimits) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
+	split := SplitIntervalForTimeRange(l.iqo, l.Limits, l.QuerySplitDuration, []string{userID}, time.Now().UTC(), r.GetEnd().UTC())
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {
@@ -304,7 +315,7 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 }
 
 func (q *querySizeLimiter) getSchemaCfg(r queryrangebase.Request) (config.PeriodConfig, error) {
-	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(r.GetQuery())
+	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDurationFromQueryString(r.GetQuery())
 	if err != nil {
 		return config.PeriodConfig{}, errors.New("failed to get range-vector and offset duration: " + err.Error())
 	}
@@ -573,7 +584,7 @@ func WeightedParallelism(
 		// config because query is in future
 		// or
 		// there is overlap with current config
-		finalOrFuture := i == len(configs)-1 || configs[i].From.After(end)
+		finalOrFuture := i == len(configs)-1 || configs[i].From.Time.After(end)
 		if finalOrFuture {
 			return true
 		}
@@ -603,7 +614,7 @@ func WeightedParallelism(
 
 	var tsdbDur, otherDur time.Duration
 
-	for ; i < len(configs) && configs[i].From.Before(end); i++ {
+	for ; i < len(configs) && configs[i].From.Time.Before(end); i++ {
 		_, from := minMaxModelTime(start, configs[i].From.Time)
 		through := end
 		if i+1 < len(configs) {

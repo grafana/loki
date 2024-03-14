@@ -2,7 +2,6 @@ package logproto
 
 import (
 	"encoding/json"
-	stdlibjson "encoding/json"
 	"fmt"
 	"math"
 	"testing"
@@ -12,6 +11,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/plan"
 )
 
 // This test verifies that jsoninter uses our custom method for marshalling.
@@ -21,7 +23,7 @@ func TestJsoniterMarshalForSample(t *testing.T) {
 }
 
 func TestStdlibJsonMarshalForSample(t *testing.T) {
-	testMarshalling(t, stdlibjson.Marshal, "json: error calling MarshalJSON for type logproto.LegacySample: test sample")
+	testMarshalling(t, json.Marshal, "json: error calling MarshalJSON for type logproto.LegacySample: test sample")
 }
 
 func testMarshalling(t *testing.T, marshalFn func(v interface{}) ([]byte, error), expectedError string) {
@@ -213,7 +215,7 @@ func TestMergeLabelResponses(t *testing.T) {
 }
 
 func TestMergeSeriesResponses(t *testing.T) {
-	mockSeriesResponse := func(series []map[string]string) *SeriesResponse {
+	mockSeriesResponse := func(series [][]SeriesIdentifier_LabelsEntry) *SeriesResponse {
 		resp := &SeriesResponse{}
 		for _, s := range series {
 			resp.Series = append(resp.Series, SeriesIdentifier{
@@ -232,31 +234,31 @@ func TestMergeSeriesResponses(t *testing.T) {
 		{
 			desc: "merge one series response and expect one",
 			responses: []*SeriesResponse{
-				{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}},
+				{Series: []SeriesIdentifier{{Labels: MustNewSeriesEntries("test", "test")}}},
 			},
 			expected: []*SeriesResponse{
-				mockSeriesResponse([]map[string]string{{"test": "test"}}),
+				mockSeriesResponse([][]SeriesIdentifier_LabelsEntry{{{"test", "test"}}}),
 			},
 		},
 		{
 			desc: "merge two series responses",
 			responses: []*SeriesResponse{
-				{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}},
-				{Series: []SeriesIdentifier{{Labels: map[string]string{"test2": "test2"}}}},
+				{Series: []SeriesIdentifier{{Labels: MustNewSeriesEntries("test", "test")}}},
+				{Series: []SeriesIdentifier{{Labels: MustNewSeriesEntries("test2", "test2")}}},
 			},
 			expected: []*SeriesResponse{
-				mockSeriesResponse([]map[string]string{{"test": "test"}, {"test2": "test2"}}),
+				mockSeriesResponse([][]SeriesIdentifier_LabelsEntry{{{"test", "test"}}, {{"test2", "test2"}}}),
 			},
 		},
 		{
 			desc: "merge three series responses",
 			responses: []*SeriesResponse{
-				{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}},
-				{Series: []SeriesIdentifier{{Labels: map[string]string{"test2": "test2"}}}},
-				{Series: []SeriesIdentifier{{Labels: map[string]string{"test3": "test3"}}}},
+				{Series: []SeriesIdentifier{{Labels: MustNewSeriesEntries("test", "test")}}},
+				{Series: []SeriesIdentifier{{Labels: MustNewSeriesEntries("test2", "test2")}}},
+				{Series: []SeriesIdentifier{{Labels: MustNewSeriesEntries("test3", "test3")}}},
 			},
 			expected: []*SeriesResponse{
-				mockSeriesResponse([]map[string]string{{"test": "test"}, {"test2": "test2"}, {"test3": "test3"}}),
+				mockSeriesResponse([][]SeriesIdentifier_LabelsEntry{{{"test", "test"}}, {{"test2", "test2"}}, {{"test3", "test3"}}}),
 			},
 		},
 		{
@@ -274,6 +276,64 @@ func TestMergeSeriesResponses(t *testing.T) {
 			} else {
 				require.ElementsMatch(t, tc.expected[0].Series, merged.Series)
 			}
+		})
+	}
+}
+
+func TestFilterChunkRefRequestGetQuery(t *testing.T) {
+	for _, tc := range []struct {
+		desc     string
+		request  FilterChunkRefRequest
+		expected string
+	}{
+		{
+			desc:     "empty request",
+			expected: `0/0`,
+		},
+		{
+			desc: "request no filters",
+			request: FilterChunkRefRequest{
+				Refs: []*GroupedChunkRefs{
+					{
+						Fingerprint: 1,
+						Tenant:      "test",
+					},
+				},
+			},
+			expected: `9962287286179718960/0`,
+		},
+		{
+			desc: "request with filters but no chunks",
+			request: FilterChunkRefRequest{
+				Plan: plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"} |= "uuid"`),
+				},
+			},
+			expected: `0/938557591`,
+		},
+		{
+			desc: "request with filters and chunks",
+			request: FilterChunkRefRequest{
+				Refs: []*GroupedChunkRefs{
+					{
+						Fingerprint: 1,
+						Tenant:      "test",
+					},
+					{
+						Fingerprint: 2,
+						Tenant:      "test",
+					},
+				},
+				Plan: plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"} |= "uuid" != "trace"`),
+				},
+			},
+			expected: `8827404902424034886/2710035654`,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			actual := tc.request.GetQuery()
+			require.Equal(t, tc.expected, actual)
 		})
 	}
 }
@@ -298,7 +358,7 @@ func BenchmarkMergeALabelResponse(b *testing.B) {
 }
 
 func BenchmarkMergeASeriesResponse(b *testing.B) {
-	response := []*SeriesResponse{{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}}}
+	response := []*SeriesResponse{{Series: []SeriesIdentifier{{Labels: MustNewSeriesEntries("test", "test")}}}}
 	benchmarkMergeSeriesResponses(b, response)
 }
 
@@ -313,9 +373,9 @@ func BenchmarkMergeSomeLabelResponses(b *testing.B) {
 
 func BenchmarkMergeSomeSeriesResponses(b *testing.B) {
 	responses := []*SeriesResponse{
-		{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}},
-		{Series: []SeriesIdentifier{{Labels: map[string]string{"test2": "test2"}}}},
-		{Series: []SeriesIdentifier{{Labels: map[string]string{"test3": "test3"}}}},
+		{Series: []SeriesIdentifier{{Labels: MustNewSeriesEntries("test", "test")}}},
+		{Series: []SeriesIdentifier{{Labels: MustNewSeriesEntries("test2", "test2")}}},
+		{Series: []SeriesIdentifier{{Labels: MustNewSeriesEntries("test3", "test3")}}},
 	}
 	benchmarkMergeSeriesResponses(b, responses)
 }
@@ -332,7 +392,7 @@ func BenchmarkMergeManySeriesResponses(b *testing.B) {
 	responses := []*SeriesResponse{}
 	for i := 0; i < 20; i++ {
 		test := fmt.Sprintf("test%d", i)
-		responses = append(responses, &SeriesResponse{Series: []SeriesIdentifier{{Labels: map[string]string{test: test}}}})
+		responses = append(responses, &SeriesResponse{Series: []SeriesIdentifier{{Labels: MustNewSeriesEntries(test, test)}}})
 	}
 	benchmarkMergeSeriesResponses(b, responses)
 }

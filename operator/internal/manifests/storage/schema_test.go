@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-
 	"github.com/stretchr/testify/require"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 func TestBuildSchemaConfig_NoSchemas(t *testing.T) {

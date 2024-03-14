@@ -84,20 +84,20 @@ func (i *indexShipperQuerier) Close() error {
 	return nil
 }
 
-func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *tsdbindex.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
 	}
-	return idx.GetChunkRefs(ctx, userID, from, through, res, shard, matchers...)
+	return idx.GetChunkRefs(ctx, userID, from, through, res, fpFilter, matchers...)
 }
 
-func (i *indexShipperQuerier) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *tsdbindex.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (i *indexShipperQuerier) Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
 	}
-	return idx.Series(ctx, userID, from, through, res, shard, matchers...)
+	return idx.Series(ctx, userID, from, through, res, fpFilter, matchers...)
 }
 
 func (i *indexShipperQuerier) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
@@ -116,22 +116,22 @@ func (i *indexShipperQuerier) LabelValues(ctx context.Context, userID string, fr
 	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 }
 
-func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *tsdbindex.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter tsdbindex.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return err
 	}
 
-	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
+	return idx.Stats(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, matchers...)
 }
 
-func (i *indexShipperQuerier) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, shard *tsdbindex.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
+func (i *indexShipperQuerier) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter tsdbindex.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return err
 	}
 
-	return idx.Volume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
+	return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 }
 
 type resultAccumulator struct {

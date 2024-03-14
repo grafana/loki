@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
@@ -38,7 +37,6 @@ import (
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 	lokihttpreq "github.com/grafana/loki/pkg/util/httpreq"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
-	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var errSchedulerIsNotRunning = errors.New("scheduler is not running")
@@ -117,7 +115,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewScheduler creates a new Scheduler.
-func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *lokiring.RingManager, registerer prometheus.Registerer, metricsNamespace string) (*Scheduler, error) {
+func NewScheduler(cfg Config, schedulerLimits Limits, log log.Logger, ringManager *lokiring.RingManager, registerer prometheus.Registerer, metricsNamespace string) (*Scheduler, error) {
 	if cfg.UseSchedulerRing {
 		if ringManager == nil {
 			return nil, errors.New("ring manager can't be empty when use_scheduler_ring is true")
@@ -130,13 +128,13 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *lokiri
 	s := &Scheduler{
 		cfg:    cfg,
 		log:    log,
-		limits: limits,
+		limits: schedulerLimits,
 
 		pendingRequests:    map[requestKey]*schedulerRequest{},
 		connectedFrontends: map[string]*connectedFrontend{},
 		queueMetrics:       queueMetrics,
 		ringManager:        ringManager,
-		requestQueue:       queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, queueMetrics),
+		requestQueue:       queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, limits.NewQueueLimits(schedulerLimits), queueMetrics),
 	}
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
@@ -353,13 +351,6 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	req.queueTime = now
 	req.ctxCancel = cancel
 
-	// aggregate the max queriers limit in the case of a multi tenant query
-	tenantIDs, err := tenant.TenantIDsFromOrgID(req.tenantID)
-	if err != nil {
-		return err
-	}
-	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, s.limits.MaxQueriersPerUser)
-
 	var queuePath []string
 	if s.cfg.MaxQueueHierarchyLevels > 0 {
 		queuePath = msg.QueuePath
@@ -378,7 +369,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	}
 
 	s.activeUsers.UpdateUserTimestamp(req.tenantID, now)
-	return s.requestQueue.Enqueue(req.tenantID, queuePath, req, maxQueriers, func() {
+	return s.requestQueue.Enqueue(req.tenantID, queuePath, req, func() {
 		shouldCancel = false
 
 		s.pendingRequestsMu.Lock()

@@ -51,7 +51,7 @@ _Note_: Upon setting up LokiStack for any object storage provider, you should co
       --from-literal=sse_kms_encryption_context="<OPTIONAL_AWS_SSE_KMS_ENCRYPTION_CONTEXT_JSON>"
     ```
     
-    See also official docs on [AWS KMS Key ID](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#key-id) and [AWS KMS Encryption Context](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#encrypt_context).
+    See also official docs on [AWS KMS Key ID](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#key-id) and [AWS KMS Encryption Context](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#encrypt_context) (**Note:** Only content without newlines allowed, because it is exposed via environment variable to the containers).
 
     or with `SSE-S3` encryption
 

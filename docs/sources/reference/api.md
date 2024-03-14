@@ -1,7 +1,7 @@
 ---
 title: Loki HTTP API
 menuTitle: HTTP API
-description: Loki exposes HTTP endpoints for data ingestion, data retrieval, as well for cluster management.
+description: Provides a reference page for the Loki HTTP API endpoints for data ingestion, data retrieval, and cluster management.
 aliases:
 - ../api/
 weight: 100
@@ -12,8 +12,10 @@ weight: 100
 Loki exposes an HTTP API for pushing, querying, and tailing log data, as well
 as for viewing and managing cluster information.
 
-**Note that authorization is not part of the Loki API.**
+{{% admonition type="note" %}}
+Note that authorization is not part of the Loki API.
 Authorization needs to be done separately, for example, using an open-source load-balancer such as NGINX.
+{{% /admonition %}}
 
 ## Endpoints
 
@@ -149,6 +151,10 @@ The API accepts several formats for timestamps:
 * More than ten digits are interpreted as a Unix timestamp in nanoseconds.
 * A floating point number is a Unix timestamp with fractions of a second.
 * A string in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
+
+{{% admonition type="note" %}}
+When using `/api/v1/push`, you must send the timestamp as a string and not a number, otherwise the endpoint will return a 400 error.
+{{% /admonition %}}
 
 ### Statistics
 
@@ -399,6 +405,14 @@ defined in the `API_TOKEN` environment variable:
 ```bash
 curl -u "Tenant1|Tenant2|Tenant3:$API_TOKEN" \
   -G -s "http://localhost:3100/loki/api/v1/query" \
+  --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
+```
+
+
+To query against your hosted log tenant in Grafana Cloud, use the **User** and **URL** values provided in the Loki logging service details of your Grafana Cloud stack. You can find this information in the [Cloud Portal](https://grafana.com/docs/grafana-cloud/account-management/cloud-portal/#your-grafana-cloud-stack). Use an access policy token in your queries for authentication. The password in this example is an access policy token that has been defined in the `API_TOKEN` environment variable:
+```bash
+curl -u "User:$API_TOKEN" \
+  -G -s "<URL-PROVIDED-IN-LOKI-DATA-SOURCE-SETTINGS>/loki/api/v1/query" \
   --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
 ```
 
@@ -815,7 +829,7 @@ The `/loki/api/v1/index/volume` and `/loki/api/v1/index/volume_range` endpoints 
 
 The `query` should be a valid LogQL stream selector, for example `{job="foo", env=~".+"}`. By default, these endpoints will aggregate into series consisting of all matches for labels included in the query. For example, assuming you have the streams `{job="foo", env="prod", team="alpha"}`, `{job="bar", env="prod", team="beta"}`, `{job="foo", env="dev", team="alpha"}`, and `{job="bar", env="dev", team="beta"}` in your system. The query `{job="foo", env=~".+"}` would return the two metric series `{job="foo", env="dev"}` and `{job="foo", env="prod"}`, each with datapoints representing the accumulate values of chunks for the streams matching that selector, which in this case would be the streams `{job="foo", env="dev", team="alpha"}` and `{job="foo", env="prod", team="alpha"}`, respectively.
 
-There are two parameters which can affect the aggregation strategy. First, a comma-seperated list of `targetLabels` can be provided, allowing volumes to be aggregated by the speficied `targetLabels` only. This is useful for negations. For example, if you said `{team="alpha", env!="dev"}`, the default behavior would include `env` in the aggregation set. However, maybe you're looking for all non-dev jobs for team alpha, and you don't care which env those are in (other than caring that they're not dev jobs). To achieve this, you could specify `targetLabels=team,job`, resulting in a single metric series (in this case) of `{team="alpha", job="foo}`.
+There are two parameters which can affect the aggregation strategy. First, a comma-separated list of `targetLabels` can be provided, allowing volumes to be aggregated by the speficied `targetLabels` only. This is useful for negations. For example, if you said `{team="alpha", env!="dev"}`, the default behavior would include `env` in the aggregation set. However, maybe you're looking for all non-dev jobs for team alpha, and you don't care which env those are in (other than caring that they're not dev jobs). To achieve this, you could specify `targetLabels=team,job`, resulting in a single metric series (in this case) of `{team="alpha", job="foo}`.
 
 The other way to change aggregations is with the `aggregateBy` parameter. The default value for this is `series`, which aggregates into combinations of matching key-value pairs. Alternately this can be specified as `labels`, which will aggregate into labels only. In this case, the response will have a metric series with a label name matching each label, and a label value of `""`. This is useful for exploring logs at a high level. For example, if you wanted to know what percentage of your logs had a `team` label, you could query your logs with `aggregateBy=labels` and a query with either an exact or regex match on `team`, or by including `team` in the list of `targetLabels`.
 
@@ -986,7 +1000,7 @@ This API endpoint is usually used by Kubernetes-specific scale down automations 
 ## Flush in-memory chunks and shut down
 
 ```
-POST /ingester/shutdown
+GET, POST /ingester/shutdown
 ```
 
 `/ingester/shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
@@ -1164,10 +1178,14 @@ Deletes all the rule groups in a namespace (including the namespace itself). Thi
 ### List rules
 
 ```
-GET /prometheus/api/v1/rules
+GET /prometheus/api/v1/rules?type={alert|record}&file={}&rule_group={}&rule_name={}
 ```
 
 Prometheus-compatible rules endpoint to list alerting and recording rules that are currently loaded.
+
+The `type` parameter is optional. If set, only the specified type of rule is returned.
+
+The `file`, `rule_group` and `rule_name` parameters are optional, and can accept multiple values. If set, the response content is filtered accordingly.
 
 For more information, refer to the [Prometheus rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) documentation.
 
@@ -1291,7 +1309,10 @@ DELETE /loki/api/v1/delete
 Query parameters:
 
 - `request_id=<request_id>`: Identifies the delete request to cancel; IDs are found using the `delete` endpoint.
-- `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled. NOTE: some data from the request may still be deleted and the deleted request will be listed as 'processed'
+- `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled. 
+  {{% admonition type="note" %}}
+  some data from the request may still be deleted and the deleted request will be listed as 'processed'.
+  {{% /admonition %}}
 
 A 204 response indicates success.
 

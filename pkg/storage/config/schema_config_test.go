@@ -503,6 +503,37 @@ func MustParseDayTime(s string) DayTime {
 	return DayTime{model.TimeFromUnix(t.Unix())}
 }
 
+func TestIndexPeriodicTableConfigCustomUnmarshalling(t *testing.T) {
+	yamlFile := `path_prefix: loki_index/
+prefix: cortex_
+period: 1w
+tags:
+  foo: bar
+`
+
+	cfg := IndexPeriodicTableConfig{}
+	err := yaml.Unmarshal([]byte(yamlFile), &cfg)
+	require.NoError(t, err)
+
+	expectedCfg := IndexPeriodicTableConfig{
+		PathPrefix: "loki_index/",
+		PeriodicTableConfig: PeriodicTableConfig{
+			Prefix: "cortex_",
+			Period: 7 * 24 * time.Hour,
+			Tags: map[string]string{
+				"foo": "bar",
+			},
+		},
+	}
+
+	require.Equal(t, expectedCfg, cfg)
+
+	yamlGenerated, err := yaml.Marshal(&cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, yamlFile, string(yamlGenerated))
+}
+
 func TestPeriodicTableConfigCustomUnmarshalling(t *testing.T) {
 	yamlFile := `prefix: cortex_
 period: 1w

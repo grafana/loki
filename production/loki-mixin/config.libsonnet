@@ -20,6 +20,9 @@
       enabled: true,
     },
 
+    // Enable TSDB specific dashboards
+    tsdb: true,
+
     // SSD related configuration for dashboards.
     ssd: {
       // Support Loki SSD mode on dashboards.

@@ -1,6 +1,7 @@
 package logproto
 
 import (
+	"encoding/binary"
 	stdjson "encoding/json"
 	"fmt"
 	"math"
@@ -10,6 +11,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cespare/xxhash/v2"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -18,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -260,6 +263,11 @@ func (m *IndexStatsRequest) WithStartEnd(start, end time.Time) definitions.Reque
 	return &clone
 }
 
+// WithStartEndForCache implements resultscache.Request.
+func (m *IndexStatsRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	return m.WithStartEnd(start, end).(resultscache.Request)
+}
+
 // WithQuery clone the current request with a different query.
 func (m *IndexStatsRequest) WithQuery(query string) definitions.Request {
 	clone := *m
@@ -308,6 +316,11 @@ func (m *VolumeRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	return &clone
 }
 
+// WithStartEndForCache implements resultscache.Request.
+func (m *VolumeRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	return m.WithStartEnd(start, end).(resultscache.Request)
+}
+
 // WithQuery clone the current request with a different query.
 func (m *VolumeRequest) WithQuery(query string) definitions.Request {
 	clone := *m
@@ -322,4 +335,70 @@ func (m *VolumeRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("start", timestamp.Time(int64(m.From)).String()),
 		otlog.String("end", timestamp.Time(int64(m.Through)).String()),
 	)
+}
+
+// Satisfy definitions.Request for FilterChunkRefRequest
+
+// GetStart returns the start timestamp of the request in milliseconds.
+func (m *FilterChunkRefRequest) GetStart() time.Time {
+	return time.UnixMilli(int64(m.From))
+}
+
+// GetEnd returns the end timestamp of the request in milliseconds.
+func (m *FilterChunkRefRequest) GetEnd() time.Time {
+	return time.UnixMilli(int64(m.Through))
+}
+
+// GetStep returns the step of the request in milliseconds. Always 0.
+func (m *FilterChunkRefRequest) GetStep() int64 {
+	return 0
+}
+
+// GetQuery returns the query of the request.
+// The query is the hash for the input chunks refs and the filter expressions.
+func (m *FilterChunkRefRequest) GetQuery() string {
+	var encodeBuf []byte
+	var chunksHash uint64
+	if len(m.Refs) > 0 {
+		h := xxhash.New()
+		for _, ref := range m.Refs {
+			_, _ = h.Write(binary.AppendUvarint(encodeBuf[:0], ref.Fingerprint))
+		}
+		chunksHash = h.Sum64()
+	}
+
+	// TODO(salvacorts): plan.String() will return the whole query. This is not optimal since we are only interested in the filter expressions.
+	return fmt.Sprintf("%d/%d", chunksHash, m.Plan.Hash())
+}
+
+// GetCachingOptions returns the caching options.
+func (m *FilterChunkRefRequest) GetCachingOptions() (res resultscache.CachingOptions) { return }
+
+// WithStartEndForCache implements resultscache.Request.
+func (m *FilterChunkRefRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	// We Remove the chunks that are not within the given time range.
+	chunkRefs := make([]*GroupedChunkRefs, 0, len(m.Refs))
+	for _, chunkRef := range m.Refs {
+		refs := make([]*ShortRef, 0, len(chunkRef.Refs))
+		for _, ref := range chunkRef.Refs {
+			if end.Before(ref.From.Time()) || ref.Through.Time().Before(start) {
+				continue
+			}
+			refs = append(refs, ref)
+		}
+		if len(refs) > 0 {
+			chunkRefs = append(chunkRefs, &GroupedChunkRefs{
+				Fingerprint: chunkRef.Fingerprint,
+				Tenant:      chunkRef.Tenant,
+				Refs:        refs,
+			})
+		}
+	}
+
+	clone := *m
+	clone.From = model.TimeFromUnixNano(start.UnixNano())
+	clone.Through = model.TimeFromUnixNano(end.UnixNano())
+	clone.Refs = chunkRefs
+
+	return &clone
 }

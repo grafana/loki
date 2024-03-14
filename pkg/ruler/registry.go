@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -33,7 +34,8 @@ type walRegistry struct {
 	logger  log.Logger
 	manager instance.Manager
 
-	metrics *storageRegistryMetrics
+	metrics     *storageRegistryMetrics
+	overridesMu sync.Mutex
 
 	config         Config
 	overrides      RulesLimits
@@ -177,6 +179,9 @@ func (r *walRegistry) stop() {
 }
 
 func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
+	r.overridesMu.Lock()
+	defer r.overridesMu.Unlock()
+
 	conf, err := r.config.WAL.Clone()
 	if err != nil {
 		return instance.Config{}, err
@@ -207,8 +212,10 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 				}
 			}
 
-			// always inject the X-Scope-OrgId header for multi-tenant metrics backends
-			clt.Headers[user.OrgIDHeaderName] = tenant
+			if rwCfg.AddOrgIDHeader {
+				// inject the X-Scope-OrgId header for multi-tenant metrics backends
+				clt.Headers[user.OrgIDHeaderName] = tenant
+			}
 
 			rwCfg.Clients[id] = clt
 

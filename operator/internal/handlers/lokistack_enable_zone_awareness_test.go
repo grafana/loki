@@ -7,13 +7,14 @@ import (
 	"testing"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 )
 
 var defaultPod = corev1.Pod{
@@ -102,6 +103,6 @@ func TestAnnotatePodWithAvailabilityZone_WhenGetReturnsNode_DoesNotError(t *test
 	require.Equal(t, 1, k.PatchCallCount())
 	_, p, patch, _ := k.PatchArgsForCall(0)
 	require.Equal(t, p, &testPod)
-	actualPatch, err := patch.Data(nil)
+	actualPatch, _ := patch.Data(nil)
 	require.Equal(t, actualPatch, expectedPatch)
 }

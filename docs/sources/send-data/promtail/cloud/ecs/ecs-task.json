@@ -2,7 +2,7 @@
     "containerDefinitions": [
         {
             "essential": true,
-            "image": "grafana/fluent-bit-plugin-loki:1.6.0-amd64",
+            "image": "grafana/fluent-bit-plugin-loki:2.9.3-amd64",
             "name": "log_router",
             "firelensConfiguration": {
                 "type": "fluentbit",

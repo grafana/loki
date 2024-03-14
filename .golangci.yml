@@ -23,6 +23,7 @@ run:
     - linux
     - cgo
     - promtail_journal_enabled
+    - integration
 
   # which dirs to skip: they won't be analyzed;
   # can use regexp here: generated.*, regexp is applied on full path;

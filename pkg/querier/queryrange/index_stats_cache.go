@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -23,7 +24,7 @@ type IndexStatsSplitter struct {
 }
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
-func (i IndexStatsSplitter) GenerateCacheKey(ctx context.Context, userID string, r queryrangebase.Request) string {
+func (i IndexStatsSplitter) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	cacheKey := i.cacheKeyLimits.GenerateCacheKey(ctx, userID, r)
 	return fmt.Sprintf("indexStats:%s", cacheKey)
 }
@@ -32,7 +33,7 @@ type IndexStatsExtractor struct{}
 
 // Extract favors the ability to cache over exactness of results. It assumes a constant distribution
 // of log volumes over a range and will extract subsets proportionally.
-func (p IndexStatsExtractor) Extract(start, end int64, res queryrangebase.Response, resStart, resEnd int64) queryrangebase.Response {
+func (p IndexStatsExtractor) Extract(start, end int64, res resultscache.Response, resStart, resEnd int64) resultscache.Response {
 	factor := util.GetFactorOfTime(start, end, resStart, resEnd)
 
 	statsRes := res.(*IndexStatsResponse)
@@ -92,8 +93,9 @@ func NewIndexStatsCacheMiddleware(
 	merger queryrangebase.Merger,
 	c cache.Cache,
 	cacheGenNumberLoader queryrangebase.CacheGenNumberLoader,
+	iqo util.IngesterQueryOptions,
 	shouldCache queryrangebase.ShouldCacheFn,
-	parallelismForReq func(ctx context.Context, tenantIDs []string, r queryrangebase.Request) int,
+	parallelismForReq queryrangebase.ParallelismForReqFn,
 	retentionEnabled bool,
 	transformer UserIDTransformer,
 	metrics *queryrangebase.ResultsCacheMetrics,
@@ -101,7 +103,7 @@ func NewIndexStatsCacheMiddleware(
 	return queryrangebase.NewResultsCacheMiddleware(
 		log,
 		c,
-		IndexStatsSplitter{cacheKeyLimits{limits, transformer}},
+		IndexStatsSplitter{cacheKeyLimits{limits, transformer, iqo}},
 		limits,
 		merger,
 		IndexStatsExtractor{},
@@ -121,6 +123,7 @@ func NewIndexStatsCacheMiddleware(
 		},
 		parallelismForReq,
 		retentionEnabled,
+		false,
 		metrics,
 	)
 }

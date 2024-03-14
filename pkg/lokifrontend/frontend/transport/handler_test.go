@@ -1,30 +1,23 @@
 package transport
 
 import (
-	"context"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/dskit/httpgrpc"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
-func TestWriteError(t *testing.T) {
-	for _, test := range []struct {
-		status int
-		err    error
-	}{
-		{http.StatusInternalServerError, errors.New("unknown")},
-		{http.StatusGatewayTimeout, context.DeadlineExceeded},
-		{StatusClientClosedRequest, context.Canceled},
-		{http.StatusBadRequest, httpgrpc.Errorf(http.StatusBadRequest, "")},
-	} {
-		t.Run(test.err.Error(), func(t *testing.T) {
-			w := httptest.NewRecorder()
-			writeError(w, test.err)
-			require.Equal(t, test.status, w.Result().StatusCode)
-		})
+func TestFormatRequestHeaders(t *testing.T) {
+	h := http.Header{}
+	h.Add("X-Header-To-Log", "i should be logged!")
+	h.Add("X-Header-To-Not-Log", "i shouldn't be logged!")
+
+	fields := formatRequestHeaders(&h, []string{"X-Header-To-Log", "X-Header-Not-Present"})
+
+	expected := []interface{}{
+		"header_x_header_to_log",
+		"i should be logged!",
 	}
+
+	require.Equal(t, expected, fields)
 }

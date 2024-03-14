@@ -12,8 +12,12 @@ common:
     azure:
       environment: {{ .Env }}
       container_name: {{ .Container }}
-      account_name: {{ .AccountName }}
-      account_key: {{ .AccountKey }}
+      account_name: ${AZURE_STORAGE_ACCOUNT_NAME}
+      {{- if .WorkloadIdentity }}
+      use_federated_token: true
+      {{- else }}
+      account_key: ${AZURE_STORAGE_ACCOUNT_KEY}
+      {{- end }}
       {{- with .EndpointSuffix }}
       endpoint_suffix: {{ . }}
       {{- end }}
@@ -24,11 +28,18 @@ common:
     {{- end }}
     {{- with .ObjectStorage.S3 }}
     s3:
+      {{- if .STS }}
+      bucketnames: {{.Buckets}}
+      region: {{.Region}}
+      s3forcepathstyle: false
+      {{- else }}
       s3: {{ .Endpoint }}
       bucketnames: {{ .Buckets }}
       region: {{ .Region }}
-      access_key_id: {{ .AccessKeyID }}
-      secret_access_key: {{ .AccessKeySecret }}
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+      s3forcepathstyle: true
+      {{- end }}
       {{- with .SSE }}
       {{- if .Type }}
       sse:
@@ -37,21 +48,20 @@ common:
         kms_key_id: {{ .KMSKeyID }}
         {{- with .KMSEncryptionContext }}
         kms_encryption_context: |
-          {{ . }}
+          ${AWS_SSE_KMS_ENCRYPTION_CONTEXT}
         {{- end }}
         {{- end}}
       {{- end }}
       {{- end }}
-      s3forcepathstyle: true
     {{- end }}
     {{- with .ObjectStorage.Swift }}
     swift:
       auth_url: {{ .AuthURL }}
-      username: {{ .Username }}
+      username: ${SWIFT_USERNAME}
       user_domain_name: {{ .UserDomainName }}
       user_domain_id: {{ .UserDomainID }}
       user_id: {{ .UserID }}
-      password: {{ .Password }}
+      password: ${SWIFT_PASSWORD}
       domain_id: {{ .DomainID }}
       domain_name: {{ .DomainName }}
       project_id: {{ .ProjectID }}
@@ -65,8 +75,8 @@ common:
     alibabacloud:
       bucket: {{ .Bucket }}
       endpoint: {{ .Endpoint }}
-      access_key_id: {{ .AccessKeyID }}
-      secret_access_key: {{ .SecretAccessKey }}
+      access_key_id: ${ALIBABA_CLOUD_ACCESS_KEY_ID}
+      secret_access_key: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET}
     {{- end }}
   compactor_grpc_address: {{ .Compactor.FQDN }}:{{ .Compactor.Port }}
   {{- with .GossipRing }}
@@ -346,7 +356,7 @@ ruler:
       {{- with .Client }}
       name: {{ .Name }}
       url: {{ .URL }}
-      timeout: {{ .RemoteTimeout }}
+      remote_timeout: {{ .RemoteTimeout }}
       proxy_url: {{ .ProxyURL }}
       follow_redirects: {{ .FollowRedirects }}
       headers:

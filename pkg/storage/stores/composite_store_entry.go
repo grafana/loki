@@ -42,29 +42,19 @@ type storeEntry struct {
 	ChunkWriter
 }
 
-func (c *storeEntry) GetChunks(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (c *storeEntry) GetChunks(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "GetChunks")
-	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
-	level.Debug(log).Log(
-		"shortcut", shortcut,
-		"from", from.Time(),
-		"through", through.Time(),
-		"err", err,
-	)
 	if err != nil {
 		return nil, nil, err
 	} else if shortcut {
 		return nil, nil, nil
 	}
 
-	refs, err := c.indexReader.GetChunkRefs(ctx, userID, from, through, allMatchers...)
+	refs, err := c.indexReader.GetChunkRefs(ctx, userID, from, through, predicate)
 
 	chunks := make([]chunk.Chunk, len(refs))
 	for i, ref := range refs {

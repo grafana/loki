@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/queue"
+	"github.com/grafana/loki/pkg/scheduler/limits"
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
@@ -135,7 +136,7 @@ func TestFrontendCheckReady(t *testing.T) {
 			qm := queue.NewMetrics(nil, constants.Loki, "query_frontend")
 			f := &Frontend{
 				log:          log.NewNopLogger(),
-				requestQueue: queue.NewRequestQueue(5, 0, qm),
+				requestQueue: queue.NewRequestQueue(5, 0, limits.NewQueueLimits(nil), qm),
 			}
 			for i := 0; i < tt.connectedClients; i++ {
 				f.requestQueue.RegisterConsumerConnection("test")
@@ -243,7 +244,7 @@ func testFrontend(t *testing.T, config Config, handler queryrangebase.Handler, t
 	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
-	v1, err := New(config, limits{}, logger, reg, constants.Loki)
+	v1, err := New(config, mockLimits{}, logger, reg, constants.Loki)
 	require.NoError(t, err)
 	require.NotNil(t, v1)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), v1))
@@ -293,10 +294,15 @@ func defaultFrontendConfig() Config {
 	return config
 }
 
-type limits struct {
-	queriers int
+type mockLimits struct {
+	queriers      uint
+	queryCapacity float64
 }
 
-func (l limits) MaxQueriersPerUser(_ string) int {
+func (l mockLimits) MaxQueriersPerUser(_ string) uint {
 	return l.queriers
+}
+
+func (l mockLimits) MaxQueryCapacity(_ string) float64 {
+	return l.queryCapacity
 }

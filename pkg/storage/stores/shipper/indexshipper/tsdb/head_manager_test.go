@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -42,7 +43,7 @@ func newNoopTSDBManager(name, dir string) noopTSDBManager {
 }
 
 func (m noopTSDBManager) BuildFromHead(_ *tenantHeads) error {
-	panic("BuildFromHead not implemented")
+	return nil
 }
 
 func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier, _ bool) error {
@@ -250,6 +251,61 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, 1, len(grp.wals))
 	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false))
+
+	for _, c := range cases {
+		refs, err := mgr.GetChunkRefs(
+			context.Background(),
+			c.User,
+			0, math.MaxInt64,
+			nil, nil,
+			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
+		)
+		require.Nil(t, err)
+		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Fingerprint, c.Chunks), refs)
+	}
+
+}
+
+// test head still serves data for the most recently rotated period.
+func Test_HeadManager_QueryAfterRotate(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+	cases := []struct {
+		Labels      labels.Labels
+		Fingerprint uint64
+		Chunks      []index.ChunkMeta
+		User        string
+	}{
+		{
+			User:        "tenant1",
+			Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
+			Fingerprint: mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash(),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  1,
+					MaxTime:  10,
+					Checksum: 3,
+				},
+			},
+		},
+	}
+
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
+	// so ensure our dirs exist
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+	require.Nil(t, mgr.Rotate(now)) // initialize head (usually done by Start())
+
+	// add data for both tenants
+	for _, tc := range cases {
+		require.Nil(t, mgr.Append(tc.User, tc.Labels, tc.Labels.Hash(), tc.Chunks))
+	}
+
+	nextPeriod := time.Now().Add(time.Duration(mgr.period))
+	mgr.tick(nextPeriod) // synthetic tick to rotate head
 
 	for _, c := range cases {
 		refs, err := mgr.GetChunkRefs(
@@ -541,7 +597,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 					context.Background(),
 					c.User,
 					0, timeToModelTime(secondStoreDate.Add(48*time.Hour)),
-					labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
+					chunk.NewPredicate([]*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+")}, nil),
 				)
 				require.Nil(t, err)
 				require.Equal(t, tc.expectedChunks, refs)

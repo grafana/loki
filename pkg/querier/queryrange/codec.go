@@ -14,6 +14,7 @@ import (
 	strings "strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/grafana/dskit/httpgrpc"
@@ -62,11 +63,9 @@ func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) queryrangebase.Requ
 	return &clone
 }
 
-func (r *LokiRequest) WithStartEndTime(s time.Time, e time.Time) *LokiRequest {
-	clone := *r
-	clone.StartTs = s
-	clone.EndTs = e
-	return &clone
+// WithStartEndForCache implements resultscache.Request.
+func (r *LokiRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
 }
 
 func (r *LokiRequest) WithQuery(query string) queryrangebase.Request {
@@ -114,6 +113,11 @@ func (r *LokiInstantRequest) WithStartEnd(s time.Time, _ time.Time) queryrangeba
 	return &clone
 }
 
+// WithStartEndForCache implements resultscache.Request.
+func (r *LokiInstantRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
+}
+
 func (r *LokiInstantRequest) WithQuery(query string) queryrangebase.Request {
 	clone := *r
 	clone.Query = query
@@ -151,6 +155,11 @@ func (r *LokiSeriesRequest) WithStartEnd(s, e time.Time) queryrangebase.Request 
 	clone.StartTs = s
 	clone.EndTs = e
 	return &clone
+}
+
+// WithStartEndForCache implements resultscache.Request.
+func (r *LokiSeriesRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
 }
 
 func (r *LokiSeriesRequest) WithQuery(_ string) queryrangebase.Request {
@@ -222,11 +231,14 @@ func (r *LabelRequest) GetStep() int64 {
 
 func (r *LabelRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
 	clone := *r
-	tmp := s
-	clone.Start = &tmp
-	tmp = e
-	clone.End = &tmp
+	clone.Start = &s
+	clone.End = &e
 	return &clone
+}
+
+// WithStartEndForCache implements resultscache.Request.
+func (r *LabelRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
 }
 
 func (r *LabelRequest) WithQuery(query string) queryrangebase.Request {
@@ -540,7 +552,7 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 			AggregateBy:  req.AggregateBy,
 		}, ctx, err
 	default:
-		return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path: %s", r.Url))
+		return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path in HTTP gRPC decode: %s", r.Url))
 	}
 }
 
@@ -785,7 +797,12 @@ func (c Codec) Path(r queryrangebase.Request) string {
 	case *LokiSeriesRequest:
 		return "loki/api/v1/series"
 	case *LabelRequest:
-		return request.Path() // NOTE: this could be either /label or /label/{name}/values endpoint. So forward the original path as it is.
+		if request.Values {
+			// This request contains user-generated input in the URL, which is not safe to reflect in the route path.
+			return "loki/api/v1/label/values"
+		}
+
+		return request.Path()
 	case *LokiInstantRequest:
 		return "/loki/api/v1/query"
 	case *logproto.IndexStatsRequest:
@@ -844,24 +861,16 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 
 	switch req := req.(type) {
 	case *LokiSeriesRequest:
-		var resp loghttp.SeriesResponse
+		var resp LokiSeriesResponse
 		if err := json.Unmarshal(buf, &resp); err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
-		}
-
-		data := make([]logproto.SeriesIdentifier, 0, len(resp.Data))
-		for _, label := range resp.Data {
-			d := logproto.SeriesIdentifier{
-				Labels: label.Map(),
-			}
-			data = append(data, d)
 		}
 
 		return &LokiSeriesResponse{
 			Status:  resp.Status,
 			Version: uint32(loghttp.GetVersion(req.Path)),
-			Data:    data,
 			Headers: httpResponseHeadersToPromResponseHeaders(headers),
+			Data:    resp.Data,
 		}, nil
 	case *LabelRequest:
 		var resp loghttp.LabelResponse
@@ -1170,7 +1179,6 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		// little overhead. A run with 4MB should the same speedup but
 		// much much more overhead.
 		b := make([]byte, 0, 1024)
-		keyBuffer := make([]string, 0, 32)
 		var key uint64
 
 		// only unique series should be merged
@@ -1178,9 +1186,8 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			lokiResult := res.(*LokiSeriesResponse)
 			mergedStats.MergeSplit(lokiResult.Statistics)
 			for _, series := range lokiResult.Data {
-				// Use series hash as the key and reuse key
-				// buffer to avoid extra allocations.
-				key, keyBuffer = series.Hash(b, keyBuffer)
+				// Use series hash as the key.
+				key = series.Hash(b)
 
 				// TODO(karsten): There is a chance that the
 				// keys match but not the labels due to hash
@@ -1199,6 +1206,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Status:     lokiSeriesRes.Status,
 			Version:    lokiSeriesRes.Version,
 			Data:       lokiSeriesData,
+			Headers:    lokiSeriesRes.Headers,
 			Statistics: mergedStats,
 		}, nil
 	case *LokiSeriesResponseView:
@@ -1233,6 +1241,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		return &LokiLabelNamesResponse{
 			Status:     labelNameRes.Status,
 			Version:    labelNameRes.Version,
+			Headers:    labelNameRes.Headers,
 			Data:       names,
 			Statistics: mergedStats,
 		}, nil

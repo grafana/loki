@@ -8,6 +8,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -16,31 +17,28 @@ import (
 var seps = []byte{'\xff'}
 
 // Hash returns hash of the labels according to Prometheus' Labels.Hash function.
-// `b` and `keysForLabels` are buffers that should be reused to avoid
-// allocations.
-func (id SeriesIdentifier) Hash(b []byte, keysForLabels []string) (uint64, []string) {
-	keysForLabels = keysForLabels[:0]
-	for k := range id.Labels {
-		keysForLabels = append(keysForLabels, k)
-	}
-	sort.Strings(keysForLabels)
+// `b` is a buffer that should be reused to avoid allocations.
+func (id SeriesIdentifier) Hash(b []byte) uint64 {
+	sort.Sort(id)
 
 	// Use xxhash.Sum64(b) for fast path as it's faster.
 	b = b[:0]
-	for i, name := range keysForLabels {
-		value := id.Labels[name]
+	for i, pair := range id.Labels {
+		name := pair.Key
+		value := pair.Value
 		if len(b)+len(name)+len(value)+2 >= cap(b) {
 			// If labels entry is 1KB+ do not allocate whole entry.
 			h := xxhash.New()
 			_, _ = h.Write(b)
-			for _, name := range keysForLabels[i:] {
-				value := id.Labels[name]
+			for _, pair := range id.Labels[i:] {
+				name := pair.Key
+				value := pair.Value
 				_, _ = h.WriteString(name)
 				_, _ = h.Write(seps)
 				_, _ = h.WriteString(value)
 				_, _ = h.Write(seps)
 			}
-			return h.Sum64(), keysForLabels
+			return h.Sum64()
 		}
 
 		b = append(b, name...)
@@ -48,8 +46,53 @@ func (id SeriesIdentifier) Hash(b []byte, keysForLabels []string) (uint64, []str
 		b = append(b, value...)
 		b = append(b, seps[0])
 	}
-	return xxhash.Sum64(b), keysForLabels
+	return xxhash.Sum64(b)
 }
+
+func (id SeriesIdentifier) Get(key string) string {
+	for _, entry := range id.Labels {
+		if entry.Key == key {
+			return entry.Value
+		}
+	}
+
+	return ""
+}
+
+func SeriesIdentifierFromMap(in map[string]string) SeriesIdentifier {
+	id := SeriesIdentifier{
+		Labels: make([]SeriesIdentifier_LabelsEntry, 0, len(in)),
+	}
+	for k, v := range in {
+		id.Labels = append(id.Labels, SeriesIdentifier_LabelsEntry{Key: k, Value: v})
+	}
+	return id
+}
+
+func SeriesIdentifierFromLabels(in labels.Labels) SeriesIdentifier {
+	id := SeriesIdentifier{
+		Labels: make([]SeriesIdentifier_LabelsEntry, len(in)),
+	}
+	for i, l := range in {
+		id.Labels[i] = SeriesIdentifier_LabelsEntry{Key: l.Name, Value: l.Value}
+	}
+	return id
+}
+
+func MustNewSeriesEntries(labels ...string) []SeriesIdentifier_LabelsEntry {
+	if len(labels)%2 != 0 {
+		panic("invalid number of labels")
+	}
+	r := make([]SeriesIdentifier_LabelsEntry, 0, len(labels)/2)
+	for i := 0; i < len(labels); i += 2 {
+		r = append(r, SeriesIdentifier_LabelsEntry{Key: labels[i], Value: labels[i+1]})
+	}
+	return r
+}
+
+func (id SeriesIdentifier) Len() int           { return len(id.Labels) }
+func (id SeriesIdentifier) Swap(i, j int)      { id.Labels[i], id.Labels[j] = id.Labels[j], id.Labels[i] }
+func (id SeriesIdentifier) Less(i, j int) bool { return id.Labels[i].Key < id.Labels[j].Key }
 
 type Streams []Stream
 

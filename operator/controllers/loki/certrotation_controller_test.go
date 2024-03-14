@@ -4,10 +4,11 @@ import (
 	"testing"
 	"time"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 )
 
 func TestCertRotationController_RegistersCustomResource_WithDefaultPredicates(t *testing.T) {

@@ -157,15 +157,43 @@ func (p *Pool) RemoveClientFor(addr string) {
 	client, ok := p.clients[addr]
 	if ok {
 		delete(p.clients, addr)
-		if p.clientsMetric != nil {
-			p.clientsMetric.Add(-1)
+		p.closeClient(addr, client)
+	}
+}
+
+func (p *Pool) closeClient(addr string, client PoolClient) {
+	if p.clientsMetric != nil {
+		p.clientsMetric.Add(-1)
+	}
+	// Close in the background since this operation may take awhile and we have a mutex
+	go func(addr string, closer PoolClient) {
+		if err := closer.Close(); err != nil {
+			level.Error(p.logger).Log("msg", fmt.Sprintf("error closing connection to %s", p.clientName), "addr", addr, "err", err)
 		}
-		// Close in the background since this operation may take awhile and we have a mutex
-		go func(addr string, closer PoolClient) {
-			if err := closer.Close(); err != nil {
-				level.Error(p.logger).Log("msg", fmt.Sprintf("error closing connection to %s", p.clientName), "addr", addr, "err", err)
-			}
-		}(addr, client)
+	}(addr, client)
+}
+
+// RemoveClient removes the client instance from the pool if it is still there and not cleaned up by health check.
+// The value of client needs to be the same as returned by GetClientForInstance or GetClientFor.
+// If addr is not empty and contains the same addr passed when obtaining the client, then the operation is sped up.
+func (p *Pool) RemoveClient(client PoolClient, addr string) {
+	p.Lock()
+	defer p.Unlock()
+	if addr != "" {
+		if p.clients[addr] != client {
+			return
+		}
+		delete(p.clients, addr)
+		p.closeClient(addr, client)
+		return
+	}
+	for addr, cachedClient := range p.clients {
+		if cachedClient != client {
+			continue
+		}
+		delete(p.clients, addr)
+		p.closeClient(addr, client)
+		return
 	}
 }
 

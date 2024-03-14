@@ -1,4 +1,5 @@
 auth_enabled: false
+legacy-read-mode: true
 
 server:
   http_listen_port: 3100

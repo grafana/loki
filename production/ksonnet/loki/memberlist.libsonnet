@@ -159,4 +159,5 @@
   // Disable the consul deployment if not migrating and using memberlist
   consul_deployment: if $._config.memberlist_ring_enabled && !$._config.multikv_migration_enabled && !$._config.multikv_migration_teardown then {} else super.consul_deployment,
   consul_service: if $._config.memberlist_ring_enabled && !$._config.multikv_migration_enabled && !$._config.multikv_migration_teardown then {} else super.consul_service,
+  consul_config_map: if $._config.memberlist_ring_enabled && !$._config.multikv_migration_enabled && !$._config.multikv_migration_teardown then {} else super.consul_config_map,
 }

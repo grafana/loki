@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 )
 
 var (
@@ -25,7 +26,7 @@ var (
 type PrometheusExtractor struct{}
 
 // Extract wraps the original prometheus cache extractor
-func (PrometheusExtractor) Extract(start, end int64, res queryrangebase.Response, resStart, resEnd int64) queryrangebase.Response {
+func (PrometheusExtractor) Extract(start, end int64, res resultscache.Response, resStart, resEnd int64) resultscache.Response {
 	response := extractor.Extract(start, end, res.(*LokiPromResponse).Response, resStart, resEnd)
 	return &LokiPromResponse{
 		Response: response.(*queryrangebase.PrometheusResponse),

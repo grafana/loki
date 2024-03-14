@@ -25,6 +25,7 @@ func TestResult(t *testing.T) {
 	stats.AddCacheRequest(ChunkCache, 3)
 	stats.AddCacheRequest(IndexCache, 4)
 	stats.AddCacheRequest(ResultCache, 1)
+	stats.SetQueryReferencedStructuredMetadata()
 
 	fakeIngesterQuery(ctx)
 	fakeIngesterQuery(ctx)
@@ -50,9 +51,10 @@ func TestResult(t *testing.T) {
 		},
 		Querier: Querier{
 			Store: Store{
-				TotalChunksRef:        50,
-				TotalChunksDownloaded: 60,
-				ChunksDownloadTime:    time.Second.Nanoseconds(),
+				TotalChunksRef:            50,
+				TotalChunksDownloaded:     60,
+				ChunksDownloadTime:        time.Second.Nanoseconds(),
+				QueryReferencedStructured: true,
 				Chunk: Chunk{
 					HeadChunkBytes:    10,
 					HeadChunkLines:    20,
@@ -96,6 +98,7 @@ func TestSnapshot_JoinResults(t *testing.T) {
 			TotalLinesSent:     60,
 			TotalReached:       2,
 			Store: Store{
+				QueryReferencedStructured: true,
 				Chunk: Chunk{
 					HeadChunkBytes:    10,
 					HeadChunkLines:    20,
@@ -108,9 +111,10 @@ func TestSnapshot_JoinResults(t *testing.T) {
 		},
 		Querier: Querier{
 			Store: Store{
-				TotalChunksRef:        50,
-				TotalChunksDownloaded: 60,
-				ChunksDownloadTime:    time.Second.Nanoseconds(),
+				TotalChunksRef:            50,
+				TotalChunksDownloaded:     60,
+				ChunksDownloadTime:        time.Second.Nanoseconds(),
+				QueryReferencedStructured: true,
 				Chunk: Chunk{
 					HeadChunkBytes:    10,
 					HeadChunkLines:    20,
@@ -181,9 +185,10 @@ func TestResult_Merge(t *testing.T) {
 		},
 		Querier: Querier{
 			Store: Store{
-				TotalChunksRef:        50,
-				TotalChunksDownloaded: 60,
-				ChunksDownloadTime:    time.Second.Nanoseconds(),
+				TotalChunksRef:            50,
+				TotalChunksDownloaded:     60,
+				ChunksDownloadTime:        time.Second.Nanoseconds(),
+				QueryReferencedStructured: true,
 				Chunk: Chunk{
 					HeadChunkBytes:    10,
 					HeadChunkLines:    20,
@@ -205,7 +210,8 @@ func TestResult_Merge(t *testing.T) {
 				EntriesFound:     2,
 			},
 			Result: Cache{
-				EntriesStored: 3,
+				EntriesStored:     3,
+				QueryLengthServed: int64(3 * time.Hour),
 			},
 		},
 		Summary: Summary{
@@ -242,9 +248,10 @@ func TestResult_Merge(t *testing.T) {
 		},
 		Querier: Querier{
 			Store: Store{
-				TotalChunksRef:        2 * 50,
-				TotalChunksDownloaded: 2 * 60,
-				ChunksDownloadTime:    2 * time.Second.Nanoseconds(),
+				TotalChunksRef:            2 * 50,
+				TotalChunksDownloaded:     2 * 60,
+				ChunksDownloadTime:        2 * time.Second.Nanoseconds(),
+				QueryReferencedStructured: true,
 				Chunk: Chunk{
 					HeadChunkBytes:    2 * 10,
 					HeadChunkLines:    2 * 20,
@@ -266,7 +273,8 @@ func TestResult_Merge(t *testing.T) {
 				EntriesFound:     2 * 2,
 			},
 			Result: Cache{
-				EntriesStored: 2 * 3,
+				EntriesStored:     2 * 3,
+				QueryLengthServed: int64(2 * 3 * time.Hour),
 			},
 		},
 		Summary: Summary{
@@ -297,12 +305,14 @@ func TestIngester(t *testing.T) {
 	statsCtx.AddCompressedBytes(100)
 	statsCtx.AddDuplicates(10)
 	statsCtx.AddHeadChunkBytes(200)
+	statsCtx.SetQueryReferencedStructuredMetadata()
 	require.Equal(t, Ingester{
 		TotalReached:       1,
 		TotalChunksMatched: 100,
 		TotalBatches:       25,
 		TotalLinesSent:     30,
 		Store: Store{
+			QueryReferencedStructured: true,
 			Chunk: Chunk{
 				HeadChunkBytes:  200,
 				CompressedBytes: 100,
@@ -317,6 +327,7 @@ func TestCaches(t *testing.T) {
 
 	statsCtx.AddCacheRequest(ChunkCache, 5)
 	statsCtx.AddCacheEntriesStored(ResultCache, 3)
+	statsCtx.AddCacheQueryLengthServed(ResultCache, 3*time.Hour)
 	statsCtx.AddCacheEntriesRequested(IndexCache, 22)
 	statsCtx.AddCacheBytesRetrieved(ChunkCache, 1024)
 	statsCtx.AddCacheBytesSent(ChunkCache, 512)
@@ -333,7 +344,8 @@ func TestCaches(t *testing.T) {
 			EntriesFound:     2,
 		},
 		Result: Cache{
-			EntriesStored: 3,
+			EntriesStored:     3,
+			QueryLengthServed: int64(time.Hour * 3),
 		},
 	}, statsCtx.Caches())
 }

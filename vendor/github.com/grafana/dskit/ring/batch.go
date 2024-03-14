@@ -111,6 +111,15 @@ func DoBatchWithOptions(ctx context.Context, op Operation, r ReadRing, keys []ui
 		bufZones [GetBufferSize]string
 	)
 	for i, key := range keys {
+		// Get call below takes ~1 microsecond for ~500 instances.
+		// Checking every 10K calls would be every 10ms.
+		if i%10e3 == 0 {
+			if err := ctx.Err(); err != nil {
+				o.Cleanup()
+				return err
+			}
+		}
+
 		replicationSet, err := r.Get(key, op, bufDescs[:0], bufHosts[:0], bufZones[:0])
 		if err != nil {
 			o.Cleanup()
@@ -132,6 +141,12 @@ func DoBatchWithOptions(ctx context.Context, op Operation, r ReadRing, keys []ui
 				indexes:      append(curr.indexes, i),
 			}
 		}
+	}
+
+	// One last check before calling the callbacks: it doesn't make sense if context is canceled.
+	if err := ctx.Err(); err != nil {
+		o.Cleanup()
+		return err
 	}
 
 	tracker := batchTracker{

@@ -26,20 +26,25 @@ type splitByRange struct {
 	limits  Limits
 	ng      *logql.DownstreamEngine
 	metrics *logql.MapperMetrics
+
+	// Whether to align rangeInterval align to splitByInterval in the subqueries.
+	splitAlign bool
 }
 
 // NewSplitByRangeMiddleware creates a new Middleware that splits log requests by the range interval.
-func NewSplitByRangeMiddleware(logger log.Logger, engineOpts logql.EngineOpts, limits Limits, metrics *logql.MapperMetrics) queryrangebase.Middleware {
+func NewSplitByRangeMiddleware(logger log.Logger, engineOpts logql.EngineOpts, limits Limits, splitAlign bool, metrics *logql.MapperMetrics) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByRange{
 			logger: log.With(logger, "middleware", "InstantQuery.splitByRangeVector"),
 			next:   next,
 			limits: limits,
 			ng: logql.NewDownstreamEngine(engineOpts, DownstreamHandler{
-				limits: limits,
-				next:   next,
+				limits:     limits,
+				next:       next,
+				splitAlign: splitAlign,
 			}, limits, logger),
-			metrics: metrics,
+			metrics:    metrics,
+			splitAlign: splitAlign,
 		}
 	})
 }
@@ -57,14 +62,26 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, s.limits.QuerySplitDuration)
+	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, s.limits.InstantMetricQuerySplitDuration)
 	// if no interval configured, continue to the next middleware
 	if interval == 0 {
 		return s.next.Do(ctx, request)
 	}
 
 	mapperStats := logql.NewMapperStats()
-	mapper, err := logql.NewRangeMapper(interval, s.metrics, mapperStats)
+
+	ir, ok := request.(*LokiInstantRequest)
+	if !ok {
+		return nil, fmt.Errorf("expected *LokiInstantRequest, got %T", request)
+	}
+
+	var mapper logql.RangeMapper
+
+	if s.splitAlign {
+		mapper, err = logql.NewRangeMapperWithSplitAlign(interval, ir.TimeTs, s.metrics, mapperStats)
+	} else {
+		mapper, err = logql.NewRangeMapper(interval, s.metrics, mapperStats)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -84,10 +101,6 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 	// Update middleware stats
 	queryStatsCtx := stats.FromContext(ctx)
 	queryStatsCtx.AddSplitQueries(int64(mapperStats.GetSplitQueries()))
-
-	if _, ok := request.(*LokiInstantRequest); !ok {
-		return nil, fmt.Errorf("expected *LokiInstantRequest, got %T", request)
-	}
 
 	query := s.ng.Query(ctx, logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: parsed})
 

@@ -100,7 +100,7 @@ func (h *headIndexReader) LabelNames(matchers ...*labels.Matcher) ([]string, err
 }
 
 // Postings returns the postings list iterator for the label pairs.
-func (h *headIndexReader) Postings(name string, shard *index.ShardAnnotation, values ...string) (index.Postings, error) {
+func (h *headIndexReader) Postings(name string, fpFilter index.FingerprintFilter, values ...string) (index.Postings, error) {
 	var p index.Postings
 	switch len(values) {
 	case 0:
@@ -115,8 +115,8 @@ func (h *headIndexReader) Postings(name string, shard *index.ShardAnnotation, va
 		p = index.Merge(res...)
 	}
 
-	if shard != nil {
-		return index.NewShardedPostings(p, *shard, nil), nil
+	if fpFilter != nil {
+		return index.NewShardedPostings(p, fpFilter, nil), nil
 	}
 	return p, nil
 }

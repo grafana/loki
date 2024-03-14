@@ -4,10 +4,6 @@ import (
 	"context"
 	"testing"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
-
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	"github.com/stretchr/testify/assert"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -15,6 +11,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
+	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 )
 
 func TestGetTLSSecurityProfile(t *testing.T) {

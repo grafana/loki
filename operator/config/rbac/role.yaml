@@ -48,6 +48,17 @@ rules:
   - update
   - watch
 - apiGroups:
+  - cloudcredential.openshift.io
+  resources:
+  - credentialsrequests
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
   - config.openshift.io
   resources:
   - apiservers
@@ -175,6 +186,12 @@ rules:
   - alertmanagers
   verbs:
   - patch
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - alertmanagers/api
+  verbs:
+  - create
 - apiGroups:
   - monitoring.coreos.com
   resources:

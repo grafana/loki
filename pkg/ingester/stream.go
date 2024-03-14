@@ -288,30 +288,28 @@ func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.E
 	hasTailers := len(s.tailers) != 0
 	s.tailerMtx.RUnlock()
 	if hasTailers {
-		go func() {
-			stream := logproto.Stream{Labels: s.labelsString, Entries: entries}
+		stream := logproto.Stream{Labels: s.labelsString, Entries: entries}
 
-			closedTailers := []uint32{}
+		closedTailers := []uint32{}
 
-			s.tailerMtx.RLock()
-			for _, tailer := range s.tailers {
-				if tailer.isClosed() {
-					closedTailers = append(closedTailers, tailer.getID())
-					continue
-				}
-				tailer.send(stream, s.labels)
+		s.tailerMtx.RLock()
+		for _, tailer := range s.tailers {
+			if tailer.isClosed() {
+				closedTailers = append(closedTailers, tailer.getID())
+				continue
 			}
-			s.tailerMtx.RUnlock()
+			tailer.send(stream, s.labels)
+		}
+		s.tailerMtx.RUnlock()
 
-			if len(closedTailers) != 0 {
-				s.tailerMtx.Lock()
-				defer s.tailerMtx.Unlock()
+		if len(closedTailers) != 0 {
+			s.tailerMtx.Lock()
+			defer s.tailerMtx.Unlock()
 
-				for _, closedTailerID := range closedTailers {
-					delete(s.tailers, closedTailerID)
-				}
+			for _, closedTailerID := range closedTailers {
+				delete(s.tailers, closedTailerID)
 			}
-		}()
+		}
 	}
 }
 

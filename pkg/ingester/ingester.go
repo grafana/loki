@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	lokilog "github.com/grafana/loki/pkg/logql/log"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
@@ -37,6 +39,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -98,7 +101,10 @@ type Config struct {
 
 	WAL WALConfig `yaml:"wal,omitempty" doc:"description=The ingester WAL (Write Ahead Log) records incoming logs and stores them on the local file systems in order to guarantee persistence of acknowledged data in the event of a process crash."`
 
-	ChunkFilterer chunk.RequestChunkFilterer `yaml:"-"`
+	ChunkFilterer          chunk.RequestChunkFilterer     `yaml:"-"`
+	PipelineWrapper        lokilog.PipelineWrapper        `yaml:"-"`
+	SampleExtractorWrapper lokilog.SampleExtractorWrapper `yaml:"-"`
+
 	// Optional wrapper that can be used to modify the behaviour of the ingester
 	Wrapper Wrapper `yaml:"-"`
 
@@ -226,7 +232,9 @@ type Ingester struct {
 
 	wal WAL
 
-	chunkFilter chunk.RequestChunkFilterer
+	chunkFilter      chunk.RequestChunkFilterer
+	extractorWrapper lokilog.SampleExtractorWrapper
+	pipelineWrapper  lokilog.PipelineWrapper
 
 	streamRateCalculator *StreamRateCalculator
 
@@ -303,11 +311,27 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.SetChunkFilterer(i.cfg.ChunkFilterer)
 	}
 
+	if i.cfg.PipelineWrapper != nil {
+		i.SetPipelineWrapper(i.cfg.PipelineWrapper)
+	}
+
+	if i.cfg.SampleExtractorWrapper != nil {
+		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
+	}
+
 	return i, nil
 }
 
 func (i *Ingester) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
+}
+
+func (i *Ingester) SetExtractorWrapper(wrapper lokilog.SampleExtractorWrapper) {
+	i.extractorWrapper = wrapper
+}
+
+func (i *Ingester) SetPipelineWrapper(wrapper lokilog.PipelineWrapper) {
+	i.pipelineWrapper = wrapper
 }
 
 // setupAutoForget looks for ring status if `AutoForgetUnhealthy` is enabled
@@ -836,7 +860,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.streamRateCalculator, i.writeLogManager)
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.pipelineWrapper, i.extractorWrapper, i.streamRateCalculator, i.writeLogManager)
 		if err != nil {
 			return nil, err
 		}
@@ -850,6 +874,16 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
+
+	if req.Plan == nil {
+		parsed, err := syntax.ParseLogSelector(req.Selector, true)
+		if err != nil {
+			return err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -874,6 +908,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			Limit:     req.Limit,
 			Shards:    req.Shards,
 			Deletes:   req.Deletes,
+			Plan:      req.Plan,
 		}}
 		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
@@ -900,6 +935,17 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	_, ctx := stats.NewContext(queryServer.Context())
 	sp := opentracing.SpanFromContext(ctx)
 
+	// If the plan is empty we want all series to be returned.
+	if req.Plan == nil {
+		parsed, err := syntax.ParseSampleExpr(req.Selector)
+		if err != nil {
+			return err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
+
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
@@ -925,6 +971,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			Selector: req.Selector,
 			Shards:   req.Shards,
 			Deletes:  req.Deletes,
+			Plan:     req.Plan,
 		}}
 		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
@@ -984,7 +1031,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	}
 
 	// get chunk references
-	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, matchers...)
+	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil))
 	if err != nil {
 		return nil, err
 	}
@@ -1234,6 +1281,16 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	default:
 	}
 
+	if req.Plan == nil {
+		parsed, err := syntax.ParseLogSelector(req.Query, true)
+		if err != nil {
+			return err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
+
 	instanceID, err := tenant.TenantID(queryServer.Context())
 	if err != nil {
 		return err
@@ -1243,7 +1300,13 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	if err != nil {
 		return err
 	}
-	tailer, err := newTailer(instanceID, req.Query, queryServer, i.cfg.MaxDroppedStreams)
+
+	expr, ok := req.Plan.AST.(syntax.LogSelectorExpr)
+	if !ok {
+		return fmt.Errorf("unsupported query expression: want (LogSelectorExpr), got (%T)", req.Plan.AST)
+	}
+
+	tailer, err := newTailer(instanceID, expr, queryServer, i.cfg.MaxDroppedStreams)
 	if err != nil {
 		return err
 	}

@@ -1,7 +1,7 @@
 ---
 title: Generating log data for testing
 menuTitle: Log generation
-description: Using K6 to generate log data for load testing.
+description: Using k6 to generate log data for load testing.
 aliases: 
 - ../../clients/k6/log-generation/
 weight: 910

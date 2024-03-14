@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
@@ -25,6 +27,7 @@ import (
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/server"
 )
 
 const (
@@ -41,13 +44,15 @@ var (
 
 // Config for a Handler.
 type HandlerConfig struct {
-	LogQueriesLongerThan time.Duration `yaml:"log_queries_longer_than"`
-	MaxBodySize          int64         `yaml:"max_body_size"`
-	QueryStatsEnabled    bool          `yaml:"query_stats_enabled"`
+	LogQueriesLongerThan   time.Duration          `yaml:"log_queries_longer_than"`
+	LogQueryRequestHeaders flagext.StringSliceCSV `yaml:"log_query_request_headers"`
+	MaxBodySize            int64                  `yaml:"max_body_size"`
+	QueryStatsEnabled      bool                   `yaml:"query_stats_enabled"`
 }
 
 func (cfg *HandlerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. Set to 0 to disable. Set to < 0 to enable on all queries.")
+	f.Var(&cfg.LogQueryRequestHeaders, "frontend.log-query-request-headers", "Comma-separated list of request header names to include in query logs. Applies to both query stats and slow queries logs.")
 	f.Int64Var(&cfg.MaxBodySize, "frontend.max-body-size", 10*1024*1024, "Max body size for downstream prometheus.")
 	f.BoolVar(&cfg.QueryStatsEnabled, "frontend.query-stats-enabled", false, "True to enable query statistics tracking. When enabled, a message with some statistics is logged for every query.")
 }
@@ -133,7 +138,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	queryResponseTime := time.Since(startTime)
 
 	if err != nil {
-		writeError(w, err)
+		server.WriteError(err, w)
 		return
 	}
 
@@ -205,7 +210,20 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"fetched_chunks_bytes", numBytes,
 	}, formatQueryString(queryString)...)
 
+	if len(f.cfg.LogQueryRequestHeaders) != 0 {
+		logMessage = append(logMessage, formatRequestHeaders(&r.Header, f.cfg.LogQueryRequestHeaders)...)
+	}
+
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+}
+
+func formatRequestHeaders(h *http.Header, headersToLog []string) (fields []interface{}) {
+	for _, s := range headersToLog {
+		if v := h.Get(s); v != "" {
+			fields = append(fields, fmt.Sprintf("header_%s", strings.ReplaceAll(strings.ToLower(s), "-", "_")), v)
+		}
+	}
+	return fields
 }
 
 func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer) url.Values {
@@ -227,20 +245,6 @@ func formatQueryString(queryString url.Values) (fields []interface{}) {
 		fields = append(fields, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
 	}
 	return fields
-}
-
-func writeError(w http.ResponseWriter, err error) {
-	switch err {
-	case context.Canceled:
-		err = errCanceled
-	case context.DeadlineExceeded:
-		err = errDeadlineExceeded
-	default:
-		if util.IsRequestBodyTooLarge(err) {
-			err = errRequestEntityTooLarge
-		}
-	}
-	httpgrpc.WriteError(w, err)
 }
 
 func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Header, stats *querier_stats.Stats) {

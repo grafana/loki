@@ -63,7 +63,7 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 
 	level.Info(logger).Log("[flb-go]", "Starting fluent-bit-go-loki", "version", version.Info())
 	paramLogger := log.With(logger, "[flb-go]", "provided parameter")
-	level.Info(paramLogger).Log("URL", conf.clientConfig.URL)
+	level.Info(paramLogger).Log("URL", conf.clientConfig.URL.Redacted())
 	level.Info(paramLogger).Log("TenantID", conf.clientConfig.TenantID)
 	level.Info(paramLogger).Log("BatchWait", fmt.Sprintf("%.3fs", conf.clientConfig.BatchWait.Seconds()))
 	level.Info(paramLogger).Log("BatchSize", conf.clientConfig.BatchSize)

@@ -69,7 +69,7 @@ func NewQuerierAPI(cfg Config, querier Querier, limits Limits, logger log.Logger
 
 // RangeQueryHandler is a http.HandlerFunc for range queries and legacy log queries
 func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.LokiRequest) (logqlmodel.Result, error) {
-	if err := q.validateMaxEntriesLimits(ctx, req.Query, req.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {
 		return logqlmodel.Result{}, err
 	}
 
@@ -84,7 +84,7 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
 func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.LokiInstantRequest) (logqlmodel.Result, error) {
-	if err := q.validateMaxEntriesLimits(ctx, req.Query, req.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {
 		return logqlmodel.Result{}, err
 	}
 
@@ -199,7 +199,7 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 					}
 					level.Error(logger).Log("msg", "Error from client", "err", err)
 					break
-				} else if tailer.stopped {
+				} else if tailer.stopped.Load() {
 					return
 				}
 
@@ -343,15 +343,10 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 	return resp, nil
 }
 
-func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, query string, limit uint32) error {
+func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.Expr, limit uint32) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
-	expr, err := syntax.ParseExpr(query)
-	if err != nil {
-		return err
 	}
 
 	// entry limit does not apply to metric queries.

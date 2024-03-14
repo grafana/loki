@@ -41,6 +41,7 @@ func NewQueryShardMiddleware(
 	limits Limits,
 	maxShards int,
 	statsHandler queryrangebase.Handler,
+	shardAggregation []string,
 ) queryrangebase.Middleware {
 	noshards := !hasShards(confs)
 
@@ -54,7 +55,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newASTMapperware(confs, engineOpts, next, statsHandler, logger, shardingMetrics, limits, maxShards)
+		return newASTMapperware(confs, engineOpts, next, statsHandler, logger, shardingMetrics, limits, maxShards, shardAggregation)
 	})
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -79,16 +80,18 @@ func newASTMapperware(
 	metrics *logql.MapperMetrics,
 	limits Limits,
 	maxShards int,
+	shardAggregation []string,
 ) *astMapperware {
 	ast := &astMapperware{
-		confs:        confs,
-		logger:       log.With(logger, "middleware", "QueryShard.astMapperware"),
-		limits:       limits,
-		next:         next,
-		statsHandler: next,
-		ng:           logql.NewDownstreamEngine(engineOpts, DownstreamHandler{next: next, limits: limits}, limits, logger),
-		metrics:      metrics,
-		maxShards:    maxShards,
+		confs:            confs,
+		logger:           log.With(logger, "middleware", "QueryShard.astMapperware"),
+		limits:           limits,
+		next:             next,
+		statsHandler:     next,
+		ng:               logql.NewDownstreamEngine(engineOpts, DownstreamHandler{next: next, limits: limits}, limits, logger),
+		metrics:          metrics,
+		maxShards:        maxShards,
+		shardAggregation: shardAggregation,
 	}
 
 	if statsHandler != nil {
@@ -107,6 +110,10 @@ type astMapperware struct {
 	ng           *logql.DownstreamEngine
 	metrics      *logql.MapperMetrics
 	maxShards    int
+
+	// Feature flag for sharding range and vector aggregations such as
+	// quantile_ver_time with probabilistic data structures.
+	shardAggregation []string
 }
 
 func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard uint64, notShardable bool) error {
@@ -143,7 +150,12 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		util_log.WithContext(ctx, ast.logger),
 	)
 
-	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(r.GetQuery())
+	params, err := ParamsFromRequest(r)
+	if err != nil {
+		return nil, err
+	}
+
+	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(params.GetExpression())
 	if err != nil {
 		level.Warn(logger).Log("err", err.Error(), "msg", "failed to get range-vector and offset duration so skipped AST mapper for request")
 		return ast.next.Do(ctx, r)
@@ -183,12 +195,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	mapper := logql.NewShardMapper(resolver, ast.metrics)
-
-	params, err := ParamsFromRequest(r)
-	if err != nil {
-		return nil, err
-	}
+	mapper := logql.NewShardMapper(resolver, ast.metrics, ast.shardAggregation)
 
 	noop, bytesPerShard, parsed, err := mapper.Parse(params.GetExpression())
 	if err != nil {

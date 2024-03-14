@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/querylimits"
+	"github.com/grafana/loki/pkg/util/server"
 )
 
 const (
@@ -119,8 +120,10 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 	case sketch.TopKMatrix:
 		sk, err := data.ToProto()
 		return &TopKSketchesResponse{Response: sk}, err
-	case sketch.QuantileSketchMatrix:
-		return &QuantileSketchResponse{Response: data.ToProto()}, nil
+	case logql.ProbabilisticQuantileMatrix:
+		r := data.ToProto()
+		data.Release()
+		return &QuantileSketchResponse{Response: r}, nil
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %T", result.Data)
@@ -172,7 +175,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Headers: resp.GetHeaders(),
 		}, nil
 	case *QuantileSketchResponse:
-		matrix, err := sketch.QuantileSketchMatrixFromProto(r.Response)
+		matrix, err := logql.ProbabilisticQuantileMatrixFromProto(r.Response)
 		if err != nil {
 			return logqlmodel.Result{}, fmt.Errorf("cannot decode quantile sketch: %w", err)
 		}
@@ -234,6 +237,8 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_Labels{response}
 	case *IndexStatsResponse:
 		p.Response = &QueryResponse_Stats{response}
+	case *VolumeResponse:
+		p.Response = &QueryResponse_Volume{response}
 	case *TopKSketchesResponse:
 		p.Response = &QueryResponse_TopkSketches{response}
 	case *QuantileSketchResponse:
@@ -243,6 +248,13 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	}
 
 	return p, nil
+}
+
+// QueryResponseWrapError wraps an error in the QueryResponse protobuf.
+func QueryResponseWrapError(err error) *QueryResponse {
+	return &QueryResponse{
+		Status: server.WrapError(err),
+	}
 }
 
 func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryrangebase.Request, context.Context, error) {

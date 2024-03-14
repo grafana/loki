@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -524,7 +525,9 @@ func Benchmark_PushStream(b *testing.B) {
 	chunkfmt, headfmt := defaultChunkFormat(b)
 
 	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil)
-	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{}, 10)
+	expr, err := syntax.ParseLogSelector(`{namespace="loki-dev"}`, true)
+	require.NoError(b, err)
+	t, err := newTailer("foo", expr, &fakeTailServer{}, 10)
 	require.NoError(b, err)
 
 	go t.loop()

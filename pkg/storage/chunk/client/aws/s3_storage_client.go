@@ -405,6 +405,7 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var storageObjects []client.StorageObject
 	var commonPrefixes []client.StorageCommonPrefix
+	var commonPrefixesSet = make(map[string]bool)
 
 	for i := range a.bucketNames {
 		err := loki_instrument.TimeRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
@@ -428,7 +429,10 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 				}
 
 				for _, commonPrefix := range output.CommonPrefixes {
-					commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(aws.StringValue(commonPrefix.Prefix)))
+					if !commonPrefixesSet[aws.StringValue(commonPrefix.Prefix)] {
+						commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(aws.StringValue(commonPrefix.Prefix)))
+						commonPrefixesSet[aws.StringValue(commonPrefix.Prefix)] = true
+					}
 				}
 
 				if output.IsTruncated == nil || !*output.IsTruncated {

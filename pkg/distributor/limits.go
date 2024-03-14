@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/loki/pkg/compactor/retention"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/pkg/loghttp/push"
 )
 
 // Limits is an interface for distributor limits/related configs
@@ -29,4 +30,5 @@ type Limits interface {
 	AllowStructuredMetadata(userID string) bool
 	MaxStructuredMetadataSize(userID string) int
 	MaxStructuredMetadataCount(userID string) int
+	OTLPConfig(userID string) push.OTLPConfig
 }

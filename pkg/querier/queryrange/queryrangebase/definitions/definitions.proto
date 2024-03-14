@@ -8,11 +8,6 @@ option go_package = "github.com/grafana/loki/pkg/querier/queryrange/queryrangeba
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
-// Defined here to prevent circular imports between logproto & queryrangebase
-message CachingOptions {
-  bool disabled = 1;
-}
-
 message PrometheusRequestHeader {
   string Name = 1 [(gogoproto.jsontag) = "-"];
   repeated string Values = 2 [(gogoproto.jsontag) = "-"];

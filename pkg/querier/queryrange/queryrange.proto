@@ -18,7 +18,7 @@ option (gogoproto.sizer_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 message LokiRequest {
-  string query = 1;
+  string query = 1; // mark as reserved once we've fully migrated to plan.
   uint32 limit = 2;
   int64 step = 3;
   int64 interval = 9;
@@ -33,7 +33,7 @@ message LokiRequest {
   logproto.Direction direction = 6;
   string path = 7;
   repeated string shards = 8 [(gogoproto.jsontag) = "shards"];
-  bytes plan = 10 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
+  Plan plan = 10 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
 }
 
 message LokiInstantRequest {
@@ -46,7 +46,11 @@ message LokiInstantRequest {
   logproto.Direction direction = 4;
   string path = 5;
   repeated string shards = 6 [(gogoproto.jsontag) = "shards"];
-  bytes plan = 7 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
+  Plan plan = 7 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
+}
+
+message Plan {
+  bytes raw = 1;
 }
 
 message LokiResponse {

@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -527,6 +529,14 @@ type ObjectStorageSecretSpec struct {
 	// +kubebuilder:validation:Required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:Secret",displayName="Object Storage Secret Name"
 	Name string `json:"name"`
+
+	// CredentialMode can be used to set the desired credential mode for authenticating with the object storage.
+	// If this is not set, then the operator tries to infer the credential mode from the provided secret and its
+	// own configuration.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	CredentialMode CredentialMode `json:"credentialMode,omitempty"`
 }
 
 // ObjectStorageSchemaVersion defines the storage schema version which will be
@@ -631,6 +641,65 @@ type QueryLimitSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Cardinality Limit"
 	CardinalityLimit int32 `json:"cardinalityLimit,omitempty"`
+}
+
+// BlockedQueryType defines which type of query a blocked query should apply to.
+//
+// +kubebuilder:validation:Enum=filter;limited;metric
+type BlockedQueryType string
+
+const (
+	// BlockedQueryFilter is used, when the blocked query should apply to queries using a log filter.
+	BlockedQueryFilter BlockedQueryType = "filter"
+	// BlockedQueryLimited is used, when the blocked query should apply to queries without a filter or a metric aggregation.
+	BlockedQueryLimited BlockedQueryType = "limited"
+	// BlockedQueryMetric is used, when the blocked query should apply to queries with an aggregation.
+	BlockedQueryMetric BlockedQueryType = "metric"
+)
+
+// BlockedQueryTypes defines a slice of BlockedQueryType values to be used for a blocked query.
+type BlockedQueryTypes []BlockedQueryType
+
+// BlockedQuerySpec defines the rule spec for queries to be blocked.
+//
+// +kubebuilder:validation:MinProperties:=1
+type BlockedQuerySpec struct {
+	// Hash is a 32-bit FNV-1 hash of the query string.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Query Hash"
+	Hash int32 `json:"hash,omitempty"`
+	// Pattern defines the pattern matching the queries to be blocked.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Pattern"
+	Pattern string `json:"pattern,omitempty"`
+	// Regex defines if the pattern is a regular expression. If false the pattern will be used only for exact matches.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Regex"
+	Regex bool `json:"regex,omitempty"`
+	// Types defines the list of query types that should be considered for blocking.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Types"
+	Types BlockedQueryTypes `json:"types,omitempty"`
+}
+
+// PerTenantQueryLimitSpec defines the limits applied to per tenant query path.
+type PerTenantQueryLimitSpec struct {
+	QueryLimitSpec `json:",omitempty"`
+
+	// Blocked defines the list of rules to block matching queries.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Blocked"
+	Blocked []BlockedQuerySpec `json:"blocked,omitempty"`
 }
 
 // IngestionLimitSpec defines the limits applied at the ingestion path.
@@ -773,6 +842,27 @@ type LimitsTemplateSpec struct {
 	Retention *RetentionLimitSpec `json:"retention,omitempty"`
 }
 
+// LimitsTemplateSpec defines the limits  applied at ingestion or query path.
+type PerTenantLimitsTemplateSpec struct {
+	// IngestionLimits defines the limits applied on ingested log streams.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	IngestionLimits *IngestionLimitSpec `json:"ingestion,omitempty"`
+
+	// QueryLimits defines the limit applied on querying log streams.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	QueryLimits *PerTenantQueryLimitSpec `json:"queries,omitempty"`
+
+	// Retention defines how long logs are kept in storage.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	Retention *RetentionLimitSpec `json:"retention,omitempty"`
+}
+
 // LimitsSpec defines the spec for limits applied at ingestion or query
 // path across the cluster or per tenant.
 type LimitsSpec struct {
@@ -788,7 +878,7 @@ type LimitsSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Limits per Tenant"
-	Tenants map[string]LimitsTemplateSpec `json:"tenants,omitempty"`
+	Tenants map[string]PerTenantLimitsTemplateSpec `json:"tenants,omitempty"`
 }
 
 // RulesSpec defines the spec for the ruler component.
@@ -959,6 +1049,10 @@ const (
 	// ConditionDegraded defines the condition that some or all components in the Loki deployment
 	// are degraded or the cluster cannot connect to object storage.
 	ConditionDegraded LokiStackConditionType = "Degraded"
+
+	// ConditionWarning is used for configurations that are not recommended, but don't currently cause
+	// issues. There can be multiple warning conditions active at a time.
+	ConditionWarning LokiStackConditionType = "Warning"
 )
 
 // LokiStackConditionReason defines the type for valid reasons of a Loki deployment conditions.
@@ -976,6 +1070,10 @@ const (
 	ReasonMissingObjectStorageSecret LokiStackConditionReason = "MissingObjectStorageSecret"
 	// ReasonInvalidObjectStorageSecret when the format of the secret is invalid.
 	ReasonInvalidObjectStorageSecret LokiStackConditionReason = "InvalidObjectStorageSecret"
+	// ReasonMissingTokenCCOAuthSecret when the secret generated by CCO for token authentication is missing.
+	// This is usually a transient error because the secret is not immediately available after creating the
+	// CredentialsRequest, but it can persist if the CCO or its configuration are incorrect.
+	ReasonMissingTokenCCOAuthSecret LokiStackConditionReason = "MissingTokenCCOAuthenticationSecret"
 	// ReasonInvalidObjectStorageSchema when the spec contains an invalid schema(s).
 	ReasonInvalidObjectStorageSchema LokiStackConditionReason = "InvalidObjectStorageSchema"
 	// ReasonMissingObjectStorageCAConfigMap when the required configmap to verify object storage
@@ -1015,10 +1113,32 @@ const (
 	ReasonZoneAwareNodesMissing LokiStackConditionReason = "ReasonZoneAwareNodesMissing"
 	// ReasonZoneAwareEmptyLabel when the node-label used for zone-awareness has an empty value.
 	ReasonZoneAwareEmptyLabel LokiStackConditionReason = "ReasonZoneAwareEmptyLabel"
+	// ReasonStorageNeedsSchemaUpdate when the object storage schema version is older than V13
+	ReasonStorageNeedsSchemaUpdate LokiStackConditionReason = "StorageNeedsSchemaUpdate"
+)
+
+// PodStatus is a short description of the status a Pod can be in.
+type PodStatus string
+
+const (
+	// PodPending means the pod has been accepted by the system, but one or more of the containers
+	// has not been started. This includes time before being bound to a node, as well as time spent
+	// pulling images onto the host.
+	PodPending PodStatus = "Pending"
+	// PodRunning means the pod has been bound to a node and all of the containers have been started.
+	// At least one container is still running or is in the process of being restarted.
+	PodRunning PodStatus = "Running"
+	// PodReady means the pod has been started and the readiness probe reports a successful status.
+	PodReady PodStatus = "Ready"
+	// PodFailed means that all containers in the pod have terminated, and at least one container has
+	// terminated in a failure (exited with a non-zero exit code or was stopped by the system).
+	PodFailed PodStatus = "Failed"
+	// PodStatusUnknown is used when none of the other statuses apply or the information is not ready yet.
+	PodStatusUnknown PodStatus = "Unknown"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.
-type PodStatusMap map[corev1.PodPhase][]string
+type PodStatusMap map[PodStatus][]string
 
 // LokiStackComponentStatus defines the map of per pod status per LokiStack component.
 // Each component is represented by a separate map of v1.Phase to a list of pods.
@@ -1080,6 +1200,27 @@ type LokiStackComponentStatus struct {
 	Ruler PodStatusMap `json:"ruler,omitempty"`
 }
 
+// CredentialMode represents the type of authentication used for accessing the object storage.
+//
+// +kubebuilder:validation:Enum=static;token;token-cco
+type CredentialMode string
+
+const (
+	// CredentialModeStatic represents the usage of static, long-lived credentials stored in a Secret.
+	// This is the default authentication mode and available for all supported object storage types.
+	CredentialModeStatic CredentialMode = "static"
+	// CredentialModeToken represents the usage of short-lived tokens retrieved from a credential source.
+	// In this mode the static configuration does not contain credentials needed for the object storage.
+	// Instead, they are generated during runtime using a service, which allows for shorter-lived credentials and
+	// much more granular control. This authentication mode is not supported for all object storage types.
+	CredentialModeToken CredentialMode = "token"
+	// CredentialModeTokenCCO represents the usage of short-lived tokens retrieved from a credential source.
+	// This mode is similar to CredentialModeToken, but instead of having a user-configured credential source,
+	// it is configured by the environment and the operator relies on the Cloud Credential Operator to provide
+	// a secret. This mode is only supported for certain object storage types in certain runtime environments.
+	CredentialModeTokenCCO CredentialMode = "token-cco"
+)
+
 // LokiStackStorageStatus defines the observed state of
 // the Loki storage configuration.
 type LokiStackStorageStatus struct {
@@ -1089,6 +1230,12 @@ type LokiStackStorageStatus struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	Schemas []ObjectStorageSchema `json:"schemas,omitempty"`
+
+	// CredentialMode contains the authentication mode used for accessing the object storage.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	CredentialMode CredentialMode `json:"credentialMode,omitempty"`
 }
 
 // LokiStackStatus defines the observed state of LokiStack
@@ -1148,3 +1295,12 @@ func init() {
 
 // Hub declares the v1.LokiStack as the hub CRD version.
 func (*LokiStack) Hub() {}
+
+func (t BlockedQueryTypes) String() string {
+	res := make([]string, 0, len(t))
+	for _, t := range t {
+		res = append(res, string(t))
+	}
+
+	return strings.Join(res, ",")
+}

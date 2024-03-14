@@ -7,7 +7,6 @@ import (
 	"io"
 	"sync"
 
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/util/pool"
 )
 
@@ -156,6 +155,10 @@ func NewSliceIter[T any](xs []T) *SliceIter[T] {
 	return &SliceIter[T]{xs: xs, cur: -1}
 }
 
+func (it *SliceIter[T]) Len() int {
+	return len(it.xs) - (max(0, it.cur))
+}
+
 func (it *SliceIter[T]) Next() bool {
 	it.cur++
 	return it.cur < len(it.xs)
@@ -201,8 +204,8 @@ func (it *EmptyIter[T]) At() T {
 // noop
 func (it *EmptyIter[T]) Reset() {}
 
-func NewEmptyIter[T any](zero T) *EmptyIter[T] {
-	return &EmptyIter[T]{zero: zero}
+func NewEmptyIter[T any]() *EmptyIter[T] {
+	return &EmptyIter[T]{}
 }
 
 type CancellableIter[T any] struct {
@@ -243,48 +246,95 @@ func PointerSlice[T any](xs []T) []*T {
 	return out
 }
 
-type BoundsCheck uint8
-
-const (
-	Before BoundsCheck = iota
-	Overlap
-	After
-)
-
-type FingerprintBounds struct {
-	Min, Max model.Fingerprint
+type CloseableIterator[T any] interface {
+	Iterator[T]
+	Close() error
 }
 
-// Cmp returns the fingerprint's position relative to the bounds
-func (b FingerprintBounds) Cmp(fp model.Fingerprint) BoundsCheck {
-	if fp < b.Min {
-		return Before
-	} else if fp > b.Max {
-		return After
+func NewCloseableIterator[T io.Closer](itr Iterator[T]) *CloseIter[T] {
+	return &CloseIter[T]{itr}
+}
+
+type CloseIter[T io.Closer] struct {
+	Iterator[T]
+}
+
+func (i *CloseIter[T]) Close() error {
+	return i.At().Close()
+}
+
+type PeekingCloseableIterator[T any] interface {
+	PeekingIterator[T]
+	CloseableIterator[T]
+}
+
+type PeekCloseIter[T any] struct {
+	*PeekIter[T]
+	close func() error
+}
+
+func NewPeekCloseIter[T any](itr CloseableIterator[T]) *PeekCloseIter[T] {
+	return &PeekCloseIter[T]{PeekIter: NewPeekingIter[T](itr), close: itr.Close}
+}
+
+func (it *PeekCloseIter[T]) Close() error {
+	return it.close()
+}
+
+type ResettableIterator[T any] interface {
+	Reset() error
+	Iterator[T]
+}
+
+type CloseableResettableIterator[T any] interface {
+	CloseableIterator[T]
+	ResettableIterator[T]
+}
+
+type Predicate[T any] func(T) bool
+
+func NewFilterIter[T any](it Iterator[T], p Predicate[T]) *FilterIter[T] {
+	return &FilterIter[T]{
+		Iterator: it,
+		match:    p,
 	}
-	return Overlap
 }
 
-// unused, but illustrative
-type BoundedIter[V any] struct {
-	Iterator[V]
-	cmp func(V) BoundsCheck
+type FilterIter[T any] struct {
+	Iterator[T]
+	match Predicate[T]
 }
 
-func (bi *BoundedIter[V]) Next() bool {
-	for bi.Iterator.Next() {
-		switch bi.cmp(bi.Iterator.At()) {
-		case Before:
-			continue
-		case After:
-			return false
-		default:
-			return true
-		}
+func (i *FilterIter[T]) Next() bool {
+	hasNext := i.Iterator.Next()
+	for hasNext && !i.match(i.Iterator.At()) {
+		hasNext = i.Iterator.Next()
+	}
+	return hasNext
+}
+
+type CounterIterator[T any] interface {
+	Iterator[T]
+	Count() int
+}
+
+type CounterIter[T any] struct {
+	Iterator[T] // the underlying iterator
+	count       int
+}
+
+func NewCounterIter[T any](itr Iterator[T]) *CounterIter[T] {
+	return &CounterIter[T]{Iterator: itr}
+}
+
+func (it *CounterIter[T]) Next() bool {
+	if it.Iterator.Next() {
+		it.count++
+		return true
 	}
 	return false
 }
 
-func NewBoundedIter[V any](itr Iterator[V], cmp func(V) BoundsCheck) *BoundedIter[V] {
-	return &BoundedIter[V]{Iterator: itr, cmp: cmp}
+func (it *CounterIter[T]) Count() int {
+	return it.count
 }

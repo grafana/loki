@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
+	"github.com/grafana/dskit/flagext"
 )
 
 const day = 24 * time.Hour
@@ -33,11 +35,12 @@ var PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
 
 // Config for query_range middleware chain.
 type Config struct {
-	AlignQueriesWithStep bool               `yaml:"align_queries_with_step"`
-	ResultsCacheConfig   ResultsCacheConfig `yaml:"results_cache"`
-	CacheResults         bool               `yaml:"cache_results"`
-	MaxRetries           int                `yaml:"max_retries"`
-	ShardedQueries       bool               `yaml:"parallelise_shardable_queries"`
+	AlignQueriesWithStep bool                   `yaml:"align_queries_with_step"`
+	ResultsCacheConfig   ResultsCacheConfig     `yaml:"results_cache"`
+	CacheResults         bool                   `yaml:"cache_results"`
+	MaxRetries           int                    `yaml:"max_retries"`
+	ShardedQueries       bool                   `yaml:"parallelise_shardable_queries"`
+	ShardAggregations    flagext.StringSliceCSV `yaml:"shard_aggregations"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -46,6 +49,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", true, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
+
+	cfg.ShardAggregations = []string{}
+	f.Var(&cfg.ShardAggregations, "querier.shard-aggregations",
+		"A comma-separated list of LogQL vector and range aggregations that should be sharded")
 
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
@@ -57,6 +64,11 @@ func (cfg *Config) Validate() error {
 			return errors.Wrap(err, "invalid results_cache config")
 		}
 	}
+
+	if len(cfg.ShardAggregations) > 0 && !cfg.ShardedQueries {
+		return errors.New("shard_aggregations requires parallelise_shardable_queries=true")
+	}
+
 	return nil
 }
 

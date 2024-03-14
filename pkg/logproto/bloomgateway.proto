@@ -17,7 +17,15 @@ message FilterChunkRefRequest {
     (gogoproto.nullable) = false
   ];
   repeated GroupedChunkRefs refs = 3;
-  repeated logproto.LineFilterExpression filters = 4;
+  // TODO(salvacorts): Delete this field once the weekly release is done.
+  repeated LineFilter filters = 4 [
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logql/syntax.LineFilter",
+    (gogoproto.nullable) = false
+  ];
+  Plan plan = 5 [
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan",
+    (gogoproto.nullable) = false
+  ];
 }
 
 message FilterChunkRefResponse {

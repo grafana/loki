@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"time"
 
@@ -65,18 +66,19 @@ func (pm *processorManager) concurrency(n int) {
 	}
 
 	for len(pm.cancels) < n {
+		workerID := len(pm.cancels) + 1
 		ctx, cancel := context.WithCancel(pm.ctx)
 		pm.cancels = append(pm.cancels, cancel)
 
 		pm.wg.Add(1)
-		go func() {
+		go func(workerID int) {
 			defer pm.wg.Done()
 
 			pm.currentProcessors.Inc()
 			defer pm.currentProcessors.Dec()
 
-			pm.p.processQueriesOnSingleStream(ctx, pm.conn, pm.address)
-		}()
+			pm.p.processQueriesOnSingleStream(ctx, pm.conn, pm.address, strconv.Itoa(workerID))
+		}(workerID)
 	}
 
 	for len(pm.cancels) > n {

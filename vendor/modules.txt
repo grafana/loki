@@ -158,7 +158,7 @@ github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/options
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/shared
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/version
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
-# github.com/DataDog/sketches-go v1.4.2
+# github.com/DataDog/sketches-go v1.4.4
 ## explicit; go 1.15
 github.com/DataDog/sketches-go/ddsketch
 github.com/DataDog/sketches-go/ddsketch/encoding
@@ -400,7 +400,7 @@ github.com/aws/smithy-go/rand
 github.com/aws/smithy-go/time
 github.com/aws/smithy-go/transport/http
 github.com/aws/smithy-go/transport/http/internal/io
-# github.com/axiomhq/hyperloglog v0.0.0-20230201085229-3ddf4bad03dc
+# github.com/axiomhq/hyperloglog v0.0.0-20240124082744-24bca3a5b39b
 ## explicit; go 1.12
 github.com/axiomhq/hyperloglog
 # github.com/baidubce/bce-sdk-go v0.9.141
@@ -420,9 +420,6 @@ github.com/beorn7/perks/quantile
 # github.com/bmatcuk/doublestar v1.3.4
 ## explicit; go 1.12
 github.com/bmatcuk/doublestar
-# github.com/buger/jsonparser v1.1.1
-## explicit; go 1.13
-github.com/buger/jsonparser
 # github.com/c2h5oh/datasize v0.0.0-20220606134207-859f65c6625b
 ## explicit
 github.com/c2h5oh/datasize
@@ -853,10 +850,11 @@ github.com/gorilla/websocket
 # github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
 ## explicit; go 1.17
 github.com/grafana/cloudflare-go
-# github.com/grafana/dskit v0.0.0-20231120170505-765e343eda4f
+# github.com/grafana/dskit v0.0.0-20240104111617-ea101a3b86eb
 ## explicit; go 1.20
 github.com/grafana/dskit/aws
 github.com/grafana/dskit/backoff
+github.com/grafana/dskit/cancellation
 github.com/grafana/dskit/concurrency
 github.com/grafana/dskit/crypto/tls
 github.com/grafana/dskit/dns
@@ -893,6 +891,7 @@ github.com/grafana/dskit/server
 github.com/grafana/dskit/services
 github.com/grafana/dskit/signals
 github.com/grafana/dskit/spanlogger
+github.com/grafana/dskit/spanprofiler
 github.com/grafana/dskit/tenant
 github.com/grafana/dskit/test
 github.com/grafana/dskit/tracing
@@ -900,12 +899,20 @@ github.com/grafana/dskit/user
 # github.com/grafana/go-gelf/v2 v2.0.1
 ## explicit; go 1.17
 github.com/grafana/go-gelf/v2/gelf
-# github.com/grafana/gomemcache v0.0.0-20231023152154-6947259a0586
+# github.com/grafana/gomemcache v0.0.0-20231204155601-7de47a8c3cb0
 ## explicit; go 1.18
 github.com/grafana/gomemcache/memcache
+# github.com/grafana/jsonparser v0.0.0-20240209175146-098958973a2d
+## explicit; go 1.13
+github.com/grafana/jsonparser
 # github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608 => ./pkg/push
 ## explicit; go 1.19
 github.com/grafana/loki/pkg/push
+# github.com/grafana/pyroscope-go/godeltaprof v0.1.6
+## explicit; go 1.16
+github.com/grafana/pyroscope-go/godeltaprof
+github.com/grafana/pyroscope-go/godeltaprof/http/pprof
+github.com/grafana/pyroscope-go/godeltaprof/internal/pprof
 # github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
 ## explicit; go 1.17
 github.com/grafana/regexp
@@ -1057,8 +1064,8 @@ github.com/json-iterator/go
 # github.com/julienschmidt/httprouter v1.3.0
 ## explicit; go 1.7
 github.com/julienschmidt/httprouter
-# github.com/klauspost/compress v1.16.7
-## explicit; go 1.18
+# github.com/klauspost/compress v1.17.3
+## explicit; go 1.19
 github.com/klauspost/compress
 github.com/klauspost/compress/flate
 github.com/klauspost/compress/fse
@@ -1569,8 +1576,8 @@ go.uber.org/zap/zapgrpc
 # go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 ## explicit; go 1.18
 go4.org/netipx
-# golang.org/x/crypto v0.14.0
-## explicit; go 1.17
+# golang.org/x/crypto v0.17.0
+## explicit; go 1.18
 golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blake2b
@@ -1630,8 +1637,8 @@ golang.org/x/oauth2/jwt
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.13.0
-## explicit; go 1.17
+# golang.org/x/sys v0.15.0
+## explicit; go 1.18
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
 golang.org/x/sys/plan9
@@ -1639,11 +1646,11 @@ golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
 golang.org/x/sys/windows/svc/eventlog
-# golang.org/x/term v0.13.0
-## explicit; go 1.17
+# golang.org/x/term v0.15.0
+## explicit; go 1.18
 golang.org/x/term
-# golang.org/x/text v0.13.0
-## explicit; go 1.17
+# golang.org/x/text v0.14.0
+## explicit; go 1.18
 golang.org/x/text/cases
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
@@ -2188,6 +2195,7 @@ k8s.io/utils/clock
 k8s.io/utils/clock/testing
 k8s.io/utils/integer
 k8s.io/utils/internal/third_party/forked/golang/net
+k8s.io/utils/keymutex
 k8s.io/utils/net
 k8s.io/utils/pointer
 k8s.io/utils/strings/slices

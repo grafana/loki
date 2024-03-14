@@ -255,25 +255,29 @@ func (p *Promtail) watchConfig() {
 		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "Promtail newConfig func is Empty")
 		return
 	}
-	promtailServer, ok := p.server.(*server.PromtailServer)
-	if !ok {
-		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "promtailServer cast fail")
+	switch srv := p.server.(type) {
+	case *server.NoopServer:
+		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "Promtail server is disabled")
 		return
-	}
-	level.Warn(p.logger).Log("msg", "enable watchConfig")
-	hup := make(chan os.Signal, 1)
-	signal.Notify(hup, syscall.SIGHUP)
-	for {
-		select {
-		case <-hup:
-			_ = p.reload()
-		case rc := <-promtailServer.Reload():
-			if err := p.reload(); err != nil {
-				rc <- err
-			} else {
-				rc <- nil
+	case *server.PromtailServer:
+		level.Warn(p.logger).Log("msg", "enable watchConfig")
+		hup := make(chan os.Signal, 1)
+		signal.Notify(hup, syscall.SIGHUP)
+		for {
+			select {
+			case <-hup:
+				_ = p.reload()
+			case rc := <-srv.Reload():
+				if err := p.reload(); err != nil {
+					rc <- err
+				} else {
+					rc <- nil
+				}
 			}
 		}
+	default:
+		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "Unknown Promtail server type")
+		return
 	}
 }
 

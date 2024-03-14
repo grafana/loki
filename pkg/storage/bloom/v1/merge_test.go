@@ -7,12 +7,13 @@ import (
 )
 
 func TestMergeBlockQuerier_NonOverlapping(t *testing.T) {
+	t.Parallel()
 	var (
 		numSeries        = 100
 		numKeysPerSeries = 10000
 		numQueriers      = 4
 		queriers         []PeekingIterator[*SeriesWithBloom]
-		data, _          = mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+		data, _          = MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 	)
 	for i := 0; i < numQueriers; i++ {
 		var ptrs []*SeriesWithBloom
@@ -33,13 +34,46 @@ func TestMergeBlockQuerier_NonOverlapping(t *testing.T) {
 	require.False(t, mbq.Next())
 }
 
+func TestMergeBlockQuerier_Duplicate(t *testing.T) {
+	t.Parallel()
+	var (
+		numSeries        = 100
+		numKeysPerSeries = 10000
+		numQueriers      = 2
+		queriers         []PeekingIterator[*SeriesWithBloom]
+		data, _          = MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+	)
+	for i := 0; i < numQueriers; i++ {
+		queriers = append(
+			queriers,
+			NewPeekingIter[*SeriesWithBloom](
+				NewSliceIter[*SeriesWithBloom](
+					PointerSlice[SeriesWithBloom](data),
+				),
+			),
+		)
+	}
+
+	mbq := NewHeapIterForSeriesWithBloom(queriers...)
+
+	for i := 0; i < numSeries*2; i++ {
+		require.True(t, mbq.Next())
+		exp := data[i/2].Series.Fingerprint
+		got := mbq.At().Series.Fingerprint
+		require.Equal(t, exp, got, "on iteration %d", i)
+	}
+	require.False(t, mbq.Next())
+}
+
 func TestMergeBlockQuerier_Overlapping(t *testing.T) {
+	t.Parallel()
+
 	var (
 		numSeries        = 100
 		numKeysPerSeries = 10000
 		numQueriers      = 4
 		queriers         []PeekingIterator[*SeriesWithBloom]
-		data, _          = mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+		data, _          = MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 		slices           = make([][]*SeriesWithBloom, numQueriers)
 	)
 	for i := 0; i < numSeries; i++ {

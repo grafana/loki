@@ -1,7 +1,7 @@
 ---
 title: Troubleshooting Promtail
 menuTitle: Troubleshooting
-description: Troubleshooting the Promtail agent
+description: Troubleshooting the Promtail agent.
 aliases: 
 - ../../clients/promtail/troubleshooting/
 weight:  800

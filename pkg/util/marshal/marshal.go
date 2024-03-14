@@ -124,7 +124,11 @@ func WriteSeriesResponseJSON(series []logproto.SeriesIdentifier, w io.Writer) er
 	}
 
 	for _, series := range series {
-		adapter.Data = append(adapter.Data, series.GetLabels())
+		m := make(map[string]string, 0)
+		for _, pair := range series.GetLabels() {
+			m[pair.Key] = pair.Value
+		}
+		adapter.Data = append(adapter.Data, m)
 	}
 
 	s := jsoniter.ConfigFastest.BorrowStream(w)

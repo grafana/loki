@@ -13,6 +13,7 @@
 #       _msg: "Use tsdb (preferred) or boltdb-shipper instead."
 #
 # Note that even though the configs in schema_config takes a list, here we specify the deprecated fields for each item in the list.
+legacy-read-mode: "Legacy read SSD mode is deprecated and will be eventually removed. Use the new read and backend targets."
 
 ruler:
   remote_write:

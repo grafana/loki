@@ -1,7 +1,7 @@
 ---
 title: Single Store TSDB (tsdb)
 menuTitle: TSDB
-description: Describes the tsdb single store usage.
+description: Describes the Loki time series database (TSDB) single store.
 weight: 100
 ---
 # Single Store TSDB (tsdb)

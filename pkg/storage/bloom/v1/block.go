@@ -7,27 +7,33 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+type BlockMetadata struct {
+	Options  BlockOptions
+	Series   SeriesHeader
+	Checksum uint32
+}
+
 type Block struct {
 	// covers series pages
 	index BlockIndex
 	// covers bloom pages
 	blooms BloomBlock
 
-	// TODO(owen-d): implement
-	// synthetic header for the entire block
-	// built from all the pages in the index
-	header SeriesHeader
+	metadata BlockMetadata
 
 	reader BlockReader // should this be decoupled from the struct (accepted as method arg instead)?
 
 	initialized bool
-	dataRange   SeriesHeader
 }
 
 func NewBlock(reader BlockReader) *Block {
 	return &Block{
 		reader: reader,
 	}
+}
+
+func (b *Block) Reader() BlockReader {
+	return b.reader
 }
 
 func (b *Block) LoadHeaders() error {
@@ -38,28 +44,52 @@ func (b *Block) LoadHeaders() error {
 			return errors.Wrap(err, "getting index reader")
 		}
 
-		if err := b.index.DecodeHeaders(idx); err != nil {
+		indexChecksum, err := b.index.DecodeHeaders(idx)
+		if err != nil {
 			return errors.Wrap(err, "decoding index")
 		}
+
+		b.metadata.Options = b.index.opts
 
 		// TODO(owen-d): better pattern
 		xs := make([]SeriesHeader, 0, len(b.index.pageHeaders))
 		for _, h := range b.index.pageHeaders {
 			xs = append(xs, h.SeriesHeader)
 		}
-		b.dataRange = aggregateHeaders(xs)
+		b.metadata.Series = aggregateHeaders(xs)
 
 		blooms, err := b.reader.Blooms()
 		if err != nil {
 			return errors.Wrap(err, "getting blooms reader")
 		}
-		if err := b.blooms.DecodeHeaders(blooms); err != nil {
+		bloomChecksum, err := b.blooms.DecodeHeaders(blooms)
+		if err != nil {
 			return errors.Wrap(err, "decoding blooms")
 		}
 		b.initialized = true
+
+		if !b.metadata.Options.Schema.Compatible(b.blooms.schema) {
+			return fmt.Errorf(
+				"schema mismatch: index (%v) vs blooms (%v)",
+				b.metadata.Options.Schema, b.blooms.schema,
+			)
+		}
+
+		b.metadata.Checksum = combineChecksums(indexChecksum, bloomChecksum)
 	}
 	return nil
 
+}
+
+// XOR checksums as a simple checksum combiner with the benefit that
+// each part can be recomputed by XORing the result against the other
+func combineChecksums(index, blooms uint32) uint32 {
+	return index ^ blooms
+}
+
+// convenience method
+func (b *Block) Querier() *BlockQuerier {
+	return NewBlockQuerier(b)
 }
 
 func (b *Block) Series() *LazySeriesIter {
@@ -70,18 +100,47 @@ func (b *Block) Blooms() *LazyBloomIter {
 	return NewLazyBloomIter(b)
 }
 
+func (b *Block) Metadata() (BlockMetadata, error) {
+	if err := b.LoadHeaders(); err != nil {
+		return BlockMetadata{}, err
+	}
+	return b.metadata, nil
+}
+
+func (b *Block) Schema() (Schema, error) {
+	if err := b.LoadHeaders(); err != nil {
+		return Schema{}, err
+	}
+	return b.metadata.Options.Schema, nil
+}
+
 type BlockQuerier struct {
 	series *LazySeriesIter
 	blooms *LazyBloomIter
+
+	block *Block // ref to underlying block
 
 	cur *SeriesWithBloom
 }
 
 func NewBlockQuerier(b *Block) *BlockQuerier {
 	return &BlockQuerier{
+		block:  b,
 		series: NewLazySeriesIter(b),
 		blooms: NewLazyBloomIter(b),
 	}
+}
+
+func (bq *BlockQuerier) Metadata() (BlockMetadata, error) {
+	return bq.block.Metadata()
+}
+
+func (bq *BlockQuerier) Schema() (Schema, error) {
+	return bq.block.Schema()
+}
+
+func (bq *BlockQuerier) Reset() error {
+	return bq.series.Seek(0)
 }
 
 func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {
@@ -127,6 +186,11 @@ func (bq *BlockQuerier) Err() error {
 // passed as the `chks` argument. Chunks will be removed from the result set if they are indexed in the bloom
 // and fail to pass all the searches.
 func (bq *BlockQuerier) CheckChunksForSeries(fp model.Fingerprint, chks ChunkRefs, searches [][]byte) (ChunkRefs, error) {
+	schema, err := bq.Schema()
+	if err != nil {
+		return chks, fmt.Errorf("getting schema: %w", err)
+	}
+
 	if err := bq.Seek(fp); err != nil {
 		return chks, errors.Wrapf(err, "seeking to series for fp: %v", fp)
 	}
@@ -158,18 +222,22 @@ func (bq *BlockQuerier) CheckChunksForSeries(fp model.Fingerprint, chks ChunkRef
 		}
 	}
 
-	// TODO(owen-d): pool, memoize chunk search prefix creation
+	// TODO(salvacorts): pool tokenBuf
+	var tokenBuf []byte
+	var prefixLen int
 
 	// Check chunks individually now
 	mustCheck, inBlooms := chks.Compare(series.Chunks, true)
 
 outer:
 	for _, chk := range inBlooms {
+		// Get buf to concatenate the chunk and search token
+		tokenBuf, prefixLen = prefixedToken(schema.NGramLen(), chk, tokenBuf)
 		for _, search := range searches {
-			// TODO(owen-d): meld chunk + search into a single byte slice from the block schema
-			var combined = search
+			tokenBuf = append(tokenBuf[:prefixLen], search...)
 
-			if !bloom.Test(combined) {
+			if !bloom.Test(tokenBuf) {
+				// chunk didn't pass the search, continue to the next chunk
 				continue outer
 			}
 		}

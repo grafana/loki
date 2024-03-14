@@ -6,6 +6,8 @@ import (
 
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/tenant"
+
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 )
 
 const (
@@ -13,7 +15,7 @@ const (
 	ResultsCacheGenNumberHeaderName = "Results-Cache-Gen-Number"
 )
 
-func CacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader CacheGenNumberLoader) middleware.Interface {
+func CacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader resultscache.CacheGenNumberLoader) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			userIDs, err := tenant.TenantIDs(r.Context())
@@ -30,7 +32,7 @@ func CacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader CacheGenNumberLo
 	})
 }
 
-func CacheGenNumberContextSetterMiddleware(cacheGenNumbersLoader CacheGenNumberLoader) Middleware {
+func CacheGenNumberContextSetterMiddleware(cacheGenNumbersLoader resultscache.CacheGenNumberLoader) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		return HandlerFunc(func(ctx context.Context, req Request) (Response, error) {
 			userIDs, err := tenant.TenantIDs(ctx)

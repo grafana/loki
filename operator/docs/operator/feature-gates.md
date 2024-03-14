@@ -99,9 +99,6 @@ The refresh is applied to all LokiStack certificates at once.</p>
 </table>
 
 ## FeatureGates { #config-loki-grafana-com-v1-FeatureGates }
-<p>
-(<em>Appears on:</em><a href="#config-loki-grafana-com-v1-ProjectConfig">ProjectConfig</a>)
-</p>
 <div>
 <p>FeatureGates is the supported set of all operator feature gates.</p>
 </div>
@@ -412,154 +409,16 @@ bool
 <p>Dashboards enables the loki-mixin dashboards into the OpenShift Console</p>
 </td>
 </tr>
-</tbody>
-</table>
-
-## ProjectConfig { #config-loki-grafana-com-v1-ProjectConfig }
-<div>
-<p>ProjectConfig is the Schema for the projectconfigs API</p>
-</div>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
 <tr>
 <td>
-<code>syncPeriod</code><br/>
+<code>TokenCCOAuthEnv</code><br/>
 <em>
-<a href="https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1#Duration">
-Kubernetes meta/v1.Duration
-</a>
+bool
 </em>
 </td>
 <td>
-<em>(Optional)</em>
-<p>SyncPeriod determines the minimum frequency at which watched resources are
-reconciled. A lower period will correct entropy more quickly, but reduce
-responsiveness to change if there are many watched resources. Change this
-value only if you know what you are doing. Defaults to 10 hours if unset.
-there will a 10 percent jitter between the SyncPeriod of all controllers
-so that all controllers will not send list requests simultaneously.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>leaderElection</code><br/>
-<em>
-<a href="https://pkg.go.dev/k8s.io/component-base/config#LeaderElectionConfiguration">
-Kubernetes v1alpha1.LeaderElectionConfiguration
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>LeaderElection is the LeaderElection config to be used when configuring
-the manager.Manager leader election</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>cacheNamespace</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>CacheNamespace if specified restricts the manager&rsquo;s cache to watch objects in
-the desired namespace Defaults to all namespaces</p>
-<p>Note: If a namespace is specified, controllers can still Watch for a
-cluster-scoped resource (e.g Node).  For namespaced resources the cache
-will only hold objects from the desired namespace.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>gracefulShutDown</code><br/>
-<em>
-<a href="https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1#Duration">
-Kubernetes meta/v1.Duration
-</a>
-</em>
-</td>
-<td>
-<p>GracefulShutdownTimeout is the duration given to runnable to stop before the manager actually returns on stop.
-To disable graceful shutdown, set to time.Duration(0)
-To use graceful shutdown without timeout, set to a negative duration, e.G. time.Duration(-1)
-The graceful shutdown is skipped for safety reasons in case the leader election lease is lost.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>controller</code><br/>
-<em>
-<a href="https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerConfigurationSpec">
-K8S Controller-runtime v1alpha1.ControllerConfigurationSpec
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Controller contains global configuration options for controllers
-registered within this manager.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>metrics</code><br/>
-<em>
-<a href="https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerMetrics">
-K8S Controller-runtime v1alpha1.ControllerMetrics
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Metrics contains the controller metrics configuration</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>health</code><br/>
-<em>
-<a href="https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerHealth">
-K8S Controller-runtime v1alpha1.ControllerHealth
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Health contains the controller health configuration</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>webhook</code><br/>
-<em>
-<a href="https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerWebhook">
-K8S Controller-runtime v1alpha1.ControllerWebhook
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>Webhook contains the controllers webhook configuration</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>featureGates</code><br/>
-<em>
-<a href="#config-loki-grafana-com-v1-FeatureGates">
-FeatureGates
-</a>
-</em>
-</td>
-<td>
+<p>TokenCCOAuthEnv is true when OpenShift-functions are enabled and the operator has detected
+that it is running with some kind of &ldquo;workload identity&rdquo; (AWS STS, Azure WIF) enabled.</p>
 </td>
 </tr>
 </tbody>

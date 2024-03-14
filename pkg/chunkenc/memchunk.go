@@ -1231,6 +1231,10 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 		}
 	}
 
+	if pipeline.ReferencedStructuredMetadata() {
+		stats.SetQueryReferencedStructuredMetadata()
+	}
+
 	if len(streams) == 0 {
 		return iter.NoopIterator
 	}
@@ -1279,6 +1283,9 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 		})
 	}
 
+	if extractor.ReferencedStructuredMetadata() {
+		stats.SetQueryReferencedStructuredMetadata()
+	}
 	if len(series) == 0 {
 		return iter.NoopIterator
 	}
@@ -1586,12 +1593,14 @@ func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline l
 	return &entryBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		pipeline:         pipeline,
+		stats:            stats.FromContext(ctx),
 	}
 }
 
 type entryBufferedIterator struct {
 	*bufferedIterator
 	pipeline log.StreamPipeline
+	stats    *stats.Context
 
 	cur        logproto.Entry
 	currLabels log.LabelsResult
@@ -1624,10 +1633,19 @@ func (e *entryBufferedIterator) Next() bool {
 	return false
 }
 
+func (e *entryBufferedIterator) Close() error {
+	if e.pipeline.ReferencedStructuredMetadata() {
+		e.stats.SetQueryReferencedStructuredMetadata()
+	}
+
+	return e.bufferedIterator.Close()
+}
+
 func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {
 	it := &sampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		extractor:        extractor,
+		stats:            stats.FromContext(ctx),
 	}
 	return it
 }
@@ -1636,6 +1654,7 @@ type sampleBufferedIterator struct {
 	*bufferedIterator
 
 	extractor log.StreamSampleExtractor
+	stats     *stats.Context
 
 	cur        logproto.Sample
 	currLabels log.LabelsResult
@@ -1656,6 +1675,15 @@ func (e *sampleBufferedIterator) Next() bool {
 	}
 	return false
 }
+
+func (e *sampleBufferedIterator) Close() error {
+	if e.extractor.ReferencedStructuredMetadata() {
+		e.stats.SetQueryReferencedStructuredMetadata()
+	}
+
+	return e.bufferedIterator.Close()
+}
+
 func (e *sampleBufferedIterator) Labels() string { return e.currLabels.String() }
 
 func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLabels().Hash() }

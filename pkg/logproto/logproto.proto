@@ -51,7 +51,7 @@ message StreamRate {
 }
 
 message QueryRequest {
-  string selector = 1;
+  string selector = 1 [deprecated = true];
   uint32 limit = 2;
   google.protobuf.Timestamp start = 3 [
     (gogoproto.stdtime) = true,
@@ -65,10 +65,11 @@ message QueryRequest {
   reserved 6;
   repeated string shards = 7 [(gogoproto.jsontag) = "shards,omitempty"];
   repeated Delete deletes = 8;
+  Plan plan = 9 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
 }
 
 message SampleQueryRequest {
-  string selector = 1;
+  string selector = 1 [deprecated = true]; // mark as reserved once we've fully migrated to plan.
   google.protobuf.Timestamp start = 2 [
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
@@ -79,6 +80,11 @@ message SampleQueryRequest {
   ];
   repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
   repeated Delete deletes = 5;
+  Plan plan = 6 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
+}
+
+message Plan {
+  bytes raw = 1;
 }
 
 message Delete {
@@ -148,7 +154,7 @@ message Series {
 }
 
 message TailRequest {
-  string query = 1;
+  string query = 1 [deprecated = true];
   reserved 2;
   uint32 delayFor = 3;
   uint32 limit = 4;
@@ -156,6 +162,7 @@ message TailRequest {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
+  Plan plan = 6 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
 }
 
 message TailResponse {
@@ -181,7 +188,11 @@ message SeriesResponse {
 }
 
 message SeriesIdentifier {
-  map<string, string> labels = 1;
+  message LabelsEntry {
+    string key = 1;
+    string value = 2;
+  }
+  repeated LabelsEntry labels = 1 [(gogoproto.nullable) = false];
 }
 
 message DroppedStream {
@@ -286,9 +297,8 @@ message LabelNamesForMetricNameRequest {
   ];
 }
 
-message LineFilterExpression {
-  int64 operator = 1;
-  string match = 2;
+message LineFilter {
+  bytes raw = 1;
 }
 
 message GetChunkRefRequest {
@@ -301,7 +311,15 @@ message GetChunkRefRequest {
     (gogoproto.nullable) = false
   ];
   string matchers = 3;
-  repeated LineFilterExpression filters = 4;
+  // TODO(salvacorts): Delete this field once the weekly release is done.
+  repeated LineFilter filters = 4 [
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logql/syntax.LineFilter",
+    (gogoproto.nullable) = false
+  ];
+  Plan plan = 5 [
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan",
+    (gogoproto.nullable) = false
+  ];
 }
 
 message GetChunkRefResponse {

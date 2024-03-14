@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	querier_limits "github.com/grafana/loki/pkg/querier/limits"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	listutil "github.com/grafana/loki/pkg/util"
@@ -443,6 +444,16 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 		return nil, err
 	}
 
+	if req.Plan == nil {
+		parsed, err := syntax.ParseExpr(req.Query)
+		if err != nil {
+			return nil, err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
+
 	deletes, err := q.deletesForUser(ctx, req.Start, time.Now())
 	if err != nil {
 		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
@@ -456,6 +467,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 			Limit:     req.Limit,
 			Direction: logproto.BACKWARD,
 			Deletes:   deletes,
+			Plan:      req.Plan,
 		},
 	}
 
@@ -577,22 +589,19 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 		}
 	}
 
-	deduped := make(map[string]logproto.SeriesIdentifier)
+	response := &logproto.SeriesResponse{
+		Series: make([]logproto.SeriesIdentifier, 0),
+	}
+	seen := make(map[uint64]struct{})
+	b := make([]byte, 0, 1024)
 	for _, set := range sets {
 		for _, s := range set {
-			key := loghttp.LabelSet(s.Labels).String()
-			if _, exists := deduped[key]; !exists {
-				deduped[key] = s
+			key := s.Hash(b)
+			if _, exists := seen[key]; !exists {
+				seen[key] = struct{}{}
+				response.Series = append(response.Series, s)
 			}
 		}
-	}
-
-	response := &logproto.SeriesResponse{
-		Series: make([]logproto.SeriesIdentifier, 0, len(deduped)),
-	}
-
-	for _, s := range deduped {
-		response.Series = append(response.Series, s)
 	}
 
 	return response, nil
@@ -629,6 +638,15 @@ func (q *SingleTenantQuerier) seriesForMatchers(
 
 // seriesForMatcher fetches series from the store for a given matcher
 func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string, shards []string) ([]logproto.SeriesIdentifier, error) {
+	var parsed syntax.Expr
+	var err error
+	if matcher != "" {
+		parsed, err = syntax.ParseExpr(matcher)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	ids, err := q.store.SelectSeries(ctx, logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  matcher,
@@ -637,6 +655,9 @@ func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, throug
 			End:       through,
 			Direction: logproto.FORWARD,
 			Shards:    shards,
+			Plan: &plan.QueryPlan{
+				AST: parsed,
+			},
 		},
 	})
 	if err != nil {

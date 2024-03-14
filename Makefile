@@ -37,7 +37,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION ?= 0.31.2
+BUILD_IMAGE_VERSION ?= 0.33.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -281,7 +281,16 @@ cmd/migrate/migrate:
 #############
 GOX = gox $(GO_FLAGS) -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
+
+SKIP_ARM ?= false
 dist: clean
+ifeq ($(SKIP_ARM),true)
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
+	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/amd64" ./clients/cmd/promtail
+else
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
@@ -289,6 +298,7 @@ dist: clean
 	PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" CC="aarch64-linux-gnu-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm64" ./clients/cmd/promtail
 	PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" CC="arm-linux-gnueabihf-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm" ./clients/cmd/promtail
 	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/amd64" ./clients/cmd/promtail
+endif
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
@@ -307,7 +317,7 @@ publish: packages
 lint: ## run linters
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint run -v
+	GO111MODULE=on golangci-lint run -v --timeout 15m
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
 ########
@@ -315,8 +325,12 @@ lint: ## run linters
 ########
 
 test: all ## run the unit tests
-	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee test_results.txt
-	cd tools/lambda-promtail/ && $(GOTEST) -covermode=atomic -coverprofile=lambda-promtail-coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee lambda_promtail_test_results.txt
+	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
+	cd tools/lambda-promtail/ && $(GOTEST) -covermode=atomic -coverprofile=lambda-promtail-coverage.txt -p=4 ./... | tee lambda_promtail_test_results.txt
+
+test-integration:
+	$(GOTEST) -count=1 -v -tags=integration -timeout 10m ./integration
+
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
 
@@ -427,7 +441,7 @@ PLUGIN_ARCH ?=
 define build-rootfs
 	rm -rf clients/cmd/docker-driver/rootfs || true
 	mkdir clients/cmd/docker-driver/rootfs
-	docker build -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
+	docker build --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
 
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
@@ -801,6 +815,9 @@ EXAMPLES_SKIP_VALIDATION_FLAG := "doc-example:skip-validation=true"
 validate-example-configs: loki
 	for f in $$(grep -rL $(EXAMPLES_SKIP_VALIDATION_FLAG) $(EXAMPLES_YAML_PATH)/*.yaml); do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
 
+validate-dev-cluster-config: loki
+	./cmd/loki/loki -config.file=./tools/dev/loki-tsdb-storage-s3/config/loki.yaml -verify-config
+
 # Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
 generate-example-config-doc:
@@ -836,14 +853,21 @@ dev-k3d-down:
 
 # Trivy is used to scan images for vulnerabilities
 .PHONY: trivy
-trivy: loki-image
+trivy: loki-image build-image
 	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	trivy i $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG)
+	trivy fs go.mod
 
 # Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
 .PHONY: snyk
-snyk: loki-image
-	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+snyk: loki-image build-image
+	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) --file=cmd/loki/Dockerfile
+	snyk container test $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) --file=loki-build-image/Dockerfile
 	snyk code test
 
 .PHONY: scan-vulnerabilities
 scan-vulnerabilities: trivy snyk
+
+.PHONY: release-workflows
+release-workflows:
+	jsonnet -SJ .github/vendor -m .github/workflows .github/release-workflows.jsonnet

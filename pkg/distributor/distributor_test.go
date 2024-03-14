@@ -396,7 +396,8 @@ func Test_IncrementTimestamp(t *testing.T) {
 			distributors, _ := prepare(t, 1, 3, testData.limits, func(addr string) (ring_client.PoolClient, error) { return ing, nil })
 			_, err := distributors[0].Push(ctx, testData.push)
 			assert.NoError(t, err)
-			assert.Equal(t, testData.expectedPush, ing.pushed[0])
+			topVal := ing.Peek()
+			assert.Equal(t, testData.expectedPush, topVal)
 		})
 	}
 }
@@ -433,6 +434,8 @@ func TestDistributorPushConcurrently(t *testing.T) {
 	labels := make(map[string]int)
 
 	for i := range ingesters {
+		ingesters[i].mu.Lock()
+
 		pushed := ingesters[i].pushed
 		counter = counter + len(pushed)
 		for _, pr := range pushed {
@@ -440,6 +443,7 @@ func TestDistributorPushConcurrently(t *testing.T) {
 				labels[st.Labels] = labels[st.Labels] + 1
 			}
 		}
+		ingesters[i].mu.Unlock()
 	}
 	assert.Equal(t, numReq*3, counter) // RF=3
 	// each stream is present 3 times
@@ -500,7 +504,8 @@ func Test_SortLabelsOnPush(t *testing.T) {
 	request.Streams[0].Labels = `{buzz="f", a="b"}`
 	_, err := distributors[0].Push(ctx, request)
 	require.NoError(t, err)
-	require.Equal(t, `{a="b", buzz="f"}`, ingester.pushed[0].Streams[0].Labels)
+	topVal := ingester.Peek()
+	require.Equal(t, `{a="b", buzz="f"}`, topVal.Streams[0].Labels)
 }
 
 func Test_TruncateLogLines(t *testing.T) {
@@ -519,7 +524,8 @@ func Test_TruncateLogLines(t *testing.T) {
 
 		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
 		require.NoError(t, err)
-		require.Len(t, ingester.pushed[0].Streams[0].Entries[0].Line, 5)
+		topVal := ingester.Peek()
+		require.Len(t, topVal.Streams[0].Entries[0].Line, 5)
 	})
 }
 
@@ -606,7 +612,7 @@ func TestStreamShard(t *testing.T) {
 			overrides, err := validation.NewOverrides(*distributorLimits, nil)
 			require.NoError(t, err)
 
-			validator, err := NewValidator(overrides)
+			validator, err := NewValidator(overrides, nil)
 			require.NoError(t, err)
 
 			d := Distributor{
@@ -616,16 +622,16 @@ func TestStreamShard(t *testing.T) {
 				shardTracker:     NewShardTracker(),
 			}
 
-			_, derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
+			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
 
 			for _, s := range derivedStreams {
 				// Generate sorted labels
-				lbls, err := syntax.ParseLabels(s.stream.Labels)
+				lbls, err := syntax.ParseLabels(s.Stream.Labels)
 				require.NoError(t, err)
 
-				require.Equal(t, lbls.Hash(), s.stream.Hash)
-				require.Equal(t, lbls.String(), s.stream.Labels)
+				require.Equal(t, lbls.Hash(), s.Stream.Hash)
+				require.Equal(t, lbls.String(), s.Stream.Labels)
 			}
 		})
 	}
@@ -650,7 +656,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 	overrides, err := validation.NewOverrides(*distributorLimits, nil)
 	require.NoError(t, err)
 
-	validator, err := NewValidator(overrides)
+	validator, err := NewValidator(overrides, nil)
 	require.NoError(t, err)
 
 	t.Run("it generates 4 shards across 2 calls when calculated shards = 2 * entries per call", func(t *testing.T) {
@@ -661,23 +667,23 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			shardTracker:     NewShardTracker(),
 		}
 
-		_, derivedStreams := d.shardStream(baseStream, streamRate, "fake")
+		derivedStreams := d.shardStream(baseStream, streamRate, "fake")
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
-			require.Len(t, s.stream.Entries, 1)
-			lbls, err := syntax.ParseLabels(s.stream.Labels)
+			require.Len(t, s.Stream.Entries, 1)
+			lbls, err := syntax.ParseLabels(s.Stream.Labels)
 			require.NoError(t, err)
 
 			require.Equal(t, lbls[0].Value, fmt.Sprint(i))
 		}
 
-		_, derivedStreams = d.shardStream(baseStream, streamRate, "fake")
+		derivedStreams = d.shardStream(baseStream, streamRate, "fake")
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
-			require.Len(t, s.stream.Entries, 1)
-			lbls, err := syntax.ParseLabels(s.stream.Labels)
+			require.Len(t, s.Stream.Entries, 1)
+			lbls, err := syntax.ParseLabels(s.Stream.Labels)
 			require.NoError(t, err)
 
 			require.Equal(t, lbls[0].Value, fmt.Sprint(i+2))
@@ -715,7 +721,7 @@ func BenchmarkShardStream(b *testing.B) {
 	overrides, err := validation.NewOverrides(*distributorLimits, nil)
 	require.NoError(b, err)
 
-	validator, err := NewValidator(overrides)
+	validator, err := NewValidator(overrides, nil)
 	require.NoError(b, err)
 
 	distributorBuilder := func(shards int) *Distributor {
@@ -782,7 +788,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, err := d.parseStreamLabels(vCtx, stream.Labels, &stream)
+		_, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, &stream)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1153,7 +1159,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		overrides, err := validation.NewOverrides(*limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki, log.NewNopLogger())
+		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
@@ -1231,6 +1237,17 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 	return nil, nil
 }
 
+func (i *mockIngester) Peek() *logproto.PushRequest {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	if len(i.pushed) == 0 {
+		return nil
+	}
+
+	return i.pushed[0]
+}
+
 func (i *mockIngester) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest, _ ...grpc.CallOption) (*logproto.StreamRatesResponse, error) {
 	return &logproto.StreamRatesResponse{}, nil
 }
@@ -1246,4 +1263,70 @@ type fakeRateStore struct {
 
 func (s *fakeRateStore) RateFor(_ string, _ uint64) (int64, float64) {
 	return s.rate, s.pushRate
+}
+
+type mockTee struct {
+	mu         sync.Mutex
+	duplicated [][]KeyedStream
+	tenant     string
+}
+
+func (mt *mockTee) Duplicate(tenant string, streams []KeyedStream) {
+	mt.mu.Lock()
+	defer mt.mu.Unlock()
+	mt.duplicated = append(mt.duplicated, streams)
+	mt.tenant = tenant
+}
+
+func TestDistributorTee(t *testing.T) {
+	data := []*logproto.PushRequest{
+		{
+			Streams: []logproto.Stream{
+				{
+					Labels: "{job=\"foo\"}",
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(123456, 0), Line: "line 1"},
+						{Timestamp: time.Unix(123457, 0), Line: "line 2"},
+					},
+				},
+			},
+		},
+		{
+			Streams: []logproto.Stream{
+				{
+					Labels: "{job=\"foo\"}",
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(123458, 0), Line: "line 3"},
+						{Timestamp: time.Unix(123459, 0), Line: "line 4"},
+					},
+				},
+				{
+					Labels: "{job=\"bar\"}",
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(123458, 0), Line: "line 5"},
+						{Timestamp: time.Unix(123459, 0), Line: "line 6"},
+					},
+				},
+			},
+		},
+	}
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+
+	tee := mockTee{}
+	distributors[0].tee = &tee
+
+	for i, td := range data {
+		_, err := distributors[0].Push(ctx, td)
+		require.NoError(t, err)
+
+		for j, streams := range td.Streams {
+			assert.Equal(t, tee.duplicated[i][j].Stream.Entries, streams.Entries)
+		}
+
+		require.Equal(t, "test", tee.tenant)
+	}
 }

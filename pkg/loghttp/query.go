@@ -8,7 +8,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/buger/jsonparser"
+	"github.com/grafana/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 

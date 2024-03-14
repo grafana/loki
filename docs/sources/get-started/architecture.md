@@ -1,7 +1,7 @@
 ---
 title: Loki architecture
 menutitle: Architecture
-description: Grafana Loki's architecture.
+description: Describes Grafana Loki's architecture.
 weight: 300
 aliases:
     - ../architecture/

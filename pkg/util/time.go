@@ -87,6 +87,8 @@ func NewDisableableTicker(interval time.Duration) (func(), <-chan time.Time) {
 	return func() { tick.Stop() }, tick.C
 }
 
+const SplitGap = time.Millisecond
+
 // ForInterval splits the given start and end time into given interval.
 // The start and end time in splits would be aligned to the interval
 // except for the start time of first split and end time of last split which would be kept same as original start/end
@@ -107,7 +109,7 @@ func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive 
 		if !newEnd.Before(end) {
 			newEnd = end
 		} else if endTimeInclusive {
-			newEnd = newEnd.Add(-time.Millisecond)
+			newEnd = newEnd.Add(-SplitGap)
 		}
 		if firstInterval {
 			callback(ogStart, newEnd)

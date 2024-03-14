@@ -139,10 +139,7 @@ func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, h
 
 		// This block covers any errors that are not gRPC errors and will include all query errors.
 		// It's important to map non-retryable errors to a non 5xx status code so they will not be retried.
-		code, err := server.ClientHTTPStatusAndError(err)
-		return &queryrange.QueryResponse{
-			Status: status.New(codes.Code(code), err.Error()).Proto(),
-		}
+		return queryrange.QueryResponseWrapError(err)
 	}
 
 	response, err := queryrange.QueryResponseWrap(resp)
