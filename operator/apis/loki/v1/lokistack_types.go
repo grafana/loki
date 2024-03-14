@@ -1109,7 +1109,7 @@ const (
 	ReasonFailedCertificateRotation LokiStackConditionReason = "FailedCertificateRotation"
 	// ReasonQueryTimeoutInvalid when the QueryTimeout can not be parsed.
 	ReasonQueryTimeoutInvalid LokiStackConditionReason = "ReasonQueryTimeoutInvalid"
-	// ReasonInvalidPerTenantLimitsConfig when the per-tenant limits configuration is empty.
+	// ReasonInvalidPerTenantLimitsConfig when the per-tenant limits configuration is invalid.
 	ReasonInvalidPerTenantLimitsConfig LokiStackConditionReason = "ReasonInvalidPerTenantLimitsConfig"
 	// ReasonZoneAwareNodesMissing when the cluster does not contain any nodes with the labels needed for zone-awareness.
 	ReasonZoneAwareNodesMissing LokiStackConditionReason = "ReasonZoneAwareNodesMissing"
