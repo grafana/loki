@@ -119,14 +119,10 @@ func (b *BloomTSDBStore) LoadTSDB(
 // TSDBStore is an interface for interacting with the TSDB,
 // modeled off a relevant subset of the `tsdb.TSDBIndex` struct
 type forSeries interface {
-	ForSeries(
-		ctx context.Context,
-		fpFilter index.FingerprintFilter,
-		from model.Time,
-		through model.Time,
-		fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta),
-		matchers ...*labels.Matcher,
-	) error
+	// General purpose iteration over series. Makes it easier to build custom functionality on top of indices
+	// of different types without them all implementing the same feature.
+	// The passed callback must _not_ capture its arguments. They're reused for each call for performance.
+	ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error
 	Close() error
 }
 
@@ -191,9 +187,10 @@ func (t *TSDBSeriesIter) background() {
 	go func() {
 		err := t.f.ForSeries(
 			t.ctx,
+			"",
 			t.bounds,
 			0, math.MaxInt64,
-			func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+			func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 
 				res := &v1.Series{
 					Fingerprint: fp,
@@ -209,8 +206,9 @@ func (t *TSDBSeriesIter) background() {
 
 				select {
 				case <-t.ctx.Done():
-					return
+					return true
 				case t.ch <- res:
+					return false
 				}
 			},
 			labels.MustNewMatcher(labels.MatchEqual, "", ""),

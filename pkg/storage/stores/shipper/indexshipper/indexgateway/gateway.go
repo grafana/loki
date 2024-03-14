@@ -18,12 +18,14 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/plan"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	seriesindex "github.com/grafana/loki/pkg/storage/stores/series/index"
+	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -355,11 +357,17 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 		return err
 	}
 
+	casted := make([]tsdb_index.FingerprintFilter, 0, len(request.Bounds))
+	for _, bound := range request.Bounds {
+		casted = append(casted, v1.BoundsFromProto(bound))
+	}
+
 	// TODO(owen-d): can improve by actually streaming. Currently we use the streaming
 	// transport, but just send one batch.
 	shards, err := g.indexQuerier.GetShards(
 		ctx,
 		instanceID,
+		casted,
 		request.From, request.Through,
 		request.TargetBytesPerShard,
 		matchers...,

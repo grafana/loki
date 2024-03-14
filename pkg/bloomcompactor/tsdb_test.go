@@ -17,10 +17,11 @@ type forSeriesTestImpl []*v1.Series
 
 func (f forSeriesTestImpl) ForSeries(
 	_ context.Context,
+	_ string,
 	_ index.FingerprintFilter,
 	_ model.Time,
 	_ model.Time,
-	fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta),
+	fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) bool,
 	_ ...*labels.Matcher,
 ) error {
 	for i := range f {

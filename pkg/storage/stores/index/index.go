@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
 )
 
@@ -28,9 +29,15 @@ type BaseReader interface {
 type StatsReader interface {
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
 	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+
+	// GetShards explicitly accepts a fingerprint filter rather than encoding a shard in labels,
+	// which was done prior for compatibility with non-tsdb backends that fulfilled the same interfaces.
+	// This is both cleaner and less error-prone and we can do it since GetShards() is only run against
+	// tsdb backends.
 	GetShards(
 		ctx context.Context,
 		userID string,
+		bounds []index.FingerprintFilter,
 		from, through model.Time,
 		targetBytesPerShard uint64,
 		matchers ...*labels.Matcher,
@@ -147,6 +154,7 @@ func (m MonitoredReaderWriter) Volume(ctx context.Context, userID string, from, 
 func (m MonitoredReaderWriter) GetShards(
 	ctx context.Context,
 	userID string,
+	bounds []index.FingerprintFilter,
 	from, through model.Time,
 	targetBytesPerShard uint64,
 	matchers ...*labels.Matcher,
@@ -154,7 +162,7 @@ func (m MonitoredReaderWriter) GetShards(
 	var shards []logproto.Shard
 	if err := loki_instrument.TimeRequest(ctx, "shards", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
-		shards, err = m.rw.GetShards(ctx, userID, from, through, targetBytesPerShard, matchers...)
+		shards, err = m.rw.GetShards(ctx, userID, bounds, from, through, targetBytesPerShard, matchers...)
 		return err
 	}); err != nil {
 		return nil, err

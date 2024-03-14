@@ -269,6 +269,15 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 	return acc.Volumes(), nil
 }
 
+func (c *IndexClient) GetShards(ctx context.Context, userID string, bounds []index.FingerprintFilter, from, through model.Time, targetBytesPerShard uint64, matchers ...*labels.Matcher) ([]logproto.Shard, error) {
+	for _, bound := range bounds {
+		c.idx.ForSeries(ctx, userID, bound, from, through, nil, matchers...)
+	}
+
+	panic("implement")
+	return nil, nil
+}
+
 // SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
 // This is only used for GetSeries implementation.
 // Todo we might want to pass it as a parameter to GetSeries instead.

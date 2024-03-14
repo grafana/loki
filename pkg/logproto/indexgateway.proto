@@ -43,7 +43,7 @@ message ShardsRequest {
   ];
   string matchers = 3;
   uint64 target_bytes_per_shard = 4;
-  repeated FPBounds shards = 5 [
+  repeated FPBounds bounds = 5 [
     (gogoproto.nullable) = false
   ];
 }

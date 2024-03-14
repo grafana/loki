@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/errors"
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -119,21 +120,6 @@ func (c *storeEntry) Stats(ctx context.Context, userID string, from, through mod
 	return c.indexReader.Stats(ctx, userID, from, through, matchers...)
 }
 
-func (c *storeEntry) GetShards(
-	ctx context.Context,
-	userID string,
-	from, through model.Time,
-	targetBytesPerShard uint64,
-	matchers ...*labels.Matcher,
-) ([]*logproto.Shard, error) {
-	_, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
-	if err != nil {
-		return nil, err
-	}
-
-	return c.indexReader.GetShards(ctx, userID, from, through, targetBytesPerShard, matchers...)
-}
-
 func (c *storeEntry) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.Volume")
 	defer sp.Finish()
@@ -156,6 +142,22 @@ func (c *storeEntry) Volume(ctx context.Context, userID string, from, through mo
 	)
 
 	return c.indexReader.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+}
+
+func (c *storeEntry) GetShards(
+	ctx context.Context,
+	userID string,
+	bounds []tsdb_index.FingerprintFilter,
+	from, through model.Time,
+	targetBytesPerShard uint64,
+	matchers ...*labels.Matcher,
+) ([]logproto.Shard, error) {
+	_, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.indexReader.GetShards(ctx, userID, bounds, from, through, targetBytesPerShard, matchers...)
 }
 
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {

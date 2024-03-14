@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -209,15 +210,16 @@ func (c CompositeStore) Volume(ctx context.Context, userID string, from, through
 func (c CompositeStore) GetShards(
 	ctx context.Context,
 	userID string,
+	bounds []tsdb_index.FingerprintFilter,
 	from, through model.Time,
 	targetBytesPerShard uint64,
 	matchers ...*labels.Matcher,
-) ([]*logproto.Shard, error) {
+) ([]logproto.Shard, error) {
 	// TODO(owen-d): improve. Since shards aren't easily merge-able,
 	// we choose the store which returned the highest shard count
-	var groups [][]*logproto.Shard
+	var groups [][]logproto.Shard
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		shards, err := store.GetShards(innerCtx, userID, from, through, targetBytesPerShard, matchers...)
+		shards, err := store.GetShards(innerCtx, userID, bounds, from, through, targetBytesPerShard, matchers...)
 		if err != nil {
 			return err
 		}

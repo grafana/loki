@@ -89,3 +89,7 @@ func (NoopIndex) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
 func (NoopIndex) Volume(_ context.Context, _ string, _, _ model.Time, _ VolumeAccumulator, _ index.FingerprintFilter, _ shouldIncludeChunk, _ []string, _ string, _ ...*labels.Matcher) error {
 	return nil
 }
+
+func (NoopIndex) ForSeries(_ context.Context, _ string, _ index.FingerprintFilter, _ model.Time, _ model.Time, _ func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), _ ...*labels.Matcher) error {
+	return nil
+}
