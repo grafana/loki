@@ -52,6 +52,9 @@ spec:
         {{- with .Values.ingester.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        {{- with .Values.ingester.zoneAwareReplication.zoneC.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
         {{- include "loki.ingesterSelectorLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
