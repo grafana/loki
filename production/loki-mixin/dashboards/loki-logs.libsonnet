@@ -61,6 +61,19 @@ local template = import 'grafonnet/template.libsonnet';
                           p {
                             targets: [
                               e {
+                                expr: std.strReplace(super.expr, 'cluster="$cluster", ', $._config.per_cluster_label + '="$cluster", '),
+                              }
+                              for e in p.targets
+                            ],
+                          }
+                          for p in super.panels
+                        ],
+                      } +
+                      {
+                        panels: [
+                          p {
+                            targets: [
+                              e {
                                 expr: if dashboards['loki-logs.json'].showMultiCluster then super.expr
                                 else std.strReplace(super.expr, $._config.per_cluster_label + '="$cluster", ', ''),
                               }
