@@ -1,0 +1,39 @@
+sequenceDiagram
+    autonumber
+    title /loki/api/v1/query_range?query={namespace="abc", container="app"}&async=true&since=2h
+    actor User
+    par Place Async Range Query Requests
+    User->>QueryFrontend: Send async instant query
+    activate QueryFrontend
+    QueryFrontend->>QueryFrontend: Split in 4 30min subqueries
+    QueryFrontend->>RequestQueue: Store each SubQuery Request
+    activate RequestQueue
+    RequestQueue->>StreamQueryRequests: Publish SubQuery HTTP Request(Nats-Msg-Id=deadbeef,Splits=4)
+    deactivate RequestQueue
+    RequestQueue-->>QueryFrontend:
+    QueryFrontend-->>User: HTTP Code 202 & Nats-Msg-ID
+    deactivate QueryFrontend
+    end
+    par Process Async Range Queries
+    Querier->>StreamQueryRequests: Consume SubQuery HTTP Request(Nats-Msg-Id=deadbeef,Splits=4)
+    activate Querier
+    Querier->>Querier: Execute SubQuery Request
+    Querier->>StreamQueryRequests: Publish SubQuery HTTP Request With Parial Reponse(Nats-Msg-Id=deadbeef,Splits=3)
+    Querier->>StreamQueryRequests: Consume SubQuery HTTP Request(Nats-Msg-Id=deadbeef,Splits=3)
+    Querier->>Querier: Execute SubQuery Request
+    Querier->>StreamQueryRequests: Publish SubQuery HTTP Request With Parial Reponse(Nats-Msg-Id=deadbeef,Splits=2)
+    Querier->>StreamQueryRequests: Consume SubQuery HTTP Request(Nats-Msg-Id=deadbeef,Splits=3)
+    Querier->>Querier: Execute SubQuery Request
+    Querier->>StreamQueryRequests: Publish SubQuery HTTP Request With Parial Reponse(Nats-Msg-Id=deadbeef,Splits=1)
+    Querier->>Querier: Execute SubQuery Request
+    Querier->>StreamQueryResponses: Publish Async Range Query Response
+    deactivate Querier
+    end
+    par Request Async Range Query Response
+    QueryFrontend->>StreamQueryResponses: Any response(Nats-Msg-ID=deadbeef)?
+    StreamQueryResponses-->>QueryFrontend: No
+    QueryFrontend-->>User: HTTP Code 204
+    QueryFrontend->>StreamQueryResponses: Any response(Nats-Msg-ID=deadbeef)?
+    StreamQueryResponses-->>QueryFrontend: Yes
+    QueryFrontend-->>User: HTTP Code 200 & Query Response
+    end
