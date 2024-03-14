@@ -71,8 +71,6 @@ func (cfg *RingConfig) RegisterFlagsWithPrefix(flagsPrefix, storePrefix string, 
 type Limits interface {
 	downloads.Limits
 	BloomCompactorShardSize(tenantID string) int
-	BloomCompactorChunksBatchSize(userID string) int
-	BloomCompactorMaxTableAge(tenantID string) time.Duration
 	BloomCompactorEnabled(tenantID string) bool
 	BloomNGramLength(tenantID string) int
 	BloomNGramSkip(tenantID string) int

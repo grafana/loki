@@ -29,4 +29,5 @@ spec:
       serverName: loki-operator-controller-manager-metrics-service.openshift-operators-redhat.svc
   selector:
     matchLabels:
+      app.kubernetes.io/component: metrics
       app.kubernetes.io/name: loki-operator
