@@ -15,13 +15,26 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 )
 
+// NB(owen-d): mostly modeled off of the proto-generated `logproto.IndexGatewayClient`,
+// but decoupled from explicit GRPC dependencies to work well with streaming grpc methods
+type GatewayClient interface {
+	GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error)
+	GetSeries(ctx context.Context, in *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error)
+	LabelNamesForMetricName(ctx context.Context, in *logproto.LabelNamesForMetricNameRequest) (*logproto.LabelResponse, error)
+	LabelValuesForMetricName(ctx context.Context, in *logproto.LabelValuesForMetricNameRequest) (*logproto.LabelResponse, error)
+	GetStats(ctx context.Context, in *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error)
+	GetVolume(ctx context.Context, in *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
+
+	GetShards(ctx context.Context, in *logproto.ShardsRequest) (*logproto.ShardsResponse, error)
+}
+
 // IndexGatewayClientStore implements pkg/storage/stores/index.ReaderWriter
 type IndexGatewayClientStore struct {
-	client logproto.IndexGatewayClient
+	client GatewayClient
 	logger log.Logger
 }
 
-func NewIndexGatewayClientStore(client logproto.IndexGatewayClient, logger log.Logger) *IndexGatewayClientStore {
+func NewIndexGatewayClientStore(client GatewayClient, logger log.Logger) *IndexGatewayClientStore {
 	return &IndexGatewayClientStore{
 		client: client,
 		logger: logger,
@@ -109,6 +122,22 @@ func (c *IndexGatewayClientStore) Volume(ctx context.Context, _ string, from, th
 		TargetLabels: targetLabels,
 		AggregateBy:  aggregateBy,
 	})
+}
+
+func (c *IndexGatewayClientStore) GetShards(
+	ctx context.Context,
+	from, through model.Time,
+	targetBytesPerShard uint64,
+) ([]*logproto.Shard, error) {
+	resp, err := c.client.GetShards(ctx, &logproto.ShardsRequest{
+		From:                from,
+		Through:             through,
+		TargetBytesPerShard: targetBytesPerShard,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Shards, nil
 }
 
 func (c *IndexGatewayClientStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {

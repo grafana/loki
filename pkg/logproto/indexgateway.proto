@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package indexgatewaypb;
 
+import "gogoproto/gogo.proto";
 import "pkg/logproto/logproto.proto";
 
 option go_package = "github.com/grafana/loki/pkg/logproto";
@@ -25,4 +26,43 @@ service IndexGateway {
   // Note: this MUST be the same as the variant defined in
   // logproto.proto on the Querier service.
   rpc GetVolume(logproto.VolumeRequest) returns (logproto.VolumeResponse) {}
+
+  // GetShards is an optimized implemented shard-planning implementation
+  // on the index gateway and not on the ingester.
+  rpc GetShards(ShardsRequest) returns (stream ShardsResponse);
+}
+
+message ShardsRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  uint64 target_bytes_per_shard = 3;
+  repeated FingerprintBounds shards = 4 [
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/storage/bloom/v1.FingerprintBounds"
+  ];
+}
+
+message ShardsResponse {
+  repeated Shard shards = 1;
+}
+
+message Shard {
+  FingerprintBounds bounds = 1 [
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/storage/bloom/v1.FingerprintBounds"
+  ];
+  logproto.IndexStatsResponse stats = 2;
+}
+
+message FingerprintBounds {
+  uint64 min = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Fingerprint"
+  ];
+  uint64 max = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Fingerprint"
+  ];
 }
