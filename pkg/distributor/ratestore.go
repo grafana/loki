@@ -132,12 +132,11 @@ type rateStats struct {
 
 func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint64]expiringRate) rateStats {
 	streamCnt := 0
-	if s.debug {
-		if sp := opentracing.SpanFromContext(ctx); sp != nil {
-			sp.LogKV("event", "started updating rates")
-			defer sp.LogKV("event", "finished updating rates", "streams", streamCnt)
-		}
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("event", "started updating rates")
+		defer sp.LogKV("event", "finished updating rates", "streams", streamCnt)
 	}
+
 	s.rateLock.Lock()
 	defer s.rateLock.Unlock()
 
@@ -229,12 +228,11 @@ func (s *rateStore) anyShardingEnabled() bool {
 }
 
 func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string]map[uint64]*logproto.StreamRate) map[string]map[uint64]expiringRate {
-	if s.debug {
-		if sp := opentracing.SpanFromContext(ctx); sp != nil {
-			sp.LogKV("event", "started to aggregate by shard")
-			defer sp.LogKV("event", "finished to aggregate by shard")
-		}
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("event", "started to aggregate by shard")
+		defer sp.LogKV("event", "finished to aggregate by shard")
 	}
+
 	rates := map[string]map[uint64]expiringRate{}
 	now := time.Now()
 
@@ -265,11 +263,9 @@ func max(a, b int64) int64 {
 }
 
 func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[string]map[uint64]*logproto.StreamRate {
-	if s.debug {
-		if sp := opentracing.SpanFromContext(ctx); sp != nil {
-			sp.LogKV("event", "started to get rates from ingesters")
-			defer sp.LogKV("event", "finished to get rates from ingesters")
-		}
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("event", "started to get rates from ingesters")
+		defer sp.LogKV("event", "finished to get rates from ingesters")
 	}
 
 	parallelClients := make(chan ingesterClient, len(clients))
