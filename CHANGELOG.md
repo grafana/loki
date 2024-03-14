@@ -74,6 +74,8 @@
 * [11776](https://github.com/grafana/loki/pull/11776) **ashwanthgoli** Background Cache: Fixes a bug that is causing the background queue size to be incremented twice for each enqueued item.
 * [11921](https://github.com/grafana/loki/pull/11921) **paul1r**: Parsing: String array elements were not being parsed correctly in JSON processing
 
+* [https://github.com/grafana/loki/pull/10997] **kavirajk** Bug(LogQL): Fix mismatch results on scalar and vector binary ops
+
 ##### Changes
 
 * [11490](https://github.com/grafana/loki/pull/11490) **andresperezl**: Helm: Use `/ingester/shutdown` for `preStop` hook in write pods.
