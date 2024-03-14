@@ -99,9 +99,7 @@ func (c *deleteRequestsClient) updateLoop() {
 		select {
 		case <-t.C:
 			if err := c.updateCache(); err != nil {
-				if err != nil {
-					level.Error(log.Logger).Log("msg", "error reloading cached delete requests", "err", err)
-				}
+				level.Error(log.Logger).Log("msg", "error reloading cached delete requests", "err", err)
 			}
 		case <-c.stopChan:
 			return
