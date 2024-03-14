@@ -174,7 +174,7 @@ func NewTSDBSeriesIter(ctx context.Context, f forSeries, bounds v1.FingerprintBo
 	case <-ctx.Done():
 		return v1.NewEmptyIter[*v1.Series](), ctx.Err()
 	default:
-		return v1.NewSliceIter[*v1.Series](series), nil
+		return v1.NewCancelableIter[*v1.Series](ctx, v1.NewSliceIter[*v1.Series](series)), nil
 	}
 }
 
