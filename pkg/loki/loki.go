@@ -325,10 +325,11 @@ type Loki struct {
 	bloomCompactorRingManager *lokiring.RingManager
 	bloomGatewayRingManager   *lokiring.RingManager
 
-	clientMetrics       storage.ClientMetrics
+	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
 	Tee                distributor.Tee
+	PushParserWrapper  push.RequestParserWrapper
 	HTTPAuthMiddleware middleware.Interface
 
 	Codec   Codec
@@ -341,7 +342,7 @@ type Loki struct {
 func New(cfg Config) (*Loki, error) {
 	loki := &Loki{
 		Cfg:                 cfg,
-		clientMetrics:       storage.NewClientMetrics(),
+		ClientMetrics:       storage.NewClientMetrics(),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
 		Codec:               queryrange.DefaultCodec,
 	}

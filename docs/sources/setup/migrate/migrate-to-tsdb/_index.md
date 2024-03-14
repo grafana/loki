@@ -10,7 +10,7 @@ keywords:
 
 # Migrate to TSDB
 
-[TSDB]({{< relref "../../../operations/storage/tsdb" >}}) is the recommeneded index type for Loki and is where the current development lies.
+[TSDB]({{< relref "../../../operations/storage/tsdb" >}}) is the recommended index type for Loki and is where the current development lies.
 If you are running Loki with [boltb-shipper]({{< relref "../../../operations/storage/boltdb-shipper" >}}) or any of the [legacy index types]({{< relref "../../../storage#index-storage" >}}) that have been deprecated,
 we strongly recommend migrating to TSDB.
 

@@ -13,6 +13,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
 type mockCache[K comparable, V any] struct {
@@ -106,7 +107,11 @@ func TestBlockDirectory_Cleanup(t *testing.T) {
 }
 
 func Test_ClosableBlockQuerier(t *testing.T) {
-	blockDir := NewBlockDirectory(BlockRef{}, t.TempDir(), log.NewNopLogger())
+	tmpDir := t.TempDir()
+	// create the expected files so size initialization doesn't panic
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, v1.BloomFileName), []byte("bloom"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, v1.SeriesFileName), []byte("series"), 0o644))
+	blockDir := NewBlockDirectory(BlockRef{}, tmpDir, log.NewNopLogger())
 
 	querier := blockDir.BlockQuerier()
 	require.Equal(t, int32(1), blockDir.refCount.Load())

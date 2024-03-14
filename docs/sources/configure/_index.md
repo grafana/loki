@@ -551,6 +551,11 @@ write_failures_logging:
   # logged or not. Default: false.
   # CLI flag: -distributor.write-failures-logging.add-insights-label
   [add_insights_label: <boolean> | default = false]
+
+otlp_config:
+  # List of default otlp resource attributes to be picked as index labels
+  # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
+  [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
 ```
 
 ### querier
@@ -1884,6 +1889,13 @@ ring:
   # CLI flag: -bloom-gateway.replication-factor
   [replication_factor: <int> | default = 3]
 
+  # Number of tokens to use in the ring. The bigger the number of tokens, the
+  # more fingerprint ranges the compactor will own, but the smaller these ranges
+  # will be. Bigger number of tokens means that more but smaller requests will
+  # be handled by each gateway.
+  # CLI flag: -bloom-gateway.ring.tokens
+  [tokens: <int> | default = 16]
+
 # Flag to enable or disable the bloom gateway component globally.
 # CLI flag: -bloom-gateway.enabled
 [enabled: <boolean> | default = false]
@@ -1930,6 +1942,10 @@ client:
 # Maximum number of outstanding tasks per tenant.
 # CLI flag: -bloom-gateway.max-outstanding-per-tenant
 [max_outstanding_per_tenant: <int> | default = 1024]
+
+# How many tasks are multiplexed at once.
+# CLI flag: -bloom-gateway.num-multiplex-tasks
+[num_multiplex_tasks: <int> | default = 512]
 ```
 
 ### storage_config
@@ -2663,6 +2679,13 @@ ring:
   # CLI flag: -bloom-compactor.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
+  # Number of tokens to use in the ring. The bigger the number of tokens, the
+  # more fingerprint ranges the compactor will own, but the smaller these ranges
+  # will be. Bigger number of tokens will result in more and smaller metas and
+  # blocks.
+  # CLI flag: -bloom-compactor.ring.tokens
+  [tokens: <int> | default = 10]
+
 # Flag to enable or disable the usage of the bloom-compactor component.
 # CLI flag: -bloom-compactor.enabled
 [enabled: <boolean> | default = false]
@@ -2671,15 +2694,15 @@ ring:
 # CLI flag: -bloom-compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
-# How many index periods (days) to wait before compacting a table. This can be
-# used to lower cost by not re-writing data to object storage too frequently
-# since recent data changes more often.
+# How many index periods (days) to wait before building bloom filters for a
+# table. This can be used to lower cost by not re-writing data to object storage
+# too frequently since recent data changes more often.
 # CLI flag: -bloom-compactor.min-table-compaction-period
 [min_table_compaction_period: <int> | default = 1]
 
-# How many index periods (days) to wait before compacting a table. This can be
-# used to lower cost by not trying to compact older data which doesn't change.
-# This can be optimized by aligning it with the maximum
+# The maximum number of index periods (days) to build bloom filters for a table.
+# This can be used to lower cost by not trying to compact older data which
+# doesn't change. This can be optimized by aligning it with the maximum
 # `reject_old_samples_max_age` setting of any tenant.
 # CLI flag: -bloom-compactor.max-table-compaction-period
 [max_table_compaction_period: <int> | default = 7]
@@ -3154,7 +3177,7 @@ shard_streams:
 # The shard size defines how many bloom gateways should be used by a tenant for
 # querying.
 # CLI flag: -bloom-gateway.shard-size
-[bloom_gateway_shard_size: <int> | default = 1]
+[bloom_gateway_shard_size: <int> | default = 0]
 
 # Whether to use the bloom gateway component in the read path to filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
@@ -3163,20 +3186,11 @@ shard_streams:
 # The shard size defines how many bloom compactors should be used by a tenant
 # when computing blooms. If it's set to 0, shuffle sharding is disabled.
 # CLI flag: -bloom-compactor.shard-size
-[bloom_compactor_shard_size: <int> | default = 1]
-
-# The maximum age of a table before it is compacted. Do not compact tables older
-# than the the configured time. Default to 7 days. 0s means no limit.
-# CLI flag: -bloom-compactor.max-table-age
-[bloom_compactor_max_table_age: <duration> | default = 168h]
+[bloom_compactor_shard_size: <int> | default = 0]
 
 # Whether to compact chunks into bloom filters.
 # CLI flag: -bloom-compactor.enable-compaction
 [bloom_compactor_enable_compaction: <boolean> | default = false]
-
-# The batch size of the chunks the bloom-compactor downloads at once.
-# CLI flag: -bloom-compactor.chunks-batch-size
-[bloom_compactor_chunks_batch_size: <int> | default = 100]
 
 # Length of the n-grams created when computing blooms from log lines.
 # CLI flag: -bloom-compactor.ngram-length
@@ -3221,7 +3235,8 @@ otlp_config:
   # Configuration for resource attributes to store them as index labels or
   # Structured Metadata or drop them altogether
   resource_attributes:
-    # Configure whether to ignore the default list of resource attributes to be
+    # Configure whether to ignore the default list of resource attributes set in
+    # 'distributor.otlp.default_resource_attributes_as_index_labels' to be
     # stored as index labels and only use the given resource attributes config
     [ignore_defaults: <boolean> | default = false]
 

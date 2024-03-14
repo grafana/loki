@@ -1852,7 +1852,11 @@ func Test_ExitEarly(t *testing.T) {
 
 	res, err := split.Do(ctx, req)
 
-	require.Equal(t, int(req.Limit), callCt)
+	mtx.Lock()
+	count := callCt
+	mtx.Unlock()
+
+	require.Equal(t, int(req.Limit), count)
 	require.NoError(t, err)
 	require.Equal(t, expected, res)
 }

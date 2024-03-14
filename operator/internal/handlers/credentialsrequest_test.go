@@ -39,7 +39,7 @@ func credentialsRequestFakeClient(cr *cloudcredentialv1.CredentialsRequest, loki
 	return k
 }
 
-func TestCreateCredentialsRequest_CreateNewResource(t *testing.T) {
+func TestCreateUpdateDeleteCredentialsRequest_CreateNewResource(t *testing.T) {
 	wantServiceAccountNames := []string{
 		"my-stack",
 		"my-stack-ruler",
@@ -57,13 +57,13 @@ func TestCreateCredentialsRequest_CreateNewResource(t *testing.T) {
 		NamespacedName: client.ObjectKey{Name: "my-stack", Namespace: "ns"},
 	}
 
-	managedAuth := &config.ManagedAuthConfig{
+	tokenCCOAuth := &config.TokenCCOAuthConfig{
 		AWS: &config.AWSEnvironment{
 			RoleARN: "a-role-arn",
 		},
 	}
 
-	err := CreateCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
+	err := CreateUpdateDeleteCredentialsRequest(context.Background(), logger, scheme, tokenCCOAuth, k, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, k.CreateCallCount())
 
@@ -74,7 +74,7 @@ func TestCreateCredentialsRequest_CreateNewResource(t *testing.T) {
 	require.Equal(t, wantServiceAccountNames, credReq.Spec.ServiceAccountNames)
 }
 
-func TestCreateCredentialsRequest_CreateNewResourceAzure(t *testing.T) {
+func TestCreateUpdateDeleteCredentialsRequest_CreateNewResourceAzure(t *testing.T) {
 	wantRegion := "test-region"
 
 	lokistack := &lokiv1.LokiStack{
@@ -89,7 +89,7 @@ func TestCreateCredentialsRequest_CreateNewResourceAzure(t *testing.T) {
 		NamespacedName: client.ObjectKey{Name: "my-stack", Namespace: "ns"},
 	}
 
-	managedAuth := &config.ManagedAuthConfig{
+	tokenCCOAuth := &config.TokenCCOAuthConfig{
 		Azure: &config.AzureEnvironment{
 			ClientID:       "test-client-id",
 			SubscriptionID: "test-tenant-id",
@@ -98,7 +98,7 @@ func TestCreateCredentialsRequest_CreateNewResourceAzure(t *testing.T) {
 		},
 	}
 
-	err := CreateCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
+	err := CreateUpdateDeleteCredentialsRequest(context.Background(), logger, scheme, tokenCCOAuth, k, req)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, k.CreateCallCount())
@@ -112,12 +112,12 @@ func TestCreateCredentialsRequest_CreateNewResourceAzure(t *testing.T) {
 	require.Equal(t, wantRegion, providerSpec.AzureRegion)
 }
 
-func TestCreateCredentialsRequest_DoNothing_WhenCredentialsRequestExist(t *testing.T) {
+func TestCreateUpdateDeleteCredentialsRequest_Update_WhenCredentialsRequestExist(t *testing.T) {
 	req := ctrl.Request{
 		NamespacedName: client.ObjectKey{Name: "my-stack", Namespace: "ns"},
 	}
 
-	managedAuth := &config.ManagedAuthConfig{
+	tokenCCOAuth := &config.TokenCCOAuthConfig{
 		AWS: &config.AWSEnvironment{
 			RoleARN: "a-role-arn",
 		},
@@ -138,9 +138,85 @@ func TestCreateCredentialsRequest_DoNothing_WhenCredentialsRequestExist(t *testi
 
 	k := credentialsRequestFakeClient(cr, lokistack)
 
-	err := CreateCredentialsRequest(context.Background(), logger, scheme, managedAuth, k, req)
+	err := CreateUpdateDeleteCredentialsRequest(context.Background(), logger, scheme, tokenCCOAuth, k, req)
 	require.NoError(t, err)
 	require.Equal(t, 2, k.GetCallCount())
 	require.Equal(t, 0, k.CreateCallCount())
 	require.Equal(t, 1, k.UpdateCallCount())
+}
+
+func TestCreateUpdateDeleteCredentialsRequest_DeleteExisting_WhenNotManagedMode(t *testing.T) {
+	req := ctrl.Request{
+		NamespacedName: client.ObjectKey{Name: "my-stack", Namespace: "ns"},
+	}
+
+	tokenCCOAuth := &config.TokenCCOAuthConfig{
+		AWS: &config.AWSEnvironment{
+			RoleARN: "a-role-arn",
+		},
+	}
+
+	cr := &cloudcredentialv1.CredentialsRequest{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "ns",
+		},
+	}
+	lokistack := &lokiv1.LokiStack{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "ns",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Storage: lokiv1.ObjectStorageSpec{
+				Secret: lokiv1.ObjectStorageSecretSpec{
+					CredentialMode: lokiv1.CredentialModeStatic,
+				},
+			},
+		},
+	}
+
+	k := credentialsRequestFakeClient(cr, lokistack)
+
+	err := CreateUpdateDeleteCredentialsRequest(context.Background(), logger, scheme, tokenCCOAuth, k, req)
+	require.NoError(t, err)
+	require.Equal(t, 2, k.GetCallCount())
+	require.Equal(t, 0, k.CreateCallCount())
+	require.Equal(t, 0, k.UpdateCallCount())
+	require.Equal(t, 1, k.DeleteCallCount())
+}
+
+func TestCreateUpdateDeleteCredentialsRequest_DoNothing_WhenNotManagedMode(t *testing.T) {
+	req := ctrl.Request{
+		NamespacedName: client.ObjectKey{Name: "my-stack", Namespace: "ns"},
+	}
+
+	tokenCCOAuth := &config.TokenCCOAuthConfig{
+		AWS: &config.AWSEnvironment{
+			RoleARN: "a-role-arn",
+		},
+	}
+
+	lokistack := &lokiv1.LokiStack{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "ns",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Storage: lokiv1.ObjectStorageSpec{
+				Secret: lokiv1.ObjectStorageSecretSpec{
+					CredentialMode: lokiv1.CredentialModeStatic,
+				},
+			},
+		},
+	}
+
+	k := credentialsRequestFakeClient(nil, lokistack)
+
+	err := CreateUpdateDeleteCredentialsRequest(context.Background(), logger, scheme, tokenCCOAuth, k, req)
+	require.NoError(t, err)
+	require.Equal(t, 2, k.GetCallCount())
+	require.Equal(t, 0, k.CreateCallCount())
+	require.Equal(t, 0, k.UpdateCallCount())
+	require.Equal(t, 0, k.DeleteCallCount())
 }

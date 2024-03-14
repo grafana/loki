@@ -27,8 +27,8 @@ func (f forSeriesTestImpl) ForSeries(
 		unmapped := make([]index.ChunkMeta, 0, len(f[i].Chunks))
 		for _, c := range f[i].Chunks {
 			unmapped = append(unmapped, index.ChunkMeta{
-				MinTime:  int64(c.Start),
-				MaxTime:  int64(c.End),
+				MinTime:  int64(c.From),
+				MaxTime:  int64(c.Through),
 				Checksum: c.Checksum,
 			})
 		}
@@ -48,20 +48,21 @@ func TestTSDBSeriesIter(t *testing.T) {
 			Fingerprint: 1,
 			Chunks: []v1.ChunkRef{
 				{
-					Start:    0,
-					End:      1,
+					From:     0,
+					Through:  1,
 					Checksum: 2,
 				},
 				{
-					Start:    3,
-					End:      4,
+					From:     3,
+					Through:  4,
 					Checksum: 5,
 				},
 			},
 		},
 	}
 	srcItr := v1.NewSliceIter(input)
-	itr := NewTSDBSeriesIter(context.Background(), forSeriesTestImpl(input), v1.NewBounds(0, math.MaxUint64))
+	itr, err := NewTSDBSeriesIter(context.Background(), forSeriesTestImpl(input), v1.NewBounds(0, math.MaxUint64))
+	require.NoError(t, err)
 
 	v1.EqualIterators[*v1.Series](
 		t,
@@ -74,13 +75,30 @@ func TestTSDBSeriesIter(t *testing.T) {
 }
 
 func TestTSDBSeriesIter_Expiry(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	itr := NewTSDBSeriesIter(ctx, forSeriesTestImpl{
-		{}, // a single entry
-	}, v1.NewBounds(0, math.MaxUint64))
+	t.Run("expires on creation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		itr, err := NewTSDBSeriesIter(ctx, forSeriesTestImpl{
+			{}, // a single entry
+		}, v1.NewBounds(0, math.MaxUint64))
+		require.Error(t, err)
+		require.False(t, itr.Next())
+	})
 
-	require.False(t, itr.Next())
-	require.Error(t, itr.Err())
+	t.Run("expires during consumption", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		itr, err := NewTSDBSeriesIter(ctx, forSeriesTestImpl{
+			{},
+			{},
+		}, v1.NewBounds(0, math.MaxUint64))
+		require.NoError(t, err)
+
+		require.True(t, itr.Next())
+		require.NoError(t, itr.Err())
+
+		cancel()
+		require.False(t, itr.Next())
+		require.Error(t, itr.Err())
+	})
 
 }

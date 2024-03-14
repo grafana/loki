@@ -3123,6 +3123,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>networkPolicy.egressKubeApiserver.enabled</td>
+			<td>bool</td>
+			<td>Enable additional cilium egress rules to kube-apiserver for backend.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>networkPolicy.egressWorld.enabled</td>
+			<td>bool</td>
+			<td>Enable additional cilium egress rules to external world for write, read and backend.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>networkPolicy.enabled</td>
 			<td>bool</td>
 			<td>Specifies whether Network Policies should be created</td>

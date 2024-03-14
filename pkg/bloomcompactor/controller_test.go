@@ -1,6 +1,7 @@
 package bloomcompactor
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -496,69 +497,66 @@ func Test_coversFullRange(t *testing.T) {
 	}
 }
 
-func Test_OutdatedMetas(t *testing.T) {
-	gen := func(bounds v1.FingerprintBounds, tsdbTimes ...model.Time) (meta bloomshipper.Meta) {
-		for _, tsdbTime := range tsdbTimes {
-			meta.Sources = append(meta.Sources, tsdb.SingleTenantTSDBIdentifier{TS: tsdbTime.Time()})
-		}
-		meta.Bounds = bounds
-		return meta
-	}
-
-	for _, tc := range []struct {
-		desc  string
-		metas []bloomshipper.Meta
-		exp   []bloomshipper.Meta
+func TestBiasedReporter(t *testing.T) {
+	for i, tc := range []struct {
+		bounds      v1.FingerprintBounds
+		originalFPs [][]model.Fingerprint
+		expectedFPs [][]model.Fingerprint
 	}{
 		{
-			desc:  "no metas",
-			metas: nil,
-			exp:   nil,
-		},
-		{
-			desc: "single meta",
-			metas: []bloomshipper.Meta{
-				gen(v1.NewBounds(0, 10), 0),
+			bounds: v1.NewBounds(0, 10),
+			originalFPs: [][]model.Fingerprint{
+				{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+				{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 			},
-			exp: nil,
-		},
-		{
-			desc: "single outdated meta",
-			metas: []bloomshipper.Meta{
-				gen(v1.NewBounds(0, 10), 0),
-				gen(v1.NewBounds(0, 10), 1),
-			},
-			exp: []bloomshipper.Meta{
-				gen(v1.NewBounds(0, 10), 0),
+			expectedFPs: [][]model.Fingerprint{
+				{0, 0, 1, 1, 2, 2, 3, 3, 4, 4},
+				{5, 5, 6, 6, 7, 7, 8, 8, 9, 9},
 			},
 		},
 		{
-			desc: "single outdated via partitions",
-			metas: []bloomshipper.Meta{
-				gen(v1.NewBounds(0, 5), 0),
-				gen(v1.NewBounds(6, 10), 0),
-				gen(v1.NewBounds(0, 10), 1),
+			bounds: v1.NewBounds(0, 9), // small resolution loss when dividing by 2
+			originalFPs: [][]model.Fingerprint{
+				{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+				{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 			},
-			exp: []bloomshipper.Meta{
-				gen(v1.NewBounds(0, 5), 0),
-				gen(v1.NewBounds(6, 10), 0),
+			expectedFPs: [][]model.Fingerprint{
+				{0, 0, 1, 1, 2, 2, 3, 3, 4, 4},
+				{4, 4, 5, 5, 6, 6, 7, 7, 8, 8},
 			},
 		},
 		{
-			desc: "multi tsdbs",
-			metas: []bloomshipper.Meta{
-				gen(v1.NewBounds(0, 5), 0, 1),
-				gen(v1.NewBounds(6, 10), 0, 1),
-				gen(v1.NewBounds(0, 10), 2, 3),
+			bounds: v1.NewBounds(0, 10),
+			originalFPs: [][]model.Fingerprint{
+				{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+				{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+				{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 			},
-			exp: []bloomshipper.Meta{
-				gen(v1.NewBounds(0, 5), 0, 1),
-				gen(v1.NewBounds(6, 10), 0, 1),
+			expectedFPs: [][]model.Fingerprint{
+				{0, 0, 0, 1, 1, 1, 2, 2, 2, 3},
+				{3, 3, 3, 4, 4, 4, 5, 5, 5, 6},
+				{6, 6, 6, 7, 7, 7, 8, 8, 8, 9},
 			},
 		},
 	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			require.Equal(t, tc.exp, outdatedMetas(tc.metas))
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			for i, inputs := range tc.originalFPs {
+
+				validator := func(exp []model.Fingerprint) func(model.Fingerprint) {
+					j := 0
+					return func(fp model.Fingerprint) {
+						require.Equal(t, int(exp[j]), int(fp))
+						j++
+					}
+				}(tc.expectedFPs[i])
+
+				biased := biasedReporter(validator, tc.bounds, i, len(tc.originalFPs))
+
+				for _, fp := range inputs {
+					biased(fp)
+				}
+
+			}
 		})
 	}
 }

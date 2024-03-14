@@ -356,8 +356,8 @@ func createQueryInputFromBlockData(t *testing.T, tenant string, data [][]v1.Seri
 				res = append(res, &logproto.ChunkRef{
 					Fingerprint: uint64(data[i][j].Series.Fingerprint),
 					UserID:      tenant,
-					From:        chk.Start,
-					Through:     chk.End,
+					From:        chk.From,
+					Through:     chk.Through,
 					Checksum:    chk.Checksum,
 				})
 			}

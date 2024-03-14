@@ -124,8 +124,9 @@ otlp_config:
   # Configuration for Resource Attributes to store them as index labels or
   # Structured Metadata or drop them altogether
   resource_attributes:
-    # Configure whether to ignore the default list of Resource Attributes to be
-    # stored as Index Labels and only use the given Resource Attributes config
+    # Configure whether to ignore the default list of resource attributes set in
+    # 'distributor.otlp.default_resource_attributes_as_index_labels' to be
+    # stored as index labels and only use the given resource attributes config
     [ignore_defaults: <boolean>]
 
     [attributes_config: <list of attributes_configs>]

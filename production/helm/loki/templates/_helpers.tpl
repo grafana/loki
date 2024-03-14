@@ -362,6 +362,9 @@ s3:
   {{- end }}
   s3forcepathstyle: {{ .s3ForcePathStyle }}
   insecure: {{ .insecure }}
+  {{- with .http_config }}
+  http_config: {{ toYaml . | nindent 6 }}
+  {{- end }}
 {{- end -}}
 {{- else if eq .Values.loki.storage.type "gcs" -}}
 {{- with .Values.loki.storage.gcs }}

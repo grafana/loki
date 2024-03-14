@@ -76,9 +76,11 @@ func (t *NGramTokenIter) Next() bool {
 
 		// if the start of the ngram is at the interval of our skip factor, emit it.
 		// we increment the skip due to modulo logic:
-		//   because `n % 0 is a divide by zero and n % 1 is always 0`
+		// because `n % 0 is a divide by zero and n % 1 is always 0`
 		if (t.runeIndex-t.n)%(t.skip+1) == 0 {
-			t.offset += (i + utf8.RuneLen(r))
+			// update the offset, but don't go past the end of the line;
+			// for instance invalid utf-8
+			t.offset = min(len(t.line), t.offset+i+utf8.RuneLen(r))
 			return true
 		}
 

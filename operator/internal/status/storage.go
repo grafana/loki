@@ -21,9 +21,6 @@ func SetStorageSchemaStatus(ctx context.Context, k k8s.Client, req ctrl.Request,
 		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
 	}
 
-	s.Status.Storage = lokiv1.LokiStackStorageStatus{
-		Schemas: schemas,
-	}
-
+	s.Status.Storage.Schemas = schemas
 	return k.Status().Update(ctx, &s)
 }

@@ -30,7 +30,7 @@ func NewShipper(client Store) *Shipper {
 // ForEach is a convenience function that wraps the store's FetchBlocks function
 // and automatically closes the block querier once the callback was run.
 func (s *Shipper) ForEach(ctx context.Context, refs []BlockRef, callback ForEachBlockCallback) error {
-	bqs, err := s.store.FetchBlocks(ctx, refs)
+	bqs, err := s.store.FetchBlocks(ctx, refs, WithFetchAsync(false))
 	if err != nil {
 		return err
 	}

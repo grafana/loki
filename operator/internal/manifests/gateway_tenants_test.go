@@ -1495,11 +1495,14 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 								CertFile: "/path/to/cert/file",
 								KeyFile:  "/path/to/key/file",
 							},
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							Authorization: &monitoringv1.SafeAuthorization{
+								Type: "Bearer",
+								Credentials: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "abcd-gateway-token",
+									},
+									Key: corev1.ServiceAccountTokenKey,
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 						},
 					},
@@ -1514,22 +1517,28 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 								CertFile: "/path/to/cert/file",
 								KeyFile:  "/path/to/key/file",
 							},
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							Authorization: &monitoringv1.SafeAuthorization{
+								Type: "Bearer",
+								Credentials: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "abcd-gateway-token",
+									},
+									Key: corev1.ServiceAccountTokenKey,
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 						},
 						{
 							Port:   openshift.GatewayOPAInternalPortName,
 							Path:   "/metrics",
 							Scheme: "https",
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							Authorization: &monitoringv1.SafeAuthorization{
+								Type: "Bearer",
+								Credentials: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "abcd-gateway-token",
+									},
+									Key: corev1.ServiceAccountTokenKey,
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 							TLSConfig: &monitoringv1.TLSConfig{
 								CAFile:   "/path/to/ca/file",
@@ -1566,11 +1575,14 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 								CertFile: "/path/to/cert/file",
 								KeyFile:  "/path/to/key/file",
 							},
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							Authorization: &monitoringv1.SafeAuthorization{
+								Type: "Bearer",
+								Credentials: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "abcd-gateway-token",
+									},
+									Key: corev1.ServiceAccountTokenKey,
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 						},
 					},
@@ -1585,22 +1597,28 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 								CertFile: "/path/to/cert/file",
 								KeyFile:  "/path/to/key/file",
 							},
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							Authorization: &monitoringv1.SafeAuthorization{
+								Type: "Bearer",
+								Credentials: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "abcd-gateway-token",
+									},
+									Key: corev1.ServiceAccountTokenKey,
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 						},
 						{
 							Port:   openshift.GatewayOPAInternalPortName,
 							Path:   "/metrics",
 							Scheme: "https",
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							Authorization: &monitoringv1.SafeAuthorization{
+								Type: "Bearer",
+								Credentials: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "abcd-gateway-token",
+									},
+									Key: corev1.ServiceAccountTokenKey,
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 							TLSConfig: &monitoringv1.TLSConfig{
 								CAFile:   "/path/to/ca/file",
