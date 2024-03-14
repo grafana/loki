@@ -112,7 +112,48 @@ func TestFiltersToBloomTests(t *testing.T) {
 			bloom:       fakeBloom{"foo", "bar", "baz", "fuzz"},
 			expectMatch: true,
 		},
-		// TODO: test regexes
+		{
+			name:        "regex match all star",
+			query:       `{app="fake"} |~ ".*"`,
+			bloom:       fakeBloom{"foo", "bar"},
+			expectMatch: true,
+		},
+		{
+			name:        "regex match all plus",
+			query:       `{app="fake"} |~ ".+"`,
+			bloom:       fakeBloom{"foo", "bar"},
+			expectMatch: true,
+		},
+		{
+			name:        "regex match none",
+			query:       `{app="fake"} !~ ".*"`,
+			bloom:       fakeBloom{"foo", "bar"},
+			expectMatch: false,
+		},
+		{
+			name:        "regex match",
+			query:       `{app="fake"} |~ "nope|.*foo.*"`,
+			bloom:       fakeBloom{"foo", "bar"},
+			expectMatch: true,
+		},
+		{
+			name:        "regex no match",
+			query:       `{app="fake"} !~ "nope|.*foo.*"`,
+			bloom:       fakeBloom{"foo", "bar"},
+			expectMatch: false,
+		},
+		{
+			name:        "complex regex match",
+			query:       `{app="fake"} |~ "(nope|.*not.*|.*foo.*)" or "(no|ba)" !~ "noz.*" or "(nope|not)"`,
+			bloom:       fakeBloom{"foo", "bar", "baz", "fuzz"},
+			expectMatch: true,
+		},
+		{
+			name:        "complex regex no match",
+			query:       `{app="fake"} |~ "(nope|.*not.*|.*foo.*)" or "(no|ba)" !~ "noz.*"`,
+			bloom:       fakeBloom{"foo", "bar", "baz", "fuzz", "noz"},
+			expectMatch: false,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)

@@ -14,6 +14,8 @@ LIDs must be created as a pull request using [this template](docs/sources/commun
 
 ## Pull Request Prerequisites/Checklist
 
+**NOTE:** The Loki team has adopted the use of [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for commit messages. 
+
 1. Your PR title is in the form `<Feature Area>: Your change`.
    1. It does not end the title with punctuation. It will be added in the changelog.
    1. It starts with an imperative verb. Example: Fix the latency between System A and System B.
@@ -35,6 +37,8 @@ LIDs must be created as a pull request using [this template](docs/sources/commun
    * Any other change that would require special attention or extra steps to upgrade
 
 Please document clearly what changed AND what needs to be done in the upgrade guide.
+
+**NOTE:** A member of the Loki repo maintainers must approve and run the continuous integration (CI) workflows for community contributions.
 
 ## Setup
 
@@ -157,3 +161,8 @@ To get a local preview of the documentation:
 Then you can go to Docker Desktop settings and open the resources, add the temporary directory path `/tmp`.
 
 > Note that `make docs` uses a lot of memory. If it crashes, increase the memory allocated to Docker and try again.
+
+Also note that PRs are merged to the main branch.  If your changes need to be immediately published to the latest release, you must add the appropriate backport label to your PR, for example, `backport-release-2.9.x`.  If the changes in your PR can be automatically backported, the backport label will trigger GrafanaBot to create the backport PR, otherwise you will need to create a PR to manually backport your changes.
+
+* [Latest release](https://grafana.com/docs/loki/latest/)
+* [Upcoming release](https://grafana.com/docs/loki/next/), at the tip of the main branch

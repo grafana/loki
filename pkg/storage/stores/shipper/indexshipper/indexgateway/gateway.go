@@ -229,8 +229,8 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 
 	// Extract LineFiltersExpr from the plan. If there is none, we can short-circuit and return before making a req
 	// to the bloom-gateway (through the g.bloomQuerier)
+	// TODO(owen-d): metrics for number of filters seen, but probably do elsewhere (in query-frontend?)
 	if len(syntax.ExtractLineFilters(req.Plan.AST)) == 0 {
-		level.Info(g.log).Log("msg", "there are no line filters")
 		return result, nil
 	}
 

@@ -53,6 +53,7 @@ type SimpleBloomGenerator struct {
 	logger  log.Logger
 
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
+	reporter     func(model.Fingerprint)
 
 	tokenizer *v1.BloomTokenizer
 }
@@ -68,6 +69,7 @@ func NewSimpleBloomGenerator(
 	chunkLoader ChunkLoader,
 	blocksIter v1.ResettableIterator[*v1.SeriesWithBloom],
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
+	reporter func(model.Fingerprint),
 	metrics *Metrics,
 	logger log.Logger,
 ) *SimpleBloomGenerator {
@@ -80,30 +82,36 @@ func NewSimpleBloomGenerator(
 		logger:       log.With(logger, "component", "bloom_generator"),
 		readWriterFn: readWriterFn,
 		metrics:      metrics,
+		reporter:     reporter,
 
 		tokenizer: v1.NewBloomTokenizer(opts.Schema.NGramLen(), opts.Schema.NGramSkip(), metrics.bloomMetrics),
 	}
 }
 
-func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Series, bloom *v1.Bloom) error {
-	return func(series *v1.Series, bloom *v1.Bloom) error {
+func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Series, bloom *v1.Bloom) (int, error) {
+	return func(series *v1.Series, bloom *v1.Bloom) (int, error) {
 		chunkItersWithFP, err := s.chunkLoader.Load(ctx, s.userID, series)
 		if err != nil {
-			return errors.Wrapf(err, "failed to load chunks for series: %+v", series)
+			return 0, errors.Wrapf(err, "failed to load chunks for series: %+v", series)
 		}
 
-		return s.tokenizer.Populate(
+		bytesAdded, err := s.tokenizer.Populate(
 			&v1.SeriesWithBloom{
 				Series: series,
 				Bloom:  bloom,
 			},
 			chunkItersWithFP.itr,
 		)
+
+		if s.reporter != nil {
+			s.reporter(series.Fingerprint)
+		}
+		return bytesAdded, err
 	}
 
 }
 
-func (s *SimpleBloomGenerator) Generate(ctx context.Context) v1.Iterator[*v1.Block] {
+func (s *SimpleBloomGenerator) Generate(ctx context.Context) *LazyBlockBuilderIterator {
 	level.Debug(s.logger).Log("msg", "generating bloom filters for blocks", "schema", fmt.Sprintf("%+v", s.opts.Schema))
 
 	series := v1.NewPeekingIter(s.store)
@@ -144,20 +152,21 @@ type LazyBlockBuilderIterator struct {
 	ctx          context.Context
 	opts         v1.BlockOptions
 	metrics      *Metrics
-	populate     func(*v1.Series, *v1.Bloom) error
+	populate     func(*v1.Series, *v1.Bloom) (int, error)
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
 	series       v1.PeekingIterator[*v1.Series]
 	blocks       v1.ResettableIterator[*v1.SeriesWithBloom]
 
-	curr *v1.Block
-	err  error
+	bytesAdded int
+	curr       *v1.Block
+	err        error
 }
 
 func NewLazyBlockBuilderIterator(
 	ctx context.Context,
 	opts v1.BlockOptions,
 	metrics *Metrics,
-	populate func(*v1.Series, *v1.Bloom) error,
+	populate func(*v1.Series, *v1.Bloom) (int, error),
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	series v1.PeekingIterator[*v1.Series],
 	blocks v1.ResettableIterator[*v1.SeriesWithBloom],
@@ -171,6 +180,10 @@ func NewLazyBlockBuilderIterator(
 		series:       series,
 		blocks:       blocks,
 	}
+}
+
+func (b *LazyBlockBuilderIterator) Bytes() (bytes int) {
+	return b.bytesAdded
 }
 
 func (b *LazyBlockBuilderIterator) Next() bool {
@@ -196,7 +209,9 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		b.err = errors.Wrap(err, "failed to create bloom block builder")
 		return false
 	}
-	_, err = mergeBuilder.Build(blockBuilder)
+	_, sourceBytes, err := mergeBuilder.Build(blockBuilder)
+	b.bytesAdded += sourceBytes
+
 	if err != nil {
 		b.err = errors.Wrap(err, "failed to build bloom block")
 		return false
@@ -250,13 +265,13 @@ func (s *StoreChunkLoader) Load(ctx context.Context, userID string, series *v1.S
 	// us in the case of refactoring/changing this and likely isn't a perf bottleneck.
 	chksByFetcher := make(map[*fetcher.Fetcher][]chunk.Chunk)
 	for _, chk := range series.Chunks {
-		fetcher := s.fetcherProvider.GetChunkFetcher(chk.Start)
+		fetcher := s.fetcherProvider.GetChunkFetcher(chk.From)
 		chksByFetcher[fetcher] = append(chksByFetcher[fetcher], chunk.Chunk{
 			ChunkRef: logproto.ChunkRef{
 				Fingerprint: uint64(series.Fingerprint),
 				UserID:      userID,
-				From:        chk.Start,
-				Through:     chk.End,
+				From:        chk.From,
+				Through:     chk.Through,
 				Checksum:    chk.Checksum,
 			},
 		})

@@ -368,6 +368,9 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 		FSConfig: local.FSConfig{Directory: dir},
 		BloomShipperConfig: bloomshipperconfig.Config{
 			WorkingDirectory: filepath.Join(dir, "blooms"),
+			BlocksDownloadingQueue: bloomshipperconfig.DownloadingQueueConfig{
+				WorkersCount: 1,
+			},
 		},
 		BoltDBShipperConfig: boltdb.IndexCfg{
 			Config: indexshipper.Config{

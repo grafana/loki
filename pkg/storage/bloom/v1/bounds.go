@@ -170,6 +170,11 @@ func (b FingerprintBounds) Unless(target FingerprintBounds) (res []FingerprintBo
 	return res
 }
 
+// Range returns the number of fingerprints in the bounds
+func (b FingerprintBounds) Range() uint64 {
+	return uint64(b.Max - b.Min)
+}
+
 type MultiFingerprintBounds []FingerprintBounds
 
 func (mb MultiFingerprintBounds) Union(target FingerprintBounds) MultiFingerprintBounds {

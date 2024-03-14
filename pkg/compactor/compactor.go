@@ -512,7 +512,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 
 	// do the initial compaction
 	if err := c.RunCompaction(ctx, false); err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to run compaction", err)
+		level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
 	}
 
 	c.wg.Add(1)
@@ -526,7 +526,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 			select {
 			case <-ticker.C:
 				if err := c.RunCompaction(ctx, false); err != nil {
-					level.Error(util_log.Logger).Log("msg", "failed to run compaction", err)
+					level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
 				}
 			case <-ctx.Done():
 				return
@@ -539,7 +539,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 		go func() {
 			defer c.wg.Done()
 			if err := c.RunCompaction(ctx, true); err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to apply retention", err)
+				level.Error(util_log.Logger).Log("msg", "failed to apply retention", "err", err)
 			}
 
 			ticker := time.NewTicker(c.cfg.ApplyRetentionInterval)
@@ -549,7 +549,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 				select {
 				case <-ticker.C:
 					if err := c.RunCompaction(ctx, true); err != nil {
-						level.Error(util_log.Logger).Log("msg", "failed to apply retention", err)
+						level.Error(util_log.Logger).Log("msg", "failed to apply retention", "err", err)
 					}
 				case <-ctx.Done():
 					return
@@ -876,7 +876,6 @@ func SortTablesByRange(tables []string) {
 		// less than if start time is after produces a most recent first sort order
 		return tableRanges[tables[i]].Start.After(tableRanges[tables[j]].Start)
 	})
-
 }
 
 func SchemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {
