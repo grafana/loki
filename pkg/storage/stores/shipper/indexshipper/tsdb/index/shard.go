@@ -18,6 +18,8 @@ const (
 var errDisallowedIdentityShard = errors.New("shard with factor of 1 is explicitly disallowed. It's equivalent to no sharding")
 
 type FingerprintFilter interface {
+	// TODO(owen-d): Match() is redundant and can be inferred from GetFromThrough()
+	// TODO(owen-d): GetFromThrough should just return FingerprintBounds as it's a better utility struct.
 	Match(model.Fingerprint) bool
 	GetFromThrough() (model.Fingerprint, model.Fingerprint)
 }
