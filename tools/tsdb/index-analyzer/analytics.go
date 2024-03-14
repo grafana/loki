@@ -70,7 +70,7 @@ func analyze(indexShipper indexshipper.IndexShipper, tableName string, tenants [
 
 				err = casted.Index.(*tsdb.TSDBIndex).ForSeries(
 					context.Background(),
-					nil,
+					"", nil,
 					model.Earliest,
 					model.Latest,
 					func(ls labels.Labels, fp model.Fingerprint, chks []tsdb_index.ChunkMeta) (stop bool) {

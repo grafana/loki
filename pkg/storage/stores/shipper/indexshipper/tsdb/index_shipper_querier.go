@@ -134,6 +134,15 @@ func (i *indexShipperQuerier) Volume(ctx context.Context, userID string, from, t
 	return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 }
 
+func (i *indexShipperQuerier) ForSeries(ctx context.Context, userID string, fpFilter tsdbindex.FingerprintFilter, from, through model.Time, fn func(labels.Labels, model.Fingerprint, []tsdbindex.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+	idx, err := i.indices(ctx, from, through, userID)
+	if err != nil {
+		return err
+	}
+
+	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+}
+
 type resultAccumulator struct {
 	mtx   sync.Mutex
 	items []interface{}
