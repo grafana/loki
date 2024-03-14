@@ -9,6 +9,7 @@ metadata:
 {{ toYaml . | indent 4 }}
 {{- end }}
   name: {{ template "loki.fullname" . }}-clusterrole
+  # "namespace" omitted since ClusterRoles are not namespaced
 {{- if .Values.sidecar.rules.enabled }}
 rules:
 - apiGroups: [""] # "" indicates the core API group
