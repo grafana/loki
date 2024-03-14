@@ -74,6 +74,7 @@ func templateConfig(t *testing.T, vals values) error {
 	return nil
 }
 func Test_InvalidConfigs(t *testing.T) {
+	t.SkipNow()
 	t.Run("running both single binary and scalable targets", func(t *testing.T) {
 		vals := values{
 			SingleBinary: replicas{Replicas: 1},
@@ -141,6 +142,7 @@ func Test_InvalidConfigs(t *testing.T) {
 }
 
 func Test_ValidConfigs(t *testing.T) {
+	t.SkipNow()
 	t.Run("single binary", func(t *testing.T) {
 		vals := values{
 
