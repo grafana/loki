@@ -93,13 +93,12 @@ func CreateOrUpdateLokiStack(
 				Reason:  lokiv1.ReasonInvalidPerTenantLimitsConfig,
 				Requeue: false,
 			}
-		} else {
-			ll.Error(err, "failed to parse query timeout")
-			return "", &status.DegradedError{
-				Message: fmt.Sprintf("Error parsing query timeout: %s", err),
-				Reason:  lokiv1.ReasonQueryTimeoutInvalid,
-				Requeue: false,
-			}
+		}
+		ll.Error(err, "failed to parse query timeout")
+		return "", &status.DegradedError{
+			Message: fmt.Sprintf("Error parsing query timeout: %s", err),
+			Reason:  lokiv1.ReasonQueryTimeoutInvalid,
+			Requeue: false,
 		}
 	}
 
