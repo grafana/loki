@@ -150,9 +150,16 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.5.0
-    createdAt: "2023-11-23T11:25:33Z"
+    createdAt: "2024-03-12T09:52:37Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
+    features.operators.openshift.io/disconnected: "true"
+    features.operators.openshift.io/fips-compliant: "false"
+    features.operators.openshift.io/proxy-aware: "true"
+    features.operators.openshift.io/tls-profiles: "true"
+    features.operators.openshift.io/token-auth-aws: "true"
+    features.operators.openshift.io/token-auth-azure: "true"
+    features.operators.openshift.io/token-auth-gcp: "false"
     operators.operatorframework.io/builder: operator-sdk-unknown
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
     repository: https://github.com/grafana/loki/tree/main/operator
@@ -444,6 +451,27 @@ spec:
         path: limits.tenants.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Blocked defines the list of rules to block matching queries.
+        displayName: Blocked
+        path: limits.tenants.queries.blocked
+      - description: Hash is a 32-bit FNV-1 hash of the query string.
+        displayName: Query Hash
+        path: limits.tenants.queries.blocked[0].hash
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Pattern defines the pattern matching the queries to be blocked.
+        displayName: Query Pattern
+        path: limits.tenants.queries.blocked[0].pattern
+      - description: Regex defines if the pattern is a regular expression. If false
+          the pattern will be used only for exact matches.
+        displayName: Regex
+        path: limits.tenants.queries.blocked[0].regex
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: Types defines the list of query types that should be considered
+          for blocking.
+        displayName: Query Types
+        path: limits.tenants.queries.blocked[0].types
       - description: CardinalityLimit defines the cardinality limit for index queries.
         displayName: Cardinality Limit
         path: limits.tenants.queries.cardinalityLimit
@@ -1436,6 +1464,17 @@ spec:
           - update
           - watch
         - apiGroups:
+          - cloudcredential.openshift.io
+          resources:
+          - credentialsrequests
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - update
+          - watch
+        - apiGroups:
           - config.openshift.io
           resources:
           - apiservers
@@ -1566,6 +1605,12 @@ spec:
         - apiGroups:
           - monitoring.coreos.com
           resources:
+          - alertmanagers/api
+          verbs:
+          - create
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
           - prometheusrules
           - servicemonitors
           verbs:
@@ -1669,7 +1714,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: docker.io/grafana/loki:2.9.2
+                  value: docker.io/grafana/loki:2.9.4
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1792,7 +1837,7 @@ spec:
   provider:
     name: Grafana Loki SIG Operator
   relatedImages:
-  - image: docker.io/grafana/loki:2.9.2
+  - image: docker.io/grafana/loki:2.9.4
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway

@@ -209,13 +209,16 @@
                "dashes": false,
                "datasource": "$datasource",
                "fieldConfig": {
-                  "custom": {
-                     "fillOpacity": 50,
-                     "showPoints": "never",
-                     "stacking": {
-                        "group": "A",
-                        "mode": "normal"
-                     }
+                  "defaults": {
+                     "custom": {
+                        "fillOpacity": 50,
+                        "showPoints": "never",
+                        "stacking": {
+                           "group": "A",
+                           "mode": "normal"
+                        }
+                     },
+                     "unit": "s"
                   }
                },
                "fill": 1,
@@ -482,13 +485,16 @@
                "dashes": false,
                "datasource": "$datasource",
                "fieldConfig": {
-                  "custom": {
-                     "fillOpacity": 50,
-                     "showPoints": "never",
-                     "stacking": {
-                        "group": "A",
-                        "mode": "normal"
-                     }
+                  "defaults": {
+                     "custom": {
+                        "fillOpacity": 50,
+                        "showPoints": "never",
+                        "stacking": {
+                           "group": "A",
+                           "mode": "normal"
+                        }
+                     },
+                     "unit": "s"
                   }
                },
                "fill": 1,
@@ -755,13 +761,16 @@
                "dashes": false,
                "datasource": "$datasource",
                "fieldConfig": {
-                  "custom": {
-                     "fillOpacity": 50,
-                     "showPoints": "never",
-                     "stacking": {
-                        "group": "A",
-                        "mode": "normal"
-                     }
+                  "defaults": {
+                     "custom": {
+                        "fillOpacity": 50,
+                        "showPoints": "never",
+                        "stacking": {
+                           "group": "A",
+                           "mode": "normal"
+                        }
+                     },
+                     "unit": "s"
                   }
                },
                "fill": 1,
@@ -1028,13 +1037,16 @@
                "dashes": false,
                "datasource": "$datasource",
                "fieldConfig": {
-                  "custom": {
-                     "fillOpacity": 50,
-                     "showPoints": "never",
-                     "stacking": {
-                        "group": "A",
-                        "mode": "normal"
-                     }
+                  "defaults": {
+                     "custom": {
+                        "fillOpacity": 50,
+                        "showPoints": "never",
+                        "stacking": {
+                           "group": "A",
+                           "mode": "normal"
+                        }
+                     },
+                     "unit": "s"
                   }
                },
                "fill": 1,

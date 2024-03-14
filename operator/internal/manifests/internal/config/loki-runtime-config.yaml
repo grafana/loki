@@ -54,6 +54,21 @@ overrides:
     {{- if $spec.QueryLimits.CardinalityLimit }}
     cardinality_limit: {{ $spec.QueryLimits.CardinalityLimit }}
     {{- end }}
+    {{- with $l.Blocked }}
+    blocked_queries:
+    {{- range $blockedQuery := . }}
+    - pattern: {{ .Pattern | printf "%q" }}
+      {{- with $blockedQuery.Regex }}
+      regex: {{ . }}
+      {{- end }}
+      {{- with $blockedQuery.Types }}
+      types: {{ . }}
+      {{- end }}
+      {{- with $blockedQuery.Hash }}
+      hash: {{ . }}
+      {{- end }}
+    {{- end }}
+    {{- end}}
   {{- end -}}
   {{- with $spec.Retention }}
     retention_period: {{ .Days }}d

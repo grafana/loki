@@ -175,3 +175,13 @@ groups:
     for: 15m
     labels:
       severity: warning
+  - alert: LokistackSchemaUpgradesRequired
+    annotations:
+      message: |-
+        Object storage schema needs upgrade.
+      summary: "The applied storage schema config is old and should be upgraded."
+      runbook_url: "[[ .RunbookURL ]]#Lokistack-Schema-Upgrades-Required"
+    expr: sum by(stack_id) (lokistack_warnings_count) > 0
+    labels:
+      severity: warning
+      resource: '{{ $labels.stack_id}}'

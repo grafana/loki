@@ -72,6 +72,8 @@ func EnsureDirectory(dir string) error {
 		return os.MkdirAll(dir, 0o777)
 	} else if err == nil && !info.IsDir() {
 		return fmt.Errorf("not a directory: %s", dir)
+	} else if err == nil && info.Mode()&0700 != 0700 {
+		return fmt.Errorf("insufficient permissions: %s %s", dir, info.Mode())
 	}
 	return err
 }

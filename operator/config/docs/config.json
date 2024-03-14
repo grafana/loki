@@ -4,7 +4,13 @@
     ],
     "hideTypePatterns": [
         "ParseError$",
-        "List$"
+        "List$",
+        "ControllerHealth$",
+        "ControllerManagerConfiguration$",
+        "ControllerManagerConfigurationSpec$",
+        "ControllerMetrics$",
+        "ControllerWebhook$",
+        "ProjectConfig$"
     ],
     "externalPackages": [
         {
@@ -38,22 +44,6 @@
         {
             "typeMatchPrefix": "^k8s\\.io/component-base/config/v1alpha1\\.LeaderElectionConfiguration$",
             "docsURLTemplate": "https://pkg.go.dev/k8s.io/component-base/config#LeaderElectionConfiguration"
-        },
-        {
-            "typeMatchPrefix": "^sigs\\.k8s\\.io/controller-runtime/pkg/config/v1alpha1\\.ControllerConfigurationSpec$",
-            "docsURLTemplate": "https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerConfigurationSpec"
-        },
-        {
-            "typeMatchPrefix": "^sigs\\.k8s\\.io/controller-runtime/pkg/config/v1alpha1\\.ControllerMetrics$",
-            "docsURLTemplate": "https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerMetrics"
-        },
-        {
-            "typeMatchPrefix": "^sigs\\.k8s\\.io/controller-runtime/pkg/config/v1alpha1\\.ControllerHealth$",
-            "docsURLTemplate": "https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerHealth"
-        },
-        {
-            "typeMatchPrefix": "^sigs\\.k8s\\.io/controller-runtime/pkg/config/v1alpha1\\.ControllerWebhook$",
-            "docsURLTemplate": "https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerWebhook"
         }
     ],
     "typeDisplayNamePrefixOverrides": {

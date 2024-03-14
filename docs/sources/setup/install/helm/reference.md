@@ -856,7 +856,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.8.4"
+"v1.8.6"
 </pre>
 </td>
 		</tr>
@@ -1241,6 +1241,15 @@ null
 			<td>Override Write URL</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.enableIPv6</td>
+			<td>bool</td>
+			<td>Enable listener for IPv6, disable on IPv4-only systems</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -2252,6 +2261,7 @@ null
   },
   "s3": {
     "accessKeyId": null,
+    "backoff_config": {},
     "endpoint": null,
     "http_config": {},
     "insecure": false,
@@ -2261,8 +2271,38 @@ null
     "secretAccessKey": null,
     "signatureVersion": null
   },
+  "swift": {
+    "auth_url": null,
+    "auth_version": null,
+    "connect_timeout": null,
+    "container_name": null,
+    "domain_id": null,
+    "domain_name": null,
+    "internal": null,
+    "max_retries": null,
+    "password": null,
+    "project_domain_id": null,
+    "project_domain_name": null,
+    "project_id": null,
+    "project_name": null,
+    "region_name": null,
+    "request_timeout": null,
+    "user_domain_id": null,
+    "user_domain_name": null,
+    "user_id": null,
+    "username": null
+  },
   "type": "s3"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.storage.s3.backoff_config</td>
+			<td>object</td>
+			<td>Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2679,6 +2719,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.rules.disabled</td>
+			<td>object</td>
+			<td>If you disable all the alerts and keep .monitoring.rules.alerting set to true, the chart will fail to render.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.rules.enabled</td>
 			<td>bool</td>
 			<td>If enabled, create PrometheusRule resource with Loki recording rules</td>
@@ -2756,6 +2805,15 @@ true
 			<td>The name of the PriorityClass for GrafanaAgent pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the grafanaAgent pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3065,6 +3123,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>networkPolicy.egressKubeApiserver.enabled</td>
+			<td>bool</td>
+			<td>Enable additional cilium egress rules to kube-apiserver for backend.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>networkPolicy.egressWorld.enabled</td>
+			<td>bool</td>
+			<td>Enable additional cilium egress rules to external world for write, read and backend.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>networkPolicy.enabled</td>
 			<td>bool</td>
 			<td>Specifies whether Network Policies should be created</td>
@@ -3088,6 +3164,15 @@ false
 			<td>Specify the port used for external storage, e.g. AWS S3</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>networkPolicy.flavor</td>
+			<td>string</td>
+			<td>Specifies whether the policies created will be standard Network Policies (flavor: kubernetes) or Cilium Network Policies (flavor: cilium)</td>
+			<td><pre lang="json">
+"kubernetes"
 </pre>
 </td>
 		</tr>
@@ -4528,6 +4613,15 @@ null
 			<td>write.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the write</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the write pods</td>
 			<td><pre lang="json">
 []
 </pre>

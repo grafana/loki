@@ -462,6 +462,8 @@ func getCustomFieldType(t reflect.Type) (string, bool) {
 		return "remote_write_config...", true
 	case reflect.TypeOf(validation.OverwriteMarshalingStringMap{}).String():
 		return "headers", true
+	case reflect.TypeOf(relabel.Regexp{}).String():
+		return fieldString, true
 	default:
 		return "", false
 	}

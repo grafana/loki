@@ -13,6 +13,99 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.43.6
+
+ [ENHANCEMENT] Add `ciliumnetworkpolicy` with egress to world for table-manager if enabled.
+
+## 5.43.5
+
+- [BUGFIX] Add `---` before the `backend-kubeapiserver-egress` ciliumnetworkpolicy to prevent the `backend-world-egress` one from being dumped if both are enabled.
+
+## 5.43.4
+
+- [ENHANCEMENT] Add `ciliumnetworkpolicies` with egress to world for write, read and backend.
+
+## 5.43.3
+
+- [ENHANCEMENT] Added missing default values to support ServerSideApply
+
+## 5.43.2
+
+- [BUGFIX] Added `alibabacloud` to `isUsingObjectStorage` check.
+
+## 5.43.1
+
+- [BUGFIX] Fix `toPorts` fields in the `ciliumnetworkpolicy` template
+
+## 5.43.0
+
+- [ENHANCEMENT] Allow the definition of resources for GrafanaAgent pods
+
+## 5.42.3
+
+- [BUGFIX] Added condition for `egress-discovery` networkPolicies and ciliumNetworkPolicies.
+
+## 5.42.2
+
+- [BUGFIX] Remove trailing tab character in statefulset templates
+
+## 5.42.1
+
+- [BUGFIX] Added missing annotations to loki-read StatefulSet.
+
+## 5.42.0
+
+- [CHANGE] Changed versions of Loki v2.9.4 and GEL v1.8.6
+- [ENHANCEMENT] Bumped "grafana-agent-operator" depenency chart version to it's latest version
+
+## 5.41.8
+
+- [BUGFIX] Fix gateway: add possibility to disable listening on ipv6 to prevent crash on ipv4-only system.
+
+## 5.41.7
+
+- [FEATURE] Add support to disable specific alert rules
+
+## 5.41.6
+
+- [BUGFIX] Added missing namespace to query-scheduler-discovery service when deploying loki in a specific namespace.
+
+## 5.41.5
+
+- [BUGFIX] Added "swift" type object storage to resolve Loki HELM Chart error.
+
+## 5.41.4
+
+- [CHANGE] Use `/ingester/shutdown?terminate=false` for write `preStop` hook
+
+## 5.41.3
+
+- [FEATURE] Add support for defining an s3 backoff config.
+
+## 5.41.2
+
+- [FEATURE] Add ciliumnetworkpolicies.
+
+## 5.41.1
+
+- [FEATURE] Allow topology spread constraints for Loki read deployment component.
+
+## 5.41.0
+
+- [CHANGE] Changed version of Loki to 2.9.3
+
+## 5.40.1
+
+- [BUGFIX] Remove ruler enabled condition in networkpolicies.
+
+## 5.40.0
+
+- [CHANGE] Add extraContainers parameter for the write pod
+
+## 5.39.0
+
+- [FEATURE] Add support for adding OpenStack swift container credentials via helm chart
+
 ## 5.38.0
 
 - [CHANGE] Changed MinIO Helm Chart version to 4.0.15

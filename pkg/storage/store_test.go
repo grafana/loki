@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -15,24 +14,30 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/dskit/flagext"
-
+	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	lokilog "github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/pkg/util/constants"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -42,7 +47,7 @@ var (
 	m          runtime.MemStats
 	ctx        = user.InjectOrgID(context.Background(), "fake")
 	cm         = NewClientMetrics()
-	chunkStore = getLocalStore(cm)
+	chunkStore = getLocalStore("/tmp/benchmark/", cm)
 )
 
 // go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
@@ -167,7 +172,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 		}
 		iter.Close()
 		printHeap(b, true)
-		log.Println("line fetched", len(res))
+		b.Log("line fetched", len(res))
 	}
 	close(stop)
 }
@@ -180,12 +185,12 @@ func printHeap(b *testing.B, show bool) {
 		maxHeapInuse = m.HeapInuse
 	}
 	if show {
-		log.Printf("Benchmark %d maxHeapInuse: %d Mbytes\n", b.N, maxHeapInuse/1024/1024)
-		log.Printf("Benchmark %d currentHeapInuse: %d Mbytes\n", b.N, m.HeapInuse/1024/1024)
+		b.Logf("Benchmark %d maxHeapInuse: %d Mbytes\n", b.N, maxHeapInuse/1024/1024)
+		b.Logf("Benchmark %d currentHeapInuse: %d Mbytes\n", b.N, m.HeapInuse/1024/1024)
 	}
 }
 
-func getLocalStore(cm ClientMetrics) Store {
+func getLocalStore(path string, cm ClientMetrics) Store {
 	limits, err := validation.NewOverrides(validation.Limits{
 		MaxQueryLength: model.Duration(6000 * time.Hour),
 	}, nil)
@@ -194,8 +199,8 @@ func getLocalStore(cm ClientMetrics) Store {
 	}
 
 	storeConfig := Config{
-		BoltDBConfig:      local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
-		FSConfig:          local.FSConfig{Directory: "/tmp/benchmark/chunks"},
+		BoltDBConfig:      local.BoltDBConfig{Directory: filepath.Join(path, "index")},
+		FSConfig:          local.FSConfig{Directory: filepath.Join(path, "chunks")},
 		MaxChunkBatchSize: 10,
 	}
 
@@ -205,17 +210,18 @@ func getLocalStore(cm ClientMetrics) Store {
 				From:       config.DayTime{Time: start},
 				IndexType:  "boltdb",
 				ObjectType: config.StorageTypeFileSystem,
-				Schema:     "v9",
+				Schema:     "v13",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
 						Period: time.Hour * 168,
 					}},
+				RowShards: 16,
 			},
 		},
 	}
 
-	store, err := NewStore(storeConfig, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
+	store, err := NewStore(storeConfig, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	if err != nil {
 		panic(err)
 	}
@@ -492,6 +498,11 @@ func Test_store_SelectLogs(t *testing.T) {
 					MaxChunkBatchSize: 10,
 				},
 				chunkMetrics: NilMetrics,
+				logger:       log.NewNopLogger(),
+			}
+
+			tt.req.Plan = &plan.QueryPlan{
+				AST: syntax.MustParseExpr(tt.req.Selector),
 			}
 
 			ctx = user.InjectOrgID(context.Background(), "test-user")
@@ -818,6 +829,10 @@ func Test_store_SelectSample(t *testing.T) {
 				chunkMetrics: NilMetrics,
 			}
 
+			tt.req.Plan = &plan.QueryPlan{
+				AST: syntax.MustParseExpr(tt.req.Selector),
+			}
+
 			ctx = user.InjectOrgID(context.Background(), "test-user")
 			it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: tt.req})
 			if err != nil {
@@ -862,8 +877,9 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	defer it.Close()
 	for it.Next() {
-		v := mustParseLabels(it.Labels())["foo"]
-		require.NotEqual(t, "bazz", v)
+		l, err := syntax.ParseLabels(it.Labels())
+		require.NoError(t, err)
+		require.NotEqual(t, "bazz", l.Get("foo"))
 	}
 
 	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
@@ -873,15 +889,185 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	defer logit.Close()
 	for logit.Next() {
-		v := mustParseLabels(it.Labels())["foo"]
-		require.NotEqual(t, "bazz", v)
+		l, err := syntax.ParseLabels(it.Labels())
+		require.NoError(t, err)
+		require.NotEqual(t, "bazz", l.Get("foo"))
 	}
 	ids, err := s.SelectSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
 	require.NoError(t, err)
 	for _, id := range ids {
-		v := id.Labels["foo"]
-		require.NotEqual(t, "bazz", v)
+		require.NotEqual(t, "bazz", id.Get("foo"))
 	}
+}
+
+func Test_PipelineWrapper(t *testing.T) {
+	s := &LokiStore{
+		Store: storeFixture,
+		cfg: Config{
+			MaxChunkBatchSize: 10,
+		},
+		chunkMetrics: NilMetrics,
+	}
+	wrapper := &testPipelineWrapper{
+		pipeline: newMockPipeline(),
+	}
+
+	s.SetPipelineWrapper(wrapper)
+	ctx = user.InjectOrgID(context.Background(), "test-user")
+	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
+	if err != nil {
+		t.Errorf("store.SelectLogs() error = %v", err)
+		return
+	}
+	defer logit.Close()
+	for logit.Next() {
+		require.NoError(t, logit.Error()) // consume the iterator
+	}
+
+	require.Equal(t, "test-user", wrapper.tenant)
+	require.Equal(t, "{foo=~\"ba.*\"}", wrapper.query)
+	require.Equal(t, 28, wrapper.pipeline.sp.called) // we've passed every log line through the wrapper
+}
+
+type testPipelineWrapper struct {
+	query    string
+	pipeline *mockPipeline
+	tenant   string
+}
+
+func (t *testPipelineWrapper) Wrap(_ context.Context, pipeline lokilog.Pipeline, query, tenant string) lokilog.Pipeline {
+	t.tenant = tenant
+	t.query = query
+	t.pipeline.wrappedExtractor = pipeline
+	return t.pipeline
+}
+
+func newMockPipeline() *mockPipeline {
+	return &mockPipeline{
+		sp: &mockStreamPipeline{},
+	}
+}
+
+type mockPipeline struct {
+	wrappedExtractor lokilog.Pipeline
+	sp               *mockStreamPipeline
+}
+
+func (p *mockPipeline) ForStream(l labels.Labels) lokilog.StreamPipeline {
+	sp := p.wrappedExtractor.ForStream(l)
+	p.sp.wrappedSP = sp
+	return p.sp
+}
+
+func (p *mockPipeline) Reset() {}
+
+// A stub always returns the same data
+type mockStreamPipeline struct {
+	wrappedSP lokilog.StreamPipeline
+	called    int
+}
+
+func (p *mockStreamPipeline) ReferencedStructuredMetadata() bool {
+	return false
+}
+
+func (p *mockStreamPipeline) BaseLabels() lokilog.LabelsResult {
+	return p.wrappedSP.BaseLabels()
+}
+
+func (p *mockStreamPipeline) Process(ts int64, line []byte, lbs ...labels.Label) ([]byte, lokilog.LabelsResult, bool) {
+	p.called++
+	return p.wrappedSP.Process(ts, line, lbs...)
+}
+
+func (p *mockStreamPipeline) ProcessString(ts int64, line string, lbs ...labels.Label) (string, lokilog.LabelsResult, bool) {
+	p.called++
+	return p.wrappedSP.ProcessString(ts, line, lbs...)
+}
+
+func Test_SampleWrapper(t *testing.T) {
+	s := &LokiStore{
+		Store: storeFixture,
+		cfg: Config{
+			MaxChunkBatchSize: 10,
+		},
+		chunkMetrics: NilMetrics,
+	}
+	wrapper := &testExtractorWrapper{
+		extractor: newMockExtractor(),
+	}
+	s.SetExtractorWrapper(wrapper)
+
+	ctx = user.InjectOrgID(context.Background(), "test-user")
+	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil)})
+	if err != nil {
+		t.Errorf("store.SelectSamples() error = %v", err)
+		return
+	}
+	defer it.Close()
+	for it.Next() {
+		require.NoError(t, it.Error()) // consume the iterator
+	}
+
+	require.Equal(t, "test-user", wrapper.tenant)
+	require.Equal(t, "count_over_time({foo=~\"ba.*\"}[1s])", wrapper.query)
+	require.Equal(t, 28, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
+}
+
+type testExtractorWrapper struct {
+	query     string
+	tenant    string
+	extractor *mockExtractor
+}
+
+func (t *testExtractorWrapper) Wrap(_ context.Context, extractor lokilog.SampleExtractor, query, tenant string) lokilog.SampleExtractor {
+	t.tenant = tenant
+	t.query = query
+	t.extractor.wrappedExtractor = extractor
+	return t.extractor
+}
+
+func newMockExtractor() *mockExtractor {
+	return &mockExtractor{
+		sp: &mockStreamExtractor{},
+	}
+}
+
+type mockExtractor struct {
+	wrappedExtractor lokilog.SampleExtractor
+	sp               *mockStreamExtractor
+}
+
+func (p *mockExtractor) ForStream(l labels.Labels) lokilog.StreamSampleExtractor {
+	sp := p.wrappedExtractor.ForStream(l)
+	p.sp.wrappedSP = sp
+	return p.sp
+}
+
+func (p *mockExtractor) Reset() {}
+
+// A stub always returns the same data
+type mockStreamExtractor struct {
+	wrappedSP lokilog.StreamSampleExtractor
+	called    int
+}
+
+func (p *mockStreamExtractor) ReferencedStructuredMetadata() bool {
+	return false
+}
+
+func (p *mockStreamExtractor) BaseLabels() lokilog.LabelsResult {
+	return p.wrappedSP.BaseLabels()
+}
+
+func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs ...labels.Label) (float64, lokilog.LabelsResult, bool) {
+	p.called++
+	return p.wrappedSP.Process(ts, line, lbs...)
+}
+
+func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs ...labels.Label) (float64, lokilog.LabelsResult, bool) {
+	p.called++
+	return p.wrappedSP.ProcessString(ts, line, lbs...)
 }
 
 func Test_store_GetSeries(t *testing.T) {
@@ -1061,7 +1247,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)
 
-	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
 
 	// build and add chunks to the store
@@ -1083,7 +1269,8 @@ func TestStore_indexPrefixChange(t *testing.T) {
 	}
 
 	// get all the chunks from the first period
-	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate), newMatchers(fooLabelsWithName.String())...)
+	predicate := chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
+	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate), predicate)
 	require.NoError(t, err)
 	var totalChunks int
 	for _, chks := range chunks {
@@ -1131,7 +1318,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	// restart to load the updated schema
 	store.Stop()
-	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
+	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
 	defer store.Stop()
 
@@ -1153,7 +1340,8 @@ func TestStore_indexPrefixChange(t *testing.T) {
 	}
 
 	// get all the chunks from both the stores
-	chunks, _, err = store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
+	predicate = chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
+	chunks, _, err = store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate.Add(24*time.Hour)), predicate)
 	require.NoError(t, err)
 
 	totalChunks = 0
@@ -1238,7 +1426,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 			}
 
 			ResetBoltDBIndexClientsWithShipper()
-			store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
+			store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 			require.NoError(t, err)
 
 			// time ranges adding a chunk for each store and a chunk which overlaps both the stores
@@ -1280,13 +1468,14 @@ func TestStore_MultiPeriod(t *testing.T) {
 			store.Stop()
 
 			ResetBoltDBIndexClientsWithShipper()
-			store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
+			store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 			require.NoError(t, err)
 
 			defer store.Stop()
 
 			// get all the chunks from both the stores
-			chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
+			predicate := chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
+			chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), predicate)
 			require.NoError(t, err)
 			var totalChunks int
 			for _, chks := range chunks {
@@ -1307,13 +1496,17 @@ func TestStore_MultiPeriod(t *testing.T) {
 
 }
 
-func mustParseLabels(s string) map[string]string {
+func mustParseLabels(s string) []logproto.SeriesIdentifier_LabelsEntry {
 	l, err := marshal.NewLabelSet(s)
 	if err != nil {
-		log.Fatalf("Failed to parse %s", s)
+		panic(fmt.Sprintf("Failed to parse %s", s))
 	}
 
-	return l
+	result := make([]logproto.SeriesIdentifier_LabelsEntry, 0, len(l))
+	for k, v := range l {
+		result = append(result, logproto.SeriesIdentifier_LabelsEntry{Key: k, Value: v})
+	}
+	return result
 }
 
 func parseDate(in string) time.Time {
@@ -1385,6 +1578,9 @@ func Test_OverlappingChunks(t *testing.T) {
 		Direction: logproto.BACKWARD,
 		Start:     time.Unix(0, 0),
 		End:       time.Unix(0, 10),
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{foo="bar"}`),
+		},
 	}})
 	if err != nil {
 		t.Errorf("store.SelectLogs() error = %v", err)
@@ -1441,13 +1637,16 @@ func Test_GetSeries(t *testing.T) {
 		ctx            = user.InjectOrgID(context.Background(), "test-user")
 		expectedSeries = []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{"bar": "foo"},
+				Labels: logproto.MustNewSeriesEntries("bar", "foo"),
 			},
 			{
-				Labels: map[string]string{"foo": "bar", "buzz": "boo"},
+				Labels: logproto.MustNewSeriesEntries(
+					"buzz", "boo",
+					"foo", "bar",
+				),
 			},
 			{
-				Labels: map[string]string{"foo": "buzz"},
+				Labels: logproto.MustNewSeriesEntries("foo", "buzz"),
 			},
 		}
 	)
@@ -1479,7 +1678,10 @@ func Test_GetSeries(t *testing.T) {
 			},
 			[]logproto.SeriesIdentifier{
 				{
-					Labels: map[string]string{"foo": "bar", "buzz": "boo"},
+					Labels: logproto.MustNewSeriesEntries(
+						"buzz", "boo",
+						"foo", "bar",
+					),
 				},
 			},
 		},
@@ -1497,6 +1699,15 @@ func Test_GetSeries(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.req.Selector != "" {
+				tt.req.Plan = &plan.QueryPlan{
+					AST: syntax.MustParseExpr(tt.req.Selector),
+				}
+			} else {
+				tt.req.Plan = &plan.QueryPlan{
+					AST: nil,
+				}
+			}
 			series, err := store.SelectSeries(ctx, tt.req)
 			require.NoError(t, err)
 			require.Equal(t, tt.expectedSeries, series)
@@ -1568,7 +1779,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	}
 
 	ResetBoltDBIndexClientsWithShipper()
-	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
 
 	// time ranges adding a chunk for each store and a chunk which overlaps both the stores
@@ -1628,13 +1839,14 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	require.Len(t, tsdbFiles, 1)
 	require.Regexp(t, regexp.MustCompile(fmt.Sprintf(`\d{10}-%s-\d{19}\.tsdb\.gz`, ingesterName)), tsdbFiles[0].Name())
 
-	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
+	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
 
 	defer store.Stop()
 
 	// get all the chunks from both the stores
-	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(boltdbShipperStartDate), timeToModelTime(tsdbStartDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
+	predicate := chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
+	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(boltdbShipperStartDate), timeToModelTime(tsdbStartDate.Add(24*time.Hour)), predicate)
 	require.NoError(t, err)
 	var totalChunks int
 	for _, chks := range chunks {
@@ -1650,4 +1862,225 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 			require.True(t, ok)
 		}
 	}
+}
+
+func TestQueryReferencingStructuredMetadata(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "fake")
+	tempDir := t.TempDir()
+	store := getLocalStore(tempDir, cm)
+
+	schemaCfg := store.(*LokiStore).schemaCfg
+	periodcfg, err := schemaCfg.SchemaForTime(start)
+	require.NoError(t, err)
+
+	chunkfmt, headfmt, err := periodcfg.ChunkFormat()
+	require.NoError(t, err)
+
+	now := time.Now()
+	chkFrom := now.Add(-50 * time.Second)
+	chkThrough := now
+
+	// add some streams with and without structured metadata
+	for _, withStructuredMetadata := range []bool{true, false} {
+		stream := fmt.Sprintf(`{sm="%v"}`, withStructuredMetadata)
+		lbs, err := syntax.ParseLabels(stream)
+		if err != nil {
+			panic(err)
+		}
+		labelsBuilder := labels.NewBuilder(lbs)
+		labelsBuilder.Set(labels.MetricName, "logs")
+		metric := labelsBuilder.Labels()
+		fp := client.Fingerprint(lbs)
+
+		chunkEnc := chunkenc.NewMemChunk(chunkfmt, chunkenc.EncLZ4_4M, headfmt, 262144, 1572864)
+		for ts := chkFrom; !ts.After(chkThrough); ts = ts.Add(time.Second) {
+			entry := logproto.Entry{
+				Timestamp: ts,
+				Line:      fmt.Sprintf("ts=%d level=info", ts.Unix()),
+			}
+
+			if withStructuredMetadata {
+				entry.StructuredMetadata = push.LabelsAdapter{
+					{
+						Name:  "fizz",
+						Value: "buzz",
+					},
+					{
+						Name:  "num",
+						Value: "1",
+					},
+				}
+			}
+			require.NoError(t, chunkEnc.Append(&entry))
+		}
+
+		require.NoError(t, chunkEnc.Close())
+		from, to := chunkEnc.Bounds()
+		c := chunk.NewChunk("fake", fp, metric, chunkenc.NewFacade(chunkEnc, 0, 0), model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(to.UnixNano()))
+		if err := c.Encode(); err != nil {
+			panic(err)
+		}
+		require.NoError(t, store.Put(ctx, []chunk.Chunk{c}))
+
+		// verify the data by querying it
+		it, err := store.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+			Selector:  stream,
+			Limit:     1000,
+			Direction: logproto.FORWARD,
+			Start:     chkFrom,
+			End:       chkThrough.Add(time.Minute),
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(stream),
+			},
+		}})
+		require.NoError(t, err)
+
+		for ts := chkFrom; !ts.After(chkThrough); ts = ts.Add(time.Second) {
+			require.True(t, it.Next())
+			expectedEntry := logproto.Entry{
+				Timestamp: ts.Truncate(0),
+				Line:      fmt.Sprintf("ts=%d level=info", ts.Unix()),
+			}
+
+			if withStructuredMetadata {
+				expectedEntry.StructuredMetadata = push.LabelsAdapter{
+					{
+						Name:  "fizz",
+						Value: "buzz",
+					},
+					{
+						Name:  "num",
+						Value: "1",
+					},
+				}
+			}
+			require.Equal(t, expectedEntry, it.Entry())
+		}
+
+		require.False(t, it.Next())
+		require.NoError(t, it.Close())
+	}
+
+	// test cases for logs queries
+	t.Run("logs queries", func(t *testing.T) {
+		for _, tc := range []struct {
+			name  string
+			query string
+
+			expectedReferencedStructuredMetadata bool
+		}{
+			{
+				name:  "logs not having structured metadata",
+				query: `{sm="false"}`,
+			},
+			{
+				name:  "not referencing structured metadata in logs having structured metadata",
+				query: `{sm="true"}`,
+			},
+			{
+				name:  "referencing a parsed field",
+				query: `{sm="true"} | logfmt | level="info"`,
+			},
+			{
+				name:  "referencing structured metadata with label filter",
+				query: `{sm="true"} | fizz="buzz"`,
+
+				expectedReferencedStructuredMetadata: true,
+			},
+			{
+				name:  "referencing structured metadata to drop it",
+				query: `{sm="true"} | drop fizz`,
+
+				expectedReferencedStructuredMetadata: true,
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				ctx := user.InjectOrgID(context.Background(), "fake")
+				_, ctx = stats.NewContext(ctx)
+				it, err := store.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+					Selector:  tc.query,
+					Limit:     1000,
+					Direction: logproto.FORWARD,
+					Start:     chkFrom,
+					End:       chkThrough.Add(time.Minute),
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(tc.query),
+					},
+				}})
+				require.NoError(t, err)
+				numEntries := int64(0)
+				for it.Next() {
+					numEntries++
+				}
+				require.NoError(t, it.Close())
+				require.Equal(t, chkThrough.Unix()-chkFrom.Unix()+1, numEntries)
+
+				statsCtx := stats.FromContext(ctx)
+				require.Equal(t, tc.expectedReferencedStructuredMetadata, statsCtx.Result(0, 0, 0).QueryReferencedStructuredMetadata())
+			})
+		}
+	})
+
+	// test cases for metric queries
+	t.Run("metric queries", func(t *testing.T) {
+		for _, tc := range []struct {
+			name  string
+			query string
+
+			expectedReferencedStructuredMetadata bool
+		}{
+			{
+				name:  "logs not having structured metadata",
+				query: `sum(count_over_time({sm="false"}[1m]))`,
+			},
+			{
+				name:  "not referencing structured metadata in logs having structured metadata",
+				query: `sum(count_over_time({sm="true"}[1m]))`,
+			},
+			{
+				name:  "referencing a parsed field",
+				query: `sum by (level) (count_over_time({sm="true"} | logfmt | level="info"[1m]))`,
+			},
+			{
+				name:  "referencing structured metadata with label filter",
+				query: `sum(count_over_time({sm="true"} | fizz="buzz"[1m]))`,
+
+				expectedReferencedStructuredMetadata: true,
+			},
+			{
+				name:  "referencing structured metadata in by aggregation clause",
+				query: `sum by (fizz) (count_over_time({sm="true"}[1m]))`,
+
+				expectedReferencedStructuredMetadata: true,
+			},
+			{
+				name:  "referencing structured metadata in without aggregation clause",
+				query: `sum without (fizz) (count_over_time({sm="true"}[1m]))`,
+
+				expectedReferencedStructuredMetadata: true,
+			},
+			{
+				name:  "referencing structured metadata in unwrap",
+				query: `sum(sum_over_time({sm="true"} | unwrap num[1m]))`,
+
+				expectedReferencedStructuredMetadata: true,
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				ctx := user.InjectOrgID(context.Background(), "fake")
+				_, ctx = stats.NewContext(ctx)
+				it, err := store.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery(tc.query, chkFrom, chkThrough.Add(time.Minute), nil)})
+				require.NoError(t, err)
+				numSamples := int64(0)
+				for it.Next() {
+					numSamples++
+				}
+				require.NoError(t, it.Close())
+				require.Equal(t, chkThrough.Unix()-chkFrom.Unix()+1, numSamples)
+
+				statsCtx := stats.FromContext(ctx)
+				require.Equal(t, tc.expectedReferencedStructuredMetadata, statsCtx.Result(0, 0, 0).QueryReferencedStructuredMetadata())
+			})
+		}
+	})
 }

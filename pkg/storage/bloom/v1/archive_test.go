@@ -11,17 +11,18 @@ import (
 )
 
 func TestArchive(t *testing.T) {
+	t.Parallel()
 	// for writing files to two dirs for comparison and ensuring they're equal
 	dir1 := t.TempDir()
 	dir2 := t.TempDir()
 
 	numSeries := 100
 	numKeysPerSeries := 10000
-	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0x0000, 0xffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			schema: Schema{
+			Schema: Schema{
 				version:  DefaultSchemaVersion,
 				encoding: chunkenc.EncSnappy,
 			},

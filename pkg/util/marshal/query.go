@@ -401,7 +401,7 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream, encodeFlags httpre
 		s.WriteMore()
 		s.WriteStringWithHTMLEscaped(e.Line)
 
-		if categorizeLabels && (len(e.StructuredMetadata) > 0 || len(e.Parsed) > 0) {
+		if categorizeLabels {
 			s.WriteMore()
 			s.WriteObjectStart()
 

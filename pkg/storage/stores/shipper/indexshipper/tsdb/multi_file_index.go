@@ -35,6 +35,15 @@ type IndexIter interface {
 type IndexSlice []Index
 
 func (xs IndexSlice) For(ctx context.Context, maxConcurrent int, fn func(context.Context, Index) error) error {
+	if len(xs) == 0 {
+		return nil
+	}
+
+	// shortcut; if there's only one slice, there's no need for bounded concurrency
+	if len(xs) == 1 {
+		return fn(ctx, xs[0])
+	}
+
 	g, ctx := errgroup.WithContext(ctx)
 	if maxConcurrent == 0 {
 		panic("maxConcurrent cannot be 0, IndexIter is being called with a maxConcurrent of 0")
@@ -122,7 +131,7 @@ func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model
 
 }
 
-func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	acc := newResultAccumulator(func(xs []interface{}) (interface{}, error) {
 		if res == nil {
 			res = ChunkRefsPool.Get()
@@ -156,7 +165,7 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 		from,
 		through,
 		func(ctx context.Context, idx Index) error {
-			got, err := idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+			got, err := idx.GetChunkRefs(ctx, userID, from, through, nil, fpFilter, matchers...)
 			if err != nil {
 				return err
 			}
@@ -178,7 +187,7 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 
 }
 
-func (i *MultiIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (i *MultiIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
 	acc := newResultAccumulator(func(xs []interface{}) (interface{}, error) {
 		if res == nil {
 			res = SeriesPool.Get()
@@ -208,7 +217,7 @@ func (i *MultiIndex) Series(ctx context.Context, userID string, from, through mo
 		from,
 		through,
 		func(ctx context.Context, idx Index) error {
-			got, err := idx.Series(ctx, userID, from, through, nil, shard, matchers...)
+			got, err := idx.Series(ctx, userID, from, through, nil, fpFilter, matchers...)
 			if err != nil {
 				return err
 			}
@@ -345,14 +354,14 @@ func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, throu
 	return merged.([]string), nil
 }
 
-func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	return i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
-		return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
+		return idx.Stats(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, matchers...)
 	})
 }
 
-func (i *MultiIndex) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
+func (i *MultiIndex) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
 	return i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
-		return idx.Volume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
+		return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 	})
 }

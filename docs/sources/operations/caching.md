@@ -1,7 +1,7 @@
 ---
 title: Caching 
 menuTitle: Caching 
-description: Enable and configure memcached for caching. 
+description: Describes how to enable and configure memcached to speed query performance. 
 weight: 
 keywords:
   - memcached

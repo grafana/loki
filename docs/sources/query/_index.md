@@ -1,7 +1,7 @@
 ---
 title: "LogQL: Log query language"
 menuTItle: Query
-description: LogQL, Loki's query language for logs.
+description: Provides a reference topic for LogQL, Loki's query language for logs.
 aliases: 
 - ./logql
 weight: 600

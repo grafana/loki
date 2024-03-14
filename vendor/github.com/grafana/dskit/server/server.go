@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	_ "github.com/grafana/pyroscope-go/godeltaprof/http/pprof" // anonymous import to get godelatprof handlers registered
+
 	gokit_log "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
@@ -92,10 +94,11 @@ type Config struct {
 	HTTPTLSConfig TLSConfig `yaml:"http_tls_config"`
 	GRPCTLSConfig TLSConfig `yaml:"grpc_tls_config"`
 
-	RegisterInstrumentation               bool `yaml:"register_instrumentation"`
-	ReportGRPCCodesInInstrumentationLabel bool `yaml:"report_grpc_codes_in_instrumentation_label_enabled"`
-	ExcludeRequestInLog                   bool `yaml:"-"`
-	DisableRequestSuccessLog              bool `yaml:"-"`
+	RegisterInstrumentation                  bool `yaml:"register_instrumentation"`
+	ReportGRPCCodesInInstrumentationLabel    bool `yaml:"report_grpc_codes_in_instrumentation_label_enabled"`
+	ReportHTTP4XXCodesInInstrumentationLabel bool `yaml:"-"`
+	ExcludeRequestInLog                      bool `yaml:"-"`
+	DisableRequestSuccessLog                 bool `yaml:"-"`
 
 	ServerGracefulShutdownTimeout time.Duration `yaml:"graceful_shutdown_timeout"`
 	HTTPServerReadTimeout         time.Duration `yaml:"http_server_read_timeout"`
@@ -350,6 +353,22 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 
 	level.Info(logger).Log("msg", "server listening on addresses", "http", httpListener.Addr(), "grpc", grpcListener.Addr())
 
+	// Setup HTTP server
+	var router *mux.Router
+	if cfg.Router != nil {
+		router = cfg.Router
+	} else {
+		router = mux.NewRouter()
+	}
+	if cfg.PathPrefix != "" {
+		// Expect metrics and pprof handlers to be prefixed with server's path prefix.
+		// e.g. /loki/metrics or /loki/debug/pprof
+		router = router.PathPrefix(cfg.PathPrefix).Subrouter()
+	}
+	if cfg.RegisterInstrumentation {
+		RegisterInstrumentationWithGatherer(router, gatherer)
+	}
+
 	// Setup gRPC server
 	serverLog := middleware.GRPCServerLog{
 		Log:                      logger,
@@ -363,6 +382,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	grpcMiddleware := []grpc.UnaryServerInterceptor{
 		serverLog.UnaryServerInterceptor,
 		otgrpc.OpenTracingServerInterceptor(opentracing.GlobalTracer()),
+		middleware.HTTPGRPCTracingInterceptor(router), // This must appear after the OpenTracingServerInterceptor.
 		middleware.UnaryServerInstrumentInterceptor(metrics.RequestDuration, reportGRPCStatusesOptions...),
 	}
 	grpcMiddleware = append(grpcMiddleware, cfg.GRPCMiddleware...)
@@ -418,22 +438,6 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	}
 	grpcServer := grpc.NewServer(grpcOptions...)
 	grpcOnHTTPServer := grpc.NewServer(grpcOptions...)
-
-	// Setup HTTP server
-	var router *mux.Router
-	if cfg.Router != nil {
-		router = cfg.Router
-	} else {
-		router = mux.NewRouter()
-	}
-	if cfg.PathPrefix != "" {
-		// Expect metrics and pprof handlers to be prefixed with server's path prefix.
-		// e.g. /loki/metrics or /loki/debug/pprof
-		router = router.PathPrefix(cfg.PathPrefix).Subrouter()
-	}
-	if cfg.RegisterInstrumentation {
-		RegisterInstrumentationWithGatherer(router, gatherer)
-	}
 
 	sourceIPs, err := middleware.NewSourceIPs(cfg.LogSourceIPsHeader, cfg.LogSourceIPsRegex)
 	if err != nil {
@@ -547,9 +551,12 @@ func (s *Server) Run() error {
 		}
 	}()
 
-	// Setup gRPC server
-	// for HTTP over gRPC, ensure we don't double-count the middleware
-	httpgrpc.RegisterHTTPServer(s.GRPC, httpgrpc_server.NewServer(s.HTTP))
+	serverOptions := make([]httpgrpc_server.Option, 0, 1)
+	if s.cfg.ReportHTTP4XXCodesInInstrumentationLabel {
+		serverOptions = append(serverOptions, httpgrpc_server.WithReturn4XXErrors)
+	}
+	// Setup gRPC server for HTTP over gRPC, ensure we don't double-count the middleware
+	httpgrpc.RegisterHTTPServer(s.GRPC, httpgrpc_server.NewServer(s.HTTP, serverOptions...))
 
 	go func() {
 		err := s.GRPC.Serve(s.grpcListener)

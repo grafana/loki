@@ -18,6 +18,7 @@ func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent)
 	}
 
 	labels := model.LabelSet{
+		model.LabelName("__aws_log_type"):             model.LabelValue("cloudwatch"),
 		model.LabelName("__aws_cloudwatch_log_group"): model.LabelValue(data.LogGroup),
 		model.LabelName("__aws_cloudwatch_owner"):     model.LabelValue(data.Owner),
 	}

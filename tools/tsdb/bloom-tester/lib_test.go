@@ -16,7 +16,7 @@ func BenchmarkSBFTestAndAdd(b *testing.B) {
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
 			"token=3skip0_error=1%_indexchunks=true",
-			*three,
+			three,
 			true,
 			onePctError,
 		)
@@ -42,7 +42,7 @@ func BenchmarkSBFAdd(b *testing.B) {
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
 			"token=3skip0_error=1%_indexchunks=true",
-			*three,
+			three,
 			true,
 			onePctError,
 		)
@@ -68,7 +68,7 @@ func BenchmarkSBFSeparateTestAndAdd(b *testing.B) {
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
 			"token=3skip0_error=1%_indexchunks=true",
-			*three,
+			three,
 			true,
 			onePctError,
 		)
@@ -94,7 +94,7 @@ func BenchmarkSBFTestAndAddWithLRU(b *testing.B) {
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
 			"token=3skip0_error=1%_indexchunks=true",
-			*three,
+			three,
 			true,
 			onePctError,
 		)
@@ -125,7 +125,7 @@ func BenchmarkSBFSeparateTestAndAddWithLRU(b *testing.B) {
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
 			"token=3skip0_error=1%_indexchunks=true",
-			*three,
+			three,
 			true,
 			onePctError,
 		)
@@ -158,7 +158,7 @@ func BenchmarkSBFSeparateTestAndAddWithMap(b *testing.B) {
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
 			"token=3skip0_error=1%_indexchunks=true",
-			*three,
+			three,
 			true,
 			onePctError,
 		)

@@ -100,6 +100,7 @@ common:
 			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
+			assert.EqualValues(t, "/opt/loki/blooms", config.StorageConfig.BloomShipperConfig.WorkingDirectory)
 		})
 
 		t.Run("accepts paths both with and without trailing slash", func(t *testing.T) {
@@ -111,6 +112,7 @@ common:
 			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
+			assert.EqualValues(t, "/opt/loki/blooms", config.StorageConfig.BloomShipperConfig.WorkingDirectory)
 		})
 
 		t.Run("does not rewrite custom (non-default) paths passed via config file", func(t *testing.T) {
@@ -937,6 +939,7 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, config.QueryRange.StatsCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
+			assert.EqualValues(t, "frontend.index-stats-results-cache.", config.QueryRange.StatsCacheConfig.CacheConfig.Prefix)
 			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
@@ -950,17 +953,20 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.StatsCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.index-stats-results-cache.", config.QueryRange.StatsCacheConfig.CacheConfig.Prefix)
 			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
 		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.EqualValues(t, "frontend.index-stats-results-cache.", config.QueryRange.StatsCacheConfig.CacheConfig.Prefix)
 			assert.True(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
 		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.StatsCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.index-stats-results-cache.", config.QueryRange.StatsCacheConfig.CacheConfig.Prefix)
 			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 	})
@@ -976,6 +982,7 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, config.QueryRange.VolumeCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
+			assert.EqualValues(t, "frontend.volume-results-cache.", config.QueryRange.VolumeCacheConfig.CacheConfig.Prefix)
 			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
@@ -989,18 +996,150 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.VolumeCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.volume-results-cache.", config.QueryRange.VolumeCacheConfig.CacheConfig.Prefix)
 			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
 		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.EqualValues(t, "frontend.volume-results-cache.", config.QueryRange.VolumeCacheConfig.CacheConfig.Prefix)
 			assert.True(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
 		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.VolumeCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.volume-results-cache.", config.QueryRange.VolumeCacheConfig.CacheConfig.Prefix)
 			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+	})
+
+	t.Run("for the series results cache config", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  series_results_cache:
+    cache:
+      redis:
+        endpoint: endpoint.redis.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "endpoint.redis.org", config.QueryRange.SeriesCacheConfig.CacheConfig.Redis.Endpoint)
+			assert.EqualValues(t, "frontend.series-results-cache.", config.QueryRange.SeriesCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.SeriesCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  series_results_cache:
+    cache:
+      memcached_client:
+        host: memcached.host.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.SeriesCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.series-results-cache.", config.QueryRange.SeriesCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.SeriesCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.True(t, config.QueryRange.SeriesCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+			assert.EqualValues(t, "frontend.series-results-cache.", config.QueryRange.SeriesCacheConfig.CacheConfig.Prefix)
+		})
+
+		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.SeriesCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.series-results-cache.", config.QueryRange.SeriesCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.SeriesCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+	})
+
+	t.Run("for the instant-metric results cache config", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  instant_metric_results_cache:
+    cache:
+      redis:
+        endpoint: endpoint.redis.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "endpoint.redis.org", config.QueryRange.InstantMetricCacheConfig.CacheConfig.Redis.Endpoint)
+			assert.EqualValues(t, "frontend.instant-metric-results-cache.", config.QueryRange.InstantMetricCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.InstantMetricCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  instant_metric_results_cache:
+    cache:
+      memcached_client:
+        host: memcached.host.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.InstantMetricCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.instant-metric-results-cache.", config.QueryRange.InstantMetricCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.InstantMetricCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.True(t, config.QueryRange.InstantMetricCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+			assert.EqualValues(t, "frontend.instant-metric-results-cache.", config.QueryRange.InstantMetricCacheConfig.CacheConfig.Prefix)
+		})
+
+		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.InstantMetricCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.instant-metric-results-cache.", config.QueryRange.InstantMetricCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.InstantMetricCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+	})
+
+	t.Run("for the labels results cache config", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  label_results_cache:
+    cache:
+      redis:
+        endpoint: endpoint.redis.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "endpoint.redis.org", config.QueryRange.LabelsCacheConfig.CacheConfig.Redis.Endpoint)
+			assert.EqualValues(t, "frontend.label-results-cache.", config.QueryRange.LabelsCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.LabelsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  label_results_cache:
+    cache:
+      memcached_client:
+        host: memcached.host.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.LabelsCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.label-results-cache.", config.QueryRange.LabelsCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.LabelsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.True(t, config.QueryRange.LabelsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+			assert.EqualValues(t, "frontend.label-results-cache.", config.QueryRange.LabelsCacheConfig.CacheConfig.Prefix)
+		})
+
+		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.LabelsCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.label-results-cache.", config.QueryRange.LabelsCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.LabelsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 	})
 }

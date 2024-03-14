@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -83,7 +84,14 @@ func (s SelectLogParams) String() string {
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectLogParams) LogSelector() (syntax.LogSelectorExpr, error) {
-	return syntax.ParseLogSelector(s.Selector, true)
+	if s.QueryRequest.Plan == nil {
+		return nil, errors.New("query plan is empty")
+	}
+	expr, ok := s.QueryRequest.Plan.AST.(syntax.LogSelectorExpr)
+	if !ok {
+		return nil, errors.New("only log selector is supported")
+	}
+	return expr, nil
 }
 
 type SelectSampleParams struct {
@@ -93,13 +101,20 @@ type SelectSampleParams struct {
 // Expr returns the SampleExpr from the SelectSampleParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectSampleParams) Expr() (syntax.SampleExpr, error) {
-	return syntax.ParseSampleExpr(s.Selector)
+	if s.SampleQueryRequest.Plan == nil {
+		return nil, errors.New("query plan is empty")
+	}
+	expr, ok := s.SampleQueryRequest.Plan.AST.(syntax.SampleExpr)
+	if !ok {
+		return nil, errors.New("only sample expression supported")
+	}
+	return expr, nil
 }
 
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectSampleParams) LogSelector() (syntax.LogSelectorExpr, error) {
-	expr, err := syntax.ParseSampleExpr(s.Selector)
+	expr, err := s.Expr()
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +207,8 @@ func (q *query) resultLength(res promql_parser.Value) int {
 		return r.TotalSamples()
 	case logqlmodel.Streams:
 		return int(r.Lines())
+	case ProbabilisticQuantileMatrix:
+		return len(r)
 	default:
 		// for `scalar` or `string` or any other return type, we just return `0` as result length.
 		return 0
@@ -327,21 +344,37 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if err != nil {
 		return nil, err
 	}
+
 	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
 	}
 	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
-	maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
-	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-
-	seriesIndex := map[uint64]*promql.Series{}
-
 	next, ts, r := stepEvaluator.Next()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
+
+	if next && r != nil {
+		switch vec := r.(type) {
+		case SampleVector:
+			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
+			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+			return q.JoinSampleVector(next, ts, vec, stepEvaluator, maxSeries)
+		case ProbabilisticQuantileVector:
+			return MergeQuantileSketchVector(next, vec, stepEvaluator, q.params)
+		default:
+			return nil, fmt.Errorf("unsupported result type: %T", r)
+		}
+	}
+	return nil, nil
+}
+
+func (q *query) JoinSampleVector(next bool, ts int64, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
+
+	seriesIndex := map[uint64]*promql.Series{}
+
 	vec := promql.Vector{}
 	if next {
 		vec = r.SampleVector()

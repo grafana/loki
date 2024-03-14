@@ -1,7 +1,7 @@
 ---
 title: Zone aware ingesters
 menuTitle:  
-description: How to migrate from a single ingester statefulset to three zone aware ingester StatefulSets
+description: Describes how to migrate from a single ingester StatefulSet to three zone aware ingester StatefulSets
 weight:
 ---
 

@@ -512,7 +512,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 
 	// do the initial compaction
 	if err := c.RunCompaction(ctx, false); err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to run compaction", err)
+		level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
 	}
 
 	c.wg.Add(1)
@@ -526,7 +526,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 			select {
 			case <-ticker.C:
 				if err := c.RunCompaction(ctx, false); err != nil {
-					level.Error(util_log.Logger).Log("msg", "failed to run compaction", err)
+					level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
 				}
 			case <-ctx.Done():
 				return
@@ -539,7 +539,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 		go func() {
 			defer c.wg.Done()
 			if err := c.RunCompaction(ctx, true); err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to apply retention", err)
+				level.Error(util_log.Logger).Log("msg", "failed to apply retention", "err", err)
 			}
 
 			ticker := time.NewTicker(c.cfg.ApplyRetentionInterval)
@@ -549,7 +549,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 				select {
 				case <-ticker.C:
 					if err := c.RunCompaction(ctx, true); err != nil {
-						level.Error(util_log.Logger).Log("msg", "failed to apply retention", err)
+						level.Error(util_log.Logger).Log("msg", "failed to apply retention", "err", err)
 					}
 				case <-ctx.Done():
 					return
@@ -578,7 +578,7 @@ func (c *Compactor) stopping(_ error) error {
 }
 
 func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRetention bool) error {
-	schemaCfg, ok := schemaPeriodForTable(c.schemaConfig, tableName)
+	schemaCfg, ok := SchemaPeriodForTable(c.schemaConfig, tableName)
 	if !ok {
 		level.Error(util_log.Logger).Log("msg", "skipping compaction since we can't find schema for table", "table", tableName)
 		return nil
@@ -642,6 +642,10 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
 		return err
+	}
+
+	if !applyRetention {
+		c.metrics.skippedCompactingLockedTables.WithLabelValues(tableName).Set(0)
 	}
 	return nil
 }
@@ -716,7 +720,7 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) (err
 	}
 
 	// process most recent tables first
-	sortTablesByRange(tables)
+	SortTablesByRange(tables)
 
 	// apply passed in compaction limits
 	if c.cfg.SkipLatestNTables <= len(tables) {
@@ -862,7 +866,7 @@ func (c *Compactor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c.ring.ServeHTTP(w, req)
 }
 
-func sortTablesByRange(tables []string) {
+func SortTablesByRange(tables []string) {
 	tableRanges := make(map[string]model.Interval)
 	for _, table := range tables {
 		tableRanges[table] = retention.ExtractIntervalFromTableName(table)
@@ -872,10 +876,9 @@ func sortTablesByRange(tables []string) {
 		// less than if start time is after produces a most recent first sort order
 		return tableRanges[tables[i]].Start.After(tableRanges[tables[j]].Start)
 	})
-
 }
 
-func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {
+func SchemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {
 	tableInterval := retention.ExtractIntervalFromTableName(tableName)
 	schemaCfg, err := cfg.SchemaForTime(tableInterval.Start)
 	if err != nil || schemaCfg.IndexTables.TableFor(tableInterval.Start) != tableName {

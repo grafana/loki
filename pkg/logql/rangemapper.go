@@ -57,6 +57,20 @@ type RangeMapper struct {
 	splitByInterval time.Duration
 	metrics         *MapperMetrics
 	stats           *MapperStats
+
+	splitAlignTs time.Time
+}
+
+// NewRangeMapperWithSplitAlign is similar to `NewRangeMapper` except it accepts additional `splitAlign` argument and used to
+// align the subqueries generated according to that. Look at `rangeSplitAlign` method for more information.
+func NewRangeMapperWithSplitAlign(interval time.Duration, splitAlign time.Time, metrics *MapperMetrics, stats *MapperStats) (RangeMapper, error) {
+	rm, err := NewRangeMapper(interval, metrics, stats)
+	if err != nil {
+		return RangeMapper{}, err
+	}
+	rm.splitAlignTs = splitAlign
+
+	return rm, nil
 }
 
 // NewRangeMapper creates a new RangeMapper instance with the given duration as
@@ -120,7 +134,7 @@ func (m RangeMapper) Parse(expr syntax.Expr) (bool, syntax.Expr, error) {
 // is pushed down to the downstream expression.
 func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.VectorAggregationExpr, recorder *downstreamRecorder) (syntax.SampleExpr, error) {
 	// immediately clone the passed expr to avoid mutating the original
-	expr = clone(expr)
+	expr = syntax.MustClone(expr)
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		return m.mapVectorAggregationExpr(e, recorder)
@@ -277,7 +291,7 @@ func (m RangeMapper) vectorAggrWithRangeDownstreams(expr *syntax.RangeAggregatio
 // appendDownstream adds expression expr with a range interval 'interval' and offset 'offset' to the downstreams list.
 // Returns the updated downstream ConcatSampleExpr.
 func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, interval time.Duration, offset time.Duration) *ConcatSampleExpr {
-	sampleExpr := clone(expr)
+	sampleExpr := syntax.MustClone(expr)
 	sampleExpr.Walk(func(e syntax.Expr) {
 		switch concrete := e.(type) {
 		case *syntax.RangeAggregationExpr:
@@ -327,6 +341,77 @@ func (m RangeMapper) getOriginalOffset(expr syntax.SampleExpr) (offset time.Dura
 // rangeInterval should be greater than m.splitByInterval, otherwise the resultant expression
 // will have an unnecessary aggregation operation
 func (m RangeMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInterval time.Duration, recorder *downstreamRecorder) syntax.SampleExpr {
+	if m.splitAlignTs.IsZero() {
+		return m.rangeSplit(expr, rangeInterval, recorder)
+	}
+	return m.rangeSplitAlign(expr, rangeInterval, recorder)
+}
+
+// rangeSplitAlign try to split given `rangeInterval` into units of `m.splitByInterval` by making sure `rangeInterval` is aligned with `m.splitByInterval` for as much as the units as possible.
+// Consider following example with real use case.
+// Instant Query: `sum(rate({foo="bar"}[3h])`
+// execTs: 12:34:00
+// splitBy: 1h
+// Given above parameters, queries will be split into following
+// 1. sum(rate({foo="bar"}[34m]))
+// 2. sum(rate({foo="bar"}[1h] offset 34m))
+// 3. sum(rate({foo="bar"}[1h] offset 1h34m))
+// 4. sum(rate({foo="bar"}[26m] offset 2h34m))
+func (m RangeMapper) rangeSplitAlign(
+	expr syntax.SampleExpr, rangeInterval time.Duration, recorder *downstreamRecorder,
+) syntax.SampleExpr {
+	if rangeInterval <= m.splitByInterval {
+		return expr
+	}
+
+	originalOffset, err := m.getOriginalOffset(expr)
+	if err != nil {
+		return expr
+	}
+
+	align := m.splitAlignTs.Sub(m.splitAlignTs.Truncate(m.splitByInterval)) // say, 12:34:00 - 12:00:00(truncated) = 34m
+
+	if align == 0 {
+		return m.rangeSplit(expr, rangeInterval, recorder) // Don't have to align
+	}
+
+	var (
+		newRng = align
+
+		// TODO(kavi): If the originalOffset is non-zero, there may be a edge case, where subqueries generated won't be aligned correctly. Handle this edge case in separate PR.
+		newOffset            = originalOffset
+		downstreams          *ConcatSampleExpr
+		pendingRangeInterval = rangeInterval
+		splits               = 0
+	)
+
+	// first subquery
+	downstreams = appendDownstream(downstreams, expr, newRng, newOffset)
+	splits++
+
+	newOffset += align // e.g: offset 34m
+	pendingRangeInterval -= newRng
+	newRng = m.splitByInterval // [1h]
+
+	// Rest of the subqueries.
+	for pendingRangeInterval > 0 {
+		if pendingRangeInterval < m.splitByInterval {
+			newRng = pendingRangeInterval // last subquery
+		}
+		downstreams = appendDownstream(downstreams, expr, newRng, newOffset)
+		newOffset += m.splitByInterval
+		pendingRangeInterval -= newRng
+		splits++
+	}
+
+	// update stats and metrics
+	m.stats.AddSplitQueries(splits)
+	recorder.Add(splits, MetricsKey)
+
+	return downstreams
+}
+
+func (m RangeMapper) rangeSplit(expr syntax.SampleExpr, rangeInterval time.Duration, recorder *downstreamRecorder) syntax.SampleExpr {
 	splitCount := int(math.Ceil(float64(rangeInterval) / float64(m.splitByInterval)))
 	if splitCount <= 1 {
 		return expr
@@ -490,18 +575,4 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 	default:
 		return false
 	}
-}
-
-// clone returns a copy of the given sample expression
-// This is needed whenever we want to modify the existing query tree.
-// clone is identical to syntax.Expr.Clone() but with the additional type
-// casting for syntax.SampleExpr.
-func clone(expr syntax.SampleExpr) syntax.SampleExpr {
-	e, err := syntax.ParseSampleExpr(expr.String())
-	if err != nil {
-		panic(
-			errors.Wrapf(err, "error cloning query: %s", expr.String()),
-		)
-	}
-	return e
 }

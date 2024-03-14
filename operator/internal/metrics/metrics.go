@@ -51,6 +51,14 @@ var (
 		},
 		[]string{"size", "stack_id"},
 	)
+
+	lokistackWarningsCount = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lokistack_warnings_count",
+			Help: "Counts the number of warnings set on a LokiStack.",
+		},
+		[]string{"reason", "stack_id"},
+	)
 )
 
 // RegisterMetricCollectors registers the prometheus collectors with the k8 default metrics
@@ -60,6 +68,7 @@ func RegisterMetricCollectors() {
 		userDefinedLimitsMetric,
 		globalStreamLimitMetric,
 		averageTenantStreamLimitMetric,
+		lokistackWarningsCount,
 	}
 
 	for _, collector := range metricCollectors {
@@ -104,6 +113,17 @@ func Collect(spec *lokiv1.LokiStackSpec, stackName string) {
 		setGlobalStreamLimitMetric(size, stackName, globalRate)
 		setAverageTenantStreamLimitMetric(size, stackName, tenantRate)
 	}
+
+	if len(spec.Storage.Schemas) > 0 && spec.Storage.Schemas[len(spec.Storage.Schemas)-1].Version != lokiv1.ObjectStorageSchemaV13 {
+		setLokistackSchemaUpgradesRequired(stackName, true)
+	}
+}
+
+func setLokistackSchemaUpgradesRequired(identifier string, active bool) {
+	lokistackWarningsCount.With(prometheus.Labels{
+		"reason":   string(lokiv1.ReasonStorageNeedsSchemaUpdate),
+		"stack_id": identifier,
+	}).Set(boolValue(active))
 }
 
 func setDeploymentMetric(size lokiv1.LokiStackSizeType, identifier string, active bool) {
@@ -142,7 +162,7 @@ func boolValue(value bool) float64 {
 	return 0
 }
 
-func streamRate(tenantLimits map[string]lokiv1.LimitsTemplateSpec, ingesters int32) float64 {
+func streamRate(tenantLimits map[string]lokiv1.PerTenantLimitsTemplateSpec, ingesters int32) float64 {
 	var tenants, tenantStreamLimit int32 = 0, 0
 
 	for _, tenant := range tenantLimits {

@@ -8,7 +8,6 @@ package consulagent
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net"
 	"net/http"
 	"strconv"
@@ -527,9 +526,9 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 		// since the service may be registered remotely through a different node.
 		var addr string
 		if srvCheck.Service.Address != "" {
-			addr = net.JoinHostPort(srvCheck.Service.Address, fmt.Sprintf("%d", srvCheck.Service.Port))
+			addr = net.JoinHostPort(srvCheck.Service.Address, strconv.Itoa(srvCheck.Service.Port))
 		} else {
-			addr = net.JoinHostPort(member.Addr, fmt.Sprintf("%d", srvCheck.Service.Port))
+			addr = net.JoinHostPort(member.Addr, strconv.Itoa(srvCheck.Service.Port))
 		}
 
 		labels := model.LabelSet{
@@ -560,7 +559,7 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 		// Add all key/value pairs from the service's tagged addresses as their own labels.
 		for k, v := range srvCheck.Service.TaggedAddresses {
 			name := strutil.SanitizeLabelName(k)
-			address := fmt.Sprintf("%s:%d", v.Address, v.Port)
+			address := net.JoinHostPort(v.Address, strconv.Itoa(v.Port))
 			labels[taggedAddressesLabel+model.LabelName(name)] = model.LabelValue(address)
 		}
 

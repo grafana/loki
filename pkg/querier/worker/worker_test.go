@@ -88,7 +88,7 @@ func getConcurrentProcessors(w *querierWorker) int {
 
 type mockProcessor struct{}
 
-func (m mockProcessor) processQueriesOnSingleStream(ctx context.Context, _ *grpc.ClientConn, _ string) {
+func (m mockProcessor) processQueriesOnSingleStream(ctx context.Context, _ *grpc.ClientConn, _, _ string) {
 	<-ctx.Done()
 }
 

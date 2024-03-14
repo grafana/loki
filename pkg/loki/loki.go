@@ -38,6 +38,7 @@ import (
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
@@ -54,6 +55,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/util"
@@ -101,7 +103,7 @@ type Config struct {
 	Tracing       tracing.Config       `yaml:"tracing"`
 	Analytics     analytics.Config     `yaml:"analytics"`
 
-	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden"`
+	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden|deprecated"`
 
 	Common common.Config `yaml:"common,omitempty"`
 
@@ -136,9 +138,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 			"It will, however, distort metrics, because it is counted as live memory. ",
 	)
 
-	//TODO(trevorwhitney): flip this to false with Loki 3.0
-	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", true, "Set to false to disable the legacy read mode and use new scalable mode with 3rd backend target. "+
-		"The default will be flipped to false in the next Loki release.")
+	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", false, "Deprecated. Set to true to enable the legacy read mode which includes the components from the backend target. "+
+		"This setting is deprecated and will be removed in the next minor release.")
 
 	f.DurationVar(&c.ShutdownDelay, "shutdown-delay", 0, "How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki will report 503 Service Unavailable status via /ready endpoint.")
 
@@ -249,6 +250,9 @@ func (c *Config) Validate() error {
 	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
+	if err := c.BloomCompactor.Validate(); err != nil {
+		return errors.Wrap(err, "invalid bloom_compactor config")
+	}
 
 	if err := ValidateConfigCompatibility(*c); err != nil {
 		return err
@@ -302,6 +306,7 @@ type Loki struct {
 	querierAPI                *querier.QuerierAPI
 	ingesterQuerier           *querier.IngesterQuerier
 	Store                     storage.Store
+	BloomStore                bloomshipper.Store
 	tableManager              *index.TableManager
 	frontend                  Frontend
 	ruler                     *base_ruler.Ruler
@@ -320,20 +325,24 @@ type Loki struct {
 	bloomCompactorRingManager *lokiring.RingManager
 	bloomGatewayRingManager   *lokiring.RingManager
 
-	clientMetrics       storage.ClientMetrics
+	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
+	Tee                distributor.Tee
+	PushParserWrapper  push.RequestParserWrapper
 	HTTPAuthMiddleware middleware.Interface
 
 	Codec   Codec
 	Metrics *server.Metrics
+
+	UsageTracker push.UsageTracker
 }
 
 // New makes a new Loki.
 func New(cfg Config) (*Loki, error) {
 	loki := &Loki{
 		Cfg:                 cfg,
-		clientMetrics:       storage.NewClientMetrics(),
+		ClientMetrics:       storage.NewClientMetrics(),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
 		Codec:               queryrange.DefaultCodec,
 	}
@@ -599,6 +608,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RuleEvaluator, t.initRuleEvaluator, modules.UserInvisibleModule)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
+	mm.RegisterModule(BloomStore, t.initBloomStore)
 	mm.RegisterModule(BloomCompactor, t.initBloomCompactor)
 	mm.RegisterModule(BloomCompactorRing, t.initBloomCompactorRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
@@ -635,8 +645,8 @@ func (t *Loki) setupModuleManager() error {
 		TableManager:             {Server, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
 		IndexGateway:             {Server, Store, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
-		BloomGateway:             {Server, BloomGatewayRing, Analytics},
-		BloomCompactor:           {Server, BloomCompactorRing, Analytics},
+		BloomGateway:             {Server, BloomStore, BloomGatewayRing, Analytics},
+		BloomCompactor:           {Server, BloomStore, BloomCompactorRing, Analytics, Store},
 		IngesterQuerier:          {Ring},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
@@ -646,9 +656,9 @@ func (t *Loki) setupModuleManager() error {
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor},
-		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway},
+		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
 
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor, BloomCompactor},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
@@ -692,9 +702,13 @@ func (t *Loki) setupModuleManager() error {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
 	}
 
-	//TODO(poyzannur) not sure this is needed for BloomCompactor
+	// Add bloom gateway ring in client mode to IndexGateway service dependencies if bloom filtering is enabled.
+	if t.Cfg.BloomGateway.Enabled {
+		deps[IndexGateway] = append(deps[IndexGateway], BloomGatewayRing)
+	}
+
 	if t.Cfg.LegacyReadTarget {
-		deps[Read] = append(deps[Read], QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor)
+		deps[Read] = append(deps[Read], deps[Backend]...)
 	}
 
 	if t.Cfg.InternalServer.Enable {

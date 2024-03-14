@@ -849,6 +849,9 @@ func (nomatchPipeline) Process(_ int64, line []byte, _ ...labels.Label) ([]byte,
 func (nomatchPipeline) ProcessString(_ int64, line string, _ ...labels.Label) (string, log.LabelsResult, bool) {
 	return line, nil, false
 }
+func (nomatchPipeline) ReferencedStructuredMetadata() bool {
+	return false
+}
 
 func BenchmarkRead(b *testing.B) {
 	for _, bs := range testBlockSizes {

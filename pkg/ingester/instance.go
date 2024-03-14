@@ -22,14 +22,18 @@ import (
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
@@ -109,11 +113,15 @@ type instance struct {
 	metrics *ingesterMetrics
 
 	chunkFilter          chunk.RequestChunkFilterer
+	pipelineWrapper      log.PipelineWrapper
+	extractorWrapper     log.SampleExtractorWrapper
 	streamRateCalculator *StreamRateCalculator
 
 	writeFailures *writefailures.Manager
 
 	schemaconfig *config.SchemaConfig
+
+	customStreamsTracker push.UsageTracker
 }
 
 func newInstance(
@@ -126,6 +134,8 @@ func newInstance(
 	metrics *ingesterMetrics,
 	flushOnShutdownSwitch *OnceSwitch,
 	chunkFilter chunk.RequestChunkFilterer,
+	pipelineWrapper log.PipelineWrapper,
+	extractorWrapper log.SampleExtractorWrapper,
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
 ) (*instance, error) {
@@ -153,7 +163,9 @@ func newInstance(
 		metrics:               metrics,
 		flushOnShutdownSwitch: flushOnShutdownSwitch,
 
-		chunkFilter: chunkFilter,
+		chunkFilter:      chunkFilter,
+		pipelineWrapper:  pipelineWrapper,
+		extractorWrapper: extractorWrapper,
 
 		streamRateCalculator: streamRateCalculator,
 
@@ -253,6 +265,20 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
 	// reducing the stream limits, for instance.
 	var err error
+
+	labels, err := syntax.ParseLabels(pushReqStream.Labels)
+	if err != nil {
+		if i.configs.LogStreamCreation(i.instanceID) {
+			level.Debug(util_log.Logger).Log(
+				"msg", "failed to create stream, failed to parse labels",
+				"org_id", i.instanceID,
+				"err", err,
+				"stream", pushReqStream.Labels,
+			)
+		}
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
 	if record != nil {
 		err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, i.streams.Len())
 	}
@@ -273,21 +299,12 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
+		if i.customStreamsTracker != nil {
+			i.customStreamsTracker.DiscardedBytesAdd(i.instanceID, validation.StreamLimit, labels, float64(bytes))
+		}
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, i.instanceID)
 	}
 
-	labels, err := syntax.ParseLabels(pushReqStream.Labels)
-	if err != nil {
-		if i.configs.LogStreamCreation(i.instanceID) {
-			level.Debug(util_log.Logger).Log(
-				"msg", "failed to create stream, failed to parse labels",
-				"org_id", i.instanceID,
-				"err", err,
-				"stream", pushReqStream.Labels,
-			)
-		}
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
 	fp := i.getHashForLabels(labels)
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
@@ -419,6 +436,15 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		return nil, err
 	}
 
+	if i.pipelineWrapper != nil {
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		pipeline = i.pipelineWrapper.Wrap(ctx, pipeline, expr.String(), userID)
+	}
+
 	stats := stats.FromContext(ctx)
 	var iters []iter.EntryIterator
 
@@ -462,6 +488,15 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
+	}
+
+	if i.extractorWrapper != nil {
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		extractor = i.extractorWrapper.Wrap(ctx, extractor, expr.String(), userID)
 	}
 
 	stats := stats.FromContext(ctx)
@@ -572,9 +607,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		err = i.forMatchingStreams(ctx, req.Start, nil, shard, func(stream *stream) error {
 			// consider the stream only if it overlaps the request time range
 			if shouldConsiderStream(stream, req.Start, req.End) {
-				series = append(series, logproto.SeriesIdentifier{
-					Labels: stream.labels.Map(),
-				})
+				series = append(series, logproto.SeriesIdentifierFromLabels(stream.labels))
 			}
 			return nil
 		})
@@ -597,9 +630,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 						return nil
 					}
 
-					dedupedSeries[key] = logproto.SeriesIdentifier{
-						Labels: stream.labels.Map(),
-					}
+					dedupedSeries[key] = logproto.SeriesIdentifierFromLabels(stream.labels)
 				}
 				return nil
 			})

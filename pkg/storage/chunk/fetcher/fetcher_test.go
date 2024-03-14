@@ -200,11 +200,11 @@ func Test(t *testing.T) {
 			chks, err := f.FetchChunks(context.Background(), test.fetch)
 			assert.NoError(t, err)
 			assertChunks(t, test.fetch, chks)
-			l1actual, err := makeChunksFromMap(c1.GetInternal())
+			l1actual, err := makeChunksFromMapKeys(c1.GetKeys())
 			assert.NoError(t, err)
 			assert.Equal(t, test.l1KeysRequested, c1.KeysRequested())
 			assertChunks(t, test.l1End, l1actual)
-			l2actual, err := makeChunksFromMap(c2.GetInternal())
+			l2actual, err := makeChunksFromMapKeys(c2.GetKeys())
 			assert.NoError(t, err)
 			assert.Equal(t, test.l2KeysRequested, c2.KeysRequested())
 			assertChunks(t, test.l2End, l2actual)
@@ -340,9 +340,9 @@ func makeChunks(now time.Time, tpls ...c) []chunk.Chunk {
 	return chks
 }
 
-func makeChunksFromMap(m map[string][]byte) ([]chunk.Chunk, error) {
-	chks := make([]chunk.Chunk, 0, len(m))
-	for k := range m {
+func makeChunksFromMapKeys(keys []string) ([]chunk.Chunk, error) {
+	chks := make([]chunk.Chunk, 0, len(keys))
+	for _, k := range keys {
 		c, err := chunk.ParseExternalKey("fake", k)
 		if err != nil {
 			return nil, err

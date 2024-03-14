@@ -41,7 +41,7 @@ type Options struct {
 }
 
 type LokiOverrides struct {
-	Limits lokiv1.LimitsTemplateSpec
+	Limits lokiv1.PerTenantLimitsTemplateSpec
 	Ruler  RulerOverrides
 }
 

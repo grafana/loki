@@ -30,6 +30,9 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		"regexp": {
 			query: `{env="prod", app=~"loki.*"} |~ ".*foo.*"`,
 		},
+		"line filter": {
+			query: `{env="prod", app=~"loki.*"} |= "foo" |= "bar" or "baz" | line_format "blip{{ .foo }}blop" |= "blip"`,
+		},
 		"vector matching": {
 			query: `(sum by (cluster)(rate({foo="bar"}[5m])) / ignoring (cluster)  count(rate({foo="bar"}[5m])))`,
 		},
@@ -49,6 +52,9 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		},
 		"multiple post filters": {
 			query: `rate({app="foo"} | json | unwrap foo | latency >= 250ms or bytes > 42B or ( status_code < 500 and status_code > 200) or source = ip("") and user = "me" [1m])`,
+		},
+		"empty label filter string": {
+			query: `rate({app="foo"} |= "bar" | json | unwrap latency | path!="" [5m])`,
 		},
 	}
 

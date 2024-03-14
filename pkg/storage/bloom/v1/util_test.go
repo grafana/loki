@@ -7,6 +7,7 @@ import (
 )
 
 func TestPeekingIterator(t *testing.T) {
+	t.Parallel()
 	data := []int{1, 2, 3, 4, 5}
 	itr := NewPeekingIter[int](NewSliceIter[int](data))
 
@@ -24,4 +25,30 @@ func TestPeekingIterator(t *testing.T) {
 	require.False(t, ok, "final iteration")
 	require.False(t, itr.Next())
 
+}
+
+func TestCounterIter(t *testing.T) {
+	t.Parallel()
+
+	data := []int{1, 2, 3, 4, 5}
+	itr := NewCounterIter[int](NewSliceIter[int](data))
+	peekItr := NewPeekingIter[int](itr)
+
+	// Consume the outer iter and use peek
+	for {
+		if _, ok := peekItr.Peek(); !ok {
+			break
+		}
+		if !peekItr.Next() {
+			break
+		}
+	}
+	// Both iterators should be exhausted
+	require.False(t, itr.Next())
+	require.Nil(t, itr.Err())
+	require.False(t, peekItr.Next())
+	require.Nil(t, peekItr.Err())
+
+	// Assert that the count is correct and peeking hasn't jeopardized the count
+	require.Equal(t, len(data), itr.Count())
 }

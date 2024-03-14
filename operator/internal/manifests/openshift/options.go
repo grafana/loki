@@ -6,6 +6,7 @@ import (
 	"time"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/config"
 )
 
 // Options is the set of internal template options for rendering
@@ -14,6 +15,7 @@ type Options struct {
 	BuildOpts      BuildOptions
 	Authentication []AuthenticationSpec
 	Authorization  AuthorizationSpec
+	TokenCCOAuth   *config.TokenCCOAuthConfig
 }
 
 // AuthenticationSpec describes the authentication specification

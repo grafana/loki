@@ -165,6 +165,7 @@ This new metric will provide a more clear signal that there is an issue with ing
 | `querier.tsdb-max-query-parallelism`                   | 128         | 512         | - |
 | `query-scheduler.max-outstanding-requests-per-tenant`  | 32000       | 100         | - |
 | `validation.max-label-names-per-series`                | 15          | 30          | - |
+| `legacy-read-mode`                                     | false       | true        | Deprecated. It will be removed in the next minor release. |
 {{% /responsive-table %}}
 
 #### Write dedupe cache is deprecated
@@ -372,8 +373,10 @@ limits_config:
   retention_period: 744h
 ```
 
-**Note:** In previous versions, the zero value of `0` or `0s` will result in **immediate deletion of all logs**,
+{{% admonition type="note" %}}
+In previous versions, the zero value of `0` or `0s` will result in **immediate deletion of all logs**,
 only in 2.8 and forward releases does the zero value disable retention.
+{{% /admonition %}}
 
 #### metrics.go log line `subqueries` replaced with `splits` and `shards`
 
@@ -387,7 +390,9 @@ In 2.8 we no longer include `subqueries` in metrics.go, it does still exist in t
 
 Instead, now you can use `splits` to see how many split by time intervals were created and `shards` to see the total number of shards created for a query.
 
-Note: currently not every query can be sharded and a shards value of zero is a good indicator the query was not able to be sharded.
+{{% admonition type="note" %}}
+Currently not every query can be sharded and a shards value of zero is a good indicator the query was not able to be sharded.
+{{% /admonition %}}
 
 ### Promtail
 
@@ -418,7 +423,9 @@ ruler:
 
 #### query-frontend Kubernetes headless service changed to load balanced service
 
-*Note:* This is relevant only if you are using [jsonnet for deploying Loki in Kubernetes](/docs/loki/latest/installation/tanka/)
+{{% admonition type="note" %}}
+This is relevant only if you are using [jsonnet for deploying Loki in Kubernetes](/docs/loki/latest/installation/tanka/).
+{{% /admonition %}}
 
 The `query-frontend` Kubernetes service was previously headless and was used for two purposes:
 * Distributing the Loki query requests amongst all the available Query Frontend pods.
@@ -951,7 +958,9 @@ In Loki 2.2 we changed the internal version of our chunk format from v2 to v3, t
 
 This makes it important to first upgrade to 2.0, 2.0.1, or 2.1 **before** upgrading to 2.2 so that if you need to rollback for any reason you can do so easily.
 
-**Note:** 2.0 and 2.0.1 are identical in every aspect except 2.0.1 contains the code necessary to read the v3 chunk format. Therefor if you are on 2.0 and ugrade to 2.2, if you want to rollback, you must rollback to 2.0.1.
+{{% admonition type="note" %}}
+2.0 and 2.0.1 are identical in every aspect except 2.0.1 contains the code necessary to read the v3 chunk format. Therefor if you are on 2.0 and ugrade to 2.2, if you want to rollback, you must rollback to 2.0.1.
+{{% /admonition %}}
 
 ### Loki Config
 
@@ -1095,9 +1104,14 @@ This likely only affects a small portion of tanka users because the default sche
 }
 ```
 
->**NOTE** If you had set `index_period_hours` to a value other than 168h (the previous default) you must update this in the above config `period:` to match what you chose.
+{{% admonition type="note" %}}
+If you had set `index_period_hours` to a value other than 168h (the previous default) you must update this in the above config `period:` to match what you chose.
+{{% /admonition %}}
 
->**NOTE** We have changed the default index store to `boltdb-shipper` it's important to add `using_boltdb_shipper: false,` until you are ready to change (if you want to change)
+
+{{% admonition type="note" %}}
+We have changed the default index store to `boltdb-shipper` it's important to add `using_boltdb_shipper: false,` until you are ready to change (if you want to change)
+{{% /admonition %}}
 
 Changing the jsonnet config to use the `boltdb-shipper` type is the same as [below](#upgrading-schema-to-use-boltdb-shipper-andor-v11-schema) where you need to add a new schema section.
 
@@ -1139,9 +1153,9 @@ _THIS BEING SAID_ we are not expecting problems, our testing so far has not unco
 
 Report any problems via GitHub issues or reach us on the #loki slack channel.
 
-**Note if are using boltdb-shipper and were running with high availability and separate filesystems**
-
-This was a poorly documented and even more experimental mode we toyed with using boltdb-shipper. For now we removed the documentation and also any kind of support for this mode.
+{{% admonition type="note" %}}
+If are using boltdb-shipper and were running with high availability and separate filesystems, this was a poorly documented and even more experimental mode we toyed with using boltdb-shipper. For now we removed the documentation and also any kind of support for this mode.
+{{% /admonition %}}
 
 To use boltdb-shipper in 2.0 you need a shared storage (S3, GCS, etc), the mode of running with separate filesystem stores in HA using a ring is not officially supported.
 
@@ -1284,7 +1298,9 @@ schema_config:
 ```
 If you are not on `schema: v11` this would be a good opportunity to make that change _in the new schema config_ also.
 
-**NOTE** If the current time in your timezone is after midnight UTC already, set the date one additional day forward.
+{{% admonition type="note" %}}
+If the current time in your timezone is after midnight UTC already, set the date one additional day forward.
+{{% /admonition %}}
 
 There was also a significant overhaul to how boltdb-shipper internals, this should not be visible to a user but as this
 feature is experimental and under development bug are possible!
@@ -1343,7 +1359,9 @@ Defaulting to `gcs,bigtable` was confusing for anyone using ksonnet with other s
 
 ## 1.5.0
 
-Note: The required upgrade path outlined for version 1.4.0 below is still true for moving to 1.5.0 from any release older than 1.4.0 (e.g. 1.3.0->1.5.0 needs to also look at the 1.4.0 upgrade requirements).
+{{% admonition type="note" %}}
+The required upgrade path outlined for version 1.4.0 below is still true for moving to 1.5.0 from any release older than 1.4.0 (e.g. 1.3.0 -> 1.5.0 needs to also look at the 1.4.0 upgrade requirements).
+{{% /admonition %}}
 
 ### Breaking config changes!
 
@@ -1397,7 +1415,9 @@ Not every environment will allow this capability however, it's possible to restr
 
 #### Filesystem
 
-**Note the location Loki is looking for files with the provided config in the docker image has changed**
+{{% admonition type="note" %}}
+The location Loki is looking for files with the provided config in the docker image has changed.
+{{% /admonition %}}
 
 In 1.4.0 and earlier the included config file in the docker container was using directories:
 
@@ -1498,7 +1518,7 @@ The other config changes should not be relevant to Loki.
 
 The newly vendored version of Cortex removes code related to de-normalized tokens in the ring. What you need to know is this:
 
-*Note:* A "shared ring" as mentioned below refers to using *consul* or *etcd* for values in the following config:
+A "shared ring" as mentioned below refers to using *consul* or *etcd* for values in the following config:
 
 ```yaml
 kvstore:
@@ -1517,14 +1537,14 @@ There are two options for upgrade if you are not on version 1.3.0 and are using 
 
 OR
 
-**Note:** If you are running a single binary you only need to add this flag to your single binary command.
+- If you are running a single binary you only need to add this flag to your single binary command.
 
 1. Add the following configuration to your ingesters command: `-ingester.normalise-tokens=true`
 1. Restart your ingesters with this config
 1. Proceed with upgrading to v1.4.0
 1. Remove the config option (only do this after everything is running v1.4.0)
 
-**Note:** It's also possible to enable this flag via config file, see the [`lifecycler_config`](https://github.com/grafana/loki/tree/v1.3.0/docs/configuration#lifecycler_config) configuration option.
+It is also possible to enable this flag via config file, see the [`lifecycler_config`](https://github.com/grafana/loki/tree/v1.3.0/docs/configuration#lifecycler_config) configuration option.
 
 If using the Helm Loki chart:
 

@@ -1,6 +1,8 @@
 package bloomgateway
 
 import (
+	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -8,55 +10,61 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
 func TestTask(t *testing.T) {
-	t.Run("bounds returns request boundaries", func(t *testing.T) {
-		ts := model.Now()
+	ts := mktime("2024-01-24 12:00")
+	t.Run("bounds returns boundaries of chunks", func(t *testing.T) {
 		req := &logproto.FilterChunkRefRequest{
-			From:    ts.Add(-1 * time.Hour),
+			From:    ts.Add(-24 * time.Hour),
 			Through: ts,
+			Refs: []*logproto.GroupedChunkRefs{
+				{
+					Fingerprint: 0x00,
+					Refs: []*logproto.ShortRef{
+						{From: ts.Add(-1 * time.Hour), Through: ts},
+					},
+				},
+			},
 		}
-		task, _, _, err := NewTask("tenant", req)
+		swb := partitionRequest(req)[0]
+		task, err := NewTask(context.Background(), "tenant", swb, nil)
 		require.NoError(t, err)
 		from, through := task.Bounds()
-		require.Equal(t, getDayTime(req.From), from)
-		require.Equal(t, getDayTime(req.Through), through)
+		require.Equal(t, ts.Add(-1*time.Hour), from)
+		require.Equal(t, ts, through)
 	})
 }
 
-func TestTaskMergeIterator(t *testing.T) {
-	// Thu Nov 09 2023 10:56:50 UTC
-	ts := model.TimeFromUnix(1699523810)
-	day := getDayTime(ts)
+func createTasksForRequests(t *testing.T, tenant string, requests ...*logproto.FilterChunkRefRequest) []Task {
+	t.Helper()
+
+	tasks := make([]Task, 0, len(requests))
+	for _, r := range requests {
+		for _, swb := range partitionRequest(r) {
+			task, err := NewTask(context.Background(), tenant, swb, nil)
+			require.NoError(t, err)
+			tasks = append(tasks, task)
+		}
+	}
+	return tasks
+}
+
+func TestTask_RequestIterator(t *testing.T) {
+	ts := mktime("2024-01-24 12:00")
 	tenant := "fake"
+	tokenizer := v1.NewNGramTokenizer(4, 0)
 
-	t.Run("empty requests result in empty iterator", func(t *testing.T) {
-		r1 := &logproto.FilterChunkRefRequest{
-			From:    ts.Add(-3 * time.Hour),
-			Through: ts.Add(-2 * time.Hour),
-			Refs:    []*logproto.GroupedChunkRefs{},
+	t.Run("empty request yields empty iterator", func(t *testing.T) {
+		swb := seriesWithInterval{
+			interval: bloomshipper.Interval{Start: 0, End: math.MaxInt64},
+			series:   []*logproto.GroupedChunkRefs{},
 		}
-		t1, _, _, err := NewTask(tenant, r1)
-		require.NoError(t, err)
-
-		r2 := &logproto.FilterChunkRefRequest{
-			From:    ts.Add(-1 * time.Hour),
-			Through: ts,
-			Refs:    []*logproto.GroupedChunkRefs{},
-		}
-		t2, _, _, err := NewTask(tenant, r2)
-		require.NoError(t, err)
-
-		r3 := &logproto.FilterChunkRefRequest{
-			From:    ts.Add(-1 * time.Hour),
-			Through: ts,
-			Refs:    []*logproto.GroupedChunkRefs{},
-		}
-		t3, _, _, err := NewTask(tenant, r3)
-		require.NoError(t, err)
-
-		it := newTaskMergeIterator(day, t1, t2, t3)
+		task, _ := NewTask(context.Background(), tenant, swb, []syntax.LineFilterExpr{})
+		it := task.RequestIter(tokenizer)
 		// nothing to iterate over
 		require.False(t, it.Next())
 	})
@@ -71,8 +79,6 @@ func TestTaskMergeIterator(t *testing.T) {
 				}},
 			},
 		}
-		t1, _, _, err := NewTask(tenant, r1)
-		require.NoError(t, err)
 
 		r2 := &logproto.FilterChunkRefRequest{
 			From:    ts.Add(-1 * time.Hour),
@@ -86,8 +92,6 @@ func TestTaskMergeIterator(t *testing.T) {
 				}},
 			},
 		}
-		t2, _, _, err := NewTask(tenant, r2)
-		require.NoError(t, err)
 
 		r3 := &logproto.FilterChunkRefRequest{
 			From:    ts.Add(-1 * time.Hour),
@@ -98,10 +102,16 @@ func TestTaskMergeIterator(t *testing.T) {
 				}},
 			},
 		}
-		t3, _, _, err := NewTask(tenant, r3)
-		require.NoError(t, err)
 
-		it := newTaskMergeIterator(day, t1, t2, t3)
+		tasks := createTasksForRequests(t, tenant, r1, r2, r3)
+
+		iters := make([]v1.PeekingIterator[v1.Request], 0, len(tasks))
+		for _, task := range tasks {
+			iters = append(iters, v1.NewPeekingIter(task.RequestIter(tokenizer)))
+		}
+
+		// merge the request iterators using the heap sort iterator
+		it := v1.NewHeapIterator[v1.Request](func(r1, r2 v1.Request) bool { return r1.Fp < r2.Fp }, iters...)
 
 		// first item
 		require.True(t, it.Next())
@@ -129,75 +139,5 @@ func TestTaskMergeIterator(t *testing.T) {
 
 		// no more items
 		require.False(t, it.Next())
-	})
-}
-
-func TestChunkIterForDay(t *testing.T) {
-	tenant := "fake"
-
-	// Thu Nov 09 2023 10:56:50 UTC
-	ts := model.TimeFromUnix(1699523810)
-
-	t.Run("filter chunk refs that fall into the day range", func(t *testing.T) {
-		input := &logproto.FilterChunkRefRequest{
-			From:    ts.Add(-168 * time.Hour), // 1w ago
-			Through: ts,
-			Refs: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 100, Tenant: tenant, Refs: []*logproto.ShortRef{
-					{From: ts.Add(-168 * time.Hour), Through: ts.Add(-167 * time.Hour), Checksum: 100},
-					{From: ts.Add(-143 * time.Hour), Through: ts.Add(-142 * time.Hour), Checksum: 101},
-				}},
-				{Fingerprint: 200, Tenant: tenant, Refs: []*logproto.ShortRef{
-					{From: ts.Add(-144 * time.Hour), Through: ts.Add(-143 * time.Hour), Checksum: 200},
-					{From: ts.Add(-119 * time.Hour), Through: ts.Add(-118 * time.Hour), Checksum: 201},
-				}},
-				{Fingerprint: 300, Tenant: tenant, Refs: []*logproto.ShortRef{
-					{From: ts.Add(-120 * time.Hour), Through: ts.Add(-119 * time.Hour), Checksum: 300},
-					{From: ts.Add(-95 * time.Hour), Through: ts.Add(-94 * time.Hour), Checksum: 301},
-				}},
-				{Fingerprint: 400, Tenant: tenant, Refs: []*logproto.ShortRef{
-					{From: ts.Add(-96 * time.Hour), Through: ts.Add(-95 * time.Hour), Checksum: 400},
-					{From: ts.Add(-71 * time.Hour), Through: ts.Add(-70 * time.Hour), Checksum: 401},
-				}},
-				{Fingerprint: 500, Tenant: tenant, Refs: []*logproto.ShortRef{
-					{From: ts.Add(-72 * time.Hour), Through: ts.Add(-71 * time.Hour), Checksum: 500},
-					{From: ts.Add(-47 * time.Hour), Through: ts.Add(-46 * time.Hour), Checksum: 501},
-				}},
-				{Fingerprint: 600, Tenant: tenant, Refs: []*logproto.ShortRef{
-					{From: ts.Add(-48 * time.Hour), Through: ts.Add(-47 * time.Hour), Checksum: 600},
-					{From: ts.Add(-23 * time.Hour), Through: ts.Add(-22 * time.Hour), Checksum: 601},
-				}},
-				{Fingerprint: 700, Tenant: tenant, Refs: []*logproto.ShortRef{
-					{From: ts.Add(-24 * time.Hour), Through: ts.Add(-23 * time.Hour), Checksum: 700},
-					{From: ts.Add(-1 * time.Hour), Through: ts, Checksum: 701},
-				}},
-			},
-			Filters: []*logproto.LineFilterExpression{
-				{Operator: 1, Match: "foo"},
-				{Operator: 1, Match: "bar"},
-			},
-		}
-
-		// day ranges from ts-48h to ts-24h
-		day := getDayTime(ts.Add(-36 * time.Hour))
-
-		expected := []*logproto.GroupedChunkRefs{
-			{Fingerprint: 500, Tenant: tenant, Refs: []*logproto.ShortRef{
-				{From: ts.Add(-47 * time.Hour), Through: ts.Add(-46 * time.Hour), Checksum: 501},
-			}},
-			{Fingerprint: 600, Tenant: tenant, Refs: []*logproto.ShortRef{
-				{From: ts.Add(-48 * time.Hour), Through: ts.Add(-47 * time.Hour), Checksum: 600},
-			}},
-		}
-
-		task, _, _, _ := NewTask(tenant, input)
-		it := task.ChunkIterForDay(day)
-
-		output := make([]*logproto.GroupedChunkRefs, 0, len(input.Refs))
-		for it.Next() {
-			output = append(output, it.At())
-		}
-
-		require.Equal(t, expected, output)
 	})
 }

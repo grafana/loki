@@ -1,0 +1,131 @@
+concurrency:
+  group: "create-release-${{ github.sha }}"
+env:
+  IMAGE_PREFIX: "grafana"
+  RELEASE_REPO: "grafana/loki"
+jobs:
+  createRelease:
+    if: "${{ fromJSON(needs.shouldRelease.outputs.shouldRelease) }}"
+    needs:
+    - "shouldRelease"
+    outputs:
+      sha: "${{ needs.shouldRelease.outputs.sha }}"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Cloud SDK"
+      uses: "google-github-actions/setup-gcloud@v2"
+      with:
+        version: ">= 452.0.0"
+    - name: "download binaries"
+      run: |
+        echo "downloading binaries to $(pwd)/dist"
+        gsutil cp -r gs://loki-build-artifacts/${{ needs.shouldRelease.outputs.sha }}/dist .
+      working-directory: "release"
+    - id: "release"
+      name: "create release"
+      run: |
+        npm install
+        npm exec -- release-please github-release \
+          --draft \
+          --release-type simple \
+          --repo-url="${{ env.RELEASE_REPO }}" \
+          --target-branch "${{ needs.shouldRelease.outputs.branch }}" \
+          --token="${{ secrets.GH_TOKEN }}"
+      working-directory: "lib"
+    - env:
+        GH_TOKEN: "${{ secrets.GH_TOKEN }}"
+      id: "upload"
+      name: "upload artifacts"
+      run: |
+        gh release upload ${{ needs.shouldRelease.outputs.name }} dist/*
+        gh release edit ${{ needs.shouldRelease.outputs.name }} --draft=false
+      working-directory: "release"
+  publishImages:
+    needs:
+    - "createRelease"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Cloud SDK"
+      uses: "google-github-actions/setup-gcloud@v2"
+      with:
+        version: ">= 452.0.0"
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@v3"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@v3"
+    - name: "Login to DockerHub (from vault)"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@main"
+    - name: "download images"
+      run: |
+        echo "downloading images to $(pwd)/images"
+        gsutil cp -r gs://loki-build-artifacts/${{ needs.createRelease.outputs.sha }}/images .
+    - name: "publish docker images"
+      uses: "./lib/actions/push-images"
+      with:
+        imageDir: "images"
+        imagePrefix: "${{ env.IMAGE_PREFIX }}"
+  shouldRelease:
+    outputs:
+      branch: "${{ steps.extract_branch.outputs.branch }}"
+      name: "${{ steps.should_release.outputs.name }}"
+      sha: "${{ steps.should_release.outputs.sha }}"
+      shouldRelease: "${{ steps.should_release.outputs.shouldRelease }}"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        repository: "grafana/loki-release"
+    - id: "extract_branch"
+      name: "extract branch name"
+      run: |
+        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      working-directory: "release"
+    - id: "should_release"
+      name: "should a release be created?"
+      uses: "./lib/actions/should-release"
+      with:
+        baseBranch: "${{ steps.extract_branch.outputs.branch }}"
+name: "create release"
+"on":
+  push:
+    branches:
+    - "release-[0-9]+.[0-9]+.x"
+    - "k[0-9]+"
+permissions:
+  contents: "write"
+  id-token: "write"
+  pull-requests: "write"

@@ -23,4 +23,4 @@ To build and contribute. you will need:
 To build the driver you can use `make docker-driver`, then you can install this driver using `make docker-driver-enable`.
 If you want to uninstall the driver simply run `make docker-driver-clean`.
 
-Make you update the [documentation](../../docs/sources/clients/docker-driver/) accordingly when submitting a new change.
+Make sure you update the [documentation](../../docs/sources/send-data/docker-driver/) accordingly when submitting a new change.
