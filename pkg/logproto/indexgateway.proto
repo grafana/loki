@@ -41,10 +41,9 @@ message ShardsRequest {
     (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
     (gogoproto.nullable) = false
   ];
-  uint64 target_bytes_per_shard = 3;
-  repeated FPBounds shards = 4 [
-    (gogoproto.customtype) = "FingerprintBounds"
-  ];
+  string matchers = 3;
+  uint64 target_bytes_per_shard = 4;
+  repeated FPBounds shards = 5;
 }
 
 message ShardsResponse {
@@ -53,16 +52,18 @@ message ShardsResponse {
 
 message Shard {
   FPBounds bounds = 1 [
-    (gogoproto.customtype) = "FingerprintBounds"
+    (gogoproto.nullable) = false
   ];
   logproto.IndexStatsResponse stats = 2;
 }
 
+// FPBounds is identical to the definition in `pkg/storage/bloom/v1/bounds.FingerprintBounds`
+// which ensures we can cast between them without allocations.
 message FPBounds {
   uint64 min = 1 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Fingerprint"
+    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint"
   ];
   uint64 max = 2 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Fingerprint"
+    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint"
   ];
 }

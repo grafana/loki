@@ -60,6 +60,10 @@ func (m mockStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32,
 	return nil, nil
 }
 
+func (m mockStore) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ ...*labels.Matcher) ([]*logproto.Shard, error) {
+	return nil, nil
+}
+
 func (m mockStore) Stop() {}
 
 func TestCompositeStore(t *testing.T) {

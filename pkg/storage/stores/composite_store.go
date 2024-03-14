@@ -206,6 +206,41 @@ func (c CompositeStore) Volume(ctx context.Context, userID string, from, through
 	return res, err
 }
 
+func (c CompositeStore) GetShards(
+	ctx context.Context,
+	userID string,
+	from, through model.Time,
+	targetBytesPerShard uint64,
+	matchers ...*labels.Matcher,
+) ([]*logproto.Shard, error) {
+	// TODO(owen-d): improve. Since shards aren't easily merge-able,
+	// we choose the store which returned the highest shard count
+	var groups [][]*logproto.Shard
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+		shards, err := store.GetShards(innerCtx, userID, from, through, targetBytesPerShard, matchers...)
+		if err != nil {
+			return err
+		}
+		groups = append(groups, shards)
+		return nil
+	})
+
+	switch {
+	case err != nil:
+		return nil, err
+	case len(groups) == 1:
+		return groups[0], nil
+	case len(groups) == 0:
+		return nil, nil
+	default:
+		sort.Slice(groups, func(i, j int) bool {
+			return len(groups[i]) > len(groups[j])
+		})
+		return groups[0], nil
+	}
+
+}
+
 func (c CompositeStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	// find the schema with the lowest start _after_ tm
 	j := sort.Search(len(c.stores), func(j int) bool {

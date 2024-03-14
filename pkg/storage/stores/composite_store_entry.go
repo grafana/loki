@@ -119,6 +119,21 @@ func (c *storeEntry) Stats(ctx context.Context, userID string, from, through mod
 	return c.indexReader.Stats(ctx, userID, from, through, matchers...)
 }
 
+func (c *storeEntry) GetShards(
+	ctx context.Context,
+	userID string,
+	from, through model.Time,
+	targetBytesPerShard uint64,
+	matchers ...*labels.Matcher,
+) ([]*logproto.Shard, error) {
+	_, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.indexReader.GetShards(ctx, userID, from, through, targetBytesPerShard, matchers...)
+}
+
 func (c *storeEntry) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.Volume")
 	defer sp.Finish()

@@ -3,9 +3,29 @@ package v1
 import (
 	"testing"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestBoundsFromProto(t *testing.T) {
+	bounds := BoundsFromProto(logproto.FPBounds{
+		Min: 10,
+		Max: 2000,
+	})
+	assert.Equal(t, NewBounds(10, 2000), bounds)
+}
+
+func TestMultiBoundsFromProto(t *testing.T) {
+	bounds := MultiBoundsFromProto([]logproto.FPBounds{
+		{Min: 10, Max: 2000},
+		{Min: 2001, Max: 4000},
+	})
+	assert.Equal(t, MultiFingerprintBounds{
+		NewBounds(10, 2000),
+		NewBounds(2001, 4000),
+	}, bounds)
+}
 
 func Test_ParseFingerprint(t *testing.T) {
 	t.Parallel()

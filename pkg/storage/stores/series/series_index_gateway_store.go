@@ -126,12 +126,15 @@ func (c *IndexGatewayClientStore) Volume(ctx context.Context, _ string, from, th
 
 func (c *IndexGatewayClientStore) GetShards(
 	ctx context.Context,
+	_ string,
 	from, through model.Time,
 	targetBytesPerShard uint64,
+	matchers ...*labels.Matcher,
 ) ([]*logproto.Shard, error) {
 	resp, err := c.client.GetShards(ctx, &logproto.ShardsRequest{
 		From:                from,
 		Through:             through,
+		Matchers:            (&syntax.MatchersExpr{Mts: matchers}).String(),
 		TargetBytesPerShard: targetBytesPerShard,
 	})
 	if err != nil {

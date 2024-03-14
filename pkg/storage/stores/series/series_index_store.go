@@ -2,6 +2,7 @@ package series
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -751,10 +752,20 @@ func (c *IndexReaderWriter) convertChunkIDsToChunkRefs(_ context.Context, userID
 
 // old index stores do not implement stats -- skip
 func (c *IndexReaderWriter) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
-	return nil, nil
+	return nil, errors.New("unimplemented Stats() on legacy index stores")
 }
 
 // old index stores do not implement label volume -- skip
 func (c *IndexReaderWriter) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
-	return nil, nil
+	return nil, errors.New("unimplemented Volume() on legacy index stores")
+}
+
+func (c *IndexReaderWriter) GetShards(
+	ctx context.Context,
+	userID string,
+	from, through model.Time,
+	targetBytesPerShard uint64,
+	matchers ...*labels.Matcher,
+) ([]*logproto.Shard, error) {
+	return nil, errors.New("unimplemented GetShards() on legacy index stores")
 }

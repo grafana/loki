@@ -28,6 +28,13 @@ type BaseReader interface {
 type StatsReader interface {
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
 	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+	GetShards(
+		ctx context.Context,
+		userID string,
+		from, through model.Time,
+		targetBytesPerShard uint64,
+		matchers ...*labels.Matcher,
+	) ([]*logproto.Shard, error)
 }
 
 type Reader interface {
@@ -135,6 +142,24 @@ func (m MonitoredReaderWriter) Volume(ctx context.Context, userID string, from, 
 	}
 
 	return vol, nil
+}
+
+func (m MonitoredReaderWriter) GetShards(
+	ctx context.Context,
+	userID string,
+	from, through model.Time,
+	targetBytesPerShard uint64,
+	matchers ...*labels.Matcher,
+) ([]*logproto.Shard, error) {
+	var shards []*logproto.Shard
+	if err := loki_instrument.TimeRequest(ctx, "shards", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		shards, err = m.rw.GetShards(ctx, userID, from, through, targetBytesPerShard, matchers...)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	return shards, nil
 }
 
 func (m MonitoredReaderWriter) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
