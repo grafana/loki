@@ -733,3 +733,37 @@ and
     10`
 	assert.Equal(t, expected, got)
 }
+
+func TestParseShardCount(t *testing.T) {
+	for _, st := range []struct {
+		name     string
+		shards   []string
+		expected int
+	}{
+		{
+			name:     "single shard",
+			shards:   []string{"0_of_3"},
+			expected: 3,
+		},
+		{
+			name:     "single shard with error",
+			shards:   []string{"0_of_"},
+			expected: 0,
+		},
+		{
+			name:     "multiple shards",
+			shards:   []string{"0_of_3", "0_of_4"},
+			expected: 3,
+		},
+		{
+			name:     "multiple shards with errors",
+			shards:   []string{"_of_3", "0_of_4"},
+			expected: 4,
+		},
+	} {
+		t.Run(st.name, func(t *testing.T) {
+			require.Equal(t, st.expected, ParseShardCount(st.shards))
+		})
+
+	}
+}
