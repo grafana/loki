@@ -1769,6 +1769,9 @@ PodStatusMap
 </tr><tr><td><p>&#34;InvalidObjectStorageSecret&#34;</p></td>
 <td><p>ReasonInvalidObjectStorageSecret when the format of the secret is invalid.</p>
 </td>
+</tr><tr><td><p>&#34;ReasonInvalidPerTenantLimitsConfig&#34;</p></td>
+<td><p>ReasonInvalidPerTenantLimitsConfig when the per-tenant limits configuration is empty.</p>
+</td>
 </tr><tr><td><p>&#34;InvalidReplicationConfiguration&#34;</p></td>
 <td><p>ReasonInvalidReplicationConfiguration when the configurated replication factor is not valid
 with the select cluster size.</p>

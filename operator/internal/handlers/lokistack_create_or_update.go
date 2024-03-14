@@ -90,7 +90,7 @@ func CreateOrUpdateLokiStack(
 			ll.Error(err, "invalid per-tenant config")
 			return "", &status.DegradedError{
 				Message: fmt.Sprintf("Invalid per-tenant limits config: %s", err),
-				Reason:  lokiv1.ReasonInvalidPerTenantConfig,
+				Reason:  lokiv1.ReasonInvalidPerTenantLimitsConfig,
 				Requeue: false,
 			}
 		} else {
