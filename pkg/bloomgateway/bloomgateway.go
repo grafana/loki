@@ -348,14 +348,11 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 // Once the tasks is closed, it will send the task with the results from the
 // block querier to the supplied task channel.
 func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Task) {
-	logger := log.With(g.logger, "task", task.ID)
-
 	for res := range task.resCh {
 		select {
 		case <-ctx.Done():
-			level.Debug(logger).Log("msg", "drop partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
+			// do nothing
 		default:
-			level.Debug(logger).Log("msg", "accept partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
 			task.responses = append(task.responses, res)
 		}
 	}
