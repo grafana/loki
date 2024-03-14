@@ -36,7 +36,7 @@ func supportedCompressedFormats() map[string]struct{} {
 		".tar.gz": {},
 		".z":      {},
 		".bz2":    {},
-		// TODO: add support for .zip extension.
+		".zip":    {},
 	}
 }
 
