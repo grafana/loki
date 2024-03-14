@@ -130,7 +130,7 @@ func (c *IndexGatewayClientStore) GetShards(
 	from, through model.Time,
 	targetBytesPerShard uint64,
 	matchers ...*labels.Matcher,
-) ([]*logproto.Shard, error) {
+) ([]logproto.Shard, error) {
 	resp, err := c.client.GetShards(ctx, &logproto.ShardsRequest{
 		From:                from,
 		Through:             through,

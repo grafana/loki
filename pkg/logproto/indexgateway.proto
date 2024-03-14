@@ -43,11 +43,15 @@ message ShardsRequest {
   ];
   string matchers = 3;
   uint64 target_bytes_per_shard = 4;
-  repeated FPBounds shards = 5;
+  repeated FPBounds shards = 5 [
+    (gogoproto.nullable) = false
+  ];
 }
 
 message ShardsResponse {
-  repeated Shard shards = 1;
+  repeated Shard shards = 1 [
+    (gogoproto.nullable) = false
+  ];
 }
 
 message Shard {
