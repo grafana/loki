@@ -321,7 +321,7 @@ func (s *GatewayClient) GetShards(
 			return errors.Wrap(err, "get shards")
 		}
 
-		// TODO(owen-d): stream currently unused because query planning doesn't expect a streamed response,
+		// TODO(owen-d): stream currently unused (buffered) because query planning doesn't expect a streamed response,
 		// but can be improved easily in the future by using a stream here.
 		for {
 			resp, err := streamer.Recv()

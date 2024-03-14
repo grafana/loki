@@ -34,7 +34,7 @@ type StatsReader interface {
 		from, through model.Time,
 		targetBytesPerShard uint64,
 		matchers ...*labels.Matcher,
-	) ([]*logproto.Shard, error)
+	) ([]logproto.Shard, error)
 }
 
 type Reader interface {
@@ -150,8 +150,8 @@ func (m MonitoredReaderWriter) GetShards(
 	from, through model.Time,
 	targetBytesPerShard uint64,
 	matchers ...*labels.Matcher,
-) ([]*logproto.Shard, error) {
-	var shards []*logproto.Shard
+) ([]logproto.Shard, error) {
+	var shards []logproto.Shard
 	if err := loki_instrument.TimeRequest(ctx, "shards", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		shards, err = m.rw.GetShards(ctx, userID, from, through, targetBytesPerShard, matchers...)

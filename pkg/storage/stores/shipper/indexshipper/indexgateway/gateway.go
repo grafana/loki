@@ -340,6 +340,41 @@ func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*
 	return g.indexQuerier.Volume(ctx, instanceID, req.From, req.Through, req.GetLimit(), req.TargetLabels, req.AggregateBy, matchers...)
 }
 
+func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.IndexGateway_GetShardsServer) error {
+	ctx := server.Context()
+	log, _ := spanlogger.New(context.Background(), "IndexGateway.GetShards")
+	defer log.Finish()
+
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return err
+	}
+
+	matchers, err := syntax.ParseMatchers(request.Matchers, true)
+	if err != nil {
+		return err
+	}
+
+	// TODO(owen-d): can improve by actually streaming. Currently we use the streaming
+	// transport, but just send one batch.
+	shards, err := g.indexQuerier.GetShards(
+		ctx,
+		instanceID,
+		request.From, request.Through,
+		request.TargetBytesPerShard,
+		matchers...,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return server.Send(&logproto.ShardsResponse{
+		Shards: shards,
+	})
+
+}
+
 type failingIndexClient struct{}
 
 func (f failingIndexClient) QueryPages(_ context.Context, _ []seriesindex.Query, _ seriesindex.QueryPagesCallback) error {
