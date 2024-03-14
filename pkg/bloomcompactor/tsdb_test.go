@@ -61,7 +61,8 @@ func TestTSDBSeriesIter(t *testing.T) {
 		},
 	}
 	srcItr := v1.NewSliceIter(input)
-	itr := NewTSDBSeriesIter(context.Background(), forSeriesTestImpl(input), v1.NewBounds(0, math.MaxUint64))
+	itr, err := NewTSDBSeriesIter(context.Background(), forSeriesTestImpl(input), v1.NewBounds(0, math.MaxUint64))
+	require.NoError(t, err)
 
 	v1.EqualIterators[*v1.Series](
 		t,
@@ -76,9 +77,10 @@ func TestTSDBSeriesIter(t *testing.T) {
 func TestTSDBSeriesIter_Expiry(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	itr := NewTSDBSeriesIter(ctx, forSeriesTestImpl{
+	itr, err := NewTSDBSeriesIter(ctx, forSeriesTestImpl{
 		{}, // a single entry
 	}, v1.NewBounds(0, math.MaxUint64))
+	require.Error(t, err)
 
 	require.False(t, itr.Next())
 	require.Error(t, itr.Err())
