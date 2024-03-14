@@ -225,9 +225,11 @@ func (c CompositeStore) GetShards(
 		return nil
 	})
 
-	switch {
-	case err != nil:
+	if err != nil {
 		return nil, err
+	}
+
+	switch {
 	case len(groups) == 1:
 		return groups[0], nil
 	case len(groups) == 0:

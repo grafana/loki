@@ -312,10 +312,10 @@ func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeReques
 func (s *GatewayClient) GetShards(
 	ctx context.Context,
 	in *logproto.ShardsRequest,
-) (*logproto.ShardsResponse, error) {
-	res := &logproto.ShardsResponse{}
+) (res *logproto.ShardsResponse, err error) {
 
 	if err := s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
+		perReplicaResult := &logproto.ShardsResponse{}
 		streamer, err := client.GetShards(ctx, in)
 		if err != nil {
 			return errors.Wrap(err, "get shards")
@@ -331,8 +331,13 @@ func (s *GatewayClient) GetShards(
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			res.Shards = append(res.Shards, resp.Shards...)
+			perReplicaResult.Shards = append(perReplicaResult.Shards, resp.Shards...)
 		}
+
+		// Since `poolDo` retries on error, we only want to set the response if we got a successful response.
+		// This avoids cases where we add duplicates to the response on retries.
+		res = perReplicaResult
+
 		return nil
 	}); err != nil {
 		return nil, err

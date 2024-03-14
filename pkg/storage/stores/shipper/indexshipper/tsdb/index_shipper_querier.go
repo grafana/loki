@@ -149,6 +149,7 @@ type resultAccumulator struct {
 	merge func(xs []interface{}) (interface{}, error)
 }
 
+// TODO(owen-d): make generic to avoid casting at runtime.
 func newResultAccumulator(merge func(xs []interface{}) (interface{}, error)) *resultAccumulator {
 	return &resultAccumulator{
 		merge: merge,
