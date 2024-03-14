@@ -42,8 +42,8 @@ message ShardsRequest {
     (gogoproto.nullable) = false
   ];
   uint64 target_bytes_per_shard = 3;
-  repeated FingerprintBounds shards = 4 [
-    (gogoproto.customtype) = "github.com/grafana/loki/pkg/storage/bloom/v1.FingerprintBounds"
+  repeated FPBounds shards = 4 [
+    (gogoproto.customtype) = "FingerprintBounds"
   ];
 }
 
@@ -52,13 +52,13 @@ message ShardsResponse {
 }
 
 message Shard {
-  FingerprintBounds bounds = 1 [
-    (gogoproto.customtype) = "github.com/grafana/loki/pkg/storage/bloom/v1.FingerprintBounds"
+  FPBounds bounds = 1 [
+    (gogoproto.customtype) = "FingerprintBounds"
   ];
   logproto.IndexStatsResponse stats = 2;
 }
 
-message FingerprintBounds {
+message FPBounds {
   uint64 min = 1 [
     (gogoproto.customtype) = "github.com/prometheus/common/model.Fingerprint"
   ];
