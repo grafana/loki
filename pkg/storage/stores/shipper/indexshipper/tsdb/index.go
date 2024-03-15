@@ -37,6 +37,7 @@ type Index interface {
 	Bounded
 	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 	Close() error
+	ForSeries
 	// GetChunkRefs accepts an optional []ChunkRef argument.
 	// If not nil, it will use that slice to build the result,
 	// allowing us to avoid unnecessary allocations at the caller's discretion.
@@ -54,14 +55,59 @@ type Index interface {
 	LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error)
 	Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error
 	Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error
+}
 
+type ForSeries interface {
 	// General purpose iteration over series. Makes it easier to build custom functionality on top of indices
 	// of different types without them all implementing the same feature.
 	// The passed callback must _not_ capture its arguments. They're reused for each call for performance.
 	// NB: This is a low-level API and should be used with caution.
 	// NB: It's possible for the callback to be called multiple times for the same series but possibly different chunks,
 	// such as when the Index is backed by multiple files with the same series present.
-	ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error
+	ForSeries(
+		ctx context.Context,
+		userID string,
+		fpFilter index.FingerprintFilter,
+		from model.Time,
+		through model.Time,
+		fn func(
+			labels.Labels,
+			model.Fingerprint,
+			[]index.ChunkMeta,
+		) (stop bool),
+		matchers ...*labels.Matcher,
+	) error
+}
+
+// function Adapter for ForSeries implementation
+type ForSeriesFunc func(
+	ctx context.Context,
+	userID string,
+	fpFilter index.FingerprintFilter,
+	from model.Time,
+	through model.Time,
+	fn func(
+		labels.Labels,
+		model.Fingerprint,
+		[]index.ChunkMeta,
+	) (stop bool),
+	matchers ...*labels.Matcher,
+) error
+
+func (f ForSeriesFunc) ForSeries(
+	ctx context.Context,
+	userID string,
+	fpFilter index.FingerprintFilter,
+	from model.Time,
+	through model.Time,
+	fn func(
+		labels.Labels,
+		model.Fingerprint,
+		[]index.ChunkMeta,
+	) (stop bool),
+	matchers ...*labels.Matcher,
+) error {
+	return f(ctx, userID, fpFilter, from, through, fn, matchers...)
 }
 
 type NoopIndex struct{}

@@ -365,14 +365,14 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 	// Shards were requested, but blooms are not enabled or cannot be used due to lack of filters.
 	// That's ok; we can still return shard ranges without filtering
 	// which will be more effective than guessing power-of-2 shard ranges.
-	if g.bloomQuerier == nil {
+	if g.bloomQuerier == nil || len(syntax.ExtractLineFilters(request.Plan.AST)) == 0 {
 		shards, err := g.indexQuerier.GetShards(
 			ctx,
 			instanceID,
 			casted,
 			request.From, request.Through,
 			request.TargetBytesPerShard,
-			matchers...,
+			chunk.NewPredicate(matchers, &request.Plan),
 		)
 
 		if err != nil {
@@ -386,7 +386,16 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 
 	// TODO(owen-d): can improve by actually streaming. Currently we use the streaming
 	// transport, but just send one batch.
+	return g.getShardsWithBlooms(ctx, request, server, instanceID, casted)
+}
 
+func (g *Gateway) getShardsWithBlooms(ctx context.Context, request *logproto.ShardsRequest, server logproto.IndexGateway_GetShardsServer, instanceID string, bounds []tsdb_index.FingerprintFilter) error {
+	// 1) for all bounds, get chunk refs w/ stats
+	// 2) for all bounds, filter via blooms
+	// 3) keep all chunks in (1) still referenced in (2)
+	// 4) build shards from ()
+	// g.indexQuerier.
+	return nil
 }
 
 type failingIndexClient struct{}

@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
 )
@@ -49,6 +50,10 @@ type Reader interface {
 	StatsReader
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error)
 	Filterable
+
+	// If the underlying index supports it, this will return the ForSeries interface
+	// which is used in bloom-filter accelerated sharding calculation optimization.
+	// HasForSeries() (tsdb.ForSeries, bool)
 }
 
 type Writer interface {
@@ -178,4 +183,28 @@ func (m MonitoredReaderWriter) IndexChunk(ctx context.Context, from, through mod
 	return loki_instrument.TimeRequest(ctx, "index_chunk", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		return m.rw.IndexChunk(ctx, from, through, chk)
 	})
+}
+
+func (m MonitoredReaderWriter) HasForSeries() (tsdb.ForSeries, bool) {
+	if impl, ok := m.rw.HasForSeries(); ok {
+		wrapped := tsdb.ForSeriesFunc(func(
+			ctx context.Context,
+			userID string,
+			fpFilter index.FingerprintFilter,
+			from model.Time,
+			through model.Time,
+			fn func(
+				labels.Labels,
+				model.Fingerprint,
+				[]index.ChunkMeta,
+			) (stop bool),
+			matchers ...*labels.Matcher,
+		) error {
+			return loki_instrument.TimeRequest(ctx, "for_series", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+				return impl.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+			})
+		})
+		return wrapped, true
+	}
+	return nil, false
 }

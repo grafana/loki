@@ -216,7 +216,8 @@ func (c CompositeStore) GetShards(
 	predicate chunk.Predicate,
 ) ([]logproto.Shard, error) {
 	// TODO(owen-d): improve. Since shards aren't easily merge-able,
-	// we choose the store which returned the highest shard count
+	// we choose the store which returned the highest shard count.
+	// This is only used when a query crosses a schema boundary
 	var groups [][]logproto.Shard
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		shards, err := store.GetShards(innerCtx, userID, bounds, from, through, targetBytesPerShard, predicate)

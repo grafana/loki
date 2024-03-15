@@ -334,3 +334,7 @@ func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
 
 	return dst
 }
+
+func (c *IndexClient) HasForSeries() (ForSeries, bool) {
+	return c.idx, true
+}
