@@ -222,6 +222,13 @@ func (cii *CancellableIter[T]) Next() bool {
 	}
 }
 
+func (cii *CancellableIter[T]) Err() error {
+	if err := cii.ctx.Err(); err != nil {
+		return err
+	}
+	return cii.Iterator.Err()
+}
+
 func NewCancelableIter[T any](ctx context.Context, itr Iterator[T]) *CancellableIter[T] {
 	return &CancellableIter[T]{ctx: ctx, Iterator: itr}
 }

@@ -1,12 +1,12 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
-  name: leader-election-rolebinding
+  name: controller-manager-read-metrics
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: leader-election-role
+  kind: ClusterRole
+  name: metrics-reader
 subjects:
 - kind: ServiceAccount
-  name: controller-manager
+  name: controller-manager-metrics-reader
   namespace: system
