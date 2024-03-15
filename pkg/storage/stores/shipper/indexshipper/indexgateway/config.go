@@ -3,8 +3,14 @@ package indexgateway
 import (
 	"flag"
 	"fmt"
+	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/util/ring"
+)
+
+const (
+	NumTokens         = 128
+	ReplicationFactor = 3
 )
 
 // Mode represents in which mode an Index Gateway instance is running.
@@ -47,26 +53,6 @@ const (
 	RingMode Mode = "ring"
 )
 
-// RingCfg is identical to ring.RingConfigWithRF with the difference that the
-// ReplicationFactor field is deprecated.
-type RingCfg struct {
-	// InternalRingCfg configures the Index Gateway ring.
-	ring.RingConfig `yaml:",inline"`
-
-	// ReplicationFactor defines how many Index Gateway instances are assigned to each tenant.
-	//
-	// Whenever the store queries the ring key-value store for the Index Gateway instance responsible for tenant X,
-	// multiple Index Gateway instances are expected to be returned as Index Gateway might be busy/locked for specific
-	// reasons (this is assured by the spikey behavior of Index Gateway latencies).
-	ReplicationFactor int `yaml:"replication_factor"`
-}
-
-// RegisterFlagsWithPrefix register all Index Gateway flags related to its ring but with a proper store prefix to avoid conflicts.
-func (cfg *RingCfg) RegisterFlags(prefix, storePrefix string, f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix(prefix, storePrefix, f)
-	f.IntVar(&cfg.ReplicationFactor, "replication-factor", 3, "Deprecated: How many index gateway instances are assigned to each tenant. Use -index-gateway.shard-size instead. The shard size is also a per-tenant setting.")
-}
-
 // Config configures an Index Gateway server.
 type Config struct {
 	// Mode configures in which mode the client will be running when querying and communicating with an Index Gateway instance.
@@ -76,11 +62,31 @@ type Config struct {
 	//
 	// In case it isn't explicitly set, it follows the same behavior of the other rings (ex: using the common configuration
 	// section and the ingester configuration by default).
-	Ring RingCfg `yaml:"ring,omitempty" doc:"description=Defines the ring to be used by the index gateway servers and clients in case the servers are configured to run in 'ring' mode. In case this isn't configured, this block supports inheriting configuration from the common ring section."`
+	Ring ring.RingConfig `yaml:"ring,omitempty" doc:"description=Defines the ring to be used by the index gateway servers and clients in case the servers are configured to run in 'ring' mode. In case this isn't configured, this block supports inheriting configuration from the common ring section."`
 }
 
 // RegisterFlags register all IndexGatewayClientConfig flags and all the flags of its subconfigs but with a prefix (ex: shipper).
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.Ring.RegisterFlags("index-gateway.", "collectors/", f)
 	f.StringVar((*string)(&cfg.Mode), "index-gateway.mode", SimpleMode.String(), "Defines in which mode the index gateway server will operate (default to 'simple'). It supports two modes:\n- 'simple': an index gateway server instance is responsible for handling, storing and returning requests for all indices for all tenants.\n- 'ring': an index gateway server instance is responsible for a subset of tenants instead of all tenants.")
+
+	// Ring
+	skipFlags := []string{
+		"index-gateway.ring.num-tokens",
+		"index-gateway.ring.replication-factor",
+	}
+	cfg.Ring.RegisterFlagsWithPrefix("index-gateway.", "collectors/", f, skipFlags...)
+	f.IntVar(&cfg.Ring.NumTokens, "index-gateway.ring.num-tokens", NumTokens, fmt.Sprintf("IGNORED: Num tokens is fixed to %d", NumTokens))
+	// ReplicationFactor defines how many Index Gateway instances are assigned to each tenant.
+	//
+	// Whenever the store queries the ring key-value store for the Index Gateway instance responsible for tenant X,
+	// multiple Index Gateway instances are expected to be returned as Index Gateway might be busy/locked for specific
+	// reasons (this is assured by the spikey behavior of Index Gateway latencies).
+	f.IntVar(&cfg.Ring.ReplicationFactor, "replication-factor", ReplicationFactor, "Deprecated: How many index gateway instances are assigned to each tenant. Use -index-gateway.shard-size instead. The shard size is also a per-tenant setting.")
+}
+
+func (cfg *Config) Validate() error {
+	if cfg.Ring.NumTokens != NumTokens {
+		return errors.New("Num tokens must not be changed as it will not take effect")
+	}
+	return nil
 }
