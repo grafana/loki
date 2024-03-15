@@ -167,8 +167,13 @@ func (acc *resultAccumulator[T]) Merge() (res T, err error) {
 	acc.mtx.Lock()
 	defer acc.mtx.Unlock()
 
-	if len(acc.items) == 0 {
+	ln := len(acc.items)
+	if ln == 0 {
 		return res, ErrEmptyAccumulator
+	}
+
+	if ln == 1 {
+		return acc.items[0], nil
 	}
 
 	return acc.merge(acc.items)
