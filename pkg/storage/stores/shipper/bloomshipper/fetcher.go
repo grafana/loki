@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dolthub/swiss"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -20,7 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
-var downloadQueueCapacity = 100000
+var downloadQueueCapacity = 10000
 
 type options struct {
 	ignoreNotFound bool // ignore 404s from object storage; default=true
@@ -408,12 +409,14 @@ type downloadResponse[R any] struct {
 }
 
 type downloadQueue[T any, R any] struct {
-	queue   chan downloadRequest[T, R]
-	mu      keymutex.KeyMutex
-	wg      sync.WaitGroup
-	done    chan struct{}
-	process processFunc[T, R]
-	logger  log.Logger
+	queue         chan downloadRequest[T, R]
+	enqueued      *swiss.Map[string, struct{}]
+	enqueuedMutex sync.Mutex
+	mu            keymutex.KeyMutex
+	wg            sync.WaitGroup
+	done          chan struct{}
+	process       processFunc[T, R]
+	logger        log.Logger
 }
 
 func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R], logger log.Logger) (*downloadQueue[T, R], error) {
@@ -424,11 +427,12 @@ func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R]
 		return nil, errors.New("queue requires at least 1 worker")
 	}
 	q := &downloadQueue[T, R]{
-		queue:   make(chan downloadRequest[T, R], size),
-		mu:      keymutex.NewHashed(workers),
-		done:    make(chan struct{}),
-		process: process,
-		logger:  logger,
+		queue:    make(chan downloadRequest[T, R], size),
+		enqueued: swiss.NewMap[string, struct{}](uint32(size)),
+		mu:       keymutex.NewHashed(workers),
+		done:     make(chan struct{}),
+		process:  process,
+		logger:   logger,
 	}
 	for i := 0; i < workers; i++ {
 		q.wg.Add(1)
@@ -438,7 +442,19 @@ func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R]
 }
 
 func (q *downloadQueue[T, R]) enqueue(t downloadRequest[T, R]) {
-	q.queue <- t
+	q.enqueuedMutex.Lock()
+	defer q.enqueuedMutex.Unlock()
+	if q.enqueued.Has(t.key) {
+		return
+	}
+	select {
+	case q.queue <- t:
+		q.enqueued.Put(t.key, struct{}{})
+	default:
+		// todo we probably want a metric on dropped items
+		level.Warn(q.logger).Log("msg", "download queue is full, dropping item", "key", t.key)
+		return
+	}
 }
 
 func (q *downloadQueue[T, R]) runWorker() {
@@ -464,6 +480,9 @@ func (q *downloadQueue[T, R]) do(ctx context.Context, task downloadRequest[T, R]
 		if err != nil {
 			level.Error(q.logger).Log("msg", "failed to unlock key in block lock", "key", task.key, "err", err)
 		}
+		q.enqueuedMutex.Lock()
+		_ = q.enqueued.Delete(task.key)
+		q.enqueuedMutex.Unlock()
 	}()
 
 	q.process(ctx, task)
