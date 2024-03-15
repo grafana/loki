@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -538,7 +539,8 @@ var schemaConfigContents2 = `schema_config:
 `
 var cm = storage.NewClientMetrics()
 
-func TestLoadFromURL(t *testing.T) {
+func setupTestEnv(t *testing.T) (string, client.ObjectClient) {
+	t.Helper()
 	tmpDir := t.TempDir()
 	conf := loki.Config{
 		StorageConfig: storage.Config{
@@ -552,6 +554,15 @@ func TestLoadFromURL(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, client)
 
+	_, err = getLatestConfig(client, "456")
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errNotExists))
+
+	return tmpDir, client
+}
+
+func TestLoadFromURL(t *testing.T) {
+	tmpDir, client := setupTestEnv(t)
 	filename := "schemaconfig.yaml"
 
 	// Missing schemaconfig.yaml file should error
@@ -574,24 +585,9 @@ func TestLoadFromURL(t *testing.T) {
 }
 
 func TestMultipleConfigs(t *testing.T) {
-	tmpDir := t.TempDir()
-	conf := loki.Config{
-		StorageConfig: storage.Config{
-			FSConfig: local.FSConfig{
-				Directory: tmpDir,
-			},
-		},
-	}
+	tmpDir, client := setupTestEnv(t)
 
-	client, err := GetObjectClient(config.StorageTypeFileSystem, conf, cm)
-	require.NoError(t, err)
-	require.NotNil(t, client)
-
-	_, err = getLatestConfig(client, "456")
-	require.Error(t, err)
-	require.True(t, errors.Is(err, errNotExists))
-
-	err = os.WriteFile(
+	err := os.WriteFile(
 		filepath.Join(tmpDir, "456-schemaconfig.yaml"),
 		[]byte(schemaConfigContents),
 		0666,
@@ -617,25 +613,9 @@ func TestMultipleConfigs(t *testing.T) {
 }
 
 func TestMultipleConfigsIncludingLegacy(t *testing.T) {
-	tmpDir := t.TempDir()
-	conf := loki.Config{
-		StorageConfig: storage.Config{
-			FSConfig: local.FSConfig{
-				Directory: tmpDir,
-			},
-		},
-	}
+	tmpDir, client := setupTestEnv(t)
 
-	client, err := GetObjectClient(config.StorageTypeFileSystem, conf, cm)
-	require.NoError(t, err)
-	require.NotNil(t, client)
-
-	_, err = getLatestConfig(client, "456")
-	require.Error(t, err)
-	require.True(t, errors.Is(err, errNotExists))
-	// TODO: create function for code above and reuse
-
-	err = os.WriteFile(
+	err := os.WriteFile(
 		filepath.Join(tmpDir, "schemaconfig.yaml"),
 		[]byte(legacySchemaConfigContents),
 		0666,
@@ -667,26 +647,10 @@ func TestMultipleConfigsIncludingLegacy(t *testing.T) {
 	require.Len(t, config.Configs, 3)
 }
 
-func TestLegacyConfigsOnly(t *testing.T) {
-	tmpDir := t.TempDir()
-	conf := loki.Config{
-		StorageConfig: storage.Config{
-			FSConfig: local.FSConfig{
-				Directory: tmpDir,
-			},
-		},
-	}
+func TestLegacyConfigOnly(t *testing.T) {
+	tmpDir, client := setupTestEnv(t)
 
-	client, err := GetObjectClient(config.StorageTypeFileSystem, conf, cm)
-	require.NoError(t, err)
-	require.NotNil(t, client)
-
-	_, err = getLatestConfig(client, "456")
-	require.Error(t, err)
-	require.True(t, errors.Is(err, errNotExists))
-	// TODO: create function for code above and reuse
-
-	err = os.WriteFile(
+	err := os.WriteFile(
 		filepath.Join(tmpDir, "schemaconfig.yaml"),
 		[]byte(legacySchemaConfigContents),
 		0666,
