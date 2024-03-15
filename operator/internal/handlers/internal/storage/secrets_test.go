@@ -531,7 +531,7 @@ func TestS3Extract(t *testing.T) {
 			wantCredentialMode: lokiv1.CredentialModeToken,
 		},
 		{
-			name: "endpoint url unparseable",
+			name: "endpoint url missing http/https",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
@@ -542,7 +542,7 @@ func TestS3Extract(t *testing.T) {
 					"access_key_secret": []byte("secret"),
 				},
 			},
-			wantError: "s3 endpoint is not parseable",
+			wantError: "s3 endpoint URL scheme is missing or invalid",
 		},
 		{
 			name: "AWS endpoint format invalid",
@@ -556,7 +556,35 @@ func TestS3Extract(t *testing.T) {
 					"access_key_secret": []byte("secret"),
 				},
 			},
-			wantError: "AWS s3 endpoint format is invalid",
+			wantError: "AWS s3 endpoint URL format is invalid",
+		},
+		{
+			name: "s3 region used in endpoint URL is incorrect",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("http://s3.wrong.amazonaws.com"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantError: "s3 region used in endpoint URL is incorrect",
+		},
+		{
+			name: "s3 endpoint format is not a valid s3 URL",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("http://region.amazonaws.com"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantError: "s3 endpoint format is not a valid s3 URL",
 		},
 	}
 	for _, tst := range table {

@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"regexp"
 	"sort"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -40,9 +40,11 @@ var (
 	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
 	errAzureInvalidAccountKey         = errors.New("azure account key is not valid base64")
 
-	errS3InvalidEndpoint     = errors.New("AWS s3 endpoint format is invalid")
-	errS3UnparseableEndpoint = errors.New("s3 endpoint is not parseable")
-	errS3RegexpMatching      = errors.New("failed to match endpoint to pattern")
+	errS3EndpointUnparseable      = errors.New("s3 endpoint is not parseable")
+	errS3EndpointUnsuportedScheme = errors.New("s3 endpoint URL scheme is missing or invalid")
+	errS3EndpointNotAWS           = errors.New("AWS s3 endpoint URL format is invalid")
+	errS3EndpointWrongRegion      = errors.New("s3 region used in endpoint URL is incorrect")
+	errS3EndpointNotS3            = errors.New("s3 endpoint format is not a valid s3 URL")
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
@@ -55,7 +57,10 @@ var (
 	}
 )
 
-const gcpAccountTypeExternal = "external_account"
+const (
+	gcpAccountTypeExternal = "external_account"
+	awsEndpoint            = "amazonaws.com"
+)
 
 func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
 	var (
@@ -414,6 +419,8 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		SSE:     sseCfg,
 	}
 
+	err = validateS3Endpoint(string(endpoint), string(region))
+
 	switch credentialMode {
 	case lokiv1.CredentialModeTokenCCO:
 		cfg.STS = true
@@ -422,8 +429,6 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		if len(roleArn) != 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAWSRoleArn)
 		}
-
-		err := validateS3Endpoint(endpoint, region)
 
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
@@ -434,8 +439,6 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		return cfg, nil
 	case lokiv1.CredentialModeStatic:
 		cfg.Endpoint = string(endpoint)
-
-		err := validateS3Endpoint(endpoint, region)
 
 		if len(endpoint) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSEndpoint)
@@ -454,8 +457,6 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		cfg.STS = true
 		cfg.Audience = string(audience)
 
-		err := validateS3Endpoint(endpoint, region)
-
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
@@ -468,20 +469,23 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 	}
 }
 
-func validateS3Endpoint(endpoint []byte, region []byte) error {
-	parsedURL, err := url.Parse(string(endpoint))
-	if err != nil || parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return errS3UnparseableEndpoint
-	}
-	pattern := fmt.Sprintf(`s3.%s.amazonaws.com`, region)
-	matched, err := regexp.MatchString(pattern, string(endpoint))
-	if !matched {
-		return errS3InvalidEndpoint
-	}
+func validateS3Endpoint(endpoint string, region string) error {
+	parsedURL, err := url.Parse(endpoint)
 	if err != nil {
-		return errS3RegexpMatching
+		return errS3EndpointUnparseable
 	}
-
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return errS3EndpointUnsuportedScheme
+	}
+	if !strings.HasSuffix(endpoint, awsEndpoint) {
+		return errS3EndpointNotAWS
+	}
+	if !strings.HasSuffix(endpoint, fmt.Sprintf("%s.%s", region, awsEndpoint)) {
+		return errS3EndpointWrongRegion
+	}
+	if !strings.HasSuffix(endpoint, fmt.Sprintf("s3.%s.%s", region, awsEndpoint)) {
+		return errS3EndpointNotS3
+	}
 	return nil
 }
 
