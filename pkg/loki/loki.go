@@ -223,6 +223,9 @@ func (c *Config) Validate() error {
 	if err := c.Querier.Validate(); err != nil {
 		return errors.Wrap(err, "invalid querier config")
 	}
+	if err := c.QueryScheduler.Validate(); err != nil {
+		return errors.Wrap(err, "invalid query_scheduler config")
+	}
 	if err := c.TableManager.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tablemanager config")
 	}
@@ -240,6 +243,9 @@ func (c *Config) Validate() error {
 	}
 	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid boltdb-shipper config")
+	}
+	if err := c.IndexGateway.Validate(); err != nil {
+		return errors.Wrap(err, "invalid index_gateway config")
 	}
 	if err := c.CompactorConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid compactor config")
