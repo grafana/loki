@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"runtime"
+	"sort"
 	"sync"
 
 	"github.com/prometheus/common/model"
@@ -144,9 +145,11 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 		// TODO(owen-d): Do this more efficiently,
 		// not all indices overlap each other
 		// TODO(owen-d): loser-tree or some other heap?
+
 		for _, group := range xs {
 			g := group
 			for _, ref := range g {
+
 				_, ok := seen[ref]
 				if ok {
 					continue
@@ -155,8 +158,9 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 				res = append(res, ref)
 			}
 			ChunkRefsPool.Put(g)
-
 		}
+
+		sort.Slice(res, func(i, j int) bool { return res[i].Less(res[j]) })
 
 		return res, nil
 	})
