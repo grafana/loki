@@ -46,6 +46,10 @@ message ShardsRequest {
   repeated FPBounds bounds = 5 [
     (gogoproto.nullable) = false
   ];
+  logproto.Plan plan = 6 [
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan",
+    (gogoproto.nullable) = false
+  ];
 }
 
 message ShardsResponse {

@@ -274,7 +274,7 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 	return acc.Volumes(), nil
 }
 
-func (c *IndexClient) GetShards(ctx context.Context, userID string, bounds []index.FingerprintFilter, from, through model.Time, targetBytesPerShard uint64, matchers ...*labels.Matcher) ([]logproto.Shard, error) {
+func (c *IndexClient) GetShards(ctx context.Context, userID string, bounds []index.FingerprintFilter, from, through model.Time, targetBytesPerShard uint64, predicate chunk.Predicate) ([]logproto.Shard, error) {
 
 	// TODO(owen-d): perf, this is expensive :(
 	var mtx sync.Mutex
@@ -286,7 +286,7 @@ func (c *IndexClient) GetShards(ctx context.Context, userID string, bounds []ind
 			m[fp] = append(m[fp], chks...)
 			mtx.Unlock()
 			return false
-		}, matchers...); err != nil {
+		}, predicate.Matchers...); err != nil {
 			return nil, err
 		}
 	}

@@ -131,12 +131,13 @@ func (c *IndexGatewayClientStore) GetShards(
 	bounds []index.FingerprintFilter,
 	from, through model.Time,
 	targetBytesPerShard uint64,
-	matchers ...*labels.Matcher,
+	predicate chunk.Predicate,
 ) ([]logproto.Shard, error) {
 	resp, err := c.client.GetShards(ctx, &logproto.ShardsRequest{
 		From:                from,
 		Through:             through,
-		Matchers:            (&syntax.MatchersExpr{Mts: matchers}).String(),
+		Matchers:            (&syntax.MatchersExpr{Mts: predicate.Matchers}).String(),
+		Plan:                predicate.Plan(),
 		TargetBytesPerShard: targetBytesPerShard,
 	})
 	if err != nil {

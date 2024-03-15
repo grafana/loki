@@ -150,14 +150,14 @@ func (c *storeEntry) GetShards(
 	bounds []tsdb_index.FingerprintFilter,
 	from, through model.Time,
 	targetBytesPerShard uint64,
-	matchers ...*labels.Matcher,
+	predicate chunk.Predicate,
 ) ([]logproto.Shard, error) {
 	_, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.indexReader.GetShards(ctx, userID, bounds, from, through, targetBytesPerShard, matchers...)
+	return c.indexReader.GetShards(ctx, userID, bounds, from, through, targetBytesPerShard, predicate)
 }
 
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {

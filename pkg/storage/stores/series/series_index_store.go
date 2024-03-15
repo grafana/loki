@@ -767,7 +767,7 @@ func (c *IndexReaderWriter) GetShards(
 	bounds []tsdb_index.FingerprintFilter,
 	from, through model.Time,
 	targetBytesPerShard uint64,
-	matchers ...*labels.Matcher,
+	predicte chunk.Predicate,
 ) ([]logproto.Shard, error) {
 	return nil, errors.New("unimplemented GetShards() on legacy index stores")
 }

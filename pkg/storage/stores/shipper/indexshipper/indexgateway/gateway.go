@@ -362,24 +362,30 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 		casted = append(casted, v1.BoundsFromProto(bound))
 	}
 
-	// TODO(owen-d): can improve by actually streaming. Currently we use the streaming
-	// transport, but just send one batch.
-	shards, err := g.indexQuerier.GetShards(
-		ctx,
-		instanceID,
-		casted,
-		request.From, request.Through,
-		request.TargetBytesPerShard,
-		matchers...,
-	)
+	// Shards were requested, but blooms are not enabled or cannot be used due to lack of filters.
+	// That's ok; we can still return shard ranges without filtering
+	// which will be more effective than guessing power-of-2 shard ranges.
+	if g.bloomQuerier == nil {
+		shards, err := g.indexQuerier.GetShards(
+			ctx,
+			instanceID,
+			casted,
+			request.From, request.Through,
+			request.TargetBytesPerShard,
+			matchers...,
+		)
 
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
+
+		return server.Send(&logproto.ShardsResponse{
+			Shards: shards,
+		})
 	}
 
-	return server.Send(&logproto.ShardsResponse{
-		Shards: shards,
-	})
+	// TODO(owen-d): can improve by actually streaming. Currently we use the streaming
+	// transport, but just send one batch.
 
 }
 

@@ -213,13 +213,13 @@ func (c CompositeStore) GetShards(
 	bounds []tsdb_index.FingerprintFilter,
 	from, through model.Time,
 	targetBytesPerShard uint64,
-	matchers ...*labels.Matcher,
+	predicate chunk.Predicate,
 ) ([]logproto.Shard, error) {
 	// TODO(owen-d): improve. Since shards aren't easily merge-able,
 	// we choose the store which returned the highest shard count
 	var groups [][]logproto.Shard
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		shards, err := store.GetShards(innerCtx, userID, bounds, from, through, targetBytesPerShard, matchers...)
+		shards, err := store.GetShards(innerCtx, userID, bounds, from, through, targetBytesPerShard, predicate)
 		if err != nil {
 			return err
 		}

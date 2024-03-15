@@ -40,7 +40,7 @@ type StatsReader interface {
 		bounds []index.FingerprintFilter,
 		from, through model.Time,
 		targetBytesPerShard uint64,
-		matchers ...*labels.Matcher,
+		predicate chunk.Predicate,
 	) ([]logproto.Shard, error)
 }
 
@@ -157,12 +157,12 @@ func (m MonitoredReaderWriter) GetShards(
 	bounds []index.FingerprintFilter,
 	from, through model.Time,
 	targetBytesPerShard uint64,
-	matchers ...*labels.Matcher,
+	predicate chunk.Predicate,
 ) ([]logproto.Shard, error) {
 	var shards []logproto.Shard
 	if err := loki_instrument.TimeRequest(ctx, "shards", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
-		shards, err = m.rw.GetShards(ctx, userID, bounds, from, through, targetBytesPerShard, matchers...)
+		shards, err = m.rw.GetShards(ctx, userID, bounds, from, through, targetBytesPerShard, predicate)
 		return err
 	}); err != nil {
 		return nil, err
