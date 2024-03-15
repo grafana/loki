@@ -396,19 +396,10 @@ func maxTime(t1, t2 time.Time) time.Time {
 }
 
 func getLatestConfig(client chunk.ObjectClient, orgID string) (*config.SchemaConfig, error) {
-	searchFor := fmt.Sprintf("%s.yaml", schemaConfigFilename) // schemaconfig.yaml for backwards compatibility
-	loadedSchema, err := LoadSchemaUsingObjectClient(client, searchFor)
-	if err == nil {
-		return loadedSchema, nil
-	}
-	if err != errNotExists && err != nil {
-		return nil, err
-	}
-
 	// Get the latest
 	iteration := 0
-	searchFor = fmt.Sprintf("%s-%s.yaml", orgID, schemaConfigFilename) // schemaconfig-tenant.yaml
-
+	searchFor := fmt.Sprintf("%s-%s.yaml", orgID, schemaConfigFilename) // schemaconfig-tenant.yaml
+	var loadedSchema *config.SchemaConfig
 	for {
 		if iteration != 0 {
 			searchFor = fmt.Sprintf("%s-%s-%d.yaml", orgID, schemaConfigFilename, iteration) // tenant-schemaconfig-1.yaml
@@ -424,10 +415,19 @@ func getLatestConfig(client chunk.ObjectClient, orgID string) (*config.SchemaCon
 		loadedSchema = tempSchema
 		iteration++
 	}
-	if loadedSchema == nil {
-		return nil, errNotExists
+	if loadedSchema != nil {
+		return loadedSchema, nil
 	}
-	return loadedSchema, nil
+
+	searchFor = fmt.Sprintf("%s.yaml", schemaConfigFilename) // schemaconfig.yaml for backwards compatibility
+	loadedSchema, err := LoadSchemaUsingObjectClient(client, searchFor)
+	if err == nil {
+		return loadedSchema, nil
+	}
+	if err != errNotExists {
+		return nil, err
+	}
+	return nil, errNotExists
 }
 
 // DoLocalQuery executes the query against the local store using a Loki configuration file.
