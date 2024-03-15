@@ -514,10 +514,6 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		query = eng.Query(params)
 	}
 
-	if err != nil {
-		return err
-	}
-
 	// execute the query
 	ctx := user.InjectOrgID(context.Background(), orgID)
 	result, err := query.Exec(ctx)
