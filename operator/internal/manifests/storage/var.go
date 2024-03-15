@@ -137,8 +137,8 @@ const (
 	storageTLSVolume = "storage-tls"
 	caDirectory      = "/etc/storage/ca"
 
-	managedAuthConfigVolumeName = "managed-auth-config"
-	managedAuthConfigDirectory  = "/etc/storage/managed-auth"
+	tokenAuthConfigVolumeName = "token-auth-config"
+	tokenAuthConfigDirectory  = "/etc/storage/token-auth"
 
 	awsDefaultAudience = "sts.amazonaws.com"
 

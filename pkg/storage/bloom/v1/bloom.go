@@ -12,6 +12,14 @@ import (
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
+// NB(chaudum): Some block pages are way bigger than others (400MiB and
+// bigger), and loading multiple pages into memory in parallel can cause the
+// gateways to OOM.
+// Figure out a decent maximum page size that we can process.
+// TODO(chaudum): Make max page size configurable
+var maxPageSize = 32 << 20 // 32MB
+var errPageTooLarge = "bloom page too large to process: N=%d Offset=%d Len=%d DecompressedLen=%d"
+
 type Bloom struct {
 	filter.ScalableBloomFilter
 }
@@ -238,6 +246,10 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int) (*BloomPageD
 	}
 
 	page := b.pageHeaders[pageIdx]
+
+	if page.Len > maxPageSize {
+		return nil, fmt.Errorf(errPageTooLarge, page.N, page.Offset, page.Len, page.DecompressedLen)
+	}
 
 	if _, err := r.Seek(int64(page.Offset), io.SeekStart); err != nil {
 		return nil, errors.Wrap(err, "seeking to bloom page")

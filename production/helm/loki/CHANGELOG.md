@@ -13,9 +13,17 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.44.0
+
+- [FEATURE] Modified helm template to use parameters http_listen_port and grpc_listen_port instead of hardcoded values.
+
+## 5.43.7
+
+- [BUGFIX] allow to configure http_config for ruler
+
 ## 5.43.6
 
- [ENHANCEMENT] Add `ciliumnetworkpolicy` with egress to world for table-manager if enabled.
+- [ENHANCEMENT] Add `ciliumnetworkpolicy` with egress to world for table-manager if enabled.
 
 ## 5.43.5
 
