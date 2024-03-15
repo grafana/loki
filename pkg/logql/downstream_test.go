@@ -741,6 +741,11 @@ func TestParseShardCount(t *testing.T) {
 		expected int
 	}{
 		{
+			name:     "empty shards",
+			shards:   []string{},
+			expected: 0,
+		},
+		{
 			name:     "single shard",
 			shards:   []string{"0_of_3"},
 			expected: 3,
