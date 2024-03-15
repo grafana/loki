@@ -77,6 +77,7 @@ lokistack_info{size="1x.demo",stack_name="test-stack",stack_namespace="test-name
 							Conditions: []metav1.Condition{
 								{
 									Type:   string(lokiv1.ConditionWarning),
+									Status: metav1.ConditionTrue,
 									Reason: string(lokiv1.ReasonStorageNeedsSchemaUpdate),
 								},
 							},

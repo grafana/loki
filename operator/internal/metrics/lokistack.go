@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -74,6 +75,10 @@ func (l lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 
 		warningsMap := map[string]int{}
 		for _, c := range stack.Status.Conditions {
+			if c.Status != metav1.ConditionTrue {
+				continue
+			}
+
 			if c.Type != string(lokiv1.ConditionWarning) {
 				continue
 			}
