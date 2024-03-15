@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -63,6 +64,10 @@ func (m mockStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32,
 
 func (m mockStore) GetShards(_ context.Context, _ string, _ []tsdb_index.FingerprintFilter, _, _ model.Time, _ uint64, _ chunk.Predicate) ([]logproto.Shard, error) {
 	return nil, nil
+}
+
+func (m mockStore) HasForSeries() (index.ForSeries, bool) {
+	return nil, false
 }
 
 func (m mockStore) Stop() {}

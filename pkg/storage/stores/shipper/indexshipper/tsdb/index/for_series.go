@@ -1,0 +1,63 @@
+package index
+
+import (
+	"context"
+
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+)
+
+// General purpose iteration over series. Makes it easier to build custom functionality on top of indices
+// of different types without them all implementing the same feature.
+// The passed callback must _not_ capture its arguments. They're reused for each call for performance.
+// NB: This is a low-level API and should be used with caution.
+// NB: It's possible for the callback to be called multiple times for the same series but possibly different chunks,
+// such as when the Index is backed by multiple files with the same series present.
+// NB(owen-d): mainly in this package to avoid circular dependencies elsewhere and because
+// many of the arguments are specific to this pkg.
+type ForSeries interface {
+	ForSeries(
+		ctx context.Context,
+		userID string,
+		fpFilter FingerprintFilter,
+		from model.Time,
+		through model.Time,
+		fn func(
+			labels.Labels,
+			model.Fingerprint,
+			[]ChunkMeta,
+		) (stop bool),
+		matchers ...*labels.Matcher,
+	) error
+}
+
+// function Adapter for ForSeries implementation
+type ForSeriesFunc func(
+	ctx context.Context,
+	userID string,
+	fpFilter FingerprintFilter,
+	from model.Time,
+	through model.Time,
+	fn func(
+		labels.Labels,
+		model.Fingerprint,
+		[]ChunkMeta,
+	) (stop bool),
+	matchers ...*labels.Matcher,
+) error
+
+func (f ForSeriesFunc) ForSeries(
+	ctx context.Context,
+	userID string,
+	fpFilter FingerprintFilter,
+	from model.Time,
+	through model.Time,
+	fn func(
+		labels.Labels,
+		model.Fingerprint,
+		[]ChunkMeta,
+	) (stop bool),
+	matchers ...*labels.Matcher,
+) error {
+	return f(ctx, userID, fpFilter, from, through, fn, matchers...)
+}

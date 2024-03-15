@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -158,6 +157,6 @@ func (c *IndexGatewayClientStore) IndexChunk(_ context.Context, _, _ model.Time,
 // IndexGatewayClientStore does not implement tsdb.ForSeries;
 // that is implemented by the index-gws themselves and will be
 // called during the `GetShards() invocation`
-func (c *IndexGatewayClientStore) HasForSeries() (tsdb.ForSeries, bool) {
+func (c *IndexGatewayClientStore) HasForSeries() (index.ForSeries, bool) {
 	return nil, false
 }

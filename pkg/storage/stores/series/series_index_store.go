@@ -27,7 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
@@ -774,6 +774,6 @@ func (c *IndexReaderWriter) GetShards(
 }
 
 // old index stores do not implement tsdb.ForSeries -- skip
-func (c *IndexReaderWriter) HasForSeries() (tsdb.ForSeries, bool) {
+func (c *IndexReaderWriter) HasForSeries() (index.ForSeries, bool) {
 	return nil, false
 }

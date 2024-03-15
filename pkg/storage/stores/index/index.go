@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
 )
@@ -53,7 +52,7 @@ type Reader interface {
 
 	// If the underlying index supports it, this will return the ForSeries interface
 	// which is used in bloom-filter accelerated sharding calculation optimization.
-	// HasForSeries() (tsdb.ForSeries, bool)
+	HasForSeries() (index.ForSeries, bool)
 }
 
 type Writer interface {
@@ -185,9 +184,9 @@ func (m MonitoredReaderWriter) IndexChunk(ctx context.Context, from, through mod
 	})
 }
 
-func (m MonitoredReaderWriter) HasForSeries() (tsdb.ForSeries, bool) {
+func (m MonitoredReaderWriter) HasForSeries() (index.ForSeries, bool) {
 	if impl, ok := m.rw.HasForSeries(); ok {
-		wrapped := tsdb.ForSeriesFunc(func(
+		wrapped := index.ForSeriesFunc(func(
 			ctx context.Context,
 			userID string,
 			fpFilter index.FingerprintFilter,
