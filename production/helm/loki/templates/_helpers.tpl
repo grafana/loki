@@ -888,7 +888,7 @@ enableServiceLinks: false
 {{/* single binary */}}
 {{- $compactorAddress = include "loki.singleBinaryFullname" . -}}
 {{- end -}}
-{{- printf "%s" $compactorAddress }}
+{{- printf "http://%s:3100" $compactorAddress }}
 {{- end }}
 
 {{/* Determine query-scheduler address */}}
