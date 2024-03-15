@@ -2,6 +2,8 @@ package tsdb
 
 import (
 	"context"
+	"sort"
+	"sync"
 	"time"
 
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
@@ -270,12 +272,39 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 }
 
 func (c *IndexClient) GetShards(ctx context.Context, userID string, bounds []index.FingerprintFilter, from, through model.Time, targetBytesPerShard uint64, matchers ...*labels.Matcher) ([]logproto.Shard, error) {
+
+	// TODO(owen-d): perf, this is expensive :(
+	var mtx sync.Mutex
+	m := make(map[model.Fingerprint]index.ChunkMetas, 1024)
+
 	for _, bound := range bounds {
-		c.idx.ForSeries(ctx, userID, bound, from, through, nil, matchers...)
+		if err := c.idx.ForSeries(ctx, userID, bound, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+			mtx.Lock()
+			m[fp] = append(m[fp], chks...)
+			mtx.Unlock()
+			return false
+		}, matchers...); err != nil {
+			return nil, err
+		}
 	}
 
-	panic("implement")
-	return nil, nil
+	series := sizedFPs(sizedFPsPool.Get(len(m)))
+	defer sizedFPsPool.Put(series)
+
+	for fp, chks := range m {
+		x := sizedFP{fp: fp}
+		deduped := chks.Finalize()
+		x.stats.Chunks = uint64(len(deduped))
+
+		for _, chk := range deduped {
+			x.stats.Entries += uint64(chk.Entries)
+			x.stats.Bytes += uint64(chk.KB << 10)
+		}
+		series = append(series, x)
+	}
+	sort.Sort(series)
+
+	return series.ShardsFor(targetBytesPerShard), nil
 }
 
 // SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
