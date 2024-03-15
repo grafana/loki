@@ -156,6 +156,6 @@ func (c *IndexGatewayClientStore) IndexChunk(_ context.Context, _, _ model.Time,
 // IndexGatewayClientStore does not implement tsdb.ForSeries;
 // that is implemented by the index-gws themselves and will be
 // called during the `GetShards() invocation`
-func (c *IndexGatewayClientStore) HasForSeries() (sharding.ForSeries, bool) {
+func (c *IndexGatewayClientStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
 }

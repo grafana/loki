@@ -65,7 +65,7 @@ func (m mockStore) GetShards(_ context.Context, _ string, _, _ model.Time, _ uin
 	return nil, nil
 }
 
-func (m mockStore) HasForSeries() (sharding.ForSeries, bool) {
+func (m mockStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
 }
 

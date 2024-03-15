@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/errors"
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -156,6 +157,10 @@ func (c *storeEntry) GetShards(
 	}
 
 	return c.indexReader.GetShards(ctx, userID, from, through, targetBytesPerShard, predicate)
+}
+
+func (c *storeEntry) HasForSeries(from, through model.Time) (sharding.ForSeries, bool) {
+	return c.indexReader.HasForSeries(from, through)
 }
 
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {

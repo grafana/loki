@@ -40,7 +40,7 @@ type StatsReader interface {
 
 	// If the underlying index supports it, this will return the ForSeries interface
 	// which is used in bloom-filter accelerated sharding calculation optimization.
-	HasForSeries() (sharding.ForSeries, bool)
+	HasForSeries(from, through model.Time) (sharding.ForSeries, bool)
 }
 
 type Reader interface {
@@ -178,25 +178,27 @@ func (m MonitoredReaderWriter) IndexChunk(ctx context.Context, from, through mod
 	})
 }
 
-func (m MonitoredReaderWriter) HasForSeries() (sharding.ForSeries, bool) {
-	if impl, ok := m.rw.HasForSeries(); ok {
-		wrapped := sharding.ForSeriesFunc(func(
-			ctx context.Context,
-			userID string,
-			fpFilter index.FingerprintFilter,
-			from model.Time,
-			through model.Time,
-			fn func(
-				labels.Labels,
-				model.Fingerprint,
-				[]index.ChunkMeta,
-			) (stop bool),
-			matchers ...*labels.Matcher,
-		) error {
-			return loki_instrument.TimeRequest(ctx, "for_series", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
-				return impl.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
-			})
-		})
+func (m MonitoredReaderWriter) HasForSeries(from, through model.Time) (sharding.ForSeries, bool) {
+	if impl, ok := m.rw.HasForSeries(from, through); ok {
+		wrapped := sharding.ForSeriesFunc(
+			func(
+				ctx context.Context,
+				userID string,
+				fpFilter index.FingerprintFilter,
+				from model.Time,
+				through model.Time,
+				fn func(
+					labels.Labels,
+					model.Fingerprint,
+					[]index.ChunkMeta,
+				) (stop bool),
+				matchers ...*labels.Matcher,
+			) error {
+				return loki_instrument.TimeRequest(ctx, "for_series", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+					return impl.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+				})
+			},
+		)
 		return wrapped, true
 	}
 	return nil, false

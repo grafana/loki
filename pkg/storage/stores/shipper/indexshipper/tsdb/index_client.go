@@ -335,6 +335,6 @@ func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
 	return dst
 }
 
-func (c *IndexClient) HasForSeries() (sharding.ForSeries, bool) {
+func (c *IndexClient) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return c.idx, true
 }

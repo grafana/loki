@@ -772,6 +772,6 @@ func (c *IndexReaderWriter) GetShards(
 }
 
 // old index stores do not implement tsdb.ForSeries -- skip
-func (c *IndexReaderWriter) HasForSeries() (sharding.ForSeries, bool) {
+func (c *IndexReaderWriter) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
 }

@@ -13,6 +13,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -241,7 +243,46 @@ func (c CompositeStore) GetShards(
 		})
 		return groups[0], nil
 	}
+}
 
+func (c CompositeStore) HasForSeries(from, through model.Time) (sharding.ForSeries, bool) {
+	var impls []sharding.ForSeries
+	c.forStores(context.Background(), from, through, func(_ context.Context, from, through model.Time, store Store) error {
+		impl, ok := store.HasForSeries(from, through)
+		if ok {
+			impls = append(impls, impl)
+		}
+		return nil
+	})
+
+	if len(impls) == 0 {
+		return nil, false
+	}
+
+	wrapped := sharding.ForSeriesFunc(
+		func(
+			ctx context.Context,
+			userID string,
+			fpFilter tsdb_index.FingerprintFilter,
+			from model.Time,
+			through model.Time,
+			fn func(
+				labels.Labels,
+				model.Fingerprint,
+				[]tsdb_index.ChunkMeta,
+			) (stop bool),
+			matchers ...*labels.Matcher,
+		) error {
+			for _, impl := range impls {
+				if err := impl.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	)
+
+	return wrapped, true
 }
 
 func (c CompositeStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
