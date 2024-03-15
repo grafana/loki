@@ -1,33 +1,38 @@
-package tsdb
+package sharding
 
 import (
 	"math"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/prometheus/common/model"
 )
 
-type sizedFP struct {
-	fp    model.Fingerprint
-	stats stats.Stats
+var (
+	SizedFPsPool = queue.NewSlicePool[SizedFP](1<<8, 1<<16, 4) // 256->65536
+)
+
+type SizedFP struct {
+	Fp    model.Fingerprint
+	Stats stats.Stats
 }
 
-type sizedFPs []sizedFP
+type SizedFPs []SizedFP
 
-func (xs sizedFPs) Len() int {
+func (xs SizedFPs) Len() int {
 	return len(xs)
 }
 
-func (xs sizedFPs) Less(i, j int) bool {
-	return xs[i].fp < xs[j].fp
+func (xs SizedFPs) Less(i, j int) bool {
+	return xs[i].Fp < xs[j].Fp
 }
 
-func (xs sizedFPs) Swap(i, j int) {
+func (xs SizedFPs) Swap(i, j int) {
 	xs[i], xs[j] = xs[j], xs[i]
 }
 
-func (xs sizedFPs) newShard(minFP model.Fingerprint) logproto.Shard {
+func (xs SizedFPs) newShard(minFP model.Fingerprint) logproto.Shard {
 	return logproto.Shard{
 		Bounds: logproto.FPBounds{
 			Min: minFP,
@@ -36,7 +41,7 @@ func (xs sizedFPs) newShard(minFP model.Fingerprint) logproto.Shard {
 	}
 }
 
-func (xs sizedFPs) ShardsFor(targetShardBytes uint64) (res []logproto.Shard) {
+func (xs SizedFPs) ShardsFor(targetShardBytes uint64) (res []logproto.Shard) {
 	if len(xs) == 0 {
 		full := xs.newShard(0)
 		full.Bounds.Max = model.Fingerprint(math.MaxUint64)
@@ -50,13 +55,13 @@ func (xs sizedFPs) ShardsFor(targetShardBytes uint64) (res []logproto.Shard) {
 	for _, x := range xs {
 
 		// easy path, there's space -- continue
-		if cur.SpaceFor(&x.stats, targetShardBytes) {
+		if cur.SpaceFor(&x.Stats, targetShardBytes) {
 			cur.Stats.Streams++
-			cur.Stats.Chunks += x.stats.Chunks
-			cur.Stats.Entries += x.stats.Entries
-			cur.Stats.Bytes += x.stats.Bytes
+			cur.Stats.Chunks += x.Stats.Chunks
+			cur.Stats.Entries += x.Stats.Entries
+			cur.Stats.Bytes += x.Stats.Bytes
 
-			cur.Bounds.Max = x.fp
+			cur.Bounds.Max = x.Fp
 			continue
 		}
 
@@ -65,25 +70,25 @@ func (xs sizedFPs) ShardsFor(targetShardBytes uint64) (res []logproto.Shard) {
 		if cur.Stats.Streams == 0 {
 			cur.Stats = &stats.Stats{
 				Streams: 1,
-				Chunks:  x.stats.Chunks,
-				Bytes:   x.stats.Bytes,
-				Entries: x.stats.Entries,
+				Chunks:  x.Stats.Chunks,
+				Bytes:   x.Stats.Bytes,
+				Entries: x.Stats.Entries,
 			}
-			cur.Bounds.Max = x.fp
+			cur.Bounds.Max = x.Fp
 			res = append(res, cur)
-			cur = xs.newShard(x.fp + 1)
+			cur = xs.newShard(x.Fp + 1)
 			continue
 		}
 
 		// Otherwise we've hit a stream that's too large but the current shard isn't empty; create a new shard
-		cur.Bounds.Max = x.fp - 1
+		cur.Bounds.Max = x.Fp - 1
 		res = append(res, cur)
-		cur = xs.newShard(x.fp)
+		cur = xs.newShard(x.Fp)
 		cur.Stats = &stats.Stats{
 			Streams: 1,
-			Chunks:  x.stats.Chunks,
-			Bytes:   x.stats.Bytes,
-			Entries: x.stats.Entries,
+			Chunks:  x.Stats.Chunks,
+			Bytes:   x.Stats.Bytes,
+			Entries: x.Stats.Entries,
 		}
 	}
 

@@ -3,7 +3,6 @@ package tsdb
 import (
 	"sync"
 
-	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -11,7 +10,6 @@ var (
 	ChunkMetasPool = &index.ChunkMetasPool // re-exporting
 	SeriesPool     PoolSeries
 	ChunkRefsPool  PoolChunkRefs
-	sizedFPsPool   = queue.NewSlicePool[sizedFP](1<<8, 1<<16, 4) // 256->65536
 )
 
 type PoolSeries struct {

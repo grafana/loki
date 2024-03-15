@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	loki_util "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -272,7 +273,7 @@ func (m *mockChunkStore) GetShards(_ context.Context, _ string, _ []index.Finger
 	return nil, nil
 }
 
-func (m *mockChunkStore) HasForSeries() (index.ForSeries, bool) {
+func (m *mockChunkStore) HasForSeries() (sharding.ForSeries, bool) {
 	return nil, false
 }
 

@@ -5,6 +5,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
+// TODO(owen-d): rename. This is not a predicate and is confusing.
 type Predicate struct {
 	Matchers []*labels.Matcher
 	plan     *plan.QueryPlan

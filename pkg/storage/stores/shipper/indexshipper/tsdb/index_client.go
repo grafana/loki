@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -291,17 +292,17 @@ func (c *IndexClient) GetShards(ctx context.Context, userID string, bounds []ind
 		}
 	}
 
-	series := sizedFPs(sizedFPsPool.Get(len(m)))
-	defer sizedFPsPool.Put(series)
+	series := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(m)))
+	defer sharding.SizedFPsPool.Put(series)
 
 	for fp, chks := range m {
-		x := sizedFP{fp: fp}
+		x := sharding.SizedFP{Fp: fp}
 		deduped := chks.Finalize()
-		x.stats.Chunks = uint64(len(deduped))
+		x.Stats.Chunks = uint64(len(deduped))
 
 		for _, chk := range deduped {
-			x.stats.Entries += uint64(chk.Entries)
-			x.stats.Bytes += uint64(chk.KB << 10)
+			x.Stats.Entries += uint64(chk.Entries)
+			x.Stats.Bytes += uint64(chk.KB << 10)
 		}
 		series = append(series, x)
 	}
@@ -335,6 +336,6 @@ func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
 	return dst
 }
 
-func (c *IndexClient) HasForSeries() (index.ForSeries, bool) {
+func (c *IndexClient) HasForSeries() (sharding.ForSeries, bool) {
 	return c.idx, true
 }

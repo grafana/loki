@@ -1,8 +1,9 @@
-package index
+package sharding
 
 import (
 	"context"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 )
@@ -13,19 +14,18 @@ import (
 // NB: This is a low-level API and should be used with caution.
 // NB: It's possible for the callback to be called multiple times for the same series but possibly different chunks,
 // such as when the Index is backed by multiple files with the same series present.
-// NB(owen-d): mainly in this package to avoid circular dependencies elsewhere and because
-// many of the arguments are specific to this pkg.
+// NB(owen-d): mainly in this package to avoid circular dependencies elsewhere
 type ForSeries interface {
 	ForSeries(
 		ctx context.Context,
 		userID string,
-		fpFilter FingerprintFilter,
+		fpFilter index.FingerprintFilter,
 		from model.Time,
 		through model.Time,
 		fn func(
 			labels.Labels,
 			model.Fingerprint,
-			[]ChunkMeta,
+			[]index.ChunkMeta,
 		) (stop bool),
 		matchers ...*labels.Matcher,
 	) error
@@ -35,13 +35,13 @@ type ForSeries interface {
 type ForSeriesFunc func(
 	ctx context.Context,
 	userID string,
-	fpFilter FingerprintFilter,
+	fpFilter index.FingerprintFilter,
 	from model.Time,
 	through model.Time,
 	fn func(
 		labels.Labels,
 		model.Fingerprint,
-		[]ChunkMeta,
+		[]index.ChunkMeta,
 	) (stop bool),
 	matchers ...*labels.Matcher,
 ) error
@@ -49,13 +49,13 @@ type ForSeriesFunc func(
 func (f ForSeriesFunc) ForSeries(
 	ctx context.Context,
 	userID string,
-	fpFilter FingerprintFilter,
+	fpFilter index.FingerprintFilter,
 	from model.Time,
 	through model.Time,
 	fn func(
 		labels.Labels,
 		model.Fingerprint,
-		[]ChunkMeta,
+		[]index.ChunkMeta,
 	) (stop bool),
 	matchers ...*labels.Matcher,
 ) error {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
 type Series struct {
@@ -37,7 +38,7 @@ type Index interface {
 	Bounded
 	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 	Close() error
-	index.ForSeries
+	sharding.ForSeries
 	// GetChunkRefs accepts an optional []ChunkRef argument.
 	// If not nil, it will use that slice to build the result,
 	// allowing us to avoid unnecessary allocations at the caller's discretion.
