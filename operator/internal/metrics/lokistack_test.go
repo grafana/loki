@@ -1,0 +1,125 @@
+package metrics
+
+import (
+	"context"
+	"io"
+	"strings"
+	"testing"
+
+	"github.com/ViaQ/logerr/v2/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
+)
+
+func TestRegisterLokiStackMetrics(t *testing.T) {
+	logger := log.NewLogger("test", log.WithOutput(io.Discard))
+	client := &k8sfakes.FakeClient{}
+	registry := prometheus.NewPedanticRegistry()
+
+	err := RegisterLokiStackCollector(logger, client, registry)
+	require.NoError(t, err)
+}
+
+func TestLokiStackMetricsCollect(t *testing.T) {
+	tt := []struct {
+		desc        string
+		k8sError    error
+		stacks      *lokiv1.LokiStackList
+		wantMetrics string
+	}{
+		{
+			desc:        "no stacks",
+			k8sError:    nil,
+			stacks:      &lokiv1.LokiStackList{},
+			wantMetrics: "",
+		},
+		{
+			desc:     "one demo",
+			k8sError: nil,
+			stacks: &lokiv1.LokiStackList{
+				Items: []lokiv1.LokiStack{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test-stack",
+							Namespace: "test-namespace",
+						},
+						Spec: lokiv1.LokiStackSpec{
+							Size: lokiv1.SizeOneXDemo,
+						},
+					},
+				},
+			},
+			wantMetrics: `# HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
+# TYPE lokistack_info gauge
+lokistack_info{size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
+`,
+		},
+		{
+			desc:     "one small with warning",
+			k8sError: nil,
+			stacks: &lokiv1.LokiStackList{
+				Items: []lokiv1.LokiStack{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test-stack",
+							Namespace: "test-namespace",
+						},
+						Spec: lokiv1.LokiStackSpec{
+							Size: lokiv1.SizeOneXSmall,
+						},
+						Status: lokiv1.LokiStackStatus{
+							Conditions: []metav1.Condition{
+								{
+									Type:   string(lokiv1.ConditionWarning),
+									Reason: string(lokiv1.ReasonStorageNeedsSchemaUpdate),
+								},
+							},
+						},
+					},
+				},
+			},
+			wantMetrics: `# HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
+# TYPE lokistack_info gauge
+lokistack_info{size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
+# HELP lokistack_warnings_count Counts the number of warnings set on a LokiStack.
+# TYPE lokistack_warnings_count gauge
+lokistack_warnings_count{reason="StorageNeedsSchemaUpdate",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
+`,
+		},
+	}
+
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			logger := log.NewLogger("test", log.WithOutput(io.Discard))
+			k := &k8sfakes.FakeClient{}
+			k.ListStub = func(_ context.Context, list client.ObjectList, _ ...client.ListOption) error {
+				if tc.k8sError != nil {
+					return tc.k8sError
+				}
+
+				k.SetClientObjectList(list, tc.stacks)
+				return nil
+			}
+
+			expected := strings.NewReader(tc.wantMetrics)
+
+			c := &lokiStackCollector{
+				log:       logger,
+				k8sClient: k,
+			}
+
+			if err := testutil.CollectAndCompare(c, expected); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+}
