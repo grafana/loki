@@ -30,16 +30,16 @@
         rev = gitRevision;
       };
     in
-    rec {
+    {
       inherit (loki-helm-test) loki-helm-test loki-helm-test-docker;
-
+    } // rec {
       loki = prev.callPackage ./packages/loki.nix {
         inherit imageTag;
         version = shortGitRevsion;
         pkgs = prev;
       };
 
-      logcli = loki.overrideAttrs (oldAttrs: rec {
+      logcli = loki.overrideAttrs (oldAttrs: {
         pname = "logcli";
 
         buildPhase = ''
@@ -53,7 +53,7 @@
         '';
       });
 
-      loki-canary = loki.overrideAttrs (oldAttrs: rec {
+      loki-canary = loki.overrideAttrs (oldAttrs: {
         pname = "loki-canary";
 
         buildPhase = ''
@@ -67,8 +67,10 @@
         '';
       });
 
-      promtail = loki.overrideAttrs (oldAttrs: rec {
+      promtail = loki.overrideAttrs (oldAttrs: {
         pname = "promtail";
+
+        buildInputs = if prev.stdenv.hostPlatform.isLinux then oldAttrs.buildInputs ++ [ prev.systemd ] else oldAttrs.buildInputs;
 
         buildPhase = ''
           export GOCACHE=$TMPDIR/go-cache

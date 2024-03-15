@@ -5,7 +5,7 @@ let
     pname = "lambda-promtail";
 
     src = ./../../tools/lambda-promtail;
-    vendorSha256 = "11yNeQb4k5/w0+r+LJOmjXUQRaWvWSXqM+zMHtMVxY8=";
+    vendorSha256 = "PBdPIrN0aWO38bgoAg6jZlY7scpUM2tAjJ6bMN4SQt8=";
 
     doCheck = false;
 
@@ -23,14 +23,16 @@ pkgs.stdenv.mkDerivation {
 
   src = ./../..;
 
+  nativeBuildInputs = with pkgs; [
+    gcc
+    go
+  ];
+
   buildInputs = with pkgs; [
     bash
-    gcc
     git
-    go
     golangci-lint
     nettools
-    systemd
     yamllint
 
     (import ./faillint.nix {
