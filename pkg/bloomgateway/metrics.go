@@ -72,7 +72,7 @@ func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Subsystem: subsystem,
 			Name:      "request_filters",
 			Help:      "Number of filters per request.",
-			Buckets:   prometheus.LinearBuckets(0, 1, 20),
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 9), // 1 -> 256
 		}),
 	}
 }

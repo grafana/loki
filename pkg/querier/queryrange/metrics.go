@@ -55,7 +55,7 @@ func NewMiddlewareQueryMetrics(registerer prometheus.Registerer, metricsNamespac
 			Namespace: metricsNamespace,
 			Name:      "query_frontend_query_filters",
 			Help:      "Number of filters per query.",
-			Buckets:   prometheus.LinearBuckets(0, 1, 20),
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 9), // 1 -> 256
 		}),
 	}
 }
