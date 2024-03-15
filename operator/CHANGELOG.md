@@ -1,5 +1,6 @@
 ## Main
 
+- [12164](https://github.com/grafana/loki/pull/12164) **periklis**: Use safe bearer token authentication to scrape operator metrics
 - [12216](https://github.com/grafana/loki/pull/12216) **xperimental**: Fix duplicate operator metrics due to ServiceMonitor selector
 - [12212](https://github.com/grafana/loki/pull/12212) **xperimental**: Keep credentialMode in status when updating schemas
 - [12165](https://github.com/grafana/loki/pull/12165) **JoaoBraveCoding**: Change attribute value used for CCO-based credential mode
