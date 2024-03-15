@@ -17,11 +17,24 @@
 {{- $singleBinaryReplicas := int .Values.singleBinary.replicas }}
 {{- $isUsingFilesystem := eq (include "loki.isUsingObjectStorage" .) "false" }}
 {{- $atLeastOneScalableReplica := or (gt (int .Values.backend.replicas) 0) (gt (int .Values.read.replicas) 0) (gt (int .Values.write.replicas) 0) }}
+{{- $atLeastOneDistributedReplica := or (gt (int .Values.ingester.replicas) 0) (gt (int .Values.distributor.replicas) 0) (gt (int .Values.querier.replicas) 0) (gt (int .Values.queryFrontend.replicas) 0) (gt (int .Values.queryScheduler.replicas) 0) (gt (int .Values.indexGateway.replicas) 0) (gt (int .Values.compactor.replicas) 0) (gt (int .Values.ruler.replicas) 0) }}
 
 {{- if and $isUsingFilesystem (gt $singleBinaryReplicas 1) }}
 {{- fail "Cannot run more than 1 Single Binary replica without an object storage backend."}}
 {{- end }}
 
-{{- if and $isUsingFilesystem (and (eq $singleBinaryReplicas 0) $atLeastOneScalableReplica) }}
-{{- fail "Cannot run Scalable targets (backend, read, write) without an object storage backend."}}
+{{- if and $isUsingFilesystem (and (eq $singleBinaryReplicas 0) (or $atLeastOneScalableReplica $atLeastOneDistributedReplica)) }}
+{{- fail "Cannot run scalable targets (backend, read, write) or distributed targets without an object storage backend."}}
+{{- end }}
+
+{{- if and $atLeastOneScalableReplica $atLeastOneDistributedReplica }}
+{{- fail "Cannot run replicas of both scalable targets (backend, read, write) and distributed targets. Must pick one deployment type."}}
+{{- end }}
+
+{{- if and (gt $singleBinaryReplicas 0) $atLeastOneDistributedReplica }}
+{{- fail "Cannot run replicas of both distributed targets and single binary targets. Must pick one deployment type."}}
+{{- end }}
+
+{{- if and (gt $singleBinaryReplicas 0) $atLeastOneScalableReplica }}
+{{- fail "Cannot run replicas of both scalable targets (read, write, backend) and single binary targets. Must pick one deployment type."}}
 {{- end }}

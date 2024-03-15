@@ -50,7 +50,8 @@ Params:
 Return if deployment mode is simple scalable
 */}}
 {{- define "loki.deployment.isScalable" -}}
-  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (eq (int .Values.singleBinary.replicas) 0) }}
+  {{- $nonZeroScalableReplicas := (or (gt (int .Values.backend.replicas) 0) (gt (int .Values.read.replicas) 0) (gt (int .Values.write.replicas) 0)) }}
+  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (eq (int .Values.singleBinary.replicas) 0) ($nonZeroScalableReplicas) }}
 {{- end -}}
 
 {{/*
@@ -60,6 +61,15 @@ Return if deployment mode is single binary
   {{- $nonZeroReplicas := gt (int .Values.singleBinary.replicas) 0 }}
   {{- or (eq (include "loki.isUsingObjectStorage" . ) "false") ($nonZeroReplicas) }}
 {{- end -}}
+
+{{/*
+Return if deployment mode is distributed
+*/}}
+{{- define "loki.deployment.isDistributed" -}}
+  {{- $zeroScalableReplicas := (and (eq (int .Values.backend.replicas) 0) (eq (int .Values.read.replicas) 0) (eq (int .Values.write.replicas) 0)) }}
+  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") ($zeroScalableReplicas) }}
+{{- end -}}
+
 
 {{/*
 Create a default fully qualified app name.
@@ -448,7 +458,7 @@ ruler:
 {{- end }}
 
 {{/*
-Calculate the config from structured and unstructred text input
+Calculate the config from structured and unstructured text input
 */}}
 {{- define "loki.calculatedConfig" -}}
 {{ tpl (mergeOverwrite (tpl .Values.loki.config . | fromYaml) .Values.loki.structuredConfig | toYaml) . }}
@@ -697,9 +707,16 @@ http {
   {{- end }}
 
   server {
+    {{- if (.Values.gateway.nginxConfig.ssl) }}
+    listen             8080 ssl;
+    {{- if .Values.gateway.nginxConfig.enableIPv6 }}
+    listen             [::]:8080 ssl;
+    {{- end }}
+    {{- else }}
     listen             8080;
     {{- if .Values.gateway.nginxConfig.enableIPv6 }}
     listen             [::]:8080;
+    {{- end }}
     {{- end }}
 
     {{- if .Values.gateway.basicAuth.enabled }}
@@ -712,6 +729,8 @@ http {
       auth_basic off;
     }
 
+    ########################################################
+    # simple-scalable mode hosts and urls definitions.
     {{- $backendHost := include "loki.backendFullname" .}}
     {{- $readHost := include "loki.readFullname" .}}
     {{- $writeHost := include "loki.writeFullname" .}}
@@ -726,9 +745,11 @@ http {
     {{- $writeHost = include "loki.singleBinaryFullname" .}}
     {{- end }}
 
-    {{- $writeUrl    := printf "http://%s.%s.svc.%s:3100" $writeHost   .Release.Namespace .Values.global.clusterDomain }}
-    {{- $readUrl     := printf "http://%s.%s.svc.%s:3100" $readHost    .Release.Namespace .Values.global.clusterDomain }}
-    {{- $backendUrl  := printf "http://%s.%s.svc.%s:3100" $backendHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $httpSchema := .Values.gateway.nginxConfig.schema }}
+
+    {{- $writeUrl    := printf "%s://%s.%s.svc.%s:3100" $httpSchema $writeHost   .Release.Namespace .Values.global.clusterDomain }}
+    {{- $readUrl     := printf "%s://%s.%s.svc.%s:3100" $httpSchema $readHost    .Release.Namespace .Values.global.clusterDomain }}
+    {{- $backendUrl  := printf "%s://%s.%s.svc.%s:3100" $httpSchema $backendHost .Release.Namespace .Values.global.clusterDomain }}
 
     {{- if .Values.gateway.nginxConfig.customWriteUrl }}
     {{- $writeUrl  = .Values.gateway.nginxConfig.customWriteUrl }}
@@ -740,24 +761,45 @@ http {
     {{- $backendUrl = .Values.gateway.nginxConfig.customBackendUrl }}
     {{- end }}
 
+    #########################################################
+    # distributed mode hosts and urls definitions.
+    {{- $distributorHost := include "loki.distributorFullname" .}}
+    {{- $ingesterHost := include "loki.ingesterFullname" .}}
+    {{- $queryFrontendHost := include "loki.queryFrontendFullname" .}}
+    {{- $indexGatewayHost := include "loki.indexGatewayFullname" .}}
+    {{- $rulerHost := include "loki.rulerFullname" .}}
+
+    {{- $distributorUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $distributorHost .Release.Namespace .Values.global.clusterDomain -}}
+    {{- $ingesterUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $ingesterHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $queryFrontendUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $queryFrontendHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $indexGatewayUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $indexGatewayHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $rulerUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $rulerHost .Release.Namespace .Values.global.clusterDomain }}
+
+    {{- if not "loki.deployment.isDistributed "}}
+    {{- $distributorUrl = $writeUrl }}
+    {{- $ingesterUrl = $writeUrl }}
+    {{- $queryFrontendUrl = $readUrl }}
+    {{- $indexGatewayUrl = $backendUrl }}
+    {{- $rulerUrl = $backendUrl }}
+    {{- end -}}
 
     # Distributor
     location = /api/prom/push {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $distributorUrl }}$request_uri;
     }
     location = /loki/api/v1/push {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $distributorUrl }}$request_uri;
     }
     location = /distributor/ring {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $distributorUrl }}$request_uri;
     }
 
     # Ingester
     location = /flush {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
     location ^~ /ingester/ {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
     location = /ingester {
       internal;        # to suppress 301
@@ -765,36 +807,35 @@ http {
 
     # Ring
     location = /ring {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
 
     # MemberListKV
     location = /memberlist {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
-
 
     # Ruler
     location = /ruler/ring {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /api/prom/rules {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location ^~ /api/prom/rules/ {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /loki/api/v1/rules {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location ^~ /loki/api/v1/rules/ {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /prometheus/api/v1/alerts {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /prometheus/api/v1/rules {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $rulerUrl }}$request_uri;
     }
 
     # Compactor
@@ -810,7 +851,7 @@ http {
 
     # IndexGateway
     location = /indexgateway/ring {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $indexGatewayUrl }}$request_uri;
     }
 
     # QueryScheduler
@@ -820,7 +861,7 @@ http {
 
     # Config
     location = /config {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
 
     {{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled }}
@@ -836,28 +877,27 @@ http {
 
     # QueryFrontend, Querier
     location = /api/prom/tail {
-      proxy_pass       {{ $readUrl }}$request_uri;
+      proxy_pass       {{ $queryFrontendUrl }}$request_uri;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
     }
     location = /loki/api/v1/tail {
-      proxy_pass       {{ $readUrl }}$request_uri;
+      proxy_pass       {{ $queryFrontendUrl }}$request_uri;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
     }
     location ^~ /api/prom/ {
-      proxy_pass       {{ $readUrl }}$request_uri;
+      proxy_pass       {{ $queryFrontendUrl }}$request_uri;
     }
     location = /api/prom {
       internal;        # to suppress 301
     }
     location ^~ /loki/api/v1/ {
-      proxy_pass       {{ $readUrl }}$request_uri;
+      proxy_pass       {{ $queryFrontendUrl }}$request_uri;
     }
     location = /loki/api/v1 {
       internal;        # to suppress 301
     }
-
 
     {{- with .Values.gateway.nginxConfig.serverSnippet }}
     {{ . | nindent 4 }}
@@ -900,3 +940,29 @@ enableServiceLinks: false
 {{- end -}}
 {{- printf "%s" $schedulerAddress }}
 {{- end }}
+
+{{/* Determine querier address */}}
+{{- define "loki.querierAddress" -}}
+{{- $querierAddress := "" }}
+{{- if "loki.deployment.isDistributed "}}
+{{- $querierHost := include "loki.querierFullname" .}}
+{{- $querierUrl := printf "http://%s.%s.svc.%s:3100" $querierHost .Release.Namespace .Values.global.clusterDomain }}
+{{- $querierAddress = $querierUrl }}
+{{- end -}}
+{{- printf "%s" $querierAddress }}
+{{- end }}
+
+{{- define "loki.config.checksum" -}}
+checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
+{{- end -}}
+
+{{/*
+Return the appropriate apiVersion for PodDisruptionBudget.
+*/}}
+{{- define "loki.pdb.apiVersion" -}}
+  {{- if and (.Capabilities.APIVersions.Has "policy/v1") (semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version) -}}
+    {{- print "policy/v1" -}}
+  {{- else -}}
+    {{- print "policy/v1beta1" -}}
+  {{- end -}}
+{{- end -}}

@@ -17,9 +17,28 @@ Installed components:
 {{- if .Values.minio.enabled }}
 * minio 
 {{- end }}
+{{- if eq (include "loki.deployment.isScalable" .) "true" }}
 * read
 * write
 {{- if not .Values.read.legacyReadTarget }}
 * backend
+{{- end }}
+{{- else }}
+{{- if .Values.compactor.enabled }}
+* compactor
+{{- end }}
+{{- if .Values.indexGateway.enabled }}
+* index gateway
+{{- end }}
+{{- if .Values.queryScheduler.enabled }}
+* query scheduler
+{{- end }}
+{{- if .Values.ruler.enabled }}
+* ruler
+{{- end }}
+* distributor
+* ingester
+* querier
+* query frontend
 {{- end }}
 {{- end }}
