@@ -10,6 +10,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 
+	"github.com/grafana/dskit/concurrency"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
@@ -93,31 +94,34 @@ func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) er
 		return err
 	}
 
-	// TODO(chaudum): use `concurrency` lib with bound parallelism
-	for i, bq := range bqs {
-		block := data[i]
+	// TODO(chaudum): What's a good cocurrency value?
+	return concurrency.ForEachJob(ctx, len(bqs), 10, func(ctx context.Context, i int) error {
+		bq := bqs[i]
 		if bq == nil {
 			// TODO(chaudum): Add metric for skipped blocks
-			continue
+			return nil
 		}
+		defer bq.Close()
+
+		block := data[i]
 		level.Debug(p.logger).Log(
 			"msg", "process block with tasks",
+			"job", i+1,
+			"of_jobs", len(bqs),
 			"block", block.ref,
-			"block_bounds", block.ref.Bounds,
-			"querier_bounds", bq.Bounds,
 			"num_tasks", len(block.tasks),
 		)
+
 		if !block.ref.Bounds.Equal(bq.Bounds) {
-			bq.Close()
 			return errors.Errorf("block and querier bounds differ: %s vs %s", block.ref.Bounds, bq.Bounds)
 		}
+
 		err := p.processBlock(ctx, bq.BlockQuerier, block.tasks)
-		bq.Close()
 		if err != nil {
 			return errors.Wrap(err, "processing block")
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerier, tasks []Task) error {

@@ -28,18 +28,11 @@ const (
 	attrServiceName     = "service.name"
 )
 
-var blessedAttributesNormalized = make([]string, len(blessedAttributes))
-
-func init() {
-	for i := range blessedAttributes {
-		blessedAttributesNormalized[i] = prometheustranslator.NormalizeLabel(blessedAttributes[i])
-	}
-}
-
 func newPushStats() *Stats {
 	return &Stats{
-		LogLinesBytes:           map[time.Duration]int64{},
-		StructuredMetadataBytes: map[time.Duration]int64{},
+		LogLinesBytes:                   map[time.Duration]int64{},
+		StructuredMetadataBytes:         map[time.Duration]int64{},
+		ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{},
 	}
 }
 
@@ -118,7 +111,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 			resAttrs.PutStr(attrServiceName, "unknown_service")
 		}
 		resourceAttributesAsStructuredMetadata := make(push.LabelsAdapter, 0, resAttrs.Len())
-		streamLabels := make(model.LabelSet, len(blessedAttributesNormalized))
+		streamLabels := make(model.LabelSet, 30) // we have a default labels limit of 30 so just initialize the map of same size
 
 		resAttrs.Range(func(k string, v pcommon.Value) bool {
 			action := otlpConfig.ActionForResourceAttribute(k)
@@ -154,7 +147,10 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		}
 
 		resourceAttributesAsStructuredMetadataSize := labelsSize(resourceAttributesAsStructuredMetadata)
-		stats.StructuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(resourceAttributesAsStructuredMetadataSize)
+		retentionPeriodForUser := tenantsRetention.RetentionPeriodFor(userID, lbs)
+
+		stats.StructuredMetadataBytes[retentionPeriodForUser] += int64(resourceAttributesAsStructuredMetadataSize)
+		stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser], resourceAttributesAsStructuredMetadata...)
 
 		for j := 0; j < sls.Len(); j++ {
 			scope := sls.At(j).Scope()
@@ -204,7 +200,8 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 			}
 
 			scopeAttributesAsStructuredMetadataSize := labelsSize(scopeAttributesAsStructuredMetadata)
-			stats.StructuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(scopeAttributesAsStructuredMetadataSize)
+			stats.StructuredMetadataBytes[retentionPeriodForUser] += int64(scopeAttributesAsStructuredMetadataSize)
+			stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser], scopeAttributesAsStructuredMetadata...)
 			for k := 0; k < logs.Len(); k++ {
 				log := logs.At(k)
 
@@ -225,12 +222,12 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 				pushRequestsByStream[labelsStr] = stream
 
 				metadataSize := int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
-				stats.StructuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += metadataSize
-				stats.LogLinesBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(len(entry.Line))
+				stats.StructuredMetadataBytes[retentionPeriodForUser] += metadataSize
+				stats.LogLinesBytes[retentionPeriodForUser] += int64(len(entry.Line))
 
 				if tracker != nil {
-					tracker.ReceivedBytesAdd(userID, tenantsRetention.RetentionPeriodFor(userID, lbs), lbs, float64(len(entry.Line)))
-					tracker.ReceivedBytesAdd(userID, tenantsRetention.RetentionPeriodFor(userID, lbs), lbs, float64(metadataSize))
+					tracker.ReceivedBytesAdd(userID, retentionPeriodForUser, lbs, float64(len(entry.Line)))
+					tracker.ReceivedBytesAdd(userID, retentionPeriodForUser, lbs, float64(metadataSize))
 				}
 
 				stats.NumLines++

@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/pkg/push"
 	"io"
 	"math"
 	"mime"
@@ -66,23 +67,24 @@ type Limits interface {
 type EmptyLimits struct{}
 
 func (EmptyLimits) OTLPConfig(string) OTLPConfig {
-	return DefaultOTLPConfig
+	return DefaultOTLPConfig(GlobalOTLPConfig{})
 }
 
 type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error)
 type RequestParserWrapper func(inner RequestParser) RequestParser
 
 type Stats struct {
-	Errs                     []error
-	NumLines                 int64
-	LogLinesBytes            map[time.Duration]int64
-	StructuredMetadataBytes  map[time.Duration]int64
-	StreamLabelsSize         int64
-	MostRecentEntryTimestamp time.Time
-	ContentType              string
-	ContentEncoding          string
-	BodySize                 int64
+	Errs                            []error
+	NumLines                        int64
+	LogLinesBytes                   map[time.Duration]int64
+	StructuredMetadataBytes         map[time.Duration]int64
+	ResourceAndSourceMetadataLabels map[time.Duration]push.LabelsAdapter
+	StreamLabelsSize                int64
+	MostRecentEntryTimestamp        time.Time
+	ContentType                     string
+	ContentEncoding                 string
 
+	BodySize int64
 	// Extra is a place for a wrapped perser to record any interesting stats as key-value pairs to be logged
 	Extra []any
 }

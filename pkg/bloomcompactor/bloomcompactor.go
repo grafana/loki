@@ -80,7 +80,7 @@ func New(
 		bloomStore: store,
 	}
 
-	tsdbStore, err := NewTSDBStores(schemaCfg, storeCfg, clientMetrics)
+	tsdbStore, err := NewTSDBStores(schemaCfg, storeCfg, clientMetrics, logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create TSDB store")
 	}
@@ -187,6 +187,9 @@ func (c *Compactor) tenants(ctx context.Context, table config.DayTable) (*v1.Sli
 
 // ownsTenant returns the ownership range for the tenant, if the compactor owns the tenant, and an error.
 func (c *Compactor) ownsTenant(tenant string) ([]v1.FingerprintBounds, bool, error) {
+	if !c.limits.BloomCompactorEnabled(tenant) {
+		return nil, false, nil
+	}
 	tenantRing, owned := c.sharding.OwnsTenant(tenant)
 	if !owned {
 		return nil, false, nil
