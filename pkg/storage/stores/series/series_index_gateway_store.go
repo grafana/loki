@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
@@ -129,7 +128,6 @@ func (c *IndexGatewayClientStore) Volume(ctx context.Context, _ string, from, th
 func (c *IndexGatewayClientStore) GetShards(
 	ctx context.Context,
 	_ string,
-	bounds []index.FingerprintFilter,
 	from, through model.Time,
 	targetBytesPerShard uint64,
 	predicate chunk.Predicate,

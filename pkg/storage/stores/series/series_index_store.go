@@ -27,7 +27,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
-	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
@@ -765,7 +764,6 @@ func (c *IndexReaderWriter) Volume(_ context.Context, _ string, _, _ model.Time,
 func (c *IndexReaderWriter) GetShards(
 	ctx context.Context,
 	userID string,
-	bounds []tsdb_index.FingerprintFilter,
 	from, through model.Time,
 	targetBytesPerShard uint64,
 	predicte chunk.Predicate,

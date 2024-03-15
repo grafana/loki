@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/errors"
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -147,7 +146,6 @@ func (c *storeEntry) Volume(ctx context.Context, userID string, from, through mo
 func (c *storeEntry) GetShards(
 	ctx context.Context,
 	userID string,
-	bounds []tsdb_index.FingerprintFilter,
 	from, through model.Time,
 	targetBytesPerShard uint64,
 	predicate chunk.Predicate,
@@ -157,7 +155,7 @@ func (c *storeEntry) GetShards(
 		return nil, err
 	}
 
-	return c.indexReader.GetShards(ctx, userID, bounds, from, through, targetBytesPerShard, predicate)
+	return c.indexReader.GetShards(ctx, userID, from, through, targetBytesPerShard, predicate)
 }
 
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {

@@ -18,14 +18,12 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/plan"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	seriesindex "github.com/grafana/loki/pkg/storage/stores/series/index"
-	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
@@ -359,11 +357,6 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 	}
 	p := chunk.NewPredicate(matchers, &request.Plan)
 
-	casted := make([]tsdb_index.FingerprintFilter, 0, len(request.Bounds))
-	for _, bound := range request.Bounds {
-		casted = append(casted, v1.BoundsFromProto(bound))
-	}
-
 	// Shards were requested, but blooms are not enabled or cannot be used due to lack of filters.
 	// That's ok; we can still return shard ranges without filtering
 	// which will be more effective than guessing power-of-2 shard ranges.
@@ -372,7 +365,6 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 		shards, err := g.indexQuerier.GetShards(
 			ctx,
 			instanceID,
-			casted,
 			request.From, request.Through,
 			request.TargetBytesPerShard,
 			p,
@@ -389,7 +381,7 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 
 	// TODO(owen-d): can improve by actually streaming. Currently we use the streaming
 	// transport, but just send one batch.
-	return g.getShardsWithBlooms(ctx, request, server, instanceID, casted, p, forSeries)
+	return g.getShardsWithBlooms(ctx, request, server, instanceID, p, forSeries)
 }
 
 func (g *Gateway) getShardsWithBlooms(
@@ -397,23 +389,19 @@ func (g *Gateway) getShardsWithBlooms(
 	req *logproto.ShardsRequest,
 	server logproto.IndexGateway_GetShardsServer,
 	instanceID string,
-	bounds []tsdb_index.FingerprintFilter,
+	p chunk.Predicate,
 	forSeries sharding.ForSeries,
 ) error {
 	// 1) for all bounds, get chunk refs w/ stats
 
-	groups := make([][]*logproto.ChunkRef, len(bounds))
-	for i, b := range bounds {
-		// TODO(owen-d): inject bounds
-		chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, p)
-		if err != nil {
-			return err
-		}
+	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, p)
+	if err != nil {
+		return err
+	}
 
-		for _, cs := range chunks {
-			for j := range cs {
-				groups[i] = append(groups[i], &cs[j].ChunkRef)
-			}
+	for _, cs := range chunks {
+		for j := range cs {
+			// groups[i] = append(groups[i], &cs[j].ChunkRef)
 		}
 	}
 

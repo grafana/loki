@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/opentracing/opentracing-go"
@@ -275,21 +276,19 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 	return acc.Volumes(), nil
 }
 
-func (c *IndexClient) GetShards(ctx context.Context, userID string, bounds []index.FingerprintFilter, from, through model.Time, targetBytesPerShard uint64, predicate chunk.Predicate) ([]logproto.Shard, error) {
+func (c *IndexClient) GetShards(ctx context.Context, userID string, from, through model.Time, targetBytesPerShard uint64, predicate chunk.Predicate) ([]logproto.Shard, error) {
 
 	// TODO(owen-d): perf, this is expensive :(
 	var mtx sync.Mutex
-	m := make(map[model.Fingerprint]index.ChunkMetas, 1024)
 
-	for _, bound := range bounds {
-		if err := c.idx.ForSeries(ctx, userID, bound, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
-			mtx.Lock()
-			m[fp] = append(m[fp], chks...)
-			mtx.Unlock()
-			return false
-		}, predicate.Matchers...); err != nil {
-			return nil, err
-		}
+	m := make(map[model.Fingerprint]index.ChunkMetas, 1024)
+	if err := c.idx.ForSeries(ctx, userID, v1.FullBounds, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+		mtx.Lock()
+		m[fp] = append(m[fp], chks...)
+		mtx.Unlock()
+		return false
+	}, predicate.Matchers...); err != nil {
+		return nil, err
 	}
 
 	series := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(m)))

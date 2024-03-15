@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -210,7 +209,6 @@ func (c CompositeStore) Volume(ctx context.Context, userID string, from, through
 func (c CompositeStore) GetShards(
 	ctx context.Context,
 	userID string,
-	bounds []tsdb_index.FingerprintFilter,
 	from, through model.Time,
 	targetBytesPerShard uint64,
 	predicate chunk.Predicate,
@@ -220,7 +218,7 @@ func (c CompositeStore) GetShards(
 	// This is only used when a query crosses a schema boundary
 	var groups [][]logproto.Shard
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		shards, err := store.GetShards(innerCtx, userID, bounds, from, through, targetBytesPerShard, predicate)
+		shards, err := store.GetShards(innerCtx, userID, from, through, targetBytesPerShard, predicate)
 		if err != nil {
 			return err
 		}

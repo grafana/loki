@@ -3,6 +3,7 @@ package v1
 import (
 	"fmt"
 	"hash"
+	"math"
 	"strings"
 	"unsafe"
 
@@ -19,6 +20,11 @@ const (
 	Before BoundsCheck = iota
 	Overlap
 	After
+)
+
+var (
+	// FullBounds is the bounds that covers the entire fingerprint space
+	FullBounds = NewBounds(0, model.Fingerprint(math.MaxUint64))
 )
 
 type FingerprintBounds struct {
