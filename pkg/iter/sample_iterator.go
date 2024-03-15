@@ -574,8 +574,8 @@ func NewSeriesIterator(series logproto.Series) SampleIterator {
 }
 
 func (i *seriesIterator) Next() bool {
-	i.i.Inc()
-	return int(i.i.Load()) < len(i.series.Samples)
+	tmp := i.i.Add(1)
+	return int(tmp) < len(i.series.Samples)
 }
 
 func (i *seriesIterator) Error() error {
