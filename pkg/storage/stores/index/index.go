@@ -42,6 +42,10 @@ type StatsReader interface {
 		targetBytesPerShard uint64,
 		predicate chunk.Predicate,
 	) ([]logproto.Shard, error)
+
+	// If the underlying index supports it, this will return the ForSeries interface
+	// which is used in bloom-filter accelerated sharding calculation optimization.
+	HasForSeries() (index.ForSeries, bool)
 }
 
 type Reader interface {
@@ -49,10 +53,6 @@ type Reader interface {
 	StatsReader
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error)
 	Filterable
-
-	// If the underlying index supports it, this will return the ForSeries interface
-	// which is used in bloom-filter accelerated sharding calculation optimization.
-	HasForSeries() (index.ForSeries, bool)
 }
 
 type Writer interface {
