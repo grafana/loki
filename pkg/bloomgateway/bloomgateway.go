@@ -218,6 +218,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	filters := syntax.ExtractLineFilters(req.Plan.AST)
+	g.metrics.receivedFilters.Observe(float64(len(filters)))
 
 	// Shortcut if request does not contain filters
 	if len(filters) == 0 {
