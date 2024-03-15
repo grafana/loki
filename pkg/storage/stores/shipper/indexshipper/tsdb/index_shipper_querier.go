@@ -143,32 +143,32 @@ func (i *indexShipperQuerier) ForSeries(ctx context.Context, userID string, fpFi
 	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
 }
 
-type resultAccumulator struct {
+type resultAccumulator[T any] struct {
 	mtx   sync.Mutex
-	items []interface{}
-	merge func(xs []interface{}) (interface{}, error)
+	items []T
+	merge func(xs []T) (T, error)
 }
 
 // TODO(owen-d): make generic to avoid casting at runtime.
-func newResultAccumulator(merge func(xs []interface{}) (interface{}, error)) *resultAccumulator {
-	return &resultAccumulator{
+func newResultAccumulator[T any](merge func(xs []T) (T, error)) *resultAccumulator[T] {
+	return &resultAccumulator[T]{
 		merge: merge,
 	}
 }
 
-func (acc *resultAccumulator) Add(item interface{}) {
+func (acc *resultAccumulator[T]) Add(item T) {
 	acc.mtx.Lock()
 	defer acc.mtx.Unlock()
 	acc.items = append(acc.items, item)
 
 }
 
-func (acc *resultAccumulator) Merge() (interface{}, error) {
+func (acc *resultAccumulator[T]) Merge() (res T, err error) {
 	acc.mtx.Lock()
 	defer acc.mtx.Unlock()
 
 	if len(acc.items) == 0 {
-		return nil, ErrEmptyAccumulator
+		return res, ErrEmptyAccumulator
 	}
 
 	return acc.merge(acc.items)

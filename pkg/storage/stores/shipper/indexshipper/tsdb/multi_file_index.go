@@ -132,7 +132,7 @@ func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model
 }
 
 func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	acc := newResultAccumulator(func(xs []interface{}) (interface{}, error) {
+	acc := newResultAccumulator(func(xs [][]ChunkRef) ([]ChunkRef, error) {
 		if res == nil {
 			res = ChunkRefsPool.Get()
 		}
@@ -143,8 +143,9 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 
 		// TODO(owen-d): Do this more efficiently,
 		// not all indices overlap each other
+		// TODO(owen-d): loser-tree or some other heap?
 		for _, group := range xs {
-			g := group.([]ChunkRef)
+			g := group
 			for _, ref := range g {
 				_, ok := seen[ref]
 				if ok {
@@ -183,12 +184,12 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 		}
 		return nil, err
 	}
-	return merged.([]ChunkRef), nil
+	return merged, nil
 
 }
 
 func (i *MultiIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
-	acc := newResultAccumulator(func(xs []interface{}) (interface{}, error) {
+	acc := newResultAccumulator(func(xs [][]Series) ([]Series, error) {
 		if res == nil {
 			res = SeriesPool.Get()
 		}
@@ -197,7 +198,7 @@ func (i *MultiIndex) Series(ctx context.Context, userID string, from, through mo
 		seen := make(map[model.Fingerprint]struct{})
 
 		for _, x := range xs {
-			seriesSet := x.([]Series)
+			seriesSet := x
 			for _, s := range seriesSet {
 				_, ok := seen[s.Fingerprint]
 				if ok {
@@ -235,17 +236,17 @@ func (i *MultiIndex) Series(ctx context.Context, userID string, from, through mo
 		}
 		return nil, err
 	}
-	return merged.([]Series), nil
+	return merged, nil
 }
 
 func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	acc := newResultAccumulator(func(xs []interface{}) (interface{}, error) {
+	acc := newResultAccumulator(func(xs [][]string) ([]string, error) {
 		var (
 			maxLn int // maximum number of lNames, assuming no duplicates
 			lists [][]string
 		)
 		for _, group := range xs {
-			x := group.([]string)
+			x := group
 			maxLn += len(x)
 			lists = append(lists, x)
 		}
@@ -293,17 +294,17 @@ func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, throug
 		}
 		return nil, err
 	}
-	return merged.([]string), nil
+	return merged, nil
 }
 
 func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	acc := newResultAccumulator(func(xs []interface{}) (interface{}, error) {
+	acc := newResultAccumulator(func(xs [][]string) ([]string, error) {
 		var (
 			maxLn int // maximum number of lValues, assuming no duplicates
 			lists [][]string
 		)
 		for _, group := range xs {
-			x := group.([]string)
+			x := group
 			maxLn += len(x)
 			lists = append(lists, x)
 		}
@@ -351,7 +352,7 @@ func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, throu
 		}
 		return nil, err
 	}
-	return merged.([]string), nil
+	return merged, nil
 }
 
 func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
