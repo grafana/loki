@@ -35,6 +35,9 @@ type IndexClientOptions struct {
 	// duplicates when chunks are written to multiple
 	// index buckets, which is of use in the (index-gateway|querier)
 	// but not worth the memory costs in the ingesters.
+	// NB(owen-d): This is NOT the bloom-filter feature developed late 2023 onwards,
+	// but a smaller bloom filter used internally for probabalistic deduping of series counts
+	// in the index stats() method across index buckets (which can have the same series)
 	UseBloomFilters bool
 }
 
