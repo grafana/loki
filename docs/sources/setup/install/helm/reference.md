@@ -254,7 +254,7 @@ null
 		<tr>
 			<td>backend.persistence.volumeClaimsEnabled</td>
 			<td>bool</td>
-			<td>Enable volume claims in pod spec</td>
+			<td>Enable volume claims in Pod spec</td>
 			<td><pre lang="json">
 true
 </pre>
@@ -272,7 +272,7 @@ true
 		<tr>
 			<td>backend.podLabels</td>
 			<td>object</td>
-			<td>Additional labels for each `backend` pod</td>
+			<td>Additional labels for each `backend` Pod</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -317,7 +317,7 @@ null
 		<tr>
 			<td>backend.selectorLabels</td>
 			<td>object</td>
-			<td>Additional selector labels for each `backend` pod</td>
+			<td>Additional selector labels for each `backend` Pod</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2617,7 +2617,7 @@ null
 		<tr>
 			<td>monitoring.lokiCanary.podLabels</td>
 			<td>object</td>
-			<td>Additional labels for each `loki-canary` pod</td>
+			<td>Additional labels for each `loki-canary` Pod</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3197,7 +3197,7 @@ false
 		<tr>
 			<td>networkPolicy.metrics.cidrs</td>
 			<td>list</td>
-			<td>Specifies specific network CIDRs which are allowed to access the metrics port. In case you use namespaceSelector, you also have to specify your kubelet networks here. The metrics ports are also used for probes.</td>
+			<td>Specifies specific network CIDRs which are allowed to access the metrics port. In case you use namespaceSelector, you also have to specify your `kubelet` networks here. The metrics ports are also used for probes.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3485,7 +3485,7 @@ null
 		<tr>
 			<td>read.podLabels</td>
 			<td>object</td>
-			<td>Additional labels for each `read` pod</td>
+			<td>Additional labels for each `read` Pod</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3530,7 +3530,7 @@ null
 		<tr>
 			<td>read.selectorLabels</td>
 			<td>object</td>
-			<td>Additional selector labels for each `read` pod</td>
+			<td>Additional selector labels for each `read` Pod</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3917,7 +3917,7 @@ null
 		<tr>
 			<td>singleBinary.extraContainers</td>
 			<td>list</td>
-			<td>Extra containers to add to the single binary loki pod</td>
+			<td>Extra containers to add to the single binary loki Pod</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4061,7 +4061,7 @@ null
 		<tr>
 			<td>singleBinary.podLabels</td>
 			<td>object</td>
-			<td>Additional labels for each `single binary` pod</td>
+			<td>Additional labels for each `single binary` Pod</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -4097,7 +4097,7 @@ null
 		<tr>
 			<td>singleBinary.selectorLabels</td>
 			<td>object</td>
-			<td>Additional selector labels for each `single binary` pod</td>
+			<td>Additional selector labels for each `single binary` Pod</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -4776,7 +4776,7 @@ null
 		<tr>
 			<td>write.persistence.volumeClaimsEnabled</td>
 			<td>bool</td>
-			<td>Enable volume claims in pod spec</td>
+			<td>Enable volume claims in Pod spec</td>
 			<td><pre lang="json">
 true
 </pre>
@@ -4794,7 +4794,7 @@ true
 		<tr>
 			<td>write.podLabels</td>
 			<td>object</td>
-			<td>Additional labels for each `write` pod</td>
+			<td>Additional labels for each `write` Pod</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -4839,7 +4839,7 @@ null
 		<tr>
 			<td>write.selectorLabels</td>
 			<td>object</td>
-			<td>Additional selector labels for each `write` pod</td>
+			<td>Additional selector labels for each `write` Pod</td>
 			<td><pre lang="json">
 {}
 </pre>
