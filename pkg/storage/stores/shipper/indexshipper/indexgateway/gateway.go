@@ -441,11 +441,25 @@ func (g *Gateway) getShardsWithBlooms(
 		}})
 	}
 
-	// 3) build shards
-	// TODO(owen-d): consider extending index impl to support returning chunkrefs _with_ sizing info
-	// TODO(owen-d): perf, this is expensive :(
-	// TODO(owen-d): extract to a helper fn & test
+	shards, err := accumulateChunksToShards(ctx, instanceID, forSeries, req, p, filtered)
+	if err != nil {
+		return err
+	}
 
+	// 3) build shards
+	return server.Send(&logproto.ShardsResponse{Shards: shards})
+}
+
+// TODO(owen-d): consider extending index impl to support returning chunkrefs _with_ sizing info
+// TODO(owen-d): perf, this is expensive :(
+func accumulateChunksToShards(
+	ctx context.Context,
+	user string,
+	forSeries sharding.ForSeries,
+	req *logproto.ShardsRequest,
+	p chunk.Predicate,
+	filtered []*logproto.ChunkRef,
+) ([]logproto.Shard, error) {
 	// map for looking up post-filtered chunks in O(n) while iterating the index again for sizing info
 	filteredM := make(map[model.Fingerprint][]refWithSizingInfo, 1024)
 	for _, ref := range filtered {
@@ -457,7 +471,7 @@ func (g *Gateway) getShardsWithBlooms(
 
 	if err := forSeries.ForSeries(
 		ctx,
-		instanceID,
+		user,
 		v1.NewBounds(filtered[0].FingerprintModel(), filtered[len(filtered)-1].FingerprintModel()),
 		req.From, req.Through,
 		func(l labels.Labels, fp model.Fingerprint, chks []tsdb_index.ChunkMeta) (stop bool) {
@@ -486,6 +500,7 @@ func (g *Gateway) getShardsWithBlooms(
 						// a match; set the sizing info
 						filteredChks[i].KB = chks[j].KB
 						filteredChks[i].Entries = chks[j].Entries
+						j++
 						continue outer
 					}
 				}
@@ -498,7 +513,7 @@ func (g *Gateway) getShardsWithBlooms(
 		},
 		p.Matchers...,
 	); err != nil {
-		return err
+		return nil, err
 	}
 
 	collectedSeries := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(filteredM)))
@@ -516,9 +531,7 @@ func (g *Gateway) getShardsWithBlooms(
 	}
 	sort.Sort(collectedSeries)
 
-	res := collectedSeries.ShardsFor(req.TargetBytesPerShard)
-
-	return server.Send(&logproto.ShardsResponse{Shards: res})
+	return collectedSeries.ShardsFor(req.TargetBytesPerShard), nil
 }
 
 type refWithSizingInfo struct {
