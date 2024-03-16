@@ -3,6 +3,7 @@ package indexgateway
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 
@@ -18,12 +19,14 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/plan"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	seriesindex "github.com/grafana/loki/pkg/storage/stores/series/index"
+	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
@@ -360,7 +363,7 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 	// Shards were requested, but blooms are not enabled or cannot be used due to lack of filters.
 	// That's ok; we can still return shard ranges without filtering
 	// which will be more effective than guessing power-of-2 shard ranges.
-	forSeries, ok := g.indexQuerier.HasForSeries()
+	forSeries, ok := g.indexQuerier.HasForSeries(request.From, request.Through)
 	if g.bloomQuerier == nil || len(syntax.ExtractLineFilters(request.Plan.AST)) == 0 || !ok {
 		shards, err := g.indexQuerier.GetShards(
 			ctx,
@@ -379,11 +382,10 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 		})
 	}
 
-	// TODO(owen-d): can improve by actually streaming. Currently we use the streaming
-	// transport, but just send one batch.
 	return g.getShardsWithBlooms(ctx, request, server, instanceID, p, forSeries)
 }
 
+// getShardsWithBlooms is a helper function to get shards with blooms enabled.
 func (g *Gateway) getShardsWithBlooms(
 	ctx context.Context,
 	req *logproto.ShardsRequest,
@@ -392,24 +394,166 @@ func (g *Gateway) getShardsWithBlooms(
 	p chunk.Predicate,
 	forSeries sharding.ForSeries,
 ) error {
-	// 1) for all bounds, get chunk refs w/ stats
+	// TODO(owen-d): instead of using GetChunks which buffers _all_ the chunks
+	// (expensive when looking at the full fingerprint space), we should
+	// use the `ForSeries` implementation to accumulate batches of chunks to dedupe,
+	// but I'm leaving this as a future improvement. This may be difficult considering
+	// fingerprints aren't necessarily iterated in order because multiple underlying TSDBs
+	// can be queried independently. This could also result in the same chunks being present in
+	// multiple batches. However, this is all OK because we can dedupe them post-blooms and in
+	// many cases the majority of chunks will only be present in a single post-compacted TSDB,
+	// making this more of an edge case than a common occurrence (make sure to check this assumption
+	// as getting it _very_ wrong could harm some cache locality benefits on the bloom-gws by
+	// sending multiple requests to the entire keyspace).
 
-	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, p)
+	// 1) for all bounds, get chunk refs
+	grps, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, p)
 	if err != nil {
 		return err
 	}
 
-	for _, cs := range chunks {
+	var ct int
+	for _, g := range grps {
+		ct += len(g)
+	}
+	// TODO(owen-d): pool
+	refs := make([]*logproto.ChunkRef, 0, ct)
+
+	for _, cs := range grps {
 		for j := range cs {
-			// groups[i] = append(groups[i], &cs[j].ChunkRef)
+			refs = append(refs, &cs[j].ChunkRef)
 		}
 	}
 
-	// 2) for all bounds, filter via blooms
-	// 3) keep all chunks in (1) still referenced in (2)
-	// 4) build shards from ()
+	// 2) filter via blooms
+	filtered, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
+	if err != nil {
+		return err
+	}
 
-	return nil
+	// Edge case: if there are no chunks after filtering, we still need to return a single shard
+	if len(filtered) == 0 {
+		return server.Send(&logproto.ShardsResponse{Shards: []logproto.Shard{
+			{
+				Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64},
+				Stats:  &logproto.IndexStatsResponse{},
+			},
+		}})
+	}
+
+	// 3) build shards
+	// TODO(owen-d): consider extending index impl to support returning chunkrefs _with_ sizing info
+	// TODO(owen-d): perf, this is expensive :(
+	// TODO(owen-d): extract to a helper fn & test
+
+	// map for looking up post-filtered chunks in O(n) while iterating the index again for sizing info
+	filteredM := make(map[model.Fingerprint][]refWithSizingInfo, 1024)
+	for _, ref := range filtered {
+		x := refWithSizingInfo{ref: ref}
+		filteredM[model.Fingerprint(ref.Fingerprint)] = append(filteredM[model.Fingerprint(ref.Fingerprint)], x)
+	}
+
+	var mtx sync.Mutex
+
+	if err := forSeries.ForSeries(
+		ctx,
+		instanceID,
+		v1.NewBounds(filtered[0].FingerprintModel(), filtered[len(filtered)-1].FingerprintModel()),
+		req.From, req.Through,
+		func(l labels.Labels, fp model.Fingerprint, chks []tsdb_index.ChunkMeta) (stop bool) {
+			// check if this is a fingerprint we need
+			if _, ok := filteredM[fp]; !ok {
+				return false
+			}
+			mtx.Lock()
+			defer mtx.Unlock()
+
+			filteredChks := filteredM[fp]
+			var j int
+
+		outer:
+			for i := range filteredChks {
+				for j < len(chks) {
+					switch filteredChks[i].Cmp(chks[j]) {
+					case v1.Less:
+						// this chunk is not in the queried index, continue checking other chunks
+						continue outer
+					case v1.Greater:
+						// next chunk in index but didn't pass filter; continue
+						j++
+						continue
+					case v1.Eq:
+						// a match; set the sizing info
+						filteredChks[i].KB = chks[j].KB
+						filteredChks[i].Entries = chks[j].Entries
+						continue outer
+					}
+				}
+
+				// we've finished this index's chunks; no need to keep checking filtered chunks
+				break
+			}
+
+			return false
+		},
+		p.Matchers...,
+	); err != nil {
+		return err
+	}
+
+	collectedSeries := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(filteredM)))
+	defer sharding.SizedFPsPool.Put(collectedSeries)
+
+	for fp, chks := range filteredM {
+		x := sharding.SizedFP{Fp: fp}
+		x.Stats.Chunks = uint64(len(chks))
+
+		for _, chk := range chks {
+			x.Stats.Entries += uint64(chk.Entries)
+			x.Stats.Bytes += uint64(chk.KB << 10)
+		}
+		collectedSeries = append(collectedSeries, x)
+	}
+	sort.Sort(collectedSeries)
+
+	res := collectedSeries.ShardsFor(req.TargetBytesPerShard)
+
+	return server.Send(&logproto.ShardsResponse{Shards: res})
+}
+
+type refWithSizingInfo struct {
+	ref     *logproto.ChunkRef
+	KB      uint32
+	Entries uint32
+}
+
+// careful: only checks from,through,checksum
+func (r refWithSizingInfo) Cmp(chk tsdb_index.ChunkMeta) v1.Ord {
+	ref := *r.ref
+	chkFrom := model.Time(chk.MinTime)
+	if ref.From != chkFrom {
+		if ref.From < chkFrom {
+			return v1.Less
+		}
+		return v1.Greater
+	}
+
+	chkThrough := model.Time(chk.MaxTime)
+	if ref.Through != chkThrough {
+		if ref.Through < chkThrough {
+			return v1.Less
+		}
+		return v1.Greater
+	}
+
+	if ref.Checksum != chk.Checksum {
+		if ref.Checksum < chk.Checksum {
+			return v1.Less
+		}
+		return v1.Greater
+	}
+
+	return v1.Eq
 }
 
 type failingIndexClient struct{}

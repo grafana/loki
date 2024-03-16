@@ -23,13 +23,22 @@ type ChunkRef struct {
 	Checksum    uint32
 }
 
-// Compares by (Start, End)
+// Compares by (Fp, Start, End, checksum)
 // Assumes User is equivalent
 func (r ChunkRef) Less(x ChunkRef) bool {
+	if r.Fingerprint != x.Fingerprint {
+		return r.Fingerprint < x.Fingerprint
+	}
+
 	if r.Start != x.Start {
 		return r.Start < x.Start
 	}
-	return r.End <= x.End
+
+	if r.End != x.End {
+		return r.End < x.End
+	}
+
+	return r.Checksum < x.Checksum
 }
 
 type shouldIncludeChunk func(index.ChunkMeta) bool
