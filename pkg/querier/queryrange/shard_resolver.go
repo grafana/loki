@@ -3,7 +3,6 @@ package queryrange
 import (
 	"context"
 	"fmt"
-	"math"
 	strings "strings"
 	"time"
 
@@ -21,10 +20,9 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	utilMath "github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
-	valid "github.com/grafana/loki/pkg/validation"
 )
 
 func shardResolverForConf(
@@ -192,7 +190,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 	}
 
 	maxBytesPerShard := validation.SmallestPositiveIntPerTenant(tenantIDs, r.limits.TSDBMaxBytesPerShard)
-	factor := guessShardFactor(combined, maxBytesPerShard, r.maxShards)
+	factor := sharding.GuessShardFactor(combined.Bytes, uint64(maxBytesPerShard), r.maxShards)
 
 	var bytesPerShard = combined.Bytes
 	if factor > 0 {
@@ -209,36 +207,4 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 		)...,
 	)
 	return factor, bytesPerShard, nil
-}
-
-// Since we shard by powers of two and we increase shard factor
-// once each shard surpasses maxBytesPerShard, if the shard factor
-// is at least two, the range of data per shard is (maxBytesPerShard/2, maxBytesPerShard]
-// For instance, for a maxBytesPerShard of 500MB and a query touching 1000MB, we split into two shards of 500MB.
-// If there are 1004MB, we split into four shards of 251MB.
-func guessShardFactor(stats stats.Stats, maxBytesPerShard, maxShards int) int {
-	// If maxBytesPerShard is 0, we use the default value
-	// to avoid division by zero
-	if maxBytesPerShard < 1 {
-		maxBytesPerShard = valid.DefaultTSDBMaxBytesPerShard
-	}
-
-	minShards := float64(stats.Bytes) / float64(maxBytesPerShard)
-
-	// round up to nearest power of 2
-	power := math.Ceil(math.Log2(minShards))
-
-	// Since x^0 == 1 and we only support factors of 2
-	// reset this edge case manually
-	factor := int(math.Pow(2, power))
-	if maxShards > 0 {
-		factor = utilMath.Min(factor, maxShards)
-	}
-
-	// shortcut: no need to run any sharding logic when factor=1
-	// as it's the same as no sharding
-	if factor == 1 {
-		factor = 0
-	}
-	return factor
 }

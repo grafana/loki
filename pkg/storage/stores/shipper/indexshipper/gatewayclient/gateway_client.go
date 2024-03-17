@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/status"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
@@ -23,11 +24,13 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/discovery"
 	util_math "github.com/grafana/loki/pkg/util/math"
@@ -340,9 +343,54 @@ func (s *GatewayClient) GetShards(
 
 		return nil
 	}); err != nil {
+		if isUnimplementedCallError(err) {
+			return s.getShardsFromStatsFallback(ctx, in)
+		}
 		return nil, err
 	}
 	return res, nil
+}
+
+func (s *GatewayClient) getShardsFromStatsFallback(
+	ctx context.Context,
+	in *logproto.ShardsRequest,
+) (*logproto.ShardsResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "index gateway client get tenant ID")
+	}
+
+	stats, err := s.GetStats(
+		ctx,
+		&logproto.IndexStatsRequest{
+			From:     in.From,
+			Through:  in.Through,
+			Matchers: in.Matchers,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var strategy sharding.PowerOfTwoSharding
+	shards := strategy.ShardsFor(stats.Bytes, uint64(s.limits.TSDBMaxBytesPerShard(userID)))
+	return &logproto.ShardsResponse{
+		Shards: shards,
+	}, nil
+}
+
+// TODO(owen-d): this was copied from ingester_querier.go -- move it to a shared pkg
+// isUnimplementedCallError tells if the GRPC error is a gRPC error with code Unimplemented.
+func isUnimplementedCallError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	s, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	return (s.Code() == codes.Unimplemented)
 }
 
 func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {

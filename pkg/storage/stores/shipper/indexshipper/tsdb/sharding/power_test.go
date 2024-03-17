@@ -1,13 +1,12 @@
-package queryrange
+package sharding
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/validation"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGuessShardFactor(t *testing.T) {
@@ -68,7 +67,7 @@ func TestGuessShardFactor(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("%+v", tc.stats), func(t *testing.T) {
-			require.Equal(t, tc.exp, guessShardFactor(tc.stats, validation.DefaultTSDBMaxBytesPerShard, tc.maxShards))
+			require.Equal(t, tc.exp, GuessShardFactor(tc.stats.Bytes, uint64(validation.DefaultTSDBMaxBytesPerShard), tc.maxShards))
 		})
 	}
 }
