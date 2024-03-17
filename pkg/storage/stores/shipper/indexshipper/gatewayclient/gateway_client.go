@@ -317,32 +317,50 @@ func (s *GatewayClient) GetShards(
 	in *logproto.ShardsRequest,
 ) (res *logproto.ShardsResponse, err error) {
 
-	if err := s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		perReplicaResult := &logproto.ShardsResponse{}
-		streamer, err := client.GetShards(ctx, in)
-		if err != nil {
-			return errors.Wrap(err, "get shards")
-		}
+	// We try to get the shards from the index gateway,
+	// but if it's not implemented, we fall back to the stats.
+	// We limit the maximum number of errors to 2 to avoid
+	// cascading all requests to new node(s) when
+	// the idx-gw replicas start to update to a version
+	// which supports the new API.
+	var (
+		maxErrs = 2
+		errCt   int
+	)
 
-		// TODO(owen-d): stream currently unused (buffered) because query planning doesn't expect a streamed response,
-		// but can be improved easily in the future by using a stream here.
-		for {
-			resp, err := streamer.Recv()
-			if err == io.EOF {
-				break
-			}
+	if err := s.poolDoWithStrategy(
+		ctx,
+		func(client logproto.IndexGatewayClient) error {
+			perReplicaResult := &logproto.ShardsResponse{}
+			streamer, err := client.GetShards(ctx, in)
 			if err != nil {
-				return errors.WithStack(err)
+				return errors.Wrap(err, "get shards")
 			}
-			perReplicaResult.Shards = append(perReplicaResult.Shards, resp.Shards...)
-		}
 
-		// Since `poolDo` retries on error, we only want to set the response if we got a successful response.
-		// This avoids cases where we add duplicates to the response on retries.
-		res = perReplicaResult
+			// TODO(owen-d): stream currently unused (buffered) because query planning doesn't expect a streamed response,
+			// but can be improved easily in the future by using a stream here.
+			for {
+				resp, err := streamer.Recv()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				perReplicaResult.Shards = append(perReplicaResult.Shards, resp.Shards...)
+			}
 
-		return nil
-	}); err != nil {
+			// Since `poolDo` retries on error, we only want to set the response if we got a successful response.
+			// This avoids cases where we add duplicates to the response on retries.
+			res = perReplicaResult
+
+			return nil
+		},
+		func(err error) bool {
+			errCt++
+			return errCt <= maxErrs
+		},
+	); err != nil {
 		if isUnimplementedCallError(err) {
 			return s.getShardsFromStatsFallback(ctx, in)
 		}
@@ -449,6 +467,14 @@ func (s *GatewayClient) clientDoQueries(ctx context.Context, gatewayQueries []*l
 // poolDo executes the given function for each Index Gateway instance in the ring mapping to the correct tenant in the index.
 // In case of callback failure, we'll try another member of the ring for that tenant ID.
 func (s *GatewayClient) poolDo(ctx context.Context, callback func(client logproto.IndexGatewayClient) error) error {
+	return s.poolDoWithStrategy(ctx, callback, func(error) bool { return true })
+}
+
+func (s *GatewayClient) poolDoWithStrategy(
+	ctx context.Context,
+	callback func(client logproto.IndexGatewayClient) error,
+	shouldRetry func(error) bool,
+) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return errors.Wrap(err, "index gateway client get tenant ID")
@@ -479,6 +505,10 @@ func (s *GatewayClient) poolDo(ctx context.Context, callback func(client logprot
 		if err := callback(client); err != nil {
 			lastErr = err
 			level.Error(s.logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err)
+
+			if !shouldRetry(err) {
+				return err
+			}
 			continue
 		}
 
