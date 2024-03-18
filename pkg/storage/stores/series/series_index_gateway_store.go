@@ -135,8 +135,7 @@ func (c *IndexGatewayClientStore) GetShards(
 	resp, err := c.client.GetShards(ctx, &logproto.ShardsRequest{
 		From:                from,
 		Through:             through,
-		Matchers:            (&syntax.MatchersExpr{Mts: predicate.Matchers}).String(),
-		Plan:                predicate.Plan(),
+		Query:               predicate.Plan().AST.String(),
 		TargetBytesPerShard: targetBytesPerShard,
 	})
 	if err != nil {

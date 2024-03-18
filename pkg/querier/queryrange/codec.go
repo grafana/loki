@@ -346,6 +346,18 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Through:  through,
 			Matchers: req.Query,
 		}, err
+	case IndexShardsOp:
+		req, targetBytes, err := loghttp.ParseIndexShardsQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		from, through := util.RoundToMilliseconds(req.Start, req.End)
+		return &logproto.ShardsRequest{
+			From:                from,
+			Through:             through,
+			Query:               req.Query,
+			TargetBytesPerShard: targetBytes.Bytes(),
+		}, err
 	case VolumeOp:
 		req, err := loghttp.ParseVolumeInstantQuery(r)
 		if err != nil {
@@ -521,6 +533,19 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 			Through:  through,
 			Matchers: req.Query,
 		}, ctx, err
+	case IndexShardsOp:
+		req, targetBytes, err := loghttp.ParseIndexShardsQuery(httpReq)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		from, through := util.RoundToMilliseconds(req.Start, req.End)
+		return &logproto.ShardsRequest{
+			From:                from,
+			Through:             through,
+			Query:               req.Query,
+			TargetBytesPerShard: targetBytes.Bytes(),
+		}, ctx, nil
+
 	case VolumeOp:
 		req, err := loghttp.ParseVolumeInstantQuery(httpReq)
 		if err != nil {
@@ -784,6 +809,25 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			Header:     header,
 		}
 		return req.WithContext(ctx), nil
+	case *logproto.ShardsRequest:
+		params := url.Values{
+			"start":               []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
+			"end":                 []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
+			"query":               []string{request.GetQuery()},
+			"targetBytesPerShard": []string{fmt.Sprintf("%d", request.TargetBytesPerShard)},
+		}
+		u := &url.URL{
+			Path:     "/loki/api/v1/index/shards",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     header,
+		}
+		return req.WithContext(ctx), nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid request format, got (%T)", r))
 	}
@@ -889,6 +933,15 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 		return &IndexStatsResponse{
+			Response: &resp,
+			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+		}, nil
+	case *logproto.ShardsRequest:
+		var resp logproto.ShardsResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+		return &ShardsResponse{
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
@@ -1008,6 +1061,8 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 		return resp.GetLabels().WithHeaders(headers), nil
 	case *logproto.IndexStatsRequest:
 		return resp.GetStats().WithHeaders(headers), nil
+	case *logproto.ShardsRequest:
+		return resp.GetShardsResponse().WithHeaders(headers), nil
 	default:
 		switch concrete := resp.Response.(type) {
 		case *QueryResponse_Prom:
@@ -1103,6 +1158,10 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 		}
 	case *IndexStatsResponse:
 		if err := marshal.WriteIndexStatsResponseJSON(response.Response, w); err != nil {
+			return err
+		}
+	case *ShardsResponse:
+		if err := marshal.WriteIndexShardsResponseJSON(response.Response, w); err != nil {
 			return err
 		}
 	case *VolumeResponse:

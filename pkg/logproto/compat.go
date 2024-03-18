@@ -419,10 +419,6 @@ func (m *ShardsRequest) GetEnd() time.Time {
 
 func (m *ShardsRequest) GetStep() int64 { return 0 }
 
-func (m *ShardsRequest) GetQuery() string {
-	return m.Query
-}
-
 func (m *ShardsRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	clone := *m
 	clone.From = model.TimeFromUnixNano(start.UnixNano())
@@ -432,7 +428,7 @@ func (m *ShardsRequest) WithStartEnd(start, end time.Time) definitions.Request {
 
 func (m *ShardsRequest) WithQuery(query string) definitions.Request {
 	clone := *m
-	clone.Matchers = query
+	clone.Query = query
 	return &clone
 }
 
@@ -440,10 +436,8 @@ func (m *ShardsRequest) LogToSpan(sp opentracing.Span) {
 	fields := []otlog.Field{
 		otlog.String("from", timestamp.Time(int64(m.From)).String()),
 		otlog.String("through", timestamp.Time(int64(m.Through)).String()),
-		otlog.String("matchers", m.Matchers),
-		otlog.String("target_bytes_per_shard", datasize.ByteSize(m.TargetBytesPerShard).HumanReadable()),
-		otlog.String("matchers", m.Matchers),
 		otlog.String("query", m.GetQuery()),
+		otlog.String("target_bytes_per_shard", datasize.ByteSize(m.TargetBytesPerShard).HumanReadable()),
 	}
 	sp.LogFields(fields...)
 }

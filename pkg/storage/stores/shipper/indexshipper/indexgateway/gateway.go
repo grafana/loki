@@ -354,31 +354,10 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 		return err
 	}
 
-	expr, err := syntax.ParseExpr(request.Query)
+	p, err := ExtractShardRequestMatchersAndAST(request.Query)
 	if err != nil {
 		return err
 	}
-
-	ms, err := syntax.MatcherGroups(expr)
-	if err != nil {
-		return err
-	}
-
-	var matchers []*labels.Matcher
-	switch len(ms) {
-	case 0:
-		// nothing to do
-	case 1:
-		matchers = ms[0].Matchers
-	default:
-		return fmt.Errorf(
-			"multiple matcher groups are not supported in GetShards. This is likely an internal bug as binary operations should be dispatched separately in planning",
-		)
-	}
-
-	p := chunk.NewPredicate(matchers, &plan.QueryPlan{
-		AST: expr,
-	})
 
 	// Shards were requested, but blooms are not enabled or cannot be used due to lack of filters.
 	// That's ok; we can still return shard ranges without filtering
@@ -468,6 +447,37 @@ func (g *Gateway) getShardsWithBlooms(
 
 	// 3) build shards
 	return server.Send(&logproto.ShardsResponse{Shards: shards})
+}
+
+// ExtractShardRequestMatchersAndAST extracts the matchers and AST from a query string.
+// It errors if there is more than one matcher group in the AST as this is supposed to be
+// split out during query planning before reaching this point.
+func ExtractShardRequestMatchersAndAST(query string) (chunk.Predicate, error) {
+	expr, err := syntax.ParseExpr(query)
+	if err != nil {
+		return chunk.Predicate{}, err
+	}
+
+	ms, err := syntax.MatcherGroups(expr)
+	if err != nil {
+		return chunk.Predicate{}, err
+	}
+
+	var matchers []*labels.Matcher
+	switch len(ms) {
+	case 0:
+		// nothing to do
+	case 1:
+		matchers = ms[0].Matchers
+	default:
+		return chunk.Predicate{}, fmt.Errorf(
+			"multiple matcher groups are not supported in GetShards. This is likely an internal bug as binary operations should be dispatched separately in planning",
+		)
+	}
+
+	return chunk.NewPredicate(matchers, &plan.QueryPlan{
+		AST: expr,
+	}), nil
 }
 
 // TODO(owen-d): consider extending index impl to support returning chunkrefs _with_ sizing info

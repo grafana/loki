@@ -28,6 +28,7 @@ import (
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
@@ -378,12 +379,18 @@ func (s *GatewayClient) getShardsFromStatsFallback(
 		return nil, errors.Wrap(err, "index gateway client get tenant ID")
 	}
 
+	p, err := indexgateway.ExtractShardRequestMatchersAndAST(in.Query)
+	if err != nil {
+		return nil, errors.Wrap(err, "failure while falling back to stats for shard calculation")
+
+	}
+
 	stats, err := s.GetStats(
 		ctx,
 		&logproto.IndexStatsRequest{
 			From:     in.From,
 			Through:  in.Through,
-			Matchers: in.Matchers,
+			Matchers: (&syntax.MatchersExpr{Mts: p.Matchers}).String(),
 		},
 	)
 	if err != nil {

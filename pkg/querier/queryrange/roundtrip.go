@@ -397,6 +397,7 @@ const (
 	IndexStatsOp   = "index_stats"
 	VolumeOp       = "volume"
 	VolumeRangeOp  = "volume_range"
+	IndexShardsOp  = "index_shards"
 )
 
 func getOperation(path string) string {
@@ -415,6 +416,8 @@ func getOperation(path string) string {
 		return VolumeOp
 	case path == "/loki/api/v1/index/volume_range":
 		return VolumeRangeOp
+	case path == "/loki/api/v1/index/shards":
+		return IndexShardsOp
 	default:
 		return ""
 	}
