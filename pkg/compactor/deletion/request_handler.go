@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"math"
 	"net/http"
 	"net/url"
@@ -49,7 +50,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	params := r.URL.Query()
-	query, err := query(params)
+	query, parsedExpr, err := query(params)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -67,13 +68,20 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		return
 	}
 
-	interval, err := dm.interval(params, startTime, endTime)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+	var shardByInterval time.Duration
+
+	if parsedExpr.HasFilter() {
+		var err error
+		shardByInterval, err = dm.interval(params, startTime, endTime)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	} else {
+		shardByInterval = endTime.Sub(startTime) + time.Minute
 	}
 
-	deleteRequests := shardDeleteRequestsByInterval(startTime, endTime, query, userID, interval)
+	deleteRequests := shardDeleteRequestsByInterval(startTime, endTime, query, userID, shardByInterval)
 	createdDeleteRequests, err := dm.deleteRequestsStore.AddDeleteRequestGroup(ctx, deleteRequests)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the store", "err", err)
@@ -92,7 +100,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		"delete_request_id", createdDeleteRequests[0].RequestID,
 		"user", userID,
 		"query", query,
-		"interval", interval.String(),
+		"interval", shardByInterval.String(),
 	)
 
 	dm.metrics.deleteRequestsReceivedTotal.WithLabelValues(userID).Inc()
@@ -315,17 +323,18 @@ func (dm *DeleteRequestHandler) GetCacheGenerationNumberHandler(w http.ResponseW
 	}
 }
 
-func query(params url.Values) (string, error) {
+func query(params url.Values) (string, syntax.LogSelectorExpr, error) {
 	query := params.Get("query")
 	if len(query) == 0 {
-		return "", errors.New("query not set")
+		return "", nil, errors.New("query not set")
 	}
 
-	if _, err := parseDeletionQuery(query); err != nil {
-		return "", err
+	parsedExpr, err := parseDeletionQuery(query)
+	if err != nil {
+		return "", nil, err
 	}
 
-	return query, nil
+	return query, parsedExpr, nil
 }
 
 func startTime(params url.Values) (model.Time, error) {
