@@ -33,6 +33,12 @@ var (
 		"Counts the number of warnings set on a LokiStack.",
 		append(metricsCommonLabels, "reason"), nil,
 	)
+
+	lokiStackConditionsCountDesc = prometheus.NewDesc(
+		metricsPrefix+"status_condition",
+		"Counts the current status conditions of the LokiStack.",
+		append(metricsCommonLabels, "condition", "reason", "status"), nil,
+	)
 )
 
 func RegisterLokiStackCollector(log logr.Logger, k8sClient client.Client, registry prometheus.Registerer) error {
@@ -52,6 +58,7 @@ type lokiStackCollector struct {
 func (l *lokiStackCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- lokiStackInfoDesc
 	ch <- lokistackWarningsCountDesc
+	ch <- lokiStackConditionsCountDesc
 }
 
 func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
@@ -75,6 +82,22 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 
 		warningsMap := map[string]int{}
 		for _, c := range stack.Status.Conditions {
+			active := 0.0
+			if c.Status == metav1.ConditionTrue {
+				active = 1.0
+			}
+
+			m <- prometheus.MustNewConstMetric(
+				lokiStackConditionsCountDesc,
+				prometheus.GaugeValue, active,
+				append(labels, c.Type, c.Reason, "true")...,
+			)
+			m <- prometheus.MustNewConstMetric(
+				lokiStackConditionsCountDesc,
+				prometheus.GaugeValue, 1.0-active,
+				append(labels, c.Type, c.Reason, "false")...,
+			)
+
 			if c.Status != metav1.ConditionTrue {
 				continue
 			}
