@@ -160,6 +160,16 @@ cmd/loki/loki:
 cmd/loki/loki-debug:
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
 
+################
+# indexbuilder #
+################
+.PHONY: cmd/indexbuilder/indexbuilder
+indexbuilder: cmd/indexbuilder/indexbuilder ## build loki executable
+
+cmd/indexbuilder/indexbuilder:
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+
+
 ###############
 # Loki-Canary #
 ###############

@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+* [12099](https://github.com/grafana/loki/pull/12099) **ofosos**: Provide a loki index rebuilder CLI tool
 * [11840](https://github.com/grafana/loki/pull/11840) **jeschkies**: Allow custom usage trackers for ingested and discarded bytes metric.
 * [11814](https://github.com/grafana/loki/pull/11814) **kavirajk**: feat: Support split align and caching for instant metric query results
 * [11851](https://github.com/grafana/loki/pull/11851) **elcomtik**: Helm: Allow the definition of resources for GrafanaAgent pods.
