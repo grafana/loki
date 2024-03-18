@@ -1067,10 +1067,31 @@ storage:
 
         [max_connections_per_host: <int>]
 
+        [ca_file: <string> | default = ""]
+
     gcs:
       [bucket_name: <string> | default = ""]
 
       service_account:
+
+      http:
+        [idle_conn_timeout: <duration>]
+
+        [response_header_timeout: <duration>]
+
+        [insecure_skip_verify: <boolean>]
+
+        [tls_handshake_timeout: <duration>]
+
+        [expect_continue_timeout: <duration>]
+
+        [max_idle_connections: <int>]
+
+        [max_idle_connections_per_host: <int>]
+
+        [max_connections_per_host: <int>]
+
+        [ca_file: <string> | default = ""]
 
     azure:
       [account_name: <string> | default = ""]
@@ -1101,6 +1122,8 @@ storage:
         [max_idle_connections_per_host: <int>]
 
         [max_connections_per_host: <int>]
+
+        [ca_file: <string> | default = ""]
 
     swift:
       [auth_version: <int>]
@@ -2493,16 +2516,16 @@ objstore_config:
 
     http:
       # The time an idle connection will remain idle before closing.
-      # CLI flag: -thanos.s3.http.idle-conn-timeout
+      # CLI flag: -thanos.s3.idle-conn-timeout
       [idle_conn_timeout: <duration> | default = 1m30s]
 
       # The amount of time the client will wait for a servers response headers.
-      # CLI flag: -thanos.s3.http.response-header-timeout
+      # CLI flag: -thanos.s3.response-header-timeout
       [response_header_timeout: <duration> | default = 2m]
 
       # If the client connects via HTTPS and this option is enabled, the client
       # will accept any certificate and hostname.
-      # CLI flag: -thanos.s3.http.insecure-skip-verify
+      # CLI flag: -thanos.s3.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
 
       # Maximum time to wait for a TLS handshake. 0 means no limit.
@@ -2529,6 +2552,11 @@ objstore_config:
       # CLI flag: -thanos.s3.max-connections-per-host
       [max_connections_per_host: <int> | default = 0]
 
+      # Path to the trusted CA file that signed the SSL certificate of the
+      # object storage endpoint.
+      # CLI flag: -thanos.s3.ca-file
+      [ca_file: <string> | default = ""]
+
   gcs:
     # GCS bucket name
     # CLI flag: -thanos.gcs.bucket-name
@@ -2539,6 +2567,49 @@ objstore_config:
     # file. If empty, fallback to Google default logic.
     # CLI flag: -thanos.gcs.service-account
     [service_account: <string> | default = ""]
+
+    http:
+      # The time an idle connection will remain idle before closing.
+      # CLI flag: -thanos.s3.http.idle-conn-timeout
+      [idle_conn_timeout: <duration> | default = 1m30s]
+
+      # The amount of time the client will wait for a servers response headers.
+      # CLI flag: -thanos.s3.http.response-header-timeout
+      [response_header_timeout: <duration> | default = 2m]
+
+      # If the client connects via HTTPS and this option is enabled, the client
+      # will accept any certificate and hostname.
+      # CLI flag: -thanos.s3.http.insecure-skip-verify
+      [insecure_skip_verify: <boolean> | default = false]
+
+      # Maximum time to wait for a TLS handshake. 0 means no limit.
+      # CLI flag: -thanos.s3.http.tls-handshake-timeout
+      [tls_handshake_timeout: <duration> | default = 10s]
+
+      # The time to wait for a server's first response headers after fully
+      # writing the request headers if the request has an Expect header. 0 to
+      # send the request body immediately.
+      # CLI flag: -thanos.s3.http.expect-continue-timeout
+      [expect_continue_timeout: <duration> | default = 1s]
+
+      # Maximum number of idle (keep-alive) connections across all hosts. 0
+      # means no limit.
+      # CLI flag: -thanos.s3.http.max-idle-connections
+      [max_idle_connections: <int> | default = 100]
+
+      # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
+      # a built-in default value is used.
+      # CLI flag: -thanos.s3.http.max-idle-connections-per-host
+      [max_idle_connections_per_host: <int> | default = 100]
+
+      # Maximum number of connections per host. 0 means no limit.
+      # CLI flag: -thanos.s3.http.max-connections-per-host
+      [max_connections_per_host: <int> | default = 0]
+
+      # Path to the trusted CA file that signed the SSL certificate of the
+      # object storage endpoint.
+      # CLI flag: -thanos.s3.http.ca-file
+      [ca_file: <string> | default = ""]
 
   azure:
     # Azure storage account name
@@ -2571,16 +2642,16 @@ objstore_config:
 
     http:
       # The time an idle connection will remain idle before closing.
-      # CLI flag: -thanos.azure.http.idle-conn-timeout
+      # CLI flag: -thanos.azure.idle-conn-timeout
       [idle_conn_timeout: <duration> | default = 1m30s]
 
       # The amount of time the client will wait for a servers response headers.
-      # CLI flag: -thanos.azure.http.response-header-timeout
+      # CLI flag: -thanos.azure.response-header-timeout
       [response_header_timeout: <duration> | default = 2m]
 
       # If the client connects via HTTPS and this option is enabled, the client
       # will accept any certificate and hostname.
-      # CLI flag: -thanos.azure.http.insecure-skip-verify
+      # CLI flag: -thanos.azure.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
 
       # Maximum time to wait for a TLS handshake. 0 means no limit.
@@ -2606,6 +2677,11 @@ objstore_config:
       # Maximum number of connections per host. 0 means no limit.
       # CLI flag: -thanos.azure.max-connections-per-host
       [max_connections_per_host: <int> | default = 0]
+
+      # Path to the trusted CA file that signed the SSL certificate of the
+      # object storage endpoint.
+      # CLI flag: -thanos.azure.ca-file
+      [ca_file: <string> | default = ""]
 
   swift:
     # OpenStack Swift authentication API version. 0 to autodetect.
@@ -4313,17 +4389,17 @@ storage:
 
       http:
         # The time an idle connection will remain idle before closing.
-        # CLI flag: -common.storage.thanos.s3.http.idle-conn-timeout
+        # CLI flag: -common.storage.thanos.s3.idle-conn-timeout
         [idle_conn_timeout: <duration> | default = 1m30s]
 
         # The amount of time the client will wait for a servers response
         # headers.
-        # CLI flag: -common.storage.thanos.s3.http.response-header-timeout
+        # CLI flag: -common.storage.thanos.s3.response-header-timeout
         [response_header_timeout: <duration> | default = 2m]
 
         # If the client connects via HTTPS and this option is enabled, the
         # client will accept any certificate and hostname.
-        # CLI flag: -common.storage.thanos.s3.http.insecure-skip-verify
+        # CLI flag: -common.storage.thanos.s3.insecure-skip-verify
         [insecure_skip_verify: <boolean> | default = false]
 
         # Maximum time to wait for a TLS handshake. 0 means no limit.
@@ -4350,6 +4426,11 @@ storage:
         # CLI flag: -common.storage.thanos.s3.max-connections-per-host
         [max_connections_per_host: <int> | default = 0]
 
+        # Path to the trusted CA file that signed the SSL certificate of the
+        # object storage endpoint.
+        # CLI flag: -common.storage.thanos.s3.ca-file
+        [ca_file: <string> | default = ""]
+
     gcs:
       # GCS bucket name
       # CLI flag: -common.storage.thanos.gcs.bucket-name
@@ -4360,6 +4441,50 @@ storage:
       # file. If empty, fallback to Google default logic.
       # CLI flag: -common.storage.thanos.gcs.service-account
       [service_account: <string> | default = ""]
+
+      http:
+        # The time an idle connection will remain idle before closing.
+        # CLI flag: -common.storage.thanos.s3.http.idle-conn-timeout
+        [idle_conn_timeout: <duration> | default = 1m30s]
+
+        # The amount of time the client will wait for a servers response
+        # headers.
+        # CLI flag: -common.storage.thanos.s3.http.response-header-timeout
+        [response_header_timeout: <duration> | default = 2m]
+
+        # If the client connects via HTTPS and this option is enabled, the
+        # client will accept any certificate and hostname.
+        # CLI flag: -common.storage.thanos.s3.http.insecure-skip-verify
+        [insecure_skip_verify: <boolean> | default = false]
+
+        # Maximum time to wait for a TLS handshake. 0 means no limit.
+        # CLI flag: -common.storage.thanos.s3.http.tls-handshake-timeout
+        [tls_handshake_timeout: <duration> | default = 10s]
+
+        # The time to wait for a server's first response headers after fully
+        # writing the request headers if the request has an Expect header. 0 to
+        # send the request body immediately.
+        # CLI flag: -common.storage.thanos.s3.http.expect-continue-timeout
+        [expect_continue_timeout: <duration> | default = 1s]
+
+        # Maximum number of idle (keep-alive) connections across all hosts. 0
+        # means no limit.
+        # CLI flag: -common.storage.thanos.s3.http.max-idle-connections
+        [max_idle_connections: <int> | default = 100]
+
+        # Maximum number of idle (keep-alive) connections to keep per-host. If
+        # 0, a built-in default value is used.
+        # CLI flag: -common.storage.thanos.s3.http.max-idle-connections-per-host
+        [max_idle_connections_per_host: <int> | default = 100]
+
+        # Maximum number of connections per host. 0 means no limit.
+        # CLI flag: -common.storage.thanos.s3.http.max-connections-per-host
+        [max_connections_per_host: <int> | default = 0]
+
+        # Path to the trusted CA file that signed the SSL certificate of the
+        # object storage endpoint.
+        # CLI flag: -common.storage.thanos.s3.http.ca-file
+        [ca_file: <string> | default = ""]
 
     azure:
       # Azure storage account name
@@ -4392,17 +4517,17 @@ storage:
 
       http:
         # The time an idle connection will remain idle before closing.
-        # CLI flag: -common.storage.thanos.azure.http.idle-conn-timeout
+        # CLI flag: -common.storage.thanos.azure.idle-conn-timeout
         [idle_conn_timeout: <duration> | default = 1m30s]
 
         # The amount of time the client will wait for a servers response
         # headers.
-        # CLI flag: -common.storage.thanos.azure.http.response-header-timeout
+        # CLI flag: -common.storage.thanos.azure.response-header-timeout
         [response_header_timeout: <duration> | default = 2m]
 
         # If the client connects via HTTPS and this option is enabled, the
         # client will accept any certificate and hostname.
-        # CLI flag: -common.storage.thanos.azure.http.insecure-skip-verify
+        # CLI flag: -common.storage.thanos.azure.insecure-skip-verify
         [insecure_skip_verify: <boolean> | default = false]
 
         # Maximum time to wait for a TLS handshake. 0 means no limit.
@@ -4428,6 +4553,11 @@ storage:
         # Maximum number of connections per host. 0 means no limit.
         # CLI flag: -common.storage.thanos.azure.max-connections-per-host
         [max_connections_per_host: <int> | default = 0]
+
+        # Path to the trusted CA file that signed the SSL certificate of the
+        # object storage endpoint.
+        # CLI flag: -common.storage.thanos.azure.ca-file
+        [ca_file: <string> | default = ""]
 
     swift:
       # OpenStack Swift authentication API version. 0 to autodetect.

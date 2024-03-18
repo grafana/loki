@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"regexp"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
 	"github.com/Azure/azure-sdk-for-go/sdk/internal/exported"
 )
 
@@ -25,7 +26,7 @@ func NewResponseError(resp *http.Response) error {
 	}
 
 	// prefer the error code in the response header
-	if ec := resp.Header.Get("x-ms-error-code"); ec != "" {
+	if ec := resp.Header.Get(shared.HeaderXMSErrorCode); ec != "" {
 		respErr.ErrorCode = ec
 		return respErr
 	}
@@ -112,33 +113,45 @@ type ResponseError struct {
 // Error implements the error interface for type ResponseError.
 // Note that the message contents are not contractual and can change over time.
 func (e *ResponseError) Error() string {
+	const separator = "--------------------------------------------------------------------------------"
 	// write the request method and URL with response status code
 	msg := &bytes.Buffer{}
-	fmt.Fprintf(msg, "%s %s://%s%s\n", e.RawResponse.Request.Method, e.RawResponse.Request.URL.Scheme, e.RawResponse.Request.URL.Host, e.RawResponse.Request.URL.Path)
-	fmt.Fprintln(msg, "--------------------------------------------------------------------------------")
-	fmt.Fprintf(msg, "RESPONSE %d: %s\n", e.RawResponse.StatusCode, e.RawResponse.Status)
+	if e.RawResponse != nil {
+		if e.RawResponse.Request != nil {
+			fmt.Fprintf(msg, "%s %s://%s%s\n", e.RawResponse.Request.Method, e.RawResponse.Request.URL.Scheme, e.RawResponse.Request.URL.Host, e.RawResponse.Request.URL.Path)
+		} else {
+			fmt.Fprintln(msg, "Request information not available")
+		}
+		fmt.Fprintln(msg, separator)
+		fmt.Fprintf(msg, "RESPONSE %d: %s\n", e.RawResponse.StatusCode, e.RawResponse.Status)
+	} else {
+		fmt.Fprintln(msg, "Missing RawResponse")
+		fmt.Fprintln(msg, separator)
+	}
 	if e.ErrorCode != "" {
 		fmt.Fprintf(msg, "ERROR CODE: %s\n", e.ErrorCode)
 	} else {
 		fmt.Fprintln(msg, "ERROR CODE UNAVAILABLE")
 	}
-	fmt.Fprintln(msg, "--------------------------------------------------------------------------------")
-	body, err := exported.Payload(e.RawResponse, nil)
-	if err != nil {
-		// this really shouldn't fail at this point as the response
-		// body is already cached (it was read in NewResponseError)
-		fmt.Fprintf(msg, "Error reading response body: %v", err)
-	} else if len(body) > 0 {
-		if err := json.Indent(msg, body, "", "  "); err != nil {
-			// failed to pretty-print so just dump it verbatim
-			fmt.Fprint(msg, string(body))
+	if e.RawResponse != nil {
+		fmt.Fprintln(msg, separator)
+		body, err := exported.Payload(e.RawResponse, nil)
+		if err != nil {
+			// this really shouldn't fail at this point as the response
+			// body is already cached (it was read in NewResponseError)
+			fmt.Fprintf(msg, "Error reading response body: %v", err)
+		} else if len(body) > 0 {
+			if err := json.Indent(msg, body, "", "  "); err != nil {
+				// failed to pretty-print so just dump it verbatim
+				fmt.Fprint(msg, string(body))
+			}
+			// the standard library doesn't have a pretty-printer for XML
+			fmt.Fprintln(msg)
+		} else {
+			fmt.Fprintln(msg, "Response contained no body")
 		}
-		// the standard library doesn't have a pretty-printer for XML
-		fmt.Fprintln(msg)
-	} else {
-		fmt.Fprintln(msg, "Response contained no body")
 	}
-	fmt.Fprintln(msg, "--------------------------------------------------------------------------------")
+	fmt.Fprintln(msg, separator)
 
 	return msg.String()
 }

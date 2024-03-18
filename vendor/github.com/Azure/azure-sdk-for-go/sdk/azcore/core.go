@@ -22,6 +22,24 @@ type AccessToken = exported.AccessToken
 // TokenCredential represents a credential capable of providing an OAuth token.
 type TokenCredential = exported.TokenCredential
 
+// KeyCredential contains an authentication key used to authenticate to an Azure service.
+type KeyCredential = exported.KeyCredential
+
+// NewKeyCredential creates a new instance of [KeyCredential] with the specified values.
+//   - key is the authentication key
+func NewKeyCredential(key string) *KeyCredential {
+	return exported.NewKeyCredential(key)
+}
+
+// SASCredential contains a shared access signature used to authenticate to an Azure service.
+type SASCredential = exported.SASCredential
+
+// NewSASCredential creates a new instance of [SASCredential] with the specified values.
+//   - sas is the shared access signature
+func NewSASCredential(sas string) *SASCredential {
+	return exported.NewSASCredential(sas)
+}
+
 // holds sentinel values used to send nulls
 var nullables map[reflect.Type]interface{} = map[reflect.Type]interface{}{}
 
@@ -66,7 +84,9 @@ func IsNullValue[T any](v T) bool {
 	return false
 }
 
-// ClientOptions contains configuration settings for a client's pipeline.
+// ClientOptions contains optional settings for a client's pipeline.
+// Instances can be shared across calls to SDK client constructors when uniform configuration is desired.
+// Zero-value fields will have their specified default values applied during use.
 type ClientOptions = policy.ClientOptions
 
 // Client is a basic HTTP client.  It consists of a pipeline and tracing provider.
@@ -75,22 +95,17 @@ type Client struct {
 	tr tracing.Tracer
 
 	// cached on the client to support shallow copying with new values
-	tp     tracing.Provider
-	modVer string
+	tp        tracing.Provider
+	modVer    string
+	namespace string
 }
 
 // NewClient creates a new Client instance with the provided values.
-//   - clientName - the fully qualified name of the client ("module/package.Client"); this is used by the telemetry policy and tracing provider.
-//     if module and package are the same value, the "module/" prefix can be omitted.
-//   - moduleVersion - the semantic version of the containing module; used by the telemetry policy
+//   - moduleName - the fully qualified name of the module where the client is defined; used by the telemetry policy and tracing provider.
+//   - moduleVersion - the semantic version of the module; used by the telemetry policy and tracing provider.
 //   - plOpts - pipeline configuration options; can be the zero-value
 //   - options - optional client configurations; pass nil to accept the default values
-func NewClient(clientName, moduleVersion string, plOpts runtime.PipelineOptions, options *ClientOptions) (*Client, error) {
-	mod, client, err := shared.ExtractModuleName(clientName)
-	if err != nil {
-		return nil, err
-	}
-
+func NewClient(moduleName, moduleVersion string, plOpts runtime.PipelineOptions, options *ClientOptions) (*Client, error) {
 	if options == nil {
 		options = &ClientOptions{}
 	}
@@ -101,15 +116,19 @@ func NewClient(clientName, moduleVersion string, plOpts runtime.PipelineOptions,
 		}
 	}
 
-	pl := runtime.NewPipeline(mod, moduleVersion, plOpts, options)
+	pl := runtime.NewPipeline(moduleName, moduleVersion, plOpts, options)
 
-	tr := options.TracingProvider.NewTracer(client, moduleVersion)
+	tr := options.TracingProvider.NewTracer(moduleName, moduleVersion)
+	if tr.Enabled() && plOpts.Tracing.Namespace != "" {
+		tr.SetAttributes(tracing.Attribute{Key: shared.TracingNamespaceAttrName, Value: plOpts.Tracing.Namespace})
+	}
 
 	return &Client{
-		pl:     pl,
-		tr:     tr,
-		tp:     options.TracingProvider,
-		modVer: moduleVersion,
+		pl:        pl,
+		tr:        tr,
+		tp:        options.TracingProvider,
+		modVer:    moduleVersion,
+		namespace: plOpts.Tracing.Namespace,
 	}, nil
 }
 
@@ -128,5 +147,8 @@ func (c *Client) Tracer() tracing.Tracer {
 //   - clientName - the fully qualified name of the client ("package.Client"); this is used by the tracing provider when creating spans
 func (c *Client) WithClientName(clientName string) *Client {
 	tr := c.tp.NewTracer(clientName, c.modVer)
-	return &Client{pl: c.pl, tr: tr, tp: c.tp, modVer: c.modVer}
+	if tr.Enabled() && c.namespace != "" {
+		tr.SetAttributes(tracing.Attribute{Key: shared.TracingNamespaceAttrName, Value: c.namespace})
+	}
+	return &Client{pl: c.pl, tr: tr, tp: c.tp, modVer: c.modVer, namespace: c.namespace}
 }

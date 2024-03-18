@@ -20,22 +20,36 @@ import (
 )
 
 type GCSThanosObjectClient struct {
-	client objstore.Bucket
+	client       objstore.Bucket
+	hedgedClient objstore.Bucket
 }
 
 func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config, reg prometheus.Registerer) (*GCSThanosObjectClient, error) {
-	//TODO(JoaoBraveCoding) Add Hedging client once we are able to configure HTTP on GCS provider
-	return newGCSThanosObjectClient(ctx, cfg, component, logger, reg)
-}
-
-func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, reg prometheus.Registerer) (*GCSThanosObjectClient, error) {
-	bucket, err := bucket.NewClient(ctx, cfg, component, logger, reg)
+	client, err := newGCSThanosObjectClient(ctx, cfg, component, logger, false, hedgingCfg, prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "false"}, reg))
+	if err != nil {
+		return nil, err
+	}
+	hedgedClient, err := newGCSThanosObjectClient(ctx, cfg, component, logger, true, hedgingCfg, prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "true"}, reg))
 	if err != nil {
 		return nil, err
 	}
 	return &GCSThanosObjectClient{
-		client: bucket,
+		client:       client,
+		hedgedClient: hedgedClient,
 	}, nil
+}
+
+func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedging bool, hedgingCfg hedging.Config, reg prometheus.Registerer) (objstore.Bucket, error) {
+	if hedging {
+		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, reg)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg.GCS.HTTP.Transport = hedgedTrasport
+	}
+
+	return bucket.NewClient(ctx, cfg, component, logger, reg)
 }
 
 func (s *GCSThanosObjectClient) Stop() {}

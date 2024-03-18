@@ -6,9 +6,10 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/stretchr/testify/require"
 )
 
 func TestGCSThanosObjStore_List(t *testing.T) {
