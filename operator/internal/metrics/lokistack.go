@@ -79,7 +79,7 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 				activeValue = 1.0
 			}
 
-			// This mirrors the behaviour of kube_state_metrics, which creates two metrics for each condition,
+			// This mirrors the behavior of kube_state_metrics, which creates two metrics for each condition,
 			// one for each status (true/false).
 			m <- prometheus.MustNewConstMetric(
 				lokiStackConditionsCountDesc,
