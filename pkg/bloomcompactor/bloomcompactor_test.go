@@ -68,22 +68,20 @@ func TestCompactor_ownsTenant(t *testing.T) {
 			var ringManagers []*lokiring.RingManager
 			var compactors []*Compactor
 			for i := 0; i < tc.compactors; i++ {
-				var ringCfg RingConfig
-				ringCfg.RegisterFlagsWithPrefix("", "", flag.NewFlagSet("ring", flag.PanicOnError))
-				ringCfg.KVStore.Store = "inmemory"
-				ringCfg.InstanceID = fmt.Sprintf("bloom-compactor-%d", i)
-				ringCfg.InstanceAddr = fmt.Sprintf("localhost-%d", i)
+				var cfg Config
+				cfg.RegisterFlags(flag.NewFlagSet("ring", flag.PanicOnError))
+				cfg.Ring.KVStore.Store = "inmemory"
+				cfg.Ring.InstanceID = fmt.Sprintf("bloom-compactor-%d", i)
+				cfg.Ring.InstanceAddr = fmt.Sprintf("localhost-%d", i)
 
-				ringManager, err := lokiring.NewRingManager("bloom-compactor", lokiring.ServerMode, ringCfg.RingConfig, 1, ringCfg.Tokens, util_log.Logger, prometheus.NewRegistry())
+				ringManager, err := lokiring.NewRingManager("bloom-compactor", lokiring.ServerMode, cfg.Ring, 1, cfg.Ring.NumTokens, util_log.Logger, prometheus.NewRegistry())
 				require.NoError(t, err)
 				require.NoError(t, ringManager.StartAsync(context.Background()))
 
 				shuffleSharding := util_ring.NewTenantShuffleSharding(ringManager.Ring, ringManager.RingLifecycler, tc.limits.BloomCompactorShardSize)
 
 				compactor := &Compactor{
-					cfg: Config{
-						Ring: ringCfg,
-					},
+					cfg:      cfg,
 					sharding: shuffleSharding,
 					limits:   tc.limits,
 				}
