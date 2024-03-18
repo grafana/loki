@@ -562,16 +562,16 @@ Params:
   pathType: Prefix
   {{- end }}
   backend:
-    {{- if $ingressApiIsStable }}
     {{- $serviceName := include "loki.ingress.serviceName" (dict "ctx" $.ctx "svcName" $.svcName) }}
+    {{- if $ingressApiIsStable }}
     service:
       name: {{ $serviceName }}
       port:
-        number: {{ .Values.loki.server.http_listen_port }}
+        number: {{ $.ctx.Values.loki.server.http_listen_port }}
     {{- else }}
     serviceName: {{ $serviceName }}
-    servicePort: {{ .Values.loki.server.http_listen_port }}
-{{- end -}}
+    servicePort: {{ $.ctx.Values.loki.server.http_listen_port }}
+    {{- end -}}
 {{- end -}}
 {{- end -}}
 
