@@ -183,7 +183,11 @@ groups:
         configuration to update the schema version to the latest version in the future.
       summary: "One or more of the deployed LokiStacks contains an outdated storage schema configuration."
       runbook_url: "[[ .RunbookURL ]]#Lokistack-Schema-Upgrades-Required"
-    expr: sum by(stack_namespace, stack_name) (lokistack_warnings_count{reason="StorageNeedsSchemaUpdate"}) > 0
+    expr: |
+      sum (
+        lokistack_status_condition{reason="StorageNeedsSchemaUpdate",status="true"}
+      ) by (stack_namespace, stack_name)
+      > 0
     for: 1m
     labels:
       severity: warning

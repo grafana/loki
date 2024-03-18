@@ -28,12 +28,6 @@ var (
 		metricsCommonLabels, nil,
 	)
 
-	lokistackWarningsCountDesc = prometheus.NewDesc(
-		metricsPrefix+"warnings_count",
-		"Counts the number of warnings set on a LokiStack.",
-		append(metricsCommonLabels, "reason"), nil,
-	)
-
 	lokiStackConditionsCountDesc = prometheus.NewDesc(
 		metricsPrefix+"status_condition",
 		"Counts the current status conditions of the LokiStack.",
@@ -57,7 +51,6 @@ type lokiStackCollector struct {
 
 func (l *lokiStackCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- lokiStackInfoDesc
-	ch <- lokistackWarningsCountDesc
 	ch <- lokiStackConditionsCountDesc
 }
 
@@ -80,39 +73,24 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 
 		m <- prometheus.MustNewConstMetric(lokiStackInfoDesc, prometheus.GaugeValue, 1.0, labels...)
 
-		warningsMap := map[string]int{}
 		for _, c := range stack.Status.Conditions {
-			active := 0.0
+			activeValue := 0.0
 			if c.Status == metav1.ConditionTrue {
-				active = 1.0
+				activeValue = 1.0
 			}
 
+			// This mirrors the behaviour of kube_state_metrics, which creates two metrics for each condition,
+			// one for each status (true/false).
 			m <- prometheus.MustNewConstMetric(
 				lokiStackConditionsCountDesc,
-				prometheus.GaugeValue, active,
+				prometheus.GaugeValue, activeValue,
 				append(labels, c.Type, c.Reason, "true")...,
 			)
 			m <- prometheus.MustNewConstMetric(
 				lokiStackConditionsCountDesc,
-				prometheus.GaugeValue, 1.0-active,
+				prometheus.GaugeValue, 1.0-activeValue,
 				append(labels, c.Type, c.Reason, "false")...,
 			)
-
-			if c.Status != metav1.ConditionTrue {
-				continue
-			}
-
-			if c.Type != string(lokiv1.ConditionWarning) {
-				continue
-			}
-
-			count := warningsMap[c.Reason]
-			count += 1
-			warningsMap[c.Reason] = count
-		}
-
-		for reason, count := range warningsMap {
-			m <- prometheus.MustNewConstMetric(lokistackWarningsCountDesc, prometheus.GaugeValue, float64(count), append(labels, reason)...)
 		}
 	}
 }
