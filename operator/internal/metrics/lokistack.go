@@ -49,12 +49,12 @@ type lokiStackCollector struct {
 	k8sClient client.Client
 }
 
-func (l lokiStackCollector) Describe(ch chan<- *prometheus.Desc) {
+func (l *lokiStackCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- lokiStackInfoDesc
 	ch <- lokistackWarningsCountDesc
 }
 
-func (l lokiStackCollector) Collect(m chan<- prometheus.Metric) {
+func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 	ctx := context.TODO()
 
 	stackList := &lokiv1.LokiStackList{}
