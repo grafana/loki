@@ -48,7 +48,8 @@ type Compactor struct {
 
 	tsdbStore TSDBStore
 	// TODO(owen-d): ShardingStrategy
-	controller *SimpleBloomController
+	controller       *SimpleBloomController
+	retentionManager *RetentionManager
 
 	// temporary workaround until bloomStore has implemented read/write shipper interface
 	bloomStore bloomshipper.Store
@@ -65,7 +66,8 @@ func New(
 	storeCfg storage.Config,
 	clientMetrics storage.ClientMetrics,
 	fetcherProvider stores.ChunkFetcherProvider,
-	sharding util_ring.TenantSharding,
+	ring ring.ReadRing,
+	ringLifeCycler *ring.BasicLifecycler,
 	limits Limits,
 	store bloomshipper.Store,
 	logger log.Logger,
@@ -75,7 +77,7 @@ func New(
 		cfg:        cfg,
 		schemaCfg:  schemaCfg,
 		logger:     logger,
-		sharding:   sharding,
+		sharding:   util_ring.NewTenantShuffleSharding(ring, ringLifeCycler, limits.BloomCompactorShardSize),
 		limits:     limits,
 		bloomStore: store,
 	}
@@ -100,6 +102,15 @@ func New(
 		c.bloomStore,
 		chunkLoader,
 		c.limits,
+		c.metrics,
+		c.logger,
+	)
+
+	c.retentionManager = NewRetentionManager(
+		c.cfg.RetentionConfig,
+		c.limits,
+		c.bloomStore,
+		newFirstTokenRetentionSharding(ring, ringLifeCycler),
 		c.metrics,
 		c.logger,
 	)
@@ -218,9 +229,16 @@ func (c *Compactor) runOne(ctx context.Context) error {
 	c.metrics.compactionsStarted.Inc()
 	start := time.Now()
 	level.Info(c.logger).Log("msg", "running bloom compaction", "workers", c.cfg.WorkerParallelism)
-	var workersErr error
+	var workersErr, retentionErr error
 	var wg sync.WaitGroup
 	input := make(chan *tenantTableRange)
+
+	// Launch retention (will return instantly if retention is disabled or not owned by this compactor)
+	wg.Add(1)
+	go func() {
+		retentionErr = c.retentionManager.Apply(ctx)
+		wg.Done()
+	}()
 
 	tables := c.tables(time.Now())
 	level.Debug(c.logger).Log("msg", "loaded tables", "tables", tables.TotalDays())
@@ -240,7 +258,7 @@ func (c *Compactor) runOne(ctx context.Context) error {
 
 	wg.Wait()
 	duration := time.Since(start)
-	err = multierror.New(workersErr, err, ctx.Err()).Err()
+	err = multierror.New(retentionErr, workersErr, err, ctx.Err()).Err()
 
 	if err != nil {
 		level.Error(c.logger).Log("msg", "compaction iteration failed", "err", err, "duration", duration)

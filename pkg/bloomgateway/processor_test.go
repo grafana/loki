@@ -54,6 +54,10 @@ func (s *dummyStore) FetchMetas(_ context.Context, _ bloomshipper.MetaSearchPara
 	return s.metas, nil
 }
 
+func (s *dummyStore) TenantFilesForInterval(_ context.Context, _ bloomshipper.Interval) (map[string][]string, error) {
+	return nil, nil
+}
+
 func (s *dummyStore) Fetcher(_ model.Time) (*bloomshipper.Fetcher, error) {
 	return nil, nil
 }

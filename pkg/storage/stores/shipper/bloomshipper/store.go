@@ -3,16 +3,8 @@ package bloomshipper
 import (
 	"context"
 	"fmt"
-	"path"
-	"sort"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"golang.org/x/exp/slices"
-
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -20,6 +12,12 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
+	"path"
+	"sort"
 )
 
 var (
@@ -30,6 +28,7 @@ type Store interface {
 	ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error)
 	FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
 	FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error)
+	TenantFilesForInterval(ctx context.Context, interval Interval) (map[string][]string, error)
 	Fetcher(ts model.Time) (*Fetcher, error)
 	Client(ts model.Time) (Client, error)
 	Stop()
@@ -125,6 +124,51 @@ func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParam
 // FetchBlocks implements Store.
 func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef, _ ...FetchOption) ([]*CloseableBlockQuerier, error) {
 	return b.fetcher.FetchBlocks(ctx, refs)
+}
+
+func (b *bloomStoreEntry) TenantFilesForInterval(ctx context.Context, interval Interval) (map[string][]string, error) {
+	tables := tablesForRange(b.cfg, interval)
+	if len(tables) == 0 {
+		return nil, nil
+	}
+
+	// TODO(salvacorts): Use pooling if this becomes a problem.
+	tenants := make(map[string][]string, 100)
+	for _, table := range tables {
+		prefix := path.Join(rootFolder, table)
+		level.Debug(b.fetcher.logger).Log(
+			"msg", "listing tenants",
+			"store", b.cfg.From,
+			"table", table,
+			"prefix", prefix,
+		)
+		objects, _, err := b.objectClient.List(ctx, prefix, "")
+		if err != nil {
+			if b.objectClient.IsObjectNotFoundErr(err) {
+				continue
+			}
+
+			return nil, fmt.Errorf("error listing tenants under prefix [%s]: %w", prefix, err)
+		}
+		if len(objects) == 0 {
+			continue
+		}
+
+		for _, object := range objects {
+			tenant, err := b.ParseTenantKey(key(object.Key))
+			if err != nil {
+				return nil, fmt.Errorf("error parsing tenant key [%s]: %w", object.Key, err)
+			}
+
+			if _, ok := tenants[tenant]; !ok {
+				tenants[tenant] = make([]string, 0, 100)
+			}
+
+			tenants[tenant] = append(tenants[tenant], object.Key)
+		}
+	}
+
+	return tenants, nil
 }
 
 // Fetcher implements Store.
@@ -251,6 +295,30 @@ func (b *BloomStore) Block(ref BlockRef) (loc Location) {
 	}
 
 	return
+}
+
+func (b *BloomStore) TenantFilesForInterval(ctx context.Context, interval Interval) (map[string][]string, error) {
+	var allTenants map[string][]string
+
+	err := b.forStores(ctx, interval, func(innerCtx context.Context, interval Interval, store Store) error {
+		tenants, err := store.TenantFilesForInterval(innerCtx, interval)
+		if err != nil {
+			return err
+		}
+
+		if allTenants == nil {
+			allTenants = tenants
+			return nil
+		}
+
+		for tenant, files := range tenants {
+			allTenants[tenant] = append(allTenants[tenant], files...)
+		}
+
+		return nil
+	})
+
+	return allTenants, err
 }
 
 // Fetcher implements Store.
