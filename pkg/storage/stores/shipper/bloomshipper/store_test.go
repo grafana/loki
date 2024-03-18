@@ -68,8 +68,14 @@ func newMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*BloomStore, st
 	logger := log.NewLogfmtLogger(os.Stderr)
 
 	metasCache := cache.NewMockCache()
-	blocksCache := NewBlocksCache(storageConfig.BloomShipperConfig.BlocksCache, prometheus.NewPedanticRegistry(), logger)
-
+	cfg := BlocksCacheConfig{
+		Enabled:       true,
+		SoftLimit:     1 << 20,
+		HardLimit:     2 << 20,
+		TTL:           time.Hour,
+		PurgeInterval: time.Hour,
+	}
+	blocksCache := NewFsBlocksCache(cfg, prometheus.NewPedanticRegistry(), logger)
 	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, reg, logger)
 	if err == nil {
 		t.Cleanup(store.Stop)
