@@ -4,6 +4,7 @@ resources:
 - ../../manager
 - ../../webhook
 - ../../prometheus
+- manager_metrics_secret_token.yaml
 
 # Adds namespace to all resources.
 namespace: openshift-operators-redhat

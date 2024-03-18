@@ -46,7 +46,6 @@ func newS3ThanosObjClient(ctx context.Context, cfg bucket.Config, component stri
 		cfg.S3.HTTP.Transport = hedgedTrasport
 	}
 
-	//TODO(JoaoBraveCoding) Fix registry
 	return bucket.NewClient(ctx, cfg, component, logger, reg)
 }
 

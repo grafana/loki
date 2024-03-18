@@ -80,7 +80,7 @@ func New(
 		bloomStore: store,
 	}
 
-	tsdbStore, err := NewTSDBStores(schemaCfg, storeCfg, clientMetrics)
+	tsdbStore, err := NewTSDBStores(schemaCfg, storeCfg, clientMetrics, logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create TSDB store")
 	}
