@@ -43,6 +43,7 @@ func NewQueryShardMiddleware(
 	statsHandler queryrangebase.Handler,
 	shardAggregation []string,
 ) queryrangebase.Middleware {
+	level.Debug(logger).Log("msg", "new query sharding middleware")
 	noshards := !hasShards(confs)
 
 	if noshards {

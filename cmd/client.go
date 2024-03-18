@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"time"
 
@@ -52,11 +53,11 @@ func main() {
 			v, err := stream.Recv()
 			if err == io.EOF {
 				fmt.Println("EOF", err)
-				return
+				os.Exit(0)
 			}
 			if err != nil {
 				fmt.Println("Error in receiving stream", err)
-				return
+				os.Exit(0)
 			}
 			i++
 			fmt.Println(strconv.Itoa(i) + "--" + strconv.Itoa(int(v.Limit)))

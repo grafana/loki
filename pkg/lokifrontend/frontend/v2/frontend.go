@@ -521,16 +521,20 @@ func (f *Frontend) FetchResponse(req *frontendv2pb.LokiStreamingRequest, srv fro
 		},
 	} // shantanu: Check why is streamingreq is still not accepted directly
 	r, err := f.GrpcRoundTripper.Do(ctx, lokiRequest)
-	level.Info(f.log).Log(r)
+	level.Info(f.log).Log("msg", r)
 	if err != nil {
 		return err
 	}
 
 	p := &frontendv2pb.LokiStreamingResponse{
 		Status: "ok",
+		Data: frontendv2pb.LokiDataStream{
+			ResultType: EncodingProtobuf,
+		},
+		Limit: 10,
 	}
 
-	if err := srv.SendMsg(&p); err != nil {
+	if err := srv.SendMsg(p); err != nil {
 		level.Error(f.log).Log("msg", "error sending response to server")
 	}
 

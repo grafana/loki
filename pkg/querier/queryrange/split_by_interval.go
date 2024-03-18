@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -50,16 +52,18 @@ func NewSplitByMetrics(r prometheus.Registerer) *SplitByMetrics {
 }
 
 type splitByInterval struct {
-	configs  []config.PeriodConfig
-	next     queryrangebase.Handler
-	limits   Limits
-	merger   queryrangebase.Merger
-	metrics  *SplitByMetrics
-	splitter splitter
+	configs    []config.PeriodConfig
+	next       queryrangebase.Handler
+	limits     Limits
+	merger     queryrangebase.Merger
+	metrics    *SplitByMetrics
+	splitter   splitter
+	streamFunc func()
 }
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
 func SplitByIntervalMiddleware(configs []config.PeriodConfig, limits Limits, merger queryrangebase.Merger, splitter splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
+	level.Debug(util_log.Logger).Log("msg", "Inside splitbyinterval middleware")
 	if metrics == nil {
 		metrics = NewSplitByMetrics(nil)
 	}
@@ -176,6 +180,7 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 }
 
 func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	level.Debug(util_log.Logger).Log("msg", "Inside splitbyinterval middleware")
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -184,6 +189,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	var interval time.Duration
 	switch r.(type) {
 	case *LokiSeriesRequest, *LabelRequest:
+		level.Debug(util_log.Logger).Log("msg", "Lokiseries/label")
 		interval = validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.MetadataQuerySplitDuration)
 	default:
 		interval = validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, h.limits.QuerySplitDuration)
@@ -191,6 +197,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	// skip split by if unset
 	if interval == 0 {
+		level.Debug(util_log.Logger).Log("msg", "Interval is zero")
 		return h.next.Do(ctx, r)
 	}
 
@@ -203,6 +210,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	// no interval should not be processed by the frontend.
 	if len(intervals) == 0 {
+		level.Debug(util_log.Logger).Log("msg", "Interval length is zero")
 		return h.next.Do(ctx, r)
 	}
 
@@ -211,9 +219,11 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	if len(intervals) == 1 {
+		level.Debug(util_log.Logger).Log("msg", "Interval length is 1")
 		return h.next.Do(ctx, intervals[0])
 	}
 
+	level.Debug(util_log.Logger).Log("msg", "interval length::", len(intervals))
 	var limit int64
 	switch req := r.(type) {
 	case *LokiRequest:
@@ -241,10 +251,12 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	maxSeriesCapture := func(id string) int { return h.limits.MaxQuerySeries(ctx, id) }
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()))
+	level.Debug(util_log.Logger).Log("msg", "Processing splitbyinterva")
 	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries)
 	if err != nil {
 		return nil, err
 	}
+	level.Debug(util_log.Logger).Log("msg", "Merging splitbyinterval")
 	return h.merger.MergeResponse(resps...)
 }
 

@@ -115,6 +115,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 			logger := spanlogger.FromContext(ctx)
+			level.Debug(logger).Log("msg", "Inside stats collector middleware")
 			start := time.Now()
 
 			// start a new statistics context to be used by middleware, which we will merge with the response's statistics
@@ -135,10 +136,12 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			if resp != nil {
 				switch r := resp.(type) {
 				case *LokiResponse:
+					level.Debug(logger).Log("msg", "LokiResponse")
 					responseStats = &r.Statistics
 					totalEntries = int(logqlmodel.Streams(r.Data.Result).Lines())
 					queryType = queryTypeLog
 				case *LokiPromResponse:
+					level.Debug(logger).Log("msg", "LokiPromResponse")
 					responseStats = &r.Statistics
 					if r.Response != nil {
 						totalEntries = len(r.Response.Data.Result)
@@ -149,10 +152,12 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 						queryType = queryTypeVolume
 					}
 				case *LokiSeriesResponse:
+					level.Debug(logger).Log("msg", "LokiSeriesResponse")
 					responseStats = &r.Statistics // TODO: this is always nil. See codec.DecodeResponse
 					totalEntries = len(r.Data)
 					queryType = queryTypeSeries
 				case *LokiLabelNamesResponse:
+					level.Debug(logger).Log("msg", "LokiLabelNamesResponse")
 					responseStats = &r.Statistics // TODO: this is always nil. See codec.DecodeResponse
 					totalEntries = len(r.Data)
 					queryType = queryTypeLabel

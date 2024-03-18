@@ -3,6 +3,8 @@ package queryrange
 import (
 	"net/http"
 
+	"github.com/go-kit/log/level"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -24,11 +26,14 @@ func NewSerializeRoundTripper(next queryrangebase.Handler, codec queryrangebase.
 }
 
 func (rt *serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	level.Debug(util_log.Logger).Log("msg", "Starting serialize round tripper")
 	ctx := r.Context()
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "limitedRoundTripper.do")
 	defer sp.Finish()
 
 	request, err := rt.codec.DecodeRequest(ctx, r, nil)
+
+	level.Debug(util_log.Logger).Log("msg", "Decoded request to proto.")
 	if err != nil {
 		return nil, err
 	}
@@ -38,6 +43,7 @@ func (rt *serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, err
 		return nil, err
 	}
 
+	level.Debug(util_log.Logger).Log("msg", "Ending serialize round tripper. Returning encoded response")
 	return rt.codec.EncodeResponse(ctx, r, response)
 }
 

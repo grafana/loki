@@ -148,6 +148,7 @@ func NewLimitsMiddleware(l Limits) queryrangebase.Middleware {
 }
 
 func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	level.Debug(util_log.Logger).Log("msg", "Inside limits middleware")
 	span, ctx := opentracing.StartSpanFromContext(ctx, "limits")
 	defer span.Finish()
 	log := spanlogger.FromContext(ctx)
@@ -195,6 +196,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 		}
 	}
 
+	level.Debug(util_log.Logger).Log("msg", "finished limits middleware")
 	return l.next.Do(ctx, r)
 }
 
@@ -342,6 +344,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 	span, ctx := opentracing.StartSpanFromContext(ctx, "query_size_limits")
 	defer span.Finish()
 	log := spanlogger.FromContext(ctx)
+	level.Debug(log).Log("Inside query size limiter tripperware")
 	defer log.Finish()
 
 	// Only support TSDB
@@ -354,6 +357,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		return q.next.Do(ctx, r)
 	}
 
+	level.Debug(log).Log("Executing for tsdb querysizelimiter")
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -377,6 +381,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		level.Debug(log).Log("msg", "Query is within limits", "status", "accepted", "limit_name", q.guessLimitName(), "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
 	}
 
+	level.Debug(log).Log("msg", "Exiting query size limiter tripperware")
 	return q.next.Do(ctx, r)
 }
 
@@ -486,6 +491,7 @@ func (s *SemaphoreWithTiming) Acquire(ctx context.Context, n int64) (time.Durati
 }
 
 func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
+
 	var (
 		ctx, cancel = context.WithCancel(c)
 	)
