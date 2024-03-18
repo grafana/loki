@@ -613,7 +613,7 @@ Create the service endpoint including port for MinIO.
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
 {{- $url := printf "%s.%s.svc.%s.:%s" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.gateway.service.port | toString)  }}
 {{- if and $isSingleBinary (not .Values.gateway.enabled)  }}
-  {{- $url = printf "%s.%s.svc.%s.:%v" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+  {{- $url = printf "%s.%s.svc.%s.:%s" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
 {{- end }}
 {{- printf "%s" $url -}}
 {{- end -}}
@@ -726,9 +726,9 @@ http {
     {{- $writeHost = include "loki.singleBinaryFullname" .}}
     {{- end }}
 
-    {{- $writeUrl    := printf "http://%s.%s.svc.%s:%v" $writeHost   .Release.Namespace .Values.global.clusterDomain ( .Values.loki.server.http_listen_port | toString ) }}
-    {{- $readUrl     := printf "http://%s.%s.svc.%s:%v" $readHost    .Release.Namespace .Values.global.clusterDomain ( .Values.loki.server.http_listen_port | toString ) }}
-    {{- $backendUrl  := printf "http://%s.%s.svc.%s:%v" $backendHost .Release.Namespace .Values.global.clusterDomain ( .Values.loki.server.http_listen_port | toString ) }}
+    {{- $writeUrl    := printf "http://%s.%s.svc.%s:%s" $writeHost   .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $readUrl     := printf "http://%s.%s.svc.%s:%s" $readHost    .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $backendUrl  := printf "http://%s.%s.svc.%s:%s" $backendHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
 
     {{- if .Values.gateway.nginxConfig.customWriteUrl }}
     {{- $writeUrl  = .Values.gateway.nginxConfig.customWriteUrl }}
