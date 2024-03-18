@@ -206,6 +206,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 				item:    refs[i],
 				key:     key,
 				idx:     i,
+				async:   cfg.fetchAsync,
 				results: responses,
 				errors:  errors,
 			})
@@ -398,6 +399,7 @@ type downloadRequest[T any, R any] struct {
 	item    T
 	key     string
 	idx     int
+	async   bool
 	results chan<- downloadResponse[R]
 	errors  chan<- error
 }
@@ -442,6 +444,10 @@ func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R]
 }
 
 func (q *downloadQueue[T, R]) enqueue(t downloadRequest[T, R]) {
+	if !t.async {
+		q.queue <- t
+	}
+	// for async task we attempt to dedupe task already in progress.
 	q.enqueuedMutex.Lock()
 	defer q.enqueuedMutex.Unlock()
 	if q.enqueued.Has(t.key) {
@@ -480,9 +486,11 @@ func (q *downloadQueue[T, R]) do(ctx context.Context, task downloadRequest[T, R]
 		if err != nil {
 			level.Error(q.logger).Log("msg", "failed to unlock key in block lock", "key", task.key, "err", err)
 		}
-		q.enqueuedMutex.Lock()
-		_ = q.enqueued.Delete(task.key)
-		q.enqueuedMutex.Unlock()
+		if task.async {
+			q.enqueuedMutex.Lock()
+			_ = q.enqueued.Delete(task.key)
+			q.enqueuedMutex.Unlock()
+		}
 	}()
 
 	q.process(ctx, task)
