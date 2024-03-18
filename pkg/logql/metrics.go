@@ -32,6 +32,7 @@ const (
 	QueryTypeLabels  = "labels"
 	QueryTypeSeries  = "series"
 	QueryTypeStats   = "stats"
+	QueryTypeShards  = "shards"
 	QueryTypeVolume  = "volume"
 
 	latencyTypeSlow = "slow"
@@ -358,6 +359,51 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned)
+
+	level.Info(logger).Log(logValues...)
+
+	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
+}
+
+func RecordShardsQueryMetrics(
+	ctx context.Context,
+	log log.Logger,
+	start,
+	end time.Time,
+	query string,
+	targetBytesPerShard uint64,
+	status string,
+	shards int,
+	stats logql_stats.Result,
+) {
+	var (
+		logger      = fixLogger(ctx, log)
+		latencyType = latencyTypeFast
+		queryType   = QueryTypeStats
+	)
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	logValues := make([]interface{}, 0, 15)
+	logValues = append(logValues,
+		"latency", latencyType,
+		"query_type", queryType,
+		"start", start.Format(time.RFC3339Nano),
+		"end", end.Format(time.RFC3339Nano),
+		"start_delta", time.Since(start),
+		"end_delta", time.Since(end),
+		"length", end.Sub(start),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"query", query,
+		"query_hash", util.HashedQuery(query),
+		"target_bytes_per_shard", targetBytesPerShard,
+		"shards", shards,
+	)
 
 	level.Info(logger).Log(logValues...)
 
