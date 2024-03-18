@@ -420,10 +420,7 @@ func (m *ShardsRequest) GetEnd() time.Time {
 func (m *ShardsRequest) GetStep() int64 { return 0 }
 
 func (m *ShardsRequest) GetQuery() string {
-	if m.Plan.AST != nil {
-		return m.Plan.AST.String()
-	}
-	return m.Matchers
+	return m.Query
 }
 
 func (m *ShardsRequest) WithStartEnd(start, end time.Time) definitions.Request {

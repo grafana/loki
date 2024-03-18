@@ -354,17 +354,37 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 		return err
 	}
 
-	matchers, err := syntax.ParseMatchers(request.Matchers, true)
+	expr, err := syntax.ParseExpr(request.Query)
 	if err != nil {
 		return err
 	}
-	p := chunk.NewPredicate(matchers, &request.Plan)
+
+	ms, err := syntax.MatcherGroups(expr)
+	if err != nil {
+		return err
+	}
+
+	var matchers []*labels.Matcher
+	switch len(ms) {
+	case 0:
+		// nothing to do
+	case 1:
+		matchers = ms[0].Matchers
+	default:
+		return fmt.Errorf(
+			"multiple matcher groups are not supported in GetShards. This is likely an internal bug as binary operations should be dispatched separately in planning",
+		)
+	}
+
+	p := chunk.NewPredicate(matchers, &plan.QueryPlan{
+		AST: expr,
+	})
 
 	// Shards were requested, but blooms are not enabled or cannot be used due to lack of filters.
 	// That's ok; we can still return shard ranges without filtering
 	// which will be more effective than guessing power-of-2 shard ranges.
 	forSeries, ok := g.indexQuerier.HasForSeries(request.From, request.Through)
-	if g.bloomQuerier == nil || len(syntax.ExtractLineFilters(request.Plan.AST)) == 0 || !ok {
+	if g.bloomQuerier == nil || len(syntax.ExtractLineFilters(p.Plan().AST)) == 0 || !ok {
 		shards, err := g.indexQuerier.GetShards(
 			ctx,
 			instanceID,

@@ -41,12 +41,8 @@ message ShardsRequest {
     (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
     (gogoproto.nullable) = false
   ];
-  string matchers = 3;
+  string query = 3;
   uint64 target_bytes_per_shard = 4;
-  logproto.Plan plan = 6 [
-    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan",
-    (gogoproto.nullable) = false
-  ];
 }
 
 message ShardsResponse {
