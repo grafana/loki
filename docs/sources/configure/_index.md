@@ -1944,6 +1944,12 @@ ring:
   # CLI flag: -index-gateway.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
+  # Deprecated: How many index gateway instances are assigned to each tenant.
+  # Use -index-gateway.shard-size instead. The shard size is also a per-tenant
+  # setting.
+  # CLI flag: -replication-factor
+  [replication_factor: <int> | default = 3]
+
   # Instance ID to register in the ring.
   # CLI flag: -index-gateway.ring.instance-id
   [instance_id: <string> | default = "<hostname>"]
@@ -1968,12 +1974,6 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
-
-  # Deprecated: How many index gateway instances are assigned to each tenant.
-  # Use -index-gateway.shard-size instead. The shard size is also a per-tenant
-  # setting.
-  # CLI flag: -replication-factor
-  [replication_factor: <int> | default = 3]
 ```
 
 ### bloom_gateway
@@ -2041,6 +2041,17 @@ ring:
   # CLI flag: -bloom-gateway.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
+  # Number of tokens to use in the ring. The bigger the number of tokens, the
+  # more fingerprint ranges the compactor will own, but the smaller these ranges
+  # will be. Bigger number of tokens means that more but smaller requests will
+  # be handled by each gateway.
+  # CLI flag: -bloom-gateway.ring.tokens
+  [num_tokens: <int> | default = 16]
+
+  # Factor for data replication.
+  # CLI flag: -bloom-gateway.ring.replication-factor
+  [replication_factor: <int> | default = 3]
+
   # Instance ID to register in the ring.
   # CLI flag: -bloom-gateway.ring.instance-id
   [instance_id: <string> | default = "<hostname>"]
@@ -2065,17 +2076,6 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -bloom-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
-
-  # Factor for data replication.
-  # CLI flag: -bloom-gateway.replication-factor
-  [replication_factor: <int> | default = 3]
-
-  # Number of tokens to use in the ring. The bigger the number of tokens, the
-  # more fingerprint ranges the compactor will own, but the smaller these ranges
-  # will be. Bigger number of tokens means that more but smaller requests will
-  # be handled by each gateway.
-  # CLI flag: -bloom-gateway.ring.tokens
-  [tokens: <int> | default = 16]
 
 # Flag to enable or disable the bloom gateway component globally.
 # CLI flag: -bloom-gateway.enabled
@@ -3110,6 +3110,11 @@ ring:
   # CLI flag: -bloom-compactor.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
+  # Number of tokens to use in the ring per compactor. Higher number of tokens
+  # will result in more and smaller files (metas and blocks.)
+  # CLI flag: -bloom-compactor.ring.num-tokens
+  [num_tokens: <int> | default = 10]
+
   # Instance ID to register in the ring.
   # CLI flag: -bloom-compactor.ring.instance-id
   [instance_id: <string> | default = "<hostname>"]
@@ -3134,13 +3139,6 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -bloom-compactor.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
-
-  # Number of tokens to use in the ring. The bigger the number of tokens, the
-  # more fingerprint ranges the compactor will own, but the smaller these ranges
-  # will be. Bigger number of tokens will result in more and smaller metas and
-  # blocks.
-  # CLI flag: -bloom-compactor.ring.tokens
-  [tokens: <int> | default = 10]
 
 # Flag to enable or disable the usage of the bloom-compactor component.
 # CLI flag: -bloom-compactor.enabled
@@ -4582,6 +4580,14 @@ ring:
   # availability zones.
   # CLI flag: -common.storage.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
+
+  # Number of tokens to own in the ring.
+  # CLI flag: -common.storage.ring.num-tokens
+  [num_tokens: <int> | default = 128]
+
+  # Factor for data replication.
+  # CLI flag: -common.storage.ring.replication-factor
+  [replication_factor: <int> | default = 3]
 
   # Instance ID to register in the ring.
   # CLI flag: -common.storage.ring.instance-id
