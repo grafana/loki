@@ -35,36 +35,48 @@ service IndexGateway {
 message ShardsRequest {
   int64 from = 1 [
     (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "from"
   ];
   int64 through = 2 [
     (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "through"
   ];
-  string query = 3;
-  uint64 target_bytes_per_shard = 4;
+  string query = 3 [
+    (gogoproto.jsontag) = "query"
+  ];
+  uint64 target_bytes_per_shard = 4 [
+    (gogoproto.jsontag) = "targetBytesPerShard"
+  ];
 }
 
 message ShardsResponse {
   repeated Shard shards = 1 [
-    (gogoproto.nullable) = false
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "shards"
   ];
 }
 
 message Shard {
   FPBounds bounds = 1 [
-    (gogoproto.nullable) = false
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "bounds"
   ];
-  logproto.IndexStatsResponse stats = 2;
+  logproto.IndexStatsResponse stats = 2 [
+    (gogoproto.jsontag) = "stats"
+  ];
 }
 
 // FPBounds is identical to the definition in `pkg/storage/bloom/v1/bounds.FingerprintBounds`
 // which ensures we can cast between them without allocations.
 message FPBounds {
   uint64 min = 1 [
-    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint"
+    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint",
+    (gogoproto.jsontag) = "min"
   ];
   uint64 max = 2 [
-    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint"
+    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint",
+    (gogoproto.jsontag) = "max"
   ];
 }
