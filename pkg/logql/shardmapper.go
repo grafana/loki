@@ -7,22 +7,27 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type ShardResolver interface {
 	Shards(expr syntax.Expr) (int, uint64, error)
+	ShardingRanges(expr syntax.Expr, targetBytesPerShard uint64) ([]logproto.Shard, error)
 	GetStats(e syntax.Expr) (stats.Stats, error)
 }
 
 type ConstantShards int
 
-func (s ConstantShards) Shards(_ syntax.Expr) (int, uint64, error)   { return int(s), 0, nil }
+func (s ConstantShards) Shards(_ syntax.Expr) (int, uint64, error) { return int(s), 0, nil }
+func (s ConstantShards) ShardingRanges(_ syntax.Expr, _ uint64) ([]logproto.Shard, error) {
+	return sharding.LinearShards(int(s), 0), nil
+}
 func (s ConstantShards) GetStats(_ syntax.Expr) (stats.Stats, error) { return stats.Stats{}, nil }
 
 const (
@@ -148,7 +153,7 @@ func (m ShardMapper) mapBinOpExpr(e *syntax.BinOpExpr, r *downstreamRecorder) (*
 	e.RHS = rhsSampleExpr
 
 	// We take the maximum bytes per shard of both sides of the operation
-	bytesPerShard := uint64(math.Max(int(lhsBytesPerShard), int(rhsBytesPerShard)))
+	bytesPerShard := uint64(max(int(lhsBytesPerShard), int(rhsBytesPerShard)))
 
 	return e, bytesPerShard, nil
 }
@@ -273,7 +278,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			}
 
 			// We take the maximum bytes per shard of both sides of the operation
-			bytesPerShard := uint64(math.Max(int(lhsBytesPerShard), int(rhsBytesPerShard)))
+			bytesPerShard := uint64(max(int(lhsBytesPerShard), int(rhsBytesPerShard)))
 
 			return &syntax.BinOpExpr{
 				SampleExpr: lhs,
@@ -442,7 +447,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}
 
 		// We take the maximum bytes per shard of both sides of the operation
-		bytesPerShard := uint64(math.Max(int(lhsBytesPerShard), int(rhsBytesPerShard)))
+		bytesPerShard := uint64(max(int(lhsBytesPerShard), int(rhsBytesPerShard)))
 
 		return &syntax.BinOpExpr{
 			SampleExpr: lhs,

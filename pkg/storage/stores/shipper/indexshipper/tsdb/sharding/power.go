@@ -5,8 +5,11 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/validation"
 	"github.com/prometheus/common/model"
+)
+
+const (
+	DefaultTSDBMaxBytesPerShard = 600 << 20 // 600MB
 )
 
 // PowerOfTwoSharding is a slimmed down legacy sharding implementation
@@ -31,13 +34,32 @@ func (p PowerOfTwoSharding) ShardsFor(bytes uint64, maxBytesPerShard uint64) []l
 		}}
 	}
 
-	bytesPerShard := bytes
-	if factor > 0 {
-		bytesPerShard = bytes / uint64(factor)
-	}
-	fpPerShard := model.Fingerprint(math.MaxUint64) / model.Fingerprint(factor)
+	return LinearShards(factor, bytes)
 
-	shards := make([]logproto.Shard, factor)
+}
+
+// LinearShards is a sharding implementation that splits the data into
+// equal sized shards covering the entire keyspace. It populates
+// the `bytes` of each shard's stats with a proportional estimation
+func LinearShards(n int, bytes uint64) []logproto.Shard {
+	if n < 2 {
+		return []logproto.Shard{
+			{
+				Bounds: logproto.FPBounds{
+					Min: 0,
+					Max: math.MaxUint64,
+				},
+				Stats: &stats.Stats{
+					Bytes: bytes,
+				},
+			},
+		}
+	}
+
+	bytesPerShard := bytes / uint64(n)
+	fpPerShard := model.Fingerprint(math.MaxUint64) / model.Fingerprint(n)
+
+	shards := make([]logproto.Shard, n)
 	for i := range shards {
 		shards[i] = logproto.Shard{
 			Bounds: logproto.FPBounds{
@@ -53,11 +75,12 @@ func (p PowerOfTwoSharding) ShardsFor(bytes uint64, maxBytesPerShard uint64) []l
 		// and the max bound should be math.MaxUint64
 		// NB(owen-d): this can only happen when maxShards is used
 		// and the maxShards isn't a factor of 2
-		shards[len(shards)-1].Stats.Bytes += bytes % uint64(factor)
+		shards[len(shards)-1].Stats.Bytes += bytes % uint64(n)
 		shards[len(shards)-1].Bounds.Max = math.MaxUint64
 	}
 
 	return shards
+
 }
 
 // Since we shard by powers of two and we increase shard factor
@@ -69,7 +92,7 @@ func GuessShardFactor(bytes, maxBytesPerShard uint64, maxShards int) int {
 	// If maxBytesPerShard is 0, we use the default value
 	// to avoid division by zero
 	if maxBytesPerShard < 1 {
-		maxBytesPerShard = validation.DefaultTSDBMaxBytesPerShard
+		maxBytesPerShard = DefaultTSDBMaxBytesPerShard
 	}
 
 	minShards := float64(bytes) / float64(maxBytesPerShard)

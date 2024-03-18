@@ -3,13 +3,16 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"net/http"
 	strings "strings"
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/efficientgo/core/errors"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
@@ -207,4 +210,81 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 		)...,
 	)
 	return factor, bytesPerShard, nil
+}
+
+func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerShard uint64) ([]logproto.Shard, error) {
+	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.ShardingRanges")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
+	defer log.Finish()
+
+	adjustedFrom := r.from
+
+	// NB(owen-d): there should only ever be 1 matcher group passed
+	// to this call as we call it separately for different legs
+	// of binary ops, but I'm putting in the loop for completion
+	grps, err := syntax.MatcherGroups(expr)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, grp := range grps {
+		diff := grp.Interval + grp.Offset
+
+		// For instant queries, when start == end,
+		// we have a default lookback which we add here
+		if grp.Interval == 0 {
+			diff = diff + r.defaultLookback
+		}
+
+		// use the oldest adjustedFrom
+		if r.from.Add(-diff).Before(adjustedFrom) {
+			adjustedFrom = r.from.Add(-diff)
+		}
+	}
+
+	exprStr := expr.String()
+	// try to get shards for the given expression
+	// if it fails, fallback to linearshards based on stats
+	resp, err := r.handler.Do(ctx, &logproto.ShardsRequest{
+		From:                adjustedFrom,
+		Through:             r.through,
+		Query:               expr.String(),
+		TargetBytesPerShard: targetBytesPerShard,
+	})
+
+	if err != nil {
+		// check unimplemented to fallback
+		// TODO(owen-d): fix if this isn't right
+		if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && (resp.Code == http.StatusNotFound) {
+			n, bytesPerShard, err := r.Shards(expr)
+			if err != nil {
+				return nil, errors.Wrap(err, "falling back to building linear shards from stats")
+			}
+			level.Debug(log).Log(
+				"msg", "falling back to building linear shards from stats",
+				"bytes_per_shard", bytesPerShard,
+				"shards", n,
+				"query", exprStr,
+			)
+			return sharding.LinearShards(n, uint64(n)*bytesPerShard), nil
+		}
+
+		return nil, errors.Wrapf(err, "failed to get shards for expression, got %T: %+v", err, err)
+
+	}
+
+	casted, ok := resp.(*ShardsResponse)
+	if !ok {
+		return nil, fmt.Errorf("expected *ShardsResponse while querying index, got %T", resp)
+	}
+
+	level.Debug(log).Log(
+		"msg", "retrieved sharding ranges",
+		"target_bytes_per_shard", targetBytesPerShard,
+		"shards", len(casted.Response.Shards),
+		"query", exprStr,
+	)
+
+	return casted.Response.Shards, err
 }

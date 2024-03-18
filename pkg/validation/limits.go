@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler_config "github.com/grafana/loki/pkg/ruler/config"
 	"github.com/grafana/loki/pkg/ruler/util"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -48,8 +49,8 @@ const (
 
 	bytesInMB = 1048576
 
-	defaultPerStreamRateLimit   = 3 << 20   // 3MB
-	DefaultTSDBMaxBytesPerShard = 600 << 20 // 600MB
+	defaultPerStreamRateLimit   = 3 << 20 // 3MB
+	DefaultTSDBMaxBytesPerShard = sharding.DefaultTSDBMaxBytesPerShard
 	defaultPerStreamBurstLimit  = 5 * defaultPerStreamRateLimit
 
 	DefaultPerTenantQueryTimeout = "1m"
