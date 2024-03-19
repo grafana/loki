@@ -173,12 +173,13 @@ func (m ShardMapper) mapLogSelectorExpr(expr syntax.LogSelectorExpr, r *downstre
 		}, bytesPerShard, nil
 	}
 	for i := shards - 1; i >= 0; i-- {
+		s := NewPowerOfTwoShard(astmapper.ShardAnnotation{
+			Shard: i,
+			Of:    shards,
+		})
 		head = &ConcatLogSelectorExpr{
 			DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
-				shard: &astmapper.ShardAnnotation{
-					Shard: i,
-					Of:    shards,
-				},
+				shard:           &s,
 				LogSelectorExpr: expr,
 			},
 			next: head,
@@ -204,12 +205,13 @@ func (m ShardMapper) mapSampleExpr(expr syntax.SampleExpr, r *downstreamRecorder
 		}, bytesPerShard, nil
 	}
 	for shard := shards - 1; shard >= 0; shard-- {
+		s := NewPowerOfTwoShard(astmapper.ShardAnnotation{
+			Shard: shard,
+			Of:    shards,
+		})
 		head = &ConcatSampleExpr{
 			DownstreamSampleExpr: DownstreamSampleExpr{
-				shard: &astmapper.ShardAnnotation{
-					Shard: shard,
-					Of:    shards,
-				},
+				shard:      &s,
 				SampleExpr: expr,
 			},
 			next: head,
@@ -476,11 +478,12 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		downstreams := make([]DownstreamSampleExpr, 0, shards)
 		expr.Operation = syntax.OpRangeTypeQuantileSketch
 		for shard := shards - 1; shard >= 0; shard-- {
+			s := NewPowerOfTwoShard(astmapper.ShardAnnotation{
+				Shard: shard,
+				Of:    shards,
+			})
 			downstreams = append(downstreams, DownstreamSampleExpr{
-				shard: &astmapper.ShardAnnotation{
-					Shard: shard,
-					Of:    shards,
-				},
+				shard:      &s,
 				SampleExpr: expr,
 			})
 		}

@@ -20,20 +20,20 @@ func TestShardedStringer(t *testing.T) {
 		{
 			in: &ConcatLogSelectorExpr{
 				DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
-					shard: &astmapper.ShardAnnotation{
+					shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
-					},
+					}).Ptr(),
 					LogSelectorExpr: &syntax.MatchersExpr{
 						Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 					},
 				},
 				next: &ConcatLogSelectorExpr{
 					DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
-						shard: &astmapper.ShardAnnotation{
+						shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
-						},
+						}).Ptr(),
 						LogSelectorExpr: &syntax.MatchersExpr{
 							Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 						},
@@ -69,10 +69,10 @@ func TestMapSampleExpr(t *testing.T) {
 			},
 			out: &ConcatSampleExpr{
 				DownstreamSampleExpr: DownstreamSampleExpr{
-					shard: &astmapper.ShardAnnotation{
+					shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
-					},
+					}).Ptr(),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeRate,
 						Left: &syntax.LogRange{
@@ -85,10 +85,10 @@ func TestMapSampleExpr(t *testing.T) {
 				},
 				next: &ConcatSampleExpr{
 					DownstreamSampleExpr: DownstreamSampleExpr{
-						shard: &astmapper.ShardAnnotation{
+						shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
-						},
+						}).Ptr(),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
 							Left: &syntax.LogRange{
@@ -429,20 +429,20 @@ func TestMapping(t *testing.T) {
 			in: `{foo="bar"}`,
 			expr: &ConcatLogSelectorExpr{
 				DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
-					shard: &astmapper.ShardAnnotation{
+					shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
-					},
+					}).Ptr(),
 					LogSelectorExpr: &syntax.MatchersExpr{
 						Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 					},
 				},
 				next: &ConcatLogSelectorExpr{
 					DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
-						shard: &astmapper.ShardAnnotation{
+						shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
-						},
+						}).Ptr(),
 						LogSelectorExpr: &syntax.MatchersExpr{
 							Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 						},
@@ -455,10 +455,10 @@ func TestMapping(t *testing.T) {
 			in: `{foo="bar"} |= "error"`,
 			expr: &ConcatLogSelectorExpr{
 				DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
-					shard: &astmapper.ShardAnnotation{
+					shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
-					},
+					}).Ptr(),
 					LogSelectorExpr: &syntax.PipelineExpr{
 						Left: &syntax.MatchersExpr{
 							Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
@@ -476,10 +476,10 @@ func TestMapping(t *testing.T) {
 				},
 				next: &ConcatLogSelectorExpr{
 					DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
-						shard: &astmapper.ShardAnnotation{
+						shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
-						},
+						}).Ptr(),
 						LogSelectorExpr: &syntax.PipelineExpr{
 							Left: &syntax.MatchersExpr{
 								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
@@ -503,10 +503,10 @@ func TestMapping(t *testing.T) {
 			in: `rate({foo="bar"}[5m])`,
 			expr: &ConcatSampleExpr{
 				DownstreamSampleExpr: DownstreamSampleExpr{
-					shard: &astmapper.ShardAnnotation{
+					shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
-					},
+					}).Ptr(),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeRate,
 						Left: &syntax.LogRange{
@@ -519,10 +519,10 @@ func TestMapping(t *testing.T) {
 				},
 				next: &ConcatSampleExpr{
 					DownstreamSampleExpr: DownstreamSampleExpr{
-						shard: &astmapper.ShardAnnotation{
+						shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
-						},
+						}).Ptr(),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
 							Left: &syntax.LogRange{
@@ -541,10 +541,10 @@ func TestMapping(t *testing.T) {
 			in: `count_over_time({foo="bar"}[5m])`,
 			expr: &ConcatSampleExpr{
 				DownstreamSampleExpr: DownstreamSampleExpr{
-					shard: &astmapper.ShardAnnotation{
+					shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
-					},
+					}).Ptr(),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeCount,
 						Left: &syntax.LogRange{
@@ -557,10 +557,10 @@ func TestMapping(t *testing.T) {
 				},
 				next: &ConcatSampleExpr{
 					DownstreamSampleExpr: DownstreamSampleExpr{
-						shard: &astmapper.ShardAnnotation{
+						shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
-						},
+						}).Ptr(),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeCount,
 							Left: &syntax.LogRange{
@@ -582,10 +582,10 @@ func TestMapping(t *testing.T) {
 				Operation: syntax.OpTypeSum,
 				Left: &ConcatSampleExpr{
 					DownstreamSampleExpr: DownstreamSampleExpr{
-						shard: &astmapper.ShardAnnotation{
+						shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 							Shard: 0,
 							Of:    2,
-						},
+						}).Ptr(),
 						SampleExpr: &syntax.VectorAggregationExpr{
 							Grouping:  &syntax.Grouping{},
 							Operation: syntax.OpTypeSum,
@@ -602,10 +602,10 @@ func TestMapping(t *testing.T) {
 					},
 					next: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 1,
 								Of:    2,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeSum,
@@ -633,10 +633,10 @@ func TestMapping(t *testing.T) {
 				Operation: syntax.OpTypeTopK,
 				Left: &ConcatSampleExpr{
 					DownstreamSampleExpr: DownstreamSampleExpr{
-						shard: &astmapper.ShardAnnotation{
+						shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 							Shard: 0,
 							Of:    2,
-						},
+						}).Ptr(),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
 							Left: &syntax.LogRange{
@@ -649,10 +649,10 @@ func TestMapping(t *testing.T) {
 					},
 					next: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 1,
 								Of:    2,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.RangeAggregationExpr{
 								Operation: syntax.OpRangeTypeRate,
 								Left: &syntax.LogRange{
@@ -675,10 +675,10 @@ func TestMapping(t *testing.T) {
 				Grouping:  &syntax.Grouping{},
 				Left: &ConcatSampleExpr{
 					DownstreamSampleExpr: DownstreamSampleExpr{
-						shard: &astmapper.ShardAnnotation{
+						shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 							Shard: 0,
 							Of:    2,
-						},
+						}).Ptr(),
 						SampleExpr: &syntax.VectorAggregationExpr{
 							Grouping:  &syntax.Grouping{},
 							Operation: syntax.OpTypeCount,
@@ -695,10 +695,10 @@ func TestMapping(t *testing.T) {
 					},
 					next: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 1,
 								Of:    2,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeCount,
@@ -727,10 +727,10 @@ func TestMapping(t *testing.T) {
 					Operation: syntax.OpTypeSum,
 					Left: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeSum,
@@ -747,10 +747,10 @@ func TestMapping(t *testing.T) {
 						},
 						next: &ConcatSampleExpr{
 							DownstreamSampleExpr: DownstreamSampleExpr{
-								shard: &astmapper.ShardAnnotation{
+								shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								},
+								}).Ptr(),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping:  &syntax.Grouping{},
 									Operation: syntax.OpTypeSum,
@@ -774,10 +774,10 @@ func TestMapping(t *testing.T) {
 					Grouping:  &syntax.Grouping{},
 					Left: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeCount,
@@ -794,10 +794,10 @@ func TestMapping(t *testing.T) {
 						},
 						next: &ConcatSampleExpr{
 							DownstreamSampleExpr: DownstreamSampleExpr{
-								shard: &astmapper.ShardAnnotation{
+								shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								},
+								}).Ptr(),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping:  &syntax.Grouping{},
 									Operation: syntax.OpTypeCount,
@@ -834,10 +834,10 @@ func TestMapping(t *testing.T) {
 					Operation: syntax.OpTypeSum,
 					Left: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping: &syntax.Grouping{
 									Groups: []string{"cluster"},
@@ -856,10 +856,10 @@ func TestMapping(t *testing.T) {
 						},
 						next: &ConcatSampleExpr{
 							DownstreamSampleExpr: DownstreamSampleExpr{
-								shard: &astmapper.ShardAnnotation{
+								shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								},
+								}).Ptr(),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping: &syntax.Grouping{
 										Groups: []string{"cluster"},
@@ -896,10 +896,10 @@ func TestMapping(t *testing.T) {
 					Grouping:  &syntax.Grouping{},
 					Left: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeSum,
@@ -916,10 +916,10 @@ func TestMapping(t *testing.T) {
 						},
 						next: &ConcatSampleExpr{
 							DownstreamSampleExpr: DownstreamSampleExpr{
-								shard: &astmapper.ShardAnnotation{
+								shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								},
+								}).Ptr(),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping:  &syntax.Grouping{},
 									Operation: syntax.OpTypeSum,
@@ -951,10 +951,10 @@ func TestMapping(t *testing.T) {
 					Grouping:  &syntax.Grouping{},
 					Left: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeCount,
@@ -971,10 +971,10 @@ func TestMapping(t *testing.T) {
 						},
 						next: &ConcatSampleExpr{
 							DownstreamSampleExpr: DownstreamSampleExpr{
-								shard: &astmapper.ShardAnnotation{
+								shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								},
+								}).Ptr(),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping:  &syntax.Grouping{},
 									Operation: syntax.OpTypeCount,
@@ -1013,10 +1013,10 @@ func TestMapping(t *testing.T) {
 						Operation: syntax.OpTypeSum,
 						Left: &ConcatSampleExpr{
 							DownstreamSampleExpr: DownstreamSampleExpr{
-								shard: &astmapper.ShardAnnotation{
+								shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 									Shard: 0,
 									Of:    2,
-								},
+								}).Ptr(),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping: &syntax.Grouping{
 										Groups: []string{"cluster"},
@@ -1035,10 +1035,10 @@ func TestMapping(t *testing.T) {
 							},
 							next: &ConcatSampleExpr{
 								DownstreamSampleExpr: DownstreamSampleExpr{
-									shard: &astmapper.ShardAnnotation{
+									shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 										Shard: 1,
 										Of:    2,
-									},
+									}).Ptr(),
 									SampleExpr: &syntax.VectorAggregationExpr{
 										Grouping: &syntax.Grouping{
 											Groups: []string{"cluster"},
@@ -1065,10 +1065,10 @@ func TestMapping(t *testing.T) {
 					Grouping:  &syntax.Grouping{},
 					Left: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeCount,
@@ -1085,10 +1085,10 @@ func TestMapping(t *testing.T) {
 						},
 						next: &ConcatSampleExpr{
 							DownstreamSampleExpr: DownstreamSampleExpr{
-								shard: &astmapper.ShardAnnotation{
+								shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								},
+								}).Ptr(),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping:  &syntax.Grouping{},
 									Operation: syntax.OpTypeCount,
@@ -1127,10 +1127,10 @@ func TestMapping(t *testing.T) {
 					Operation: syntax.OpTypeSum,
 					Left: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping: &syntax.Grouping{
 									Groups: []string{"cluster"},
@@ -1149,10 +1149,10 @@ func TestMapping(t *testing.T) {
 						},
 						next: &ConcatSampleExpr{
 							DownstreamSampleExpr: DownstreamSampleExpr{
-								shard: &astmapper.ShardAnnotation{
+								shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								},
+								}).Ptr(),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping: &syntax.Grouping{
 										Groups: []string{"cluster"},
@@ -1178,10 +1178,10 @@ func TestMapping(t *testing.T) {
 					Grouping:  &syntax.Grouping{},
 					Left: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeCount,
@@ -1198,10 +1198,10 @@ func TestMapping(t *testing.T) {
 						},
 						next: &ConcatSampleExpr{
 							DownstreamSampleExpr: DownstreamSampleExpr{
-								shard: &astmapper.ShardAnnotation{
+								shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								},
+								}).Ptr(),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping:  &syntax.Grouping{},
 									Operation: syntax.OpTypeCount,
@@ -1233,10 +1233,10 @@ func TestMapping(t *testing.T) {
 					Operation: syntax.OpTypeSum,
 					Left: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping: &syntax.Grouping{
 									Groups: []string{"cluster"},
@@ -1258,10 +1258,10 @@ func TestMapping(t *testing.T) {
 						},
 						next: &ConcatSampleExpr{
 							DownstreamSampleExpr: DownstreamSampleExpr{
-								shard: &astmapper.ShardAnnotation{
+								shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								},
+								}).Ptr(),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping: &syntax.Grouping{
 										Groups: []string{"cluster"},
@@ -1292,10 +1292,10 @@ func TestMapping(t *testing.T) {
 					},
 					Left: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping: &syntax.Grouping{
 									Groups: []string{"cluster"},
@@ -1314,10 +1314,10 @@ func TestMapping(t *testing.T) {
 						},
 						next: &ConcatSampleExpr{
 							DownstreamSampleExpr: DownstreamSampleExpr{
-								shard: &astmapper.ShardAnnotation{
+								shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								},
+								}).Ptr(),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping: &syntax.Grouping{
 										Groups: []string{"cluster"},
@@ -1387,10 +1387,10 @@ func TestMapping(t *testing.T) {
 				RHS: &syntax.VectorAggregationExpr{
 					Left: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Left: &syntax.RangeAggregationExpr{
 									Left: &syntax.LogRange{
@@ -1410,10 +1410,10 @@ func TestMapping(t *testing.T) {
 						},
 						next: &ConcatSampleExpr{
 							DownstreamSampleExpr: DownstreamSampleExpr{
-								shard: &astmapper.ShardAnnotation{
+								shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								},
+								}).Ptr(),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Left: &syntax.RangeAggregationExpr{
 										Left: &syntax.LogRange{

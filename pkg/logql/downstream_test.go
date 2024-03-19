@@ -615,10 +615,10 @@ func TestFormat_ShardedExpr(t *testing.T) {
 			name: "ConcatSampleExpr",
 			in: &ConcatSampleExpr{
 				DownstreamSampleExpr: DownstreamSampleExpr{
-					shard: &astmapper.ShardAnnotation{
+					shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 						Shard: 0,
 						Of:    3,
-					},
+					}).Ptr(),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeRate,
 						Left: &syntax.LogRange{
@@ -631,10 +631,10 @@ func TestFormat_ShardedExpr(t *testing.T) {
 				},
 				next: &ConcatSampleExpr{
 					DownstreamSampleExpr: DownstreamSampleExpr{
-						shard: &astmapper.ShardAnnotation{
+						shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 							Shard: 1,
 							Of:    3,
-						},
+						}).Ptr(),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
 							Left: &syntax.LogRange{
@@ -647,10 +647,10 @@ func TestFormat_ShardedExpr(t *testing.T) {
 					},
 					next: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 1,
 								Of:    3,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.RangeAggregationExpr{
 								Operation: syntax.OpRangeTypeRate,
 								Left: &syntax.LogRange{
