@@ -112,8 +112,16 @@ func (b FingerprintBounds) Match(fp model.Fingerprint) bool {
 	return b.Cmp(fp) == Overlap
 }
 
-// GetFromThrough implements TSDBs FingerprintFilter interface
+// GetFromThrough implements TSDBs FingerprintFilter interface,
+// NB(owen-d): adjusts to return `[from,through)` instead of `[from,through]` which the
+// fingerprint bounds struct tracks.
 func (b FingerprintBounds) GetFromThrough() (model.Fingerprint, model.Fingerprint) {
+	from, through := b.Bounds()
+	return from, max(through+1, through)
+}
+
+// Bounds returns the inclusive bounds [from,through]
+func (b FingerprintBounds) Bounds() (model.Fingerprint, model.Fingerprint) {
 	return b.Min, b.Max
 }
 

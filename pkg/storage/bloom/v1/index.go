@@ -221,8 +221,8 @@ func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 		return SeriesHeader{}
 	}
 
-	fromFp, _ := xs[0].Bounds.GetFromThrough()
-	_, throughFP := xs[len(xs)-1].Bounds.GetFromThrough()
+	fromFp, _ := xs[0].Bounds.Bounds()
+	_, throughFP := xs[len(xs)-1].Bounds.Bounds()
 	res := SeriesHeader{
 		Bounds: NewBounds(fromFp, throughFP),
 	}

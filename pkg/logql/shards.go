@@ -100,6 +100,14 @@ type Shard struct {
 	Bounded    *logproto.Shard
 }
 
+func (s *Shard) Variant() ShardVersion {
+	if s.Bounded != nil {
+		return BoundedVersion
+	}
+
+	return PowerOfTwoVersion
+}
+
 // implement FingerprintFilter
 func (s *Shard) Match(fp model.Fingerprint) bool {
 	if s.Bounded != nil {

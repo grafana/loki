@@ -21,6 +21,7 @@ type FingerprintFilter interface {
 	// TODO(owen-d): Match() is redundant and can be inferred from GetFromThrough()
 	// TODO(owen-d): GetFromThrough should just return FingerprintBounds as it's a better utility struct.
 	Match(model.Fingerprint) bool
+	// GetFromThrough shows the [minimum, maximum) fingerprints. If there is no maximum, math.MaxUint64 may be used
 	GetFromThrough() (model.Fingerprint, model.Fingerprint)
 }
 
