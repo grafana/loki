@@ -166,7 +166,6 @@ func (d *BloomPageDecoder) Err() error {
 	return d.err
 }
 
-// Close needs to ca
 func (d *BloomPageDecoder) Close() {
 	d.err = nil
 	d.cur = nil
