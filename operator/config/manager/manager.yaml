@@ -39,4 +39,5 @@ spec:
           periodSeconds: 10
       nodeSelector:
         kubernetes.io/os: linux
+      serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10

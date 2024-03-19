@@ -3,9 +3,9 @@ Client definition for LogsInstance
 */}}
 {{- define "loki.logsInstanceClient" -}}
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
-{{- $url := printf "http://%s.%s.svc.%s:3100/loki/api/v1/push" (include "loki.writeFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+{{- $url := printf "http://%s.%s.svc.%s:%s/loki/api/v1/push" (include "loki.writeFullname" .) .Release.Namespace .Values.global.clusterDomain ( .Values.loki.server.http_listen_port | toString ) }}
 {{- if $isSingleBinary  }}
-  {{- $url = printf "http://%s.%s.svc.%s:3100/loki/api/v1/push" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+  {{- $url = printf "http://%s.%s.svc.%s:%s/loki/api/v1/push" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain ( .Values.loki.server.http_listen_port | toString ) }}
 {{- else if .Values.gateway.enabled -}}
   {{- $url = printf "http://%s.%s.svc.%s/loki/api/v1/push" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain }}
 {{- end -}}

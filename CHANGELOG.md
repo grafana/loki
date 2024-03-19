@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+* [12243](https://github.com/grafana/loki/pull/12243) **lllamnyp**: Helm: Add extraContainers to read pods.
 * [11840](https://github.com/grafana/loki/pull/11840) **jeschkies**: Allow custom usage trackers for ingested and discarded bytes metric.
 * [11814](https://github.com/grafana/loki/pull/11814) **kavirajk**: feat: Support split align and caching for instant metric query results
 * [11851](https://github.com/grafana/loki/pull/11851) **elcomtik**: Helm: Allow the definition of resources for GrafanaAgent pods.
@@ -109,6 +110,8 @@
 * [10848](https://github.com/grafana/loki/pull/10848) **rgroothuijsen**: Correctly parse list of drop stage sources from YAML.
 
 #### LogCLI
+
+* [11852](https://github.com/grafana/loki/pull/11852) **MichelHollands**: feat: update logcli so it tries to load the latest version of the schemaconfig
 
 #### Mixins
 
