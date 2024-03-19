@@ -6,7 +6,7 @@ metadata:
     include.release.openshift.io/single-node-developer: "true"
   creationTimestamp: null
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.5.0
+    app.kubernetes.io/instance: loki-operator-v0.6.0
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
