@@ -4,21 +4,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"math"
 	"net/http"
 	"net/url"
 	"sort"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
-
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/dskit/tenant"
-
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -69,7 +67,6 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	var shardByInterval time.Duration
-
 	if parsedExpr.HasFilter() {
 		var err error
 		shardByInterval, err = dm.interval(params, startTime, endTime)

@@ -10,14 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
-
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/util"
-
-	"github.com/grafana/dskit/user"
 )
 
 func TestAddDeleteRequestHandler(t *testing.T) {
