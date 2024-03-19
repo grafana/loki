@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 type mockCache[K comparable, V any] struct {
@@ -79,8 +80,7 @@ func Test_LoadBlocksDirIntoCache(t *testing.T) {
 	fp, _ = os.Create(filepath.Join(wd, fn2, "series"))
 	fp.Close()
 
-	cfg := BlocksCacheConfig{
-		Enabled:       true,
+	cfg := config.BlocksCacheConfig{
 		SoftLimit:     1 << 20,
 		HardLimit:     2 << 20,
 		TTL:           time.Hour,

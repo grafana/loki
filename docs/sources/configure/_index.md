@@ -2369,17 +2369,16 @@ bloom_shipper:
     [max_tasks_enqueued_per_tenant: <int> | default = 10000]
 
   blocks_cache:
-    # Cache for bloom blocks. Whether embedded cache is enabled.
-    # CLI flag: -bloom.blocks-cache.enabled
-    [enabled: <boolean> | default = false]
+    # Cache for bloom blocks. Soft limit of the cache in bytes. Exceeding this
+    # limit will trigger evictions of least recently used items in the
+    # background.
+    # CLI flag: -bloom.blocks-cache.soft-limit
+    [soft_limit: <int> | default = 32GiB]
 
-    # Cache for bloom blocks. Maximum memory size of the cache in MB.
-    # CLI flag: -bloom.blocks-cache.max-size-mb
-    [max_size_mb: <int> | default = 100]
-
-    # Cache for bloom blocks. Maximum number of entries in the cache.
-    # CLI flag: -bloom.blocks-cache.max-size-items
-    [max_size_items: <int> | default = 0]
+    # Cache for bloom blocks. Hard limit of the cache in bytes. Exceeding this
+    # limit will block execution until soft limit is deceeded.
+    # CLI flag: -bloom.blocks-cache.hard-limit
+    [hard_limit: <int> | default = 64GiB]
 
     # Cache for bloom blocks. The time to live for items in the cache before
     # they get purged.

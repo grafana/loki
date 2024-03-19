@@ -19,7 +19,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/dns"
-	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/middleware"
@@ -679,19 +678,8 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 		level.Info(logger).Log("msg", "no metas cache configured")
 	}
 
-	cfg := bloomshipper.BlocksCacheConfig{
-		Enabled:       true,
-		SoftLimit:     flagext.Bytes(bsCfg.BlocksCache.MaxSizeMB/100*95) * (1 << 20),
-		HardLimit:     flagext.Bytes(bsCfg.BlocksCache.MaxSizeMB) * (1 << 20),
-		TTL:           bsCfg.BlocksCache.TTL,
-		PurgeInterval: time.Hour,
-	}
-	if err = cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("blocks cache config validateion failed: %w", err)
-	}
-	blocksCache := bloomshipper.NewFsBlocksCache(cfg, reg, logger)
-
-	if err = bloomshipper.LoadBlocksDirIntoCache(t.Cfg.StorageConfig.BloomShipperConfig.WorkingDirectory, blocksCache, logger); err != nil {
+	blocksCache := bloomshipper.NewFsBlocksCache(bsCfg.BlocksCache, reg, logger)
+	if err = bloomshipper.LoadBlocksDirIntoCache(bsCfg.WorkingDirectory, blocksCache, logger); err != nil {
 		level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
 	}
 
