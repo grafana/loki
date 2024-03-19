@@ -96,7 +96,8 @@ func TestMappingEquivalence(t *testing.T) {
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics, []string{})
+			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
+			mapper := NewShardMapper(strategy, nilShardMetrics, []string{})
 			_, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.NoError(t, err)
 
@@ -161,7 +162,8 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics, []string{ShardQuantileOverTime})
+			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
+			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
 			_, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.NoError(t, err)
 
@@ -195,7 +197,8 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics, []string{ShardQuantileOverTime})
+			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
+			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
 			_, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.NoError(t, err)
 
@@ -260,7 +263,8 @@ func TestShardCounter(t *testing.T) {
 			require.NoError(t, err)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics, []string{ShardQuantileOverTime})
+			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
+			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
 			noop, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.NoError(t, err)
 
@@ -696,7 +700,8 @@ func TestPrettierWithoutShards(t *testing.T) {
 	q := `((quantile_over_time(0.5,{foo="bar"} | json | unwrap bytes[1d]) by (cluster) > 42) and (count by (cluster)(max_over_time({foo="baz"} |= "error" | json | unwrap bytes[1d]) by (cluster,namespace)) > 10))`
 	e := syntax.MustParseExpr(q)
 
-	mapper := NewShardMapper(ConstantShards(4), nilShardMetrics, []string{})
+	strategy := NewPowerOfTwoStrategy(ConstantShards(4))
+	mapper := NewShardMapper(strategy, nilShardMetrics, []string{})
 	_, _, mapped, err := mapper.Parse(e)
 	require.NoError(t, err)
 	got := syntax.Prettify(mapped)

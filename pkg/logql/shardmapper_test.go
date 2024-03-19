@@ -51,7 +51,9 @@ func TestShardedStringer(t *testing.T) {
 }
 
 func TestMapSampleExpr(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{ShardQuantileOverTime})
+
+	strategy := NewPowerOfTwoStrategy(ConstantShards(2))
+	m := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
 
 	for _, tc := range []struct {
 		in  syntax.SampleExpr
@@ -113,7 +115,8 @@ func TestMapSampleExpr(t *testing.T) {
 }
 
 func TestMappingStrings(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{ShardQuantileOverTime})
+	strategy := NewPowerOfTwoStrategy(ConstantShards(2))
+	m := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
 	for _, tc := range []struct {
 		in  string
 		out string
@@ -418,7 +421,8 @@ func TestMappingStrings(t *testing.T) {
 }
 
 func TestMapping(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{})
+	strategy := NewPowerOfTwoStrategy(ConstantShards(2))
+	m := NewShardMapper(strategy, nilShardMetrics, []string{})
 
 	for _, tc := range []struct {
 		in   string
@@ -1587,7 +1591,8 @@ func TestStringTrimming(t *testing.T) {
 		},
 	} {
 		t.Run(tc.expr.String(), func(t *testing.T) {
-			m := NewShardMapper(ConstantShards(tc.shards), nilShardMetrics, []string{ShardQuantileOverTime})
+			strategy := NewPowerOfTwoStrategy(ConstantShards(tc.shards))
+			m := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
 			_, _, mappedExpr, err := m.Parse(tc.expr)
 			require.Nil(t, err)
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
@@ -1606,7 +1611,7 @@ func TestShardTopk(t *testing.T) {
 			sum_over_time({job="foo"} | json | unwrap bytes(bytes)[1m])
 		)
 	)`
-	m := NewShardMapper(ConstantShards(5), nilShardMetrics, []string{ShardQuantileOverTime})
+	m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(5)), nilShardMetrics, []string{ShardQuantileOverTime})
 	_, _, mappedExpr, err := m.Parse(syntax.MustParseExpr(expr))
 	require.NoError(t, err)
 
