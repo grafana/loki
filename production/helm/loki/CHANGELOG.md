@@ -17,6 +17,18 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Add extraContainers parameter for the read pod
 
+## 5.44.4
+
+- [ENHANCEMENT] Use http_listen_port for `compactorAddress`.
+
+## 5.44.3
+
+- [BUGFIX] Fix template error: `<.Values.loki.server.http_listen_port>: can't evaluate field Values in type interface {}`
+
+## 5.44.2
+
+- [BUGFIX] Fix usage of `http_listen_port` and `grpc_listen_port` field in template.
+
 ## 5.44.1
 
 - [BUGFIX] Fix `compactorAddress` field: add protocol and port.
