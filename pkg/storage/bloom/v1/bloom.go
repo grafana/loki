@@ -169,7 +169,8 @@ func (d *BloomPageDecoder) Err() error {
 func (d *BloomPageDecoder) Close() {
 	d.err = nil
 	d.cur = nil
-	d.dec.B = d.data[:0]
+	d.data = nil
+	d.dec.B = nil
 	BlockPool.Put(d.data)
 }
 
