@@ -411,13 +411,13 @@ bool
 </tr>
 <tr>
 <td>
-<code>ManagedAuthEnv</code><br/>
+<code>TokenCCOAuthEnv</code><br/>
 <em>
 bool
 </em>
 </td>
 <td>
-<p>ManagedAuthEnv is true when OpenShift-functions are enabled and the operator has detected
+<p>TokenCCOAuthEnv is true when OpenShift-functions are enabled and the operator has detected
 that it is running with some kind of &ldquo;workload identity&rdquo; (AWS STS, Azure WIF) enabled.</p>
 </td>
 </tr>

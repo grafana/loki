@@ -44,13 +44,14 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
-	"sync"
+	"sort"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
@@ -75,12 +76,6 @@ var (
 	// responsesPool pooling array of v1.Output [64, 128, 256, ..., 65536]
 	responsesPool = queue.NewSlicePool[v1.Output](1<<6, 1<<16, 2)
 )
-
-// SyncMap is a map structure which can be synchronized using the RWMutex
-type SyncMap[k comparable, v any] struct {
-	sync.RWMutex
-	Map map[k]v
-}
 
 type Gateway struct {
 	services.Service
@@ -119,7 +114,7 @@ func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus
 		logger:  logger,
 		metrics: newMetrics(reg, constants.Loki, metricsSubsystem),
 		workerConfig: workerConfig{
-			maxItems: 100,
+			maxItems: cfg.NumMultiplexItems,
 		},
 		pendingTasks: &atomic.Int64{},
 
@@ -200,6 +195,9 @@ func (g *Gateway) stopping(_ error) error {
 
 // FilterChunkRefs implements BloomGatewayServer
 func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest) (*logproto.FilterChunkRefResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomgateway.FilterChunkRefs")
+	defer sp.Finish()
+
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -220,6 +218,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	filters := syntax.ExtractLineFilters(req.Plan.AST)
+	g.metrics.receivedFilters.Observe(float64(len(filters)))
 
 	// Shortcut if request does not contain filters
 	if len(filters) == 0 {
@@ -236,6 +235,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			ChunkRefs: []*logproto.GroupedChunkRefs{},
 		}, nil
 	}
+
+	sp.LogKV(
+		"filters", len(filters),
+		"days", len(seriesByDay),
+		"series_requested", len(req.Refs),
+	)
 
 	tasks := make([]Task, 0, len(seriesByDay))
 	responses := make([][]v1.Output, 0, len(seriesByDay))
@@ -265,18 +270,25 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	// request on the first error, there can be cases where the request context
 	// is not done yet and the consumeTask() function wants to send to the
 	// tasksCh, but nobody reads from it any more.
+	queueStart := time.Now()
 	tasksCh := make(chan Task, len(tasks))
 	for _, task := range tasks {
 		task := task
 		task.enqueueTime = time.Now()
 		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "table", task.table, "series", len(task.series))
-		g.queue.Enqueue(tenantID, nil, task, func() {
+
+		// TODO(owen-d): gracefully handle full queues
+		if err := g.queue.Enqueue(tenantID, nil, task, func() {
 			// When enqueuing, we also add the task to the pending tasks
 			_ = g.pendingTasks.Inc()
-		})
+		}); err != nil {
+			return nil, errors.Wrap(err, "failed to enqueue task")
+		}
 		// TODO(owen-d): use `concurrency` lib, bound parallelism
 		go g.consumeTask(ctx, task, tasksCh)
 	}
+
+	sp.LogKV("enqueue_duration", time.Since(queueStart).String())
 
 	remaining := len(tasks)
 
@@ -300,6 +312,8 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			remaining--
 		}
 	}
+
+	sp.LogKV("msg", "received all responses")
 
 	filtered := filterChunkRefs(req, responses)
 
@@ -335,14 +349,11 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 // Once the tasks is closed, it will send the task with the results from the
 // block querier to the supplied task channel.
 func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Task) {
-	logger := log.With(g.logger, "task", task.ID)
-
 	for res := range task.resCh {
 		select {
 		case <-ctx.Done():
-			level.Debug(logger).Log("msg", "drop partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
+			// do nothing
 		default:
-			level.Debug(logger).Log("msg", "accept partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
 			task.responses = append(task.responses, res)
 		}
 	}
@@ -356,18 +367,20 @@ func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Tas
 	}
 }
 
-// merges a list of responses via a heap. The same fingerprints and chunks can be present in multiple responses,
-// but each response must be ordered by fingerprint
+// merges a list of responses via a heap. The same fingerprints and chunks can be present in multiple responses.
+// Individual responses do not need to be be ordered beforehand.
 func orderedResponsesByFP(responses [][]v1.Output) v1.Iterator[v1.Output] {
 	if len(responses) == 0 {
 		return v1.NewEmptyIter[v1.Output]()
 	}
 	if len(responses) == 1 {
+		sort.Slice(responses[0], func(i, j int) bool { return responses[0][i].Fp < responses[0][j].Fp })
 		return v1.NewSliceIter(responses[0])
 	}
 
 	itrs := make([]v1.PeekingIterator[v1.Output], 0, len(responses))
 	for _, r := range responses {
+		sort.Slice(r, func(i, j int) bool { return r[i].Fp < r[j].Fp })
 		itrs = append(itrs, v1.NewPeekingIter(v1.NewSliceIter(r)))
 	}
 	return v1.NewHeapIterator[v1.Output](

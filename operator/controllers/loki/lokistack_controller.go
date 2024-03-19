@@ -110,7 +110,7 @@ type LokiStackReconciler struct {
 	Log          logr.Logger
 	Scheme       *runtime.Scheme
 	FeatureGates configv1.FeatureGates
-	AuthConfig   *config.ManagedAuthConfig
+	AuthConfig   *config.TokenCCOAuthConfig
 }
 
 // +kubebuilder:rbac:groups=loki.grafana.com,resources=lokistacks,verbs=get;list;watch;create;update;patch;delete
@@ -179,7 +179,7 @@ func (r *LokiStackReconciler) updateResources(ctx context.Context, req ctrl.Requ
 		}
 	}
 
-	if r.FeatureGates.OpenShift.ManagedAuthEnv {
+	if r.FeatureGates.OpenShift.TokenCCOAuthEnv {
 		if err := handlers.CreateUpdateDeleteCredentialsRequest(ctx, r.Log, r.Scheme, r.AuthConfig, r.Client, req); err != nil {
 			return "", err
 		}
