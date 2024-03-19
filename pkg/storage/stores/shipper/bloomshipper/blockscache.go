@@ -98,10 +98,8 @@ type BlocksCache struct {
 	entries map[string]*list.Element
 	lru     *list.List
 
-	done chan struct{}
-
-	cond        *sync.Cond // condition for soft eviction
-	shouldEvict bool
+	done            chan struct{}
+	triggerEviction chan struct{}
 
 	currSizeBytes int64
 }
@@ -172,8 +170,9 @@ func NewFsBlocksCache(cfg BlocksCacheConfig, reg prometheus.Registerer, logger l
 		metrics: newBlocksCacheMetrics(reg, constants.Loki, "bloom_blocks_cache"),
 		entries: make(map[string]*list.Element),
 		lru:     list.New(),
-		done:    make(chan struct{}),
-		cond:    sync.NewCond(&sync.Mutex{}),
+
+		done:            make(chan struct{}),
+		triggerEviction: make(chan struct{}),
 	}
 
 	// Set a default interval for the ticker
@@ -274,11 +273,13 @@ func (c *BlocksCache) put(key string, value BlockDirectory) (*Entry, error) {
 			"soft_limit_bytes", c.cfg.SoftLimit,
 			"hard_limit_bytes", c.cfg.HardLimit,
 		)
-		c.cond.L.Lock()
-		c.shouldEvict = true
-		c.cond.L.Unlock()
 
-		c.cond.Signal()
+		select {
+		case c.triggerEviction <- struct{}{}:
+			// nothing
+		default:
+			level.Debug(c.logger).Log("msg", "eviction already in progress")
+		}
 	}
 
 	// Adding an item blocks if the cache would exceed its hard limit.
@@ -407,13 +408,7 @@ func (c *BlocksCache) runLRUevictJob() {
 		select {
 		case <-c.done:
 			return
-		default:
-			c.cond.L.Lock()
-			for !c.shouldEvict {
-				c.cond.Wait()
-			}
-			c.shouldEvict = false
-			c.cond.L.Unlock()
+		case <-c.triggerEviction:
 			c.evictLeastRecentlyUsedItems()
 		}
 	}
