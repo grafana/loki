@@ -466,7 +466,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return nil, 0, err
 		}
 		if shards == 0 || !m.quantileOverTimeSharding {
-			return noOp(expr, m.shards)
+			return expr, bytesPerShard, nil
 		}
 
 		// quantile_over_time() by (foo) ->
