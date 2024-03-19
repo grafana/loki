@@ -38,7 +38,7 @@ The WAL also includes a backpressure mechanism to allow a large WAL to be replay
 
 ## Changes to deployment
 
-1. Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on [statefulset](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) with fixed volumes.
+1. Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) with fixed volumes.
 
 2. Following flags needs to be set
     * `--ingester.wal-enabled` to `true` which enables writing to WAL during ingestion.
@@ -48,7 +48,7 @@ The WAL also includes a backpressure mechanism to allow a large WAL to be replay
 
 ## Changes in lifecycle when WAL is enabled
 
-1. Flushing of data to chunk store during rollouts or scale down is disabled. This is because during a rollout of statefulset there are no ingesters that are simultaneously leaving and joining, rather the same ingester is shut down and brought back again with updated config. Hence flushing is skipped and the data is recovered from the WAL.
+1. Flushing of data to chunk store during rollouts or scale down is disabled. This is because during a rollout of StatefulSet there are no ingesters that are simultaneously leaving and joining, rather the same ingester is shut down and brought back again with updated config. Hence flushing is skipped and the data is recovered from the WAL.
 
 ## Disk space requirements
 
@@ -62,7 +62,7 @@ You should not target 100% disk utilisation.
 
 ## Migrating from stateless deployments
 
-The ingester _deployment without WAL_ and _statefulset with WAL_ should be scaled down and up respectively in sync without transfer of data between them to ensure that any ingestion after migration is reliable immediately.
+The ingester _Deployment without WAL_ and _StatefulSet with WAL_ should be scaled down and up respectively in sync without transfer of data between them to ensure that any ingestion after migration is reliable immediately.
 
 Let's take an example of 4 ingesters. The migration would look something like this:
 
@@ -83,7 +83,7 @@ Scaling up is same as what you would do without WAL or statefulsets. Nothing to 
 
 When scaling down, we must ensure existing data on the leaving ingesters are flushed to storage instead of just the WAL. This is because we won't be replaying the WAL on an ingester that will no longer exist and we need to make sure the data is not orphaned.
 
-Consider you have 4 ingesters `ingester-0 ingester-1 ingester-2 ingester-3` and you want to scale down to 2 ingesters, the ingesters which will be shutdown according to statefulset rules are `ingester-3` and then `ingester-2`.
+Consider you have 4 ingesters `ingester-0 ingester-1 ingester-2 ingester-3` and you want to scale down to 2 ingesters, the ingesters which will be shut down according to StatefulSet rules are `ingester-3` and then `ingester-2`.
 
 Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the [`/ingester/shutdown?flush=true`]({{< relref "../../reference/api#flush-in-memory-chunks-and-shut-down" >}}) endpoint. This will flush the chunks and remove itself from the ring, after which it will register as unready and may be deleted.
 
@@ -95,13 +95,15 @@ After hitting the endpoint for `ingester-2 ingester-3`, scale down the ingesters
 
 Statefulsets are significantly more cumbersome to work with, upgrade, and so on. Much of this stems from immutable fields on the specification. For example, if one wants to start using the WAL with single store Loki and wants separate volume mounts for the WAL and the boltdb-shipper, you may see immutability errors when attempting updates the Kubernetes statefulsets.
 
-In this case, try `kubectl -n <namespace> delete sts ingester --cascade=false`. This will leave the pods alive but delete the statefulset. Then you may recreate the (updated) statefulset and one-by-one start deleting the `ingester-0` through `ingester-n` pods _in that order_, allowing the statefulset to spin up new pods to replace them.
+In this case, try `kubectl -n <namespace> delete sts ingester --cascade=false`.
+This will leave the Pods alive but delete the StatefulSet.
+Then you may recreate the (updated) StatefulSet and one-by-one start deleting the `ingester-0` through `ingester-n` Pods _in that order_, allowing the StatefulSet to spin up new pods to replace them.
 
 #### Scaling Down Using `/flush_shutdown` Endpoint and Lifecycle Hook
 
 1. **StatefulSets for Ordered Scaling Down**: Loki's ingesters should be scaled down one by one, which is efficiently handled by Kubernetes StatefulSets. This ensures an ordered and reliable scaling process, as described in the [Deployment and Scaling Guarantees](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#deployment-and-scaling-guarantees) documentation.
 
-2. **Using PreStop Lifecycle Hook**: During the pod scaling down process, the PreStop [lifecycle hook](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/) triggers the `/flush_shutdown` endpoint on the ingester. This action flushes the chunks and removes the ingester from the ring, allowing it to register as unready and become eligible for deletion.
+2. **Using PreStop Lifecycle Hook**: During the Pod scaling down process, the PreStop [lifecycle hook](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/) triggers the `/flush_shutdown` endpoint on the ingester. This action flushes the chunks and removes the ingester from the ring, allowing it to register as unready and become eligible for deletion.
 
 3. **Using terminationGracePeriodSeconds**: Provides time for the ingester to flush its data before being deleted, if flushing data takes more than 30 minutes, you may need to increase it.
 
