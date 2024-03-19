@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
 const (
@@ -121,31 +122,16 @@ func (b *BloomTSDBStore) LoadTSDB(
 		}
 	}()
 
-	return NewTSDBSeriesIter(ctx, idx, bounds)
+	return NewTSDBSeriesIter(ctx, tenant, idx, bounds)
 }
 
-// TSDBStore is an interface for interacting with the TSDB,
-// modeled off a relevant subset of the `tsdb.TSDBIndex` struct
-type forSeries interface {
-	// General purpose iteration over series. Makes it easier to build custom functionality on top of indices
-	// of different types without them all implementing the same feature.
-	// The passed callback must _not_ capture its arguments. They're reused for each call for performance.
-	ForSeries(
-		ctx context.Context,
-		fpFilter index.FingerprintFilter,
-		from model.Time,
-		through model.Time,
-		fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool),
-		matchers ...*labels.Matcher,
-	) error
-}
-
-func NewTSDBSeriesIter(ctx context.Context, f forSeries, bounds v1.FingerprintBounds) (v1.Iterator[*v1.Series], error) {
+func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, bounds v1.FingerprintBounds) (v1.Iterator[*v1.Series], error) {
 	// TODO(salvacorts): Create a pool
 	series := make([]*v1.Series, 0, 100)
 
 	if err := f.ForSeries(
 		ctx,
+		user,
 		bounds,
 		0, math.MaxInt64,
 		func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
