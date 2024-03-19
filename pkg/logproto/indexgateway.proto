@@ -43,12 +43,8 @@ message ShardsRequest {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "through"
   ];
-  string query = 3 [
-    (gogoproto.jsontag) = "query"
-  ];
-  uint64 target_bytes_per_shard = 4 [
-    (gogoproto.jsontag) = "targetBytesPerShard"
-  ];
+  string query = 3 [(gogoproto.jsontag) = "query"];
+  uint64 target_bytes_per_shard = 4 [(gogoproto.jsontag) = "targetBytesPerShard"];
 }
 
 message ShardsResponse {
@@ -63,9 +59,7 @@ message Shard {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "bounds"
   ];
-  logproto.IndexStatsResponse stats = 2 [
-    (gogoproto.jsontag) = "stats"
-  ];
+  logproto.IndexStatsResponse stats = 2 [(gogoproto.jsontag) = "stats"];
 }
 
 // FPBounds is identical to the definition in `pkg/storage/bloom/v1/bounds.FingerprintBounds`
