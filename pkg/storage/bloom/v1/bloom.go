@@ -169,9 +169,9 @@ func (d *BloomPageDecoder) Err() error {
 func (d *BloomPageDecoder) Close() {
 	d.err = nil
 	d.cur = nil
+	BlockPool.Put(d.data)
 	d.data = nil
 	d.dec.B = nil
-	BlockPool.Put(d.data)
 }
 
 type BloomPageHeader struct {
