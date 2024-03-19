@@ -5,9 +5,91 @@ import (
 
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/pkg/errors"
 )
+
+type ShardResolver interface {
+	Shards(expr syntax.Expr) (int, uint64, error)
+	ShardingRanges(expr syntax.Expr, targetBytesPerShard uint64) ([]logproto.Shard, error)
+	GetStats(e syntax.Expr) (stats.Stats, error)
+}
+
+type ConstantShards int
+
+func (s ConstantShards) Shards(_ syntax.Expr) (int, uint64, error) { return int(s), 0, nil }
+func (s ConstantShards) ShardingRanges(_ syntax.Expr, _ uint64) ([]logproto.Shard, error) {
+	return sharding.LinearShards(int(s), 0), nil
+}
+func (s ConstantShards) GetStats(_ syntax.Expr) (stats.Stats, error) { return stats.Stats{}, nil }
+
+type ShardingStrategy interface {
+	Shards(expr syntax.Expr) (shards Shards, maxBytesPerShard uint64, err error)
+	Resolver() ShardResolver
+}
+
+type DynamicBoundsStrategy struct {
+	resolver            ShardResolver
+	targetBytesPerShard uint64
+}
+
+func (s DynamicBoundsStrategy) Shards(expr syntax.Expr) (Shards, uint64, error) {
+	shards, err := s.resolver.ShardingRanges(expr, s.targetBytesPerShard)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var maxBytes uint64
+	res := make(Shards, 0, len(shards))
+	for _, shard := range shards {
+		if shard.Stats != nil {
+			maxBytes = max(maxBytes, shard.Stats.Bytes)
+		}
+		res = append(res, NewBoundedShard(shard))
+	}
+
+	return res, maxBytes, nil
+}
+
+func (s DynamicBoundsStrategy) Resolver() ShardResolver {
+	return s.resolver
+}
+
+func NewDynamicBoundsStrategy(resolver ShardResolver, targetBytesPerShard uint64) DynamicBoundsStrategy {
+	return DynamicBoundsStrategy{resolver: resolver, targetBytesPerShard: targetBytesPerShard}
+}
+
+type PowerOfTwoStrategy struct {
+	resolver ShardResolver
+}
+
+func NewPowerOfTwoStrategy(resolver ShardResolver) PowerOfTwoStrategy {
+	return PowerOfTwoStrategy{resolver: resolver}
+}
+
+func (s PowerOfTwoStrategy) Resolver() ShardResolver {
+	return s.resolver
+}
+
+func (s PowerOfTwoStrategy) Shards(expr syntax.Expr) (Shards, uint64, error) {
+	factor, bytesPerShard, err := s.resolver.Shards(expr)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if factor == 0 {
+		return nil, bytesPerShard, nil
+	}
+
+	res := make(Shards, 0, factor)
+	for i := 0; i < factor; i++ {
+		res = append(res, NewPowerOfTwoShard(astmapper.ShardAnnotation{Of: factor, Shard: i}))
+	}
+	return res, bytesPerShard, nil
+}
 
 // Shard represents a shard annotation
 // It holds either a power of two shard (legacy) or a bounded shard
