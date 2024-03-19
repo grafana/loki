@@ -634,3 +634,50 @@ func requireEventually(t *testing.T, f func() bool, msg string) {
 func sleepRandomDuration(maxDuration time.Duration) {
 	time.Sleep(time.Duration(rand.Int63n(int64(maxDuration))))
 }
+
+func TestFileTargetStartTailingHandlesFilesAndSymlinks(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	dirName := newTestLogDirectories(t)
+	positionsFileName := filepath.Join(dirName, "positions.yml")
+	logFile := filepath.Join(dirName, "test1.log")
+	logSymlink := filepath.Join(dirName, "test1-symlink.log")
+
+	ps, err := positions.New(logger, positions.Config{
+		SyncPeriod:    10 * time.Minute,
+		PositionsFile: positionsFileName,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := fake.New(func() {})
+	defer client.Stop()
+
+	metrics := NewMetrics(nil)
+
+	target, err := NewFileTarget(metrics, logger, client, ps, dirName, "", nil, nil, &Config{
+		SyncPeriod: 1 * time.Minute,
+	}, DefaultWatchConig, nil, nil, "", nil)
+	assert.NoError(t, err)
+
+	err = os.MkdirAll(dirName, 0750)
+	assert.NoError(t, err)
+
+	_, err = os.Create(logFile)
+	assert.NoError(t, err)
+
+	err = os.Symlink("noexist.log", logSymlink)
+	assert.NoError(t, err)
+
+	paths := []string{logFile, logSymlink}
+	target.startTailing(paths)
+
+	_, logFileOk := target.readers[logFile]
+	_, logSymlinkOk := target.readers[logSymlink]
+
+	assert.True(t, logFileOk, "Expected to start tailing")
+	assert.False(t, logSymlinkOk, "Expected not to start tailing symlink")
+
+}
