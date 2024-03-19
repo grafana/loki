@@ -7,9 +7,11 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 )
 
 type ShardResolver interface {
@@ -96,6 +98,23 @@ func (s PowerOfTwoStrategy) Shards(expr syntax.Expr) (Shards, uint64, error) {
 type Shard struct {
 	PowerOfTwo *astmapper.ShardAnnotation
 	Bounded    *logproto.Shard
+}
+
+// implement FingerprintFilter
+func (s *Shard) Match(fp model.Fingerprint) bool {
+	if s.Bounded != nil {
+		return v1.BoundsFromProto(s.Bounded.Bounds).Match(fp)
+	}
+
+	return s.PowerOfTwo.Match(fp)
+}
+
+func (s *Shard) GetFromThrough() (model.Fingerprint, model.Fingerprint) {
+	if s.Bounded != nil {
+		return v1.BoundsFromProto(s.Bounded.Bounds).GetFromThrough()
+	}
+
+	return s.PowerOfTwo.TSDB().GetFromThrough()
 }
 
 // convenience method for unaddressability concerns using constructors in literals (tests)

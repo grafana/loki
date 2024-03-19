@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/pkg/logql"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
@@ -72,6 +73,20 @@ func NewIndexClient(idx Index, opts IndexClientOptions, l Limits) *IndexClient {
 	}
 }
 
+func shardFromMatchers(matchers []*labels.Matcher) (cleaned []*labels.Matcher, res logql.Shard, found bool, err error) {
+	for i, matcher := range matchers {
+		if matcher.Name == astmapper.ShardLabel && matcher.Type == labels.MatchEqual {
+			shard, _, err := logql.ParseShard(matcher.Value)
+			if err != nil {
+				return nil, shard, true, err
+			}
+			return append(matchers[:i], matchers[i+1:]...), shard, true, nil
+		}
+	}
+
+	return matchers, logql.Shard{}, false, nil
+}
+
 // TODO(owen-d): This is a hack for compatibility with how the current query-mapping works.
 // Historically, Loki will read the index shard factor and the query planner will inject shard
 // labels accordingly.
@@ -81,23 +96,10 @@ func NewIndexClient(idx Index, opts IndexClientOptions, l Limits) *IndexClient {
 func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, index.FingerprintFilter, error) {
 	// first use withoutNameLabel to make a copy with the name label removed
 	matchers = withoutNameLabel(matchers)
-	s, shardLabelIndex, err := astmapper.ShardFromMatchers(matchers)
+
+	matchers, shard, found, err := shardFromMatchers(matchers)
 	if err != nil {
 		return nil, nil, err
-	}
-
-	var fpFilter index.FingerprintFilter
-	if s != nil {
-		matchers = append(matchers[:shardLabelIndex], matchers[shardLabelIndex+1:]...)
-		shard := index.ShardAnnotation{
-			Shard: uint32(s.Shard),
-			Of:    uint32(s.Of),
-		}
-		fpFilter = shard
-
-		if err := shard.Validate(); err != nil {
-			return nil, nil, err
-		}
 	}
 
 	if len(matchers) == 0 {
@@ -105,8 +107,10 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, index.Finger
 		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	}
 
-	return matchers, fpFilter, err
-
+	if found {
+		return matchers, &shard, nil
+	}
+	return matchers, nil, nil
 }
 
 // TODO(owen-d): synchronize logproto.ChunkRef and tsdb.ChunkRef so we don't have to convert.
