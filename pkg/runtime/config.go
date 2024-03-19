@@ -9,41 +9,42 @@ type Config struct {
 	LimitedLogPushErrors bool `yaml:"limited_log_push_errors"`
 }
 
-// TenantConfig is a function that returns configs for given tenant, or
-// nil, if there are no tenant-specific configs.
-type TenantConfig func(userID string) *Config
+var EmptyConfig = &Config{}
+
+// TenantConfigProvider serves a tenant or default config.
+type TenantConfigProvider interface {
+	TenantConfig(userID string) *Config
+	DefaultConfig() *Config
+}
 
 // TenantConfigs periodically fetch a set of per-user configs, and provides convenience
 // functions for fetching the correct value.
 type TenantConfigs struct {
-	defaultConfig *Config
-	tenantConfig  TenantConfig
+	TenantConfigProvider
 }
 
 // DefaultTenantConfigs creates and returns a new TenantConfigs with the defaults populated.
 func DefaultTenantConfigs() *TenantConfigs {
 	return &TenantConfigs{
-		defaultConfig: &Config{},
-		tenantConfig:  nil,
+		TenantConfigProvider: nil,
 	}
 }
 
 // NewTenantConfig makes a new TenantConfigs
-func NewTenantConfigs(tenantConfig TenantConfig) (*TenantConfigs, error) {
+func NewTenantConfigs(configProvider TenantConfigProvider) (*TenantConfigs, error) {
 	return &TenantConfigs{
-		defaultConfig: DefaultTenantConfigs().defaultConfig,
-		tenantConfig:  tenantConfig,
+		TenantConfigProvider: configProvider,
 	}, nil
 }
 
 func (o *TenantConfigs) getOverridesForUser(userID string) *Config {
-	if o.tenantConfig != nil {
-		l := o.tenantConfig(userID)
+	if o.TenantConfigProvider != nil {
+		l := o.TenantConfigProvider.TenantConfig(userID)
 		if l != nil {
 			return l
 		}
 	}
-	return o.defaultConfig
+	return EmptyConfig
 }
 
 func (o *TenantConfigs) LogStreamCreation(userID string) bool {
