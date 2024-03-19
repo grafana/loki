@@ -11,6 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var (
+	logger = log.NewNopLogger()
+)
+
 func TestBlocksCacheConfig_Validate(t *testing.T) {
 	for _, tc := range []struct {
 		desc string
@@ -88,7 +92,7 @@ func TestBlocksCache_ErrorCases(t *testing.T) {
 		SoftLimit: flagext.Bytes(100),
 		HardLimit: flagext.Bytes(200),
 	}
-	cache := NewFsBlocksCache(cfg, nil, log.NewNopLogger())
+	cache := NewFsBlocksCache(cfg, nil, logger)
 	t.Cleanup(cache.Stop)
 
 	t.Run("cancelled context", func(t *testing.T) {
@@ -154,7 +158,7 @@ func CacheValue(path string, size int64) BlockDirectory {
 	}
 }
 
-func TestBlocksCache_StoreAndFetch(t *testing.T) {
+func TestBlocksCache_PutAndGet(t *testing.T) {
 	cfg := BlocksCacheConfig{
 		Enabled:   true,
 		TTL:       time.Hour,
@@ -163,7 +167,7 @@ func TestBlocksCache_StoreAndFetch(t *testing.T) {
 		// no need for TTL evictions
 		PurgeInterval: time.Minute,
 	}
-	cache := NewFsBlocksCache(cfg, nil, log.NewNopLogger())
+	cache := NewFsBlocksCache(cfg, nil, logger)
 	t.Cleanup(cache.Stop)
 
 	ctx := context.Background()
@@ -230,7 +234,7 @@ func TestBlocksCache_TTLEviction(t *testing.T) {
 
 		PurgeInterval: 100 * time.Millisecond,
 	}
-	cache := NewFsBlocksCache(cfg, nil, log.NewNopLogger())
+	cache := NewFsBlocksCache(cfg, nil, logger)
 	t.Cleanup(cache.Stop)
 
 	ctx := context.Background()
@@ -264,7 +268,7 @@ func TestBlocksCache_LRUEviction(t *testing.T) {
 		// no need for TTL evictions
 		PurgeInterval: time.Minute,
 	}
-	cache := NewFsBlocksCache(cfg, nil, log.NewNopLogger())
+	cache := NewFsBlocksCache(cfg, nil, logger)
 	t.Cleanup(cache.Stop)
 
 	ctx := context.Background()
@@ -306,7 +310,7 @@ func TestBlocksCache_RefCounter(t *testing.T) {
 		// no need for TTL evictions
 		PurgeInterval: time.Minute,
 	}
-	cache := NewFsBlocksCache(cfg, nil, log.NewNopLogger())
+	cache := NewFsBlocksCache(cfg, nil, logger)
 	t.Cleanup(cache.Stop)
 
 	ctx := context.Background()

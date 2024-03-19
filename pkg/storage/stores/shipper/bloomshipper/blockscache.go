@@ -172,7 +172,7 @@ func NewFsBlocksCache(cfg BlocksCacheConfig, reg prometheus.Registerer, logger l
 		lru:     list.New(),
 
 		done:            make(chan struct{}),
-		triggerEviction: make(chan struct{}),
+		triggerEviction: make(chan struct{}, 1),
 	}
 
 	// Set a default interval for the ticker
