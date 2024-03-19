@@ -48,7 +48,9 @@ The WAL also includes a backpressure mechanism to allow a large WAL to be replay
 
 ## Changes in lifecycle when WAL is enabled
 
-1. Flushing of data to chunk store during rollouts or scale down is disabled. This is because during a rollout of StatefulSet there are no ingesters that are simultaneously leaving and joining, rather the same ingester is shut down and brought back again with updated config. Hence flushing is skipped and the data is recovered from the WAL.
+
+Flushing of data to chunk store during rollouts or scale down is disabled. This is because during a rollout of statefulset there are no ingesters that are simultaneously leaving and joining, rather the same ingester is shut down and brought back again with updated config. Hence flushing is skipped and the data is recovered from the WAL. If you need to ensure that data is always flushed to the chunk store when your pod shuts down, you can set the `--ingester.flush-on-shutdown` flag to `true`.
+
 
 ## Disk space requirements
 
@@ -88,6 +90,9 @@ Consider you have 4 ingesters `ingester-0 ingester-1 ingester-2 ingester-3` and 
 Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the [`/ingester/shutdown?flush=true`]({{< relref "../../reference/api#flush-in-memory-chunks-and-shut-down" >}}) endpoint. This will flush the chunks and remove itself from the ring, after which it will register as unready and may be deleted.
 
 After hitting the endpoint for `ingester-2 ingester-3`, scale down the ingesters to 2.
+
+Also you can set the `--ingester.flush-on-shutdown` flag to `true`. This enables chunks to be flushed to long-term storage when the ingester is shut down.
+
 
 ## Additional notes
 
