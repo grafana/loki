@@ -2383,16 +2383,16 @@ func TestEngine_LogsInstantQuery_Vector(t *testing.T) {
 }
 
 type errorIteratorQuerier struct {
-	samples []iter.SampleIterator
-	entries []iter.EntryIterator
+	samples func() []iter.SampleIterator
+	entries func() []iter.EntryIterator
 }
 
 func (e errorIteratorQuerier) SelectLogs(_ context.Context, p SelectLogParams) (iter.EntryIterator, error) {
-	return iter.NewSortEntryIterator(e.entries, p.Direction), nil
+	return iter.NewSortEntryIterator(e.entries(), p.Direction), nil
 }
 
 func (e errorIteratorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
-	return iter.NewSortSampleIterator(e.samples), nil
+	return iter.NewSortSampleIterator(e.samples()), nil
 }
 
 func TestStepEvaluator_Error(t *testing.T) {
@@ -2406,9 +2406,11 @@ func TestStepEvaluator_Error(t *testing.T) {
 			"rangeAggEvaluator",
 			`count_over_time({app="foo"}[1m])`,
 			&errorIteratorQuerier{
-				samples: []iter.SampleIterator{
-					iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
-					NewErrorSampleIterator(),
+				samples: func() []iter.SampleIterator {
+					return []iter.SampleIterator{
+						iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
+						NewErrorSampleIterator(),
+					}
 				},
 			},
 			ErrMock,
@@ -2417,9 +2419,11 @@ func TestStepEvaluator_Error(t *testing.T) {
 			"stream",
 			`{app="foo"}`,
 			&errorIteratorQuerier{
-				entries: []iter.EntryIterator{
-					iter.NewStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
-					NewErrorEntryIterator(),
+				entries: func() []iter.EntryIterator {
+					return []iter.EntryIterator{
+						iter.NewStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
+						NewErrorEntryIterator(),
+					}
 				},
 			},
 			ErrMock,
@@ -2428,9 +2432,11 @@ func TestStepEvaluator_Error(t *testing.T) {
 			"binOpStepEvaluator",
 			`count_over_time({app="foo"}[1m]) / count_over_time({app="foo"}[1m])`,
 			&errorIteratorQuerier{
-				samples: []iter.SampleIterator{
-					iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
-					NewErrorSampleIterator(),
+				samples: func() []iter.SampleIterator {
+					return []iter.SampleIterator{
+						iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
+						NewErrorSampleIterator(),
+					}
 				},
 			},
 			ErrMockMultiple,
