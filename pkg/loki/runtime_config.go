@@ -94,6 +94,7 @@ func newTenantConfigProvider(c *runtimeconfig.Manager) runtime.TenantConfigProvi
 	return &tenantConfigProvider{c: c}
 }
 
+// TenantConfig returns the user config or default config if none was defined.
 func (t *tenantConfigProvider) TenantConfig(userID string) *runtime.Config {
 	if t.c == nil {
 		return nil
@@ -106,19 +107,6 @@ func (t *tenantConfigProvider) TenantConfig(userID string) *runtime.Config {
 	if tenantCfg, ok := cfg.TenantConfig[userID]; ok {
 		return tenantCfg
 	}
-	return nil
-}
-
-func (t *tenantConfigProvider) DefaultConfig() *runtime.Config {
-	if t.c == nil {
-		return nil
-	}
-
-	cfg, ok := t.c.GetConfig().(*runtimeConfigValues)
-	if !ok || cfg == nil {
-		return nil
-	}
-
 	return cfg.DefaultConfig
 }
 

@@ -173,7 +173,3 @@ type providerMock struct {
 func (m *providerMock) TenantConfig(userID string) *runtime.Config {
 	return m.tenantConfig(userID)
 }
-
-func (m *providerMock) DefaultConfig() *runtime.Config {
-	return runtime.EmptyConfig
-}

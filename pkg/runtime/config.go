@@ -14,7 +14,6 @@ var EmptyConfig = &Config{}
 // TenantConfigProvider serves a tenant or default config.
 type TenantConfigProvider interface {
 	TenantConfig(userID string) *Config
-	DefaultConfig() *Config
 }
 
 // TenantConfigs periodically fetch a set of per-user configs, and provides convenience
