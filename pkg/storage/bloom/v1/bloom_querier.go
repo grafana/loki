@@ -32,6 +32,13 @@ func (it *LazyBloomIter) ensureInit() {
 	}
 }
 
+func (it *LazyBloomIter) setPage(dec *BloomPageDecoder) {
+	if it.curPage != nil {
+		it.curPage.Close()
+	}
+	it.curPage = dec
+}
+
 func (it *LazyBloomIter) Seek(offset BloomOffset) {
 	it.ensureInit()
 
@@ -42,17 +49,18 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 		r, err := it.b.reader.Blooms()
 		if err != nil {
 			it.err = errors.Wrap(err, "getting blooms reader")
+			it.setPage(nil)
 			return
 		}
 		decoder, err := it.b.blooms.BloomPageDecoder(r, offset.Page)
 		if err != nil {
 			it.err = errors.Wrap(err, "loading bloom page")
+			it.setPage(nil)
 			return
 		}
 
 		it.curPageIndex = offset.Page
-		it.curPage = decoder
-
+		it.setPage(decoder)
 	}
 
 	it.curPage.Seek(offset.ByteOffset)
@@ -80,25 +88,26 @@ func (it *LazyBloomIter) next() bool {
 				return false
 			}
 
-			it.curPage, err = it.b.blooms.BloomPageDecoder(
-				r,
-				it.curPageIndex,
-			)
+			decoder, err := it.b.blooms.BloomPageDecoder(r, it.curPageIndex)
 			if err != nil {
 				it.err = err
+				it.setPage(nil)
 				return false
 			}
+			it.setPage(decoder)
 			continue
 		}
 
 		if !it.curPage.Next() {
 			// there was an error
 			if it.curPage.Err() != nil {
+				it.err = it.curPage.Err()
+				it.setPage(nil)
 				return false
 			}
 			// we've exhausted the current page, progress to next
 			it.curPageIndex++
-			it.curPage = nil
+			it.setPage(nil)
 			continue
 		}
 
@@ -106,6 +115,7 @@ func (it *LazyBloomIter) next() bool {
 	}
 
 	// finished last page
+	it.setPage(nil)
 	return false
 }
 
