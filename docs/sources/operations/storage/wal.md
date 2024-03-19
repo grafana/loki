@@ -48,7 +48,7 @@ The WAL also includes a backpressure mechanism to allow a large WAL to be replay
 
 ## Changes in lifecycle when WAL is enabled
 
-1. Flushing of data to chunk store during rollouts or scale down is disabled. This is because during a rollout of statefulset there are no ingesters that are simultaneously leaving and joining, rather the same ingester is shut down and brought back again with updated config. Hence flushing is skipped and the data is recovered from the WAL. If you need to ensure that data is always flushed to the chunk store when your pod shuts down, you can set the `--ingester.flush-on-shutdown` flag to `true`.
+Flushing of data to chunk store during rollouts or scale down is disabled. This is because during a rollout of statefulset there are no ingesters that are simultaneously leaving and joining, rather the same ingester is shut down and brought back again with updated config. Hence flushing is skipped and the data is recovered from the WAL. If you need to ensure that data is always flushed to the chunk store when your pod shuts down, you can set the `--ingester.flush-on-shutdown` flag to `true`.
 
 ## Disk space requirements
 
