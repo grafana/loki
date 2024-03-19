@@ -2,6 +2,7 @@ package validation
 
 import (
 	"encoding/json"
+	"flag"
 	"reflect"
 	"testing"
 	"time"
@@ -320,6 +321,8 @@ func TestLimitsValidation_deletionMode(t *testing.T) {
 	} {
 		t.Run(tc.mode, func(t *testing.T) {
 			limits := Limits{DeletionMode: tc.mode}
+			limits.RegisterFlags(flag.NewFlagSet("test", flag.ExitOnError))
+			limits.DeletionMode = tc.mode
 			require.ErrorIs(t, limits.Validate(), tc.expected)
 		})
 	}
