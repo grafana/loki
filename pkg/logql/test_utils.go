@@ -35,13 +35,13 @@ type MockQuerier struct {
 }
 
 func (q MockQuerier) extractOldShard(xs []string) (*astmapper.ShardAnnotation, error) {
-	parsed, err := ParseShards(xs)
+	parsed, version, err := ParseShards(xs)
 	if err != nil {
 		return nil, err
 	}
 
-	if parsed[0].PowerOfTwo == nil {
-		return nil, fmt.Errorf("shard is not a power of two")
+	if version != PowerOfTwoVersion {
+		return nil, fmt.Errorf("unsupported shard version: %d", version)
 	}
 
 	return parsed[0].PowerOfTwo, nil

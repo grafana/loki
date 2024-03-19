@@ -125,6 +125,13 @@ func (s Shard) String() string {
 
 type Shards []Shard
 
+type ShardVersion uint8
+
+const (
+	PowerOfTwoVersion ShardVersion = iota
+	BoundedVersion
+)
+
 func (xs Shards) Encode() (encoded []string) {
 	for _, shard := range xs {
 		encoded = append(encoded, shard.String())
@@ -134,38 +141,45 @@ func (xs Shards) Encode() (encoded []string) {
 }
 
 // ParseShards parses a list of string encoded shards
-func ParseShards(strs []string) (Shards, error) {
+func ParseShards(strs []string) (Shards, ShardVersion, error) {
 	if len(strs) == 0 {
-		return nil, nil
+		return nil, PowerOfTwoVersion, nil
 	}
 	shards := make(Shards, 0, len(strs))
 
-	for _, str := range strs {
-		shard, err := ParseShard(str)
+	var prevVersion ShardVersion
+	for i, str := range strs {
+		shard, version, err := ParseShard(str)
 		if err != nil {
-			return nil, err
+			return nil, PowerOfTwoVersion, err
+		}
+
+		if i == 0 {
+			prevVersion = version
+		} else if prevVersion != version {
+			return nil, PowerOfTwoVersion, errors.New("shards must be of the same version")
 		}
 		shards = append(shards, shard)
 	}
-	return shards, nil
+	return shards, prevVersion, nil
 }
 
-func ParseShard(s string) (Shard, error) {
+func ParseShard(s string) (Shard, ShardVersion, error) {
 
 	var bounded logproto.Shard
 	v2Err := json.Unmarshal([]byte(s), &bounded)
 	if v2Err == nil {
-		return Shard{Bounded: &bounded}, nil
+		return Shard{Bounded: &bounded}, BoundedVersion, nil
 	}
 
 	old, v1Err := astmapper.ParseShard(s)
 	if v1Err == nil {
-		return Shard{PowerOfTwo: &old}, nil
+		return Shard{PowerOfTwo: &old}, PowerOfTwoVersion, nil
 	}
 
 	err := errors.Wrap(
 		multierror.New(v1Err, v2Err).Err(),
 		"failed to parse shard",
 	)
-	return Shard{}, err
+	return Shard{}, PowerOfTwoVersion, err
 }
