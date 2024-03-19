@@ -195,7 +195,20 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	mapper := logql.NewShardMapper(resolver, ast.metrics, ast.shardAggregation)
+	v := ast.limits.TSDBShardingStrategy(tenants[0])
+	version, err := logql.ParseShardVersion(v)
+	if err != nil {
+		level.Warn(logger).Log(
+			"msg", "failed to parse shard version",
+			"fallback", version.String(),
+			"err", err.Error(),
+			"user", tenants[0],
+			"query", r.GetQuery(),
+		)
+	}
+	strategy := version.Strategy(resolver, uint64(ast.limits.TSDBMaxBytesPerShard(tenants[0])))
+
+	mapper := logql.NewShardMapper(strategy, ast.metrics, ast.shardAggregation)
 
 	noop, bytesPerShard, parsed, err := mapper.Parse(params.GetExpression())
 	if err != nil {

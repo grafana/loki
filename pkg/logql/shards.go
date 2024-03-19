@@ -14,6 +14,50 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+type Shards []Shard
+
+type ShardVersion uint8
+
+const (
+	PowerOfTwoVersion ShardVersion = iota
+	BoundedVersion
+)
+
+func (v ShardVersion) Strategy(resolver ShardResolver, defaultTargetShardBytes uint64) ShardingStrategy {
+	switch v {
+	case BoundedVersion:
+		return NewDynamicBoundsStrategy(resolver, defaultTargetShardBytes)
+	default:
+		// TODO(owen-d): refactor, ugly, etc, but the power of two strategy already populated
+		// the default target shard bytes through it's resolver
+		return NewPowerOfTwoStrategy(resolver)
+	}
+}
+
+func (v ShardVersion) String() string {
+	switch v {
+	case PowerOfTwoVersion:
+		return "power_of_two"
+	case BoundedVersion:
+		return "bounded"
+	default:
+		return "unknown"
+	}
+}
+
+var validStrategies = map[string]ShardVersion{
+	PowerOfTwoVersion.String(): PowerOfTwoVersion,
+	BoundedVersion.String():    BoundedVersion,
+}
+
+func ParseShardVersion(s string) (ShardVersion, error) {
+	v, ok := validStrategies[s]
+	if !ok {
+		return PowerOfTwoVersion, errors.Errorf("invalid shard version %s", s)
+	}
+	return v, nil
+}
+
 type ShardResolver interface {
 	Shards(expr syntax.Expr) (int, uint64, error)
 	ShardingRanges(expr syntax.Expr, targetBytesPerShard uint64) ([]logproto.Shard, error)
@@ -149,15 +193,6 @@ func (s Shard) String() string {
 
 	return s.PowerOfTwo.String()
 }
-
-type Shards []Shard
-
-type ShardVersion uint8
-
-const (
-	PowerOfTwoVersion ShardVersion = iota
-	BoundedVersion
-)
 
 func (xs Shards) Encode() (encoded []string) {
 	for _, shard := range xs {
