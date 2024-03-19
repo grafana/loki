@@ -306,7 +306,7 @@ func (t *Loki) initOverridesExporter() (services.Service, error) {
 }
 
 func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
-	t.tenantConfigs, err = runtime.NewTenantConfigs(tenantConfigFromRuntimeConfig(t.runtimeConfig))
+	t.tenantConfigs, err = runtime.NewTenantConfigs(newTenantConfigProvider(t.runtimeConfig))
 	// tenantConfigs are not a service, since they don't have any operational state.
 	return nil, err
 }
@@ -1325,6 +1325,9 @@ func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
 }
 
 func (t *Loki) initBloomGateway() (services.Service, error) {
+	if !t.Cfg.BloomGateway.Enabled {
+		return nil, nil
+	}
 	logger := log.With(util_log.Logger, "component", "bloom-gateway")
 
 	gateway, err := bloomgateway.New(t.Cfg.BloomGateway, t.BloomStore, logger, prometheus.DefaultRegisterer)
@@ -1336,6 +1339,9 @@ func (t *Loki) initBloomGateway() (services.Service, error) {
 }
 
 func (t *Loki) initBloomGatewayRing() (services.Service, error) {
+	if !t.Cfg.BloomGateway.Enabled {
+		return nil, nil
+	}
 	// Inherit ring listen port from gRPC config
 	t.Cfg.BloomGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
@@ -1345,7 +1351,7 @@ func (t *Loki) initBloomGatewayRing() (services.Service, error) {
 	if t.Cfg.isModuleEnabled(BloomGateway) || t.Cfg.isModuleEnabled(Backend) || legacyReadMode {
 		mode = lokiring.ServerMode
 	}
-	manager, err := lokiring.NewRingManager(bloomGatewayRingKey, mode, t.Cfg.BloomGateway.Ring.RingConfig, t.Cfg.BloomGateway.Ring.ReplicationFactor, t.Cfg.BloomGateway.Ring.Tokens, util_log.Logger, prometheus.DefaultRegisterer)
+	manager, err := lokiring.NewRingManager(bloomGatewayRingKey, mode, t.Cfg.BloomGateway.Ring, t.Cfg.BloomGateway.Ring.ReplicationFactor, t.Cfg.BloomGateway.Ring.NumTokens, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "error initializing bloom gateway ring manager")
 	}
@@ -1442,7 +1448,7 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	if t.Cfg.isModuleEnabled(IndexGateway) || legacyReadMode || t.Cfg.isModuleEnabled(Backend) {
 		managerMode = lokiring.ServerMode
 	}
-	rm, err := lokiring.NewRingManager(indexGatewayRingKey, managerMode, t.Cfg.IndexGateway.Ring.RingConfig, t.Cfg.IndexGateway.Ring.ReplicationFactor, 128, util_log.Logger, prometheus.DefaultRegisterer)
+	rm, err := lokiring.NewRingManager(indexGatewayRingKey, managerMode, t.Cfg.IndexGateway.Ring, t.Cfg.IndexGateway.Ring.ReplicationFactor, indexgateway.NumTokens, util_log.Logger, prometheus.DefaultRegisterer)
 
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new index gateway ring manager")
@@ -1469,6 +1475,9 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 }
 
 func (t *Loki) initBloomCompactor() (services.Service, error) {
+	if !t.Cfg.BloomCompactor.Enabled {
+		return nil, nil
+	}
 	logger := log.With(util_log.Logger, "component", "bloom-compactor")
 
 	shuffleSharding := util_ring.NewTenantShuffleSharding(t.bloomCompactorRingManager.Ring, t.bloomCompactorRingManager.RingLifecycler, t.Overrides.BloomCompactorShardSize)
@@ -1488,12 +1497,15 @@ func (t *Loki) initBloomCompactor() (services.Service, error) {
 }
 
 func (t *Loki) initBloomCompactorRing() (services.Service, error) {
+	if !t.Cfg.BloomCompactor.Enabled {
+		return nil, nil
+	}
 	t.Cfg.BloomCompactor.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	// is LegacyMode needed?
 	// legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
 
-	rm, err := lokiring.NewRingManager(bloomCompactorRingKey, lokiring.ServerMode, t.Cfg.BloomCompactor.Ring.RingConfig, 1, t.Cfg.BloomCompactor.Ring.Tokens, util_log.Logger, prometheus.DefaultRegisterer)
+	rm, err := lokiring.NewRingManager(bloomCompactorRingKey, lokiring.ServerMode, t.Cfg.BloomCompactor.Ring, 1, t.Cfg.BloomCompactor.Ring.NumTokens, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "error initializing bloom-compactor ring manager")
 	}
@@ -1534,9 +1546,7 @@ func (t *Loki) initQuerySchedulerRing() (_ services.Service, err error) {
 	if t.Cfg.isModuleEnabled(QueryScheduler) || t.Cfg.isModuleEnabled(Backend) || t.Cfg.isModuleEnabled(All) || (t.Cfg.LegacyReadTarget && t.Cfg.isModuleEnabled(Read)) {
 		managerMode = lokiring.ServerMode
 	}
-	rf := 2     // ringReplicationFactor should be 2 because we want 2 schedulers.
-	tokens := 1 // we only need to insert 1 token to be used for leader election purposes.
-	rm, err := lokiring.NewRingManager(schedulerRingKey, managerMode, t.Cfg.QueryScheduler.SchedulerRing, rf, tokens, util_log.Logger, prometheus.DefaultRegisterer)
+	rm, err := lokiring.NewRingManager(schedulerRingKey, managerMode, t.Cfg.QueryScheduler.SchedulerRing, scheduler.ReplicationFactor, scheduler.NumTokens, util_log.Logger, prometheus.DefaultRegisterer)
 
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new scheduler ring manager")
