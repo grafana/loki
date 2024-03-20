@@ -121,8 +121,7 @@ type Entry struct {
 	Key   string
 	Value BlockDirectory
 
-	created  time.Time
-	accessed time.Time
+	created time.Time
 
 	refCount *atomic.Int32
 }
@@ -229,7 +228,6 @@ func (c *BlocksCache) PutInc(ctx context.Context, key string, value BlockDirecto
 		return err
 	}
 
-	entry.accessed = time.Now()
 	entry.refCount.Inc()
 	return nil
 }
@@ -359,7 +357,6 @@ func (c *BlocksCache) get(_ context.Context, key string) *Entry {
 	}
 
 	entry := element.Value.(*Entry)
-	entry.accessed = time.Now()
 	entry.refCount.Inc()
 
 	c.lru.MoveToFront(element)
