@@ -30,8 +30,8 @@ import (
 	gerrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/version"
 
 	"github.com/grafana/loki/pkg/bloomcompactor"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
