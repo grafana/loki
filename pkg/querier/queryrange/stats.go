@@ -160,6 +160,8 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &stats.Result{} // TODO: support stats in proto
 					totalEntries = 1
 					queryType = queryTypeStats
+				case *ShardsResponse:
+					// Nothing to do here, although we may add more visibility in the future
 				default:
 					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
 				}

@@ -432,6 +432,10 @@ func (m *ShardsRequest) WithQuery(query string) definitions.Request {
 	return &clone
 }
 
+func (m *ShardsRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	return m.WithStartEnd(start, end).(resultscache.Request)
+}
+
 func (m *ShardsRequest) LogToSpan(sp opentracing.Span) {
 	fields := []otlog.Field{
 		otlog.String("from", timestamp.Time(int64(m.From)).String()),

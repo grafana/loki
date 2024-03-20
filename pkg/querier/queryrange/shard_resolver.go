@@ -36,14 +36,15 @@ func shardResolverForConf(
 	maxParallelism int,
 	maxShards int,
 	r queryrangebase.Request,
-	handler queryrangebase.Handler,
+	statsHandler, next queryrangebase.Handler,
 	limits Limits,
 ) (logql.ShardResolver, bool) {
 	if conf.IndexType == config.TSDBType {
 		return &dynamicShardResolver{
 			ctx:             ctx,
 			logger:          logger,
-			handler:         handler,
+			statsHandler:    statsHandler,
+			next:            next,
 			limits:          limits,
 			from:            model.Time(r.GetStart().UnixMilli()),
 			through:         model.Time(r.GetEnd().UnixMilli()),
@@ -59,10 +60,13 @@ func shardResolverForConf(
 }
 
 type dynamicShardResolver struct {
-	ctx     context.Context
-	handler queryrangebase.Handler
-	logger  log.Logger
-	limits  Limits
+	ctx context.Context
+	// TODO(owen-d): shouldn't have to fork handlers here -- one should just transparently handle the right logic
+	// depending on the underlying type?
+	statsHandler queryrangebase.Handler // index stats handler (hooked up to results cache, etc)
+	next         queryrangebase.Handler // next handler in the chain (used for non-stats reqs)
+	logger       log.Logger
+	limits       Limits
 
 	from, through   model.Time
 	maxParallelism  int
@@ -155,7 +159,7 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 		grps = append(grps, syntax.MatcherRange{})
 	}
 
-	results, err := getStatsForMatchers(ctx, log, r.handler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
+	results, err := getStatsForMatchers(ctx, log, r.statsHandler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
 	if err != nil {
 		return stats.Stats{}, err
 	}
@@ -246,7 +250,7 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	exprStr := expr.String()
 	// try to get shards for the given expression
 	// if it fails, fallback to linearshards based on stats
-	resp, err := r.handler.Do(ctx, &logproto.ShardsRequest{
+	resp, err := r.next.Do(ctx, &logproto.ShardsRequest{
 		From:                adjustedFrom,
 		Through:             r.through,
 		Query:               expr.String(),
