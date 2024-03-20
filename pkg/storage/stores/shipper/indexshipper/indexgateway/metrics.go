@@ -3,6 +3,7 @@ package indexgateway
 import (
 	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 const (
@@ -15,16 +16,16 @@ type Metrics struct {
 	postFilterChunks *prometheus.HistogramVec
 }
 
-func NewMetrics(registerer prometheus.Registerer) *Metrics {
+func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
-		preFilterChunks: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		preFilterChunks: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Subsystem: "index_gateway",
 			Name:      "prefilter_chunks",
 			Help:      "Number of chunks before filtering",
 			Buckets:   prometheus.ExponentialBuckets(1, 4, 10),
 		}, []string{"route"}),
-		postFilterChunks: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		postFilterChunks: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Subsystem: "index_gateway",
 			Name:      "postfilter_chunks",
