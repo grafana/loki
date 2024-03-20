@@ -50,10 +50,16 @@ func (s *firstTokenRetentionSharding) OwnsRetention() (bool, error) {
 	instance := slices.MinFunc(rs.Instances, func(a, b ring.InstanceDesc) int {
 		smallerA := slices.Min(a.GetTokens())
 		smallerB := slices.Min(b.GetTokens())
-		return int(smallerA - smallerB)
+		if smallerA < smallerB {
+			return -1
+		}
+		if smallerA > smallerB {
+			return 1
+		}
+		return 0
 	})
 
-	return instance.GetAddr() == s.ringLifeCycler.GetInstanceID(), nil
+	return instance.GetId() == s.ringLifeCycler.GetInstanceID(), nil
 }
 
 type RetentionConfig struct {
@@ -98,7 +104,7 @@ func NewRetentionManager(
 		bloomStore: bloomStore,
 		sharding:   sharding,
 		metrics:    metrics,
-		logger:     log.With(logger, "component", "retention-manager"),
+		logger:     log.With(logger, "subcomponent", "retention-manager"),
 		now:        model.Now,
 		lastDayRun: storageconfig.NewDayTime(model.Earliest),
 	}
@@ -106,6 +112,14 @@ func NewRetentionManager(
 
 func (r *RetentionManager) Apply(ctx context.Context) error {
 	if !r.cfg.Enabled {
+		level.Debug(r.logger).Log("msg", "retention is disabled")
+		return nil
+	}
+
+	start := r.now()
+	today := storageconfig.NewDayTime(start)
+	if !today.After(r.lastDayRun) {
+		// We've already run retention for today
 		return nil
 	}
 
@@ -114,13 +128,7 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 		return errors.Wrap(err, "checking if compactor owns retention")
 	}
 	if !ownsRetention {
-		return nil
-	}
-
-	start := r.now()
-	today := storageconfig.NewDayTime(start)
-	if !today.After(r.lastDayRun) {
-		// We've already run retention for today
+		level.Debug(r.logger).Log("msg", "this compactor doesn't own retention")
 		return nil
 	}
 

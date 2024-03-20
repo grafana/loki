@@ -2,12 +2,15 @@ package bloomcompactor
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"math"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -20,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -331,6 +335,73 @@ func TestRetentionRunsOncePerDay(t *testing.T) {
 	metas = getGroupedMetasForLastNDays(t, bloomStore, "1", testTime, 100)
 	require.Equal(t, 1, len(metas))
 	require.Equal(t, 30, len(metas[0])) // 0th-30th day
+}
+
+func TestOwnsRetention(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		numCompactors int
+	}{
+		{
+			name:          "single compactor",
+			numCompactors: 1,
+		},
+		{
+			name:          "multiple compactors",
+			numCompactors: 100,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var ringManagers []*lokiring.RingManager
+			for i := 0; i < tc.numCompactors; i++ {
+				var cfg Config
+				cfg.RegisterFlags(flag.NewFlagSet("ring", flag.PanicOnError))
+				cfg.Ring.KVStore.Store = "inmemory"
+				cfg.Ring.InstanceID = fmt.Sprintf("bloom-compactor-%d", i)
+				cfg.Ring.InstanceAddr = fmt.Sprintf("localhost-%d", i)
+
+				ringManager, err := lokiring.NewRingManager("bloom-compactor", lokiring.ServerMode, cfg.Ring, 1, cfg.Ring.NumTokens, util_log.Logger, prometheus.NewRegistry())
+				require.NoError(t, err)
+				require.NoError(t, ringManager.StartAsync(context.Background()))
+
+				ringManagers = append(ringManagers, ringManager)
+			}
+			t.Cleanup(func() {
+				// Stop all rings and wait for them to stop.
+				for _, ringManager := range ringManagers {
+					ringManager.StopAsync()
+					require.Eventually(t, func() bool {
+						return ringManager.State() == services.Terminated
+					}, 1*time.Minute, 100*time.Millisecond)
+				}
+			})
+
+			// Wait for all rings to see each other.
+			for _, ringManager := range ringManagers {
+				require.Eventually(t, func() bool {
+					running := ringManager.State() == services.Running
+					discovered := ringManager.Ring.InstancesCount() == tc.numCompactors
+					return running && discovered
+				}, 1*time.Minute, 100*time.Millisecond)
+			}
+
+			var shardings []retentionSharding
+			for _, ringManager := range ringManagers {
+				shardings = append(shardings, newFirstTokenRetentionSharding(ringManager.Ring, ringManager.RingLifecycler))
+			}
+
+			var ownsRetention int
+			for _, sharding := range shardings {
+				owns, err := sharding.OwnsRetention()
+				require.NoError(t, err)
+				if owns {
+					ownsRetention++
+				}
+			}
+
+			require.Equal(t, 1, ownsRetention)
+		})
+	}
 }
 
 func putMetasForLastNDays(t *testing.T, schemaCfg storageconfig.SchemaConfig, bloomStore *bloomshipper.BloomStore, tenant string, start model.Time, days int) {
