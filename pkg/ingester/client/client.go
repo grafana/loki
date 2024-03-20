@@ -2,9 +2,10 @@ package client
 
 import (
 	"flag"
-	"github.com/grafana/loki/pkg/util/server"
 	"io"
 	"time"
+
+	"github.com/grafana/loki/pkg/util/server"
 
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/middleware"

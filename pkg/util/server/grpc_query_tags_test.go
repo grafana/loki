@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 func TestInjectQueryTagsIntoGRPCRequest(t *testing.T) {
