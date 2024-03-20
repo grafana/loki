@@ -8,11 +8,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 var (
