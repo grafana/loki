@@ -321,10 +321,7 @@ func TestBlocksCache_RefCounter(t *testing.T) {
 
 	ctx := context.Background()
 
-	_ = cache.Put(ctx, "a", CacheValue("a", 5))
-	require.Equal(t, int32(0), cache.entries["a"].Value.(*Entry).refCount.Load())
-
-	_, _ = cache.Get(ctx, "a")
+	_ = cache.PutInc(ctx, "a", CacheValue("a", 5))
 	require.Equal(t, int32(1), cache.entries["a"].Value.(*Entry).refCount.Load())
 
 	_, _ = cache.Get(ctx, "a")
