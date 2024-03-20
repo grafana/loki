@@ -826,4 +826,5 @@ scan-vulnerabilities: trivy snyk
 
 .PHONY: release-workflows
 release-workflows:
+	pushd $(CURDIR)/.github && jb update && popd
 	jsonnet -SJ .github/vendor -m .github/workflows .github/release-workflows.jsonnet

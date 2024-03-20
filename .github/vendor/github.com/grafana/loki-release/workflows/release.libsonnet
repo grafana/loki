@@ -33,6 +33,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
       + step.withRun(|||
         npm install
         npm exec -- release-please release-pr \
+          --changelog-path "${CHANGELOG_PATH}" \
           --consider-all-branches \
           --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --label "backport main,autorelease: pending,product-approved" \
@@ -65,6 +66,8 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    shouldRelease: '${{ steps.should_release.outputs.shouldRelease }}',
                    sha: '${{ steps.should_release.outputs.sha }}',
                    name: '${{ steps.should_release.outputs.name }}',
+                   prNumber: '${{ steps.should_release.outputs.prNumber }}',
+                   isLatest: '${{ steps.should_release.outputs.isLatest }}',
                    branch: '${{ steps.extract_branch.outputs.branch }}',
 
                  }),
@@ -119,7 +122,8 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                        --release-type simple \
                        --repo-url "${{ env.RELEASE_REPO }}" \
                        --target-branch "${{ needs.shouldRelease.outputs.branch }}" \
-                       --token "${{ steps.github_app_token.outputs.token }}"
+                       --token "${{ steps.github_app_token.outputs.token }}" \
+                       --shas-to-tag "${{ needs.shouldRelease.outputs.prNumber }}:${{ needs.shouldRelease.outputs.sha }}"
                    |||),
 
                    releaseStep('upload artifacts')
@@ -130,10 +134,20 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    + step.withRun(|||
                      gh release upload --clobber ${{ needs.shouldRelease.outputs.name }} dist/*
                    |||),
+
+                   step.new('release artifacts', 'google-github-actions/upload-cloud-storage@v2')
+                   + step.withIf('${{ fromJSON(env.PUBLISH_TO_GCS) }}')
+                   + step.with({
+                     path: 'release/dist',
+                     destination: '${{ env.PUBLISH_BUCKET }}',
+                     parent: false,
+                     process_gcloudignore: false,
+                   }),
                  ])
                  + job.withOutputs({
                    sha: '${{ needs.shouldRelease.outputs.sha }}',
                    name: '${{ needs.shouldRelease.outputs.name }}',
+                   isLatest: '${{ needs.shouldRelease.outputs.isLatest }}',
                    draft: '${{ steps.check_release.outputs.draft }}',
                    exists: '${{ steps.check_release.outputs.exists }}',
                  }),
@@ -183,7 +197,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                       GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
                     })
                     + step.withRun(|||
-                      gh release edit ${{ needs.createRelease.outputs.name }} --draft=false
+                      gh release edit ${{ needs.createRelease.outputs.name }} --draft=false --latest=${{ needs.createRelease.outputs.isLatest }}
                     |||),
                   ]),
 }
