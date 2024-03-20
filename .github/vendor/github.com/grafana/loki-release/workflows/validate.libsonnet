@@ -1,7 +1,7 @@
 local common = import 'common.libsonnet';
 local job = common.job;
 local step = common.step;
-local releaseStep = common.releaseStep;
+local _validationJob = common.validationJob;
 
 local setupValidationDeps = function(job) job {
   steps: [
@@ -36,50 +36,54 @@ local setupValidationDeps = function(job) job {
   ] + job.steps,
 };
 
-local validationJob = function(buildImage) job.new()
-                                           + job.withContainer({
-                                             image: buildImage,
-                                           })
-                                           + job.withEnv({
-                                             BUILD_IN_CONTAINER: false,
-                                             SKIP_VALIDATION: '${{ inputs.skip_validation }}',
-                                           });
+local validationJob = _validationJob(false);
 
-
-function(buildImage) {
+{
   local validationMakeStep = function(name, target)
     step.new(name)
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
     + step.withRun(common.makeTarget(target)),
 
   test: setupValidationDeps(
-    validationJob(buildImage)
+    validationJob
     + job.withSteps([
       validationMakeStep('test', 'test'),
     ])
   ),
 
-  lint: setupValidationDeps(
-    validationJob(buildImage)
+  integration: setupValidationDeps(
+    validationJob
     + job.withSteps([
-      validationMakeStep('lint', 'lint'),
-      validationMakeStep('lint jsonnet', 'lint-jsonnet'),
-      validationMakeStep('lint scripts', 'lint-scripts'),
-      validationMakeStep('format', 'check-format'),
-    ]) + {
-      steps+: [
+      validationMakeStep('integration', 'test-integration'),
+    ])
+  ),
+
+  lint: setupValidationDeps(
+    validationJob
+    + job.withSteps(
+      [
+        validationMakeStep('lint', 'lint'),
+        validationMakeStep('lint jsonnet', 'lint-jsonnet'),
+        validationMakeStep('lint scripts', 'lint-scripts'),
+        step.new('check format')
+        + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
+        + step.withRun(|||
+          git fetch origin
+          make check-format
+        |||),
+      ] + [
         step.new('golangci-lint', 'golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
         + step.with({
-          version: 'v1.55.1',
+          version: '${{ inputs.golang_ci_lint_version }}',
           'only-new-issues': true,
         }),
       ],
-    }
+    )
   ),
 
   check: setupValidationDeps(
-    validationJob(buildImage)
+    validationJob
     + job.withSteps([
       validationMakeStep('check generated files', 'check-generated-files'),
       validationMakeStep('check mod', 'check-mod'),

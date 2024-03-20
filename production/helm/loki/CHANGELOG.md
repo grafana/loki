@@ -13,6 +13,26 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.46.0
+
+- [CHANGE] Changed version of Loki to 2.9.5
+
+## 5.45.0
+
+- [CHANGE] Add extraContainers parameter for the read pod
+
+## 5.44.4
+
+- [ENHANCEMENT] Use http_listen_port for `compactorAddress`.
+
+## 5.44.3
+
+- [BUGFIX] Fix template error: `<.Values.loki.server.http_listen_port>: can't evaluate field Values in type interface {}`
+
+## 5.44.2
+
+- [BUGFIX] Fix usage of `http_listen_port` and `grpc_listen_port` field in template.
+
 ## 5.44.1
 
 - [BUGFIX] Fix `compactorAddress` field: add protocol and port.

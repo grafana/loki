@@ -120,6 +120,7 @@ require (
 	github.com/IBM/ibm-cos-sdk-go v1.10.0
 	github.com/axiomhq/hyperloglog v0.0.0-20240124082744-24bca3a5b39b
 	github.com/d4l3k/messagediff v1.2.1
+	github.com/dolthub/swiss v0.2.1
 	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gogo/googleapis v1.4.0
@@ -138,7 +139,7 @@ require (
 	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b
 	golang.org/x/oauth2 v0.11.0
 	golang.org/x/text v0.14.0
-	google.golang.org/protobuf v1.31.0
+	google.golang.org/protobuf v1.33.0
 	k8s.io/apimachinery v0.28.1
 	k8s.io/utils v0.0.0-20230711102312-30195339c3c7
 )
@@ -199,6 +200,7 @@ require (
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-metrics v0.0.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
+	github.com/dolthub/maphash v0.1.0 // indirect
 	github.com/eapache/go-resiliency v1.3.0 // indirect
 	github.com/eapache/go-xerial-snappy v0.0.0-20230111030713-bf00bc1b83b6 // indirect
 	github.com/eapache/queue v1.1.0 // indirect

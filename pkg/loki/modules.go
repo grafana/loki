@@ -86,46 +86,47 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 
 // The various modules that make up Loki.
 const (
-	Ring                     string = "ring"
-	RuntimeConfig            string = "runtime-config"
-	Overrides                string = "overrides"
-	OverridesExporter        string = "overrides-exporter"
-	TenantConfigs            string = "tenant-configs"
-	Server                   string = "server"
-	InternalServer           string = "internal-server"
-	Distributor              string = "distributor"
-	Ingester                 string = "ingester"
-	Querier                  string = "querier"
-	CacheGenerationLoader    string = "cache-generation-loader"
-	IngesterQuerier          string = "ingester-querier"
-	QueryFrontend            string = "query-frontend"
-	QueryFrontendTripperware string = "query-frontend-tripperware"
-	QueryLimiter             string = "query-limiter"
-	QueryLimitsInterceptors  string = "query-limits-interceptors"
-	QueryLimitsTripperware   string = "query-limits-tripper"
-	RulerStorage             string = "ruler-storage"
-	Ruler                    string = "ruler"
-	RuleEvaluator            string = "rule-evaluator"
-	Store                    string = "store"
-	TableManager             string = "table-manager"
-	MemberlistKV             string = "memberlist-kv"
-	Compactor                string = "compactor"
-	BloomGateway             string = "bloom-gateway"
-	BloomGatewayRing         string = "bloom-gateway-ring"
-	IndexGateway             string = "index-gateway"
-	IndexGatewayRing         string = "index-gateway-ring"
-	IndexGatewayInterceptors string = "index-gateway-interceptors"
-	QueryScheduler           string = "query-scheduler"
-	QuerySchedulerRing       string = "query-scheduler-ring"
-	BloomCompactor           string = "bloom-compactor"
-	BloomCompactorRing       string = "bloom-compactor-ring"
-	BloomStore               string = "bloom-store"
-	All                      string = "all"
-	Read                     string = "read"
-	Write                    string = "write"
-	Backend                  string = "backend"
-	Analytics                string = "analytics"
-	InitCodec                string = "init-codec"
+	Ring                          string = "ring"
+	RuntimeConfig                 string = "runtime-config"
+	Overrides                     string = "overrides"
+	OverridesExporter             string = "overrides-exporter"
+	TenantConfigs                 string = "tenant-configs"
+	Server                        string = "server"
+	InternalServer                string = "internal-server"
+	Distributor                   string = "distributor"
+	Querier                       string = "querier"
+	CacheGenerationLoader         string = "cache-generation-loader"
+	Ingester                      string = "ingester"
+	IngesterQuerier               string = "ingester-querier"
+	IngesterQueryTagsInterceptors string = "ingester-query-tags-interceptors"
+	QueryFrontend                 string = "query-frontend"
+	QueryFrontendTripperware      string = "query-frontend-tripperware"
+	QueryLimiter                  string = "query-limiter"
+	QueryLimitsInterceptors       string = "query-limits-interceptors"
+	QueryLimitsTripperware        string = "query-limits-tripper"
+	RulerStorage                  string = "ruler-storage"
+	Ruler                         string = "ruler"
+	RuleEvaluator                 string = "rule-evaluator"
+	Store                         string = "store"
+	TableManager                  string = "table-manager"
+	MemberlistKV                  string = "memberlist-kv"
+	Compactor                     string = "compactor"
+	BloomGateway                  string = "bloom-gateway"
+	BloomGatewayRing              string = "bloom-gateway-ring"
+	IndexGateway                  string = "index-gateway"
+	IndexGatewayRing              string = "index-gateway-ring"
+	IndexGatewayInterceptors      string = "index-gateway-interceptors"
+	QueryScheduler                string = "query-scheduler"
+	QuerySchedulerRing            string = "query-scheduler-ring"
+	BloomCompactor                string = "bloom-compactor"
+	BloomCompactorRing            string = "bloom-compactor-ring"
+	BloomStore                    string = "bloom-store"
+	All                           string = "all"
+	Read                          string = "read"
+	Write                         string = "write"
+	Backend                       string = "backend"
+	Analytics                     string = "analytics"
+	InitCodec                     string = "init-codec"
 )
 
 const (
@@ -306,7 +307,7 @@ func (t *Loki) initOverridesExporter() (services.Service, error) {
 }
 
 func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
-	t.tenantConfigs, err = runtime.NewTenantConfigs(tenantConfigFromRuntimeConfig(t.runtimeConfig))
+	t.tenantConfigs, err = runtime.NewTenantConfigs(newTenantConfigProvider(t.runtimeConfig))
 	// tenantConfigs are not a service, since they don't have any operational state.
 	return nil, err
 }
@@ -1325,6 +1326,9 @@ func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
 }
 
 func (t *Loki) initBloomGateway() (services.Service, error) {
+	if !t.Cfg.BloomGateway.Enabled {
+		return nil, nil
+	}
 	logger := log.With(util_log.Logger, "component", "bloom-gateway")
 
 	gateway, err := bloomgateway.New(t.Cfg.BloomGateway, t.BloomStore, logger, prometheus.DefaultRegisterer)
@@ -1336,6 +1340,9 @@ func (t *Loki) initBloomGateway() (services.Service, error) {
 }
 
 func (t *Loki) initBloomGatewayRing() (services.Service, error) {
+	if !t.Cfg.BloomGateway.Enabled {
+		return nil, nil
+	}
 	// Inherit ring listen port from gRPC config
 	t.Cfg.BloomGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
@@ -1469,6 +1476,9 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 }
 
 func (t *Loki) initBloomCompactor() (services.Service, error) {
+	if !t.Cfg.BloomCompactor.Enabled {
+		return nil, nil
+	}
 	logger := log.With(util_log.Logger, "component", "bloom-compactor")
 
 	shuffleSharding := util_ring.NewTenantShuffleSharding(t.bloomCompactorRingManager.Ring, t.bloomCompactorRingManager.RingLifecycler, t.Overrides.BloomCompactorShardSize)
@@ -1488,6 +1498,9 @@ func (t *Loki) initBloomCompactor() (services.Service, error) {
 }
 
 func (t *Loki) initBloomCompactorRing() (services.Service, error) {
+	if !t.Cfg.BloomCompactor.Enabled {
+		return nil, nil
+	}
 	t.Cfg.BloomCompactor.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	// is LegacyMode needed?
@@ -1562,6 +1575,14 @@ func (t *Loki) initQueryLimitsInterceptors() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing query limits interceptors")
 	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, querylimits.ServerQueryLimitsInterceptor)
 	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, querylimits.StreamServerQueryLimitsInterceptor)
+
+	return nil, nil
+}
+
+func (t *Loki) initIngesterQueryTagsInterceptors() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing ingester query tags interceptors")
+	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, serverutil.StreamServerQueryTagsInterceptor)
+	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, serverutil.UnaryServerQueryTagsInterceptor)
 
 	return nil, nil
 }
