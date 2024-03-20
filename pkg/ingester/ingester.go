@@ -875,6 +875,8 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
 
+	level.Info(i.logger).Log("msg", "Query: query tags from ctx", "value", getQueryTags(ctx))
+
 	if req.Plan == nil {
 		parsed, err := syntax.ParseLogSelector(req.Selector, true)
 		if err != nil {
@@ -934,6 +936,8 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
 	sp := opentracing.SpanFromContext(ctx)
+
+	level.Info(i.logger).Log("msg", "Query: query tags from ctx", "value", getQueryTags(ctx))
 
 	// If the plan is empty we want all series to be returned.
 	if req.Plan == nil {

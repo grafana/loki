@@ -6,7 +6,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -31,6 +33,9 @@ func injectIntoGRPCRequest(ctx context.Context) (context.Context, error) {
 	}
 	md = md.Copy()
 	md.Set("x-query-tags", queryTags)
+
+	level.Info(util_log.Logger).Log("msg", "inject query tag", "value", queryTags)
+
 	newCtx := metadata.NewOutgoingContext(ctx, md)
 
 	return newCtx, nil
@@ -47,6 +52,8 @@ func extractFromGRPCRequest(ctx context.Context) (context.Context, error) {
 	if !ok || len(headerValues) == 0 {
 		return ctx, nil
 	}
+
+	level.Info(util_log.Logger).Log("msg", "extract query tag", "value", headerValues[0])
 
 	return context.WithValue(ctx, httpreq.QueryTagsHTTPHeader, headerValues[0]), nil
 }
