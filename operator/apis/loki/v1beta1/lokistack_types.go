@@ -829,6 +829,30 @@ func init() {
 	SchemeBuilder.Register(&LokiStack{}, &LokiStackList{})
 }
 
+func convertStatusV1(src PodStatusMap) v1.PodStatusMap {
+	if src == nil {
+		return nil
+	}
+
+	dst := v1.PodStatusMap{}
+	for k, v := range src {
+		dst[v1.PodStatus(k)] = v
+	}
+	return dst
+}
+
+func convertStatusBeta(src v1.PodStatusMap) PodStatusMap {
+	if src == nil {
+		return nil
+	}
+
+	dst := PodStatusMap{}
+	for k, v := range src {
+		dst[corev1.PodPhase(k)] = v
+	}
+	return dst
+}
+
 // ConvertTo converts this LokiStack (v1beta1) to the Hub version (v1).
 func (src *LokiStack) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1.LokiStack)
@@ -836,14 +860,14 @@ func (src *LokiStack) ConvertTo(dstRaw conversion.Hub) error {
 	dst.ObjectMeta = src.ObjectMeta
 	dst.Status.Conditions = src.Status.Conditions
 	dst.Status.Components = v1.LokiStackComponentStatus{
-		Compactor:     v1.PodStatusMap(src.Status.Components.Compactor),
-		Distributor:   v1.PodStatusMap(src.Status.Components.Distributor),
-		Ingester:      v1.PodStatusMap(src.Status.Components.Ingester),
-		Querier:       v1.PodStatusMap(src.Status.Components.Querier),
-		QueryFrontend: v1.PodStatusMap(src.Status.Components.QueryFrontend),
-		IndexGateway:  v1.PodStatusMap(src.Status.Components.IndexGateway),
-		Ruler:         v1.PodStatusMap(src.Status.Components.Ruler),
-		Gateway:       v1.PodStatusMap(src.Status.Components.Gateway),
+		Compactor:     convertStatusV1(src.Status.Components.Compactor),
+		Distributor:   convertStatusV1(src.Status.Components.Distributor),
+		Ingester:      convertStatusV1(src.Status.Components.Ingester),
+		Querier:       convertStatusV1(src.Status.Components.Querier),
+		QueryFrontend: convertStatusV1(src.Status.Components.QueryFrontend),
+		IndexGateway:  convertStatusV1(src.Status.Components.IndexGateway),
+		Ruler:         convertStatusV1(src.Status.Components.Ruler),
+		Gateway:       convertStatusV1(src.Status.Components.Gateway),
 	}
 
 	var statusSchemas []v1.ObjectStorageSchema
@@ -1106,14 +1130,14 @@ func (dst *LokiStack) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.ObjectMeta = src.ObjectMeta
 	dst.Status.Conditions = src.Status.Conditions
 	dst.Status.Components = LokiStackComponentStatus{
-		Compactor:     PodStatusMap(src.Status.Components.Compactor),
-		Distributor:   PodStatusMap(src.Status.Components.Distributor),
-		Ingester:      PodStatusMap(src.Status.Components.Ingester),
-		Querier:       PodStatusMap(src.Status.Components.Querier),
-		QueryFrontend: PodStatusMap(src.Status.Components.QueryFrontend),
-		IndexGateway:  PodStatusMap(src.Status.Components.IndexGateway),
-		Ruler:         PodStatusMap(src.Status.Components.Ruler),
-		Gateway:       PodStatusMap(src.Status.Components.Gateway),
+		Compactor:     convertStatusBeta(src.Status.Components.Compactor),
+		Distributor:   convertStatusBeta(src.Status.Components.Distributor),
+		Ingester:      convertStatusBeta(src.Status.Components.Ingester),
+		Querier:       convertStatusBeta(src.Status.Components.Querier),
+		QueryFrontend: convertStatusBeta(src.Status.Components.QueryFrontend),
+		IndexGateway:  convertStatusBeta(src.Status.Components.IndexGateway),
+		Ruler:         convertStatusBeta(src.Status.Components.Ruler),
+		Gateway:       convertStatusBeta(src.Status.Components.Gateway),
 	}
 
 	var statusSchemas []ObjectStorageSchema
