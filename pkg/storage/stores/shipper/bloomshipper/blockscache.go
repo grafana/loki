@@ -171,10 +171,8 @@ func (cfg *BlocksCacheConfig) Validate() error {
 	return nil
 }
 
-// NewFsBlocksCache returns a new initialised BlocksCache with the key and value of requested types.
-// To limit the memory allocated by items in the cache, it's necessary to pass cacheEntrySizeCalculator
-// that calculates the size of an entry in bytes.
-// Also, this constructor allows passing the callback that will be called for the entry whenever it is removed from the cache.
+// NewFsBlocksCache returns a new file-system mapping cache for bloom blocks,
+// where entries map block directories on disk.
 func NewFsBlocksCache(cfg BlocksCacheConfig, reg prometheus.Registerer, logger log.Logger) *BlocksCache {
 	cache := &BlocksCache{
 		cfg:     cfg,
@@ -263,7 +261,7 @@ func (c *BlocksCache) put(key string, value BlockDirectory) (*Entry, error) {
 		created:  time.Now(),
 		refCount: atomic.NewInt32(0),
 	}
-	size := c.sizeOf(entry)
+	size := entry.Value.Size()
 
 	// Reject items that are larger than the hard limit
 	if size > int64(c.cfg.HardLimit) {
@@ -327,7 +325,7 @@ func (c *BlocksCache) evict(key string, element *list.Element, reason string) {
 	}
 	c.lru.Remove(element)
 	delete(c.entries, key)
-	c.currSizeBytes -= c.sizeOf(entry)
+	c.currSizeBytes -= entry.Value.Size()
 	c.metrics.entriesCurrent.Dec()
 	c.metrics.entriesEvicted.WithLabelValues(reason).Inc()
 }
@@ -342,14 +340,14 @@ func (c *BlocksCache) Get(ctx context.Context, key string) (BlockDirectory, bool
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
-	entry := c.get(ctx, key)
+	entry := c.get(key)
 	if entry == nil {
 		return BlockDirectory{}, false
 	}
 	return entry.Value, true
 }
 
-func (c *BlocksCache) get(_ context.Context, key string) *Entry {
+func (c *BlocksCache) get(key string) *Entry {
 	element, exists := c.entries[key]
 	if !exists {
 		c.metrics.misses.Inc()
@@ -398,10 +396,6 @@ func (c *BlocksCache) Stop() {
 	c.metrics.usageBytes.Set(float64(0))
 
 	close(c.done)
-}
-
-func (c *BlocksCache) sizeOf(entry *Entry) int64 {
-	return entry.Value.Size()
 }
 
 func (c *BlocksCache) remove(entry *Entry) error {
