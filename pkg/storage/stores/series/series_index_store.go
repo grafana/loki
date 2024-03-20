@@ -762,11 +762,11 @@ func (c *IndexReaderWriter) Volume(_ context.Context, _ string, _, _ model.Time,
 }
 
 func (c *IndexReaderWriter) GetShards(
-	ctx context.Context,
-	userID string,
-	from, through model.Time,
-	targetBytesPerShard uint64,
-	predicte chunk.Predicate,
+	_ context.Context,
+	_ string,
+	_, _ model.Time,
+	_ uint64,
+	_ chunk.Predicate,
 ) ([]logproto.Shard, error) {
 	return nil, errors.New("unimplemented GetShards() on legacy index stores")
 }

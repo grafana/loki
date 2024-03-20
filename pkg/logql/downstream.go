@@ -398,7 +398,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
 			Params: ParamsWithShardsOverride{
 				Params:         ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.SampleExpr},
-				ShardsOverride: Shards(shards).Encode(),
+				ShardsOverride: shards.Encode(),
 			},
 		}}, acc)
 		if err != nil {

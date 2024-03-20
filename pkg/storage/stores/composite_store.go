@@ -247,7 +247,7 @@ func (c CompositeStore) GetShards(
 
 func (c CompositeStore) HasForSeries(from, through model.Time) (sharding.ForSeries, bool) {
 	var impls []sharding.ForSeries
-	c.forStores(context.Background(), from, through, func(_ context.Context, from, through model.Time, store Store) error {
+	_ = c.forStores(context.Background(), from, through, func(_ context.Context, from, through model.Time, store Store) error {
 		impl, ok := store.HasForSeries(from, through)
 		if ok {
 			impls = append(impls, impl)

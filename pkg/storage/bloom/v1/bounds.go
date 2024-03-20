@@ -41,7 +41,8 @@ func BoundsFromProto(pb logproto.FPBounds) FingerprintBounds {
 
 // Unsafe cast to avoid allocation. This _requires_ that the underlying types are the same
 // which is checked by the compiler above
-func MultiBoundsFromProto(pb []logproto.FPBounds) []FingerprintBounds {
+func MultiBoundsFromProto(pb []logproto.FPBounds) MultiFingerprintBounds {
+	//nolint:unconvert
 	return MultiFingerprintBounds(*(*MultiFingerprintBounds)(unsafe.Pointer(&pb)))
 }
 
