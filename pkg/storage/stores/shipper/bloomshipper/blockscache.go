@@ -48,6 +48,11 @@ type blocksCacheMetrics struct {
 	entriesFetched *prometheus.CounterVec
 	entriesCurrent prometheus.Gauge
 	usageBytes     prometheus.Gauge
+
+	// collecting hits/misses for every Get() is a performance killer
+	// instead, increment a counter and collect them in an interval
+	hits   *atomic.Int64
+	misses *atomic.Int64
 }
 
 func newBlocksCacheMetrics(reg prometheus.Registerer, namespace, subsystem string) *blocksCacheMetrics {
@@ -82,7 +87,15 @@ func newBlocksCacheMetrics(reg prometheus.Registerer, namespace, subsystem strin
 			Name:      "usage_bytes",
 			Help:      "The current size of entries managed by the cache in bytes",
 		}),
+
+		hits:   atomic.NewInt64(0),
+		misses: atomic.NewInt64(0),
 	}
+}
+
+func (m *blocksCacheMetrics) Collect() {
+	m.entriesFetched.WithLabelValues("hit").Add(float64(m.hits.Swap(0)))
+	m.entriesFetched.WithLabelValues("miss").Add(float64(m.misses.Swap(0)))
 }
 
 // compiler check to enforce implementation of the Cache interface
@@ -183,6 +196,7 @@ func NewFsBlocksCache(cfg BlocksCacheConfig, reg prometheus.Registerer, logger l
 
 	go cache.runTTLEvictJob(cfg.PurgeInterval, cfg.TTL)
 	go cache.runLRUevictJob()
+	go cache.runMetricsCollectJob(5 * time.Second)
 
 	return cache
 }
@@ -340,7 +354,7 @@ func (c *BlocksCache) Get(ctx context.Context, key string) (BlockDirectory, bool
 func (c *BlocksCache) get(_ context.Context, key string) *Entry {
 	element, exists := c.entries[key]
 	if !exists {
-		c.metrics.entriesFetched.WithLabelValues("miss").Inc()
+		c.metrics.misses.Inc()
 		return nil
 	}
 
@@ -350,7 +364,7 @@ func (c *BlocksCache) get(_ context.Context, key string) *Entry {
 
 	c.lru.MoveToFront(element)
 
-	c.metrics.entriesFetched.WithLabelValues("hit").Inc()
+	c.metrics.hits.Inc()
 	return entry
 }
 
@@ -400,6 +414,21 @@ func (c *BlocksCache) remove(entry *Entry) error {
 		return fmt.Errorf("error removing bloom block directory from disk: %w", err)
 	}
 	return nil
+}
+
+func (c *BlocksCache) runMetricsCollectJob(interval time.Duration) {
+	level.Info(c.logger).Log("msg", "run metrics collect job")
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-ticker.C:
+			c.metrics.Collect()
+		}
+	}
 }
 
 func (c *BlocksCache) runLRUevictJob() {
