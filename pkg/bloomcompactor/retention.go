@@ -106,7 +106,7 @@ func NewRetentionManager(
 		metrics:    metrics,
 		logger:     log.With(logger, "subcomponent", "retention-manager"),
 		now:        model.Now,
-		lastDayRun: storageconfig.NewDayTime(model.Earliest),
+		lastDayRun: storageconfig.NewDayTime(0),
 	}
 }
 
@@ -132,7 +132,7 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 		return nil
 	}
 
-	level.Info(r.logger).Log("msg", "Applying retention")
+	level.Info(r.logger).Log("msg", "Applying retention", "today", today.String(), "lastDayRun", r.lastDayRun.String())
 	r.metrics.retentionRunning.Set(1)
 	defer r.metrics.retentionRunning.Set(0)
 
@@ -193,11 +193,11 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 		daysProcessed++
 	}
 
-	level.Info(r.logger).Log("msg", "finished applying retention", "daysProcessed", daysProcessed, "tenants", len(tenantsRetentionApplied))
 	r.lastDayRun = today
 	r.metrics.retentionTime.WithLabelValues(statusSuccess).Observe(time.Since(start.Time()).Seconds())
 	r.metrics.retentionDaysPerIteration.WithLabelValues(statusSuccess).Observe(float64(daysProcessed))
 	r.metrics.retentionTenantsPerIteration.WithLabelValues(statusSuccess).Observe(float64(len(tenantsRetentionApplied)))
+	level.Info(r.logger).Log("msg", "finished applying retention", "daysProcessed", daysProcessed, "tenants", len(tenantsRetentionApplied))
 
 	return nil
 }

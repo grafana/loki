@@ -314,6 +314,11 @@ func TestRetentionRunsOncePerDay(t *testing.T) {
 	require.Equal(t, 1, len(metas))
 	require.Equal(t, 31, len(metas[0])) // 0th-30th day
 
+	// We now change the now() time to be a bit later in the day
+	rm.now = func() model.Time {
+		return testTime.Add(1 * time.Hour)
+	}
+
 	// Write metas again and run retention. Since we already ran retention at now()'s day,
 	// Apply should be a noop, and therefore we should be able to get all the 100 days of metas
 	putMetasForLastNDays(t, schema, bloomStore, "1", testTime, 100)
