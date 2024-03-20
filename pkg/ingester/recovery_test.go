@@ -131,7 +131,7 @@ func (r *MemRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 
 func (r *MemRecoverer) Series(_ *Series) error { return nil }
 
-func (r *MemRecoverer) SetStream(userID string, series record.RefSeries) error {
+func (r *MemRecoverer) SetStream(_ context.Context, userID string, series record.RefSeries) error {
 	r.Lock()
 	defer r.Unlock()
 	user, ok := r.users[userID]

@@ -130,14 +130,14 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 // fingerprint from the mapper. This is paramount because subsequent WAL records will use
 // the fingerprint reported in the WAL record, not the potentially differing one assigned during
 // stream creation.
-func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) error {
+func (r *ingesterRecoverer) SetStream(ctx context.Context, userID string, series record.RefSeries) error {
 	inst, err := r.ing.GetOrCreateInstance(userID)
 	if err != nil {
 		return err
 	}
 
 	stream, err := inst.getOrCreateStream(
-		context.Background(),
+		ctx,
 		logproto.Stream{
 			Labels: series.Labels.String(),
 		},
