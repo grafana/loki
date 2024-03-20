@@ -19,8 +19,7 @@ import (
 
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
 var defaultConfig = Config{
-	SignatureVersion: SignatureVersionV4,
-	StorageClass:     aws.StorageClassStandard,
+	StorageClass: aws.StorageClassStandard,
 	HTTP: HTTPConfig{
 		Config: bucket_http.Config{
 			IdleConnTimeout:       90 * time.Second,
@@ -73,14 +72,13 @@ http:
   max_connections_per_host: 8
 `,
 			expectedConfig: Config{
-				Endpoint:         "test-endpoint",
-				Region:           "test-region",
-				BucketName:       "test-bucket-name",
-				SecretAccessKey:  flagext.SecretWithValue("test-secret-access-key"),
-				AccessKeyID:      "test-access-key-id",
-				Insecure:         true,
-				SignatureVersion: "test-signature-version",
-				StorageClass:     "test-storage-class",
+				Endpoint:        "test-endpoint",
+				Region:          "test-region",
+				BucketName:      "test-bucket-name",
+				SecretAccessKey: flagext.SecretWithValue("test-secret-access-key"),
+				AccessKeyID:     "test-access-key-id",
+				Insecure:        true,
+				StorageClass:    "test-storage-class",
 				SSE: SSEConfig{
 					Type:                 "test-type",
 					KMSKeyID:             "test-kms-key-id",
@@ -230,20 +228,16 @@ func TestConfig_Validate(t *testing.T) {
 		cfg         Config
 		expectedErr error
 	}{
-		"should fail if invalid signature version is set": {
-			Config{SignatureVersion: "foo"},
-			errUnsupportedSignatureVersion,
-		},
 		"should pass if valid signature version is set": {
 			defaultConfig,
 			nil,
 		},
 		"should fail if invalid storage class is set": {
-			Config{SignatureVersion: SignatureVersionV4, StorageClass: "foo"},
+			Config{StorageClass: "foo"},
 			fmt.Errorf("unsupported S3 storage class: foo. Supported values: %s", strings.Join(aws.SupportedStorageClasses, ", ")),
 		},
 		"should pass if valid storage signature version is set": {
-			Config{SignatureVersion: SignatureVersionV4, StorageClass: aws.StorageClassStandardInfrequentAccess},
+			Config{StorageClass: aws.StorageClassStandardInfrequentAccess},
 			nil,
 		},
 	}

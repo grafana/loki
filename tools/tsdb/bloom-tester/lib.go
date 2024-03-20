@@ -52,7 +52,7 @@ func execute() {
 	periodCfg, tableRange, tableName, err := helpers.GetPeriodConfigForTableNumber(bucket, conf.SchemaConfig.Configs)
 	helpers.ExitErr("find period config for bucket", err)
 
-	objectClient, err := storage.NewObjectClient(periodCfg.ObjectType, conf.StorageConfig, clientMetrics)
+	objectClient, err := storage.NewObjectClient("bloom-tester", periodCfg.ObjectType, conf.StorageConfig, clientMetrics, prometheus.DefaultRegisterer)
 	helpers.ExitErr("creating object client", err)
 
 	chunkClient := client.NewClient(objectClient, nil, conf.SchemaConfig)
