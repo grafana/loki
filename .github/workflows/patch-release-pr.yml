@@ -28,7 +28,6 @@ jobs:
     - "logstash"
     - "loki"
     - "loki-canary"
-    - "loki-canary-boringcrypto"
     - "promtail"
     - "querytee"
     runs-on: "ubuntu-latest"
@@ -519,70 +518,6 @@ jobs:
       with:
         destination: "loki-build-artifacts/${{ github.sha }}/images"
         path: "release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        process_gcloudignore: false
-    strategy:
-      fail-fast: true
-      matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
-  loki-canary-boringcrypto:
-    needs:
-    - "version"
-    runs-on: "ubuntu-latest"
-    steps:
-    - name: "pull release library code"
-      uses: "actions/checkout@v4"
-      with:
-        path: "lib"
-        ref: "${{ env.RELEASE_LIB_REF }}"
-        repository: "grafana/loki-release"
-    - name: "pull code to release"
-      uses: "actions/checkout@v4"
-      with:
-        path: "release"
-        repository: "${{ env.RELEASE_REPO }}"
-    - name: "setup node"
-      uses: "actions/setup-node@v4"
-      with:
-        node-version: 20
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
-      with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
-    - id: "platform"
-      name: "parse image platform"
-      run: |
-        mkdir -p images
-        
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
-        echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
-      working-directory: "release"
-    - env:
-        IMAGE_TAG: "${{ needs.version.outputs.version }}"
-      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "Build and export"
-      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
-      with:
-        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
-        context: "release"
-        file: "release/cmd/loki-canary-boringcrypto/Dockerfile"
-        outputs: "type=docker,dest=release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
-      with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
