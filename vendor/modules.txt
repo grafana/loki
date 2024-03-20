@@ -1207,9 +1207,6 @@ github.com/oklog/run
 # github.com/oklog/ulid v1.3.1
 ## explicit
 github.com/oklog/ulid
-# github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus v0.86.0
-## explicit; go 1.20
-github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus
 # github.com/opencontainers/go-digest v1.0.0
 ## explicit; go 1.13
 github.com/opencontainers/go-digest
