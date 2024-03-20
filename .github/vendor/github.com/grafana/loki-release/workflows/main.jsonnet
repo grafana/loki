@@ -5,20 +5,25 @@
   build: import 'build.libsonnet',
   release: import 'release.libsonnet',
   validate: import 'validate.libsonnet',
+  validateGel: import 'validate-gel.libsonnet',
   releasePRWorkflow: function(
     branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+'],
     buildImage='grafana/loki-build-image:0.33.0',
+    changelogPath='CHANGELOG.md',
     checkTemplate='./.github/workflows/check.yml',
+    distMakeTargets=['dist', 'packages'],
     dockerUsername='grafana',
     golangCiLintVersion='v1.55.1',
+    imageBuildTimeoutMin=25,
     imageJobs={},
     imagePrefix='grafana',
     releaseLibRef='main',
     releaseRepo='grafana/loki-release',
     skipArm=false,
     skipValidation=false,
-    versioningStrategy='always-bump-patch',
     useGitHubAppToken=true,
+    useGCR=false,
+    versioningStrategy='always-bump-patch',
                     ) {
     name: 'create release PR',
     on: {
@@ -35,13 +40,15 @@
       group: 'create-release-pr-${{ github.sha }}',
     },
     env: {
-      RELEASE_REPO: releaseRepo,
+      BUILD_TIMEOUT: imageBuildTimeoutMin,
+      CHANGELOG_PATH: changelogPath,
       DOCKER_USERNAME: dockerUsername,
       IMAGE_PREFIX: imagePrefix,
-      SKIP_VALIDATION: skipValidation,
-      VERSIONING_STRATEGY: versioningStrategy,
       RELEASE_LIB_REF: releaseLibRef,
+      RELEASE_REPO: releaseRepo,
+      SKIP_VALIDATION: skipValidation,
       USE_GITHUB_APP_TOKEN: useGitHubAppToken,
+      VERSIONING_STRATEGY: versioningStrategy,
     },
     local validationSteps = ['check'],
     jobs: {
@@ -52,9 +59,12 @@
                golang_ci_lint_version: golangCiLintVersion,
                release_lib_ref: releaseLibRef,
                use_github_app_token: useGitHubAppToken,
-             }),
+             })
+             + if useGCR then $.job.withSecrets({
+               GCS_SERVICE_ACCOUNT_KEY: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
+             }) else {},
       version: $.build.version + $.common.job.withNeeds(validationSteps),
-      dist: $.build.dist(buildImage, skipArm) + $.common.job.withNeeds(['version']),
+      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets) + $.common.job.withNeeds(['version']),
     } + std.mapWithKey(function(name, job) job + $.common.job.withNeeds(['version']), imageJobs) + {
       local buildImageSteps = ['dist'] + std.objectFields(imageJobs),
       'create-release-pr': $.release.createReleasePR + $.common.job.withNeeds(buildImageSteps),
@@ -62,9 +72,11 @@
   },
   releaseWorkflow: function(
     branches=['release-[0-9].[0-9].x', 'k[0-9]*'],
-    dockerUsername='grafana',
+    dockerUsername='grafanabot',
     getDockerCredsFromVault=false,
     imagePrefix='grafana',
+    publishBucket='',
+    publishToGCS=false,
     releaseLibRef='main',
     releaseRepo='grafana/loki-release',
     useGitHubAppToken=true,
@@ -84,10 +96,15 @@
       group: 'create-release-${{ github.sha }}',
     },
     env: {
-      RELEASE_REPO: releaseRepo,
       IMAGE_PREFIX: imagePrefix,
       RELEASE_LIB_REF: releaseLibRef,
+      RELEASE_REPO: releaseRepo,
       USE_GITHUB_APP_TOKEN: useGitHubAppToken,
+    } + if publishToGCS then {
+      PUBLISH_BUCKET: publishBucket,
+      PUBLISH_TO_GCS: true,
+    } else {
+      PUBLISH_TO_GCS: false,
     },
     jobs: {
       shouldRelease: $.release.shouldRelease,
@@ -146,5 +163,62 @@
       USE_GITHUB_APP_TOKEN: '${{ inputs.use_github_app_token }}',
     },
     jobs: $.validate,
+  },
+  checkGel: {
+    name: 'check',
+    on: {
+      workflow_call: {
+        inputs: {
+          build_image: {
+            description: 'loki build image to use',
+            required: true,
+            type: 'string',
+          },
+          skip_validation: {
+            default: false,
+            description: 'skip validation steps',
+            required: false,
+            type: 'boolean',
+          },
+          golang_ci_lint_version: {
+            default: 'v1.55.1',
+            description: 'version of golangci-lint to use',
+            required: false,
+            type: 'string',
+          },
+          release_lib_ref: {
+            default: 'main',
+            description: 'git ref of release library to use',
+            required: false,
+            type: 'string',
+          },
+          use_github_app_token: {
+            default: true,
+            description: 'whether to use the GitHub App token for GH_TOKEN secret',
+            required: false,
+            type: 'boolean',
+          },
+        },
+        secrets: {
+          GCS_SERVICE_ACCOUNT_KEY: {
+            description: 'GCS service account key',
+            required: true,
+          },
+        },
+      },
+    },
+    permissions: {
+      contents: 'write',
+      'pull-requests': 'write',
+      'id-token': 'write',
+    },
+    concurrency: {
+      group: 'check-${{ github.sha }}',
+    },
+    env: {
+      RELEASE_LIB_REF: '${{ inputs.release_lib_ref }}',
+      USE_GITHUB_APP_TOKEN: '${{ inputs.use_github_app_token }}',
+    },
+    jobs: $.validateGel,
   },
 }

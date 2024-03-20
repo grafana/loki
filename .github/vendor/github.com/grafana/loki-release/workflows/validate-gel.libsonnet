@@ -8,7 +8,7 @@ local setupValidationDeps = function(job) job {
     common.checkout,
     common.fetchReleaseLib,
     common.fixDubiousOwnership,
-    step.new('install tar')
+    step.new('install dependencies')
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
     + step.withRun(|||
       apt update
@@ -36,7 +36,8 @@ local setupValidationDeps = function(job) job {
   ] + job.steps,
 };
 
-local validationJob = _validationJob(false);
+local validationJob = _validationJob(true);
+
 
 {
   local validationMakeStep = function(name, target)
@@ -51,32 +52,16 @@ local validationJob = _validationJob(false);
     ])
   ),
 
-  integration: setupValidationDeps(
-    validationJob
-    + job.withSteps([
-      validationMakeStep('integration', 'test-integration'),
-    ])
-  ),
-
   lint: setupValidationDeps(
     validationJob
     + job.withSteps(
       [
-        validationMakeStep('lint', 'lint'),
-        validationMakeStep('lint jsonnet', 'lint-jsonnet'),
-        validationMakeStep('lint scripts', 'lint-scripts'),
-        // step.new('format')
-        // + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
-        // + step.withRun(|||
-        //   git fetch origin
-        //   make check-format
-        // |||),
-      ] + [
         step.new('golangci-lint', 'golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
         + step.with({
           version: '${{ inputs.golang_ci_lint_version }}',
           'only-new-issues': true,
+          args: '--skip-files cmd/enterprise-logs/fips.go',
         }),
       ],
     )
@@ -85,14 +70,8 @@ local validationJob = _validationJob(false);
   check: setupValidationDeps(
     validationJob
     + job.withSteps([
-      validationMakeStep('check generated files', 'check-generated-files'),
-      validationMakeStep('check mod', 'check-mod'),
-      validationMakeStep('check docs', 'check-doc'),
-      validationMakeStep('validate example configs', 'validate-example-configs'),
-      validationMakeStep('validate dev cluster config', 'validate-dev-cluster-config'),
-      validationMakeStep('check example config docs', 'check-example-config-doc'),
-      validationMakeStep('check helm reference doc', 'documentation-helm-reference-check'),
-      validationMakeStep('check drone drift', 'check-drone-drift'),
+      validationMakeStep('build enterprise logs', 'all'),
+      validationMakeStep('check docs', 'check-docs'),
     ]) + {
       steps+: [
         step.new('build docs website')
