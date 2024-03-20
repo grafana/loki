@@ -190,7 +190,7 @@ func Test_InMemorySegmentRecover(t *testing.T) {
 
 			recoverer := NewMemRecoverer()
 
-			require.Nil(t, RecoverWAL(reader, recoverer))
+			require.NoError(t, RecoverWAL(context.Background(), reader, recoverer))
 			recoverer.Close()
 
 			require.Equal(t, users, recoverer.usersCt)
