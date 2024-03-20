@@ -120,7 +120,7 @@ func TestBlocksCache_ErrorCases(t *testing.T) {
 		require.NoError(t, err)
 
 		err = cache.Put(ctx, "key", CacheValue("b", 10))
-		require.ErrorContains(t, err, "entry already exists: key")
+		require.ErrorContains(t, err, fmt.Sprintf(errAlreadyExists, "key"))
 	})
 
 	t.Run("multierror when putting many fails", func(t *testing.T) {
@@ -266,7 +266,7 @@ func TestBlocksCache_LRUEviction(t *testing.T) {
 	cfg := BlocksCacheConfig{
 		Enabled:   true,
 		TTL:       time.Hour,
-		SoftLimit: flagext.Bytes(10),
+		SoftLimit: flagext.Bytes(15),
 		HardLimit: flagext.Bytes(20),
 		// no need for TTL evictions
 		PurgeInterval: time.Minute,
@@ -276,32 +276,35 @@ func TestBlocksCache_LRUEviction(t *testing.T) {
 
 	ctx := context.Background()
 
-	err := cache.PutMany(
-		ctx,
-		[]string{"a", "b"},
-		[]BlockDirectory{CacheValue("a", 4), CacheValue("b", 4)},
-	)
+	// oldest with refcount - will not be evicted
+	err := cache.PutInc(ctx, "a", CacheValue("a", 4))
+	require.NoError(t, err)
+	// will become newest with Get() call
+	err = cache.Put(ctx, "b", CacheValue("b", 4))
+	require.NoError(t, err)
+	// oldest without refcount - will be evicted
+	err = cache.Put(ctx, "c", CacheValue("c", 4))
 	require.NoError(t, err)
 
-	// increase ref counter on "a"
-	_, found := cache.Get(ctx, "a")
+	// increase ref counter on "b"
+	_, found := cache.Get(ctx, "b")
 	require.True(t, found)
 
 	// exceed soft limit
-	err = cache.Put(ctx, "c", CacheValue("c", 4))
+	err = cache.Put(ctx, "d", CacheValue("d", 4))
 	require.NoError(t, err)
 
 	time.Sleep(time.Second)
 
-	require.Equal(t, 2, cache.lru.Len())
-	require.Equal(t, 2, len(cache.entries))
+	require.Equal(t, 3, cache.lru.Len())
+	require.Equal(t, 3, len(cache.entries))
 
 	// key "b" was evicted because it was the oldest
 	// and it had no ref counts
-	_, found = cache.Get(ctx, "b")
+	_, found = cache.Get(ctx, "c")
 	require.False(t, found)
 
-	require.Equal(t, int64(8), cache.currSizeBytes)
+	require.Equal(t, int64(12), cache.currSizeBytes)
 }
 
 func TestBlocksCache_RefCounter(t *testing.T) {

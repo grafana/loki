@@ -444,11 +444,8 @@ func (c *BlocksCache) evictLeastRecentlyUsedItems() {
 		"soft_limit_bytes", c.cfg.SoftLimit,
 		"hard_limit_bytes", c.cfg.HardLimit,
 	)
-	for c.currSizeBytes >= int64(c.cfg.SoftLimit) {
-		elem := c.lru.Back()
-		if elem == nil {
-			break
-		}
+	elem := c.lru.Back()
+	for c.currSizeBytes >= int64(c.cfg.SoftLimit) && elem != nil {
 		entry := elem.Value.(*Entry)
 		if entry.refCount.Load() == 0 {
 			level.Debug(c.logger).Log(
@@ -457,6 +454,7 @@ func (c *BlocksCache) evictLeastRecentlyUsedItems() {
 			)
 			c.evict(entry.Key, elem, reasonFull)
 		}
+		elem = elem.Prev()
 	}
 }
 
