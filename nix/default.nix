@@ -70,7 +70,13 @@
       promtail = loki.overrideAttrs (oldAttrs: {
         pname = "promtail";
 
-        buildInputs = if prev.stdenv.hostPlatform.isLinux then oldAttrs.buildInputs ++ [ prev.systemd prev.systemdLibs ] else oldAttrs.buildInputs;
+        buildInputs =
+          let
+            inherit (oldAttrs) buildInputs;
+          in
+          if prev.stdenv.hostPlatform.isLinux then
+            buildInputs ++ (with prev; [ systemd ])
+          else buildInputs;
 
         buildPhase = ''
           export GOCACHE=$TMPDIR/go-cache

@@ -23,14 +23,11 @@ pkgs.stdenv.mkDerivation {
 
   src = ./../..;
 
-  nativeBuildInputs = with pkgs; [
-    gcc
-    go
-  ];
-
   buildInputs = with pkgs; [
     bash
+    gcc
     git
+    go
     golangci-lint
     nettools
     yamllint
