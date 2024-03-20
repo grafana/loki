@@ -15,7 +15,6 @@ local imageJobs = {
   logstash: build.image('logstash-output-loki', 'clients/cmd/logstash', platform=['linux/amd64']),
   logcli: build.image('logcli', 'cmd/logcli'),
   'loki-canary': build.image('loki-canary', 'cmd/loki-canary'),
-  'loki-canary-boringcrypto': build.image('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto'),
   promtail: build.image('promtail', 'clients/cmd/promtail'),
   querytee: build.image('loki-query-tee', 'cmd/querytee', platform=['linux/amd64']),
 };
