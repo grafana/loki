@@ -59,6 +59,8 @@ added, it doesn't exist in real life. As such I've put a PEM decoder into here.
 // For details see https://aka.ms/msal-net-authenticationresult
 type AuthResult = base.AuthResult
 
+type AuthenticationScheme = authority.AuthenticationScheme
+
 type Account = shared.Account
 
 // CertFromPEM converts a PEM file (.pem or .key) for use with [NewCredFromCert]. The file
@@ -454,6 +456,33 @@ func WithClaims(claims string) interface {
 	}
 }
 
+// WithAuthenticationScheme is an extensibility mechanism designed to be used only by Azure Arc for proof of possession access tokens.
+func WithAuthenticationScheme(authnScheme AuthenticationScheme) interface {
+	AcquireSilentOption
+	AcquireByCredentialOption
+	options.CallOption
+} {
+	return struct {
+		AcquireSilentOption
+		AcquireByCredentialOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *acquireTokenSilentOptions:
+					t.authnScheme = authnScheme
+				case *acquireTokenByCredentialOptions:
+					t.authnScheme = authnScheme
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
 // WithTenantID specifies a tenant for a single authentication. It may be different than the tenant set in [New].
 // This option is valid for any token acquisition method.
 func WithTenantID(tenantID string) interface {
@@ -499,6 +528,7 @@ func WithTenantID(tenantID string) interface {
 type acquireTokenSilentOptions struct {
 	account          Account
 	claims, tenantID string
+	authnScheme      AuthenticationScheme
 }
 
 // AcquireSilentOption is implemented by options for AcquireTokenSilent
@@ -549,6 +579,7 @@ func (cca Client) AcquireTokenSilent(ctx context.Context, scopes []string, opts 
 		Credential:  cca.cred,
 		IsAppCache:  o.account.IsZero(),
 		TenantID:    o.tenantID,
+		AuthnScheme: o.authnScheme,
 	}
 
 	return cca.base.AcquireTokenSilent(ctx, silentParameters)
@@ -614,6 +645,7 @@ func (cca Client) AcquireTokenByAuthCode(ctx context.Context, code string, redir
 // acquireTokenByCredentialOptions contains optional configuration for AcquireTokenByCredential
 type acquireTokenByCredentialOptions struct {
 	claims, tenantID string
+	authnScheme      AuthenticationScheme
 }
 
 // AcquireByCredentialOption is implemented by options for AcquireTokenByCredential
@@ -637,7 +669,9 @@ func (cca Client) AcquireTokenByCredential(ctx context.Context, scopes []string,
 	authParams.Scopes = scopes
 	authParams.AuthorizationType = authority.ATClientCredentials
 	authParams.Claims = o.claims
-
+	if o.authnScheme != nil {
+		authParams.AuthnScheme = o.authnScheme
+	}
 	token, err := cca.base.Token.Credential(ctx, authParams, cca.cred)
 	if err != nil {
 		return AuthResult{}, err

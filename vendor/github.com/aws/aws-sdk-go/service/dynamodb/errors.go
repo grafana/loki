@@ -239,6 +239,10 @@ const (
 	//
 	//    * There is a user error, such as an invalid data format.
 	//
+	//    * There is an ongoing TransactWriteItems operation that conflicts with
+	//    a concurrent TransactWriteItems request. In this case the TransactWriteItems
+	//    operation fails with a TransactionCanceledException.
+	//
 	// DynamoDB cancels a TransactGetItems request under the following circumstances:
 	//
 	//    * There is an ongoing TransactGetItems operation that conflicts with a

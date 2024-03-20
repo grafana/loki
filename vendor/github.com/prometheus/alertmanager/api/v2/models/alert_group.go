@@ -163,6 +163,11 @@ func (m *AlertGroup) contextValidateAlerts(ctx context.Context, formats strfmt.R
 	for i := 0; i < len(m.Alerts); i++ {
 
 		if m.Alerts[i] != nil {
+
+			if swag.IsZero(m.Alerts[i]) { // not required
+				return nil
+			}
+
 			if err := m.Alerts[i].ContextValidate(ctx, formats); err != nil {
 				if ve, ok := err.(*errors.Validation); ok {
 					return ve.ValidateName("alerts" + "." + strconv.Itoa(i))
@@ -195,6 +200,7 @@ func (m *AlertGroup) contextValidateLabels(ctx context.Context, formats strfmt.R
 func (m *AlertGroup) contextValidateReceiver(ctx context.Context, formats strfmt.Registry) error {
 
 	if m.Receiver != nil {
+
 		if err := m.Receiver.ContextValidate(ctx, formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("receiver")

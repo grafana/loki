@@ -81,6 +81,8 @@ A not-so-up-to-date-list-that-may-be-actually-current:
 * https://addr.tools/
 * https://dnscheck.tools/
 * https://github.com/egbakou/domainverifier
+* https://github.com/semihalev/sdns
+* https://github.com/wintbiit/NineDNS
 
 
 Send pull request if you want to be listed here.
@@ -124,6 +126,7 @@ Example programs can be found in the `github.com/miekg/exdns` repository.
 *all of them*
 
 * 103{4,5} - DNS standard
+* 1183 - ISDN, X25 and other deprecated records
 * 1348 - NSAP record (removed the record)
 * 1982 - Serial Arithmetic
 * 1876 - LOC record

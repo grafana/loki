@@ -542,6 +542,32 @@ func (a *authority) handleWatchTimerExpiry(rType xdsresource.Type, resourceName 
 	}
 }
 
+func (a *authority) triggerResourceNotFoundForTesting(rType xdsresource.Type, resourceName string) {
+	a.resourcesMu.Lock()
+	defer a.resourcesMu.Unlock()
+
+	if a.closed {
+		return
+	}
+	resourceStates := a.resources[rType]
+	state, ok := resourceStates[resourceName]
+	if !ok {
+		return
+	}
+	// if watchStateTimeout already triggered resource not found above from
+	// normal watch expiry.
+	if state.wState == watchStateCanceled || state.wState == watchStateTimeout {
+		return
+	}
+	state.wState = watchStateTimeout
+	state.cache = nil
+	state.md = xdsresource.UpdateMetadata{Status: xdsresource.ServiceStatusNotExist}
+	for watcher := range state.watchers {
+		watcher := watcher
+		a.serializer.Schedule(func(context.Context) { watcher.OnResourceDoesNotExist() })
+	}
+}
+
 // sendDiscoveryRequestLocked sends a discovery request for the specified
 // resource type and resource names. Even though this method does not directly
 // access the resource cache, it is important that `resourcesMu` be beld when
