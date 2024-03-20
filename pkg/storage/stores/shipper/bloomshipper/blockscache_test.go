@@ -376,7 +376,7 @@ func Benchmark_BlocksCacheOld(b *testing.B) {
 	}
 	for i := 0; i < b.N; i++ {
 		// read
-		for k, _ := range entries {
+		for k := range entries {
 			_, _ = cache.Get(ctx, k)
 		}
 	}
@@ -405,7 +405,7 @@ func Benchmark_BlocksCacheNew(b *testing.B) {
 	}
 	// read
 	for i := 0; i < b.N; i++ {
-		for k, _ := range entries {
+		for k := range entries {
 			_, _ = cache.Get(ctx, k)
 		}
 	}
