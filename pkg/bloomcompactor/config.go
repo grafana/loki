@@ -3,8 +3,9 @@ package bloomcompactor
 import (
 	"flag"
 	"fmt"
-	"github.com/pkg/errors"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/util/ring"
 )

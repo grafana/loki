@@ -3,7 +3,6 @@ package bloomcompactor
 import (
 	"context"
 	"flag"
-	storageconfig "github.com/grafana/loki/pkg/storage/config"
 	"slices"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
+	storageconfig "github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/validation"
 )

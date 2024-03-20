@@ -3,8 +3,16 @@ package bloomshipper
 import (
 	"context"
 	"fmt"
+	"path"
+	"sort"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
+
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -12,12 +20,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"golang.org/x/exp/slices"
-	"path"
-	"sort"
 )
 
 var (
