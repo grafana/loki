@@ -325,7 +325,11 @@ lint: ## run linters
 ########
 
 test: all ## run the unit tests
-	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee test_results.txt
+	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
+	cd tools/lambda-promtail/ && $(GOTEST) -covermode=atomic -coverprofile=lambda-promtail-coverage.txt -p=4 ./... | tee lambda_promtail_test_results.txt
+
+test-integration:
+	$(GOTEST) -count=1 -v -tags=integration -timeout 10m ./integration
 
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
@@ -859,4 +863,5 @@ scan-vulnerabilities: trivy snyk
 
 .PHONY: release-workflows
 release-workflows:
+	pushd $(CURDIR)/.github && jb update && popd
 	jsonnet -SJ .github/vendor -m .github/workflows .github/release-workflows.jsonnet
