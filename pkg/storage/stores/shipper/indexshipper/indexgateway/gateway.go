@@ -62,6 +62,7 @@ type Gateway struct {
 	indexQuerier IndexQuerier
 	indexClients []IndexClientWithRange
 	bloomQuerier BloomQuerier
+	metrics      *Metrics
 
 	cfg Config
 	log log.Logger
@@ -71,13 +72,14 @@ type Gateway struct {
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, _ prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier) (*Gateway, error) {
+func NewIndexGateway(cfg Config, log log.Logger, r prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		bloomQuerier: bloomQuerier,
 		cfg:          cfg,
 		log:          log,
 		indexClients: indexClients,
+		metrics:      NewMetrics(r),
 	}
 
 	// query newer periods first
@@ -198,7 +200,7 @@ func buildResponses(query seriesindex.Query, batch seriesindex.ReadBatchResult, 
 	return nil
 }
 
-func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
+func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (result *logproto.GetChunkRefResponse, err error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -214,7 +216,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return nil, err
 	}
 
-	result := &logproto.GetChunkRefResponse{
+	result = &logproto.GetChunkRefResponse{
 		Refs: make([]*logproto.ChunkRef, 0, len(chunks)),
 	}
 	for _, cs := range chunks {
@@ -224,6 +226,12 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	}
 
 	initialChunkCount := len(result.Refs)
+	defer func() {
+		if err == nil {
+			g.metrics.preFilterChunks.WithLabelValues(routeChunkRefs).Observe(float64(initialChunkCount))
+			g.metrics.postFilterChunks.WithLabelValues(routeChunkRefs).Observe(float64(len(result.Refs)))
+		}
+	}()
 
 	// Return unfiltered results if there is no bloom querier (Bloom Gateway disabled)
 	if g.bloomQuerier == nil {
@@ -428,6 +436,8 @@ func (g *Gateway) getShardsWithBlooms(
 	if err != nil {
 		return err
 	}
+	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
+	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(len(filtered)))
 
 	// Edge case: if there are no chunks after filtering, we still need to return a single shard
 	if len(filtered) == 0 {
