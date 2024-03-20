@@ -772,7 +772,7 @@ func (c *IndexReaderWriter) GetShards(
 	// should not be called for legacy indices at all, so just return a single shard covering everything
 	// could be improved by reading schema shards
 	return []logproto.Shard{
-		logproto.Shard{
+		{
 			Bounds: logproto.FPBounds{
 				Min: 0,
 				Max: math.MaxUint64,
