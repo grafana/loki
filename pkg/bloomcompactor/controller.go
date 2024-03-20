@@ -285,7 +285,7 @@ func (s *SimpleBloomController) loadWorkForGap(
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
-) (v1.CloseableIterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBloom], error) {
+) (v1.Iterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBloom], error) {
 	// load a series iterator for the gap
 	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.bounds)
 	if err != nil {
@@ -298,7 +298,22 @@ func (s *SimpleBloomController) loadWorkForGap(
 		return nil, nil, errors.Wrap(err, "failed to get fetcher")
 	}
 
-	f := FetchFunc[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier](fetcher.FetchBlocks)
+	// NB(owen-d): we filter out nil blocks here to avoid panics in the bloom generator since the fetcher
+	// input->output length and indexing in its contract
+	// NB(chaudum): Do we want to fetch in strict mode and fail instead?
+	f := FetchFunc[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier](func(ctx context.Context, refs []bloomshipper.BlockRef) ([]*bloomshipper.CloseableBlockQuerier, error) {
+		blks, err := fetcher.FetchBlocks(ctx, refs, bloomshipper.WithFetchAsync(false), bloomshipper.WithIgnoreNotFound(true))
+		if err != nil {
+			return nil, err
+		}
+		exists := make([]*bloomshipper.CloseableBlockQuerier, 0, len(blks))
+		for _, blk := range blks {
+			if blk != nil {
+				exists = append(exists, blk)
+			}
+		}
+		return exists, nil
+	})
 	blocksIter := newBlockLoadingIter(ctx, gap.blocks, f, 10)
 
 	return seriesItr, blocksIter, nil

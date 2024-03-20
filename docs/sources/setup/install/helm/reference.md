@@ -3348,6 +3348,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the read pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.extraEnv</td>
 			<td>list</td>
 			<td>Environment variables to add to the read pods</td>

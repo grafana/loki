@@ -196,16 +196,22 @@ func (c ClosableReadSeekerAdapter) Close() error {
 	return nil
 }
 
+func BlockRefFrom(tenant, table string, md v1.BlockMetadata) BlockRef {
+	return BlockRef{
+		Ref: Ref{
+			TenantID:       tenant,
+			TableName:      table,
+			Bounds:         md.Series.Bounds,
+			StartTimestamp: md.Series.FromTs,
+			EndTimestamp:   md.Series.ThroughTs,
+			Checksum:       md.Checksum,
+		},
+	}
+}
+
 func BlockFrom(tenant, table string, blk *v1.Block) (Block, error) {
 	md, _ := blk.Metadata()
-	ref := Ref{
-		TenantID:       tenant,
-		TableName:      table,
-		Bounds:         md.Series.Bounds,
-		StartTimestamp: md.Series.FromTs,
-		EndTimestamp:   md.Series.ThroughTs,
-		Checksum:       md.Checksum,
-	}
+	ref := BlockRefFrom(tenant, table, md)
 
 	// TODO(owen-d): pool
 	buf := bytes.NewBuffer(nil)
@@ -218,7 +224,7 @@ func BlockFrom(tenant, table string, blk *v1.Block) (Block, error) {
 	reader := bytes.NewReader(buf.Bytes())
 
 	return Block{
-		BlockRef: BlockRef{Ref: ref},
+		BlockRef: ref,
 		Data:     ClosableReadSeekerAdapter{reader},
 	}, nil
 }

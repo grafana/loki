@@ -68,8 +68,8 @@ func clearCache(cache map[string]interface{}) {
 func prefixedToken(ngram int, chk ChunkRef, buf []byte) ([]byte, int) {
 	enc := encoding.EncWith(buf)
 	enc.Reset()
-	enc.PutBE64(uint64(chk.Start))
-	enc.PutBE64(uint64(chk.End))
+	enc.PutBE64(uint64(chk.From))
+	enc.PutBE64(uint64(chk.Through))
 	enc.PutBE32(chk.Checksum)
 	prefixLn := enc.Len() // record the length of the prefix
 

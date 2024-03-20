@@ -5,10 +5,11 @@ import (
 	"math"
 	"sync"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 type tableRangeProgress struct {

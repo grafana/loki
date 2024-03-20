@@ -13,6 +13,38 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.45.0
+
+- [CHANGE] Add extraContainers parameter for the read pod
+
+## 5.44.4
+
+- [ENHANCEMENT] Use http_listen_port for `compactorAddress`.
+
+## 5.44.3
+
+- [BUGFIX] Fix template error: `<.Values.loki.server.http_listen_port>: can't evaluate field Values in type interface {}`
+
+## 5.44.2
+
+- [BUGFIX] Fix usage of `http_listen_port` and `grpc_listen_port` field in template.
+
+## 5.44.1
+
+- [BUGFIX] Fix `compactorAddress` field: add protocol and port.
+
+## 5.44.0
+
+- [FEATURE] Modified helm template to use parameters http_listen_port and grpc_listen_port instead of hardcoded values.
+
+## 5.43.7
+
+- [BUGFIX] allow to configure http_config for ruler
+
+## 5.43.6
+
+- [ENHANCEMENT] Add `ciliumnetworkpolicy` with egress to world for table-manager if enabled.
+
 ## 5.43.5
 
 - [BUGFIX] Add `---` before the `backend-kubeapiserver-egress` ciliumnetworkpolicy to prevent the `backend-world-egress` one from being dumped if both are enabled.
