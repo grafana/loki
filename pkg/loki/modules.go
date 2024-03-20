@@ -102,6 +102,7 @@ const (
 	QueryFrontendTripperware string = "query-frontend-tripperware"
 	QueryLimiter             string = "query-limiter"
 	QueryLimitsInterceptors  string = "query-limits-interceptors"
+	QueryTagsInterceptors    string = "query-tags-interceptors"
 	QueryLimitsTripperware   string = "query-limits-tripper"
 	RulerStorage             string = "ruler-storage"
 	Ruler                    string = "ruler"
@@ -1574,6 +1575,13 @@ func (t *Loki) initQueryLimitsInterceptors() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing query limits interceptors")
 	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, querylimits.ServerQueryLimitsInterceptor)
 	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, querylimits.StreamServerQueryLimitsInterceptor)
+
+	return nil, nil
+}
+
+func (t *Loki) initQueryTagsInterceptors() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing query tags interceptors")
+	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, ingester.StreamServerQueryTagsInterceptor)
 
 	return nil, nil
 }

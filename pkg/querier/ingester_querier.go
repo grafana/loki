@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/gogo/status"
@@ -42,6 +43,8 @@ type IngesterQuerier struct {
 }
 
 func NewIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, metricsNamespace string) (*IngesterQuerier, error) {
+	clientCfg.GRCPStreamClientInterceptors = append(clientCfg.GRCPStreamClientInterceptors, ingester.StreamClientQueryTagsInterceptor)
+
 	factory := func(addr string) (ring_client.PoolClient, error) {
 		return client.New(clientCfg, addr)
 	}

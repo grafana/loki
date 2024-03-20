@@ -626,6 +626,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics)
 	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
+	mm.RegisterModule(QueryTagsInterceptors, t.initQueryTagsInterceptors, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -709,6 +710,10 @@ func (t *Loki) setupModuleManager() error {
 	// first to initialize the ring that will also be used by the query frontend
 	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
+	}
+
+	if t.Cfg.isModuleEnabled(Ingester) {
+		deps[Server] = append(deps[Server], QueryTagsInterceptors)
 	}
 
 	// Add bloom gateway ring in client mode to IndexGateway service dependencies if bloom filtering is enabled.
