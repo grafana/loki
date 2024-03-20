@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
 
@@ -58,9 +59,9 @@ func (cfg *BlocksCacheConfig) RegisterFlagsWithPrefix(prefix, description string
 }
 
 func (cfg *BlocksCacheConfig) RegisterFlagsWithPrefixAndDefaults(prefix, description string, f *flag.FlagSet, defaultTTL time.Duration) {
-	cfg.SoftLimit.Set("32GiB")
+	_ = cfg.SoftLimit.Set("32GiB")
 	f.Var(&cfg.SoftLimit, prefix+"soft-limit", description+"Soft limit of the cache in bytes. Exceeding this limit will trigger evictions of least recently used items in the background.")
-	cfg.HardLimit.Set("64GiB")
+	_ = cfg.HardLimit.Set("64GiB")
 	f.Var(&cfg.HardLimit, prefix+"hard-limit", description+"Hard limit of the cache in bytes. Exceeding this limit will block execution until soft limit is deceeded.")
 	f.DurationVar(&cfg.TTL, prefix+"ttl", defaultTTL, description+"The time to live for items in the cache before they get purged.")
 }
