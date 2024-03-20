@@ -44,10 +44,20 @@ And the chart repository can be updated by running:
 helm repo update
 ```
 
+Create the configuration file `values.yaml`. The example below illustrates a connection to the locally deployed loki server:
+```yaml
+config:
+  # publish data to loki
+  clients:
+    - url: http://loki-gateway/loki/api/v1/push
+      tenant_id: 1
+```
+
 Finally, Promtail can be deployed with:
 
 ```bash
-helm upgrade --install promtail grafana/promtail
+# The default helm configuration deploys promtail as a daemonSet (recommended)
+helm upgrade --values values.yaml --install promtail grafana/promtail
 ```
 
 ## Install as Kubernetes daemonSet (recommended)

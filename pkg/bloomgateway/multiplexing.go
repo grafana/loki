@@ -72,6 +72,9 @@ type Task struct {
 
 	// TODO(chaudum): Investigate how to remove that.
 	table config.DayTime
+
+	// log enqueue time so we can observe the time spent in the queue
+	enqueueTime time.Time
 }
 
 // NewTask returns a new Task that can be enqueued to the task queue.
@@ -84,17 +87,16 @@ func NewTask(ctx context.Context, tenantID string, refs seriesWithInterval, filt
 	}
 
 	task := Task{
-		ID:        key,
-		Tenant:    tenantID,
-		err:       new(wrappedError),
-		resCh:     make(chan v1.Output),
-		filters:   filters,
-		series:    refs.series,
-		interval:  refs.interval,
-		table:     refs.day,
-		ctx:       ctx,
-		done:      make(chan struct{}),
-		responses: make([]v1.Output, 0, len(refs.series)),
+		ID:       key,
+		Tenant:   tenantID,
+		err:      new(wrappedError),
+		resCh:    make(chan v1.Output),
+		filters:  filters,
+		series:   refs.series,
+		interval: refs.interval,
+		table:    refs.day,
+		ctx:      ctx,
+		done:     make(chan struct{}),
 	}
 	return task, nil
 }
@@ -127,16 +129,15 @@ func (t Task) CloseWithError(err error) {
 func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 	// do not copy ID to distinguish it as copied task
 	return Task{
-		Tenant:    t.Tenant,
-		err:       t.err,
-		resCh:     t.resCh,
-		filters:   t.filters,
-		series:    series,
-		interval:  t.interval,
-		table:     t.table,
-		ctx:       t.ctx,
-		done:      make(chan struct{}),
-		responses: make([]v1.Output, 0, len(series)),
+		Tenant:   t.Tenant,
+		err:      t.err,
+		resCh:    t.resCh,
+		filters:  t.filters,
+		series:   series,
+		interval: t.interval,
+		table:    t.table,
+		ctx:      t.ctx,
+		done:     make(chan struct{}),
 	}
 }
 
