@@ -301,8 +301,11 @@ lint:
 # Test #
 ########
 
-test: all
+test: all ## run the unit tests
 	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee test_results.txt
+
+test-integration:
+	$(GOTEST) -count=1 -v -tags=integration -timeout 10m ./integration
 
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
