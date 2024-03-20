@@ -119,8 +119,7 @@ func (b *BlockDirectory) resolveSize() error {
 }
 
 // BlockQuerier returns a new block querier from the directory.
-// It increments the counter of active queriers for this directory.
-// The counter is decreased when the returned querier is closed.
+// The passed function `close` is called when the the returned querier is closed.
 func (b BlockDirectory) BlockQuerier(close func() error) *CloseableBlockQuerier {
 	return &CloseableBlockQuerier{
 		BlockQuerier: v1.NewBlockQuerier(b.Block()),
