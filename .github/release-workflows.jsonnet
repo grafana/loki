@@ -15,42 +15,50 @@ local imageJobs = {
   logstash: build.image('logstash-output-loki', 'clients/cmd/logstash', platform=['linux/amd64']),
   logcli: build.image('logcli', 'cmd/logcli'),
   'loki-canary': build.image('loki-canary', 'cmd/loki-canary'),
-  'loki-operator': build.image('loki-operator', 'operator', context='release/operator', platform=['linux/amd64']),
+  'loki-canary-boringcrypto': build.image('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto'),
   promtail: build.image('promtail', 'clients/cmd/promtail'),
   querytee: build.image('loki-query-tee', 'cmd/querytee', platform=['linux/amd64']),
 };
 
+local buildImage = 'grafana/loki-build-image:0.29.3-go1.20.10';
+local golangCiLintVersion = 'v1.51.2';
+
+local imageBuildTimeoutMin = 40;
+local imagePrefix = 'grafana';
+
 {
   'patch-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
-      imageJobs=imageJobs,
-      buildImage='grafana/loki-build-image:0.29.3-go1.20.10',
       branches=['release-[0-9]+.[0-9]+.x'],
+      buildImage=buildImage,
       checkTemplate=checkTemplate,
-      golangCiLintVersion='v1.51.2',
-      imagePrefix='grafana',
+      golangCiLintVersion=golangCiLintVersion,
+      imageBuildTimeoutMin=imageBuildTimeoutMin,
+      imageJobs=imageJobs,
+      imagePrefix=imagePrefix,
       releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
       skipArm=false,
       skipValidation=false,
-      versioningStrategy='always-bump-patch',
       useGitHubAppToken=true,
+      versioningStrategy='always-bump-patch',
     ), false, false
   ),
   'minor-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
-      imageJobs=imageJobs,
-      buildImage='grafana/loki-build-image:0.29.3-go1.20.10',
       branches=['k[0-9]+'],
+      buildImage=buildImage,
       checkTemplate=checkTemplate,
-      golangCiLintVersion='v1.51.2',
-      imagePrefix='grafana',
+      golangCiLintVersion=golangCiLintVersion,
+      imageBuildTimeoutMin=imageBuildTimeoutMin,
+      imageJobs=imageJobs,
+      imagePrefix=imagePrefix,
       releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
       skipArm=false,
       skipValidation=false,
-      versioningStrategy='always-bump-minor',
       useGitHubAppToken=true,
+      versioningStrategy='always-bump-minor',
     ), false, false
   ),
   'release.yml': std.manifestYamlDoc(

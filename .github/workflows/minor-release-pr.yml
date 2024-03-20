@@ -1,20 +1,22 @@
 concurrency:
   group: "create-release-pr-${{ github.sha }}"
 env:
+  BUILD_TIMEOUT: 40
+  CHANGELOG_PATH: "CHANGELOG.md"
   DOCKER_USERNAME: "grafana"
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "v1.11.5"
+  RELEASE_LIB_REF: "loki-2.8.x"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
   VERSIONING_STRATEGY: "always-bump-minor"
 jobs:
   check:
-    uses: "grafana/loki-release/.github/workflows/check.yml@v1.11.5"
+    uses: "grafana/loki-release/.github/workflows/check.yml@loki-2.8.x"
     with:
       build_image: "grafana/loki-build-image:0.29.3-go1.20.10"
       golang_ci_lint_version: "v1.51.2"
-      release_lib_ref: "v1.11.5"
+      release_lib_ref: "loki-2.8.x"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
@@ -26,7 +28,7 @@ jobs:
     - "logstash"
     - "loki"
     - "loki-canary"
-    - "loki-operator"
+    - "loki-canary-boringcrypto"
     - "promtail"
     - "querytee"
     runs-on: "ubuntu-latest"
@@ -74,6 +76,7 @@ jobs:
       run: |
         npm install
         npm exec -- release-please release-pr \
+          --changelog-path "${CHANGELOG_PATH}" \
           --consider-all-branches \
           --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --label "backport main,autorelease: pending,product-approved" \
@@ -102,6 +105,10 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Cloud SDK"
+      uses: "google-github-actions/setup-gcloud@v2"
+      with:
+        version: ">= 452.0.0"
     - id: "get-secrets"
       name: "get nfpm signing keys"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@main"
@@ -179,11 +186,14 @@ jobs:
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@v5"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/clients/cmd/fluent-bit/Dockerfile"
         outputs: "type=docker,dest=release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -238,11 +248,14 @@ jobs:
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@v5"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/clients/cmd/fluentd/Dockerfile"
         outputs: "type=docker,dest=release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -297,11 +310,14 @@ jobs:
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@v5"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/cmd/logcli/Dockerfile"
         outputs: "type=docker,dest=release/images/logcli-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -358,11 +374,14 @@ jobs:
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@v5"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/clients/cmd/logstash/Dockerfile"
         outputs: "type=docker,dest=release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -417,11 +436,14 @@ jobs:
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@v5"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/cmd/loki/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -478,11 +500,14 @@ jobs:
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@v5"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/cmd/loki-canary/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -502,7 +527,7 @@ jobs:
         - "linux/amd64"
         - "linux/arm64"
         - "linux/arm"
-  loki-operator:
+  loki-canary-boringcrypto:
     needs:
     - "version"
     runs-on: "ubuntu-latest"
@@ -539,28 +564,33 @@ jobs:
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@v5"
       with:
-        context: "release/operator"
-        file: "release/operator/Dockerfile"
-        outputs: "type=docker,dest=release/images/loki-operator-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
+        context: "release"
+        file: "release/cmd/loki-canary-boringcrypto/Dockerfile"
+        outputs: "type=docker,dest=release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/loki-operator:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        tags: "${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/loki-operator-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        path: "release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
       matrix:
         platform:
         - "linux/amd64"
+        - "linux/arm64"
+        - "linux/arm"
   promtail:
     needs:
     - "version"
@@ -598,11 +628,14 @@ jobs:
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@v5"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/clients/cmd/promtail/Dockerfile"
         outputs: "type=docker,dest=release/images/promtail-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -659,11 +692,14 @@ jobs:
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@v5"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/cmd/querytee/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"

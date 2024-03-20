@@ -42,14 +42,18 @@ local releaseLibStep = common.releaseLibStep;
       |||),
 
       step.new('Build and export', 'docker/build-push-action@v5')
-      + step.withTimeoutMinutes(25)
+      + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
+      + step.withEnv({
+        IMAGE_TAG: '${{ needs.version.outputs.version }}',
+      })
       + step.with({
         context: context,
         file: 'release/%s/Dockerfile' % path,
         platforms: '${{ matrix.platform }}',
         tags: '${{ env.IMAGE_PREFIX }}/%s:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}' % [name],
         outputs: 'type=docker,dest=release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
+        'build-args': 'IMAGE_TAG=${{ needs.version.outputs.version }}',
       }),
       step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
@@ -110,11 +114,12 @@ local releaseLibStep = common.releaseLibStep;
       pr_created: '${{ steps.version.outputs.pr_created }}',
     }),
 
-  dist: function(buildImage, skipArm=true)
+  dist: function(buildImage, skipArm=true, useGCR=false, makeTargets=['dist', 'packages'])
     job.new()
     + job.withSteps([
       common.fetchReleaseRepo,
       common.googleAuth,
+      common.setupGoogleCloudSdk,
       step.new('get nfpm signing keys', 'grafana/shared-workflows/actions/get-vault-secrets@main')
       + step.withId('get-secrets')
       + step.with({
@@ -134,24 +139,31 @@ local releaseLibStep = common.releaseLibStep;
         SKIP_ARM: skipArm,
       })
       //TODO: the workdir here is loki specific
-      + step.withRun(|||
-        cat <<EOF | docker run \
-          --interactive \
-          --env BUILD_IN_CONTAINER \
-          --env DRONE_TAG \
-          --env IMAGE_TAG \
-          --env NFPM_PASSPHRASE \
-          --env NFPM_SIGNING_KEY \
-          --env NFPM_SIGNING_KEY_FILE \
-          --env SKIP_ARM \
-          --volume .:/src/loki \
-          --workdir /src/loki \
-          --entrypoint /bin/sh "%s"
-          git config --global --add safe.directory /src/loki
-          echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
-          make dist packages
-        EOF
-      ||| % buildImage),
+      + step.withRun(
+        (
+          if useGCR then |||
+            gcloud auth configure-docker
+          ||| else ''
+        ) +
+        |||
+          cat <<EOF | docker run \
+            --interactive \
+            --env BUILD_IN_CONTAINER \
+            --env DRONE_TAG \
+            --env IMAGE_TAG \
+            --env NFPM_PASSPHRASE \
+            --env NFPM_SIGNING_KEY \
+            --env NFPM_SIGNING_KEY_FILE \
+            --env SKIP_ARM \
+            --volume .:/src/loki \
+            --workdir /src/loki \
+            --entrypoint /bin/sh "%s"
+            git config --global --add safe.directory /src/loki
+            echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
+            make %s
+          EOF
+        ||| % [buildImage, std.join(' ', makeTargets)]
+      ),
 
       step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')

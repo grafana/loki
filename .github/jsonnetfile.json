@@ -8,7 +8,7 @@
           "subdir": "workflows"
         }
       },
-      "version": "v1.11.5"
+      "version": "loki-2.8.x"
     }
   ],
   "legacyImports": true
