@@ -6,9 +6,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -16,14 +14,14 @@ const (
 )
 
 func getQueryTags(ctx context.Context) string {
-	v, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty
+	v, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string)
 	return v
 }
 
-func injectIntoGRPCRequest(ctx context.Context) (context.Context, error) {
+func injectIntoGRPCRequest(ctx context.Context) context.Context {
 	queryTags := getQueryTags(ctx)
 	if queryTags == "" {
-		return ctx, nil
+		return ctx
 	}
 
 	// inject into GRPC metadata
@@ -32,50 +30,36 @@ func injectIntoGRPCRequest(ctx context.Context) (context.Context, error) {
 		md = metadata.New(map[string]string{})
 	}
 	md = md.Copy()
-	md.Set("x-query-tags", queryTags)
+	md.Set(lowerQueryTagsHeaderName, queryTags)
 
-	level.Info(util_log.Logger).Log("msg", "inject query tag", "value", queryTags)
-
-	newCtx := metadata.NewOutgoingContext(ctx, md)
-
-	return newCtx, nil
+	return metadata.NewOutgoingContext(ctx, md)
 }
 
-func extractFromGRPCRequest(ctx context.Context) (context.Context, error) {
+func extractFromGRPCRequest(ctx context.Context) context.Context {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		// No metadata, just return as is
-		return ctx, nil
+		return ctx
 	}
 
-	headerValues, ok := md["x-query-tags"]
+	headerValues, ok := md[lowerQueryTagsHeaderName]
 	if !ok || len(headerValues) == 0 {
-		return ctx, nil
+		return ctx
 	}
 
-	level.Info(util_log.Logger).Log("msg", "extract query tag", "value", headerValues[0])
-
-	return context.WithValue(ctx, httpreq.QueryTagsHTTPHeader, headerValues[0]), nil
+	return context.WithValue(ctx, httpreq.QueryTagsHTTPHeader, headerValues[0])
 }
 
 // StreamClientQueryTagsInterceptor propagates the query tags from the context to gRPC metadata, which eventually ends up as a HTTP2 header.
 // For streaming gRPC requests.
 func StreamClientQueryTagsInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-	ctx, err := injectIntoGRPCRequest(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+	ctx = injectIntoGRPCRequest(ctx)
 	return streamer(ctx, desc, cc, method, opts...)
 }
 
 // StreamServerUserHeaderInterceptor propagates the query tags from the gRPC metadata back to our context.
 func StreamServerQueryTagsInterceptor(srv interface{}, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-	ctx, err := extractFromGRPCRequest(ss.Context())
-	if err != nil {
-		return err
-	}
-
+	ctx := extractFromGRPCRequest(ss.Context())
 	return handler(srv, serverStream{
 		ctx:          ctx,
 		ServerStream: ss,
