@@ -3,9 +3,8 @@ package bloomcompactor
 import (
 	"flag"
 	"fmt"
-	"time"
-
 	"github.com/pkg/errors"
+	"time"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/util/ring"
