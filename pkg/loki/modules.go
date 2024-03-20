@@ -1581,8 +1581,8 @@ func (t *Loki) initQueryLimitsInterceptors() (services.Service, error) {
 
 func (t *Loki) initIngesterQueryTagsInterceptors() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing ingester query tags interceptors")
-	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, ingester.StreamServerQueryTagsInterceptor)
-	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, ingester.ServerQueryTagsInterceptor)
+	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, serverutil.StreamServerQueryTagsInterceptor)
+	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, serverutil.ServerQueryTagsInterceptor)
 
 	return nil, nil
 }

@@ -1,4 +1,4 @@
-package ingester
+package server
 
 import (
 	"context"

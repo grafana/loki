@@ -2,6 +2,7 @@ package client
 
 import (
 	"flag"
+	"github.com/grafana/loki/pkg/util/server"
 	"io"
 	"time"
 
@@ -15,7 +16,6 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"
-	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -89,7 +89,7 @@ func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, cfg.GRPCUnaryClientInterceptors...)
-	unaryInterceptors = append(unaryInterceptors, ingester.ClientQueryTagsInterceptor)
+	unaryInterceptors = append(unaryInterceptors, server.ClientQueryTagsInterceptor)
 	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
 	if !cfg.Internal {
 		unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
@@ -98,7 +98,7 @@ func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamC
 
 	var streamInterceptors []grpc.StreamClientInterceptor
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
-	streamInterceptors = append(streamInterceptors, ingester.StreamClientQueryTagsInterceptor)
+	streamInterceptors = append(streamInterceptors, server.StreamClientQueryTagsInterceptor)
 	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
 	if !cfg.Internal {
 		streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
