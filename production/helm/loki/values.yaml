@@ -1236,6 +1236,8 @@ singleBinary:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for the PVC
+    # annotations: []
 # Use either this ingress or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.
 # You'll need to supply authn configuration for your ingress controller.
