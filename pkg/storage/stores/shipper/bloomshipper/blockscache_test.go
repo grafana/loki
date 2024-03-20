@@ -2,13 +2,16 @@ package bloomshipper
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 )
 
 var (
@@ -329,4 +332,81 @@ func TestBlocksCache_RefCounter(t *testing.T) {
 
 	_ = cache.Release(ctx, "a")
 	require.Equal(t, int32(0), cache.entries["a"].Value.(*Entry).refCount.Load())
+}
+
+func prepareBenchmark(b *testing.B) map[string]BlockDirectory {
+	b.Helper()
+
+	entries := make(map[string]BlockDirectory)
+	for i := 0; i < 1000; i++ {
+		key := fmt.Sprintf("block-%04x", i)
+		entries[key] = BlockDirectory{
+			BlockRef:                    BlockRef{},
+			Path:                        fmt.Sprintf("blooms/%s", key),
+			removeDirectoryTimeout:      time.Minute,
+			refCount:                    atomic.NewInt32(0),
+			logger:                      logger,
+			activeQueriersCheckInterval: time.Minute,
+			size:                        4 << 10,
+		}
+	}
+	return entries
+}
+
+func Benchmark_BlocksCacheOld(b *testing.B) {
+	prepareBenchmark(b)
+	b.StopTimer()
+	cfg := cache.EmbeddedCacheConfig{
+		Enabled:       true,
+		MaxSizeMB:     100,
+		MaxSizeItems:  10000,
+		TTL:           time.Hour,
+		PurgeInterval: time.Hour,
+	}
+	cache := NewBlocksCache(cfg, nil, logger)
+	entries := prepareBenchmark(b)
+	ctx := context.Background()
+	b.ReportAllocs()
+	b.StartTimer()
+
+	// write
+	for k, v := range entries {
+		err := cache.Store(ctx, []string{k}, []BlockDirectory{v})
+		require.NoError(b, err)
+	}
+	for i := 0; i < b.N; i++ {
+		// read
+		for k, _ := range entries {
+			_, _ = cache.Get(ctx, k)
+		}
+	}
+
+}
+
+func Benchmark_BlocksCacheNew(b *testing.B) {
+	prepareBenchmark(b)
+	b.StopTimer()
+	cfg := BlocksCacheConfig{
+		Enabled:       true,
+		SoftLimit:     100 << 20,
+		HardLimit:     120 << 20,
+		TTL:           time.Hour,
+		PurgeInterval: time.Hour,
+	}
+	cache := NewFsBlocksCache(cfg, nil, logger)
+	entries := prepareBenchmark(b)
+	ctx := context.Background()
+	b.ReportAllocs()
+	b.StartTimer()
+
+	// write
+	for k, v := range entries {
+		_ = cache.PutMany(ctx, []string{k}, []BlockDirectory{v})
+	}
+	// read
+	for i := 0; i < b.N; i++ {
+		for k, _ := range entries {
+			_, _ = cache.Get(ctx, k)
+		}
+	}
 }
