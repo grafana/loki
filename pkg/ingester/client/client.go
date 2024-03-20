@@ -89,7 +89,7 @@ func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, cfg.GRPCUnaryClientInterceptors...)
-	unaryInterceptors = append(unaryInterceptors, server.ClientQueryTagsInterceptor)
+	unaryInterceptors = append(unaryInterceptors, server.UnaryClientQueryTagsInterceptor)
 	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
 	if !cfg.Internal {
 		unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)

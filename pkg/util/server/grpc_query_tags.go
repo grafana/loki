@@ -46,9 +46,9 @@ func extractFromGRPCRequest(ctx context.Context) context.Context {
 	return context.WithValue(ctx, httpreq.QueryTagsHTTPHeader, headerValues[0])
 }
 
-// ClientQueryTagsInterceptor propagates the query tags from the context to gRPC metadata, which eventually ends up as a HTTP2 header.
+// UnaryClientQueryTagsInterceptor propagates the query tags from the context to gRPC metadata, which eventually ends up as a HTTP2 header.
 // For unary gRPC requests.
-func ClientQueryTagsInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+func UnaryClientQueryTagsInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	return invoker(injectIntoGRPCRequest(ctx), method, req, reply, cc, opts...)
 }
 
@@ -58,8 +58,8 @@ func StreamClientQueryTagsInterceptor(ctx context.Context, desc *grpc.StreamDesc
 	return streamer(injectIntoGRPCRequest(ctx), desc, cc, method, opts...)
 }
 
-// ServerQueryTagsInterceptor propagates the query tags from the gRPC metadata back to our context for unary gRPC requests.
-func ServerQueryTagsInterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+// UnaryServerQueryTagsInterceptor propagates the query tags from the gRPC metadata back to our context for unary gRPC requests.
+func UnaryServerQueryTagsInterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	return handler(extractFromGRPCRequest(ctx), req)
 }
 
