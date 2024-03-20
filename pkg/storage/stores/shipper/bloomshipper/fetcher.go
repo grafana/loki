@@ -219,7 +219,6 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 		found++
 		f.metrics.blocksFound.Inc()
 		results[i] = dir.BlockQuerier(func() error {
-			level.Debug(f.logger).Log("msg", "close block querier and release key from cache")
 			return f.blocksCache.Release(ctx, key)
 		})
 	}
@@ -250,7 +249,6 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 			found++
 			key := f.client.Block(refs[res.idx]).Addr()
 			results[res.idx] = res.item.BlockQuerier(func() error {
-				level.Debug(f.logger).Log("msg", "close block querier and release key from cache")
 				return f.blocksCache.Release(ctx, key)
 			})
 		}
