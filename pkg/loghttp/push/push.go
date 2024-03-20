@@ -4,13 +4,15 @@ import (
 	"compress/flate"
 	"compress/gzip"
 	"fmt"
-	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/pkg/push"
 	"io"
 	"math"
 	"mime"
 	"net/http"
 	"time"
+
+	"github.com/go-kit/log/level"
+
+	"github.com/grafana/loki/pkg/push"
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"

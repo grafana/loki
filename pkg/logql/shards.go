@@ -4,14 +4,15 @@ import (
 	"encoding/json"
 
 	"github.com/grafana/dskit/multierror"
+	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 )
 
 type Shards []Shard

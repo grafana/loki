@@ -3,10 +3,11 @@ package sharding
 import (
 	"math"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/prometheus/common/model"
 )
 
 var (

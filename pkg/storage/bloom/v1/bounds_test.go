@@ -3,9 +3,10 @@ package v1
 import (
 	"testing"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestBoundsFromProto(t *testing.T) {

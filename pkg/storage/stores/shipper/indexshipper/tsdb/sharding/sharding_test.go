@@ -5,10 +5,11 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 )
 
 func TestSizedFPs_Sort(t *testing.T) {

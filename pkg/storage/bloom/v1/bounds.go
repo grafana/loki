@@ -7,11 +7,12 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 type BoundsCheck uint8
