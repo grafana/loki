@@ -3,14 +3,15 @@ package bloomshipper
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
@@ -267,13 +268,9 @@ func prepareBenchmark(b *testing.B) map[string]BlockDirectory {
 	for i := 0; i < 1000; i++ {
 		key := fmt.Sprintf("block-%04x", i)
 		entries[key] = BlockDirectory{
-			BlockRef:                    BlockRef{},
-			Path:                        fmt.Sprintf("blooms/%s", key),
-			removeDirectoryTimeout:      time.Minute,
-			refCount:                    atomic.NewInt32(0),
-			logger:                      logger,
-			activeQueriersCheckInterval: time.Minute,
-			size:                        4 << 10,
+			BlockRef: BlockRef{},
+			Path:     fmt.Sprintf("blooms/%s", key),
+			size:     4 << 10,
 		}
 	}
 	return entries
@@ -289,7 +286,11 @@ func Benchmark_BlocksCacheOld(b *testing.B) {
 		TTL:           time.Hour,
 		PurgeInterval: time.Hour,
 	}
-	cache := NewBlocksCache(cfg, nil, logger)
+	cache := cache.NewTypedEmbeddedCache[string, BlockDirectory](
+		"blocks-cache", cfg, nil, logger, stats.BloomBlocksCache,
+		func(entry *cache.Entry[string, BlockDirectory]) uint64 { return uint64(entry.Value.Size()) },
+		func(_ string, value BlockDirectory) { os.RemoveAll(value.Path) },
+	)
 	entries := prepareBenchmark(b)
 	ctx := context.Background()
 	b.ReportAllocs()
@@ -312,8 +313,7 @@ func Benchmark_BlocksCacheOld(b *testing.B) {
 func Benchmark_BlocksCacheNew(b *testing.B) {
 	prepareBenchmark(b)
 	b.StopTimer()
-	cfg := BlocksCacheConfig{
-		Enabled:       true,
+	cfg := config.BlocksCacheConfig{
 		SoftLimit:     100 << 20,
 		HardLimit:     120 << 20,
 		TTL:           time.Hour,
