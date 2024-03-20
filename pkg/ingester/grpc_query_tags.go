@@ -9,10 +9,6 @@ import (
 	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
-const (
-	lowerQueryTagsHeaderName = "x-query-tags"
-)
-
 func getQueryTags(ctx context.Context) string {
 	v, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string)
 	return v
@@ -30,7 +26,7 @@ func injectIntoGRPCRequest(ctx context.Context) context.Context {
 		md = metadata.New(map[string]string{})
 	}
 	md = md.Copy()
-	md.Set(lowerQueryTagsHeaderName, queryTags)
+	md.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
 
 	return metadata.NewOutgoingContext(ctx, md)
 }
@@ -42,26 +38,35 @@ func extractFromGRPCRequest(ctx context.Context) context.Context {
 		return ctx
 	}
 
-	headerValues, ok := md[lowerQueryTagsHeaderName]
-	if !ok || len(headerValues) == 0 {
+	headerValues := md.Get(string(httpreq.QueryTagsHTTPHeader))
+	if len(headerValues) == 0 {
 		return ctx
 	}
 
 	return context.WithValue(ctx, httpreq.QueryTagsHTTPHeader, headerValues[0])
 }
 
+// ClientQueryTagsInterceptor propagates the query tags from the context to gRPC metadata, which eventually ends up as a HTTP2 header.
+// For unary gRPC requests.
+func ClientQueryTagsInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	return invoker(injectIntoGRPCRequest(ctx), method, req, reply, cc, opts...)
+}
+
 // StreamClientQueryTagsInterceptor propagates the query tags from the context to gRPC metadata, which eventually ends up as a HTTP2 header.
 // For streaming gRPC requests.
 func StreamClientQueryTagsInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-	ctx = injectIntoGRPCRequest(ctx)
-	return streamer(ctx, desc, cc, method, opts...)
+	return streamer(injectIntoGRPCRequest(ctx), desc, cc, method, opts...)
 }
 
-// StreamServerUserHeaderInterceptor propagates the query tags from the gRPC metadata back to our context.
+// ServerQueryTagsInterceptor propagates the query tags from the gRPC metadata back to our context for unary gRPC requests.
+func ServerQueryTagsInterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	return handler(extractFromGRPCRequest(ctx), req)
+}
+
+// StreamServerQueryTagsInterceptor propagates the query tags from the gRPC metadata back to our context for streaming gRPC requests.
 func StreamServerQueryTagsInterceptor(srv interface{}, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-	ctx := extractFromGRPCRequest(ss.Context())
 	return handler(srv, serverStream{
-		ctx:          ctx,
+		ctx:          extractFromGRPCRequest(ss.Context()),
 		ServerStream: ss,
 	})
 }

@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-func TestIngesterQueryTagsPropagation(t *testing.T) {
+func TestInjectQueryTagsIntoGRPCRequest(t *testing.T) {
 	for _, tt := range []struct {
 		name, tags         string
 		md, expectMetadata metadata.MD
@@ -52,7 +52,7 @@ func TestIngesterQueryTagsPropagation(t *testing.T) {
 	}
 }
 
-func TestExtractQueryTags(t *testing.T) {
+func TestExtractQueryTagsFromGRPCRequest(t *testing.T) {
 	for _, tt := range []struct {
 		name         string
 		md           metadata.MD

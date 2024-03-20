@@ -607,7 +607,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
-	mm.RegisterModule(IngesterQueryTagsInterceptor, t.initIngesterQueryTagsInterceptors, modules.UserInvisibleModule)
+	mm.RegisterModule(IngesterQueryTagsInterceptors, t.initIngesterQueryTagsInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendMiddleware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
@@ -712,9 +712,9 @@ func (t *Loki) setupModuleManager() error {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
 	}
 
-	// Initialise query tags interceptor on targets running ingesters.
+	// Initialise query tags interceptors on targets running ingester
 	if t.Cfg.isModuleEnabled(Ingester) || t.Cfg.isModuleEnabled(Write) || t.Cfg.isModuleEnabled(All) {
-		deps[Server] = append(deps[Server], IngesterQueryTagsInterceptor)
+		deps[Server] = append(deps[Server], IngesterQueryTagsInterceptors)
 	}
 
 	// Add bloom gateway ring in client mode to IndexGateway service dependencies if bloom filtering is enabled.
