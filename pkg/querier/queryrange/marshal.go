@@ -200,6 +200,8 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.Labels, nil
 	case *QueryResponse_Stats:
 		return concrete.Stats, nil
+	case *QueryResponse_ShardsResponse:
+		return concrete.ShardsResponse, nil
 	case *QueryResponse_Prom:
 		return concrete.Prom, nil
 	case *QueryResponse_Streams:
@@ -350,6 +352,8 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 		result.Request = &QueryRequest_Instant{Instant: req}
 	case *LokiRequest:
 		result.Request = &QueryRequest_Streams{Streams: req}
+	case *logproto.ShardsRequest:
+		result.Request = &QueryRequest_ShardsRequest{ShardsRequest: req}
 	default:
 		return nil, fmt.Errorf("unsupported request type, got (%T)", r)
 	}
