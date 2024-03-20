@@ -61,8 +61,8 @@
     withEnv: function(env) {
       env: env,
     },
-    withSecrets: function(env) {
-      secrets: env,
+    withSecrets: function(secrets) {
+      secrets: secrets,
     },
   },
 
@@ -142,4 +142,19 @@
                 echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
               fi
             |||),
+
+  validationJob: function(useGCR=false)
+    $.job.new()
+    + $.job.withContainer({
+      image: '${{ inputs.build_image }}',
+    } + if useGCR then {
+      credentials: {
+        username: '_json_key',
+        password: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
+      },
+    } else {})
+    + $.job.withEnv({
+      BUILD_IN_CONTAINER: false,
+      SKIP_VALIDATION: '${{ inputs.skip_validation }}',
+    }),
 }
