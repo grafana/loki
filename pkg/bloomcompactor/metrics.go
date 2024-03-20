@@ -45,9 +45,10 @@ type Metrics struct {
 	timePerTenant *prometheus.CounterVec
 
 	// Retention metrics
-	retentionRunning          prometheus.Gauge
-	retentionTime             *prometheus.HistogramVec
-	retentionDaysPerIteration *prometheus.HistogramVec
+	retentionRunning             prometheus.Gauge
+	retentionTime                *prometheus.HistogramVec
+	retentionDaysPerIteration    *prometheus.HistogramVec
+	retentionTenantsPerIteration *prometheus.HistogramVec
 }
 
 func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
@@ -189,6 +190,15 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 			Help:      "1 if retention is running in this compactor.",
 		}),
 
+		retentionTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "retention_time_seconds",
+			Help:      "Time this retention process took to complete.",
+			// 1second -> 5 years, 10 buckets
+			Buckets: prometheus.DefBuckets,
+		}, []string{"status"}),
+
 		retentionDaysPerIteration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
@@ -198,13 +208,13 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 			Buckets: prometheus.ExponentialBucketsRange(1, 365*5, 10),
 		}, []string{"status"}),
 
-		retentionTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+		retentionTenantsPerIteration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "retention_time_seconds",
-			Help:      "Time this retention process took to complete.",
-			// 1second -> 5 years, 10 buckets
-			Buckets: prometheus.DefBuckets,
+			Name:      "retention_tenants_processed",
+			Help:      "Number of tenants on which retention was applied during the retention process.",
+			// 1 tenant -> 10k tenants, 10 buckets
+			Buckets: prometheus.ExponentialBucketsRange(1, 10000, 10),
 		}, []string{"status"}),
 	}
 

@@ -136,9 +136,11 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 	r.metrics.retentionRunning.Set(1)
 	defer r.metrics.retentionRunning.Set(0)
 
+	var daysProcessed int
+	tenantsRetentionApplied := make(map[string]struct{}, 100)
+
 	// We iterate through up to r.cfg.MaxLookbackDays days unless it's set to 0
 	// In that case, we iterate through all days
-	var daysProcessed int
 	day := today
 	for i := 1; i <= r.cfg.MaxLookbackDays || r.cfg.MaxLookbackDays == 0; i++ {
 		day = day.Dec()
@@ -154,6 +156,7 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 		if err != nil {
 			r.metrics.retentionTime.WithLabelValues(statusFailure).Observe(time.Since(start.Time()).Seconds())
 			r.metrics.retentionDaysPerIteration.WithLabelValues(statusFailure).Observe(float64(daysProcessed))
+			r.metrics.retentionTenantsPerIteration.WithLabelValues(statusFailure).Observe(float64(len(tenantsRetentionApplied)))
 			return errors.Wrap(err, "getting users for period")
 		}
 
@@ -179,18 +182,22 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 				if err := objectClient.DeleteObject(ctx, key); err != nil {
 					r.metrics.retentionTime.WithLabelValues(statusFailure).Observe(time.Since(start.Time()).Seconds())
 					r.metrics.retentionDaysPerIteration.WithLabelValues(statusFailure).Observe(float64(daysProcessed))
+					r.metrics.retentionTenantsPerIteration.WithLabelValues(statusFailure).Observe(float64(len(tenantsRetentionApplied)))
 					return errors.Wrapf(err, "deleting key %s", key)
 				}
 			}
+
+			tenantsRetentionApplied[tenant] = struct{}{}
 		}
 
 		daysProcessed++
 	}
 
-	level.Info(r.logger).Log("msg", "finished applying retention")
+	level.Info(r.logger).Log("msg", "finished applying retention", "daysProcessed", daysProcessed, "tenants", len(tenantsRetentionApplied))
 	r.lastDayRun = today
 	r.metrics.retentionTime.WithLabelValues(statusSuccess).Observe(time.Since(start.Time()).Seconds())
 	r.metrics.retentionDaysPerIteration.WithLabelValues(statusSuccess).Observe(float64(daysProcessed))
+	r.metrics.retentionTenantsPerIteration.WithLabelValues(statusSuccess).Observe(float64(len(tenantsRetentionApplied)))
 
 	return nil
 }
