@@ -65,6 +65,7 @@ pkgs.stdenv.mkDerivation {
     export GOMODCACHE=$TMPDIR/gomodcache
     export GOLANGCI_LINT_CACHE=$TMPDIR/go-cache
     export GOPROXY=off
+    export BUILD_IN_CONTAINER=false
 
     make lint test
   '';
