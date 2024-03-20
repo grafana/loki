@@ -8,10 +8,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
 
 var (
