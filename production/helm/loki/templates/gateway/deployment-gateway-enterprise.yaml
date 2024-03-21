@@ -72,7 +72,7 @@ spec:
             {{- if .Values.enterpriseGateway.useDefaultProxyURLs }}
             - -gateway.proxy.default.url=http://{{ template "loki.fullname" . }}-admin-api.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.admin-api.url=http://{{ template "loki.fullname" . }}-admin-api.{{ .Release.Namespace }}.svc:3100
-            - -gateway.proxy.distributor.url=http://{{ template "loki.fullname" . }}-distributor.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.distributor.url=dns:///{{ template "loki.fullname" . }}-distributor-headless.{{ .Release.Namespace }}.svc:9095
             - -gateway.proxy.ingester.url=http://{{ template "loki.fullname" . }}-ingester.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.query-frontend.url=http://{{ template "loki.fullname" . }}-query-frontend.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.ruler.url=http://{{ template "loki.fullname" . }}-ruler.{{ .Release.Namespace }}.svc:3100

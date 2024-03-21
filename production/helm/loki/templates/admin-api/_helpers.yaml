@@ -12,6 +12,7 @@ adminApi common labels
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: admin-api
 target: admin-api
+name: admin-api
 {{- end }}
 
 {{/*
@@ -21,4 +22,5 @@ adminApi selector labels
 {{ include "loki.selectorLabels" . }}
 app.kubernetes.io/component: admin-api
 target: admin-api
+name: admin-api
 {{- end }}
