@@ -258,12 +258,12 @@ func (c *Compactor) runOne(ctx context.Context) error {
 func (c *Compactor) tables(ts time.Time) *dayRangeIterator {
 	// adjust the minimum by one to make it inclusive, which is more intuitive
 	// for a configuration variable
-	adjustedMin := min(c.cfg.MinTableCompactionPeriod - 1)
-	minCompactionPeriod := time.Duration(adjustedMin) * config.ObjectStorageIndexRequiredPeriod
-	maxCompactionPeriod := time.Duration(c.cfg.MaxTableCompactionPeriod) * config.ObjectStorageIndexRequiredPeriod
+	adjustedMin := min(c.cfg.MinTableOffset - 1)
+	minCompactionDelta := time.Duration(adjustedMin) * config.ObjectStorageIndexRequiredPeriod
+	maxCompactionDelta := time.Duration(c.cfg.MaxTableOffset) * config.ObjectStorageIndexRequiredPeriod
 
-	from := ts.Add(-maxCompactionPeriod).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod) * int64(config.ObjectStorageIndexRequiredPeriod)
-	through := ts.Add(-minCompactionPeriod).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod) * int64(config.ObjectStorageIndexRequiredPeriod)
+	from := ts.Add(-maxCompactionDelta).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod) * int64(config.ObjectStorageIndexRequiredPeriod)
+	through := ts.Add(-minCompactionDelta).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod) * int64(config.ObjectStorageIndexRequiredPeriod)
 
 	fromDay := config.NewDayTime(model.TimeFromUnixNano(from))
 	throughDay := config.NewDayTime(model.TimeFromUnixNano(through))

@@ -2692,18 +2692,18 @@ ring:
 # CLI flag: -bloom-compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
-# How many index periods (days) to wait before building bloom filters for a
-# table. This can be used to lower cost by not re-writing data to object storage
-# too frequently since recent data changes more often.
-# CLI flag: -bloom-compactor.min-table-compaction-period
-[min_table_compaction_period: <int> | default = 1]
+# Newest day-table offset (from today, inclusive) to compact. Increase to lower
+# cost by not re-writing data to object storage too frequently since recent data
+# changes more often at the cost of not having blooms available as quickly.
+# CLI flag: -bloom-compactor.min-table-offset
+[min_table_offset: <int> | default = 1]
 
-# The maximum number of index periods (days) to build bloom filters for a table.
-# This can be used to lower cost by not trying to compact older data which
-# doesn't change. This can be optimized by aligning it with the maximum
-# `reject_old_samples_max_age` setting of any tenant.
-# CLI flag: -bloom-compactor.max-table-compaction-period
-[max_table_compaction_period: <int> | default = 7]
+# Oldest day-table offset (from today, inclusive) to compact. This can be used
+# to lower cost by not trying to compact older data which doesn't change. This
+# can be optimized by aligning it with the maximum `reject_old_samples_max_age`
+# setting of any tenant.
+# CLI flag: -bloom-compactor.max-table-offset
+[max_table_offset: <int> | default = 2]
 
 # Number of workers to run in parallel for compaction.
 # CLI flag: -bloom-compactor.worker-parallelism
