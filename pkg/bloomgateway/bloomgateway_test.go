@@ -138,7 +138,6 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	tenantID := "test"
 
-	store := setupBloomStore(t)
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 
@@ -156,7 +155,8 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			ReplicationFactor: 1,
 			NumTokens:         16,
 		},
-		WorkerConcurrency:       4,
+		WorkerConcurrency:       2,
+		BlockQueryConcurrency:   2,
 		MaxOutstandingPerTenant: 1024,
 	}
 
@@ -249,7 +249,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, store, logger, reg)
+		gw, err := New(cfg, newMockBloomStore(nil, nil), logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -294,7 +294,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, store, logger, reg)
+		gw, err := New(cfg, newMockBloomStore(nil, nil), logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -333,15 +333,13 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	t.Run("use fuse queriers to filter chunks", func(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
-		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, store, logger, reg)
-		require.NoError(t, err)
-
 		// replace store implementation and re-initialize workers and sub-services
 		_, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 
-		gw.bloomStore = newMockBloomStore(queriers, metas)
-		err = gw.initServices()
+		reg := prometheus.NewRegistry()
+		store := newMockBloomStore(queriers, metas)
+
+		gw, err := New(cfg, store, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
