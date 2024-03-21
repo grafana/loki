@@ -513,7 +513,7 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 			return nil, err
 		}
 
-		pipeline = s.pipelineWrapper.Wrap(ctx, pipeline, expr.String(), userID)
+		pipeline = s.pipelineWrapper.Wrap(ctx, pipeline, req.Plan.String(), userID)
 	}
 
 	var chunkFilterer chunk.Filterer
@@ -560,7 +560,7 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 			return nil, err
 		}
 
-		extractor = s.extractorWrapper.Wrap(ctx, extractor, expr.String(), userID)
+		extractor = s.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
 	}
 
 	var chunkFilterer chunk.Filterer
