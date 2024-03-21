@@ -18,18 +18,20 @@ import (
 
 func newProcessor(id string, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
 	return &processor{
-		id:      id,
-		store:   store,
-		logger:  logger,
-		metrics: metrics,
+		id:          id,
+		concurrency: 2, // TODO(chaudum): What's a good concurrency value? Make it configurable.
+		store:       store,
+		logger:      logger,
+		metrics:     metrics,
 	}
 }
 
 type processor struct {
-	id      string
-	store   bloomshipper.Store
-	logger  log.Logger
-	metrics *workerMetrics
+	id          string
+	concurrency int // concurrency at which bloom blocks are processed
+	store       bloomshipper.Store
+	logger      log.Logger
+	metrics     *workerMetrics
 }
 
 func (p *processor) run(ctx context.Context, tasks []Task) error {
@@ -94,8 +96,7 @@ func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) er
 		return err
 	}
 
-	// TODO(chaudum): What's a good cocurrency value?
-	return concurrency.ForEachJob(ctx, len(bqs), 10, func(ctx context.Context, i int) error {
+	return concurrency.ForEachJob(ctx, len(bqs), p.concurrency, func(ctx context.Context, i int) error {
 		bq := bqs[i]
 		if bq == nil {
 			// TODO(chaudum): Add metric for skipped blocks
