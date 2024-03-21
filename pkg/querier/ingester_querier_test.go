@@ -3,10 +3,11 @@ package querier
 import (
 	"context"
 	"errors"
-	"go.uber.org/atomic"
 	"sync"
 	"testing"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

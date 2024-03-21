@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/dskit/concurrency"
+
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
