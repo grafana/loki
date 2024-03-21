@@ -100,6 +100,26 @@ func TestRetention(t *testing.T) {
 			},
 		},
 		{
+			name:          "unlimited retention",
+			ownsRetention: true,
+			cfg: RetentionConfig{
+				Enabled: true,
+			},
+			lim: mockRetentionLimits{
+				retention: map[string]time.Duration{
+					"1": 0,
+				},
+			},
+			prePopulate: func(t *testing.T, schemaCfg storageconfig.SchemaConfig, bloomStore *bloomshipper.BloomStore) {
+				putMetasForLastNDays(t, schemaCfg, bloomStore, "1", testTime, 200)
+			},
+			check: func(t *testing.T, bloomStore *bloomshipper.BloomStore) {
+				metas := getGroupedMetasForLastNDays(t, bloomStore, "1", testTime, 500)
+				require.Equal(t, 1, len(metas))
+				require.Equal(t, 200, len(metas[0]))
+			},
+		},
+		{
 			name:          "limited retention lookback",
 			ownsRetention: true,
 			cfg: RetentionConfig{
@@ -140,8 +160,8 @@ func TestRetention(t *testing.T) {
 				// We should get two groups: 0th-40th and 101th-200th
 				metas := getGroupedMetasForLastNDays(t, bloomStore, "1", testTime, 500)
 				require.Equal(t, 2, len(metas))
-				require.Equal(t, 41, len(metas[0])) // 0-40th day
-				require.Equal(t, 99, len(metas[1])) // 101th-200th day
+				require.Equal(t, 41, len(metas[0]))  // 0-40th day
+				require.Equal(t, 100, len(metas[1])) // 100th-200th day
 
 				// Tenant 2 has 20 days of retention, and we wrote 50 days of metas
 				// We should get one group: 0th-20th
@@ -409,6 +429,143 @@ func TestOwnsRetention(t *testing.T) {
 	}
 }
 
+func TestFindLongestRetention(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		globalRetention   time.Duration
+		streamRetention   []validation.StreamRetention
+		expectedRetention time.Duration
+	}{
+		{
+			name:              "no retention",
+			expectedRetention: 0,
+		},
+		{
+			name:              "global retention",
+			globalRetention:   30 * 24 * time.Hour,
+			expectedRetention: 30 * 24 * time.Hour,
+		},
+		{
+			name: "stream retention",
+			streamRetention: []validation.StreamRetention{
+				{
+					Period: model.Duration(30 * 24 * time.Hour),
+				},
+			},
+			expectedRetention: 30 * 24 * time.Hour,
+		},
+		{
+			name: "two stream retention",
+			streamRetention: []validation.StreamRetention{
+				{
+					Period: model.Duration(30 * 24 * time.Hour),
+				},
+				{
+					Period: model.Duration(40 * 24 * time.Hour),
+				},
+			},
+			expectedRetention: 40 * 24 * time.Hour,
+		},
+		{
+			name:            "stream retention bigger than global",
+			globalRetention: 20 * 24 * time.Hour,
+			streamRetention: []validation.StreamRetention{
+				{
+					Period: model.Duration(30 * 24 * time.Hour),
+				},
+				{
+					Period: model.Duration(40 * 24 * time.Hour),
+				},
+			},
+			expectedRetention: 40 * 24 * time.Hour,
+		},
+		{
+			name:            "global retention bigger than stream",
+			globalRetention: 40 * 24 * time.Hour,
+			streamRetention: []validation.StreamRetention{
+				{
+					Period: model.Duration(20 * 24 * time.Hour),
+				},
+				{
+					Period: model.Duration(30 * 24 * time.Hour),
+				},
+			},
+			expectedRetention: 40 * 24 * time.Hour,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			retention := findLongestRetention(tc.globalRetention, tc.streamRetention)
+			require.Equal(t, tc.expectedRetention, retention)
+		})
+	}
+}
+
+func TestSmallestRetention(t *testing.T) {
+	for _, tc := range []struct {
+		name                 string
+		limits               RetentionLimits
+		expectedRetention    time.Duration
+		expectedHasRetention bool
+	}{
+		{
+			name:                 "no retention",
+			limits:               mockRetentionLimits{},
+			expectedHasRetention: false,
+		},
+		{
+			name: "one tenant",
+			limits: mockRetentionLimits{
+				retention: map[string]time.Duration{
+					"1": 30 * 24 * time.Hour,
+				},
+				streamRetention: map[string][]validation.StreamRetention{
+					"1": {
+						{
+							Period: model.Duration(40 * 24 * time.Hour),
+						},
+					},
+				},
+			},
+			expectedHasRetention: true,
+			expectedRetention:    40 * 24 * time.Hour,
+		},
+		{
+			name: "two tenants",
+			limits: mockRetentionLimits{
+				retention: map[string]time.Duration{
+					"1": 30 * 24 * time.Hour,
+					"2": 20 * 24 * time.Hour,
+				},
+				streamRetention: map[string][]validation.StreamRetention{
+					"1": {
+						{
+							Period: model.Duration(40 * 24 * time.Hour),
+						},
+					},
+					"2": {
+						{
+							Period: model.Duration(10 * 24 * time.Hour),
+						},
+					},
+				},
+			},
+			expectedHasRetention: true,
+			expectedRetention:    20 * 24 * time.Hour,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			retention, hasRetention := findSmallestRetention(tc.limits)
+			if !tc.expectedHasRetention {
+				require.False(t, hasRetention)
+				return
+			}
+
+			require.True(t, hasRetention)
+			require.Equal(t, tc.expectedRetention, retention)
+		})
+	}
+}
+
 func putMetasForLastNDays(t *testing.T, schemaCfg storageconfig.SchemaConfig, bloomStore *bloomshipper.BloomStore, tenant string, start model.Time, days int) {
 	const metasPerDay = 2
 
@@ -548,6 +705,26 @@ func (m mockRetentionLimits) RetentionPeriod(tenant string) time.Duration {
 
 func (m mockRetentionLimits) StreamRetention(tenant string) []validation.StreamRetention {
 	return m.streamRetention[tenant]
+}
+
+func (m mockRetentionLimits) AllByUserID() map[string]*validation.Limits {
+	tenants := make(map[string]*validation.Limits, len(m.retention))
+
+	for tenant, retention := range m.retention {
+		if _, ok := tenants[tenant]; !ok {
+			tenants[tenant] = &validation.Limits{}
+		}
+		tenants[tenant].RetentionPeriod = model.Duration(retention)
+	}
+
+	for tenant, streamRetention := range m.streamRetention {
+		if _, ok := tenants[tenant]; !ok {
+			tenants[tenant] = &validation.Limits{}
+		}
+		tenants[tenant].StreamRetention = streamRetention
+	}
+
+	return tenants
 }
 
 type mockSharding struct {

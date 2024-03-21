@@ -3,6 +3,7 @@ package bloomcompactor
 import (
 	"context"
 	"flag"
+	"math"
 	"slices"
 	"time"
 
@@ -75,6 +76,7 @@ func (cfg *RetentionConfig) RegisterFlags(f *flag.FlagSet) {
 type RetentionLimits interface {
 	RetentionPeriod(userID string) time.Duration
 	StreamRetention(userID string) []validation.StreamRetention
+	AllByUserID() map[string]*validation.Limits
 }
 
 type RetentionManager struct {
@@ -136,14 +138,22 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 	r.metrics.retentionRunning.Set(1)
 	defer r.metrics.retentionRunning.Set(0)
 
+	smallestRetention, retentionIsSet := findSmallestRetention(r.limits)
+	if !retentionIsSet {
+		// If no retention is configured, the default retention is unlimited so we can return early
+		level.Debug(r.logger).Log("msg", "no custom retention period set for any tenant, skipping retention")
+		return nil
+	}
+
+	startDay := storageconfig.NewDayTime(today.Add(-smallestRetention))
+	endDay := storageconfig.NewDayTime(0)
+	if r.cfg.MaxLookbackDays > 0 {
+		endDay = storageconfig.NewDayTime(today.Add(-time.Duration(r.cfg.MaxLookbackDays) * 24 * time.Hour))
+	}
+
 	var daysProcessed int
 	tenantsRetentionApplied := make(map[string]struct{}, 100)
-
-	// We iterate through up to r.cfg.MaxLookbackDays days unless it's set to 0
-	// In that case, we iterate through all days
-	day := today
-	for i := 1; i <= r.cfg.MaxLookbackDays || r.cfg.MaxLookbackDays == 0; i++ {
-		day = day.Dec()
+	for day := startDay; day.After(endDay); day = day.Dec() {
 		dayLogger := log.With(r.logger, "day", day.String())
 		bloomClient, err := r.bloomStore.Client(day.ModelTime())
 		if err != nil {
@@ -167,7 +177,9 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 		}
 
 		for tenant, objectKeys := range tenants {
-			tenantRetention := findLongestRetention(tenant, r.limits)
+			globalRetention := r.limits.RetentionPeriod(tenant)
+			streamRetention := r.limits.StreamRetention(tenant)
+			tenantRetention := findLongestRetention(globalRetention, streamRetention)
 			expirationDay := storageconfig.NewDayTime(today.Add(-tenantRetention))
 			if !day.Before(expirationDay) {
 				continue
@@ -202,9 +214,7 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 	return nil
 }
 
-func findLongestRetention(tenant string, limits RetentionLimits) time.Duration {
-	globalRetention := limits.RetentionPeriod(tenant)
-	streamRetention := limits.StreamRetention(tenant)
+func findLongestRetention(globalRetention time.Duration, streamRetention []validation.StreamRetention) time.Duration {
 	if len(streamRetention) == 0 {
 		return globalRetention
 	}
@@ -217,4 +227,29 @@ func findLongestRetention(tenant string, limits RetentionLimits) time.Duration {
 		return time.Duration(maxStreamRetention.Period)
 	}
 	return globalRetention
+}
+
+// findSmallestRetention returns the smallest retention period across all tenants.
+// It also returns a boolean indicating if there is any retention period set at all
+func findSmallestRetention(limits RetentionLimits) (time.Duration, bool) {
+	all := limits.AllByUserID()
+	if len(all) == 0 {
+		return 0, false
+	}
+
+	smallest := time.Duration(math.MaxInt64)
+	for _, lim := range all {
+		retention := findLongestRetention(time.Duration(lim.RetentionPeriod), lim.StreamRetention)
+
+		// Skip unlimited retention
+		if retention == 0 {
+			continue
+		}
+
+		if retention < smallest {
+			smallest = retention
+		}
+	}
+
+	return smallest, smallest != time.Duration(math.MaxInt64)
 }
