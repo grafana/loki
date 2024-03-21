@@ -995,6 +995,8 @@ read:
   legacyReadTarget: false
   # -- Additional CLI args for the read
   extraArgs: []
+  # -- Containers to add to the read pods
+  extraContainers: []
   # -- Environment variables to add to the read pods
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the read pods
