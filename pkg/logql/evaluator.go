@@ -230,6 +230,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	expr syntax.SampleExpr,
 	q Params,
 ) (StepEvaluator, error) {
+	// fmt.Printf("Debug!!! DefaultEvaluator.NextStepEvaluator, expr:%s, type:%T\n", expr.String(), expr)
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {

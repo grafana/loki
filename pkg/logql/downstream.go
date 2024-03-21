@@ -363,6 +363,17 @@ type DownstreamEvaluator struct {
 
 // Downstream runs queries and collects stats from the embedded Downstreamer
 func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery, acc Accumulator) ([]logqlmodel.Result, error) {
+
+	// toString := func(qs []DownstreamQuery) []string {
+	// 	res := make([]string, 0)
+	// 	for _, v := range qs {
+	// 		res = append(res, v.Params.GetExpression().String())
+	// 	}
+	// 	return res
+	// }
+
+	// fmt.Println("Debug!!", "downstream queries in DownstreamEvaluator.Downstream", toString(queries))
+
 	results, err := ev.Downstreamer.Downstream(ctx, queries, acc)
 	if err != nil {
 		return nil, err
@@ -414,8 +425,9 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 	expr syntax.SampleExpr,
 	params Params,
 ) (StepEvaluator, error) {
-	switch e := expr.(type) {
+	fmt.Printf("Debug!!! DownstreamEvaluator.NextStepEvaluator, expr:%s, type:%T\n", expr.String(), expr)
 
+	switch e := expr.(type) {
 	case DownstreamSampleExpr:
 		// downstream to a querier
 		var shards []astmapper.ShardAnnotation
@@ -448,11 +460,22 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			cur = cur.next
 		}
 
+		// toString := func(qs []DownstreamQuery) []string {
+		// 	res := make([]string, 0)
+		// 	for _, v := range qs {
+		// 		res = append(res, v.Params.GetExpression().String())
+		// 	}
+		// 	return res
+		// }
+		// fmt.Println("Debug!!", "downstream queries in the stepevaluator", toString(queries))
+
 		acc := NewBufferedAccumulator(len(queries))
 		results, err := ev.Downstream(ctx, queries, acc)
 		if err != nil {
 			return nil, err
 		}
+
+		// fmt.Println("Debug!!", "downstream.stepevaluator", "results", results)
 
 		xs := make([]StepEvaluator, 0, len(queries))
 		for i, res := range results {

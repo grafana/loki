@@ -1146,9 +1146,30 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 	if len(responses) == 0 {
 		return nil, errors.New("merging responses requires at least one response")
 	}
+
+	// sampleValues := func(responses ...queryrangebase.Response) []float64 {
+	// 	res := make([]float64, 0)
+
+	// 	for _, r := range responses {
+	// 		rr := r.(*LokiPromResponse)
+	// 		fmt.Printf("%+v\n", rr.Response.Data.Result)
+	// 		if len(rr.Response.Data.Result) > 1 {
+	// 			panic("response contains vector with more than one element")
+	// 		}
+	// 		if len(rr.Response.Data.Result[0].Samples) > 1 {
+	// 			panic("response contains vector with more than one samples")
+	// 		}
+	// 		res = append(res, rr.Response.Data.Result[0].Samples[0].Value)
+	// 	}
+	// 	return res
+	// }
+
+	// fmt.Printf("Debug!!!, responses-len: %d, type: %T\n", len(responses), responses[0])
+
 	var mergedStats stats.Result
 	switch responses[0].(type) {
 	case *LokiPromResponse:
+		// fmt.Println("Debug!!!", "response sample values", sampleValues(responses...))
 
 		promResponses := make([]queryrangebase.Response, 0, len(responses))
 		for _, res := range responses {

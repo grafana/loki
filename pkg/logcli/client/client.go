@@ -75,6 +75,7 @@ type DefaultClient struct {
 	BearerTokenFile string
 	Retries         int
 	QueryTags       string
+	CacheControl    string
 	AuthHeader      string
 	ProxyURL        string
 	BackoffConfig   BackoffConfig
@@ -346,6 +347,11 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 
 	if c.QueryTags != "" {
 		h.Set("X-Query-Tags", c.QueryTags)
+	}
+
+	if c.CacheControl != "" {
+		fmt.Println("setting cache-control", c.CacheControl)
+		h.Set("Cache-Control", c.CacheControl)
 	}
 
 	if (c.Username != "" || c.Password != "") && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {

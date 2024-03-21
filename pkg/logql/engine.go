@@ -361,7 +361,9 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		case SampleVector:
 			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
 			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-			return q.JoinSampleVector(next, ts, vec, stepEvaluator, maxSeries)
+			val, err := q.JoinSampleVector(next, ts, vec, stepEvaluator, maxSeries)
+			// fmt.Println("Debug!!", "val", val, "err", err, "expr", expr.String())
+			return val, err
 		case ProbabilisticQuantileVector:
 			return MergeQuantileSketchVector(next, vec, stepEvaluator, q.params)
 		default:

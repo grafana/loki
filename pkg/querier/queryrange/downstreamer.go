@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/model/labels"
@@ -130,6 +129,15 @@ func withoutOffset(query logql.DownstreamQuery) (string, time.Time, time.Time) {
 }
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery, acc logql.Accumulator) ([]logqlmodel.Result, error) {
+	// toString := func(qs []logql.DownstreamQuery) []string {
+	// 	res := make([]string, 0)
+	// 	for _, v := range qs {
+	// 		res = append(res, v.Params.GetExpression().String())
+	// 	}
+	// 	return res
+	// }
+
+	// fmt.Println("Debug!!", "downstream queries in instance.Downstream", toString(queries))
 	return in.For(ctx, queries, acc, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
 		var req queryrangebase.Request
 		if in.splitAlign {
@@ -143,6 +151,8 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 		logger := spanlogger.FromContext(ctx)
 		defer logger.Finish()
 		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Params.Shards()), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler), "engine", "downstream")
+
+		// fmt.Println("Debug!!", "downstream queries inside instance.Downstream.For", "req", req.GetQuery(), "qry", qry.Params.GetExpression().String())
 
 		res, err := in.handler.Do(ctx, req)
 		if err != nil {
@@ -162,44 +172,60 @@ func (in instance) For(
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	ch := make(chan logql.Resp)
+	// ch := make(chan logql.Resp)
 
 	// ForEachJob blocks until all are done. However, we want to process the
 	// results as they come in. That's why we start everything in another
 	// gorouting.
-	go func() {
-		err := concurrency.ForEachJob(ctx, len(queries), in.parallelism, func(ctx context.Context, i int) error {
-			res, err := fn(queries[i])
-			response := logql.Resp{
-				I:   i,
-				Res: res,
-				Err: err,
-			}
+	// go func() {
+	// 	err := concurrency.ForEachJob(ctx, len(queries), in.parallelism, func(ctx context.Context, i int) error {
+	// 		res, err := fn(queries[i])
+	// 		response := logql.Resp{
+	// 			I:   i,
+	// 			Res: res,
+	// 			Err: err,
+	// 		}
 
-			// Feed the result into the channel unless the work has completed.
-			select {
-			case <-ctx.Done():
-			case ch <- response:
-			}
-			return err
-		})
+	// 		// Feed the result into the channel unless the work has completed.
+	// 		select {
+	// 		case <-ctx.Done():
+	// 		case ch <- response:
+	// 		}
+	// 		return err
+	// 	})
+	// 	if err != nil {
+	// 		ch <- logql.Resp{
+	// 			I:   -1,
+	// 			Err: err,
+	// 		}
+	// 	}
+	// 	close(ch)
+	// }()
+
+	// for resp := range ch {
+	// 	if resp.Err != nil {
+	// 		return nil, resp.Err
+	// 	}
+	// 	if err := acc.Accumulate(ctx, resp.Res, resp.I); err != nil {
+	// 		return nil, err
+	// 	}
+	// }
+
+	for i, q := range queries {
+		res, err := fn(q)
 		if err != nil {
-			ch <- logql.Resp{
-				I:   -1,
-				Err: err,
-			}
+			return nil, err
 		}
-		close(ch)
-	}()
-
-	for resp := range ch {
-		if resp.Err != nil {
-			return nil, resp.Err
+		response := logql.Resp{
+			I:   i,
+			Res: res,
+			Err: err,
 		}
-		if err := acc.Accumulate(ctx, resp.Res, resp.I); err != nil {
+		if err := acc.Accumulate(ctx, response.Res, response.I); err != nil {
 			return nil, err
 		}
 	}
+
 	return acc.Result(), nil
 }
 

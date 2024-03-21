@@ -91,7 +91,7 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", request.GetQuery())
 		return nil, err
 	}
-	level.Debug(logger).Log("msg", "mapped instant query", "interval", interval.String(), "noop", noop, "original", request.GetQuery(), "mapped", parsed.String())
+	level.Info(logger).Log("msg", "mapped instant query", "interval", interval.String(), "noop", noop, "original", request.GetQuery(), "mapped", parsed.String())
 
 	if noop {
 		// the query cannot be split, so continue
@@ -113,6 +113,8 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Println("Debug!!!", "split_by_range", "result-value", value)
 
 	switch res.Data.Type() {
 	case parser.ValueTypeMatrix:

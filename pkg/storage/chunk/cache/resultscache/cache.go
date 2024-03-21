@@ -2,6 +2,7 @@ package resultscache
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -133,15 +134,23 @@ func (s ResultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	cacheFreshnessCapture := func(id string) time.Duration { return s.limits.MaxCacheFreshness(ctx, id) }
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
-	if r.GetStart().UnixMilli() > maxCacheTime {
-		return s.next.Do(ctx, r)
-	}
+	// if r.GetStart().UnixMilli() > maxCacheTime {
+	// 	return s.next.Do(ctx, r)
+	// }
 
+	// level.Info(s.logger).Log("method", "resultcache.do", "key", key)
 	cached, ok := s.get(ctx, key)
+	// _, _ = s.get(ctx, key)
+	// response, extents, err = s.handleMiss(ctx, r, maxCacheTime)
 	if ok {
 		response, extents, err = s.handleHit(ctx, r, cached, maxCacheTime)
+		// level.Info(s.logger).Log("method", "resultcache.do", "key", key, "msg", "cache-hit", "cached", ToRespJSON(cached), "response", response, "extents", ToRespJSON(extents))
+		level.Info(s.logger).Log("method", "resultcache.do", "key", key, "msg", "cache-hit")
+
 	} else {
 		response, extents, err = s.handleMiss(ctx, r, maxCacheTime)
+		// level.Info(s.logger).Log("method", "resultcache.do", "key", key, "msg", "cache-miss", "response", response, "extents", ToRespJSON(extents))
+		level.Info(s.logger).Log("method", "resultcache.do", "key", key, "msg", "cache-miss")
 	}
 
 	if err == nil && len(extents) > 0 {
@@ -152,7 +161,43 @@ func (s ResultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		s.put(ctx, key, extents)
 	}
 
+	fmt.Println("Debug!!", "resultscache.Do", "key", key, "response", response.String())
 	return response, err
+}
+
+type Resp struct {
+	Start int64
+	End   int64
+	Resp  interface{}
+}
+
+func RespFromExtent(ext []Extent) []Resp {
+	res := make([]Resp, 0)
+	for _, v := range ext {
+		val, err := types.EmptyAny(v.Response)
+		if err != nil {
+			panic(err)
+		}
+		err = types.UnmarshalAny(v.Response, val)
+		if err != nil {
+			panic(err)
+		}
+		res = append(res, Resp{
+			Start: v.Start,
+			End:   v.End,
+			Resp:  val,
+		})
+	}
+	return res
+}
+
+func ToRespJSON(ext []Extent) string {
+	r := RespFromExtent(ext)
+	v, err := json.Marshal(r)
+	if err != nil {
+		panic(err)
+	}
+	return string(v)
 }
 
 func (s ResultsCache) handleMiss(ctx context.Context, r Request, maxCacheTime int64) (Response, []Extent, error) {
