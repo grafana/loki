@@ -77,6 +77,7 @@ type RetentionLimits interface {
 	RetentionPeriod(userID string) time.Duration
 	StreamRetention(userID string) []validation.StreamRetention
 	AllByUserID() map[string]*validation.Limits
+	DefaultLimits() *validation.Limits
 }
 
 type RetentionManager struct {
@@ -138,10 +139,9 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 	r.metrics.retentionRunning.Set(1)
 	defer r.metrics.retentionRunning.Set(0)
 
-	smallestRetention, retentionIsSet := findSmallestRetention(r.limits)
-	if !retentionIsSet {
-		// If no retention is configured, the default retention is unlimited so we can return early
-		level.Debug(r.logger).Log("msg", "no custom retention period set for any tenant, skipping retention")
+	smallestRetention := findSmallestRetention(r.limits)
+	if smallestRetention == 0 {
+		level.Debug(r.logger).Log("msg", "no retention period set for any tenant, skipping retention")
 		return nil
 	}
 
@@ -231,13 +231,20 @@ func findLongestRetention(globalRetention time.Duration, streamRetention []valid
 
 // findSmallestRetention returns the smallest retention period across all tenants.
 // It also returns a boolean indicating if there is any retention period set at all
-func findSmallestRetention(limits RetentionLimits) (time.Duration, bool) {
+func findSmallestRetention(limits RetentionLimits) time.Duration {
+	defaultLimits := limits.DefaultLimits()
+	defaultRetention := findLongestRetention(time.Duration(defaultLimits.RetentionPeriod), defaultLimits.StreamRetention)
+
 	all := limits.AllByUserID()
 	if len(all) == 0 {
-		return 0, false
+		return defaultRetention
 	}
 
 	smallest := time.Duration(math.MaxInt64)
+	if defaultRetention != 0 {
+		smallest = defaultRetention
+	}
+
 	for _, lim := range all {
 		retention := findLongestRetention(time.Duration(lim.RetentionPeriod), lim.StreamRetention)
 
@@ -251,5 +258,10 @@ func findSmallestRetention(limits RetentionLimits) (time.Duration, bool) {
 		}
 	}
 
-	return smallest, smallest != time.Duration(math.MaxInt64)
+	if smallest == time.Duration(math.MaxInt64) {
+		// No tenant nor defaults configures a retention
+		return 0
+	}
+
+	return smallest
 }
