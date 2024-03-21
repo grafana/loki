@@ -32,14 +32,12 @@ To collect logs and view your log data generally involves the following steps:
 
 **Next steps:** Learn more about Loki’s query language, [LogQL](https://grafana.com/docs/loki/latest/query/).
 
-
 ## Example Grafana Agent configuration file to ship Kubernetes Pod logs to Loki
 
 To deploy Grafana Agent to collect Pod logs from your Kubernetes cluster and ship them to Loki, you an use the Grafana Agent Helm chart, and a `values.yaml` file.
 
 1. Install Loki with the [Helm chart](https://grafana.com/docs/loki/latest/setup/install/helm/install-scalable/).
 1. Deploy the Grafana Agent, using the [Grafana Agent Helm chart](https://grafana.com/docs/agent/latest/flow/setup/install/kubernetes/) and this example `values.yaml` file updating the value for `forward_to = [loki.write.endpoint.receiver]`:
-
 
 ```yaml
 agent:
@@ -101,14 +99,15 @@ agent:
       }
 
 ```
-  
 
 1. Then install Grafana Agent in your Kubernetes cluster using:
 
     ```bash
     helm upgrade -f values.yaml agent grafana/grafana-agent 
     ```
+
 This sample file is configured to:
+
 - Install Grafana Agent to discover Pod logs.
 - Add `container` and `pod` labels to the logs.
 - Push the logs to your Loki cluster using the tenant ID `cloud`.
