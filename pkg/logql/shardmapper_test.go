@@ -118,6 +118,10 @@ func TestMappingStrings(t *testing.T) {
 		in  string
 		out string
 	}{
+		{ // We shouldn't shard max if the inner operation is a quantile_over_time.
+			in:  `max by (status)(quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]))`,
+			out: `maxby(status)(downstream<quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s]),shard=0_of_2>++downstream<quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s]),shard=1_of_2>)`,
+		},
 		{
 			in: `{foo="bar"}`,
 			out: `downstream<{foo="bar"}, shard=0_of_2>
@@ -409,7 +413,7 @@ func TestMappingStrings(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
 			require.Nil(t, err)
 
-			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
+			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
 			require.Nil(t, err)
 
 			require.Equal(t, removeWhiteSpace(tc.out), removeWhiteSpace(mapped.String()))
@@ -1513,7 +1517,7 @@ func TestMapping(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
 
-			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
+			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
 			switch e := mapped.(type) {
 			case syntax.SampleExpr:
 				optimized, err := optimizeSampleExpr(e)
