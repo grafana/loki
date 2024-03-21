@@ -16,10 +16,10 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
-func newProcessor(id string, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
+func newProcessor(id string, concurrency int, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
 	return &processor{
 		id:          id,
-		concurrency: 2, // TODO(chaudum): What's a good concurrency value? Make it configurable.
+		concurrency: concurrency,
 		store:       store,
 		logger:      logger,
 		metrics:     metrics,
