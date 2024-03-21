@@ -64,7 +64,7 @@ jobs:
           OCP_DIR: ${{ env.ocpDir || ''}}
         run: |
           mkdir operators/loki-operator/${VERSION} 
-          cp -R ./tmp/operator/bundle/community${OCP_DIR}/* oOCP_DIR}/* opperators/loki-operator/${VERSION}
+          cp -R ./tmp/operator/bundle/community${OCP_DIR}/* operators/loki-operator/${VERSION}
           rm -f "operators/loki-operator/${VERSION}/bundle.Dockerfile"
           rm -rf ./tmp
 
@@ -75,7 +75,7 @@ jobs:
           OCP_SUPPORTED_VERSIONS: ${{ env.ocpSupportedVersions || ''}}
         uses: fjogeleit/yaml-update-action@main
         with:
-          valueFile: "./operators/loki-operator/${VERSION}/metadata/annotations.yaml"
+          valueFile: "operators/loki-operator/${VERSION}/metadata/annotations.yaml"
           propertyPath: "annotations['com.redhat.openshift.versions']"
           value: ${OCP_SUPPORTED_VERSIONS}
 
