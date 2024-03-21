@@ -1802,7 +1802,7 @@ func (c *Lightsail) CreateDiskRequest(input *CreateDiskInput) (req *request.Requ
 // CreateDisk API operation for Amazon Lightsail.
 //
 // Creates a block storage disk that can be attached to an Amazon Lightsail
-// instance in the same Availability Zone (e.g., us-east-2a).
+// instance in the same Availability Zone (us-east-2a).
 //
 // The create disk operation supports tag-based access control via request tags.
 // For more information, see the Amazon Lightsail Developer Guide (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-controlling-access-using-tags).
@@ -1911,7 +1911,7 @@ func (c *Lightsail) CreateDiskFromSnapshotRequest(input *CreateDiskFromSnapshotI
 //
 // Creates a block storage disk from a manual or automatic snapshot of a disk.
 // The resulting disk can be attached to an Amazon Lightsail instance in the
-// same Availability Zone (e.g., us-east-2a).
+// same Availability Zone (us-east-2a).
 //
 // The create disk from snapshot operation supports tag-based access control
 // via request tags and resource tags applied to the resource identified by
@@ -2256,7 +2256,7 @@ func (c *Lightsail) CreateDomainRequest(input *CreateDomainInput) (req *request.
 
 // CreateDomain API operation for Amazon Lightsail.
 //
-// Creates a domain resource for the specified domain (e.g., example.com).
+// Creates a domain resource for the specified domain (example.com).
 //
 // The create domain operation supports tag-based access control via request
 // tags. For more information, see the Amazon Lightsail Developer Guide (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-controlling-access-using-tags).
@@ -11664,7 +11664,7 @@ func (c *Lightsail) GetOperationsForResourceRequest(input *GetOperationsForResou
 
 // GetOperationsForResource API operation for Amazon Lightsail.
 //
-// Gets operations for a specific resource (e.g., an instance or a static IP).
+// Gets operations for a specific resource (an instance or a static IP).
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -13097,6 +13097,104 @@ func (c *Lightsail) GetRelationalDatabases(input *GetRelationalDatabasesInput) (
 // for more information on using Contexts.
 func (c *Lightsail) GetRelationalDatabasesWithContext(ctx aws.Context, input *GetRelationalDatabasesInput, opts ...request.Option) (*GetRelationalDatabasesOutput, error) {
 	req, out := c.GetRelationalDatabasesRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opGetSetupHistory = "GetSetupHistory"
+
+// GetSetupHistoryRequest generates a "aws/request.Request" representing the
+// client's request for the GetSetupHistory operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See GetSetupHistory for more information on using the GetSetupHistory
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the GetSetupHistoryRequest method.
+//	req, resp := client.GetSetupHistoryRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetSetupHistory
+func (c *Lightsail) GetSetupHistoryRequest(input *GetSetupHistoryInput) (req *request.Request, output *GetSetupHistoryOutput) {
+	op := &request.Operation{
+		Name:       opGetSetupHistory,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &GetSetupHistoryInput{}
+	}
+
+	output = &GetSetupHistoryOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// GetSetupHistory API operation for Amazon Lightsail.
+//
+// Returns detailed information for five of the most recent SetupInstanceHttps
+// requests that were ran on the target instance.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Lightsail's
+// API operation GetSetupHistory for usage and error information.
+//
+// Returned Error Types:
+//
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
+//
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
+//
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
+//
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetSetupHistory
+func (c *Lightsail) GetSetupHistory(input *GetSetupHistoryInput) (*GetSetupHistoryOutput, error) {
+	req, out := c.GetSetupHistoryRequest(input)
+	return out, req.Send()
+}
+
+// GetSetupHistoryWithContext is the same as GetSetupHistory with the addition of
+// the ability to pass a context and additional request options.
+//
+// See GetSetupHistory for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *Lightsail) GetSetupHistoryWithContext(ctx aws.Context, input *GetSetupHistoryInput, opts ...request.Option) (*GetSetupHistoryOutput, error) {
+	req, out := c.GetSetupHistoryRequest(input)
 	req.SetContext(ctx)
 	req.ApplyOptions(opts...)
 	return out, req.Send()
@@ -14803,6 +14901,107 @@ func (c *Lightsail) SetResourceAccessForBucket(input *SetResourceAccessForBucket
 // for more information on using Contexts.
 func (c *Lightsail) SetResourceAccessForBucketWithContext(ctx aws.Context, input *SetResourceAccessForBucketInput, opts ...request.Option) (*SetResourceAccessForBucketOutput, error) {
 	req, out := c.SetResourceAccessForBucketRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opSetupInstanceHttps = "SetupInstanceHttps"
+
+// SetupInstanceHttpsRequest generates a "aws/request.Request" representing the
+// client's request for the SetupInstanceHttps operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See SetupInstanceHttps for more information on using the SetupInstanceHttps
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the SetupInstanceHttpsRequest method.
+//	req, resp := client.SetupInstanceHttpsRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/SetupInstanceHttps
+func (c *Lightsail) SetupInstanceHttpsRequest(input *SetupInstanceHttpsInput) (req *request.Request, output *SetupInstanceHttpsOutput) {
+	op := &request.Operation{
+		Name:       opSetupInstanceHttps,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &SetupInstanceHttpsInput{}
+	}
+
+	output = &SetupInstanceHttpsOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// SetupInstanceHttps API operation for Amazon Lightsail.
+//
+// Creates an SSL/TLS certificate that secures traffic for your website. After
+// the certificate is created, it is installed on the specified Lightsail instance.
+//
+// If you provide more than one domain name in the request, at least one name
+// must be less than or equal to 63 characters in length.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Lightsail's
+// API operation SetupInstanceHttps for usage and error information.
+//
+// Returned Error Types:
+//
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
+//
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
+//
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
+//
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/SetupInstanceHttps
+func (c *Lightsail) SetupInstanceHttps(input *SetupInstanceHttpsInput) (*SetupInstanceHttpsOutput, error) {
+	req, out := c.SetupInstanceHttpsRequest(input)
+	return out, req.Send()
+}
+
+// SetupInstanceHttpsWithContext is the same as SetupInstanceHttps with the addition of
+// the ability to pass a context and additional request options.
+//
+// See SetupInstanceHttps for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *Lightsail) SetupInstanceHttpsWithContext(ctx aws.Context, input *SetupInstanceHttpsInput, opts ...request.Option) (*SetupInstanceHttpsOutput, error) {
+	req, out := c.SetupInstanceHttpsRequest(input)
 	req.SetContext(ctx)
 	req.ApplyOptions(opts...)
 	return out, req.Send()
@@ -17666,7 +17865,7 @@ type Alarm struct {
 	// The period, in seconds, over which the statistic is applied.
 	Period *int64 `locationName:"period" min:"60" type:"integer"`
 
-	// The Lightsail resource type (e.g., Alarm).
+	// The Lightsail resource type of the alarm.
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
 
 	// The current state of the alarm.
@@ -18065,12 +18264,12 @@ type AttachDiskInput struct {
 	// This value only applies to Lightsail for Research resources.
 	AutoMounting *bool `locationName:"autoMounting" type:"boolean"`
 
-	// The unique Lightsail disk name (e.g., my-disk).
+	// The unique Lightsail disk name (my-disk).
 	//
 	// DiskName is a required field
 	DiskName *string `locationName:"diskName" type:"string" required:"true"`
 
-	// The disk path to expose to the instance (e.g., /dev/xvdf).
+	// The disk path to expose to the instance (/dev/xvdf).
 	//
 	// DiskPath is a required field
 	DiskPath *string `locationName:"diskPath" type:"string" required:"true"`
@@ -18471,7 +18670,7 @@ func (s *AttachStaticIpOutput) SetOperations(v []*Operation) *AttachStaticIpOutp
 type AttachedDisk struct {
 	_ struct{} `type:"structure"`
 
-	// The path of the disk (e.g., /dev/xvdf).
+	// The path of the disk (/dev/xvdf).
 	Path *string `locationName:"path" type:"string"`
 
 	// The size of the disk in GB.
@@ -18690,13 +18889,13 @@ type Blueprint struct {
 	// This parameter only applies to Lightsail for Research resources.
 	AppCategory *string `locationName:"appCategory" type:"string" enum:"AppCategory"`
 
-	// The ID for the virtual private server image (e.g., app_wordpress_4_4 or app_lamp_7_0).
+	// The ID for the virtual private server image (app_wordpress_4_4 or app_lamp_7_0).
 	BlueprintId *string `locationName:"blueprintId" type:"string"`
 
 	// The description of the blueprint.
 	Description *string `locationName:"description" type:"string"`
 
-	// The group name of the blueprint (e.g., amazon-linux).
+	// The group name of the blueprint (amazon-linux).
 	Group *string `locationName:"group" type:"string"`
 
 	// A Boolean value indicating whether the blueprint is active. Inactive blueprints
@@ -18714,7 +18913,7 @@ type Blueprint struct {
 	// blueprint runs on all instance sizes.
 	MinPower *int64 `locationName:"minPower" type:"integer"`
 
-	// The friendly name of the blueprint (e.g., Amazon Linux).
+	// The friendly name of the blueprint (Amazon Linux).
 	Name *string `locationName:"name" type:"string"`
 
 	// The operating system platform (either Linux/Unix-based or Windows Server-based)
@@ -18724,11 +18923,10 @@ type Blueprint struct {
 	// The product URL to learn more about the image or blueprint.
 	ProductUrl *string `locationName:"productUrl" type:"string"`
 
-	// The type of the blueprint (e.g., os or app).
+	// The type of the blueprint (os or app).
 	Type *string `locationName:"type" type:"string" enum:"BlueprintType"`
 
-	// The version number of the operating system, application, or stack (e.g.,
-	// 2016.03.0).
+	// The version number of the operating system, application, or stack ( 2016.03.0).
 	Version *string `locationName:"version" type:"string"`
 
 	// The version code.
@@ -18889,7 +19087,7 @@ type Bucket struct {
 	// have read-only access to the bucket.
 	ReadonlyAccessAccounts []*string `locationName:"readonlyAccessAccounts" type:"list"`
 
-	// The Lightsail resource type of the bucket (for example, Bucket).
+	// The Lightsail resource type of the bucket.
 	ResourceType *string `locationName:"resourceType" type:"string"`
 
 	// An array of objects that describe Lightsail instances that have access to
@@ -19254,35 +19452,39 @@ func (s *BucketState) SetMessage(v string) *BucketState {
 type Bundle struct {
 	_ struct{} `type:"structure"`
 
-	// The bundle ID (e.g., micro_1_0).
+	// The bundle ID (micro_1_0).
 	BundleId *string `locationName:"bundleId" type:"string"`
 
-	// The number of vCPUs included in the bundle (e.g., 2).
+	// The number of vCPUs included in the bundle (2).
 	CpuCount *int64 `locationName:"cpuCount" type:"integer"`
 
-	// The size of the SSD (e.g., 30).
+	// The size of the SSD (30).
 	DiskSizeInGb *int64 `locationName:"diskSizeInGb" type:"integer"`
 
-	// The Amazon EC2 instance type (e.g., t2.micro).
+	// The Amazon EC2 instance type (t2.micro).
 	InstanceType *string `locationName:"instanceType" type:"string"`
 
 	// A Boolean value indicating whether the bundle is active.
 	IsActive *bool `locationName:"isActive" type:"boolean"`
 
-	// A friendly name for the bundle (e.g., Micro).
+	// A friendly name for the bundle (Micro).
 	Name *string `locationName:"name" type:"string"`
 
-	// A numeric value that represents the power of the bundle (e.g., 500). You
-	// can use the bundle's power value in conjunction with a blueprint's minimum
-	// power value to determine whether the blueprint will run on the bundle. For
-	// example, you need a bundle with a power value of 500 or more to create an
-	// instance that uses a blueprint with a minimum power value of 500.
+	// A numeric value that represents the power of the bundle (500). You can use
+	// the bundle's power value in conjunction with a blueprint's minimum power
+	// value to determine whether the blueprint will run on the bundle. For example,
+	// you need a bundle with a power value of 500 or more to create an instance
+	// that uses a blueprint with a minimum power value of 500.
 	Power *int64 `locationName:"power" type:"integer"`
 
-	// The price in US dollars (e.g., 5.0) of the bundle.
+	// The price in US dollars (5.0) of the bundle.
 	Price *float64 `locationName:"price" type:"float"`
 
-	// The amount of RAM in GB (e.g., 2.0).
+	// An integer that indicates the public ipv4 address count included in the bundle,
+	// the value is either 0 or 1.
+	PublicIpv4AddressCount *int64 `locationName:"publicIpv4AddressCount" type:"integer"`
+
+	// The amount of RAM in GB (2.0).
 	RamSizeInGb *float64 `locationName:"ramSizeInGb" type:"float"`
 
 	// Virtual computer blueprints that are supported by a Lightsail for Research
@@ -19297,7 +19499,7 @@ type Bundle struct {
 	// bundle.
 	SupportedPlatforms []*string `locationName:"supportedPlatforms" type:"list" enum:"InstancePlatform"`
 
-	// The data transfer rate per month in GB (e.g., 2000).
+	// The data transfer rate per month in GB (2000).
 	TransferPerMonthInGb *int64 `locationName:"transferPerMonthInGb" type:"integer"`
 }
 
@@ -19364,6 +19566,12 @@ func (s *Bundle) SetPower(v int64) *Bundle {
 // SetPrice sets the Price field's value.
 func (s *Bundle) SetPrice(v float64) *Bundle {
 	s.Price = &v
+	return s
+}
+
+// SetPublicIpv4AddressCount sets the PublicIpv4AddressCount field's value.
+func (s *Bundle) SetPublicIpv4AddressCount(v int64) *Bundle {
+	s.PublicIpv4AddressCount = &v
 	return s
 }
 
@@ -19690,7 +19898,7 @@ type Certificate struct {
 	// of the certificate.
 	KeyAlgorithm *string `locationName:"keyAlgorithm" type:"string"`
 
-	// The name of the certificate (e.g., my-certificate).
+	// The name of the certificate (my-certificate).
 	Name *string `locationName:"name" type:"string"`
 
 	// The timestamp when the certificate expires.
@@ -19761,8 +19969,8 @@ type Certificate struct {
 	// The validation status of the certificate.
 	Status *string `locationName:"status" type:"string" enum:"CertificateStatus"`
 
-	// An array of strings that specify the alternate domains (e.g., example2.com)
-	// and subdomains (e.g., blog.example.com) of the certificate.
+	// An array of strings that specify the alternate domains (example2.com) and
+	// subdomains (blog.example.com) of the certificate.
 	SubjectAlternativeNames []*string `locationName:"subjectAlternativeNames" type:"list"`
 
 	// The support code. Include this code in your email to support when you have
@@ -20113,7 +20321,7 @@ type CloudFormationStackRecord struct {
 	// followed by a GUID.
 	Name *string `locationName:"name" type:"string"`
 
-	// The Lightsail resource type (e.g., CloudFormationStackRecord).
+	// The Lightsail resource type (CloudFormationStackRecord).
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
 
 	// A list of objects describing the source of the CloudFormation stack record.
@@ -20200,7 +20408,7 @@ type CloudFormationStackRecordSourceInfo struct {
 	// The name of the record.
 	Name *string `locationName:"name" type:"string"`
 
-	// The Lightsail resource type (e.g., ExportSnapshotRecord).
+	// The Lightsail resource type (ExportSnapshotRecord).
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"CloudFormationStackRecordSourceType"`
 }
 
@@ -20267,7 +20475,7 @@ type ContactMethod struct {
 	// The protocol of the contact method, such as email or SMS (text messaging).
 	Protocol *string `locationName:"protocol" type:"string" enum:"ContactProtocol"`
 
-	// The Lightsail resource type (e.g., ContactMethod).
+	// The Lightsail resource type of the contact method.
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
 
 	// The current status of the contact method.
@@ -20565,7 +20773,7 @@ type ContainerService struct {
 	// how to specify public domain names for your Lightsail container service.
 	PublicDomainNames map[string][]*string `locationName:"publicDomainNames" type:"map"`
 
-	// The Lightsail resource type of the container service (i.e., ContainerService).
+	// The Lightsail resource type of the container service.
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
 
 	// The scale specification of the container service.
@@ -20766,16 +20974,16 @@ type ContainerServiceDeployment struct {
 	//
 	// A deployment can be in one of the following states:
 	//
-	//    * Activating - The deployment is being created.
+	//    * ACTIVATING - The deployment is being created.
 	//
-	//    * Active - The deployment was successfully created, and it's currently
+	//    * ACTIVE - The deployment was successfully created, and it's currently
 	//    running on the container service. The container service can have only
 	//    one deployment in an active state at a time.
 	//
-	//    * Inactive - The deployment was previously successfully created, but it
+	//    * INACTIVE - The deployment was previously successfully created, but it
 	//    is not currently running on the container service.
 	//
-	//    * Failed - The deployment failed. Use the GetContainerLog action to view
+	//    * FAILED - The deployment failed. Use the GetContainerLog action to view
 	//    the log events for the containers in the deployment to try to determine
 	//    the reason for the failure.
 	State *string `locationName:"state" type:"string" enum:"ContainerServiceDeploymentState"`
@@ -21182,10 +21390,10 @@ type ContainerServicePower struct {
 	// for container services.
 	IsActive *bool `locationName:"isActive" type:"boolean"`
 
-	// The friendly name of the power (e.g., nano).
+	// The friendly name of the power (nano).
 	Name *string `locationName:"name" type:"string"`
 
-	// The ID of the power (e.g., nano-1).
+	// The ID of the power (nano-1).
 	PowerId *string `locationName:"powerId" type:"string"`
 
 	// The monthly price of the power in USD.
@@ -21879,18 +22087,18 @@ type CreateCertificateInput struct {
 	// CertificateName is a required field
 	CertificateName *string `locationName:"certificateName" type:"string" required:"true"`
 
-	// The domain name (e.g., example.com) for the certificate.
+	// The domain name (example.com) for the certificate.
 	//
 	// DomainName is a required field
 	DomainName *string `locationName:"domainName" type:"string" required:"true"`
 
-	// An array of strings that specify the alternate domains (e.g., example2.com)
-	// and subdomains (e.g., blog.example.com) for the certificate.
+	// An array of strings that specify the alternate domains (example2.com) and
+	// subdomains (blog.example.com) for the certificate.
 	//
 	// You can specify a maximum of nine alternate domains (in addition to the primary
 	// domain name).
 	//
-	// Wildcard domain entries (e.g., *.example.com) are not supported.
+	// Wildcard domain entries (*.example.com) are not supported.
 	SubjectAlternativeNames []*string `locationName:"subjectAlternativeNames" type:"list"`
 
 	// The tag keys and optional values to add to the certificate during create.
@@ -22600,9 +22808,9 @@ type CreateDiskFromSnapshotInput struct {
 	// An array of objects that represent the add-ons to enable for the new disk.
 	AddOns []*AddOnRequest `locationName:"addOns" type:"list"`
 
-	// The Availability Zone where you want to create the disk (e.g., us-east-2a).
-	// Choose the same Availability Zone as the Lightsail instance where you want
-	// to create the disk.
+	// The Availability Zone where you want to create the disk (us-east-2a). Choose
+	// the same Availability Zone as the Lightsail instance where you want to create
+	// the disk.
 	//
 	// Use the GetRegions operation to list the Availability Zones where Lightsail
 	// is currently available.
@@ -22610,13 +22818,13 @@ type CreateDiskFromSnapshotInput struct {
 	// AvailabilityZone is a required field
 	AvailabilityZone *string `locationName:"availabilityZone" type:"string" required:"true"`
 
-	// The unique Lightsail disk name (e.g., my-disk).
+	// The unique Lightsail disk name (my-disk).
 	//
 	// DiskName is a required field
 	DiskName *string `locationName:"diskName" type:"string" required:"true"`
 
-	// The name of the disk snapshot (e.g., my-snapshot) from which to create the
-	// new storage disk.
+	// The name of the disk snapshot (my-snapshot) from which to create the new
+	// storage disk.
 	//
 	// Constraint:
 	//
@@ -22641,7 +22849,7 @@ type CreateDiskFromSnapshotInput struct {
 	//    (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-configuring-automatic-snapshots).
 	RestoreDate *string `locationName:"restoreDate" type:"string"`
 
-	// The size of the disk in GB (e.g., 32).
+	// The size of the disk in GB (32).
 	//
 	// SizeInGb is a required field
 	SizeInGb *int64 `locationName:"sizeInGb" type:"integer" required:"true"`
@@ -22820,9 +23028,9 @@ type CreateDiskInput struct {
 	// An array of objects that represent the add-ons to enable for the new disk.
 	AddOns []*AddOnRequest `locationName:"addOns" type:"list"`
 
-	// The Availability Zone where you want to create the disk (e.g., us-east-2a).
-	// Use the same Availability Zone as the Lightsail instance to which you want
-	// to attach the disk.
+	// The Availability Zone where you want to create the disk (us-east-2a). Use
+	// the same Availability Zone as the Lightsail instance to which you want to
+	// attach the disk.
 	//
 	// Use the get regions operation to list the Availability Zones where Lightsail
 	// is currently available.
@@ -22830,12 +23038,12 @@ type CreateDiskInput struct {
 	// AvailabilityZone is a required field
 	AvailabilityZone *string `locationName:"availabilityZone" type:"string" required:"true"`
 
-	// The unique Lightsail disk name (e.g., my-disk).
+	// The unique Lightsail disk name (my-disk).
 	//
 	// DiskName is a required field
 	DiskName *string `locationName:"diskName" type:"string" required:"true"`
 
-	// The size of the disk in GB (e.g., 32).
+	// The size of the disk in GB (32).
 	//
 	// SizeInGb is a required field
 	SizeInGb *int64 `locationName:"sizeInGb" type:"integer" required:"true"`
@@ -22959,20 +23167,20 @@ func (s *CreateDiskOutput) SetOperations(v []*Operation) *CreateDiskOutput {
 type CreateDiskSnapshotInput struct {
 	_ struct{} `type:"structure"`
 
-	// The unique name of the source disk (e.g., Disk-Virginia-1).
+	// The unique name of the source disk (Disk-Virginia-1).
 	//
 	// This parameter cannot be defined together with the instance name parameter.
 	// The disk name and instance name parameters are mutually exclusive.
 	DiskName *string `locationName:"diskName" type:"string"`
 
-	// The name of the destination disk snapshot (e.g., my-disk-snapshot) based
-	// on the source disk.
+	// The name of the destination disk snapshot (my-disk-snapshot) based on the
+	// source disk.
 	//
 	// DiskSnapshotName is a required field
 	DiskSnapshotName *string `locationName:"diskSnapshotName" type:"string" required:"true"`
 
-	// The unique name of the source instance (e.g., Amazon_Linux-512MB-Virginia-1).
-	// When this is defined, a snapshot of the instance's system volume is created.
+	// The unique name of the source instance (Amazon_Linux-512MB-Virginia-1). When
+	// this is defined, a snapshot of the instance's system volume is created.
 	//
 	// This parameter cannot be defined together with the disk name parameter. The
 	// instance name and disk name parameters are mutually exclusive.
@@ -23262,8 +23470,7 @@ type CreateDomainEntryInput struct {
 	// DomainEntry is a required field
 	DomainEntry *DomainEntry `locationName:"domainEntry" type:"structure" required:"true"`
 
-	// The domain name (e.g., example.com) for which you want to create the domain
-	// entry.
+	// The domain name (example.com) for which you want to create the domain entry.
 	//
 	// DomainName is a required field
 	DomainName *string `locationName:"domainName" type:"string" required:"true"`
@@ -23351,7 +23558,7 @@ func (s *CreateDomainEntryOutput) SetOperation(v *Operation) *CreateDomainEntryO
 type CreateDomainInput struct {
 	_ struct{} `type:"structure"`
 
-	// The domain name to manage (e.g., example.com).
+	// The domain name to manage (example.com).
 	//
 	// DomainName is a required field
 	DomainName *string `locationName:"domainName" type:"string" required:"true"`
@@ -23674,7 +23881,7 @@ type CreateInstancesFromSnapshotInput struct {
 	AvailabilityZone *string `locationName:"availabilityZone" type:"string" required:"true"`
 
 	// The bundle of specification information for your virtual private server (or
-	// instance), including the pricing plan (e.g., micro_1_0).
+	// instance), including the pricing plan (micro_1_0).
 	//
 	// BundleId is a required field
 	BundleId *string `locationName:"bundleId" type:"string" required:"true"`
@@ -23938,7 +24145,7 @@ type CreateInstancesInput struct {
 	// AvailabilityZone is a required field
 	AvailabilityZone *string `locationName:"availabilityZone" type:"string" required:"true"`
 
-	// The ID for a virtual private server image (e.g., app_wordpress_4_4 or app_lamp_7_0).
+	// The ID for a virtual private server image (app_wordpress_4_4 or app_lamp_7_0).
 	// Use the get blueprints operation to return a list of available images (or
 	// blueprints).
 	//
@@ -23951,15 +24158,15 @@ type CreateInstancesInput struct {
 	BlueprintId *string `locationName:"blueprintId" type:"string" required:"true"`
 
 	// The bundle of specification information for your virtual private server (or
-	// instance), including the pricing plan (e.g., micro_1_0).
+	// instance), including the pricing plan (micro_1_0).
 	//
 	// BundleId is a required field
 	BundleId *string `locationName:"bundleId" type:"string" required:"true"`
 
-	// (Deprecated) The name for your custom image.
+	// (Discontinued) The name for your custom image.
 	//
 	// In releases prior to June 12, 2017, this parameter was ignored by the API.
-	// It is now deprecated.
+	// It is now discontinued.
 	//
 	// Deprecated: CustomImageName has been deprecated
 	CustomImageName *string `locationName:"customImageName" deprecated:"true" type:"string"`
@@ -24260,10 +24467,10 @@ type CreateLoadBalancerInput struct {
 	_ struct{} `type:"structure"`
 
 	// The optional alternative domains and subdomains to use with your SSL/TLS
-	// certificate (e.g., www.example.com, example.com, m.example.com, blog.example.com).
+	// certificate (www.example.com, example.com, m.example.com, blog.example.com).
 	CertificateAlternativeNames []*string `locationName:"certificateAlternativeNames" type:"list"`
 
-	// The domain name with which your certificate is associated (e.g., example.com).
+	// The domain name with which your certificate is associated (example.com).
 	//
 	// If you specify certificateDomainName, then certificateName is required (and
 	// vice-versa).
@@ -24277,7 +24484,7 @@ type CreateLoadBalancerInput struct {
 
 	// The path you provided to perform the load balancer health check. If you didn't
 	// specify a health check path, Lightsail uses the root path of your website
-	// (e.g., "/").
+	// ("/").
 	//
 	// You may want to specify a custom health check path other than the root of
 	// your application if your home page loads slowly or has a lot of media or
@@ -24447,10 +24654,10 @@ type CreateLoadBalancerTlsCertificateInput struct {
 	// An array of strings listing alternative domains and subdomains for your SSL/TLS
 	// certificate. Lightsail will de-dupe the names for you. You can have a maximum
 	// of 9 alternative names (in addition to the 1 primary domain). We do not support
-	// wildcards (e.g., *.example.com).
+	// wildcards (*.example.com).
 	CertificateAlternativeNames []*string `locationName:"certificateAlternativeNames" type:"list"`
 
-	// The domain name (e.g., example.com) for your SSL/TLS certificate.
+	// The domain name (example.com) for your SSL/TLS certificate.
 	//
 	// CertificateDomainName is a required field
 	CertificateDomainName *string `locationName:"certificateDomainName" type:"string" required:"true"`
@@ -25925,7 +26132,7 @@ func (s DeleteContainerServiceOutput) GoString() string {
 type DeleteDiskInput struct {
 	_ struct{} `type:"structure"`
 
-	// The unique name of the disk you want to delete (e.g., my-disk).
+	// The unique name of the disk you want to delete (my-disk).
 	//
 	// DiskName is a required field
 	DiskName *string `locationName:"diskName" type:"string" required:"true"`
@@ -26013,7 +26220,7 @@ func (s *DeleteDiskOutput) SetOperations(v []*Operation) *DeleteDiskOutput {
 type DeleteDiskSnapshotInput struct {
 	_ struct{} `type:"structure"`
 
-	// The name of the disk snapshot you want to delete (e.g., my-disk-snapshot).
+	// The name of the disk snapshot you want to delete (my-disk-snapshot).
 	//
 	// DiskSnapshotName is a required field
 	DiskSnapshotName *string `locationName:"diskSnapshotName" type:"string" required:"true"`
@@ -27169,8 +27376,7 @@ func (s *DetachCertificateFromDistributionOutput) SetOperation(v *Operation) *De
 type DetachDiskInput struct {
 	_ struct{} `type:"structure"`
 
-	// The unique name of the disk you want to detach from your instance (e.g.,
-	// my-disk).
+	// The unique name of the disk you want to detach from your instance (my-disk).
 	//
 	// DiskName is a required field
 	DiskName *string `locationName:"diskName" type:"string" required:"true"`
@@ -27525,10 +27731,10 @@ type Disk struct {
 	// The resources to which the disk is attached.
 	AttachedTo *string `locationName:"attachedTo" type:"string"`
 
-	// (Deprecated) The attachment state of the disk.
+	// (Discontinued) The attachment state of the disk.
 	//
 	// In releases prior to November 14, 2017, this parameter returned attached
-	// for system disks in the API response. It is now deprecated, but still included
+	// for system disks in the API response. It is now discontinued, but still included
 	// in the response. Use isAttached instead.
 	//
 	// Deprecated: AttachmentState has been deprecated
@@ -27542,10 +27748,10 @@ type Disk struct {
 	// The date when the disk was created.
 	CreatedAt *time.Time `locationName:"createdAt" type:"timestamp"`
 
-	// (Deprecated) The number of GB in use by the disk.
+	// (Discontinued) The number of GB in use by the disk.
 	//
 	// In releases prior to November 14, 2017, this parameter was not included in
-	// the API response. It is now deprecated.
+	// the API response. It is now discontinued.
 	//
 	// Deprecated: GbInUse has been deprecated
 	GbInUse *int64 `locationName:"gbInUse" deprecated:"true" type:"integer"`
@@ -27569,7 +27775,7 @@ type Disk struct {
 	// The disk path.
 	Path *string `locationName:"path" type:"string"`
 
-	// The Lightsail resource type (e.g., Disk).
+	// The Lightsail resource type (Disk).
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
 
 	// The size of the disk in GB.
@@ -27728,7 +27934,7 @@ type DiskInfo struct {
 	// The disk path.
 	Path *string `locationName:"path" type:"string"`
 
-	// The size of the disk in GB (e.g., 32).
+	// The size of the disk in GB (32).
 	SizeInGb *int64 `locationName:"sizeInGb" type:"integer"`
 }
 
@@ -27778,7 +27984,7 @@ func (s *DiskInfo) SetSizeInGb(v int64) *DiskInfo {
 type DiskMap struct {
 	_ struct{} `type:"structure"`
 
-	// The new disk name (e.g., my-new-disk).
+	// The new disk name (my-new-disk).
 	NewDiskName *string `locationName:"newDiskName" type:"string"`
 
 	// The original disk path exposed to the instance (for example, /dev/sdh).
@@ -27847,13 +28053,13 @@ type DiskSnapshot struct {
 	// The AWS Region and Availability Zone where the disk snapshot was created.
 	Location *ResourceLocation `locationName:"location" type:"structure"`
 
-	// The name of the disk snapshot (e.g., my-disk-snapshot).
+	// The name of the disk snapshot (my-disk-snapshot).
 	Name *string `locationName:"name" type:"string"`
 
 	// The progress of the snapshot.
 	Progress *string `locationName:"progress" type:"string"`
 
-	// The Lightsail resource type (e.g., DiskSnapshot).
+	// The Lightsail resource type (DiskSnapshot).
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
 
 	// The size of the disk in GB.
@@ -27984,7 +28190,7 @@ func (s *DiskSnapshot) SetTags(v []*Tag) *DiskSnapshot {
 type DiskSnapshotInfo struct {
 	_ struct{} `type:"structure"`
 
-	// The size of the disk in GB (e.g., 32).
+	// The size of the disk in GB (32).
 	SizeInGb *int64 `locationName:"sizeInGb" type:"integer"`
 }
 
@@ -28146,7 +28352,7 @@ func (s *DnsRecordCreationState) SetMessage(v string) *DnsRecordCreationState {
 type Domain struct {
 	_ struct{} `type:"structure"`
 
-	// The Amazon Resource Name (ARN) of the domain recordset (e.g., arn:aws:lightsail:global:123456789101:Domain/824cede0-abc7-4f84-8dbc-12345EXAMPLE).
+	// The Amazon Resource Name (ARN) of the domain recordset (arn:aws:lightsail:global:123456789101:Domain/824cede0-abc7-4f84-8dbc-12345EXAMPLE).
 	Arn *string `locationName:"arn" type:"string"`
 
 	// The date when the domain recordset was created.
@@ -28268,15 +28474,15 @@ type DomainEntry struct {
 	// The name of the domain.
 	Name *string `locationName:"name" type:"string"`
 
-	// (Deprecated) The options for the domain entry.
+	// (Discontinued) The options for the domain entry.
 	//
 	// In releases prior to November 29, 2017, this parameter was not included in
-	// the API response. It is now deprecated.
+	// the API response. It is now discontinued.
 	//
 	// Deprecated: Options has been deprecated
 	Options map[string]*string `locationName:"options" deprecated:"true" type:"map"`
 
-	// The target IP address (e.g., 192.0.2.0), or AWS name server (e.g., ns-111.awsdns-22.com.).
+	// The target IP address (192.0.2.0), or AWS name server (ns-111.awsdns-22.com.).
 	//
 	// For Lightsail load balancers, the value looks like ab1234c56789c6b86aba6fb203d443bc-123456789.us-east-2.elb.amazonaws.com.
 	// For Lightsail distributions, the value looks like exampled1182ne.cloudfront.net.
@@ -28837,7 +29043,7 @@ type ExportSnapshotRecord struct {
 	// The export snapshot record name.
 	Name *string `locationName:"name" type:"string"`
 
-	// The Lightsail resource type (e.g., ExportSnapshotRecord).
+	// The Lightsail resource type (ExportSnapshotRecord).
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
 
 	// A list of objects describing the source of the export snapshot record.
@@ -28938,7 +29144,7 @@ type ExportSnapshotRecordSourceInfo struct {
 	// The name of the source instance or disk snapshot.
 	Name *string `locationName:"name" type:"string"`
 
-	// The Lightsail resource type (e.g., InstanceSnapshot or DiskSnapshot).
+	// The Lightsail resource type (InstanceSnapshot or DiskSnapshot).
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ExportSnapshotRecordSourceType"`
 }
 
@@ -29248,7 +29454,8 @@ type GetAutoSnapshotsOutput struct {
 	// The name of the source instance or disk for the automatic snapshots.
 	ResourceName *string `locationName:"resourceName" type:"string"`
 
-	// The resource type (e.g., Instance or Disk).
+	// The resource type of the automatic snapshot. The possible values are Instance,
+	// and Disk.
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
 }
 
@@ -31111,7 +31318,7 @@ func (s *GetCostEstimateOutput) SetResourcesBudgetEstimate(v []*ResourceBudgetEs
 type GetDiskInput struct {
 	_ struct{} `type:"structure"`
 
-	// The name of the disk (e.g., my-disk).
+	// The name of the disk (my-disk).
 	//
 	// DiskName is a required field
 	DiskName *string `locationName:"diskName" type:"string" required:"true"`
@@ -31188,7 +31395,7 @@ func (s *GetDiskOutput) SetDisk(v *Disk) *GetDiskOutput {
 type GetDiskSnapshotInput struct {
 	_ struct{} `type:"structure"`
 
-	// The name of the disk snapshot (e.g., my-disk-snapshot).
+	// The name of the disk snapshot (my-disk-snapshot).
 	//
 	// DiskSnapshotName is a required field
 	DiskSnapshotName *string `locationName:"diskSnapshotName" type:"string" required:"true"`
@@ -31516,8 +31723,7 @@ func (s *GetDistributionLatestCacheResetInput) SetDistributionName(v string) *Ge
 type GetDistributionLatestCacheResetOutput struct {
 	_ struct{} `type:"structure"`
 
-	// The timestamp of the last cache reset (e.g., 1479734909.17) in Unix time
-	// format.
+	// The timestamp of the last cache reset (1479734909.17) in Unix time format.
 	CreateTime *time.Time `locationName:"createTime" type:"timestamp"`
 
 	// The status of the last cache reset.
@@ -33856,10 +34062,11 @@ func (s *GetOperationsForResourceInput) SetResourceName(v string) *GetOperations
 type GetOperationsForResourceOutput struct {
 	_ struct{} `type:"structure"`
 
-	// (Deprecated) Returns the number of pages of results that remain.
+	// (Discontinued) Returns the number of pages of results that remain.
 	//
 	// In releases prior to June 12, 2017, this parameter returned null by the API.
-	// It is now deprecated, and the API returns the next page token parameter instead.
+	// It is now discontinued, and the API returns the next page token parameter
+	// instead.
 	//
 	// Deprecated: NextPageCount has been deprecated
 	NextPageCount *string `locationName:"nextPageCount" deprecated:"true" type:"string"`
@@ -34001,12 +34208,12 @@ type GetRegionsInput struct {
 
 	// A Boolean value indicating whether to also include Availability Zones in
 	// your get regions request. Availability Zones are indicated with a letter:
-	// e.g., us-east-2a.
+	// us-east-2a.
 	IncludeAvailabilityZones *bool `locationName:"includeAvailabilityZones" type:"boolean"`
 
 	// A Boolean value indicating whether to also include Availability Zones for
 	// databases in your get regions request. Availability Zones are indicated with
-	// a letter (e.g., us-east-2a).
+	// a letter (us-east-2a).
 	IncludeRelationalDatabaseAvailabilityZones *bool `locationName:"includeRelationalDatabaseAvailabilityZones" type:"boolean"`
 }
 
@@ -35386,6 +35593,113 @@ func (s *GetRelationalDatabasesOutput) SetRelationalDatabases(v []*RelationalDat
 	return s
 }
 
+type GetSetupHistoryInput struct {
+	_ struct{} `type:"structure"`
+
+	// The token to advance to the next page of results from your request.
+	//
+	// To get a page token, perform an initial GetSetupHistory request. If your
+	// results are paginated, the response will return a next page token that you
+	// can specify as the page token in a subsequent request.
+	PageToken *string `locationName:"pageToken" min:"24" type:"string"`
+
+	// The name of the resource for which you are requesting information.
+	//
+	// ResourceName is a required field
+	ResourceName *string `locationName:"resourceName" type:"string" required:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetSetupHistoryInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetSetupHistoryInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *GetSetupHistoryInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "GetSetupHistoryInput"}
+	if s.PageToken != nil && len(*s.PageToken) < 24 {
+		invalidParams.Add(request.NewErrParamMinLen("PageToken", 24))
+	}
+	if s.ResourceName == nil {
+		invalidParams.Add(request.NewErrParamRequired("ResourceName"))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetPageToken sets the PageToken field's value.
+func (s *GetSetupHistoryInput) SetPageToken(v string) *GetSetupHistoryInput {
+	s.PageToken = &v
+	return s
+}
+
+// SetResourceName sets the ResourceName field's value.
+func (s *GetSetupHistoryInput) SetResourceName(v string) *GetSetupHistoryInput {
+	s.ResourceName = &v
+	return s
+}
+
+type GetSetupHistoryOutput struct {
+	_ struct{} `type:"structure"`
+
+	// The token to advance to the next page of results from your request.
+	//
+	// A next page token is not returned if there are no more results to display.
+	//
+	// To get the next page of results, perform another GetSetupHistory request
+	// and specify the next page token using the pageToken parameter.
+	NextPageToken *string `locationName:"nextPageToken" min:"24" type:"string"`
+
+	// The historical information that's returned.
+	SetupHistory []*SetupHistory `locationName:"setupHistory" type:"list"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetSetupHistoryOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetSetupHistoryOutput) GoString() string {
+	return s.String()
+}
+
+// SetNextPageToken sets the NextPageToken field's value.
+func (s *GetSetupHistoryOutput) SetNextPageToken(v string) *GetSetupHistoryOutput {
+	s.NextPageToken = &v
+	return s
+}
+
+// SetSetupHistory sets the SetupHistory field's value.
+func (s *GetSetupHistoryOutput) SetSetupHistory(v []*SetupHistory) *GetSetupHistoryOutput {
+	s.SetupHistory = v
+	return s
+}
+
 type GetStaticIpInput struct {
 	_ struct{} `type:"structure"`
 
@@ -35802,9 +36116,9 @@ func (s *ImportKeyPairOutput) SetOperation(v *Operation) *ImportKeyPairOutput {
 // Describes the origin resource of an Amazon Lightsail content delivery network
 // (CDN) distribution.
 //
-// An origin can be a Lightsail instance, bucket, or load balancer. A distribution
-// pulls content from an origin, caches it, and serves it to viewers via a worldwide
-// network of edge servers.
+// An origin can be a Lightsail instance, bucket, container service, or load
+// balancer. A distribution pulls content from an origin, caches it, and serves
+// it to viewers via a worldwide network of edge servers.
 type InputOrigin struct {
 	_ struct{} `type:"structure"`
 
@@ -35862,20 +36176,20 @@ type Instance struct {
 	// An array of objects representing the add-ons enabled on the instance.
 	AddOns []*AddOn `locationName:"addOns" type:"list"`
 
-	// The Amazon Resource Name (ARN) of the instance (e.g., arn:aws:lightsail:us-east-2:123456789101:Instance/244ad76f-8aad-4741-809f-12345EXAMPLE).
+	// The Amazon Resource Name (ARN) of the instance (arn:aws:lightsail:us-east-2:123456789101:Instance/244ad76f-8aad-4741-809f-12345EXAMPLE).
 	Arn *string `locationName:"arn" type:"string"`
 
-	// The blueprint ID (e.g., os_amlinux_2016_03).
+	// The blueprint ID (os_amlinux_2016_03).
 	BlueprintId *string `locationName:"blueprintId" type:"string"`
 
-	// The friendly name of the blueprint (e.g., Amazon Linux).
+	// The friendly name of the blueprint (Amazon Linux).
 	BlueprintName *string `locationName:"blueprintName" type:"string"`
 
-	// The bundle for the instance (e.g., micro_1_0).
+	// The bundle for the instance (micro_1_0).
 	BundleId *string `locationName:"bundleId" type:"string"`
 
-	// The timestamp when the instance was created (e.g., 1479734909.17) in Unix
-	// time format.
+	// The timestamp when the instance was created (1479734909.17) in Unix time
+	// format.
 	CreatedAt *time.Time `locationName:"createdAt" type:"timestamp"`
 
 	// The size of the vCPU and the amount of RAM for the instance.
@@ -35899,7 +36213,7 @@ type Instance struct {
 	// The metadata options for the Amazon Lightsail instance.
 	MetadataOptions *InstanceMetadataOptions `locationName:"metadataOptions" type:"structure"`
 
-	// The name the user gave the instance (e.g., Amazon_Linux-1GB-Ohio-1).
+	// The name the user gave the instance (Amazon_Linux-1GB-Ohio-1).
 	Name *string `locationName:"name" type:"string"`
 
 	// Information about the public ports and monthly data transfer rates for the
@@ -35915,10 +36229,10 @@ type Instance struct {
 	// The type of resource (usually Instance).
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
 
-	// The name of the SSH key being used to connect to the instance (e.g., LightsailDefaultKeyPair).
+	// The name of the SSH key being used to connect to the instance (LightsailDefaultKeyPair).
 	SshKeyName *string `locationName:"sshKeyName" type:"string"`
 
-	// The status code and the state (e.g., running) for the instance.
+	// The status code and the state (running) for the instance.
 	State *InstanceState `locationName:"state" type:"structure"`
 
 	// The support code. Include this code in your email to support when you have
@@ -35930,7 +36244,7 @@ type Instance struct {
 	// tags in Lightsail, see the Amazon Lightsail Developer Guide (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-tags).
 	Tags []*Tag `locationName:"tags" type:"list"`
 
-	// The user name for connecting to the instance (e.g., ec2-user).
+	// The user name for connecting to the instance (ec2-user).
 	Username *string `locationName:"username" type:"string"`
 }
 
@@ -36090,7 +36404,7 @@ type InstanceAccessDetails struct {
 	_ struct{} `type:"structure"`
 
 	// For SSH access, the public key to use when accessing your instance For OpenSSH
-	// clients (e.g., command line SSH), you should save this value to tempkey-cert.pub.
+	// clients (command line SSH), you should save this value to tempkey-cert.pub.
 	CertKey *string `locationName:"certKey" type:"string"`
 
 	// For SSH access, the date on which the temporary keys expire.
@@ -36104,6 +36418,9 @@ type InstanceAccessDetails struct {
 
 	// The public IP address of the Amazon Lightsail instance.
 	IpAddress *string `locationName:"ipAddress" type:"string"`
+
+	// The IPv6 address of the Amazon Lightsail instance.
+	Ipv6Addresses []*string `locationName:"ipv6Addresses" type:"list"`
 
 	// For RDP access, the password for your Amazon Lightsail instance. Password
 	// will be an empty string if the password for your new instance is not ready
@@ -36125,8 +36442,8 @@ type InstanceAccessDetails struct {
 	// create an instance, it can take up to 15 minutes for the instance to be ready.
 	PasswordData *PasswordData `locationName:"passwordData" type:"structure"`
 
-	// For SSH access, the temporary private key. For OpenSSH clients (e.g., command
-	// line SSH), you should save this value to tempkey).
+	// For SSH access, the temporary private key. For OpenSSH clients (command line
+	// SSH), you should save this value to tempkey).
 	PrivateKey *string `locationName:"privateKey" type:"string"`
 
 	// The protocol for these Amazon Lightsail instance access details.
@@ -36184,6 +36501,12 @@ func (s *InstanceAccessDetails) SetIpAddress(v string) *InstanceAccessDetails {
 	return s
 }
 
+// SetIpv6Addresses sets the Ipv6Addresses field's value.
+func (s *InstanceAccessDetails) SetIpv6Addresses(v []*string) *InstanceAccessDetails {
+	s.Ipv6Addresses = v
+	return s
+}
+
 // SetPassword sets the Password field's value.
 func (s *InstanceAccessDetails) SetPassword(v string) *InstanceAccessDetails {
 	s.Password = &v
@@ -36224,7 +36547,7 @@ type InstanceEntry struct {
 	// AvailabilityZone is a required field
 	AvailabilityZone *string `locationName:"availabilityZone" type:"string" required:"true"`
 
-	// The instance type (e.g., t2.micro) to use for the new Amazon EC2 instance.
+	// The instance type (t2.micro) to use for the new Amazon EC2 instance.
 	//
 	// InstanceType is a required field
 	InstanceType *string `locationName:"instanceType" type:"string" required:"true"`
@@ -36359,7 +36682,7 @@ type InstanceHardware struct {
 	// The disks attached to the instance.
 	Disks []*Disk `locationName:"disks" type:"list"`
 
-	// The amount of RAM in GB on the instance (e.g., 1.0).
+	// The amount of RAM in GB on the instance (1.0).
 	RamSizeInGb *float64 `locationName:"ramSizeInGb" type:"float"`
 }
 
@@ -36993,25 +37316,25 @@ func (s *InstancePortState) SetToPort(v int64) *InstancePortState {
 type InstanceSnapshot struct {
 	_ struct{} `type:"structure"`
 
-	// The Amazon Resource Name (ARN) of the snapshot (e.g., arn:aws:lightsail:us-east-2:123456789101:InstanceSnapshot/d23b5706-3322-4d83-81e5-12345EXAMPLE).
+	// The Amazon Resource Name (ARN) of the snapshot (arn:aws:lightsail:us-east-2:123456789101:InstanceSnapshot/d23b5706-3322-4d83-81e5-12345EXAMPLE).
 	Arn *string `locationName:"arn" type:"string"`
 
-	// The timestamp when the snapshot was created (e.g., 1479907467.024).
+	// The timestamp when the snapshot was created (1479907467.024).
 	CreatedAt *time.Time `locationName:"createdAt" type:"timestamp"`
 
 	// An array of disk objects containing information about all block storage disks.
 	FromAttachedDisks []*Disk `locationName:"fromAttachedDisks" type:"list"`
 
-	// The blueprint ID from which you created the snapshot (e.g., os_debian_8_3).
-	// A blueprint is a virtual private server (or instance) image used to create
-	// instances quickly.
+	// The blueprint ID from which you created the snapshot (os_debian_8_3). A blueprint
+	// is a virtual private server (or instance) image used to create instances
+	// quickly.
 	FromBlueprintId *string `locationName:"fromBlueprintId" type:"string"`
 
-	// The bundle ID from which you created the snapshot (e.g., micro_1_0).
+	// The bundle ID from which you created the snapshot (micro_1_0).
 	FromBundleId *string `locationName:"fromBundleId" type:"string"`
 
 	// The Amazon Resource Name (ARN) of the instance from which the snapshot was
-	// created (e.g., arn:aws:lightsail:us-east-2:123456789101:Instance/64b8404c-ccb1-430b-8daf-12345EXAMPLE).
+	// created (arn:aws:lightsail:us-east-2:123456789101:Instance/64b8404c-ccb1-430b-8daf-12345EXAMPLE).
 	FromInstanceArn *string `locationName:"fromInstanceArn" type:"string"`
 
 	// The instance from which the snapshot was created.
@@ -37169,10 +37492,10 @@ func (s *InstanceSnapshot) SetTags(v []*Tag) *InstanceSnapshot {
 type InstanceSnapshotInfo struct {
 	_ struct{} `type:"structure"`
 
-	// The blueprint ID from which the source instance (e.g., os_debian_8_3).
+	// The blueprint ID from which the source instance (os_debian_8_3).
 	FromBlueprintId *string `locationName:"fromBlueprintId" type:"string"`
 
-	// The bundle ID from which the source instance was created (e.g., micro_1_0).
+	// The bundle ID from which the source instance was created (micro_1_0).
 	FromBundleId *string `locationName:"fromBundleId" type:"string"`
 
 	// A list of objects describing the disks that were attached to the source instance.
@@ -37222,7 +37545,7 @@ type InstanceState struct {
 	// The status code for the instance.
 	Code *int64 `locationName:"code" type:"integer"`
 
-	// The state of the instance (e.g., running or pending).
+	// The state of the instance (running or pending).
 	Name *string `locationName:"name" type:"string"`
 }
 
@@ -37388,10 +37711,10 @@ func (s *IsVpcPeeredOutput) SetIsPeered(v bool) *IsVpcPeeredOutput {
 type KeyPair struct {
 	_ struct{} `type:"structure"`
 
-	// The Amazon Resource Name (ARN) of the key pair (e.g., arn:aws:lightsail:us-east-2:123456789101:KeyPair/05859e3d-331d-48ba-9034-12345EXAMPLE).
+	// The Amazon Resource Name (ARN) of the key pair (arn:aws:lightsail:us-east-2:123456789101:KeyPair/05859e3d-331d-48ba-9034-12345EXAMPLE).
 	Arn *string `locationName:"arn" type:"string"`
 
-	// The timestamp when the key pair was created (e.g., 1479816991.349).
+	// The timestamp when the key pair was created (1479816991.349).
 	CreatedAt *time.Time `locationName:"createdAt" type:"timestamp"`
 
 	// The RSA fingerprint of the key pair.
@@ -37548,7 +37871,7 @@ type LightsailDistribution struct {
 	// The public DNS of the origin.
 	OriginPublicDNS *string `locationName:"originPublicDNS" type:"string"`
 
-	// The Lightsail resource type (e.g., Distribution).
+	// The Lightsail resource type (Distribution).
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
 
 	// The status of the distribution.
@@ -37740,11 +38063,11 @@ type LoadBalancer struct {
 	// The possible values are ipv4 for IPv4 only, and dualstack for IPv4 and IPv6.
 	IpAddressType *string `locationName:"ipAddressType" type:"string" enum:"IpAddressType"`
 
-	// The AWS Region where your load balancer was created (e.g., us-east-2a). Lightsail
+	// The AWS Region where your load balancer was created (us-east-2a). Lightsail
 	// automatically creates your load balancer across Availability Zones.
 	Location *ResourceLocation `locationName:"location" type:"structure"`
 
-	// The name of the load balancer (e.g., my-load-balancer).
+	// The name of the load balancer (my-load-balancer).
 	Name *string `locationName:"name" type:"string"`
 
 	// The protocol you have enabled for your load balancer. Valid values are below.
@@ -37756,7 +38079,7 @@ type LoadBalancer struct {
 	// 80. For HTTPS, use port 443.
 	PublicPorts []*int64 `locationName:"publicPorts" type:"list"`
 
-	// The resource type (e.g., LoadBalancer.
+	// The resource type (LoadBalancer.
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
 
 	// The status of your load balancer. Valid values are below.
@@ -37993,7 +38316,7 @@ type LoadBalancerTlsCertificate struct {
 	// certificate.
 	Location *ResourceLocation `locationName:"location" type:"structure"`
 
-	// The name of the SSL/TLS certificate (e.g., my-certificate).
+	// The name of the SSL/TLS certificate (my-certificate).
 	Name *string `locationName:"name" type:"string"`
 
 	// The timestamp when the SSL/TLS certificate expires.
@@ -38006,7 +38329,7 @@ type LoadBalancerTlsCertificate struct {
 	// Lightsail.
 	RenewalSummary *LoadBalancerTlsCertificateRenewalSummary `locationName:"renewalSummary" type:"structure"`
 
-	// The resource type (e.g., LoadBalancerTlsCertificate).
+	// The resource type (LoadBalancerTlsCertificate).
 	//
 	//    * Instance - A Lightsail instance (a virtual private server)
 	//
@@ -38051,8 +38374,8 @@ type LoadBalancerTlsCertificate struct {
 	// the certificate.
 	Subject *string `locationName:"subject" type:"string"`
 
-	// An array of strings that specify the alternate domains (e.g., example2.com)
-	// and subdomains (e.g., blog.example.com) for the certificate.
+	// An array of strings that specify the alternate domains (example2.com) and
+	// subdomains (blog.example.com) for the certificate.
 	SubjectAlternativeNames []*string `locationName:"subjectAlternativeNames" type:"list"`
 
 	// The support code. Include this code in your email to support when you have
@@ -38664,7 +38987,7 @@ type MetricDatapoint struct {
 	// The sum.
 	Sum *float64 `locationName:"sum" type:"double"`
 
-	// The timestamp (e.g., 1479816991.349).
+	// The timestamp (1479816991.349).
 	Timestamp *time.Time `locationName:"timestamp" type:"timestamp"`
 
 	// The unit.
@@ -39047,7 +39370,7 @@ func (s *OpenInstancePublicPortsOutput) SetOperation(v *Operation) *OpenInstance
 type Operation struct {
 	_ struct{} `type:"structure"`
 
-	// The timestamp when the operation was initialized (e.g., 1479816991.349).
+	// The timestamp when the operation was initialized (1479816991.349).
 	CreatedAt *time.Time `locationName:"createdAt" type:"timestamp"`
 
 	// The error code.
@@ -39065,7 +39388,7 @@ type Operation struct {
 	// The Amazon Web Services Region and Availability Zone.
 	Location *ResourceLocation `locationName:"location" type:"structure"`
 
-	// Details about the operation (e.g., Debian-1GB-Ohio-1).
+	// Details about the operation (Debian-1GB-Ohio-1).
 	OperationDetails *string `locationName:"operationDetails" type:"string"`
 
 	// The type of operation.
@@ -39080,7 +39403,7 @@ type Operation struct {
 	// The status of the operation.
 	Status *string `locationName:"status" type:"string" enum:"OperationStatus"`
 
-	// The timestamp when the status was changed (e.g., 1479816991.349).
+	// The timestamp when the status was changed (1479816991.349).
 	StatusChangedAt *time.Time `locationName:"statusChangedAt" type:"timestamp"`
 }
 
@@ -39263,7 +39586,7 @@ type Origin struct {
 	// The AWS Region name of the origin resource.
 	RegionName *string `locationName:"regionName" type:"string" enum:"RegionName"`
 
-	// The resource type of the origin resource (e.g., Instance).
+	// The resource type of the origin resource (Instance).
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
 }
 
@@ -40436,17 +40759,17 @@ type Region struct {
 	// The Availability Zones. Follows the format us-east-2a (case-sensitive).
 	AvailabilityZones []*AvailabilityZone `locationName:"availabilityZones" type:"list"`
 
-	// The continent code (e.g., NA, meaning North America).
+	// The continent code (NA, meaning North America).
 	ContinentCode *string `locationName:"continentCode" type:"string"`
 
-	// The description of the Amazon Web Services Region (e.g., This region is recommended
+	// The description of the Amazon Web Services Region (This region is recommended
 	// to serve users in the eastern United States and eastern Canada).
 	Description *string `locationName:"description" type:"string"`
 
-	// The display name (e.g., Ohio).
+	// The display name (Ohio).
 	DisplayName *string `locationName:"displayName" type:"string"`
 
-	// The region name (e.g., us-east-2).
+	// The region name (us-east-2).
 	Name *string `locationName:"name" type:"string" enum:"RegionName"`
 
 	// The Availability Zones for databases. Follows the format us-east-2a (case-sensitive).
@@ -41768,8 +42091,7 @@ func (s *ResetDistributionCacheInput) SetDistributionName(v string) *ResetDistri
 type ResetDistributionCacheOutput struct {
 	_ struct{} `type:"structure"`
 
-	// The timestamp of the reset cache request (e.g., 1479734909.17) in Unix time
-	// format.
+	// The timestamp of the reset cache request (1479734909.17) in Unix time format.
 	CreateTime *time.Time `locationName:"createTime" type:"timestamp"`
 
 	// An array of objects that describe the result of the action, such as the status
@@ -42241,7 +42563,7 @@ type SetIpAddressTypeInput struct {
 
 	// The resource type.
 	//
-	// The possible values are Distribution, Instance, and LoadBalancer.
+	// The resource values are Distribution, Instance, and LoadBalancer.
 	//
 	// Distribution-related APIs are available only in the N. Virginia (us-east-1)
 	// Amazon Web Services Region. Set your Amazon Web Services Region configuration
@@ -42454,6 +42776,412 @@ func (s SetResourceAccessForBucketOutput) GoString() string {
 // SetOperations sets the Operations field's value.
 func (s *SetResourceAccessForBucketOutput) SetOperations(v []*Operation) *SetResourceAccessForBucketOutput {
 	s.Operations = v
+	return s
+}
+
+// Returns details about the commands that were run.
+type SetupExecutionDetails struct {
+	_ struct{} `type:"structure"`
+
+	// The command that was executed.
+	Command *string `locationName:"command" type:"string"`
+
+	// The timestamp for when the request was run.
+	DateTime *time.Time `locationName:"dateTime" type:"timestamp"`
+
+	// The name of the target resource.
+	Name *string `locationName:"name" type:"string"`
+
+	// The text written by the command to stderr.
+	StandardError *string `locationName:"standardError" type:"string"`
+
+	// The text written by the command to stdout.
+	StandardOutput *string `locationName:"standardOutput" type:"string"`
+
+	// The status of the SetupInstanceHttps request.
+	Status *string `locationName:"status" type:"string" enum:"SetupStatus"`
+
+	// The current version of the script..
+	Version *string `locationName:"version" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s SetupExecutionDetails) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s SetupExecutionDetails) GoString() string {
+	return s.String()
+}
+
+// SetCommand sets the Command field's value.
+func (s *SetupExecutionDetails) SetCommand(v string) *SetupExecutionDetails {
+	s.Command = &v
+	return s
+}
+
+// SetDateTime sets the DateTime field's value.
+func (s *SetupExecutionDetails) SetDateTime(v time.Time) *SetupExecutionDetails {
+	s.DateTime = &v
+	return s
+}
+
+// SetName sets the Name field's value.
+func (s *SetupExecutionDetails) SetName(v string) *SetupExecutionDetails {
+	s.Name = &v
+	return s
+}
+
+// SetStandardError sets the StandardError field's value.
+func (s *SetupExecutionDetails) SetStandardError(v string) *SetupExecutionDetails {
+	s.StandardError = &v
+	return s
+}
+
+// SetStandardOutput sets the StandardOutput field's value.
+func (s *SetupExecutionDetails) SetStandardOutput(v string) *SetupExecutionDetails {
+	s.StandardOutput = &v
+	return s
+}
+
+// SetStatus sets the Status field's value.
+func (s *SetupExecutionDetails) SetStatus(v string) *SetupExecutionDetails {
+	s.Status = &v
+	return s
+}
+
+// SetVersion sets the Version field's value.
+func (s *SetupExecutionDetails) SetVersion(v string) *SetupExecutionDetails {
+	s.Version = &v
+	return s
+}
+
+// Returns a list of the commands that were ran on the target resource.
+//
+// The status of each command is also returned.
+type SetupHistory struct {
+	_ struct{} `type:"structure"`
+
+	// Describes the full details of the request.
+	ExecutionDetails []*SetupExecutionDetails `locationName:"executionDetails" type:"list"`
+
+	// A GUID that's used to identify the operation.
+	OperationId *string `locationName:"operationId" type:"string"`
+
+	// Information about the specified request.
+	Request *SetupRequest `locationName:"request" type:"structure"`
+
+	// The target resource name for the request.
+	Resource *SetupHistoryResource `locationName:"resource" type:"structure"`
+
+	// The status of the request.
+	Status *string `locationName:"status" type:"string" enum:"SetupStatus"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s SetupHistory) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s SetupHistory) GoString() string {
+	return s.String()
+}
+
+// SetExecutionDetails sets the ExecutionDetails field's value.
+func (s *SetupHistory) SetExecutionDetails(v []*SetupExecutionDetails) *SetupHistory {
+	s.ExecutionDetails = v
+	return s
+}
+
+// SetOperationId sets the OperationId field's value.
+func (s *SetupHistory) SetOperationId(v string) *SetupHistory {
+	s.OperationId = &v
+	return s
+}
+
+// SetRequest sets the Request field's value.
+func (s *SetupHistory) SetRequest(v *SetupRequest) *SetupHistory {
+	s.Request = v
+	return s
+}
+
+// SetResource sets the Resource field's value.
+func (s *SetupHistory) SetResource(v *SetupHistoryResource) *SetupHistory {
+	s.Resource = v
+	return s
+}
+
+// SetStatus sets the Status field's value.
+func (s *SetupHistory) SetStatus(v string) *SetupHistory {
+	s.Status = &v
+	return s
+}
+
+// The Lightsail resource that SetupHistory was ran on.
+type SetupHistoryResource struct {
+	_ struct{} `type:"structure"`
+
+	// The Amazon Resource Name (ARN) of the Lightsail resource.
+	Arn *string `locationName:"arn" type:"string"`
+
+	// The timestamp for when the resource was created.
+	CreatedAt *time.Time `locationName:"createdAt" type:"timestamp"`
+
+	// Describes the resource location.
+	Location *ResourceLocation `locationName:"location" type:"structure"`
+
+	// The name of the Lightsail resource.
+	Name *string `locationName:"name" type:"string"`
+
+	// The Lightsail resource type. For example, Instance.
+	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s SetupHistoryResource) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s SetupHistoryResource) GoString() string {
+	return s.String()
+}
+
+// SetArn sets the Arn field's value.
+func (s *SetupHistoryResource) SetArn(v string) *SetupHistoryResource {
+	s.Arn = &v
+	return s
+}
+
+// SetCreatedAt sets the CreatedAt field's value.
+func (s *SetupHistoryResource) SetCreatedAt(v time.Time) *SetupHistoryResource {
+	s.CreatedAt = &v
+	return s
+}
+
+// SetLocation sets the Location field's value.
+func (s *SetupHistoryResource) SetLocation(v *ResourceLocation) *SetupHistoryResource {
+	s.Location = v
+	return s
+}
+
+// SetName sets the Name field's value.
+func (s *SetupHistoryResource) SetName(v string) *SetupHistoryResource {
+	s.Name = &v
+	return s
+}
+
+// SetResourceType sets the ResourceType field's value.
+func (s *SetupHistoryResource) SetResourceType(v string) *SetupHistoryResource {
+	s.ResourceType = &v
+	return s
+}
+
+type SetupInstanceHttpsInput struct {
+	_ struct{} `type:"structure"`
+
+	// The certificate authority that issues the SSL/TLS certificate.
+	//
+	// CertificateProvider is a required field
+	CertificateProvider *string `locationName:"certificateProvider" type:"string" required:"true" enum:"CertificateProvider"`
+
+	// The name of the domain and subdomains that were specified for the SSL/TLS
+	// certificate.
+	//
+	// DomainNames is a required field
+	DomainNames []*string `locationName:"domainNames" min:"1" type:"list" required:"true"`
+
+	// The contact method for SSL/TLS certificate renewal alerts. You can enter
+	// one email address.
+	//
+	// EmailAddress is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by SetupInstanceHttpsInput's
+	// String and GoString methods.
+	//
+	// EmailAddress is a required field
+	EmailAddress *string `locationName:"emailAddress" min:"6" type:"string" required:"true" sensitive:"true"`
+
+	// The name of the Lightsail instance.
+	//
+	// InstanceName is a required field
+	InstanceName *string `locationName:"instanceName" type:"string" required:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s SetupInstanceHttpsInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s SetupInstanceHttpsInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *SetupInstanceHttpsInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "SetupInstanceHttpsInput"}
+	if s.CertificateProvider == nil {
+		invalidParams.Add(request.NewErrParamRequired("CertificateProvider"))
+	}
+	if s.DomainNames == nil {
+		invalidParams.Add(request.NewErrParamRequired("DomainNames"))
+	}
+	if s.DomainNames != nil && len(s.DomainNames) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("DomainNames", 1))
+	}
+	if s.EmailAddress == nil {
+		invalidParams.Add(request.NewErrParamRequired("EmailAddress"))
+	}
+	if s.EmailAddress != nil && len(*s.EmailAddress) < 6 {
+		invalidParams.Add(request.NewErrParamMinLen("EmailAddress", 6))
+	}
+	if s.InstanceName == nil {
+		invalidParams.Add(request.NewErrParamRequired("InstanceName"))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetCertificateProvider sets the CertificateProvider field's value.
+func (s *SetupInstanceHttpsInput) SetCertificateProvider(v string) *SetupInstanceHttpsInput {
+	s.CertificateProvider = &v
+	return s
+}
+
+// SetDomainNames sets the DomainNames field's value.
+func (s *SetupInstanceHttpsInput) SetDomainNames(v []*string) *SetupInstanceHttpsInput {
+	s.DomainNames = v
+	return s
+}
+
+// SetEmailAddress sets the EmailAddress field's value.
+func (s *SetupInstanceHttpsInput) SetEmailAddress(v string) *SetupInstanceHttpsInput {
+	s.EmailAddress = &v
+	return s
+}
+
+// SetInstanceName sets the InstanceName field's value.
+func (s *SetupInstanceHttpsInput) SetInstanceName(v string) *SetupInstanceHttpsInput {
+	s.InstanceName = &v
+	return s
+}
+
+type SetupInstanceHttpsOutput struct {
+	_ struct{} `type:"structure"`
+
+	// The available API operations for SetupInstanceHttps.
+	Operations []*Operation `locationName:"operations" type:"list"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s SetupInstanceHttpsOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s SetupInstanceHttpsOutput) GoString() string {
+	return s.String()
+}
+
+// SetOperations sets the Operations field's value.
+func (s *SetupInstanceHttpsOutput) SetOperations(v []*Operation) *SetupInstanceHttpsOutput {
+	s.Operations = v
+	return s
+}
+
+// Returns information that was submitted during the SetupInstanceHttps request.
+// Email information is redacted for privacy.
+type SetupRequest struct {
+	_ struct{} `type:"structure"`
+
+	// The Certificate Authority (CA) that issues the SSL/TLS certificate.
+	CertificateProvider *string `locationName:"certificateProvider" type:"string" enum:"CertificateProvider"`
+
+	// The name of the domain and subdomains that the SSL/TLS certificate secures.
+	DomainNames []*string `locationName:"domainNames" min:"1" type:"list"`
+
+	// The name of the Lightsail instance.
+	InstanceName *string `locationName:"instanceName" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s SetupRequest) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s SetupRequest) GoString() string {
+	return s.String()
+}
+
+// SetCertificateProvider sets the CertificateProvider field's value.
+func (s *SetupRequest) SetCertificateProvider(v string) *SetupRequest {
+	s.CertificateProvider = &v
+	return s
+}
+
+// SetDomainNames sets the DomainNames field's value.
+func (s *SetupRequest) SetDomainNames(v []*string) *SetupRequest {
+	s.DomainNames = v
+	return s
+}
+
+// SetInstanceName sets the InstanceName field's value.
+func (s *SetupRequest) SetInstanceName(v string) *SetupRequest {
+	s.InstanceName = &v
 	return s
 }
 
@@ -42696,13 +43424,13 @@ func (s *StartRelationalDatabaseOutput) SetOperations(v []*Operation) *StartRela
 type StaticIp struct {
 	_ struct{} `type:"structure"`
 
-	// The Amazon Resource Name (ARN) of the static IP (e.g., arn:aws:lightsail:us-east-2:123456789101:StaticIp/9cbb4a9e-f8e3-4dfe-b57e-12345EXAMPLE).
+	// The Amazon Resource Name (ARN) of the static IP (arn:aws:lightsail:us-east-2:123456789101:StaticIp/9cbb4a9e-f8e3-4dfe-b57e-12345EXAMPLE).
 	Arn *string `locationName:"arn" type:"string"`
 
-	// The instance where the static IP is attached (e.g., Amazon_Linux-1GB-Ohio-1).
+	// The instance where the static IP is attached (Amazon_Linux-1GB-Ohio-1).
 	AttachedTo *string `locationName:"attachedTo" type:"string"`
 
-	// The timestamp when the static IP was created (e.g., 1479735304.222).
+	// The timestamp when the static IP was created (1479735304.222).
 	CreatedAt *time.Time `locationName:"createdAt" type:"timestamp"`
 
 	// The static IP address.
@@ -42714,7 +43442,7 @@ type StaticIp struct {
 	// The region and Availability Zone where the static IP was created.
 	Location *ResourceLocation `locationName:"location" type:"structure"`
 
-	// The name of the static IP (e.g., StaticIP-Ohio-EXAMPLE).
+	// The name of the static IP (StaticIP-Ohio-EXAMPLE).
 	Name *string `locationName:"name" type:"string"`
 
 	// The resource type (usually StaticIp).
@@ -44518,7 +45246,7 @@ type UpdateLoadBalancerAttributeInput struct {
 	// AttributeValue is a required field
 	AttributeValue *string `locationName:"attributeValue" min:"1" type:"string" required:"true"`
 
-	// The name of the load balancer that you want to modify (e.g., my-load-balancer.
+	// The name of the load balancer that you want to modify (my-load-balancer.
 	//
 	// LoadBalancerName is a required field
 	LoadBalancerName *string `locationName:"loadBalancerName" type:"string" required:"true"`
@@ -44698,6 +45426,13 @@ type UpdateRelationalDatabaseInput struct {
 	// resources in the same region as your database.
 	PubliclyAccessible *bool `locationName:"publiclyAccessible" type:"boolean"`
 
+	// This parameter is used to update the major version of the database. Enter
+	// the blueprintId for the major version that you want to update to.
+	//
+	// Use the GetRelationalDatabaseBlueprints (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_GetRelationalDatabaseBlueprints.html)
+	// action to get a list of available blueprint IDs.
+	RelationalDatabaseBlueprintId *string `locationName:"relationalDatabaseBlueprintId" type:"string"`
+
 	// The name of your Lightsail database resource to update.
 	//
 	// RelationalDatabaseName is a required field
@@ -44787,6 +45522,12 @@ func (s *UpdateRelationalDatabaseInput) SetPreferredMaintenanceWindow(v string) 
 // SetPubliclyAccessible sets the PubliclyAccessible field's value.
 func (s *UpdateRelationalDatabaseInput) SetPubliclyAccessible(v bool) *UpdateRelationalDatabaseInput {
 	s.PubliclyAccessible = &v
+	return s
+}
+
+// SetRelationalDatabaseBlueprintId sets the RelationalDatabaseBlueprintId field's value.
+func (s *UpdateRelationalDatabaseInput) SetRelationalDatabaseBlueprintId(v string) *UpdateRelationalDatabaseInput {
+	s.RelationalDatabaseBlueprintId = &v
 	return s
 }
 
@@ -45169,6 +45910,18 @@ func CertificateDomainValidationStatus_Values() []string {
 		CertificateDomainValidationStatusPendingValidation,
 		CertificateDomainValidationStatusFailed,
 		CertificateDomainValidationStatusSuccess,
+	}
+}
+
+const (
+	// CertificateProviderLetsEncrypt is a CertificateProvider enum value
+	CertificateProviderLetsEncrypt = "LetsEncrypt"
+)
+
+// CertificateProvider_Values returns all elements of the CertificateProvider enum
+func CertificateProvider_Values() []string {
+	return []string{
+		CertificateProviderLetsEncrypt,
 	}
 }
 
@@ -46830,6 +47583,9 @@ const (
 
 	// OperationTypeStopGuisession is a OperationType enum value
 	OperationTypeStopGuisession = "StopGUISession"
+
+	// OperationTypeSetupInstanceHttps is a OperationType enum value
+	OperationTypeSetupInstanceHttps = "SetupInstanceHttps"
 )
 
 // OperationType_Values returns all elements of the OperationType enum
@@ -46917,6 +47673,7 @@ func OperationType_Values() []string {
 		OperationTypeUpdateInstanceMetadataOptions,
 		OperationTypeStartGuisession,
 		OperationTypeStopGuisession,
+		OperationTypeSetupInstanceHttps,
 	}
 }
 
@@ -47321,6 +48078,26 @@ func ResourceType_Values() []string {
 		ResourceTypeDistribution,
 		ResourceTypeCertificate,
 		ResourceTypeBucket,
+	}
+}
+
+const (
+	// SetupStatusSucceeded is a SetupStatus enum value
+	SetupStatusSucceeded = "succeeded"
+
+	// SetupStatusFailed is a SetupStatus enum value
+	SetupStatusFailed = "failed"
+
+	// SetupStatusInProgress is a SetupStatus enum value
+	SetupStatusInProgress = "inProgress"
+)
+
+// SetupStatus_Values returns all elements of the SetupStatus enum
+func SetupStatus_Values() []string {
+	return []string{
+		SetupStatusSucceeded,
+		SetupStatusFailed,
+		SetupStatusInProgress,
 	}
 }
 
