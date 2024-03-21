@@ -3202,6 +3202,10 @@ shard_streams:
 # CLI flag: -bloom-compactor.false-positive-rate
 [bloom_false_positive_rate: <float> | default = 0.01]
 
+# Compression algorithm for bloom block pages.
+# CLI flag: -bloom-compactor.block-encoding
+[bloom_block_encoding: <string> | default = "none"]
+
 # Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.
 # CLI flag: -bloom-gateway.blocks-downloading-parallelism
 [bloom_gateway_blocks_downloading_parallelism: <int> | default = 50]
