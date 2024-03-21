@@ -11,7 +11,6 @@ canary common labels
 {{- define "loki-canary.labels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: canary
-name: canary
 {{- end }}
 
 {{/*
@@ -20,7 +19,6 @@ canary selector labels
 {{- define "loki-canary.selectorLabels" -}}
 {{ include "loki.selectorLabels" . }}
 app.kubernetes.io/component: canary
-name: canary
 {{- end }}
 
 {{/*

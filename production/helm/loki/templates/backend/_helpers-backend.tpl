@@ -11,7 +11,6 @@ backend common labels
 {{- define "loki.backendLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: backend
-name: backend
 {{- end }}
 
 {{/*
@@ -20,7 +19,6 @@ backend selector labels
 {{- define "loki.backendSelectorLabels" -}}
 {{ include "loki.selectorLabels" . }}
 app.kubernetes.io/component: backend
-name: backend
 {{- end }}
 
 {{/*
