@@ -1939,6 +1939,10 @@ client:
 # CLI flag: -bloom-gateway.worker-concurrency
 [worker_concurrency: <int> | default = 4]
 
+# Number of blocks processed concurrently on a single worker.
+# CLI flag: -bloom-gateway.block-query-concurrency
+[block_query_concurrency: <int> | default = 4]
+
 # Maximum number of outstanding tasks per tenant.
 # CLI flag: -bloom-gateway.max-outstanding-per-tenant
 [max_outstanding_per_tenant: <int> | default = 1024]
