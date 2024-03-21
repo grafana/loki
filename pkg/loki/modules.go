@@ -30,8 +30,8 @@ import (
 	gerrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/version"
 
 	"github.com/grafana/loki/pkg/bloomcompactor"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -86,46 +86,47 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 
 // The various modules that make up Loki.
 const (
-	Ring                     string = "ring"
-	RuntimeConfig            string = "runtime-config"
-	Overrides                string = "overrides"
-	OverridesExporter        string = "overrides-exporter"
-	TenantConfigs            string = "tenant-configs"
-	Server                   string = "server"
-	InternalServer           string = "internal-server"
-	Distributor              string = "distributor"
-	Ingester                 string = "ingester"
-	Querier                  string = "querier"
-	CacheGenerationLoader    string = "cache-generation-loader"
-	IngesterQuerier          string = "ingester-querier"
-	QueryFrontend            string = "query-frontend"
-	QueryFrontendTripperware string = "query-frontend-tripperware"
-	QueryLimiter             string = "query-limiter"
-	QueryLimitsInterceptors  string = "query-limits-interceptors"
-	QueryLimitsTripperware   string = "query-limits-tripper"
-	RulerStorage             string = "ruler-storage"
-	Ruler                    string = "ruler"
-	RuleEvaluator            string = "rule-evaluator"
-	Store                    string = "store"
-	TableManager             string = "table-manager"
-	MemberlistKV             string = "memberlist-kv"
-	Compactor                string = "compactor"
-	BloomGateway             string = "bloom-gateway"
-	BloomGatewayRing         string = "bloom-gateway-ring"
-	IndexGateway             string = "index-gateway"
-	IndexGatewayRing         string = "index-gateway-ring"
-	IndexGatewayInterceptors string = "index-gateway-interceptors"
-	QueryScheduler           string = "query-scheduler"
-	QuerySchedulerRing       string = "query-scheduler-ring"
-	BloomCompactor           string = "bloom-compactor"
-	BloomCompactorRing       string = "bloom-compactor-ring"
-	BloomStore               string = "bloom-store"
-	All                      string = "all"
-	Read                     string = "read"
-	Write                    string = "write"
-	Backend                  string = "backend"
-	Analytics                string = "analytics"
-	InitCodec                string = "init-codec"
+	Ring                          string = "ring"
+	RuntimeConfig                 string = "runtime-config"
+	Overrides                     string = "overrides"
+	OverridesExporter             string = "overrides-exporter"
+	TenantConfigs                 string = "tenant-configs"
+	Server                        string = "server"
+	InternalServer                string = "internal-server"
+	Distributor                   string = "distributor"
+	Querier                       string = "querier"
+	CacheGenerationLoader         string = "cache-generation-loader"
+	Ingester                      string = "ingester"
+	IngesterQuerier               string = "ingester-querier"
+	IngesterQueryTagsInterceptors string = "ingester-query-tags-interceptors"
+	QueryFrontend                 string = "query-frontend"
+	QueryFrontendTripperware      string = "query-frontend-tripperware"
+	QueryLimiter                  string = "query-limiter"
+	QueryLimitsInterceptors       string = "query-limits-interceptors"
+	QueryLimitsTripperware        string = "query-limits-tripper"
+	RulerStorage                  string = "ruler-storage"
+	Ruler                         string = "ruler"
+	RuleEvaluator                 string = "rule-evaluator"
+	Store                         string = "store"
+	TableManager                  string = "table-manager"
+	MemberlistKV                  string = "memberlist-kv"
+	Compactor                     string = "compactor"
+	BloomGateway                  string = "bloom-gateway"
+	BloomGatewayRing              string = "bloom-gateway-ring"
+	IndexGateway                  string = "index-gateway"
+	IndexGatewayRing              string = "index-gateway-ring"
+	IndexGatewayInterceptors      string = "index-gateway-interceptors"
+	QueryScheduler                string = "query-scheduler"
+	QuerySchedulerRing            string = "query-scheduler-ring"
+	BloomCompactor                string = "bloom-compactor"
+	BloomCompactorRing            string = "bloom-compactor-ring"
+	BloomStore                    string = "bloom-store"
+	All                           string = "all"
+	Read                          string = "read"
+	Write                         string = "write"
+	Backend                       string = "backend"
+	Analytics                     string = "analytics"
+	InitCodec                     string = "init-codec"
 )
 
 const (
@@ -681,15 +682,9 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 		level.Info(logger).Log("msg", "no metas cache configured")
 	}
 
-	var blocksCache cache.TypedCache[string, bloomshipper.BlockDirectory]
-	if bsCfg.BlocksCache.IsEnabled() {
-		blocksCache = bloomshipper.NewBlocksCache(bsCfg.BlocksCache, reg, logger)
-		err = bloomshipper.LoadBlocksDirIntoCache(t.Cfg.StorageConfig.BloomShipperConfig.WorkingDirectory, blocksCache, logger)
-		if err != nil {
-			level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
-		}
-	} else {
-		level.Info(logger).Log("msg", "no blocks cache configured")
+	blocksCache := bloomshipper.NewFsBlocksCache(bsCfg.BlocksCache, reg, logger)
+	if err = bloomshipper.LoadBlocksDirIntoCache(bsCfg.WorkingDirectory, blocksCache, logger); err != nil {
+		level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
 	}
 
 	t.BloomStore, err = bloomshipper.NewBloomStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, metasCache, blocksCache, reg, logger)
@@ -1578,6 +1573,14 @@ func (t *Loki) initQueryLimitsInterceptors() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing query limits interceptors")
 	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, querylimits.ServerQueryLimitsInterceptor)
 	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, querylimits.StreamServerQueryLimitsInterceptor)
+
+	return nil, nil
+}
+
+func (t *Loki) initIngesterQueryTagsInterceptors() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing ingester query tags interceptors")
+	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, serverutil.StreamServerQueryTagsInterceptor)
+	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, serverutil.UnaryServerQueryTagsInterceptor)
 
 	return nil, nil
 }

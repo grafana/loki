@@ -159,7 +159,7 @@ func NewBloomStore(
 	storageConfig storage.Config,
 	clientMetrics storage.ClientMetrics,
 	metasCache cache.Cache,
-	blocksCache cache.TypedCache[string, BlockDirectory],
+	blocksCache Cache,
 	reg prometheus.Registerer,
 	logger log.Logger,
 ) (*BloomStore, error) {
@@ -174,7 +174,7 @@ func NewBloomStore(
 	}
 
 	if blocksCache == nil {
-		blocksCache = cache.NewNoopTypedCache[string, BlockDirectory]()
+		return nil, errors.New("no blocks cache")
 	}
 
 	// sort by From time

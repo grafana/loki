@@ -3,12 +3,14 @@ package bloomcompactor
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
@@ -111,53 +113,56 @@ func dummyBloomGen(t *testing.T, opts v1.BlockOptions, store v1.Iterator[*v1.Ser
 
 func TestSimpleBloomGenerator(t *testing.T) {
 	const maxBlockSize = 100 << 20 // 100MB
-	for _, tc := range []struct {
-		desc                 string
-		fromSchema, toSchema v1.BlockOptions
-		overlapping          bool
-	}{
-		{
-			desc:       "SkipsIncompatibleSchemas",
-			fromSchema: v1.NewBlockOptions(3, 0, maxBlockSize),
-			toSchema:   v1.NewBlockOptions(4, 0, maxBlockSize),
-		},
-		{
-			desc:       "CombinesBlocks",
-			fromSchema: v1.NewBlockOptions(4, 0, maxBlockSize),
-			toSchema:   v1.NewBlockOptions(4, 0, maxBlockSize),
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			sourceBlocks, data, refs := blocksFromSchemaWithRange(t, 2, tc.fromSchema, 0x00000, 0x6ffff)
-			storeItr := v1.NewMapIter[v1.SeriesWithBloom, *v1.Series](
-				v1.NewSliceIter[v1.SeriesWithBloom](data),
-				func(swb v1.SeriesWithBloom) *v1.Series {
-					return swb.Series
-				},
-			)
+	for _, enc := range []chunkenc.Encoding{chunkenc.EncNone, chunkenc.EncGZIP, chunkenc.EncSnappy} {
+		for _, tc := range []struct {
+			desc                 string
+			fromSchema, toSchema v1.BlockOptions
+			overlapping          bool
+		}{
+			{
+				desc:       "SkipsIncompatibleSchemas",
+				fromSchema: v1.NewBlockOptions(enc, 3, 0, maxBlockSize),
+				toSchema:   v1.NewBlockOptions(enc, 4, 0, maxBlockSize),
+			},
+			{
+				desc:       "CombinesBlocks",
+				fromSchema: v1.NewBlockOptions(enc, 4, 0, maxBlockSize),
+				toSchema:   v1.NewBlockOptions(enc, 4, 0, maxBlockSize),
+			},
+		} {
+			t.Run(fmt.Sprintf("%s/%s", tc.desc, enc), func(t *testing.T) {
+				sourceBlocks, data, refs := blocksFromSchemaWithRange(t, 2, tc.fromSchema, 0x00000, 0x6ffff)
+				storeItr := v1.NewMapIter[v1.SeriesWithBloom, *v1.Series](
+					v1.NewSliceIter[v1.SeriesWithBloom](data),
+					func(swb v1.SeriesWithBloom) *v1.Series {
+						return swb.Series
+					},
+				)
 
-			gen := dummyBloomGen(t, tc.toSchema, storeItr, sourceBlocks, refs)
-			results := gen.Generate(context.Background())
+				gen := dummyBloomGen(t, tc.toSchema, storeItr, sourceBlocks, refs)
+				results := gen.Generate(context.Background())
 
-			var outputBlocks []*v1.Block
-			for results.Next() {
-				outputBlocks = append(outputBlocks, results.At())
-			}
-			// require.Equal(t, tc.outputBlocks, len(outputBlocks))
-
-			// Check all the input series are present in the output blocks.
-			expectedRefs := v1.PointerSlice(data)
-			outputRefs := make([]*v1.SeriesWithBloom, 0, len(data))
-			for _, block := range outputBlocks {
-				bq := block.Querier()
-				for bq.Next() {
-					outputRefs = append(outputRefs, bq.At())
+				var outputBlocks []*v1.Block
+				for results.Next() {
+					outputBlocks = append(outputBlocks, results.At())
 				}
-			}
-			require.Equal(t, len(expectedRefs), len(outputRefs))
-			for i := range expectedRefs {
-				require.Equal(t, expectedRefs[i].Series, outputRefs[i].Series)
-			}
-		})
+				// require.Equal(t, tc.outputBlocks, len(outputBlocks))
+
+				// Check all the input series are present in the output blocks.
+				expectedRefs := v1.PointerSlice(data)
+				outputRefs := make([]*v1.SeriesWithBloom, 0, len(data))
+				for _, block := range outputBlocks {
+					bq := block.Querier()
+					for bq.Next() {
+						outputRefs = append(outputRefs, bq.At())
+					}
+				}
+				require.Equal(t, len(expectedRefs), len(outputRefs))
+				for i := range expectedRefs {
+					require.Equal(t, expectedRefs[i].Series, outputRefs[i].Series)
+				}
+			})
+		}
 	}
+
 }

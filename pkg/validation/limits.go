@@ -19,6 +19,7 @@ import (
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/loghttp/push"
@@ -199,6 +200,7 @@ type Limits struct {
 	BloomNGramLength                         int              `yaml:"bloom_ngram_length" json:"bloom_ngram_length"`
 	BloomNGramSkip                           int              `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip"`
 	BloomFalsePositiveRate                   float64          `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate"`
+	BloomBlockEncoding                       string           `yaml:"bloom_block_encoding" json:"bloom_block_encoding"`
 	BloomGatewayBlocksDownloadingParallelism int              `yaml:"bloom_gateway_blocks_downloading_parallelism" json:"bloom_gateway_blocks_downloading_parallelism"`
 	BloomGatewayCacheKeyInterval             time.Duration    `yaml:"bloom_gateway_cache_key_interval" json:"bloom_gateway_cache_key_interval"`
 	BloomCompactorMaxBlockSize               flagext.ByteSize `yaml:"bloom_compactor_max_block_size" json:"bloom_compactor_max_block_size"`
@@ -348,6 +350,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.BloomNGramLength, "bloom-compactor.ngram-length", 4, "Length of the n-grams created when computing blooms from log lines.")
 	f.IntVar(&l.BloomNGramSkip, "bloom-compactor.ngram-skip", 1, "Skip factor for the n-grams created when computing blooms from log lines.")
 	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-compactor.false-positive-rate", 0.01, "Scalable Bloom Filter desired false-positive rate.")
+	f.StringVar(&l.BloomBlockEncoding, "bloom-compactor.block-encoding", "none", "Compression algorithm for bloom block pages.")
 	f.IntVar(&l.BloomGatewayBlocksDownloadingParallelism, "bloom-gateway.blocks-downloading-parallelism", 50, "Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.")
 	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Interval for computing the cache key in the Bloom Gateway.")
 	_ = l.BloomCompactorMaxBlockSize.Set(defaultBloomCompactorMaxBlockSize)
@@ -443,6 +446,10 @@ func (l *Limits) Validate() error {
 
 	if _, err := logql.ParseShardVersion(l.TSDBShardingStrategy); err != nil {
 		return errors.Wrap(err, "invalid tsdb sharding strategy")
+	}
+
+	if _, err := chunkenc.ParseEncoding(l.BloomBlockEncoding); err != nil {
+		return err
 	}
 
 	return nil
@@ -941,6 +948,10 @@ func (o *Overrides) BloomCompactorMaxBlockSize(userID string) int {
 
 func (o *Overrides) BloomFalsePositiveRate(userID string) float64 {
 	return o.getOverridesForUser(userID).BloomFalsePositiveRate
+}
+
+func (o *Overrides) BloomBlockEncoding(userID string) string {
+	return o.getOverridesForUser(userID).BloomBlockEncoding
 }
 
 func (o *Overrides) AllowStructuredMetadata(userID string) bool {
