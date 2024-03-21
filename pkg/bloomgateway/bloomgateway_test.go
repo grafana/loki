@@ -76,6 +76,11 @@ func setupBloomStore(t *testing.T) *bloomshipper.BloomStore {
 			BlocksDownloadingQueue: bloomshipperconfig.DownloadingQueueConfig{
 				WorkersCount: 1,
 			},
+			BlocksCache: bloomshipperconfig.BlocksCacheConfig{
+				SoftLimit: flagext.Bytes(10 << 20),
+				HardLimit: flagext.Bytes(20 << 20),
+				TTL:       time.Hour,
+			},
 		},
 		FSConfig: local.FSConfig{
 			Directory: t.TempDir(),
@@ -83,7 +88,8 @@ func setupBloomStore(t *testing.T) *bloomshipper.BloomStore {
 	}
 
 	reg := prometheus.NewRegistry()
-	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, nil, nil, reg, logger)
+	blocksCache := bloomshipper.NewFsBlocksCache(storageCfg.BloomShipperConfig.BlocksCache, nil, logger)
+	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, nil, blocksCache, reg, logger)
 	require.NoError(t, err)
 	t.Cleanup(store.Stop)
 

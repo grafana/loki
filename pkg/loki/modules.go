@@ -679,15 +679,9 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 		level.Info(logger).Log("msg", "no metas cache configured")
 	}
 
-	var blocksCache cache.TypedCache[string, bloomshipper.BlockDirectory]
-	if bsCfg.BlocksCache.IsEnabled() {
-		blocksCache = bloomshipper.NewBlocksCache(bsCfg.BlocksCache, reg, logger)
-		err = bloomshipper.LoadBlocksDirIntoCache(t.Cfg.StorageConfig.BloomShipperConfig.WorkingDirectory, blocksCache, logger)
-		if err != nil {
-			level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
-		}
-	} else {
-		level.Info(logger).Log("msg", "no blocks cache configured")
+	blocksCache := bloomshipper.NewFsBlocksCache(bsCfg.BlocksCache, reg, logger)
+	if err = bloomshipper.LoadBlocksDirIntoCache(bsCfg.WorkingDirectory, blocksCache, logger); err != nil {
+		level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
 	}
 
 	t.BloomStore, err = bloomshipper.NewBloomStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, metasCache, blocksCache, reg, logger)
