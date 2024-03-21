@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
@@ -82,16 +83,27 @@ func TestBlockDirectory_Cleanup(t *testing.T) {
 			require.DirExists(t, extractedBlockDirectory)
 
 			blockDir := BlockDirectory{
-				Path:                        extractedBlockDirectory,
-				removeDirectoryTimeout:      timeout,
-				activeQueriersCheckInterval: checkInterval,
-				logger:                      log.NewNopLogger(),
-				refCount:                    atomic.NewInt32(0),
+				Path:          extractedBlockDirectory,
+				deleteTimeout: timeout,
+				checkInterval: checkInterval,
+				logger:        log.NewNopLogger(),
+				refCount:      atomic.NewInt32(0),
 			}
 			// acquire directory
 			blockDir.refCount.Inc()
 			// start cleanup goroutine
-			blockDir.removeDirectoryAsync()
+			e := &cache.Entry[string, BlockDirectory]{
+				Key:   blockDir.Path,
+				Value: blockDir,
+			}
+			removeBlockDirectory(e)
+
+			// old block dir does not exist any more
+			require.NoDirExists(t, extractedBlockDirectory)
+
+			// has been renamed
+			newPath := extractedBlockDirectory + "-removed"
+			require.DirExists(t, newPath)
 
 			if tc.releaseQuerier {
 				// release directory
@@ -100,7 +112,7 @@ func TestBlockDirectory_Cleanup(t *testing.T) {
 
 			// ensure directory does not exist any more
 			require.Eventually(t, func() bool {
-				return directoryDoesNotExist(extractedBlockDirectory)
+				return !DirExists(newPath)
 			}, tc.expectDirectoryToBeDeletedWithin, 10*time.Millisecond)
 		})
 	}

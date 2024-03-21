@@ -39,6 +39,9 @@ type TypedCache[K comparable, V any] interface {
 	GetCacheType() stats.CacheType
 }
 
+type EntrySizeFunc[K comparable, V any] func(entry *Entry[K, V]) uint64
+type Hook[K comparable, V any] func(entry *Entry[K, V])
+
 // EmbeddedCache is a simple (comparable -> any) cache which uses a fifo slide to
 // manage evictions.  O(1) inserts and updates, O(1) gets.
 //
@@ -55,10 +58,10 @@ type EmbeddedCache[K comparable, V any] struct {
 	currSizeBytes uint64
 
 	entries map[K]*list.Element
-	cacheEntrySizeCalculator[K, V]
-	lru *list.List
+	lru     *list.List
 
-	onEntryRemoved func(key K, value V)
+	sizeOf           EntrySizeFunc[K, V]
+	entryRemovedHook Hook[K, V]
 
 	done chan struct{}
 
@@ -101,8 +104,6 @@ func (cfg *EmbeddedCacheConfig) IsEnabled() bool {
 	return cfg.Enabled
 }
 
-type cacheEntrySizeCalculator[K comparable, V any] func(entry *Entry[K, V]) uint64
-
 // NewEmbeddedCache returns a new initialised EmbeddedCache where the key is a string and the value is a slice of bytes.
 func NewEmbeddedCache(name string, cfg EmbeddedCacheConfig, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) *EmbeddedCache[string, []byte] {
 	return NewTypedEmbeddedCache[string, []byte](name, cfg, reg, logger, cacheType, sizeOf, nil)
@@ -118,8 +119,8 @@ func NewTypedEmbeddedCache[K comparable, V any](
 	reg prometheus.Registerer,
 	logger log.Logger,
 	cacheType stats.CacheType,
-	entrySizeCalculator cacheEntrySizeCalculator[K, V],
-	onEntryRemoved func(key K, value V),
+	entrySize EntrySizeFunc[K, V],
+	onEntryRemoved Hook[K, V],
 ) *EmbeddedCache[K, V] {
 	if cfg.MaxSizeMB == 0 && cfg.MaxSizeItems == 0 {
 		// zero cache capacity - no need to create cache
@@ -136,12 +137,12 @@ func NewTypedEmbeddedCache[K comparable, V any](
 	cache := &EmbeddedCache[K, V]{
 		cacheType: cacheType,
 
-		maxSizeItems:             cfg.MaxSizeItems,
-		maxSizeBytes:             uint64(cfg.MaxSizeMB * 1e6),
-		entries:                  make(map[K]*list.Element),
-		lru:                      list.New(),
-		cacheEntrySizeCalculator: entrySizeCalculator,
-		onEntryRemoved:           onEntryRemoved,
+		maxSizeItems:     cfg.MaxSizeItems,
+		maxSizeBytes:     uint64(cfg.MaxSizeMB * 1e6),
+		entries:          make(map[K]*list.Element),
+		lru:              list.New(),
+		sizeOf:           entrySize,
+		entryRemovedHook: onEntryRemoved,
 
 		done: make(chan struct{}),
 
@@ -259,10 +260,10 @@ func (c *EmbeddedCache[K, V]) GetCacheType() stats.CacheType {
 
 func (c *EmbeddedCache[K, V]) remove(key K, element *list.Element, reason string) {
 	entry := c.lru.Remove(element).(*Entry[K, V])
-	sz := c.cacheEntrySizeCalculator(entry)
+	sz := c.sizeOf(entry)
 	delete(c.entries, key)
-	if c.onEntryRemoved != nil {
-		c.onEntryRemoved(entry.Key, entry.Value)
+	if c.entryRemovedHook != nil {
+		c.entryRemovedHook(entry)
 	}
 	c.currSizeBytes -= sz
 	c.entriesCurrent.Dec()
@@ -282,7 +283,7 @@ func (c *EmbeddedCache[K, V]) put(key K, value V) {
 		Key:     key,
 		Value:   value,
 	}
-	entrySz := c.cacheEntrySizeCalculator(entry)
+	entrySz := c.sizeOf(entry)
 
 	if c.maxSizeBytes > 0 && entrySz > c.maxSizeBytes {
 		// Cannot keep this item in the cache.

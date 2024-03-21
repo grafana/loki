@@ -2,6 +2,7 @@ package bloomshipper
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,9 +14,18 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
-func directoryDoesNotExist(path string) bool {
-	_, err := os.Lstat(path)
-	return err != nil
+func DirExists(path string) bool {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false
+		}
+		panic(fmt.Sprintf("error running os.Lstat(%q): %s", path, err))
+	}
+	if !info.IsDir() {
+		panic(fmt.Sprintf("%q is not a directory", path))
+	}
+	return true
 }
 
 const testArchiveFileName = "test-block-archive"
