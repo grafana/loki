@@ -11,6 +11,7 @@ querier common labels
 {{- define "loki.querierLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: querier
+name: querier
 {{- end }}
 
 {{/*
@@ -19,6 +20,7 @@ querier selector labels
 {{- define "loki.querierSelectorLabels" -}}
 {{ include "loki.selectorLabels" . }}
 app.kubernetes.io/component: querier
+name: querier
 {{- end }}
 
 {{/*

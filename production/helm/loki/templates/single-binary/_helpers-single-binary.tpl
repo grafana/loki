@@ -4,6 +4,7 @@ singleBinary common labels
 {{- define "loki.singleBinaryLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: single-binary
+name: single-binary
 {{- end }}
 
 
@@ -11,6 +12,7 @@ app.kubernetes.io/component: single-binary
 {{- define "loki.singleBinarySelectorLabels" -}}
 {{ include "loki.selectorLabels" . }}
 app.kubernetes.io/component: single-binary
+name: single-binary
 {{- end }}
 
 {{/*
