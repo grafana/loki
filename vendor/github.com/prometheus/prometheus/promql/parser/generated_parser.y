@@ -22,7 +22,7 @@ import (
         "github.com/prometheus/prometheus/model/labels"
         "github.com/prometheus/prometheus/model/value"
         "github.com/prometheus/prometheus/model/histogram"
-	"github.com/prometheus/prometheus/promql/parser/posrange"
+        "github.com/prometheus/prometheus/promql/parser/posrange"
 )
 
 %}
@@ -161,7 +161,7 @@ START_METRIC_SELECTOR
 // Type definitions for grammar rules.
 %type <matchers> label_match_list
 %type <matcher> label_matcher
-%type <item> aggregate_op grouping_label match_op maybe_label metric_identifier unary_op at_modifier_preprocessors
+%type <item> aggregate_op grouping_label match_op maybe_label metric_identifier unary_op at_modifier_preprocessors string_identifier
 %type <labels> label_set metric
 %type <lblList> label_set_list
 %type <label> label_set_item
@@ -368,6 +368,9 @@ function_call   : IDENTIFIER function_call_body
                         fn, exist := getFunction($1.Val, yylex.(*parser).functions)
                         if !exist{
                                 yylex.(*parser).addParseErrf($1.PositionRange(),"unknown function with name %q", $1.Val)
+                        }
+                        if fn != nil && fn.Experimental && !EnableExperimentalFunctions {
+                                yylex.(*parser).addParseErrf($1.PositionRange(),"function %q is not enabled", $1.Val)
                         }
                         $$ = &Call{
                                 Func: fn,
@@ -579,7 +582,13 @@ label_match_list: label_match_list COMMA label_matcher
                 ;
 
 label_matcher   : IDENTIFIER match_op STRING
-                        { $$ = yylex.(*parser).newLabelMatcher($1, $2, $3);  }
+                        { $$ = yylex.(*parser).newLabelMatcher($1, $2, $3); }
+                | string_identifier match_op STRING
+                        { $$ = yylex.(*parser).newLabelMatcher($1, $2, $3); }
+                | string_identifier
+                        { $$ = yylex.(*parser).newMetricNameMatcher($1); }
+                | string_identifier match_op error
+                        { yylex.(*parser).unexpected("label matching", "string"); $$ = nil}
                 | IDENTIFIER match_op error
                         { yylex.(*parser).unexpected("label matching", "string"); $$ = nil}
                 | IDENTIFIER error
@@ -898,7 +907,17 @@ string_literal  : STRING
                                 PosRange: $1.PositionRange(),
                         }
                         }
-                        ;
+                ;
+
+string_identifier  : STRING
+                        {
+                        $$ = Item{
+                                Typ: METRIC_IDENTIFIER,
+                                Pos: $1.PositionRange().Start,
+                                Val: yylex.(*parser).unquoteString($1.Val),
+                        }
+                        }
+                ;
 
 /*
  * Wrappers for optional arguments.

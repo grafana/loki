@@ -8,6 +8,7 @@ package azcore
 
 import (
 	"reflect"
+	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
@@ -41,13 +42,28 @@ func NewSASCredential(sas string) *SASCredential {
 }
 
 // holds sentinel values used to send nulls
-var nullables map[reflect.Type]interface{} = map[reflect.Type]interface{}{}
+var nullables map[reflect.Type]any = map[reflect.Type]any{}
+var nullablesMu sync.RWMutex
 
 // NullValue is used to send an explicit 'null' within a request.
 // This is typically used in JSON-MERGE-PATCH operations to delete a value.
 func NullValue[T any]() T {
 	t := shared.TypeOfT[T]()
+
+	nullablesMu.RLock()
 	v, found := nullables[t]
+	nullablesMu.RUnlock()
+
+	if found {
+		// return the sentinel object
+		return v.(T)
+	}
+
+	// promote to exclusive lock and check again (double-checked locking pattern)
+	nullablesMu.Lock()
+	defer nullablesMu.Unlock()
+	v, found = nullables[t]
+
 	if !found {
 		var o reflect.Value
 		if k := t.Kind(); k == reflect.Map {
@@ -72,6 +88,9 @@ func NullValue[T any]() T {
 func IsNullValue[T any](v T) bool {
 	// see if our map has a sentinel object for this *T
 	t := reflect.TypeOf(v)
+	nullablesMu.RLock()
+	defer nullablesMu.RUnlock()
+
 	if o, found := nullables[t]; found {
 		o1 := reflect.ValueOf(o)
 		v1 := reflect.ValueOf(v)
