@@ -11,6 +11,7 @@ compactor common labels
 {{- define "loki.compactorLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: compactor
+name: compactor
 {{- end }}
 
 {{/*
@@ -19,6 +20,7 @@ compactor selector labels
 {{- define "loki.compactorSelectorLabels" -}}
 {{ include "loki.selectorLabels" . }}
 app.kubernetes.io/component: compactor
+name: compactor
 {{- end }}
 
 {{/*

@@ -184,7 +184,7 @@ spec:
           {{- include "loki.configVolume" . | nindent 10 }}
         - name: runtime-config
           configMap:
-            name: {{ template "loki.fullname" . }}-runtime
+            name: {{ template "loki.name" . }}-runtime
         {{- if .Values.enterprise.enabled }}
         - name: license
           secret:
