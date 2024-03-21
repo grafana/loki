@@ -24,13 +24,13 @@ import (
 	"io"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
 	"google.golang.org/grpc/internal/backoff"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/xds/internal"
 	"google.golang.org/grpc/xds/internal/xdsclient/load"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	v3endpointpb "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
@@ -170,10 +170,11 @@ func (t *Transport) recvFirstLoadStatsResponse(stream lrsStream) ([]string, time
 		t.logger.Infof("Received first LoadStatsResponse: %s", pretty.ToJSON(resp))
 	}
 
-	interval, err := ptypes.Duration(resp.GetLoadReportingInterval())
-	if err != nil {
+	rInterval := resp.GetLoadReportingInterval()
+	if rInterval.CheckValid() != nil {
 		return nil, 0, fmt.Errorf("invalid load_reporting_interval: %v", err)
 	}
+	interval := rInterval.AsDuration()
 
 	if resp.ReportEndpointGranularity {
 		// TODO(easwars): Support per endpoint loads.
@@ -233,7 +234,7 @@ func (t *Transport) sendLoadStatsRequest(stream lrsStream, loads []*load.Data) e
 			UpstreamLocalityStats: localityStats,
 			TotalDroppedRequests:  sd.TotalDrops,
 			DroppedRequests:       droppedReqs,
-			LoadReportInterval:    ptypes.DurationProto(sd.ReportInterval),
+			LoadReportInterval:    durationpb.New(sd.ReportInterval),
 		})
 	}
 

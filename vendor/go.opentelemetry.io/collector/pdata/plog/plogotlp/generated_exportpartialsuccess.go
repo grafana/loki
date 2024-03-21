@@ -7,6 +7,7 @@
 package plogotlp
 
 import (
+	"go.opentelemetry.io/collector/pdata/internal"
 	otlpcollectorlog "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/logs/v1"
 )
 
@@ -18,11 +19,12 @@ import (
 // Must use NewExportPartialSuccess function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ExportPartialSuccess struct {
-	orig *otlpcollectorlog.ExportLogsPartialSuccess
+	orig  *otlpcollectorlog.ExportLogsPartialSuccess
+	state *internal.State
 }
 
-func newExportPartialSuccess(orig *otlpcollectorlog.ExportLogsPartialSuccess) ExportPartialSuccess {
-	return ExportPartialSuccess{orig}
+func newExportPartialSuccess(orig *otlpcollectorlog.ExportLogsPartialSuccess, state *internal.State) ExportPartialSuccess {
+	return ExportPartialSuccess{orig: orig, state: state}
 }
 
 // NewExportPartialSuccess creates a new empty ExportPartialSuccess.
@@ -30,12 +32,15 @@ func newExportPartialSuccess(orig *otlpcollectorlog.ExportLogsPartialSuccess) Ex
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewExportPartialSuccess() ExportPartialSuccess {
-	return newExportPartialSuccess(&otlpcollectorlog.ExportLogsPartialSuccess{})
+	state := internal.StateMutable
+	return newExportPartialSuccess(&otlpcollectorlog.ExportLogsPartialSuccess{}, &state)
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
 // resetting the current instance to its zero value
 func (ms ExportPartialSuccess) MoveTo(dest ExportPartialSuccess) {
+	ms.state.AssertMutable()
+	dest.state.AssertMutable()
 	*dest.orig = *ms.orig
 	*ms.orig = otlpcollectorlog.ExportLogsPartialSuccess{}
 }
@@ -47,6 +52,7 @@ func (ms ExportPartialSuccess) RejectedLogRecords() int64 {
 
 // SetRejectedLogRecords replaces the rejectedlogrecords associated with this ExportPartialSuccess.
 func (ms ExportPartialSuccess) SetRejectedLogRecords(v int64) {
+	ms.state.AssertMutable()
 	ms.orig.RejectedLogRecords = v
 }
 
@@ -57,11 +63,13 @@ func (ms ExportPartialSuccess) ErrorMessage() string {
 
 // SetErrorMessage replaces the errormessage associated with this ExportPartialSuccess.
 func (ms ExportPartialSuccess) SetErrorMessage(v string) {
+	ms.state.AssertMutable()
 	ms.orig.ErrorMessage = v
 }
 
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ExportPartialSuccess) CopyTo(dest ExportPartialSuccess) {
+	dest.state.AssertMutable()
 	dest.SetRejectedLogRecords(ms.RejectedLogRecords())
 	dest.SetErrorMessage(ms.ErrorMessage())
 }
