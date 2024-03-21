@@ -56,7 +56,7 @@ func NewShardMapperMetrics(registerer prometheus.Registerer) *MapperMetrics {
 func (m ShardMapper) Parse(parsed syntax.Expr) (noop bool, bytesPerShard uint64, expr syntax.Expr, err error) {
 	recorder := m.metrics.downstreamRecorder()
 
-	mapped, bytesPerShard, err := m.Map(parsed, recorder)
+	mapped, bytesPerShard, err := m.Map(parsed, recorder, true)
 	if err != nil {
 		m.metrics.ParsedQueries.WithLabelValues(FailureKey).Inc()
 		return false, 0, nil, err
@@ -74,7 +74,7 @@ func (m ShardMapper) Parse(parsed syntax.Expr) (noop bool, bytesPerShard uint64,
 	return noop, bytesPerShard, mapped, err
 }
 
-func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, uint64, error) {
+func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder, topLevel bool) (syntax.Expr, uint64, error) {
 	// immediately clone the passed expr to avoid mutating the original
 	expr, err := syntax.Clone(expr)
 	if err != nil {
@@ -89,19 +89,19 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 	case *syntax.MatchersExpr, *syntax.PipelineExpr:
 		return m.mapLogSelectorExpr(e.(syntax.LogSelectorExpr), r)
 	case *syntax.VectorAggregationExpr:
-		return m.mapVectorAggregationExpr(e, r)
+		return m.mapVectorAggregationExpr(e, r, false)
 	case *syntax.LabelReplaceExpr:
-		return m.mapLabelReplaceExpr(e, r)
+		return m.mapLabelReplaceExpr(e, r, topLevel)
 	case *syntax.RangeAggregationExpr:
-		return m.mapRangeAggregationExpr(e, r)
+		return m.mapRangeAggregationExpr(e, r, topLevel)
 	case *syntax.BinOpExpr:
-		return m.mapBinOpExpr(e, r)
+		return m.mapBinOpExpr(e, r, true)
 	default:
 		return nil, 0, errors.Errorf("unexpected expr type (%T) for ASTMapper type (%T) ", expr, m)
 	}
 }
 
-func (m ShardMapper) mapBinOpExpr(e *syntax.BinOpExpr, r *downstreamRecorder) (*syntax.BinOpExpr, uint64, error) {
+func (m ShardMapper) mapBinOpExpr(e *syntax.BinOpExpr, r *downstreamRecorder, topLevel bool) (*syntax.BinOpExpr, uint64, error) {
 	// In a BinOp expression both sides need to be either executed locally or wrapped
 	// into a downstream expression to be executed on the querier, since the default
 	// evaluator on the query frontend cannot select logs or samples.
@@ -110,7 +110,7 @@ func (m ShardMapper) mapBinOpExpr(e *syntax.BinOpExpr, r *downstreamRecorder) (*
 	// check if LHS is shardable by mapping the tree
 	// only wrap in downstream expression if the mapping is a no-op and the
 	// expression is a vector or literal
-	lhsMapped, lhsBytesPerShard, err := m.Map(e.SampleExpr, r)
+	lhsMapped, lhsBytesPerShard, err := m.Map(e.SampleExpr, r, topLevel)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -124,7 +124,7 @@ func (m ShardMapper) mapBinOpExpr(e *syntax.BinOpExpr, r *downstreamRecorder) (*
 	// check if RHS is shardable by mapping the tree
 	// only wrap in downstream expression if the mapping is a no-op and the
 	// expression is a vector or literal
-	rhsMapped, rhsBytesPerShard, err := m.Map(e.RHS, r)
+	rhsMapped, rhsBytesPerShard, err := m.Map(e.RHS, r, topLevel)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -232,8 +232,8 @@ func (m ShardMapper) wrappedShardedVectorAggr(expr *syntax.VectorAggregationExpr
 
 // technically, std{dev,var} are also parallelizable if there is no cross-shard merging
 // in descendent nodes in the AST. This optimization is currently avoided for simplicity.
-func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
-	if expr.Shardable() {
+func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr, r *downstreamRecorder, topLevel bool) (syntax.SampleExpr, uint64, error) {
+	if expr.Shardable(topLevel) {
 
 		switch expr.Operation {
 
@@ -258,7 +258,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 				Left:      expr.Left,
 				Grouping:  expr.Grouping,
 				Operation: syntax.OpTypeSum,
-			}, r)
+			}, r, false)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -267,7 +267,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 				Left:      expr.Left,
 				Grouping:  expr.Grouping,
 				Operation: syntax.OpTypeCount,
-			}, r)
+			}, r, false)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -318,7 +318,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 
 	// if this AST contains unshardable operations, don't shard this at this level,
 	// but attempt to shard a child node.
-	subMapped, bytesPerShard, err := m.Map(expr.Left, r)
+	subMapped, bytesPerShard, err := m.Map(expr.Left, r, false)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -336,8 +336,8 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 
 }
 
-func (m ShardMapper) mapLabelReplaceExpr(expr *syntax.LabelReplaceExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
-	subMapped, bytesPerShard, err := m.Map(expr.Left, r)
+func (m ShardMapper) mapLabelReplaceExpr(expr *syntax.LabelReplaceExpr, r *downstreamRecorder, topLevel bool) (syntax.SampleExpr, uint64, error) {
+	subMapped, bytesPerShard, err := m.Map(expr.Left, r, topLevel)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -364,8 +364,8 @@ var rangeMergeMap = map[string]string{
 	syntax.OpRangeTypeMax: syntax.OpTypeMax,
 }
 
-func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
-	if !expr.Shardable() {
+func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, r *downstreamRecorder, topLevel bool) (syntax.SampleExpr, uint64, error) {
+	if !expr.Shardable(topLevel) {
 		return noOp(expr, m.shards)
 	}
 
@@ -418,7 +418,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			},
 			Grouping:  expr.Grouping,
 			Operation: syntax.OpTypeSum,
-		}, r)
+		}, r, false)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -436,7 +436,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			},
 			Grouping:  expr.Grouping,
 			Operation: syntax.OpTypeSum,
-		}, r)
+		}, r, false)
 		if err != nil {
 			return nil, 0, err
 		}
