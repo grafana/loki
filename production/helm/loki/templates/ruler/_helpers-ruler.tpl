@@ -11,7 +11,6 @@ ruler common labels
 {{- define "loki.rulerLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: ruler
-name: ruler
 {{- end }}
 
 {{/*
@@ -20,7 +19,6 @@ ruler selector labels
 {{- define "loki.rulerSelectorLabels" -}}
 {{ include "loki.selectorLabels" . }}
 app.kubernetes.io/component: ruler
-name: ruler
 {{- end }}
 
 {{/*

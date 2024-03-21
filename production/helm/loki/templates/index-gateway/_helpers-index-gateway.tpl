@@ -11,7 +11,6 @@ index-gateway common labels
 {{- define "loki.indexGatewayLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: index-gateway
-name: index-gateway
 {{- end }}
 
 {{/*
@@ -20,7 +19,6 @@ index-gateway selector labels
 {{- define "loki.indexGatewaySelectorLabels" -}}
 {{ include "loki.selectorLabels" . }}
 app.kubernetes.io/component: index-gateway
-name: index-gateway
 {{- end }}
 
 {{/*

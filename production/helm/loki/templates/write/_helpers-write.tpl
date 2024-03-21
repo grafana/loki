@@ -11,7 +11,6 @@ write common labels
 {{- define "loki.writeLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: write
-name: write
 {{- end }}
 
 {{/*
@@ -20,7 +19,6 @@ write selector labels
 {{- define "loki.writeSelectorLabels" -}}
 {{ include "loki.selectorLabels" . }}
 app.kubernetes.io/component: write
-name: write
 {{- end }}
 
 {{/*
