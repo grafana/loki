@@ -6,7 +6,7 @@ on:
 jobs:
   operator-hub-prod-release:
     if: startsWith(github.event.release.tag_name, 'operator/')
-    uses: ./.github/workflows/operator-reusable-hub-release.yaml
+    uses: ./.github/workflows/operator-reusable-hub-release.yml
     with:
       org: redhat-openshift-ecosystem
       repo: community-operators-prod
@@ -15,7 +15,7 @@ jobs:
 
   operator-hub-community-release:
     if: startsWith(github.event.release.tag_name, 'operator/')
-    uses: ./.github/workflows/operator-reusable-hub-release.yaml
+    uses: ./.github/workflows/operator-reusable-hub-release.yml
     with:
       org: k8s-operatorhub
       repo: community-operators

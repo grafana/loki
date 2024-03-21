@@ -25,7 +25,6 @@ import (
 
 	"cloud.google.com/go/iam"
 	"cloud.google.com/go/internal/optional"
-	ipubsub "cloud.google.com/go/internal/pubsub"
 	pb "cloud.google.com/go/pubsub/apiv1/pubsubpb"
 	"cloud.google.com/go/pubsub/internal/scheduler"
 	gax "github.com/googleapis/gax-go/v2"
@@ -1389,24 +1388,19 @@ func (s *Subscription) Receive(ctx context.Context, f func(context.Context, *Mes
 						return nil
 					}
 					iter.eoMu.RLock()
-					ackh, _ := msgAckHandler(msg, iter.enableExactlyOnceDelivery)
+					msgAckHandler(msg, iter.enableExactlyOnceDelivery)
 					iter.eoMu.RUnlock()
-					old := ackh.doneFunc
-					msgLen := len(msg.Data)
-					ackh.doneFunc = func(ackID string, ack bool, r *ipubsub.AckResult, receiveTime time.Time) {
-						defer fc.release(ctx, msgLen)
-						old(ackID, ack, r, receiveTime)
-					}
+
 					wg.Add(1)
 					// Make sure the subscription has ordering enabled before adding to scheduler.
 					var key string
 					if s.enableOrdering {
 						key = msg.OrderingKey
 					}
-					// TODO(deklerk): Can we have a generic handler at the
-					// constructor level?
+					msgLen := len(msg.Data)
 					if err := sched.Add(key, msg, func(msg interface{}) {
 						defer wg.Done()
+						defer fc.release(ctx, msgLen)
 						f(ctx2, msg.(*Message))
 					}); err != nil {
 						wg.Done()

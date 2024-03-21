@@ -37,7 +37,6 @@ const (
 	KafkaConfigs                = "kafkaConfigs"
 	GelfConfigs                 = "gelfConfigs"
 	CloudflareConfigs           = "cloudflareConfigs"
-	DockerConfigs               = "dockerConfigs"
 	DockerSDConfigs             = "dockerSDConfigs"
 	HerokuDrainConfigs          = "herokuDrainConfigs"
 	AzureEventHubsScrapeConfigs = "azureeventhubsScrapeConfigs"
@@ -150,7 +149,7 @@ func NewTargetManagers(
 	if len(targetScrapeConfigs[CloudflareConfigs]) > 0 && cloudflareMetrics == nil {
 		cloudflareMetrics = cloudflare.NewMetrics(reg)
 	}
-	if (len(targetScrapeConfigs[DockerConfigs]) > 0 || len(targetScrapeConfigs[DockerSDConfigs]) > 0) && dockerMetrics == nil {
+	if (len(targetScrapeConfigs[DockerSDConfigs]) > 0) && dockerMetrics == nil {
 		dockerMetrics = docker.NewMetrics(reg)
 	}
 	if len(targetScrapeConfigs[JournalScrapeConfigs]) > 0 && journalMetrics == nil {
@@ -267,16 +266,6 @@ func NewTargetManagers(
 			cfTargetManager, err := cloudflare.NewTargetManager(cloudflareMetrics, logger, pos, client, scrapeConfigs)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to make cloudflare target manager")
-			}
-			targetManagers = append(targetManagers, cfTargetManager)
-		case DockerConfigs:
-			pos, err := getPositionFile()
-			if err != nil {
-				return nil, err
-			}
-			cfTargetManager, err := docker.NewTargetManager(dockerMetrics, logger, pos, client, scrapeConfigs)
-			if err != nil {
-				return nil, errors.Wrap(err, "failed to make Docker target manager")
 			}
 			targetManagers = append(targetManagers, cfTargetManager)
 		case DockerSDConfigs:

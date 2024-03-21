@@ -2,6 +2,7 @@ package push
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -9,10 +10,10 @@ import (
 	"sort"
 	"time"
 
-	prometheustranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
@@ -43,7 +44,7 @@ func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 		return nil, nil, err
 	}
 
-	req := otlpToLokiPushRequest(otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), tracker, stats)
+	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), tracker, stats)
 	return req, stats, nil
 }
 
@@ -94,7 +95,7 @@ func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, tracker UsageTracker, stats *Stats) *logproto.PushRequest {
+func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, tracker UsageTracker, stats *Stats) *logproto.PushRequest {
 	if ld.LogRecordCount() == 0 {
 		return &logproto.PushRequest{}
 	}
@@ -226,8 +227,8 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 				stats.LogLinesBytes[retentionPeriodForUser] += int64(len(entry.Line))
 
 				if tracker != nil {
-					tracker.ReceivedBytesAdd(userID, retentionPeriodForUser, lbs, float64(len(entry.Line)))
-					tracker.ReceivedBytesAdd(userID, retentionPeriodForUser, lbs, float64(metadataSize))
+					tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(len(entry.Line)))
+					tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(metadataSize))
 				}
 
 				stats.NumLines++
@@ -343,7 +344,7 @@ func attributeToLabels(k string, v pcommon.Value, prefix string) push.LabelsAdap
 	if prefix != "" {
 		keyWithPrefix = prefix + "_" + k
 	}
-	keyWithPrefix = prometheustranslator.NormalizeLabel(keyWithPrefix)
+	keyWithPrefix = prometheus.NormalizeLabel(keyWithPrefix)
 
 	typ := v.Type()
 	if typ == pcommon.ValueTypeMap {
