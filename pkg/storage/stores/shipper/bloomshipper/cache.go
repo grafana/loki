@@ -59,7 +59,7 @@ func loadBlockDirectories(root string, logger log.Logger) (keys []string, values
 
 		if ok, clean := isBlockDir(path, logger); ok {
 			keys = append(keys, resolver.Block(ref).Addr())
-			values = append(values, NewBlockDirectory(ref, path, logger))
+			values = append(values, NewBlockDirectory(ref, path))
 			level.Debug(logger).Log("msg", "found block directory", "ref", ref, "path", path)
 		} else {
 			level.Warn(logger).Log("msg", "skip directory entry", "err", "not a block directory containing blooms and series", "path", path)
@@ -76,7 +76,7 @@ func calculateBlockDirectorySize(entry *cache.Entry[string, BlockDirectory]) uin
 }
 
 // NewBlockDirectory creates a new BlockDirectory. Must exist on disk.
-func NewBlockDirectory(ref BlockRef, path string, logger log.Logger) BlockDirectory {
+func NewBlockDirectory(ref BlockRef, path string) BlockDirectory {
 	bd := BlockDirectory{
 		BlockRef: ref,
 		Path:     path,

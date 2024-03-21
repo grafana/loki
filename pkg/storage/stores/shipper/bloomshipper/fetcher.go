@@ -355,7 +355,7 @@ func (f *Fetcher) loadBlocksFromFS(_ context.Context, refs []BlockRef) ([]BlockD
 		// since it is stripped when the archive is extracted into a folder
 		path = strings.TrimSuffix(path, ".tar.gz")
 		if ok, clean := f.isBlockDir(path); ok {
-			blockDirs = append(blockDirs, NewBlockDirectory(ref, path, f.logger))
+			blockDirs = append(blockDirs, NewBlockDirectory(ref, path))
 		} else {
 			_ = clean(path)
 			missing = append(missing, ref)
