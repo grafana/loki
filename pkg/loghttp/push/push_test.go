@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"log"
 	"net/http/httptest"
@@ -257,11 +258,11 @@ func NewMockTracker() *MockCustomTracker {
 }
 
 // DiscardedBytesAdd implements CustomTracker.
-func (t *MockCustomTracker) DiscardedBytesAdd(_, _ string, labels labels.Labels, value float64) {
+func (t *MockCustomTracker) DiscardedBytesAdd(_ context.Context, _, _ string, labels labels.Labels, value float64) {
 	t.discardedBytes[labels.String()] += value
 }
 
 // ReceivedBytesAdd implements CustomTracker.
-func (t *MockCustomTracker) ReceivedBytesAdd(_ string, _ time.Duration, labels labels.Labels, value float64) {
+func (t *MockCustomTracker) ReceivedBytesAdd(_ context.Context, _ string, _ time.Duration, labels labels.Labels, value float64) {
 	t.receivedBytes[labels.String()] += value
 }

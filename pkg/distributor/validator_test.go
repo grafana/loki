@@ -130,7 +130,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
 
-			err = v.ValidateEntry(v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry)
+			err = v.ValidateEntry(ctx, v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry)
 			assert.Equal(t, tt.expected, err)
 		})
 	}
