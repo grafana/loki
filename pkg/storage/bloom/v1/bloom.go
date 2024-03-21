@@ -198,7 +198,6 @@ type BloomBlock struct {
 	pageHeaders []BloomPageHeader
 }
 
-// Deprecated
 func NewBloomBlock(encoding chunkenc.Encoding) BloomBlock {
 	return BloomBlock{
 		schema: Schema{version: DefaultSchemaVersion, encoding: encoding},
