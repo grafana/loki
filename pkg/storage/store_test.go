@@ -115,7 +115,7 @@ func Benchmark_store_SelectSample(b *testing.B) {
 			sampleCount := 0
 			for i := 0; i < b.N; i++ {
 				iter, err := chunkStore.SelectSamples(ctx, logql.SelectSampleParams{
-					SampleQueryRequest: newSampleQuery(test, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()), nil),
+					SampleQueryRequest: newSampleQuery(test, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()), nil, nil),
 				})
 				if err != nil {
 					b.Fatal(err)
@@ -530,7 +530,7 @@ func Test_store_SelectSample(t *testing.T) {
 	}{
 		{
 			"all",
-			newSampleQuery("count_over_time({foo=~\"ba.*\"}[5m])", from, from.Add(6*time.Millisecond), nil),
+			newSampleQuery("count_over_time({foo=~\"ba.*\"}[5m])", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -606,7 +606,7 @@ func Test_store_SelectSample(t *testing.T) {
 		},
 		{
 			"filter regex",
-			newSampleQuery("rate({foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"[1m])", from, from.Add(6*time.Millisecond), nil),
+			newSampleQuery("rate({foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"[1m])", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -632,7 +632,7 @@ func Test_store_SelectSample(t *testing.T) {
 		},
 		{
 			"filter matcher",
-			newSampleQuery("count_over_time({foo=\"bar\"}[10m])", from, from.Add(6*time.Millisecond), nil),
+			newSampleQuery("count_over_time({foo=\"bar\"}[10m])", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -674,7 +674,7 @@ func Test_store_SelectSample(t *testing.T) {
 		},
 		{
 			"filter time",
-			newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(time.Millisecond), nil),
+			newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(time.Millisecond), nil, nil),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -704,6 +704,7 @@ func Test_store_SelectSample(t *testing.T) {
 				"count_over_time({foo=~\"ba.*\"}[5m])",
 				from,
 				from.Add(6*time.Millisecond),
+				nil,
 				[]*logproto.Delete{
 					{
 						Selector: `{foo="bar"}`,
@@ -757,6 +758,7 @@ func Test_store_SelectSample(t *testing.T) {
 				"count_over_time({foo=~\"ba.*\"}[5m])",
 				from,
 				from.Add(6*time.Millisecond),
+				nil,
 				[]*logproto.Delete{
 					{
 						Selector: `{foo="bar"}`,
@@ -870,7 +872,7 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	s.SetChunkFilterer(&fakeChunkFilterer{})
 	ctx = user.InjectOrgID(context.Background(), "test-user")
-	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil)})
+	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil, nil)})
 	if err != nil {
 		t.Errorf("store.SelectSamples() error = %v", err)
 		return
@@ -914,7 +916,8 @@ func Test_PipelineWrapper(t *testing.T) {
 
 	s.SetPipelineWrapper(wrapper)
 	ctx = user.InjectOrgID(context.Background(), "test-user")
-	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
+	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), []astmapper.ShardAnnotation{{Shard: 1, Of: 5}}, nil)})
+
 	if err != nil {
 		t.Errorf("store.SelectLogs() error = %v", err)
 		return
@@ -926,6 +929,7 @@ func Test_PipelineWrapper(t *testing.T) {
 
 	require.Equal(t, "test-user", wrapper.tenant)
 	require.Equal(t, "{foo=~\"ba.*\"}", wrapper.query)
+	require.Equal(t, 5, wrapper.shards)
 	require.Equal(t, 28, wrapper.pipeline.sp.called) // we've passed every log line through the wrapper
 }
 
@@ -933,11 +937,13 @@ type testPipelineWrapper struct {
 	query    string
 	pipeline *mockPipeline
 	tenant   string
+	shards   int
 }
 
-func (t *testPipelineWrapper) Wrap(_ context.Context, pipeline lokilog.Pipeline, query, tenant string) lokilog.Pipeline {
+func (t *testPipelineWrapper) Wrap(_ context.Context, pipeline lokilog.Pipeline, query, tenant string, shards int) lokilog.Pipeline {
 	t.tenant = tenant
 	t.query = query
+	t.shards = shards
 	t.pipeline.wrappedExtractor = pipeline
 	return t.pipeline
 }
@@ -999,7 +1005,7 @@ func Test_SampleWrapper(t *testing.T) {
 	s.SetExtractorWrapper(wrapper)
 
 	ctx = user.InjectOrgID(context.Background(), "test-user")
-	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil)})
+	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), []astmapper.ShardAnnotation{{Shard: 1, Of: 3}}, nil)})
 	if err != nil {
 		t.Errorf("store.SelectSamples() error = %v", err)
 		return
@@ -1011,19 +1017,22 @@ func Test_SampleWrapper(t *testing.T) {
 
 	require.Equal(t, "test-user", wrapper.tenant)
 	require.Equal(t, "count_over_time({foo=~\"ba.*\"}[1s])", wrapper.query)
+	require.Equal(t, 3, wrapper.shards)
 	require.Equal(t, 28, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
 }
 
 type testExtractorWrapper struct {
 	query     string
 	tenant    string
+	shards    int
 	extractor *mockExtractor
 }
 
-func (t *testExtractorWrapper) Wrap(_ context.Context, extractor lokilog.SampleExtractor, query, tenant string) lokilog.SampleExtractor {
+func (t *testExtractorWrapper) Wrap(_ context.Context, extractor lokilog.SampleExtractor, query, tenant string, shards int) lokilog.SampleExtractor {
 	t.tenant = tenant
 	t.query = query
 	t.extractor.wrappedExtractor = extractor
+	t.shards = shards
 	return t.extractor
 }
 
@@ -2069,7 +2078,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				ctx := user.InjectOrgID(context.Background(), "fake")
 				_, ctx = stats.NewContext(ctx)
-				it, err := store.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery(tc.query, chkFrom, chkThrough.Add(time.Minute), nil)})
+				it, err := store.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery(tc.query, chkFrom, chkThrough.Add(time.Minute), nil, nil)})
 				require.NoError(t, err)
 				numSamples := int64(0)
 				for it.Next() {
