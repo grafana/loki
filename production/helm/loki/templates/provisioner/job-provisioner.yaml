@@ -4,7 +4,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ template "enterprise-logs.provisionerFullname" . }}
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "enterprise-logs.provisionerLabels" . | nindent 4 }}
     {{- with .Values.enterprise.provisioner.labels }}
@@ -105,7 +105,7 @@ spec:
                   --from-literal=token-write="$(cat /bootstrap/token-write-{{ .name }})" \
                   --from-literal=token-read="$(cat /bootstrap/token-read-{{ .name }})"
               {{- end }}
-              {{- $namespace := $.Release.Namespace }}
+              {{- $namespace := (include "loki.namespace" . ) }}
               {{- with .Values.monitoring.selfMonitoring.tenant }}
               {{- $secretNamespace := tpl .secretNamespace $ }}
               ! test -s /bootstrap/token-self-monitoring || \
