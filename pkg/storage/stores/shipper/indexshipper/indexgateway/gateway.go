@@ -473,6 +473,15 @@ func (g *Gateway) getShardsWithBlooms(
 		resp.Shards = shards
 	}
 
+	level.Debug(g.log).Log(
+		"msg", "shards response",
+		"total_chunks", statistics.Index.TotalChunks,
+		"post_filter_chunks", statistics.Index.PostFilterChunks,
+		"shards", len(resp.Shards),
+		"query", req.Query,
+		"target_bytes_per_shard", datasize.ByteSize(req.TargetBytesPerShard).HumanReadable(),
+	)
+
 	level.Debug(sp).Log(
 		"msg", "shards response",
 		"total_chunks", statistics.Index.TotalChunks,
