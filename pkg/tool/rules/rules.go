@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	logql "github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	log "github.com/sirupsen/logrus"
+
+	logql "github.com/grafana/loki/pkg/logql/syntax"
 
 	"github.com/grafana/loki/pkg/tool/rules/rwrulefmt"
 )

@@ -8,10 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/grafana/loki/pkg/ruler"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	log "github.com/sirupsen/logrus"
 	yaml "gopkg.in/yaml.v3"
+
+	"github.com/grafana/loki/pkg/ruler"
 )
 
 const (
