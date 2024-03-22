@@ -363,6 +363,10 @@ func TestMappingStrings(t *testing.T) {
 				)
 			)`,
 		},
+		{ // This should result in the same downstream sharding of the max and not the inner quantile regardless of whether quantile sharding is turned on.
+			in:  `max by (status)(quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]))`,
+			out: `maxby(status)(downstream<maxby(status)(quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s])),shard=0_of_2>++downstream<maxby(status)(quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s])),shard=1_of_2>)`,
+		},
 		// should be noop if VectorExpr
 		{
 			in:  `vector(0)`,
@@ -403,6 +407,35 @@ func TestMappingStrings(t *testing.T) {
 			// don't shard the count since there is label reduction in children
 			in:  `count by (foo) (sum by (foo, bar) (rate({job="bar"}[1m])))`,
 			out: `countby(foo)(sumby(foo,bar)(downstream<sumby(foo,bar)(rate({job="bar"}[1m])),shard=0_of_2>++downstream<sumby(foo,bar)(rate({job="bar"}[1m])),shard=1_of_2>))`,
+		},
+	} {
+		t.Run(tc.in, func(t *testing.T) {
+			ast, err := syntax.ParseExpr(tc.in)
+			require.Nil(t, err)
+
+			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
+			require.Nil(t, err)
+
+			require.Equal(t, removeWhiteSpace(tc.out), removeWhiteSpace(mapped.String()))
+		})
+	}
+}
+
+// Test that mapping of queries for operation types that have probabilistic
+// sharding options, but whose sharding is turned off, are not sharded on those operations.
+func TestMappingStrings_NoProbabilisticSharding(t *testing.T) {
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{})
+	for _, tc := range []struct {
+		in  string
+		out string
+	}{
+		{ // This should result in the same downstream sharding of the max and not the inner quantile regardless of whether quantile sharding is turned on.
+			in:  `max by (status)(quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]))`,
+			out: `maxby(status)(downstream<maxby(status)(quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s])),shard=0_of_2>++downstream<maxby(status)(quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s])),shard=1_of_2>)`,
+		},
+		{
+			in:  `quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s])`,
+			out: `quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s])`,
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {

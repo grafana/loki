@@ -451,6 +451,10 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}, bytesPerShard, nil
 
 	case syntax.OpRangeTypeQuantile:
+		if !m.quantileOverTimeSharding {
+			return noOp(expr, m.shards)
+		}
+
 		potentialConflict := syntax.ReducesLabels(expr)
 		if !potentialConflict && (expr.Grouping == nil || expr.Grouping.Noop()) {
 			return m.mapSampleExpr(expr, r)
@@ -460,7 +464,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		if err != nil {
 			return nil, 0, err
 		}
-		if shards == 0 || !m.quantileOverTimeSharding {
+		if shards == 0 {
 			return noOp(expr, m.shards)
 		}
 
