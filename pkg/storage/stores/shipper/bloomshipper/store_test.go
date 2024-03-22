@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	storageconfig "github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
@@ -269,6 +270,108 @@ func TestBloomStore_FetchBlocks(t *testing.T) {
 		[]BlockRef{b1.BlockRef, b2.BlockRef, b3.BlockRef, b4.BlockRef},
 		[]BlockRef{bqs[0].BlockRef, bqs[1].BlockRef, bqs[2].BlockRef, bqs[3].BlockRef},
 	)
+}
+
+func TestBloomStore_TenantFilesForInterval(t *testing.T) {
+	ctx := context.Background()
+	var keyResolver defaultKeyResolver
+
+	store, _, err := newMockBloomStore(t)
+	require.NoError(t, err)
+
+	// schema 1
+	// day 1 - 1 tenant
+	s1d1t1m1, _ := createMetaInStorage(store, "1", parseTime("2024-01-19 00:00"), 0x00010000, 0x0001ffff)
+	s1d1t1m2, _ := createMetaInStorage(store, "1", parseTime("2024-01-19 00:00"), 0x00000000, 0x0000ffff)
+	// day 2 - 2 tenants
+	s1d2t1m1, _ := createMetaInStorage(store, "1", parseTime("2024-01-20 00:00"), 0x00010000, 0x0001ffff)
+	s1d2t1m2, _ := createMetaInStorage(store, "1", parseTime("2024-01-20 00:00"), 0x00000000, 0x0000ffff)
+	s1d2t2m1, _ := createMetaInStorage(store, "2", parseTime("2024-01-20 00:00"), 0x00010000, 0x0001ffff)
+	s1d2t2m2, _ := createMetaInStorage(store, "2", parseTime("2024-01-20 00:00"), 0x00000000, 0x0000ffff)
+
+	// schema 2
+	// day 1 - 2 tenants
+	s2d1t1m1, _ := createMetaInStorage(store, "1", parseTime("2024-02-07 00:00"), 0x00010000, 0x0001ffff)
+	s2d1t1m2, _ := createMetaInStorage(store, "1", parseTime("2024-02-07 00:00"), 0x00000000, 0x0000ffff)
+	s2d1t2m1, _ := createMetaInStorage(store, "2", parseTime("2024-02-07 00:00"), 0x00010000, 0x0001ffff)
+	s2d1t2m2, _ := createMetaInStorage(store, "2", parseTime("2024-02-07 00:00"), 0x00000000, 0x0000ffff)
+	// day 2 - 1 tenant
+	s2d2t2m1, _ := createMetaInStorage(store, "2", parseTime("2024-02-10 00:00"), 0x00010000, 0x0001ffff)
+	s2d2t2m2, _ := createMetaInStorage(store, "2", parseTime("2024-02-10 00:00"), 0x00000000, 0x0000ffff)
+
+	t.Run("no filter", func(t *testing.T) {
+		tenantFiles, err := store.TenantFilesForInterval(
+			ctx,
+			NewInterval(parseTime("2024-01-18 00:00"), parseTime("2024-02-12 00:00")),
+			nil,
+		)
+		require.NoError(t, err)
+		require.Equal(t, 2, len(tenantFiles))
+
+		tenant1Keys := keysFromStorageObjects(tenantFiles["1"])
+		expectedTenant1Keys := []string{
+			// schema 1 - day 1
+			keyResolver.Meta(s1d1t1m1.MetaRef).Addr(),
+			keyResolver.Meta(s1d1t1m2.MetaRef).Addr(),
+			// schema 1 - day 2
+			keyResolver.Meta(s1d2t1m1.MetaRef).Addr(),
+			keyResolver.Meta(s1d2t1m2.MetaRef).Addr(),
+			// schema 2 - day 1
+			keyResolver.Meta(s2d1t1m1.MetaRef).Addr(),
+			keyResolver.Meta(s2d1t1m2.MetaRef).Addr(),
+		}
+		require.ElementsMatch(t, expectedTenant1Keys, tenant1Keys)
+
+		tenant2Keys := keysFromStorageObjects(tenantFiles["2"])
+		expectedTenant2Keys := []string{
+			// schema 1 - day 2
+			keyResolver.Meta(s1d2t2m1.MetaRef).Addr(),
+			keyResolver.Meta(s1d2t2m2.MetaRef).Addr(),
+			// schema 2 - day 1
+			keyResolver.Meta(s2d1t2m1.MetaRef).Addr(),
+			keyResolver.Meta(s2d1t2m2.MetaRef).Addr(),
+			// schema 2 - day 2
+			keyResolver.Meta(s2d2t2m1.MetaRef).Addr(),
+			keyResolver.Meta(s2d2t2m2.MetaRef).Addr(),
+		}
+		require.ElementsMatch(t, expectedTenant2Keys, tenant2Keys)
+	})
+
+	t.Run("filter tenant 1", func(t *testing.T) {
+		tenantFiles, err := store.TenantFilesForInterval(
+			ctx,
+			NewInterval(parseTime("2024-01-18 00:00"), parseTime("2024-02-12 00:00")),
+			func(tenant string, object client.StorageObject) bool {
+				return tenant == "1"
+			},
+		)
+		require.NoError(t, err)
+		require.Equal(t, 2, len(tenantFiles))
+
+		tenant1Keys := keysFromStorageObjects(tenantFiles["1"])
+		expectedTenant1Keys := []string{
+			// schema 1 - day 1
+			keyResolver.Meta(s1d1t1m1.MetaRef).Addr(),
+			keyResolver.Meta(s1d1t1m2.MetaRef).Addr(),
+			// schema 1 - day 2
+			keyResolver.Meta(s1d2t1m1.MetaRef).Addr(),
+			keyResolver.Meta(s1d2t1m2.MetaRef).Addr(),
+			// schema 2 - day 1
+			keyResolver.Meta(s2d1t1m1.MetaRef).Addr(),
+			keyResolver.Meta(s2d1t1m2.MetaRef).Addr(),
+		}
+		require.ElementsMatch(t, expectedTenant1Keys, tenant1Keys)
+
+		tenant2Keys := keysFromStorageObjects(tenantFiles["2"])
+		require.Empty(t, tenant2Keys)
+	})
+}
+
+func keysFromStorageObjects(objects []client.StorageObject) (keys []string) {
+	for _, object := range objects {
+		keys = append(keys, object.Key)
+	}
+	return keys
 }
 
 func TestBloomShipper_WorkingDir(t *testing.T) {

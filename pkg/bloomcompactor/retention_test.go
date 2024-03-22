@@ -43,7 +43,8 @@ func TestRetention(t *testing.T) {
 			name:          "retention disabled",
 			ownsRetention: true,
 			cfg: RetentionConfig{
-				Enabled: false,
+				Enabled:         false,
+				MaxLookbackDays: 2 * 365,
 			},
 			lim: mockRetentionLimits{
 				retention: map[string]time.Duration{
@@ -73,7 +74,8 @@ func TestRetention(t *testing.T) {
 			name:          "compactor does not own retention",
 			ownsRetention: false,
 			cfg: RetentionConfig{
-				Enabled: true,
+				Enabled:         true,
+				MaxLookbackDays: 2 * 365,
 			},
 			lim: mockRetentionLimits{
 				retention: map[string]time.Duration{
@@ -103,7 +105,8 @@ func TestRetention(t *testing.T) {
 			name:          "unlimited retention",
 			ownsRetention: true,
 			cfg: RetentionConfig{
-				Enabled: true,
+				Enabled:         true,
+				MaxLookbackDays: 2 * 365,
 			},
 			lim: mockRetentionLimits{
 				retention: map[string]time.Duration{
@@ -123,7 +126,8 @@ func TestRetention(t *testing.T) {
 			name:          "default retention",
 			ownsRetention: true,
 			cfg: RetentionConfig{
-				Enabled: true,
+				Enabled:         true,
+				MaxLookbackDays: 2 * 365,
 			},
 			lim: mockRetentionLimits{
 				defaultRetention: 30 * 24 * time.Hour,
@@ -134,11 +138,11 @@ func TestRetention(t *testing.T) {
 			check: func(t *testing.T, bloomStore *bloomshipper.BloomStore) {
 				metas := getGroupedMetasForLastNDays(t, bloomStore, "1", testTime, 500)
 				require.Equal(t, 1, len(metas))
-				require.Equal(t, 30, len(metas[0]))
+				require.Equal(t, 31, len(metas[0]))
 			},
 		},
 		{
-			name:          "limited retention lookback",
+			name:          "retention lookback smaller than max retention",
 			ownsRetention: true,
 			cfg: RetentionConfig{
 				Enabled:         true,
@@ -201,10 +205,11 @@ func TestRetention(t *testing.T) {
 			},
 		},
 		{
-			name:          "unlimited retention lookback",
+			name:          "retention lookback bigger than max retention",
 			ownsRetention: true,
 			cfg: RetentionConfig{
-				Enabled: true,
+				Enabled:         true,
+				MaxLookbackDays: 2 * 365,
 			},
 			lim: mockRetentionLimits{
 				retention: map[string]time.Duration{
@@ -252,20 +257,21 @@ func TestRetention(t *testing.T) {
 				// We should get one group: 0th-200th
 				metas = getGroupedMetasForLastNDays(t, bloomStore, "3", testTime, 500)
 				require.Equal(t, 1, len(metas))
-				require.Equal(t, 201, len(metas[0])) // 0th-500th
+				require.Equal(t, 201, len(metas[0])) // 0th-200th
 
 				// Tenant 4 has 400 days of retention, and we wrote 500 days of metas
 				// Since the manager looks up to 100 days, we shouldn't have deleted any metas
 				metas = getGroupedMetasForLastNDays(t, bloomStore, "4", testTime, 500)
 				require.Equal(t, 1, len(metas))
-				require.Equal(t, 401, len(metas[0])) // 0th-500th
+				require.Equal(t, 401, len(metas[0])) // 0th-400th
 			},
 		},
 		{
 			name:          "hit no tenants in table",
 			ownsRetention: true,
 			cfg: RetentionConfig{
-				Enabled: true,
+				Enabled:         true,
+				MaxLookbackDays: 2 * 365,
 			},
 			lim: mockRetentionLimits{
 				retention: map[string]time.Duration{
@@ -644,6 +650,48 @@ func TestSmallestRetention(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			retention := findSmallestRetention(tc.limits)
 			require.Equal(t, tc.expectedRetention, retention)
+		})
+	}
+}
+
+func TestRetentionConfigValidate(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		cfg       RetentionConfig
+		expectErr bool
+	}{
+		{
+			name: "enabled and valid",
+			cfg: RetentionConfig{
+				Enabled:         true,
+				MaxLookbackDays: 2 * 365,
+			},
+			expectErr: false,
+		},
+		{
+			name: "invalid max lookback days",
+			cfg: RetentionConfig{
+				Enabled:         true,
+				MaxLookbackDays: 0,
+			},
+			expectErr: true,
+		},
+		{
+			name: "disabled and invalid",
+			cfg: RetentionConfig{
+				Enabled:         false,
+				MaxLookbackDays: 0,
+			},
+			expectErr: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.cfg.Validate()
+			if tc.expectErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
 		})
 	}
 }

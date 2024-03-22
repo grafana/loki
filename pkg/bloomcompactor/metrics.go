@@ -195,8 +195,7 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 			Subsystem: metricsSubsystem,
 			Name:      "retention_time_seconds",
 			Help:      "Time this retention process took to complete.",
-			// 1second -> 5 years, 10 buckets
-			Buckets: prometheus.DefBuckets,
+			Buckets:   prometheus.DefBuckets,
 		}, []string{"status"}),
 
 		retentionDaysPerIteration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{

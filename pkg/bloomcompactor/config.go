@@ -69,6 +69,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
+	if err := cfg.RetentionConfig.Validate(); err != nil {
+		return err
+	}
+
 	if cfg.MinTableCompactionPeriod > cfg.MaxTableCompactionPeriod {
 		return fmt.Errorf("min_compaction_age must be less than or equal to max_compaction_age")
 	}

@@ -14,6 +14,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/util/constants"
@@ -54,7 +55,7 @@ func (s *dummyStore) FetchMetas(_ context.Context, _ bloomshipper.MetaSearchPara
 	return s.metas, nil
 }
 
-func (s *dummyStore) TenantFilesForInterval(_ context.Context, _ bloomshipper.Interval) (map[string][]string, error) {
+func (s *dummyStore) TenantFilesForInterval(_ context.Context, _ bloomshipper.Interval, _ func(tenant string, object client.StorageObject) bool) (map[string][]client.StorageObject, error) {
 	return nil, nil
 }
 

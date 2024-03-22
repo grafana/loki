@@ -31,7 +31,7 @@ type KeyResolver interface {
 	Block(BlockRef) Location
 	ParseBlockKey(Location) (BlockRef, error)
 	Tenant(tenant, table string) Location
-	ParseTenantKey(loc Location) (string, error)
+	TenantPrefix(loc Location) (string, error)
 }
 
 type defaultKeyResolver struct{}
@@ -134,7 +134,7 @@ func (defaultKeyResolver) Tenant(tenant, table string) Location {
 	}
 }
 
-func (defaultKeyResolver) ParseTenantKey(loc Location) (string, error) {
+func (defaultKeyResolver) TenantPrefix(loc Location) (string, error) {
 	dir, fn := path.Split(loc.Addr())
 
 	dirParts := strings.Split(path.Clean(dir), "/")

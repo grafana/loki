@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	storageconfig "github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/validation"
@@ -71,6 +72,17 @@ type RetentionConfig struct {
 func (cfg *RetentionConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, "bloom-compactor.retention.enabled", false, "Enable bloom retention.")
 	f.IntVar(&cfg.MaxLookbackDays, "bloom-compactor.retention.max-lookback-days", 365, "Max lookback days for retention.")
+}
+
+func (cfg *RetentionConfig) Validate() error {
+	if !cfg.Enabled {
+		return nil
+	}
+
+	if cfg.MaxLookbackDays < 1 {
+		return errors.New("max lookback days must be a positive number")
+	}
+	return nil
 }
 
 type RetentionLimits interface {
@@ -145,11 +157,12 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 		return nil
 	}
 
-	startDay := storageconfig.NewDayTime(today.Add(-smallestRetention))
-	endDay := storageconfig.NewDayTime(0)
-	if r.cfg.MaxLookbackDays > 0 {
-		endDay = storageconfig.NewDayTime(today.Add(-time.Duration(r.cfg.MaxLookbackDays) * 24 * time.Hour))
-	}
+	// Start day is today minus the smallest retention period.
+	// Note that the last retention day is exclusive. E.g. 30 days retention means we keep 30 days of data,
+	// thus we start deleting data from the 31st day onwards.
+	startDay := storageconfig.NewDayTime(today.Add(-smallestRetention)).Dec()
+	// End day is today minus the max lookback days
+	endDay := storageconfig.NewDayTime(today.Add(-time.Duration(r.cfg.MaxLookbackDays) * 24 * time.Hour))
 
 	var daysProcessed int
 	tenantsRetentionApplied := make(map[string]struct{}, 100)
@@ -162,7 +175,17 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 		}
 		objectClient := bloomClient.ObjectClient()
 
-		tenants, err := r.bloomStore.TenantFilesForInterval(ctx, bloomshipper.NewInterval(day.Bounds()))
+		tenants, err := r.bloomStore.TenantFilesForInterval(
+			ctx, bloomshipper.NewInterval(day.Bounds()),
+			func(tenant string, _ client.StorageObject) bool {
+				// Filter out tenants whose retention hasn't expired yet
+				globalRetention := r.limits.RetentionPeriod(tenant)
+				streamRetention := r.limits.StreamRetention(tenant)
+				tenantRetention := findLongestRetention(globalRetention, streamRetention)
+				expirationDay := storageconfig.NewDayTime(today.Add(-tenantRetention))
+				return day.Before(expirationDay)
+			},
+		)
 		if err != nil {
 			r.metrics.retentionTime.WithLabelValues(statusFailure).Observe(time.Since(start.Time()).Seconds())
 			r.metrics.retentionDaysPerIteration.WithLabelValues(statusFailure).Observe(float64(daysProcessed))
@@ -176,26 +199,22 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 			break
 		}
 
-		for tenant, objectKeys := range tenants {
-			globalRetention := r.limits.RetentionPeriod(tenant)
-			streamRetention := r.limits.StreamRetention(tenant)
-			tenantRetention := findLongestRetention(globalRetention, streamRetention)
-			expirationDay := storageconfig.NewDayTime(today.Add(-tenantRetention))
-			if !day.Before(expirationDay) {
+		for tenant, objects := range tenants {
+			if len(objects) == 0 {
 				continue
 			}
 
-			tenantLogger := log.With(dayLogger, "tenant", tenant, "retention", tenantRetention)
-			level.Info(tenantLogger).Log("msg", "applying retention to tenant")
+			tenantLogger := log.With(dayLogger, "tenant", tenant)
+			level.Info(tenantLogger).Log("msg", "applying retention to tenant", "keys", len(objects))
 
 			// Note: we cannot delete the tenant directory directly because it is not an
 			// actual key in the object store. Instead, we need to delete all keys one by one.
-			for _, key := range objectKeys {
-				if err := objectClient.DeleteObject(ctx, key); err != nil {
+			for _, object := range objects {
+				if err := objectClient.DeleteObject(ctx, object.Key); err != nil {
 					r.metrics.retentionTime.WithLabelValues(statusFailure).Observe(time.Since(start.Time()).Seconds())
 					r.metrics.retentionDaysPerIteration.WithLabelValues(statusFailure).Observe(float64(daysProcessed))
 					r.metrics.retentionTenantsPerIteration.WithLabelValues(statusFailure).Observe(float64(len(tenantsRetentionApplied)))
-					return errors.Wrapf(err, "deleting key %s", key)
+					return errors.Wrapf(err, "deleting key %s", object.Key)
 				}
 			}
 

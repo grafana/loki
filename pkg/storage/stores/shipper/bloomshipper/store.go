@@ -30,7 +30,10 @@ type Store interface {
 	ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error)
 	FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
 	FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error)
-	TenantFilesForInterval(ctx context.Context, interval Interval) (map[string][]string, error)
+	TenantFilesForInterval(
+		ctx context.Context, interval Interval,
+		filter func(tenant string, object client.StorageObject) bool,
+	) (map[string][]client.StorageObject, error)
 	Fetcher(ts model.Time) (*Fetcher, error)
 	Client(ts model.Time) (Client, error)
 	Stop()
@@ -128,14 +131,17 @@ func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef, _ ..
 	return b.fetcher.FetchBlocks(ctx, refs)
 }
 
-func (b *bloomStoreEntry) TenantFilesForInterval(ctx context.Context, interval Interval) (map[string][]string, error) {
+func (b *bloomStoreEntry) TenantFilesForInterval(
+	ctx context.Context,
+	interval Interval,
+	filter func(tenant string, object client.StorageObject) bool,
+) (map[string][]client.StorageObject, error) {
 	tables := tablesForRange(b.cfg, interval)
 	if len(tables) == 0 {
 		return nil, nil
 	}
 
-	// TODO(salvacorts): Use pooling if this becomes a problem.
-	tenants := make(map[string][]string, 100)
+	tenants := make(map[string][]client.StorageObject, 100)
 	for _, table := range tables {
 		prefix := path.Join(rootFolder, table)
 		level.Debug(b.fetcher.logger).Log(
@@ -156,17 +162,49 @@ func (b *bloomStoreEntry) TenantFilesForInterval(ctx context.Context, interval I
 			continue
 		}
 
-		for _, object := range objects {
-			tenant, err := b.ParseTenantKey(key(object.Key))
+		// Sort objects by the key to ensure keys are sorted by tenant.
+		cmpObj := func(a, b client.StorageObject) int {
+			if a.Key < b.Key {
+				return -1
+			}
+			if a.Key > b.Key {
+				return 1
+			}
+			return 0
+		}
+		if !slices.IsSortedFunc(objects, cmpObj) {
+			slices.SortFunc(objects, cmpObj)
+		}
+
+		for i := 0; i < len(objects); i++ {
+			tenant, err := b.TenantPrefix(key(objects[i].Key))
 			if err != nil {
-				return nil, fmt.Errorf("error parsing tenant key [%s]: %w", object.Key, err)
+				return nil, fmt.Errorf("error parsing tenant key [%s]: %w", objects[i].Key, err)
+			}
+
+			// Search next object with different tenant
+			var j int
+			for j = i + 1; j < len(objects); j++ {
+				nextTenant, err := b.TenantPrefix(key(objects[j].Key))
+				if err != nil {
+					return nil, fmt.Errorf("error parsing tenant key [%s]: %w", objects[i].Key, err)
+				}
+				if nextTenant != tenant {
+					break
+				}
 			}
 
 			if _, ok := tenants[tenant]; !ok {
-				tenants[tenant] = make([]string, 0, 100)
+				tenants[tenant] = nil // Initialize tenant with empty slice
 			}
 
-			tenants[tenant] = append(tenants[tenant], object.Key)
+			if filter != nil && !filter(tenant, objects[i]) {
+				continue
+			}
+
+			// Add all objects for this tenant
+			tenants[tenant] = append(tenants[tenant], objects[i:j]...)
+			i = j - 1 // -1 because the loop will increment i by 1
 		}
 	}
 
@@ -299,11 +337,15 @@ func (b *BloomStore) Block(ref BlockRef) (loc Location) {
 	return
 }
 
-func (b *BloomStore) TenantFilesForInterval(ctx context.Context, interval Interval) (map[string][]string, error) {
-	var allTenants map[string][]string
+func (b *BloomStore) TenantFilesForInterval(
+	ctx context.Context,
+	interval Interval,
+	filter func(tenant string, object client.StorageObject) bool,
+) (map[string][]client.StorageObject, error) {
+	var allTenants map[string][]client.StorageObject
 
 	err := b.forStores(ctx, interval, func(innerCtx context.Context, interval Interval, store Store) error {
-		tenants, err := store.TenantFilesForInterval(innerCtx, interval)
+		tenants, err := store.TenantFilesForInterval(innerCtx, interval, filter)
 		if err != nil {
 			return err
 		}
