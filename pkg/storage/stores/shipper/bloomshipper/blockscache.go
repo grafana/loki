@@ -455,3 +455,9 @@ func (c *BlocksCache) evictExpiredItems(ttl time.Duration) {
 		}
 	}
 }
+
+func (c *BlocksCache) len() (int, bool) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.lru.Len(), c.lru.Len() == len(c.entries)
+}
