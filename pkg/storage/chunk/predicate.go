@@ -1,8 +1,9 @@
 package chunk
 
 import (
-	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/querier/plan"
 )
 
 type Predicate struct {
