@@ -153,7 +153,7 @@ func JoinResults(ctx context.Context, res Result) {
 	stats.result.Merge(res)
 }
 
-// JoinIngesterResult joins the ingester result statistics in a concurrency-safe manner.
+// JoinIngesters joins the ingester result statistics in a concurrency-safe manner.
 func JoinIngesters(ctx context.Context, inc Ingester) {
 	stats := FromContext(ctx)
 	stats.mtx.Lock()
