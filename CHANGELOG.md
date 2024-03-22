@@ -74,7 +74,6 @@
 * [11587](https://github.com/grafana/loki/pull/11587) **trevorwhitney** Fix semantics of label parsing logic of metrics and logs queries. Both only parse the first label if multiple extractions into the same label are requested.
 * [11776](https://github.com/grafana/loki/pull/11776) **ashwanthgoli** Background Cache: Fixes a bug that is causing the background queue size to be incremented twice for each enqueued item.
 * [11921](https://github.com/grafana/loki/pull/11921) **paul1r**: Parsing: String array elements were not being parsed correctly in JSON processing
-* [12124](https://github.com/grafana/loki/pull/12124) **masslessparticle**: Parsing: noop filters from parsed queries could sometimes cause panics
 
 ##### Changes
 
