@@ -7,6 +7,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
@@ -411,6 +412,13 @@ func (g *Gateway) getShardsWithBlooms(
 	// as getting it _very_ wrong could harm some cache locality benefits on the bloom-gws by
 	// sending multiple requests to the entire keyspace).
 
+	sp, ctx := spanlogger.NewWithLogger(
+		ctx,
+		log.With(g.log, "tenant", instanceID),
+		"indexgateway.getShardsWithBlooms",
+	)
+	defer sp.Finish()
+
 	// 1) for all bounds, get chunk refs
 	grps, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, p)
 	if err != nil {
@@ -445,29 +453,37 @@ func (g *Gateway) getShardsWithBlooms(
 		},
 	}
 
+	resp := &logproto.ShardsResponse{
+		Statistics: statistics,
+	}
+
 	// Edge case: if there are no chunks after filtering, we still need to return a single shard
 	if len(filtered) == 0 {
-		return server.Send(&logproto.ShardsResponse{
-			Shards: []logproto.Shard{
-				{
-					Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64},
-					Stats:  &logproto.IndexStatsResponse{},
-				},
+		resp.Shards = []logproto.Shard{
+			{
+				Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64},
+				Stats:  &logproto.IndexStatsResponse{},
 			},
-			Statistics: statistics,
-		})
+		}
+	} else {
+		shards, err := accumulateChunksToShards(ctx, instanceID, forSeries, req, p, filtered)
+		if err != nil {
+			return err
+		}
+		resp.Shards = shards
 	}
 
-	shards, err := accumulateChunksToShards(ctx, instanceID, forSeries, req, p, filtered)
-	if err != nil {
-		return err
-	}
+	level.Debug(sp).Log(
+		"msg", "shards response",
+		"total_chunks", statistics.Index.TotalChunks,
+		"post_filter_chunks", statistics.Index.PostFilterChunks,
+		"shards", len(resp.Shards),
+		"query", req.Query,
+		"target_bytes_per_shard", datasize.ByteSize(req.TargetBytesPerShard).HumanReadable(),
+	)
 
 	// 3) build shards
-	return server.Send(&logproto.ShardsResponse{
-		Shards:     shards,
-		Statistics: statistics,
-	})
+	return server.Send(resp)
 }
 
 // ExtractShardRequestMatchersAndAST extracts the matchers and AST from a query string.

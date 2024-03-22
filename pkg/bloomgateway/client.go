@@ -270,9 +270,6 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 			"from", from.Time(),
 			"through", through.Time(),
 			"num_refs", len(rs.groups),
-			"refs", JoinFunc(rs.groups, ",", func(e *logproto.GroupedChunkRefs) string {
-				return model.Fingerprint(e.Fingerprint).String()
-			}),
 			"plan", plan.String(),
 			"plan_hash", plan.Hash(),
 		)

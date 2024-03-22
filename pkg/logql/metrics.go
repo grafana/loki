@@ -131,9 +131,9 @@ func RecordRangeAndInstantQueryMetrics(
 
 	logValues := make([]interface{}, 0, 50)
 
-	var bloomRatio float64
+	var bloomRatio float64 // what % are filtered
 	if stats.Index.TotalChunks > 0 {
-		bloomRatio = float64(stats.Index.PostFilterChunks) / float64(stats.Index.TotalChunks)
+		bloomRatio = float64(stats.Index.TotalChunks-stats.Index.PostFilterChunks) / float64(stats.Index.TotalChunks)
 	}
 
 	logValues = append(logValues, []interface{}{
@@ -398,9 +398,9 @@ func RecordShardsQueryMetrics(
 		latencyType = latencyTypeSlow
 	}
 
-	var bloomRatio float64
+	var bloomRatio float64 // what % are filtered
 	if stats.Index.TotalChunks > 0 {
-		bloomRatio = float64(stats.Index.PostFilterChunks) / float64(stats.Index.TotalChunks)
+		bloomRatio = float64(stats.Index.TotalChunks-stats.Index.PostFilterChunks) / float64(stats.Index.TotalChunks)
 	}
 	logValues := make([]interface{}, 0, 15)
 	logValues = append(logValues,

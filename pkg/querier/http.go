@@ -336,7 +336,7 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 	}
 
 	logql.RecordShardsQueryMetrics(
-		ctx, log, req.Start, req.End, req.Query, targetBytesPerShard, strconv.Itoa(status), len(resp.Shards), statResult,
+		ctx, log, req.Start, req.End, req.Query, targetBytesPerShard, strconv.Itoa(status), resLength, statResult,
 	)
 
 	return resp, err
