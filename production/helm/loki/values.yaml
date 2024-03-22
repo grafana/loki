@@ -177,6 +177,13 @@ loki:
     {{- if .enabled }}
     chunk_store_config:
       chunk_cache_config:
+        async_cache_write_back_buffer_size: 500000
+        async_cache_write_back_concurrency: 1
+        background:
+          writeback_goroutines: 1
+          writeback_buffer: 500000
+          writeback_size_limit: 250MB
+        default_validity: {{ .defaultValidity }}
         memcached:
           batch_size: {{ .batchSize }}
           parallelism: {{ .parallelism }}
