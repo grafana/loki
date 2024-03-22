@@ -437,12 +437,13 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 	}
 
 	if i.pipelineWrapper != nil {
+		shards := logql.ParseShardCount(req.GetShards())
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		pipeline = i.pipelineWrapper.Wrap(ctx, pipeline, expr.String(), userID)
+		pipeline = i.pipelineWrapper.Wrap(ctx, pipeline, expr.String(), userID, shards)
 	}
 
 	stats := stats.FromContext(ctx)
@@ -491,12 +492,13 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	}
 
 	if i.extractorWrapper != nil {
+		shards := logql.ParseShardCount(req.GetShards())
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		extractor = i.extractorWrapper.Wrap(ctx, extractor, expr.String(), userID)
+		extractor = i.extractorWrapper.Wrap(ctx, extractor, expr.String(), userID, shards)
 	}
 
 	stats := stats.FromContext(ctx)
