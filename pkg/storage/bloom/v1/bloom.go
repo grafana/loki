@@ -97,6 +97,25 @@ func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHe
 	return decoder, nil
 }
 
+func LazyDecodeBloomPageNoCompression(r io.Reader, page BloomPageHeader) (*BloomPageDecoder, error) {
+	if page.Len != page.DecompressedLen+4 {
+		return nil, errors.New("the Len and DecompressedLen of the page do not match")
+	}
+	data := make([]byte, page.Len)
+
+	_, err := io.ReadFull(r, data)
+	if err != nil {
+		return nil, errors.Wrap(err, "reading bloom page")
+	}
+	dec := encoding.DecWith(data)
+
+	if err := dec.CheckCrc(castagnoliTable); err != nil {
+		return nil, errors.Wrap(err, "checksumming bloom page")
+	}
+
+	return NewBloomPageDecoder(dec.Get()), nil
+}
+
 func NewBloomPageDecoder(data []byte) *BloomPageDecoder {
 	// last 8 bytes are the number of blooms in this page
 	dec := encoding.DecWith(data[len(data)-8:])
@@ -254,6 +273,10 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int) (*BloomPageD
 
 	if _, err := r.Seek(int64(page.Offset), io.SeekStart); err != nil {
 		return nil, errors.Wrap(err, "seeking to bloom page")
+	}
+
+	if b.schema.encoding == chunkenc.EncNone {
+		return LazyDecodeBloomPageNoCompression(r, page)
 	}
 
 	return LazyDecodeBloomPage(r, b.schema.DecompressorPool(), page)
