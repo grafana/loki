@@ -697,6 +697,7 @@ func Test_PipelineWrapper(t *testing.T) {
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
 				Direction: logproto.BACKWARD,
+				Shards:    []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{job="3"}`),
 				},
@@ -787,6 +788,7 @@ func Test_ExtractorWrapper(t *testing.T) {
 				Selector: `sum(count_over_time({job="3"}[1m]))`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, 100000000),
+				Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum(count_over_time({job="3"}[1m]))`),
 				},

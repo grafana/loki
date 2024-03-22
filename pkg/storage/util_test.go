@@ -146,7 +146,7 @@ func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnota
 	return req
 }
 
-func newSampleQuery(query string, start, end time.Time, deletes []*logproto.Delete) *logproto.SampleQueryRequest {
+func newSampleQuery(query string, start, end time.Time, shards []astmapper.ShardAnnotation, deletes []*logproto.Delete) *logproto.SampleQueryRequest {
 	req := &logproto.SampleQueryRequest{
 		Selector: query,
 		Start:    start,
@@ -155,6 +155,9 @@ func newSampleQuery(query string, start, end time.Time, deletes []*logproto.Dele
 		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(query),
 		},
+	}
+	for _, shard := range shards {
+		req.Shards = append(req.Shards, shard.String())
 	}
 	return req
 }

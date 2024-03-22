@@ -1053,7 +1053,7 @@ backend:
     # -- Enable autoscaling for the backend.
     enabled: false
     # -- Minimum autoscaling replicas for the backend.
-    minReplicas: 2
+    minReplicas: 3
     # -- Maximum autoscaling replicas for the backend.
     maxReplicas: 6
     # -- Target CPU utilization percentage for the backend.
