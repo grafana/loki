@@ -443,7 +443,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 			return nil, err
 		}
 
-		pipeline = i.pipelineWrapper.Wrap(ctx, pipeline, expr.String(), userID, shards)
+		pipeline = i.pipelineWrapper.Wrap(ctx, pipeline, req.Plan.String(), userID, shards)
 	}
 
 	stats := stats.FromContext(ctx)
@@ -498,7 +498,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 			return nil, err
 		}
 
-		extractor = i.extractorWrapper.Wrap(ctx, extractor, expr.String(), userID, shards)
+		extractor = i.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID, shards)
 	}
 
 	stats := stats.FromContext(ctx)
