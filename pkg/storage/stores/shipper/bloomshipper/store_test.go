@@ -19,19 +19,22 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	storageconfig "github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 func newMockBloomStore(t *testing.T) (*BloomStore, string, error) {
-	workDir := t.TempDir()
-	return newMockBloomStoreWithWorkDir(t, workDir)
+	dir := t.TempDir()
+	workDir := filepath.Join(dir, "bloomshipper")
+	storeDir := filepath.Join(dir, "fs-storage")
+	return newMockBloomStoreWithWorkDir(t, workDir, storeDir)
 }
 
-func newMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*BloomStore, string, error) {
+func newMockBloomStoreWithWorkDir(t *testing.T, workDir, storeDir string) (*BloomStore, string, error) {
 	periodicConfigs := []storageconfig.PeriodConfig{
 		{
-			ObjectType: storageconfig.StorageTypeInMemory,
+			ObjectType: storageconfig.StorageTypeFileSystem,
 			From:       parseDayTime("2024-01-01"),
 			IndexTables: storageconfig.IndexPeriodicTableConfig{
 				PeriodicTableConfig: storageconfig.PeriodicTableConfig{
@@ -40,7 +43,7 @@ func newMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*BloomStore, st
 				}},
 		},
 		{
-			ObjectType: storageconfig.StorageTypeInMemory,
+			ObjectType: storageconfig.StorageTypeFileSystem,
 			From:       parseDayTime("2024-02-01"),
 			IndexTables: storageconfig.IndexPeriodicTableConfig{
 				PeriodicTableConfig: storageconfig.PeriodicTableConfig{
@@ -51,6 +54,9 @@ func newMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*BloomStore, st
 	}
 
 	storageConfig := storage.Config{
+		FSConfig: local.FSConfig{
+			Directory: storeDir,
+		},
 		BloomShipperConfig: config.Config{
 			WorkingDirectory: workDir,
 			BlocksDownloadingQueue: config.DownloadingQueueConfig{
@@ -394,7 +400,7 @@ func TestBloomShipper_WorkingDir(t *testing.T) {
 		fi, _ := os.Stat(wd)
 		t.Log("working directory", wd, fi.Mode())
 
-		_, _, err = newMockBloomStoreWithWorkDir(t, wd)
+		_, _, err = newMockBloomStoreWithWorkDir(t, wd, base)
 		require.ErrorContains(t, err, "insufficient permissions")
 	})
 
@@ -404,7 +410,7 @@ func TestBloomShipper_WorkingDir(t *testing.T) {
 		wd := filepath.Join(base, "doesnotexist")
 		t.Log("working directory", wd)
 
-		store, _, err := newMockBloomStoreWithWorkDir(t, wd)
+		store, _, err := newMockBloomStoreWithWorkDir(t, wd, base)
 		require.NoError(t, err)
 		b, err := createBlockInStorage(t, store, "tenant", parseTime("2024-01-20 00:00"), 0x00000000, 0x0000ffff)
 		require.NoError(t, err)
