@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	logqlstats "github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
@@ -282,6 +283,9 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	if !ok {
 		return nil, fmt.Errorf("expected *ShardsResponse while querying index, got %T", resp)
 	}
+
+	// accumulate stats
+	logqlstats.JoinResults(ctx, casted.Response.Statistics)
 
 	level.Debug(log).Log(
 		"msg", "retrieved sharding ranges",

@@ -323,8 +323,10 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 	if resp != nil {
 		resLength = len(resp.Shards)
 	}
-
+	// add index stats to the response
+	resp.Statistics.Index = statsCtx.Index()
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
+
 	log := spanlogger.FromContext(ctx)
 	statResult.Log(level.Debug(log))
 

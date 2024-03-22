@@ -379,7 +379,7 @@ func RecordShardsQueryMetrics(
 	var (
 		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
-		queryType   = QueryTypeStats
+		queryType   = QueryTypeShards
 	)
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -403,6 +403,8 @@ func RecordShardsQueryMetrics(
 		"query_hash", util.HashedQuery(query),
 		"target_bytes_per_shard", targetBytesPerShard,
 		"shards", shards,
+		"total_chunks", stats.Index.TotalChunks,
+		"post_filter_chunks", stats.Index.PostFilterChunks,
 	)
 
 	level.Info(logger).Log(logValues...)

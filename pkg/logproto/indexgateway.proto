@@ -4,6 +4,7 @@ package indexgatewaypb;
 
 import "gogoproto/gogo.proto";
 import "pkg/logproto/logproto.proto";
+import "pkg/logqlmodel/stats/stats.proto";
 
 option go_package = "github.com/grafana/loki/pkg/logproto";
 
@@ -51,6 +52,10 @@ message ShardsResponse {
   repeated Shard shards = 1 [
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "shards"
+  ];
+  stats.Result statistics = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "statistics"
   ];
 }
 
