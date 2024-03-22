@@ -316,7 +316,7 @@ func (b *BloomClient) GetBlock(ctx context.Context, ref BlockRef) (BlockDirector
 		return BlockDirectory{}, fmt.Errorf("failed to extract block file %s: %w", key, err)
 	}
 
-	return NewBlockDirectory(ref, path, b.logger), nil
+	return NewBlockDirectory(ref, path), nil
 }
 
 func (b *BloomClient) GetBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {

@@ -10,9 +10,19 @@ import (
 	"go.uber.org/multierr"
 )
 
-// NewFlag returns a flag.Value that directly applies feature gate statuses to a Registry.
-func NewFlag(reg *Registry) flag.Value {
-	return &flagValue{reg: reg}
+const (
+	featureGatesFlag            = "feature-gates"
+	featureGatesFlagDescription = "Comma-delimited list of feature gate identifiers. Prefix with '-' to disable the feature. '+' or no prefix will enable the feature."
+)
+
+// RegisterFlagsOption is an option for RegisterFlags.
+type RegisterFlagsOption interface {
+	private()
+}
+
+// RegisterFlags that directly applies feature gate statuses to a Registry.
+func (r *Registry) RegisterFlags(flagSet *flag.FlagSet, _ ...RegisterFlagsOption) {
+	flagSet.Var(&flagValue{reg: r}, featureGatesFlag, featureGatesFlagDescription)
 }
 
 // flagValue implements the flag.Value interface and directly applies feature gate statuses to a Registry.

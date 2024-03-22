@@ -1939,6 +1939,10 @@ client:
 # CLI flag: -bloom-gateway.worker-concurrency
 [worker_concurrency: <int> | default = 4]
 
+# Number of blocks processed concurrently on a single worker.
+# CLI flag: -bloom-gateway.block-query-concurrency
+[block_query_concurrency: <int> | default = 4]
+
 # Maximum number of outstanding tasks per tenant.
 # CLI flag: -bloom-gateway.max-outstanding-per-tenant
 [max_outstanding_per_tenant: <int> | default = 1024]
@@ -2369,17 +2373,16 @@ bloom_shipper:
     [max_tasks_enqueued_per_tenant: <int> | default = 10000]
 
   blocks_cache:
-    # Cache for bloom blocks. Whether embedded cache is enabled.
-    # CLI flag: -bloom.blocks-cache.enabled
-    [enabled: <boolean> | default = false]
+    # Cache for bloom blocks. Soft limit of the cache in bytes. Exceeding this
+    # limit will trigger evictions of least recently used items in the
+    # background.
+    # CLI flag: -bloom.blocks-cache.soft-limit
+    [soft_limit: <int> | default = 32GiB]
 
-    # Cache for bloom blocks. Maximum memory size of the cache in MB.
-    # CLI flag: -bloom.blocks-cache.max-size-mb
-    [max_size_mb: <int> | default = 100]
-
-    # Cache for bloom blocks. Maximum number of entries in the cache.
-    # CLI flag: -bloom.blocks-cache.max-size-items
-    [max_size_items: <int> | default = 0]
+    # Cache for bloom blocks. Hard limit of the cache in bytes. Exceeding this
+    # limit will block execution until soft limit is deceeded.
+    # CLI flag: -bloom.blocks-cache.hard-limit
+    [hard_limit: <int> | default = 64GiB]
 
     # Cache for bloom blocks. The time to live for items in the cache before
     # they get purged.
@@ -3210,6 +3213,10 @@ shard_streams:
 # Scalable Bloom Filter desired false-positive rate.
 # CLI flag: -bloom-compactor.false-positive-rate
 [bloom_false_positive_rate: <float> | default = 0.01]
+
+# Compression algorithm for bloom block pages.
+# CLI flag: -bloom-compactor.block-encoding
+[bloom_block_encoding: <string> | default = "none"]
 
 # Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.
 # CLI flag: -bloom-gateway.blocks-downloading-parallelism

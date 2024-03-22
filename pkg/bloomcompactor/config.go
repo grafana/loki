@@ -90,4 +90,5 @@ type Limits interface {
 	BloomNGramSkip(tenantID string) int
 	BloomFalsePositiveRate(tenantID string) float64
 	BloomCompactorMaxBlockSize(tenantID string) int
+	BloomBlockEncoding(tenantID string) string
 }

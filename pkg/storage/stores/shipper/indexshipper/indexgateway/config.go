@@ -3,6 +3,7 @@ package indexgateway
 import (
 	"flag"
 	"fmt"
+
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/util/ring"
