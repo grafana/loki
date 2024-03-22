@@ -291,8 +291,8 @@ func (c *BlocksCache) Get(ctx context.Context, key string) (BlockDirectory, bool
 		return BlockDirectory{}, false
 	}
 
-	c.lock.RLock()
-	defer c.lock.RUnlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
 	entry := c.get(key)
 	if entry == nil {
