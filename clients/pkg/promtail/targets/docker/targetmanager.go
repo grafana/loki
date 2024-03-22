@@ -44,14 +44,25 @@ func NewTargetManager(
 	pushClient api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
 ) (*TargetManager, error) {
+	noopRegistry := util.NoopRegistry{}
+	noopSdMetrics, err := discovery.CreateAndRegisterSDMetrics(noopRegistry)
+	if err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := &TargetManager{
-		metrics:    metrics,
-		logger:     logger,
-		cancel:     cancel,
-		done:       make(chan struct{}),
-		positions:  positions,
-		manager:    discovery.NewManager(ctx, log.With(logger, "component", "docker_discovery")),
+		metrics:   metrics,
+		logger:    logger,
+		cancel:    cancel,
+		done:      make(chan struct{}),
+		positions: positions,
+		manager: discovery.NewManager(
+			ctx,
+			log.With(logger, "component", "docker_discovery"),
+			noopRegistry,
+			noopSdMetrics,
+		),
 		pushClient: pushClient,
 		groups:     make(map[string]*targetGroup),
 	}

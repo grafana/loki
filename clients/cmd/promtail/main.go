@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/tracing"
 	"github.com/prometheus/client_golang/prometheus"
+	collectors_version "github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/version"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
@@ -32,7 +33,7 @@ import (
 )
 
 func init() {
-	prometheus.MustRegister(version.NewCollector("promtail"))
+	prometheus.MustRegister(collectors_version.NewCollector("promtail"))
 }
 
 var mtx sync.Mutex

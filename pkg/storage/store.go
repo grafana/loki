@@ -508,12 +508,13 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 	}
 
 	if s.pipelineWrapper != nil {
+		shards := logql.ParseShardCount(req.GetShards())
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		pipeline = s.pipelineWrapper.Wrap(ctx, pipeline, expr.String(), userID)
+		pipeline = s.pipelineWrapper.Wrap(ctx, pipeline, req.Plan.String(), userID, shards)
 	}
 
 	var chunkFilterer chunk.Filterer
@@ -555,12 +556,13 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	}
 
 	if s.extractorWrapper != nil {
+		shards := logql.ParseShardCount(req.GetShards())
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		extractor = s.extractorWrapper.Wrap(ctx, extractor, expr.String(), userID)
+		extractor = s.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID, shards)
 	}
 
 	var chunkFilterer chunk.Filterer

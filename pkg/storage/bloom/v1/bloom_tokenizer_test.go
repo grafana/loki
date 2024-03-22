@@ -37,8 +37,8 @@ func TestPrefixedKeyCreation(t *testing.T) {
 	var ones uint64 = 0xffffffffffffffff
 
 	ref := ChunkRef{
-		Start:    0,
-		End:      model.Time(int64(ones)),
+		From:     0,
+		Through:  model.Time(int64(ones)),
 		Checksum: 0xffffffff,
 	}
 	for _, tc := range []struct {

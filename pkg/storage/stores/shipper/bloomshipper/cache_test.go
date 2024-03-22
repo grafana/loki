@@ -10,9 +10,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 type mockCache[K comparable, V any] struct {
@@ -57,63 +57,6 @@ func newTypedMockCache[K comparable, V any]() *mockCache[K, V] {
 	}
 }
 
-func TestBlockDirectory_Cleanup(t *testing.T) {
-	checkInterval := 50 * time.Millisecond
-	timeout := 200 * time.Millisecond
-
-	tests := map[string]struct {
-		releaseQuerier                   bool
-		expectDirectoryToBeDeletedWithin time.Duration
-	}{
-		"expect directory to be removed once all queriers are released": {
-			releaseQuerier:                   true,
-			expectDirectoryToBeDeletedWithin: 2 * checkInterval,
-		},
-		"expect directory to be force removed after timeout": {
-			releaseQuerier:                   false,
-			expectDirectoryToBeDeletedWithin: 2 * timeout,
-		},
-	}
-	for name, tc := range tests {
-		tc := tc
-		t.Run(name, func(t *testing.T) {
-			extractedBlockDirectory := t.TempDir()
-			require.DirExists(t, extractedBlockDirectory)
-
-			blockDir := BlockDirectory{
-				Path:                        extractedBlockDirectory,
-				removeDirectoryTimeout:      timeout,
-				activeQueriersCheckInterval: checkInterval,
-				logger:                      log.NewNopLogger(),
-				refCount:                    atomic.NewInt32(0),
-			}
-			// acquire directory
-			blockDir.refCount.Inc()
-			// start cleanup goroutine
-			blockDir.removeDirectoryAsync()
-
-			if tc.releaseQuerier {
-				// release directory
-				blockDir.refCount.Dec()
-			}
-
-			// ensure directory does not exist any more
-			require.Eventually(t, func() bool {
-				return directoryDoesNotExist(extractedBlockDirectory)
-			}, tc.expectDirectoryToBeDeletedWithin, 10*time.Millisecond)
-		})
-	}
-}
-
-func Test_ClosableBlockQuerier(t *testing.T) {
-	blockDir := NewBlockDirectory(BlockRef{}, t.TempDir(), log.NewNopLogger())
-
-	querier := blockDir.BlockQuerier()
-	require.Equal(t, int32(1), blockDir.refCount.Load())
-	require.NoError(t, querier.Close())
-	require.Equal(t, int32(0), blockDir.refCount.Load())
-}
-
 func Test_LoadBlocksDirIntoCache(t *testing.T) {
 	logger := log.NewNopLogger()
 	wd := t.TempDir()
@@ -137,14 +80,22 @@ func Test_LoadBlocksDirIntoCache(t *testing.T) {
 	fp, _ = os.Create(filepath.Join(wd, fn2, "series"))
 	fp.Close()
 
-	c := newTypedMockCache[string, BlockDirectory]()
+	cfg := config.BlocksCacheConfig{
+		SoftLimit:     1 << 20,
+		HardLimit:     2 << 20,
+		TTL:           time.Hour,
+		PurgeInterval: time.Hour,
+	}
+	c := NewFsBlocksCache(cfg, nil, log.NewNopLogger())
+
 	err := LoadBlocksDirIntoCache(wd, c, logger)
 	require.NoError(t, err)
 
-	require.Equal(t, 1, len(c.cache))
+	require.Equal(t, 1, len(c.entries))
 
 	key := filepath.Join(wd, fn2) + ".tar.gz"
-	blockDir, found := c.cache[key]
+	elem, found := c.entries[key]
 	require.True(t, found)
+	blockDir := elem.Value.(*Entry).Value
 	require.Equal(t, filepath.Join(wd, fn2), blockDir.Path)
 }

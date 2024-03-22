@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -21,7 +22,8 @@ const (
 )
 
 type workerConfig struct {
-	maxItems int
+	maxItems         int
+	queryConcurrency int
 }
 
 // worker is a datastructure that consumes tasks from the request queue,
@@ -36,12 +38,12 @@ type worker struct {
 	cfg     workerConfig
 	queue   *queue.RequestQueue
 	store   bloomshipper.Store
-	pending *pendingTasks
+	pending *atomic.Int64
 	logger  log.Logger
 	metrics *workerMetrics
 }
 
-func newWorker(id string, cfg workerConfig, queue *queue.RequestQueue, store bloomshipper.Store, pending *pendingTasks, logger log.Logger, metrics *workerMetrics) *worker {
+func newWorker(id string, cfg workerConfig, queue *queue.RequestQueue, store bloomshipper.Store, pending *atomic.Int64, logger log.Logger, metrics *workerMetrics) *worker {
 	w := &worker{
 		id:      id,
 		cfg:     cfg,
@@ -64,7 +66,7 @@ func (w *worker) starting(_ context.Context) error {
 func (w *worker) running(_ context.Context) error {
 	idx := queue.StartIndexWithLocalQueue
 
-	p := newProcessor(w.id, w.store, w.logger, w.metrics)
+	p := newProcessor(w.id, w.cfg.queryConcurrency, w.store, w.logger, w.metrics)
 
 	for st := w.State(); st == services.Running || st == services.Stopping; {
 		taskCtx := context.Background()
@@ -85,6 +87,8 @@ func (w *worker) running(_ context.Context) error {
 			w.queue.ReleaseRequests(items)
 			continue
 		}
+
+		level.Debug(w.logger).Log("msg", "dequeued tasks", "count", len(items))
 		w.metrics.tasksDequeued.WithLabelValues(w.id, labelSuccess).Add(float64(len(items)))
 
 		tasks := make([]Task, 0, len(items))
@@ -97,7 +101,7 @@ func (w *worker) running(_ context.Context) error {
 				return errors.Errorf("failed to cast dequeued item to Task: %v", item)
 			}
 			level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
-			w.pending.Delete(task.ID)
+			_ = w.pending.Dec()
 			w.metrics.queueDuration.WithLabelValues(w.id).Observe(time.Since(task.enqueueTime).Seconds())
 			tasks = append(tasks, task)
 
