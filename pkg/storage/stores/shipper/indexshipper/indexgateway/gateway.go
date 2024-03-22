@@ -439,19 +439,25 @@ func (g *Gateway) getShardsWithBlooms(
 	}
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(len(filtered)))
-	stats.JoinIndex(ctx, stats.Index{
-		TotalChunks:      int64(ct),
-		PostFilterChunks: int64(len(filtered)),
-	})
+
+	statistics := stats.Result{
+		Index: stats.Index{
+			TotalChunks:      int64(ct),
+			PostFilterChunks: int64(len(filtered)),
+		},
+	}
 
 	// Edge case: if there are no chunks after filtering, we still need to return a single shard
 	if len(filtered) == 0 {
-		return server.Send(&logproto.ShardsResponse{Shards: []logproto.Shard{
-			{
-				Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64},
-				Stats:  &logproto.IndexStatsResponse{},
+		return server.Send(&logproto.ShardsResponse{
+			Shards: []logproto.Shard{
+				{
+					Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64},
+					Stats:  &logproto.IndexStatsResponse{},
+				},
 			},
-		}})
+			Statistics: statistics,
+		})
 	}
 
 	shards, err := accumulateChunksToShards(ctx, instanceID, forSeries, req, p, filtered)
@@ -460,7 +466,10 @@ func (g *Gateway) getShardsWithBlooms(
 	}
 
 	// 3) build shards
-	return server.Send(&logproto.ShardsResponse{Shards: shards})
+	return server.Send(&logproto.ShardsResponse{
+		Shards:     shards,
+		Statistics: statistics,
+	})
 }
 
 // ExtractShardRequestMatchersAndAST extracts the matchers and AST from a query string.

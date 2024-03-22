@@ -170,12 +170,13 @@ func JoinIngesters(ctx context.Context, inc Ingester) {
 	stats.ingester.Merge(inc)
 }
 
-func JoinIndex(ctx context.Context, inc Index) {
+// JoinIndex joins the index statistics in a concurrency-safe manner.
+func JoinIndex(ctx context.Context, index Index) {
 	stats := FromContext(ctx)
 	stats.mtx.Lock()
 	defer stats.mtx.Unlock()
 
-	stats.index.Merge(inc)
+	stats.index.Merge(index)
 }
 
 // ComputeSummary compute the summary of the statistics.

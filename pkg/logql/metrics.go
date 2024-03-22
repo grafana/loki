@@ -131,6 +131,11 @@ func RecordRangeAndInstantQueryMetrics(
 
 	logValues := make([]interface{}, 0, 50)
 
+	var bloomRatio float64
+	if stats.Index.TotalChunks > 0 {
+		bloomRatio = float64(stats.Index.PostFilterChunks) / float64(stats.Index.TotalChunks)
+	}
+
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
 		"query", query,
@@ -194,6 +199,9 @@ func RecordRangeAndInstantQueryMetrics(
 		"ingester_post_filter_lines", stats.Ingester.Store.Chunk.GetPostFilterLines(),
 		// Time spent being blocked on congestion control.
 		"congestion_control_latency", stats.CongestionControlLatency(),
+		"index_total_chunks", stats.Index.TotalChunks,
+		"index_post_bloom_filter_chunks", stats.Index.PostFilterChunks,
+		"index_bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
@@ -409,9 +417,9 @@ func RecordShardsQueryMetrics(
 		"query_hash", util.HashedQuery(query),
 		"target_bytes_per_shard", datasize.ByteSize(targetBytesPerShard).HumanReadable(),
 		"shards", shards,
-		"total_chunks", stats.Index.TotalChunks,
-		"post_filter_chunks", stats.Index.PostFilterChunks,
-		"bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
+		"index_total_chunks", stats.Index.TotalChunks,
+		"index_post_bloom_filter_chunks", stats.Index.PostFilterChunks,
+		"index_bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
 	)
 
 	level.Info(logger).Log(logValues...)
