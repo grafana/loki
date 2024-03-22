@@ -22,7 +22,8 @@ const (
 )
 
 type workerConfig struct {
-	maxItems int
+	maxItems         int
+	queryConcurrency int
 }
 
 // worker is a datastructure that consumes tasks from the request queue,
@@ -65,7 +66,7 @@ func (w *worker) starting(_ context.Context) error {
 func (w *worker) running(_ context.Context) error {
 	idx := queue.StartIndexWithLocalQueue
 
-	p := newProcessor(w.id, w.store, w.logger, w.metrics)
+	p := newProcessor(w.id, w.cfg.queryConcurrency, w.store, w.logger, w.metrics)
 
 	for st := w.State(); st == services.Running || st == services.Stopping; {
 		taskCtx := context.Background()
@@ -86,6 +87,8 @@ func (w *worker) running(_ context.Context) error {
 			w.queue.ReleaseRequests(items)
 			continue
 		}
+
+		level.Debug(w.logger).Log("msg", "dequeued tasks", "count", len(items))
 		w.metrics.tasksDequeued.WithLabelValues(w.id, labelSuccess).Add(float64(len(items)))
 
 		tasks := make([]Task, 0, len(items))

@@ -14,7 +14,11 @@ type metrics struct {
 
 type serverMetrics struct {
 	inflightRequests prometheus.Summary
-	chunkRemovals    *prometheus.CounterVec
+	requestedSeries  prometheus.Histogram
+	filteredSeries   prometheus.Histogram
+	requestedChunks  prometheus.Histogram
+	filteredChunks   prometheus.Histogram
+	receivedFilters  prometheus.Histogram
 }
 
 func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -35,12 +39,41 @@ func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			MaxAge:     time.Minute,
 			AgeBuckets: 6,
 		}),
-		chunkRemovals: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		requestedSeries: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "chunk_removals_total",
-			Help:      "Total amount of removals received from the block querier partitioned by state. The state 'accepted' means that the removals are processed, the state 'dropped' means that the removals were received after the task context was done (e.g. client timeout, etc).",
-		}, []string{"state"}),
+			Name:      "requested_series",
+			Help:      "Total amount of series refs sent to bloom-gateway for querying",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 100e3, 10),
+		}),
+		filteredSeries: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "filtered_series",
+			Help:      "Total amount of series refs filtered by bloom-gateway",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 100e3, 10),
+		}),
+		requestedChunks: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "requested_chunks",
+			Help:      "Total amount of chunk refs sent to bloom-gateway for querying",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 100e3, 10),
+		}),
+		filteredChunks: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "filtered_chunks",
+			Help:      "Total amount of chunk refs filtered by bloom-gateway",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 100e3, 10),
+		}),
+		receivedFilters: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "request_filters",
+			Help:      "Number of filters per request.",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 9), // 1 -> 256
+		}),
 	}
 }
 

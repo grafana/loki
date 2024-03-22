@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"sort"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -364,6 +365,7 @@ func (s *SeriesWithOffset) Encode(
 	previousFp model.Fingerprint,
 	previousOffset BloomOffset,
 ) (model.Fingerprint, BloomOffset) {
+	sort.Sort(s.Chunks) // ensure order
 	// delta encode fingerprint
 	enc.PutBE64(uint64(s.Fingerprint - previousFp))
 	// delta encode offsets

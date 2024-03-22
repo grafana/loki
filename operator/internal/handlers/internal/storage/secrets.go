@@ -53,8 +53,8 @@ const gcpAccountTypeExternal = "external_account"
 
 func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
 	var (
-		storageSecret     corev1.Secret
-		managedAuthSecret corev1.Secret
+		storageSecret      corev1.Secret
+		tokenCCOAuthSecret corev1.Secret
 	)
 
 	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
@@ -69,27 +69,27 @@ func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg c
 		return nil, nil, fmt.Errorf("failed to lookup lokistack storage secret: %w", err)
 	}
 
-	if fg.OpenShift.ManagedAuthEnv {
+	if fg.OpenShift.TokenCCOAuthEnv {
 		secretName := storage.ManagedCredentialsSecretName(stack.Name)
-		managedAuthCredsKey := client.ObjectKey{Name: secretName, Namespace: stack.Namespace}
-		if err := k.Get(ctx, managedAuthCredsKey, &managedAuthSecret); err != nil {
+		tokenCCOAuthCredsKey := client.ObjectKey{Name: secretName, Namespace: stack.Namespace}
+		if err := k.Get(ctx, tokenCCOAuthCredsKey, &tokenCCOAuthSecret); err != nil {
 			if apierrors.IsNotFound(err) {
 				// We don't know if this is an error yet, need to wait for evaluation of CredentialMode
 				// For now we go with empty "managed secret", the eventual DegradedError will be returned later.
 				return &storageSecret, nil, nil
 			}
-			return nil, nil, fmt.Errorf("failed to lookup OpenShift CCO managed authentication credentials secret: %w", err)
+			return nil, nil, fmt.Errorf("failed to lookup OpenShift CCO token authentication credentials secret: %w", err)
 		}
 
-		return &storageSecret, &managedAuthSecret, nil
+		return &storageSecret, &tokenCCOAuthSecret, nil
 	}
 
 	return &storageSecret, nil, nil
 }
 
 // extractSecrets reads the k8s obj storage secret into a manifest object storage struct if valid.
-// The managed auth is also read into the manifest object under the right circumstances.
-func extractSecrets(secretSpec lokiv1.ObjectStorageSecretSpec, objStore, managedAuth *corev1.Secret, fg configv1.FeatureGates) (storage.Options, error) {
+// The token cco auth is also read into the manifest object under the right circumstances.
+func extractSecrets(secretSpec lokiv1.ObjectStorageSecretSpec, objStore, tokenCCOAuth *corev1.Secret, fg configv1.FeatureGates) (storage.Options, error) {
 	hash, err := hashSecretData(objStore)
 	if err != nil {
 		return storage.Options{}, errSecretHashError
@@ -98,16 +98,16 @@ func extractSecrets(secretSpec lokiv1.ObjectStorageSecretSpec, objStore, managed
 	openShiftOpts := storage.OpenShiftOptions{
 		Enabled: fg.OpenShift.Enabled,
 	}
-	if managedAuth != nil {
-		var managedAuthHash string
-		managedAuthHash, err = hashSecretData(managedAuth)
+	if tokenCCOAuth != nil {
+		var tokenCCOAuthHash string
+		tokenCCOAuthHash, err = hashSecretData(tokenCCOAuth)
 		if err != nil {
 			return storage.Options{}, errSecretHashError
 		}
 
 		openShiftOpts.CloudCredentials = storage.CloudCredentials{
-			SecretName: managedAuth.Name,
-			SHA1:       managedAuthHash,
+			SecretName: tokenCCOAuth.Name,
+			SHA1:       tokenCCOAuthHash,
 		}
 	}
 
@@ -161,9 +161,9 @@ func determineCredentialMode(spec lokiv1.ObjectStorageSecretSpec, secret *corev1
 		return spec.CredentialMode, nil
 	}
 
-	if fg.OpenShift.ManagedAuthEnv {
-		// Default to managed credential mode on a managed-auth installation
-		return lokiv1.CredentialModeManaged, nil
+	if fg.OpenShift.TokenCCOAuthEnv {
+		// Default to token cco credential mode on a token-cco-auth installation
+		return lokiv1.CredentialModeTokenCCO, nil
 	}
 
 	switch spec.Type {
@@ -298,7 +298,7 @@ func validateAzureCredentials(s *corev1.Secret, credentialMode lokiv1.Credential
 		}
 
 		return true, nil
-	case lokiv1.CredentialModeManaged:
+	case lokiv1.CredentialModeTokenCCO:
 		if len(accountKey) > 0 || len(clientID) > 0 || len(tenantID) > 0 || len(subscriptionID) > 0 {
 			return false, errAzureManagedIdentityNoOverride
 		}
@@ -370,7 +370,7 @@ func extractGCSConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMo
 			WorkloadIdentity: true,
 			Audience:         audience,
 		}, nil
-	case lokiv1.CredentialModeManaged:
+	case lokiv1.CredentialModeTokenCCO:
 		return nil, fmt.Errorf("%w: type: %s credentialMode: %s", errSecretUnsupportedCredentialMode, lokiv1.ObjectStorageSecretGCS, credentialMode)
 	default:
 	}
@@ -409,7 +409,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 	}
 
 	switch credentialMode {
-	case lokiv1.CredentialModeManaged:
+	case lokiv1.CredentialModeTokenCCO:
 		cfg.STS = true
 		cfg.Audience = string(audience)
 		// Do not allow users overriding the role arn provided on Loki Operator installation

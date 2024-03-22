@@ -324,10 +324,17 @@ publish: packages
 # To run this efficiently on your workstation, run this from the root dir:
 # docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.24.1 lint
 lint: ## run linters
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(SUDO) docker run  $(RM) $(TTY) -i \
+		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
 	go version
 	golangci-lint version
 	GO111MODULE=on golangci-lint run -v --timeout 15m
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
+endif
 
 ########
 # Test #
@@ -879,4 +886,5 @@ scan-vulnerabilities: trivy snyk
 
 .PHONY: release-workflows
 release-workflows:
+	pushd $(CURDIR)/.github && jb update && popd
 	jsonnet -SJ .github/vendor -m .github/workflows .github/release-workflows.jsonnet

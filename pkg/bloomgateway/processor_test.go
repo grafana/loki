@@ -65,7 +65,7 @@ func (s *dummyStore) Client(_ model.Time) (bloomshipper.Client, error) {
 func (s *dummyStore) Stop() {
 }
 
-func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef) ([]*bloomshipper.CloseableBlockQuerier, error) {
+func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef, _ ...bloomshipper.FetchOption) ([]*bloomshipper.CloseableBlockQuerier, error) {
 	result := make([]*bloomshipper.CloseableBlockQuerier, 0, len(s.querieres))
 
 	if s.err != nil {
@@ -96,7 +96,7 @@ func TestProcessor(t *testing.T) {
 		_, metas, queriers, data := createBlocks(t, tenant, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 
 		mockStore := newMockBloomStore(queriers, metas)
-		p := newProcessor("worker", mockStore, log.NewNopLogger(), metrics)
+		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
 		swb := seriesWithInterval{
@@ -145,7 +145,7 @@ func TestProcessor(t *testing.T) {
 		mockStore := newMockBloomStore(queriers, metas)
 		mockStore.err = errors.New("store failed")
 
-		p := newProcessor("worker", mockStore, log.NewNopLogger(), metrics)
+		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
 		swb := seriesWithInterval{
