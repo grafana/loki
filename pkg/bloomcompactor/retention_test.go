@@ -797,13 +797,15 @@ func NewMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*bloomshipper.B
 			Directory: workDir,
 		},
 		BloomShipperConfig: config.Config{
-			WorkingDirectory: workDir + "/bloomshipper",
+			WorkingDirectory: workDir,
 			BlocksDownloadingQueue: config.DownloadingQueueConfig{
 				WorkersCount: 1,
 			},
-			BlocksCache: cache.EmbeddedCacheConfig{
-				MaxSizeItems: 1000,
-				TTL:          1 * time.Hour,
+			BlocksCache: config.BlocksCacheConfig{
+				SoftLimit:     1 << 20,
+				HardLimit:     2 << 20,
+				TTL:           time.Hour,
+				PurgeInterval: time.Hour,
 			},
 		},
 	}
@@ -814,7 +816,7 @@ func NewMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*bloomshipper.B
 	logger := log.NewLogfmtLogger(os.Stderr)
 
 	metasCache := cache.NewMockCache()
-	blocksCache := bloomshipper.NewBlocksCache(storageConfig.BloomShipperConfig.BlocksCache, prometheus.NewPedanticRegistry(), logger)
+	blocksCache := bloomshipper.NewFsBlocksCache(storageConfig.BloomShipperConfig.BlocksCache, prometheus.NewPedanticRegistry(), logger)
 
 	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageConfig, metrics, metasCache, blocksCache, reg, logger)
 	if err == nil {
