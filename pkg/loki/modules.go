@@ -86,47 +86,47 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 
 // The various modules that make up Loki.
 const (
-	Ring                          string = "ring"
-	RuntimeConfig                 string = "runtime-config"
-	Overrides                     string = "overrides"
-	OverridesExporter             string = "overrides-exporter"
-	TenantConfigs                 string = "tenant-configs"
-	Server                        string = "server"
-	InternalServer                string = "internal-server"
-	Distributor                   string = "distributor"
-	Querier                       string = "querier"
-	CacheGenerationLoader         string = "cache-generation-loader"
-	Ingester                      string = "ingester"
-	IngesterQuerier               string = "ingester-querier"
-	IngesterQueryTagsInterceptors string = "ingester-query-tags-interceptors"
-	QueryFrontend                 string = "query-frontend"
-	QueryFrontendTripperware      string = "query-frontend-tripperware"
-	QueryLimiter                  string = "query-limiter"
-	QueryLimitsInterceptors       string = "query-limits-interceptors"
-	QueryLimitsTripperware        string = "query-limits-tripper"
-	RulerStorage                  string = "ruler-storage"
-	Ruler                         string = "ruler"
-	RuleEvaluator                 string = "rule-evaluator"
-	Store                         string = "store"
-	TableManager                  string = "table-manager"
-	MemberlistKV                  string = "memberlist-kv"
-	Compactor                     string = "compactor"
-	BloomGateway                  string = "bloom-gateway"
-	BloomGatewayRing              string = "bloom-gateway-ring"
-	IndexGateway                  string = "index-gateway"
-	IndexGatewayRing              string = "index-gateway-ring"
-	IndexGatewayInterceptors      string = "index-gateway-interceptors"
-	QueryScheduler                string = "query-scheduler"
-	QuerySchedulerRing            string = "query-scheduler-ring"
-	BloomCompactor                string = "bloom-compactor"
-	BloomCompactorRing            string = "bloom-compactor-ring"
-	BloomStore                    string = "bloom-store"
-	All                           string = "all"
-	Read                          string = "read"
-	Write                         string = "write"
-	Backend                       string = "backend"
-	Analytics                     string = "analytics"
-	InitCodec                     string = "init-codec"
+	Ring                     string = "ring"
+	RuntimeConfig            string = "runtime-config"
+	Overrides                string = "overrides"
+	OverridesExporter        string = "overrides-exporter"
+	TenantConfigs            string = "tenant-configs"
+	Server                   string = "server"
+	InternalServer           string = "internal-server"
+	Distributor              string = "distributor"
+	Querier                  string = "querier"
+	CacheGenerationLoader    string = "cache-generation-loader"
+	Ingester                 string = "ingester"
+	IngesterQuerier          string = "ingester-querier"
+	IngesterGRPCInterceptors string = "ingester-query-tags-interceptors"
+	QueryFrontend            string = "query-frontend"
+	QueryFrontendTripperware string = "query-frontend-tripperware"
+	QueryLimiter             string = "query-limiter"
+	QueryLimitsInterceptors  string = "query-limits-interceptors"
+	QueryLimitsTripperware   string = "query-limits-tripper"
+	RulerStorage             string = "ruler-storage"
+	Ruler                    string = "ruler"
+	RuleEvaluator            string = "rule-evaluator"
+	Store                    string = "store"
+	TableManager             string = "table-manager"
+	MemberlistKV             string = "memberlist-kv"
+	Compactor                string = "compactor"
+	BloomGateway             string = "bloom-gateway"
+	BloomGatewayRing         string = "bloom-gateway-ring"
+	IndexGateway             string = "index-gateway"
+	IndexGatewayRing         string = "index-gateway-ring"
+	IndexGatewayInterceptors string = "index-gateway-interceptors"
+	QueryScheduler           string = "query-scheduler"
+	QuerySchedulerRing       string = "query-scheduler-ring"
+	BloomCompactor           string = "bloom-compactor"
+	BloomCompactorRing       string = "bloom-compactor-ring"
+	BloomStore               string = "bloom-store"
+	All                      string = "all"
+	Read                     string = "read"
+	Write                    string = "write"
+	Backend                  string = "backend"
+	Analytics                string = "analytics"
+	InitCodec                string = "init-codec"
 )
 
 const (
@@ -404,7 +404,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader),
+		httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader, httpreq.LokiOriginalQueryResultsHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
@@ -983,7 +983,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader),
+		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiOriginalQueryResultsHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
@@ -1573,10 +1573,19 @@ func (t *Loki) initQueryLimitsInterceptors() (services.Service, error) {
 	return nil, nil
 }
 
-func (t *Loki) initIngesterQueryTagsInterceptors() (services.Service, error) {
+func (t *Loki) initIngesterGRPCInterceptors() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing ingester query tags interceptors")
-	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, serverutil.StreamServerQueryTagsInterceptor)
-	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, serverutil.UnaryServerQueryTagsInterceptor)
+	t.Cfg.Server.GRPCStreamMiddleware = append(
+		t.Cfg.Server.GRPCStreamMiddleware,
+		serverutil.StreamServerQueryTagsInterceptor,
+		serverutil.StreamServerHTTPHeadersInterceptor,
+	)
+
+	t.Cfg.Server.GRPCMiddleware = append(
+		t.Cfg.Server.GRPCMiddleware,
+		serverutil.UnaryServerQueryTagsInterceptor,
+		serverutil.UnaryServerHTTPHeadersnIterceptor,
+	)
 
 	return nil, nil
 }
