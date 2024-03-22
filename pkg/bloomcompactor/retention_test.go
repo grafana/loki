@@ -330,7 +330,8 @@ func TestRetentionRunsOncePerDay(t *testing.T) {
 
 	rm := NewRetentionManager(
 		RetentionConfig{
-			Enabled: true,
+			Enabled:         true,
+			MaxLookbackDays: 365,
 		},
 		mockRetentionLimits{
 			retention: map[string]time.Duration{

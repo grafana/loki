@@ -307,7 +307,12 @@ func TestBloomStore_TenantFilesForInterval(t *testing.T) {
 			nil,
 		)
 		require.NoError(t, err)
-		require.Equal(t, 2, len(tenantFiles))
+
+		var tenants []string
+		for tenant := range tenantFiles {
+			tenants = append(tenants, tenant)
+		}
+		require.ElementsMatch(t, []string{"1", "2"}, tenants)
 
 		tenant1Keys := keysFromStorageObjects(tenantFiles["1"])
 		expectedTenant1Keys := []string{
@@ -347,7 +352,12 @@ func TestBloomStore_TenantFilesForInterval(t *testing.T) {
 			},
 		)
 		require.NoError(t, err)
-		require.Equal(t, 2, len(tenantFiles))
+
+		var tenants []string
+		for tenant := range tenantFiles {
+			tenants = append(tenants, tenant)
+		}
+		require.ElementsMatch(t, []string{"1", "2"}, tenants)
 
 		tenant1Keys := keysFromStorageObjects(tenantFiles["1"])
 		expectedTenant1Keys := []string{
