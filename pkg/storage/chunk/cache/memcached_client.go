@@ -86,7 +86,7 @@ type MemcachedClientConfig struct {
 	CBInterval     time.Duration `yaml:"circuit_breaker_interval"` // remain closed for this long after CBFailures errors
 
 	// TLSEnabled enables connecting to Memcached with TLS.
-	TLSEnabled bool `yaml:"tls_enabled" category:"advanced"`
+	TLSEnabled bool `yaml:"tls_enabled"`
 
 	// TLS to use to connect to the Memcached server.
 	TLS dstls.ClientConfig `yaml:",inline"`
