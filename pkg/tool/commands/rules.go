@@ -88,9 +88,9 @@ type RuleCommand struct {
 // Register rule related commands and flags with the kingpin application
 func (r *RuleCommand) Register(app *kingpin.Application) {
 	rulesCmd := app.Command("rules", "View & edit rules stored in loki.").PreAction(r.setup)
-	rulesCmd.Flag("authToken", "Authentication token for bearer token or JWT auth, alternatively set CORTEX_AUTH_TOKEN.").Default("").Envar("CORTEX_AUTH_TOKEN").StringVar(&r.ClientConfig.AuthToken)
-	rulesCmd.Flag("user", "API user to use when contacting loki, alternatively set CORTEX_API_USER. If empty, CORTEX_TENANT_ID will be used instead.").Default("").Envar("CORTEX_API_USER").StringVar(&r.ClientConfig.User)
-	rulesCmd.Flag("key", "API key to use when contacting loki, alternatively set CORTEX_API_KEY.").Default("").Envar("CORTEX_API_KEY").StringVar(&r.ClientConfig.Key)
+	rulesCmd.Flag("authToken", "Authentication token for bearer token or JWT auth, alternatively set LOKI_AUTH_TOKEN.").Default("").Envar("LOKI_AUTH_TOKEN").StringVar(&r.ClientConfig.AuthToken)
+	rulesCmd.Flag("user", "API user to use when contacting loki, alternatively set LOKI_API_USER. If empty, LOKI_TENANT_ID will be used instead.").Default("").Envar("LOKI_API_USER").StringVar(&r.ClientConfig.User)
+	rulesCmd.Flag("key", "API key to use when contacting loki, alternatively set LOKI_API_KEY.").Default("").Envar("LOKI_API_KEY").StringVar(&r.ClientConfig.Key)
 
 	// Register rule commands
 	listCmd := rulesCmd.
@@ -124,7 +124,7 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 		Command("check", "runs various best practice checks against rules.").
 		Action(r.checkRecordingRuleNames)
 
-	// Require Cortex cluster address and tentant ID on all these commands
+	// Require Loki cluster address and tentant ID on all these commands
 	for _, c := range []*kingpin.CmdClause{listCmd, printRulesCmd, getRuleGroupCmd, deleteRuleGroupCmd, loadRulesCmd, diffRulesCmd, syncRulesCmd} {
 		c.Flag("address", "Address of the loki cluster, alternatively set LOKI_ADDRESS.").
 			Envar("LOKI_ADDRESS").
@@ -444,7 +444,7 @@ func (r *RuleCommand) diffRules(_ *kingpin.ParseContext) error {
 
 	currentNamespaceMap, err := r.cli.ListRules(context.Background(), "")
 	//TODO: Skipping the 404s here might end up in an unsual scenario.
-	// If we're unable to reach the Cortex API due to a bad URL, we'll assume no rules are
+	// If we're unable to reach the Loki API due to a bad URL, we'll assume no rules are
 	// part of the namespace and provide a diff of the whole ruleset.
 	if err != nil && err != client.ErrResourceNotFound {
 		return errors.Wrap(err, "diff operation unsuccessful, unable to contact the loki api")
@@ -507,7 +507,7 @@ func (r *RuleCommand) syncRules(_ *kingpin.ParseContext) error {
 
 	currentNamespaceMap, err := r.cli.ListRules(context.Background(), "")
 	//TODO: Skipping the 404s here might end up in an unsual scenario.
-	// If we're unable to reach the Cortex API due to a bad URL, we'll assume no rules are
+	// If we're unable to reach the Loki API due to a bad URL, we'll assume no rules are
 	// part of the namespace and provide a diff of the whole ruleset.
 	if err != nil && err != client.ErrResourceNotFound {
 		return errors.Wrap(err, "sync operation unsuccessful, unable to contact the loki api")

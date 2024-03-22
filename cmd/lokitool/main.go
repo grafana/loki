@@ -16,7 +16,7 @@ var (
 )
 
 func main() {
-	app := kingpin.New("cortextool", "A command-line tool to manage Loki.")
+	app := kingpin.New("lokitool", "A command-line tool to manage Loki.")
 	ruleCommand.Register(app)
 
 	app.Command("version", "Get the version of the lokitool CLI").Action(func(k *kingpin.ParseContext) error {
