@@ -18,7 +18,7 @@ import (
 // Figure out a decent maximum page size that we can process.
 // TODO(chaudum): Make max page size configurable
 var maxPageSize = 32 << 20 // 32MB
-var errPageTooLarge = "bloom page too large to process: N=%d Offset=%d Len=%d DecompressedLen=%d"
+var ErrPageTooLarge = errors.Errorf("bloom page too large: size limit is %.1fMiB", float64(maxPageSize)/float64(1<<20))
 
 type Bloom struct {
 	filter.ScalableBloomFilter
@@ -86,7 +86,7 @@ func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHe
 	}
 	defer pool.PutReader(decompressor)
 
-	b := BlockPool.Get(page.DecompressedLen)[:page.DecompressedLen]
+	b := make([]byte, page.DecompressedLen)
 
 	if _, err = io.ReadFull(decompressor, b); err != nil {
 		return nil, errors.Wrap(err, "decompressing bloom page")
@@ -97,10 +97,6 @@ func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHe
 	return decoder, nil
 }
 
-// NewBloomPageDecoder returns a decoder for a bloom page.
-// If the byte slice passed in the constructor is from the BlockPool pool, then
-// the caller needs to ensure that Close() is called to put the slice back to
-// its pool.
 func NewBloomPageDecoder(data []byte) *BloomPageDecoder {
 	// last 8 bytes are the number of blooms in this page
 	dec := encoding.DecWith(data[len(data)-8:])
@@ -121,6 +117,11 @@ func NewBloomPageDecoder(data []byte) *BloomPageDecoder {
 }
 
 // Decoder is a seekable, reset-able iterator
+// TODO(owen-d): use buffer pools. The reason we don't currently
+// do this is because the `data` slice currently escapes the decoder
+// via the returned bloom, so we can't know when it's safe to return it to the pool.
+// This happens via `data ([]byte) -> dec (*encoding.Decbuf) -> bloom (Bloom)` where
+// the final Bloom has a reference to the data slice.
 // We could optimize this by encoding the mode (read, write) into our structs
 // and doing copy-on-write shenannigans, but I'm avoiding this for now.
 type BloomPageDecoder struct {
@@ -164,14 +165,6 @@ func (d *BloomPageDecoder) At() *Bloom {
 
 func (d *BloomPageDecoder) Err() error {
 	return d.err
-}
-
-func (d *BloomPageDecoder) Close() {
-	d.err = nil
-	d.cur = nil
-	BlockPool.Put(d.data)
-	d.data = nil
-	d.dec.B = nil
 }
 
 type BloomPageHeader struct {
@@ -253,9 +246,10 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int) (*BloomPageD
 	}
 
 	page := b.pageHeaders[pageIdx]
+	// fmt.Printf("pageIdx=%d page=%+v size=%.2fMiB\n", pageIdx, page, float64(page.Len)/float64(1<<20))
 
 	if page.Len > maxPageSize {
-		return nil, fmt.Errorf(errPageTooLarge, page.N, page.Offset, page.Len, page.DecompressedLen)
+		return nil, ErrPageTooLarge
 	}
 
 	if _, err := r.Seek(int64(page.Offset), io.SeekStart); err != nil {

@@ -20,7 +20,7 @@ jobs:
       - name: Set redhat-openshift-ecosystem specific variables
         if: ${{ inputs.org == 'redhat-openshift-ecosystem' }}
         env:
-          ocpDir: '/path/to/openshift/directory'
+          ocpDir: '-openshift'
           ocpSupportedVersions: 'v4.12'
         run: |
           echo "ocpDir=${ocpDir}" >> $GITHUB_ENV
