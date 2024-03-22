@@ -65,7 +65,7 @@ spec:
         {{- toYaml .nodeSelector | nindent 8 }}
       affinity:
         {{- toYaml .affinity | nindent 8 }}
-      toplogySpreadConstraints:
+      topologySpreadConstraints:
         {{- toYaml .topologySpreadConstraints | nindent 8 }}
       tolerations:
         {{- toYaml .tolerations | nindent 8 }}
