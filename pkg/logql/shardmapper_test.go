@@ -118,9 +118,18 @@ func TestMappingStrings(t *testing.T) {
 		in  string
 		out string
 	}{
-		{ // We shouldn't shard max if the inner operation is a quantile_over_time.
+		// NOTE (callum):These two queries containing quantile_over_time should result in
+		// the same unsharded of the max and not the inner quantile regardless of whether
+		// quantile sharding is turned on. This should be the case even if the inner quantile
+		// does not contain a grouping until we decide whether to do the further optimization
+		// of sharding the inner quantile.
+		{
 			in:  `max by (status)(quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]))`,
 			out: `maxby(status)(quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s]))`,
+		},
+		{
+			in:  `max by (status)(quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (baz))`,
+			out: `maxby(status)(quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s])by(baz))`,
 		},
 		{
 			in: `{foo="bar"}`,
@@ -367,10 +376,6 @@ func TestMappingStrings(t *testing.T) {
 				)
 			)`,
 		},
-		{ // This should result in the same downstream sharding of the max and not the inner quantile regardless of whether quantile sharding is turned on.
-			in:  `max by (status)(quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]))`,
-			out: `maxby(status)(downstream<maxby(status)(quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s])),shard=0_of_2>++downstream<maxby(status)(quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s])),shard=1_of_2>)`,
-		},
 		// should be noop if VectorExpr
 		{
 			in:  `vector(0)`,
@@ -428,28 +433,44 @@ func TestMappingStrings(t *testing.T) {
 // Test that mapping of queries for operation types that have probabilistic
 // sharding options, but whose sharding is turned off, are not sharded on those operations.
 func TestMappingStrings_NoProbabilisticSharding(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{})
 	for _, tc := range []struct {
 		in  string
 		out string
 	}{
-		{ // This should result in the same downstream sharding of the max and not the inner quantile regardless of whether quantile sharding is turned on.
-			in:  `max by (status)(quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]))`,
-			out: `maxby(status)(downstream<maxby(status)(quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s])),shard=0_of_2>++downstream<maxby(status)(quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s])),shard=1_of_2>)`,
+		// NOTE (callum):These two queries containing quantile_over_time should result in
+		// the same unsharded of the max and not the inner quantile regardless of whether
+		// quantile sharding is turned on. This should be the case even if the inner quantile
+		// does not contain a grouping until we decide whether to do the further optimization
+		// of sharding the inner quantile.
+		{
+			in:  `max by (status)(quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (baz))`,
+			out: `maxby(status)(quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s])by(baz))`,
 		},
 		{
-			in:  `quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s])`,
-			out: `quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s])`,
+			in:  `max by (status)(quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]))`,
+			out: `maxby(status)(quantile_over_time(0.7,{a=~".+"}|logfmt|unwrapvalue[1s]))`,
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
+			shardedMapper := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{ShardQuantileOverTime})
+
 			ast, err := syntax.ParseExpr(tc.in)
 			require.Nil(t, err)
 
-			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
+			sharded, _, err := shardedMapper.Map(ast, nilShardMetrics.downstreamRecorder(), true)
 			require.Nil(t, err)
 
-			require.Equal(t, removeWhiteSpace(tc.out), removeWhiteSpace(mapped.String()))
+			require.Equal(t, removeWhiteSpace(tc.out), removeWhiteSpace(sharded.String()))
+
+			unshardedMapper := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{})
+
+			ast, err = syntax.ParseExpr(tc.in)
+			require.Nil(t, err)
+
+			unsharded, _, err := unshardedMapper.Map(ast, nilShardMetrics.downstreamRecorder(), true)
+			require.Nil(t, err)
+
+			require.Equal(t, removeWhiteSpace(tc.out), removeWhiteSpace(unsharded.String()))
 		})
 	}
 }
@@ -1374,6 +1395,22 @@ func TestMapping(t *testing.T) {
 							next: nil,
 						},
 					},
+				},
+			},
+		},
+		{
+			in: `quantile_over_time(0.8, {foo="bar"} | unwrap bytes [5m])`,
+			expr: &syntax.RangeAggregationExpr{
+				Operation: syntax.OpRangeTypeQuantile,
+				Params:    float64p(0.8),
+				Left: &syntax.LogRange{
+					Left: &syntax.MatchersExpr{
+						Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+					},
+					Unwrap: &syntax.UnwrapExpr{
+						Identifier: "bytes",
+					},
+					Interval: 5 * time.Minute,
 				},
 			},
 		},
