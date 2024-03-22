@@ -34,7 +34,7 @@ BUILD_IMAGE_VERSION := 0.29.3-go1.20.10
 # Docker image info
 IMAGE_PREFIX ?= grafana
 
-IMAGE_TAG := $(shell ./tools/image-tag)
+IMAGE_TAG ?= $(shell ./tools/image-tag)
 
 # Version info for binaries
 GIT_REVISION := $(shell git rev-parse --short HEAD)
@@ -258,7 +258,16 @@ cmd/migrate/migrate:
 #############
 GOX = gox $(GO_FLAGS) -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
+
+SKIP_ARM ?= false
 dist: clean
+ifeq ($(SKIP_ARM),true)
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
+	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/amd64" ./clients/cmd/promtail
+else
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
@@ -266,6 +275,7 @@ dist: clean
 	PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" CC="aarch64-linux-gnu-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm64" ./clients/cmd/promtail
 	PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" CC="arm-linux-gnueabihf-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm" ./clients/cmd/promtail
 	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/amd64" ./clients/cmd/promtail
+endif
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
@@ -284,15 +294,18 @@ publish: packages
 lint:
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint run -v
+	GO111MODULE=on golangci-lint run -v --timeout 15m
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
 ########
 # Test #
 ########
 
-test: all
+test: all ## run the unit tests
 	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee test_results.txt
+
+test-integration:
+	$(GOTEST) -count=1 -v -tags=integration -timeout 10m ./integration
 
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
@@ -734,9 +747,15 @@ test-fuzz:
 
 format:
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
-		-type f -name '*.go' -exec gofmt -w -s {} \;
+		-name '*_vfsdata.go' -prune -o -type f -name '*.go' -exec gofmt -w -s {} \;
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
-		-type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
+		-name '*_vfsdata.go' -prune -o -type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
+
+
+GIT_TARGET_BRANCH ?= main
+check-format: format
+	git diff --name-only HEAD origin/$(GIT_TARGET_BRANCH) -- "*.go" | xargs --no-run-if-empty git diff --exit-code -- \
+	|| (echo "Please format code by running 'make format' and committing the changes" && false)
 
 # Documentation related commands
 
@@ -755,6 +774,9 @@ check-doc: doc
 # Validate the example configurations that we provide in ./docs/sources/configuration/examples
 validate-example-configs: loki
 	for f in ./docs/sources/configuration/examples/*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
+
+validate-dev-cluster-config: loki
+	./cmd/loki/loki -config.file=./tools/dev/loki-boltdb-storage-s3/config/loki.yaml -verify-config
 
 # Dynamically generate ./docs/sources/configuration/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
@@ -799,9 +821,13 @@ trivy: loki-image
 
 # Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
 .PHONY: snyk
-snyk: loki-image
-	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
-	snyk code test
+snyk:
+	snyk test
 
 .PHONY: scan-vulnerabilities
 scan-vulnerabilities: trivy snyk
+
+.PHONY: release-workflows
+release-workflows:
+	pushd $(CURDIR)/.github && jb update && popd
+	jsonnet -SJ .github/vendor -m .github/workflows .github/release-workflows.jsonnet

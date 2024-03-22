@@ -51,3 +51,6 @@ pkg/loki/wal
 
 # nix
 result
+
+# snyk/trivy
+.dccache
