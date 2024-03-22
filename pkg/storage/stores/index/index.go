@@ -36,7 +36,7 @@ type StatsReader interface {
 		from, through model.Time,
 		targetBytesPerShard uint64,
 		predicate chunk.Predicate,
-	) ([]logproto.Shard, error)
+	) (*logproto.ShardsResponse, error)
 
 	// If the underlying index supports it, this will return the ForSeries interface
 	// which is used in bloom-filter accelerated sharding calculation optimization.
@@ -156,8 +156,8 @@ func (m MonitoredReaderWriter) GetShards(
 	from, through model.Time,
 	targetBytesPerShard uint64,
 	predicate chunk.Predicate,
-) ([]logproto.Shard, error) {
-	var shards []logproto.Shard
+) (*logproto.ShardsResponse, error) {
+	var shards *logproto.ShardsResponse
 	if err := loki_instrument.TimeRequest(ctx, "shards", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		shards, err = m.rw.GetShards(ctx, userID, from, through, targetBytesPerShard, predicate)

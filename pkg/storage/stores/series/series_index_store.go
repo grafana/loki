@@ -768,14 +768,16 @@ func (c *IndexReaderWriter) GetShards(
 	_, _ model.Time,
 	_ uint64,
 	_ chunk.Predicate,
-) ([]logproto.Shard, error) {
+) (*logproto.ShardsResponse, error) {
 	// should not be called for legacy indices at all, so just return a single shard covering everything
 	// could be improved by reading schema shards
-	return []logproto.Shard{
-		{
-			Bounds: logproto.FPBounds{
-				Min: 0,
-				Max: math.MaxUint64,
+	return &logproto.ShardsResponse{
+		Shards: []logproto.Shard{
+			{
+				Bounds: logproto.FPBounds{
+					Min: 0,
+					Max: math.MaxUint64,
+				},
 			},
 		},
 	}, nil

@@ -150,7 +150,7 @@ func (c *storeEntry) GetShards(
 	from, through model.Time,
 	targetBytesPerShard uint64,
 	predicate chunk.Predicate,
-) ([]logproto.Shard, error) {
+) (*logproto.ShardsResponse, error) {
 	_, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
 		return nil, err

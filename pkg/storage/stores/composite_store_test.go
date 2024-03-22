@@ -61,7 +61,7 @@ func (m mockStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32,
 	return nil, nil
 }
 
-func (m mockStore) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) ([]logproto.Shard, error) {
+func (m mockStore) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {
 	return nil, nil
 }
 

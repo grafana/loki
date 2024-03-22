@@ -317,14 +317,17 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 	statsCtx, ctx := stats.NewContext(ctx)
 
 	resp, err := q.querier.IndexShards(ctx, req, targetBytesPerShard)
+	if err != nil {
+
+	}
+
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	resLength := 0
 	if resp != nil {
 		resLength = len(resp.Shards)
+		stats.JoinResults(ctx, resp.Statistics)
 	}
-
-	stats.JoinResults(ctx, resp.Statistics)
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 

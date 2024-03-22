@@ -365,7 +365,7 @@ func (s *testStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ ch
 	return nil, nil, nil
 }
 
-func (s *testStore) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) ([]logproto.Shard, error) {
+func (s *testStore) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {
 	return nil, nil
 }
 

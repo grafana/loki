@@ -131,7 +131,7 @@ func (c *IndexGatewayClientStore) GetShards(
 	from, through model.Time,
 	targetBytesPerShard uint64,
 	predicate chunk.Predicate,
-) ([]logproto.Shard, error) {
+) (*logproto.ShardsResponse, error) {
 	resp, err := c.client.GetShards(ctx, &logproto.ShardsRequest{
 		From:                from,
 		Through:             through,
@@ -141,7 +141,7 @@ func (c *IndexGatewayClientStore) GetShards(
 	if err != nil {
 		return nil, err
 	}
-	return resp.Shards, nil
+	return resp, nil
 }
 
 func (c *IndexGatewayClientStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {

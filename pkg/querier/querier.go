@@ -810,9 +810,7 @@ func (q *SingleTenantQuerier) IndexShards(
 	if err != nil {
 		return nil, err
 	}
-	return &logproto.ShardsResponse{
-		Shards: shards,
-	}, nil
+	return shards, nil
 }
 
 func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {

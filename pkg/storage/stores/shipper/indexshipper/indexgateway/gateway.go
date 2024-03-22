@@ -384,9 +384,7 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 			return err
 		}
 
-		return server.Send(&logproto.ShardsResponse{
-			Shards: shards,
-		})
+		return server.Send(shards)
 	}
 
 	return g.getShardsWithBlooms(ctx, request, server, instanceID, p, forSeries)

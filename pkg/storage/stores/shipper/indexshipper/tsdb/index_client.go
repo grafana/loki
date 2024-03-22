@@ -280,7 +280,7 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 	return acc.Volumes(), nil
 }
 
-func (c *IndexClient) GetShards(ctx context.Context, userID string, from, through model.Time, targetBytesPerShard uint64, predicate chunk.Predicate) ([]logproto.Shard, error) {
+func (c *IndexClient) GetShards(ctx context.Context, userID string, from, through model.Time, targetBytesPerShard uint64, predicate chunk.Predicate) (*logproto.ShardsResponse, error) {
 
 	// TODO(owen-d): perf, this is expensive :(
 	var mtx sync.Mutex
@@ -295,6 +295,8 @@ func (c *IndexClient) GetShards(ctx context.Context, userID string, from, throug
 		return nil, err
 	}
 
+	resp := &logproto.ShardsResponse{}
+
 	series := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(m)))
 	defer sharding.SizedFPsPool.Put(series)
 
@@ -302,16 +304,19 @@ func (c *IndexClient) GetShards(ctx context.Context, userID string, from, throug
 		x := sharding.SizedFP{Fp: fp}
 		deduped := chks.Finalize()
 		x.Stats.Chunks = uint64(len(deduped))
+		resp.Statistics.Index.TotalChunks += int64(len(deduped))
 
 		for _, chk := range deduped {
 			x.Stats.Entries += uint64(chk.Entries)
 			x.Stats.Bytes += uint64(chk.KB << 10)
 		}
+
 		series = append(series, x)
 	}
 	sort.Sort(series)
+	resp.Shards = series.ShardsFor(targetBytesPerShard)
 
-	return series.ShardsFor(targetBytesPerShard), nil
+	return resp, nil
 }
 
 // SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
