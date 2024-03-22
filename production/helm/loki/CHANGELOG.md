@@ -14,7 +14,7 @@ Entries should include a reference to the pull request that introduced the chang
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
 
-## 5.47.0
+## 5.48.0
 
 - [ENHANCEMENT] Added support for namespace overriding when installing in a multi-chart(dependency) setup.
 
