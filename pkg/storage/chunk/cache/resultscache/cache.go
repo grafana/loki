@@ -134,22 +134,17 @@ func (s ResultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	cacheFreshnessCapture := func(id string) time.Duration { return s.limits.MaxCacheFreshness(ctx, id) }
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
-	// if r.GetStart().UnixMilli() > maxCacheTime {
-	// 	return s.next.Do(ctx, r)
-	// }
+	if r.GetStart().UnixMilli() > maxCacheTime {
+		return s.next.Do(ctx, r)
+	}
 
-	// level.Info(s.logger).Log("method", "resultcache.do", "key", key)
 	cached, ok := s.get(ctx, key)
-	// _, _ = s.get(ctx, key)
-	// response, extents, err = s.handleMiss(ctx, r, maxCacheTime)
 	if ok {
 		response, extents, err = s.handleHit(ctx, r, cached, maxCacheTime)
-		// level.Info(s.logger).Log("method", "resultcache.do", "key", key, "msg", "cache-hit", "cached", ToRespJSON(cached), "response", response, "extents", ToRespJSON(extents))
 		level.Info(s.logger).Log("method", "resultcache.do", "key", key, "msg", "cache-hit")
 
 	} else {
 		response, extents, err = s.handleMiss(ctx, r, maxCacheTime)
-		// level.Info(s.logger).Log("method", "resultcache.do", "key", key, "msg", "cache-miss", "response", response, "extents", ToRespJSON(extents))
 		level.Info(s.logger).Log("method", "resultcache.do", "key", key, "msg", "cache-miss")
 	}
 
@@ -161,7 +156,6 @@ func (s ResultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		s.put(ctx, key, extents)
 	}
 
-	fmt.Println("Debug!!", "resultscache.Do", "key", key, "response", response.String())
 	return response, err
 }
 

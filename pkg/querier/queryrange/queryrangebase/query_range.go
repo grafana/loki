@@ -129,7 +129,7 @@ func NewEmptyPrometheusResponse() *PrometheusResponse {
 	return &PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
-			ResultType: model.ValMatrix.String(),
+			ResultType: model.ValVector.String(),
 			Result:     []SampleStream{},
 		},
 	}
@@ -155,7 +155,7 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	response := PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
-			ResultType: model.ValMatrix.String(),
+			ResultType: model.ValVector.String(),
 			Result:     matrixMerge(promResponses),
 		},
 	}
