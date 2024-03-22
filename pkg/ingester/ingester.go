@@ -468,7 +468,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		}
 		defer segmentCloser.Close()
 
-		segmentRecoveryErr := RecoverWAL(segmentReader, recoverer)
+		segmentRecoveryErr := RecoverWAL(ctx, segmentReader, recoverer)
 		if segmentRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
 			level.Error(i.logger).Log(
