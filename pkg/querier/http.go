@@ -317,10 +317,6 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 	statsCtx, ctx := stats.NewContext(ctx)
 
 	resp, err := q.querier.IndexShards(ctx, req, targetBytesPerShard)
-	if err != nil {
-
-	}
-
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	resLength := 0
