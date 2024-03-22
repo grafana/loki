@@ -2,10 +2,12 @@ package logql
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -388,6 +390,10 @@ func RecordShardsQueryMetrics(
 		latencyType = latencyTypeSlow
 	}
 
+	var bloomRatio float64
+	if stats.Index.TotalChunks > 0 {
+		bloomRatio = float64(stats.Index.PostFilterChunks) / float64(stats.Index.TotalChunks)
+	}
 	logValues := make([]interface{}, 0, 15)
 	logValues = append(logValues,
 		"latency", latencyType,
@@ -401,10 +407,11 @@ func RecordShardsQueryMetrics(
 		"status", status,
 		"query", query,
 		"query_hash", util.HashedQuery(query),
-		"target_bytes_per_shard", targetBytesPerShard,
+		"target_bytes_per_shard", datasize.ByteSize(targetBytesPerShard).HumanReadable(),
 		"shards", shards,
 		"total_chunks", stats.Index.TotalChunks,
 		"post_filter_chunks", stats.Index.PostFilterChunks,
+		"bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
 	)
 
 	level.Info(logger).Log(logValues...)
