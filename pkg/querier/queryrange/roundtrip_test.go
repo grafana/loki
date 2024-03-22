@@ -1401,7 +1401,7 @@ func counter() (*int, base.Handler) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
-		return base.NewEmptyPrometheusResponse(), nil
+		return base.NewEmptyPrometheusResponse(model.ValMatrix), nil
 	})
 }
 
