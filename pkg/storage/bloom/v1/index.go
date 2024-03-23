@@ -151,7 +151,16 @@ func (b *BlockIndex) DecodeHeaders(r io.ReadSeeker) (uint32, error) {
 }
 
 // decompress page and return an iterator over the bytes
-func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHeaderWithOffset) (*SeriesPageDecoder, error) {
+func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHeaderWithOffset, metrics *Metrics) (res *SeriesPageDecoder, err error) {
+	defer func() {
+		if err != nil {
+			metrics.pagesSkipped.WithLabelValues(pageTypeSeries, skipReasonErr).Inc()
+			metrics.bytesSkipped.WithLabelValues(pageTypeSeries).Add(float64(header.DecompressedLen))
+		} else {
+			metrics.pagesRead.WithLabelValues(pageTypeSeries).Inc()
+			metrics.bytesRead.WithLabelValues(pageTypeSeries).Add(float64(header.DecompressedLen))
+		}
+	}()
 
 	if _, err := r.Seek(int64(header.Offset), io.SeekStart); err != nil {
 		return nil, errors.Wrap(err, "seeking to series page")
@@ -159,7 +168,7 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 
 	data := BlockPool.Get(header.Len)[:header.Len]
 	defer BlockPool.Put(data)
-	_, err := io.ReadFull(r, data)
+	_, err = io.ReadFull(r, data)
 	if err != nil {
 		return nil, errors.Wrap(err, "reading series page")
 	}
@@ -180,7 +189,7 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 		return nil, errors.Wrap(err, "decompressing series page")
 	}
 
-	res := &SeriesPageDecoder{
+	res = &SeriesPageDecoder{
 		data:   decompressed,
 		header: header.SeriesHeader,
 	}

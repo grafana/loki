@@ -14,6 +14,7 @@ type BlockMetadata struct {
 }
 
 type Block struct {
+	metrics *Metrics
 	// covers series pages
 	index BlockIndex
 	// covers bloom pages
@@ -26,9 +27,10 @@ type Block struct {
 	initialized bool
 }
 
-func NewBlock(reader BlockReader) *Block {
+func NewBlock(reader BlockReader, metrics *Metrics) *Block {
 	return &Block{
-		reader: reader,
+		reader:  reader,
+		metrics: metrics,
 	}
 }
 
@@ -85,11 +87,6 @@ func (b *Block) LoadHeaders() error {
 // each part can be recomputed by XORing the result against the other
 func combineChecksums(index, blooms uint32) uint32 {
 	return index ^ blooms
-}
-
-// convenience method
-func (b *Block) Querier() *BlockQuerier {
-	return NewBlockQuerier(b)
 }
 
 func (b *Block) Series() *LazySeriesIter {

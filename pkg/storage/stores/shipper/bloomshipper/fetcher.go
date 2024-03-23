@@ -66,12 +66,21 @@ type Fetcher struct {
 
 	q *downloadQueue[BlockRef, BlockDirectory]
 
-	cfg     bloomStoreConfig
-	metrics *fetcherMetrics
-	logger  log.Logger
+	cfg          bloomStoreConfig
+	metrics      *fetcherMetrics
+	bloomMetrics *v1.Metrics
+	logger       log.Logger
 }
 
-func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blocksCache Cache, reg prometheus.Registerer, logger log.Logger) (*Fetcher, error) {
+func NewFetcher(
+	cfg bloomStoreConfig,
+	client Client,
+	metasCache cache.Cache,
+	blocksCache Cache,
+	reg prometheus.Registerer,
+	logger log.Logger,
+	bloomMetrics *v1.Metrics,
+) (*Fetcher, error) {
 	fetcher := &Fetcher{
 		cfg:             cfg,
 		client:          client,
@@ -79,6 +88,7 @@ func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blo
 		blocksCache:     blocksCache,
 		localFSResolver: NewPrefixedResolver(cfg.workingDir, defaultKeyResolver{}),
 		metrics:         newFetcherMetrics(reg, constants.Loki, "bloom_store"),
+		bloomMetrics:    bloomMetrics,
 		logger:          logger,
 	}
 	q, err := newDownloadQueue[BlockRef, BlockDirectory](downloadQueueCapacity, cfg.numWorkers, fetcher.processTask, logger)
@@ -218,9 +228,12 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 		}
 		found++
 		f.metrics.blocksFound.Inc()
-		results[i] = dir.BlockQuerier(func() error {
-			return f.blocksCache.Release(ctx, key)
-		})
+		results[i] = dir.BlockQuerier(
+			func() error {
+				return f.blocksCache.Release(ctx, key)
+			},
+			f.bloomMetrics,
+		)
 	}
 
 	// fetchAsync defines whether the function may return early or whether it
@@ -248,9 +261,12 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 		case res := <-responses:
 			found++
 			key := f.client.Block(refs[res.idx]).Addr()
-			results[res.idx] = res.item.BlockQuerier(func() error {
-				return f.blocksCache.Release(ctx, key)
-			})
+			results[res.idx] = res.item.BlockQuerier(
+				func() error {
+					return f.blocksCache.Release(ctx, key)
+				},
+				f.bloomMetrics,
+			)
 		}
 	}
 

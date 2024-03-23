@@ -17,7 +17,7 @@ func main() {
 	fmt.Printf("Block directory: %s\n", path)
 
 	r := v1.NewDirectoryBlockReader(path)
-	b := v1.NewBlock(r)
+	b := v1.NewBlock(r, v1.NewMetrics(nil))
 	q := v1.NewBlockQuerier(b)
 
 	md, err := q.Metadata()

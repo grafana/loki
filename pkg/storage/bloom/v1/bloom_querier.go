@@ -44,7 +44,7 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 			it.err = errors.Wrap(err, "getting blooms reader")
 			return
 		}
-		decoder, err := it.b.blooms.BloomPageDecoder(r, offset.Page)
+		decoder, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.b.metrics)
 		if err != nil {
 			it.err = errors.Wrap(err, "loading bloom page")
 			return
@@ -83,6 +83,7 @@ func (it *LazyBloomIter) next() bool {
 			it.curPage, err = it.b.blooms.BloomPageDecoder(
 				r,
 				it.curPageIndex,
+				it.b.metrics,
 			)
 			if err != nil {
 				it.err = err

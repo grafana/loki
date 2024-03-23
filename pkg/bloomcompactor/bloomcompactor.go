@@ -55,8 +55,7 @@ type Compactor struct {
 
 	sharding util_ring.TenantSharding
 
-	metrics   *Metrics
-	btMetrics *v1.Metrics
+	metrics *Metrics
 }
 
 func New(
@@ -67,7 +66,7 @@ func New(
 	fetcherProvider stores.ChunkFetcherProvider,
 	sharding util_ring.TenantSharding,
 	limits Limits,
-	store bloomshipper.Store,
+	store bloomshipper.StoreWithMetrics,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Compactor, error) {
@@ -78,6 +77,7 @@ func New(
 		sharding:   sharding,
 		limits:     limits,
 		bloomStore: store,
+		metrics:    NewMetrics(r, store.BloomMetrics()),
 	}
 
 	tsdbStore, err := NewTSDBStores(schemaCfg, storeCfg, clientMetrics, logger)
@@ -85,10 +85,6 @@ func New(
 		return nil, errors.Wrap(err, "failed to create TSDB store")
 	}
 	c.tsdbStore = tsdbStore
-
-	// initialize metrics
-	c.btMetrics = v1.NewMetrics(prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer_", r))
-	c.metrics = NewMetrics(r, c.btMetrics)
 
 	chunkLoader := NewStoreChunkLoader(
 		fetcherProvider,

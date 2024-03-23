@@ -50,7 +50,7 @@ func blocksFromSchemaWithRange(t *testing.T, n int, options v1.BlockOptions, fro
 		_, err = builder.BuildFrom(itr)
 		require.Nil(t, err)
 
-		res = append(res, v1.NewBlock(reader))
+		res = append(res, v1.NewBlock(reader, v1.NewMetrics(nil)))
 		ref := genBlockRef(data[minIdx].Series.Fingerprint, data[maxIdx-1].Series.Fingerprint)
 		t.Log("create block", ref)
 		refs = append(refs, ref)
@@ -152,7 +152,7 @@ func TestSimpleBloomGenerator(t *testing.T) {
 				expectedRefs := v1.PointerSlice(data)
 				outputRefs := make([]*v1.SeriesWithBloom, 0, len(data))
 				for _, block := range outputBlocks {
-					bq := block.Querier()
+					bq := v1.NewBlockQuerier(block, v1.NewMetrics(nil))
 					for bq.Next() {
 						outputRefs = append(outputRefs, bq.At())
 					}
