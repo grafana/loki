@@ -25,7 +25,6 @@ import (
 	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 	"github.com/grafana/loki/operator/internal/manifests"
-	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/status"
 )
 
@@ -215,12 +214,6 @@ func CreateOrUpdateLokiStack(
 
 	if errCount > 0 {
 		return "", kverrors.New("failed to configure lokistack resources", "name", req.NamespacedName)
-	}
-
-	// 1x.demo is used only for development, so the metrics will not
-	// be collected.
-	if opts.Stack.Size != lokiv1.SizeOneXDemo {
-		metrics.Collect(&opts.Stack, opts.Name)
 	}
 
 	return objStore.CredentialMode, nil

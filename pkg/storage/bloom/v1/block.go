@@ -148,25 +148,26 @@ func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {
 }
 
 func (bq *BlockQuerier) Next() bool {
-	if !bq.series.Next() {
-		return false
+	for bq.series.Next() {
+		series := bq.series.At()
+		bq.blooms.Seek(series.Offset)
+		if !bq.blooms.Next() {
+			// skip blocks that are too large
+			if errors.Is(bq.blooms.Err(), ErrPageTooLarge) {
+				// fmt.Printf("skipping bloom page: %s (%d)\n", series.Fingerprint, series.Chunks.Len())
+				bq.blooms.err = nil
+				continue
+			}
+			return false
+		}
+		bloom := bq.blooms.At()
+		bq.cur = &SeriesWithBloom{
+			Series: &series.Series,
+			Bloom:  bloom,
+		}
+		return true
 	}
-
-	series := bq.series.At()
-
-	bq.blooms.Seek(series.Offset)
-	if !bq.blooms.Next() {
-		return false
-	}
-
-	bloom := bq.blooms.At()
-
-	bq.cur = &SeriesWithBloom{
-		Series: &series.Series,
-		Bloom:  bloom,
-	}
-	return true
-
+	return false
 }
 
 func (bq *BlockQuerier) At() *SeriesWithBloom {
