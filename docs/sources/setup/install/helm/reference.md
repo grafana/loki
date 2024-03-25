@@ -2896,7 +2896,7 @@ null
 			<td><pre lang="json">
 {
   "name": "self-monitoring",
-  "secretNamespace": "{{ include "loki.namespace" . }}"
+  "secretNamespace": "{{ .Release.Namespace }}"
 }
 </pre>
 </td>
@@ -2915,7 +2915,7 @@ null
 			<td>string</td>
 			<td>Namespace to create additional tenant token secret in. Useful if your Grafana instance is in a separate namespace. Token will still be created in the canary namespace.</td>
 			<td><pre lang="json">
-"{{ include "loki.namespace" . }}"
+"{{ .Release.Namespace }}"
 </pre>
 </td>
 		</tr>
