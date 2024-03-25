@@ -257,6 +257,7 @@ func (c *BlocksCache) put(key string, value BlockDirectory) (*Entry, error) {
 			"hard_limit_bytes", c.cfg.HardLimit,
 		)
 		// TODO(chaudum): implement case
+		c.remove(entry)
 		return nil, errors.New("todo: implement waiting for evictions to free up space")
 	}
 
