@@ -35,6 +35,39 @@ func (b BloomTests) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefi
 	return true
 }
 
+// ExtractTestableLineFilters extracts all line filters from an expression
+// that can be tested against a bloom filter. This will skip any line filters
+// after a line format expression. A line format expression might add content
+// that the query later matches against, which can't be tested with a bloom filter.
+// E.g. For {app="fake"} |= "foo" | line_format "thisNewTextShouldMatch" |= "thisNewTextShouldMatch"
+// this function will return only the line filter for "foo" since the line filter for "thisNewTextShouldMatch"
+// wouldn't match against the bloom filter but should match against the query.
+func ExtractTestableLineFilters(expr syntax.Expr) []syntax.LineFilterExpr {
+	if expr == nil {
+		return nil
+	}
+
+	var filters []syntax.LineFilterExpr
+	var lineFmtFound bool
+	visitor := &syntax.DepthFirstTraversal{
+		VisitLineFilterFn: func(v syntax.RootVisitor, e *syntax.LineFilterExpr) {
+			if e != nil && !lineFmtFound {
+				filters = append(filters, *e)
+			}
+		},
+		VisitLineFmtFn: func(v syntax.RootVisitor, e *syntax.LineFmtExpr) {
+			if e != nil {
+				lineFmtFound = true
+			}
+		},
+	}
+	expr.Accept(visitor)
+	return filters
+}
+
+// FiltersToBloomTest converts a list of line filters to a BloomTest.
+// Note that all the line filters should be testable against a bloom filter.
+// Use ExtractTestableLineFilters to extract testable line filters from an expression.
 // TODO(owen-d): limits the number of bloom lookups run.
 // An arbitrarily high number can overconsume cpu and is a DoS vector.
 func FiltersToBloomTest(b NGramBuilder, filters ...syntax.LineFilterExpr) BloomTest {
