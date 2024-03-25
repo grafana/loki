@@ -3,7 +3,6 @@ package iter
 import (
 	"container/heap"
 	"context"
-	"go.uber.org/atomic"
 	"io"
 	"sync"
 
@@ -522,7 +521,7 @@ func NewSampleQueryResponseIterator(resp *logproto.SampleQueryResponse) SampleIt
 }
 
 type seriesIterator struct {
-	i      *atomic.Int32
+	i      int
 	series logproto.Series
 }
 
@@ -568,14 +567,14 @@ func NewMultiSeriesIterator(series []logproto.Series) SampleIterator {
 // NewSeriesIterator iterates over sample in a series.
 func NewSeriesIterator(series logproto.Series) SampleIterator {
 	return &seriesIterator{
-		i:      atomic.NewInt32(-1),
+		i:      -1,
 		series: series,
 	}
 }
 
 func (i *seriesIterator) Next() bool {
-	tmp := i.i.Add(1)
-	return int(tmp) < len(i.series.Samples)
+	i.i++
+	return i.i < len(i.series.Samples)
 }
 
 func (i *seriesIterator) Error() error {
@@ -591,7 +590,7 @@ func (i *seriesIterator) StreamHash() uint64 {
 }
 
 func (i *seriesIterator) Sample() logproto.Sample {
-	return i.series.Samples[i.i.Load()]
+	return i.series.Samples[i.i]
 }
 
 func (i *seriesIterator) Close() error {

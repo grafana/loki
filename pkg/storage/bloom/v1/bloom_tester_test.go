@@ -154,14 +154,19 @@ func TestFiltersToBloomTests(t *testing.T) {
 			bloom:       fakeBloom{"foo", "bar", "baz", "fuzz", "noz"},
 			expectMatch: false,
 		},
+		{
+			name:        "line filter after line format",
+			query:       `{app="fake"} |= "foo" | line_format "thisNewTextShouldMatch" |= "thisNewTextShouldMatch"`,
+			bloom:       fakeBloom{"foo"},
+			expectMatch: true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)
 			assert.NoError(t, err)
-			filters := syntax.ExtractLineFilters(expr)
+			filters := ExtractTestableLineFilters(expr)
 
 			bloomTests := FiltersToBloomTest(fakeNgramBuilder{}, filters...)
-
 			assert.Equal(t, tc.expectMatch, bloomTests.Matches(tc.bloom))
 		})
 	}

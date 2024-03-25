@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/plan"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
@@ -229,7 +230,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 
 	// Extract LineFiltersExpr from the plan. If there is none, we can short-circuit and return before making a req
 	// to the bloom-gateway (through the g.bloomQuerier)
-	if len(syntax.ExtractLineFilters(req.Plan.AST)) == 0 {
+	if len(v1.ExtractTestableLineFilters(req.Plan.AST)) == 0 {
 		return result, nil
 	}
 
