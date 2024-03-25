@@ -53,6 +53,7 @@ func NewJournalTargetManager(
 			pipeline.Wrap(client),
 			positions,
 			cfg.JobName,
+			pipeline,
 			cfg.RelabelConfigs,
 			cfg.JournalConfig,
 		)

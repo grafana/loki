@@ -33,7 +33,7 @@ type Histograms struct {
 }
 
 // NewHistograms creates a new histogram vec.
-func NewHistograms(name, help string, config interface{}, maxIdleSec int64) (*Histograms, error) {
+func NewHistograms(name, help string, config interface{}, maxIdleSec int64, registry prometheus.Registerer) (*Histograms, error) {
 	cfg, err := parseHistogramConfig(config)
 	if err != nil {
 		return nil, err
@@ -43,23 +43,27 @@ func NewHistograms(name, help string, config interface{}, maxIdleSec int64) (*Hi
 		return nil, err
 	}
 	return &Histograms{
-		metricVec: newMetricVec(func(labels map[string]string) prometheus.Metric {
+		metricVec: newMetricVec(func(labels map[string]string) CollectorMetric {
 			return &expiringHistogram{prometheus.NewHistogram(prometheus.HistogramOpts{
 				Help:        help,
 				Name:        name,
 				ConstLabels: labels,
 				Buckets:     cfg.Buckets,
 			}),
-				0,
+				time.Now().Unix(),
 			}
-		}, maxIdleSec),
+		}, maxIdleSec, registry),
 		Cfg: cfg,
 	}, nil
 }
 
 // With returns the histogram associated with a stream labelset.
-func (h *Histograms) With(labels model.LabelSet) prometheus.Histogram {
-	return h.metricVec.With(labels).(prometheus.Histogram)
+func (h *Histograms) With(labels model.LabelSet) (prometheus.Histogram, error) {
+	with, err := h.metricVec.With(labels)
+	if err != nil {
+		return nil, err
+	}
+	return with.(prometheus.Histogram), nil
 }
 
 type expiringHistogram struct {

@@ -38,7 +38,7 @@ func NewTargetManager(
 			return nil, err
 		}
 
-		t, err := New(logger, pipeline.Wrap(client), cfg.RelabelConfigs, cfg.WindowsConfig)
+		t, err := New(logger, pipeline.Wrap(client), pipeline, cfg.RelabelConfigs, cfg.WindowsConfig)
 		if err != nil {
 			return nil, err
 		}

@@ -56,6 +56,9 @@ type outputStage struct {
 	logger log.Logger
 }
 
+func (o *outputStage) Close() {
+}
+
 // Process implements Stage
 func (o *outputStage) Process(_ model.LabelSet, extracted map[string]interface{}, _ *time.Time, entry *string) {
 	if o.cfgs == nil {

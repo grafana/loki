@@ -281,7 +281,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 
 			prometheus.DefaultRegisterer = prometheus.NewRegistry()
 			metrics := NewMetrics(prometheus.DefaultRegisterer)
-			pt, err := NewTarget(metrics, logger, eh, "test_job", config, tc.args.RelabelConfigs)
+			pt, err := NewTarget(metrics, logger, eh, "test_job", config, nil, tc.args.RelabelConfigs)
 			require.NoError(t, err)
 			defer func() {
 				_ = pt.Stop()
@@ -342,7 +342,7 @@ func TestHerokuDrainTarget_UseIncomingTimestamp(t *testing.T) {
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := NewTarget(metrics, logger, eh, "test_job", config, nil)
+	pt, err := NewTarget(metrics, logger, eh, "test_job", config, nil, nil)
 	require.NoError(t, err)
 	defer func() {
 		_ = pt.Stop()
@@ -385,7 +385,7 @@ func TestHerokuDrainTarget_ErrorOnNotPrometheusCompatibleJobName(t *testing.T) {
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := NewTarget(metrics, logger, eh, "test-job", config, nil)
+	pt, err := NewTarget(metrics, logger, eh, "test-job", config, nil, nil)
 	require.Error(t, err, "expected an error from creating a heroku target with an invalid job name")
 	// Cleanup target in the case test failed and target started correctly
 	if err == nil {
@@ -420,7 +420,7 @@ func TestHerokuDrainTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 			Regex:        relabel.MustNewRegexp("(.*)"),
 		},
 	}
-	pt, err := NewTarget(metrics, logger, eh, "test_job", config, tenantIDRelabelConfig)
+	pt, err := NewTarget(metrics, logger, eh, "test_job", config, nil, tenantIDRelabelConfig)
 	require.NoError(t, err)
 	defer func() {
 		_ = pt.Stop()

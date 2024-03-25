@@ -18,6 +18,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
@@ -32,6 +33,7 @@ type Target struct {
 	cfg           *scrapeconfig.WindowsEventsTargetConfig
 	relabelConfig []*relabel.Config
 	logger        log.Logger
+	pipeline      *stages.Pipeline
 
 	bm      *bookMark // bookmark to save positions.
 	fetcher *win_eventlog.EventFetcher
@@ -46,6 +48,7 @@ type Target struct {
 func New(
 	logger log.Logger,
 	handler api.EntryHandler,
+	pipeline *stages.Pipeline,
 	relabel []*relabel.Config,
 	cfg *scrapeconfig.WindowsEventsTargetConfig,
 ) (*Target, error) {
@@ -65,6 +68,7 @@ func New(
 		cfg:           cfg,
 		bm:            bm,
 		relabelConfig: relabel,
+		pipeline:      pipeline,
 		logger:        logger,
 		handler:       handler,
 		fetcher:       win_eventlog.NewEventFetcher(),

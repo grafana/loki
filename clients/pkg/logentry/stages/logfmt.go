@@ -62,6 +62,9 @@ type logfmtStage struct {
 	logger         log.Logger
 }
 
+func (j *logfmtStage) Close() {
+}
+
 // newLogfmtStage creates a new logfmt pipeline stage from a config.
 func newLogfmtStage(logger log.Logger, config interface{}) (Stage, error) {
 	cfg, err := parseLogfmtConfig(config)

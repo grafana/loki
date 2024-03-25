@@ -45,6 +45,9 @@ type labelDropStage struct {
 	cfgs LabelDropConfig
 }
 
+func (l *labelDropStage) Close() {
+}
+
 // Process implements Stage
 func (l *labelDropStage) Process(labels model.LabelSet, _ map[string]interface{}, _ *time.Time, _ *string) {
 	for _, label := range l.cfgs {

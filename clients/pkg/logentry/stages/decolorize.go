@@ -6,6 +6,9 @@ import (
 
 type decolorizeStage struct{}
 
+func (m *decolorizeStage) Close() {
+}
+
 func newDecolorizeStage(_ interface{}) (Stage, error) {
 	return &decolorizeStage{}, nil
 }

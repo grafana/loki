@@ -106,6 +106,9 @@ type templateStage struct {
 	template *template.Template
 }
 
+func (o *templateStage) Close() {
+}
+
 // Process implements Stage
 func (o *templateStage) Process(_ model.LabelSet, extracted map[string]interface{}, _ *time.Time, entry *string) {
 	if o.cfgs == nil {

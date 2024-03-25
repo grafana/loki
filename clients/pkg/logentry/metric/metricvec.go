@@ -1,6 +1,7 @@
 package metric
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -11,25 +12,45 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+type UnregisterCollector interface {
+	Unregister()
+}
+
+type CollectorMetric interface {
+	prometheus.Collector
+	prometheus.Metric
+}
+
 // Expirable allows checking if something has exceeded the provided maxAge based on the provided currentTime
 type Expirable interface {
 	HasExpired(currentTimeSec int64, maxAgeSec int64) bool
 }
 
+var gcInterval = time.Minute
+
 type metricVec struct {
-	factory   func(labels map[string]string) prometheus.Metric
-	mtx       sync.Mutex
-	metrics   map[model.Fingerprint]prometheus.Metric
-	maxAgeSec int64
+	factory    func(labels map[string]string) CollectorMetric
+	mtx        sync.Mutex
+	metrics    map[model.Fingerprint]CollectorMetric
+	maxAgeSec  int64
+	registry   prometheus.Registerer
+	lastGcTime time.Time
 }
 
-func newMetricVec(factory func(labels map[string]string) prometheus.Metric, maxAgeSec int64) *metricVec {
+func newMetricVec(factory func(labels map[string]string) CollectorMetric, maxAgeSec int64, registry prometheus.Registerer) *metricVec {
 	return &metricVec{
-		metrics:   map[model.Fingerprint]prometheus.Metric{},
-		factory:   factory,
-		maxAgeSec: maxAgeSec,
+		metrics:    map[model.Fingerprint]CollectorMetric{},
+		factory:    factory,
+		maxAgeSec:  maxAgeSec,
+		registry:   registry,
+		lastGcTime: time.Now(),
 	}
 }
+
+func (c *metricVec) Unregister() {
+	if c.registry == nil {
+		return
+	}
 
 // Describe implements prometheus.Collector and doesn't declare any metrics on purpose to bypass prometheus validation.
 // see https://godoc.org/github.com/prometheus/client_golang/prometheus#hdr-Custom_Collectors_and_constant_Metrics search for "unchecked"
@@ -40,23 +61,33 @@ func (c *metricVec) Collect(ch chan<- prometheus.Metric) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	for _, m := range c.metrics {
-		ch <- m
+		c.registry.Unregister(m)
 	}
-	c.prune()
 }
 
 // With returns the metric associated with the labelset.
-func (c *metricVec) With(labels model.LabelSet) prometheus.Metric {
+func (c *metricVec) With(labels model.LabelSet) (prometheus.Metric, error) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	fp := labels.Fingerprint()
 	var ok bool
-	var metric prometheus.Metric
+	var metric CollectorMetric
 	if metric, ok = c.metrics[fp]; !ok {
 		metric = c.factory(util.ModelLabelSetToMap(cleanLabels(labels)))
+		if c.registry != nil {
+			err := c.registry.Register(metric)
+			if err != nil {
+				return nil, err
+			}
+		}
 		c.metrics[fp] = metric
 	}
-	return metric
+	now := time.Now()
+	if now.Sub(c.lastGcTime) > gcInterval {
+		c.prune()
+		c.lastGcTime = now
+	}
+	return metric, nil
 }
 
 // cleanLabels removes labels whose label name is not a valid prometheus one, or has the reserved `__` prefix.
@@ -91,6 +122,10 @@ func (c *metricVec) prune() {
 	for fp, m := range c.metrics {
 		if em, ok := m.(Expirable); ok {
 			if em.HasExpired(currentTimeSec, c.maxAgeSec) {
+				fmt.Println(em, "delete")
+				if c.registry != nil {
+					c.registry.Unregister(m)
+				}
 				delete(c.metrics, fp)
 			}
 		}

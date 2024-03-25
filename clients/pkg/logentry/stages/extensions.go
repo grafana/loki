@@ -54,6 +54,9 @@ type cri struct {
 	lock         sync.Mutex
 }
 
+func (c *cri) Close() {
+}
+
 // implement Stage interface
 func (c *cri) Name() string {
 	return "cri"

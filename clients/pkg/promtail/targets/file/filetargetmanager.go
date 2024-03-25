@@ -137,6 +137,7 @@ func NewFileTargetManager(
 			droppedTargets:    []target.Target{},
 			hostname:          hostname,
 			entryHandler:      pipeline.Wrap(client),
+			pipeline:          pipeline,
 			targetConfig:      targetConfig,
 			watchConfig:       watchConfig,
 			fileEventWatchers: map[string]chan fsnotify.Event{},
@@ -282,6 +283,7 @@ type targetSyncer struct {
 	log          log.Logger
 	positions    positions.Positions
 	entryHandler api.EntryHandler
+	pipeline     *stages.Pipeline
 	hostname     string
 
 	fileEventWatchers map[string]chan fsnotify.Event
@@ -498,6 +500,9 @@ func (s *targetSyncer) stop() {
 	for key, watcher := range s.fileEventWatchers {
 		close(watcher)
 		delete(s.fileEventWatchers, key)
+	}
+	if s.pipeline != nil {
+		s.pipeline.Close()
 	}
 	s.entryHandler.Stop()
 }

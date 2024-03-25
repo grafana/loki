@@ -61,6 +61,9 @@ type labelStage struct {
 	logger log.Logger
 }
 
+func (l *labelStage) Close() {
+}
+
 // Process implements Stage
 func (l *labelStage) Process(labels model.LabelSet, extracted map[string]interface{}, _ *time.Time, _ *string) {
 	processLabelsConfigs(l.logger, extracted, l.cfgs, func(labelName model.LabelName, labelValue model.LabelValue) {
