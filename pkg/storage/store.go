@@ -3,9 +3,10 @@ package storage
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/util/httpreq"
 	"math"
 	"time"
+
+	"github.com/grafana/loki/pkg/util/httpreq"
 
 	lokilog "github.com/grafana/loki/pkg/logql/log"
 

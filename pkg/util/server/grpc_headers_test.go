@@ -2,10 +2,12 @@ package server
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/util/httpreq"
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
-	"testing"
+
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 func TestInjectHTTPHeaderIntoGRPCRequest(t *testing.T) {

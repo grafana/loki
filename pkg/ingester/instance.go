@@ -3,13 +3,14 @@ package ingester
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/util/httpreq"
 	"math"
 	"net/http"
 	"os"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/grafana/loki/pkg/util/httpreq"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"

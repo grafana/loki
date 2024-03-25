@@ -3,13 +3,14 @@ package ingester
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/util/httpreq"
 	"math/rand"
 	"runtime"
 	"sort"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/pkg/util/httpreq"
 
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"

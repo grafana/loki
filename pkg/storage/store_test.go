@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/util/httpreq"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -13,6 +12,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/pkg/util/httpreq"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"

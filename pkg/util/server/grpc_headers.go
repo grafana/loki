@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/util/httpreq"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 func injectHTTPHeadersIntoGRPCRequest(ctx context.Context) context.Context {
