@@ -73,23 +73,30 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		Interval: interval,
 		Keyspace: v1.NewBounds(minFpRange.Min, maxFpRange.Max),
 	}
+
+	start := time.Now()
 	metas, err := p.store.FetchMetas(ctx, metaSearch)
+	duration := time.Since(start)
+	level.Debug(p.logger).Log("msg", "fetched metas", "count", len(metas), "duration", duration, "err", err)
+
+	for _, t := range tasks {
+		FromContext(t.ctx).AddFetchTime(duration)
+	}
+
 	if err != nil {
 		return err
 	}
 
 	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
-	level.Info(p.logger).Log("msg", "blocks for metas", "num_metas", len(metas), "num_blocks", len(blocksRefs))
-	return p.processBlocks(ctx, partitionTasks(tasks, blocksRefs))
-}
 
-func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) error {
+	data := partitionTasks(tasks, blocksRefs)
+
 	refs := make([]bloomshipper.BlockRef, 0, len(data))
 	for _, block := range data {
 		refs = append(refs, block.ref)
 	}
 
-	start := time.Now()
+	start = time.Now()
 	bqs, err := p.store.FetchBlocks(
 		ctx,
 		refs,
@@ -101,12 +108,21 @@ func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) er
 		// the underlying bloom []byte outside of iteration
 		bloomshipper.WithPool(true),
 	)
-	level.Debug(p.logger).Log("msg", "fetch blocks", "count", len(bqs), "duration", time.Since(start), "err", err)
+	duration = time.Since(start)
+	level.Debug(p.logger).Log("msg", "fetched blocks", "count", len(refs), "duration", duration, "err", err)
+
+	for _, t := range tasks {
+		FromContext(t.ctx).AddFetchTime(duration)
+	}
 
 	if err != nil {
 		return err
 	}
 
+	return p.processBlocks(ctx, bqs, data)
+}
+
+func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.CloseableBlockQuerier, data []blockWithTasks) error {
 	defer func() {
 		for i := range bqs {
 			if bqs[i] == nil {
@@ -178,10 +194,16 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 
 	start := time.Now()
 	err = fq.Run()
+	duration := time.Since(start)
+
 	if err != nil {
-		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelFailure).Observe(time.Since(start).Seconds())
+		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelFailure).Observe(duration.Seconds())
 	} else {
-		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelSuccess).Observe(time.Since(start).Seconds())
+		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelSuccess).Observe(duration.Seconds())
+	}
+
+	for _, task := range tasks {
+		FromContext(task.ctx).AddProcessingTime(duration)
 	}
 
 	return err

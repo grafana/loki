@@ -7,7 +7,10 @@ import (
 )
 
 type Stats struct {
-	QueueTime, FetchTime, ProcessingTime, PostProcessingTime time.Duration
+	Status                                                           string
+	NumTasks, NumFilters                                             int
+	ChunksRequested, ChunksFiltered, SeriesRequested, SeriesFiltered int
+	QueueTime, FetchTime, ProcessingTime, PostProcessingTime         time.Duration
 }
 
 type statsKey int
@@ -16,7 +19,9 @@ var ctxKey = statsKey(0)
 
 // ContextWithEmptyStats returns a context with empty stats.
 func ContextWithEmptyStats(ctx context.Context) (*Stats, context.Context) {
-	stats := &Stats{}
+	stats := &Stats{
+		Status: "unknown",
+	}
 	ctx = context.WithValue(ctx, ctxKey, stats)
 	return stats, ctx
 }
@@ -36,6 +41,13 @@ func (s *Stats) KVArgs() []any {
 		return []any{}
 	}
 	return []any{
+		"msg", "bloomgateway.FilterChunkRefs",
+		"status", s.Status,
+		"tasks", s.NumTasks,
+		"series_requested", s.SeriesRequested,
+		"series_filtered", s.SeriesFiltered,
+		"chunks_requested", s.ChunksRequested,
+		"chunks_filtered", s.ChunksFiltered,
 		"queue_time", s.QueueTime,
 		"fetch_time", s.FetchTime,
 		"processing_time", s.ProcessingTime,

@@ -206,7 +206,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		log.With(g.logger, "tenant", tenantID),
 		"bloomgateway.FilterChunkRefs",
 	)
-	defer sp.Finish()
+
+	stats, ctx := ContextWithEmptyStats(ctx)
+	defer func() {
+		level.Info(sp).Log(stats.KVArgs()...)
+		sp.Finish()
+	}()
 
 	// start time == end time --> empty response
 	if req.From.Equal(req.Through) {
@@ -221,6 +226,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	filters := v1.ExtractTestableLineFilters(req.Plan.AST)
+	stats.NumFilters = len(filters)
 	g.metrics.receivedFilters.Observe(float64(len(filters)))
 
 	// Shortcut if request does not contain filters
@@ -231,6 +237,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	seriesByDay := partitionRequest(req)
+	stats.NumTasks = len(seriesByDay)
 
 	// no tasks --> empty response
 	if len(seriesByDay) == 0 {
@@ -318,7 +325,10 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	sp.Log("msg", "received all responses")
 
+	start := time.Now()
 	filtered := filterChunkRefs(req, responses)
+	duration := time.Since(start)
+	stats.AddPostProcessingTime(duration)
 
 	// free up the responses
 	for _, resp := range responses {
@@ -337,10 +347,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	level.Info(sp).Log(
 		"msg", "return filtered chunk refs",
-		"requested_series", preFilterSeries,
-		"filtered_series", preFilterSeries-postFilterSeries,
-		"requested_chunks", preFilterChunks,
-		"filtered_chunks", preFilterChunks-postFilterChunks,
 	)
 	return &logproto.FilterChunkRefResponse{ChunkRefs: filtered}, nil
 }
