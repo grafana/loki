@@ -272,9 +272,9 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		ctx = httpreq.InjectActorPath(ctx, actor)
 	}
 
-	// Add keep original results
-	if originalResults, ok := req.Metadata[httpreq.LokiOriginalQueryResultsHeader]; ok {
-		ctx = httpreq.InjectHeader(ctx, httpreq.LokiOriginalQueryResultsHeader, originalResults)
+	// Add disable wrappers
+	if disableWrappers, ok := req.Metadata[httpreq.LokiDisablePipelineWrappersHeader]; ok {
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, disableWrappers)
 	}
 
 	// Add limits
@@ -369,10 +369,10 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 		result.Metadata[httpreq.LokiActorPathHeader] = actor
 	}
 
-	// Keep Original Results header
-	originalResults := httpreq.ExtractHeader(ctx, httpreq.LokiOriginalQueryResultsHeader)
-	if originalResults != "" {
-		result.Metadata[httpreq.LokiOriginalQueryResultsHeader] = originalResults
+	// Keep disable wrappers
+	disableWrappers := httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader)
+	if disableWrappers != "" {
+		result.Metadata[httpreq.LokiDisablePipelineWrappersHeader] = disableWrappers
 	}
 
 	// Add limits

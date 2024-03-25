@@ -612,9 +612,9 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		header.Set(httpreq.LokiActorPathHeader, actor)
 	}
 
-	// Add original results
-	if originalResults := httpreq.ExtractHeader(ctx, httpreq.LokiOriginalQueryResultsHeader); originalResults != "" {
-		header.Set(httpreq.LokiOriginalQueryResultsHeader, originalResults)
+	// Add disable wrappers
+	if disableWrappers := httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader); disableWrappers != "" {
+		header.Set(httpreq.LokiDisablePipelineWrappersHeader, disableWrappers)
 	}
 
 	// Add limits

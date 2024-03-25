@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	"math"
 	"time"
 
@@ -507,7 +508,7 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 		return nil, err
 	}
 
-	if s.pipelineWrapper != nil {
+	if s.pipelineWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
@@ -554,7 +555,7 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		return nil, err
 	}
 
-	if s.extractorWrapper != nil {
+	if s.extractorWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err

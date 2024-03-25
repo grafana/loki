@@ -12,8 +12,8 @@ type headerContextKey string
 
 var (
 	// LokiActorPathHeader is the name of the header e.g. used to enqueue requests in hierarchical queues.
-	LokiActorPathHeader            = "X-Loki-Actor-Path"
-	LokiOriginalQueryResultsHeader = "X-Loki-Original-Query-Results"
+	LokiActorPathHeader               = "X-Loki-Actor-Path"
+	LokiDisablePipelineWrappersHeader = "X-Loki-Disable-Pipeline-Wrappers"
 
 	// LokiActorPathDelimiter is the delimiter used to serialise the hierarchy of the actor.
 	LokiActorPathDelimiter = "|"

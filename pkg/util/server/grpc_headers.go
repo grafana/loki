@@ -8,7 +8,7 @@ import (
 )
 
 func injectHTTPHeadersIntoGRPCRequest(ctx context.Context) context.Context {
-	header := httpreq.ExtractHeader(ctx, httpreq.LokiOriginalQueryResultsHeader)
+	header := httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader)
 	if header == "" {
 		return ctx
 	}
@@ -19,7 +19,7 @@ func injectHTTPHeadersIntoGRPCRequest(ctx context.Context) context.Context {
 		md = metadata.New(map[string]string{})
 	}
 	md = md.Copy()
-	md.Set(httpreq.LokiOriginalQueryResultsHeader, header)
+	md.Set(httpreq.LokiDisablePipelineWrappersHeader, header)
 
 	return metadata.NewOutgoingContext(ctx, md)
 }
@@ -31,12 +31,12 @@ func extractHTTPHeadersFromGRPCRequest(ctx context.Context) context.Context {
 		return ctx
 	}
 
-	headerValues := md.Get(httpreq.LokiOriginalQueryResultsHeader)
+	headerValues := md.Get(httpreq.LokiDisablePipelineWrappersHeader)
 	if len(headerValues) == 0 {
 		return ctx
 	}
 
-	return httpreq.InjectHeader(ctx, httpreq.LokiOriginalQueryResultsHeader, headerValues[0])
+	return httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, headerValues[0])
 }
 
 func UnaryClientHTTPHeadersInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {

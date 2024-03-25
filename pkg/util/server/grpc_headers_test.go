@@ -16,13 +16,13 @@ func TestInjectHTTPHeaderIntoGRPCRequest(t *testing.T) {
 		{
 			name:           "creates new metadata and sets header",
 			header:         "true",
-			expectMetadata: metadata.New(map[string]string{httpreq.LokiOriginalQueryResultsHeader: "true"}),
+			expectMetadata: metadata.New(map[string]string{httpreq.LokiDisablePipelineWrappersHeader: "true"}),
 		},
 		{
 			name:           "sets header on existing metadata",
 			header:         "true",
 			md:             metadata.New(map[string]string{"x-foo": "bar"}),
-			expectMetadata: metadata.New(map[string]string{"x-foo": "bar", httpreq.LokiOriginalQueryResultsHeader: "true"}),
+			expectMetadata: metadata.New(map[string]string{"x-foo": "bar", httpreq.LokiDisablePipelineWrappersHeader: "true"}),
 		},
 		{
 			name:           "no header, leave metadata untouched",
@@ -37,7 +37,7 @@ func TestInjectHTTPHeaderIntoGRPCRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			if tt.header != "" {
-				ctx = httpreq.InjectHeader(context.Background(), httpreq.LokiOriginalQueryResultsHeader, tt.header)
+				ctx = httpreq.InjectHeader(context.Background(), httpreq.LokiDisablePipelineWrappersHeader, tt.header)
 			}
 
 			if tt.md != nil {
@@ -59,7 +59,7 @@ func TestExtractHTTPHeaderFromGRPCRequest(t *testing.T) {
 	}{
 		{
 			name:         "extracts header from metadata",
-			md:           metadata.New(map[string]string{httpreq.LokiOriginalQueryResultsHeader: "true"}),
+			md:           metadata.New(map[string]string{httpreq.LokiDisablePipelineWrappersHeader: "true"}),
 			expectedResp: "true",
 		},
 		{
@@ -73,7 +73,7 @@ func TestExtractHTTPHeaderFromGRPCRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := metadata.NewIncomingContext(context.Background(), tt.md)
 			ctx = extractHTTPHeadersFromGRPCRequest(ctx)
-			require.Equal(t, tt.expectedResp, httpreq.ExtractHeader(ctx, httpreq.LokiOriginalQueryResultsHeader))
+			require.Equal(t, tt.expectedResp, httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader))
 		})
 	}
 }
