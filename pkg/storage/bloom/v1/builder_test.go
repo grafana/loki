@@ -3,6 +3,7 @@ package v1
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"sort"
 	"testing"
 
@@ -12,6 +13,14 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/util/encoding"
 )
+
+var blockEncodings = []chunkenc.Encoding{
+	chunkenc.EncNone,
+	chunkenc.EncGZIP,
+	chunkenc.EncSnappy,
+	chunkenc.EncLZ4_256k,
+	chunkenc.EncZstd,
+}
 
 func TestBlockOptionsRoundTrip(t *testing.T) {
 	t.Parallel()
@@ -37,116 +46,117 @@ func TestBlockOptionsRoundTrip(t *testing.T) {
 	require.Equal(t, opts, got)
 }
 
-func TestBlockBuilderRoundTrip(t *testing.T) {
+func TestBlockBuilder_RoundTrip(t *testing.T) {
 	numSeries := 100
 	numKeysPerSeries := 10000
 	data, keys := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 
-	// references for linking in memory reader+writer
-	indexBuf := bytes.NewBuffer(nil)
-	bloomsBuf := bytes.NewBuffer(nil)
-	// directory for directory reader+writer
-	tmpDir := t.TempDir()
+	for _, enc := range blockEncodings {
+		// references for linking in memory reader+writer
+		indexBuf := bytes.NewBuffer(nil)
+		bloomsBuf := bytes.NewBuffer(nil)
+		// directory for directory reader+writer
+		tmpDir := t.TempDir()
 
-	for _, tc := range []struct {
-		desc               string
-		writer             BlockWriter
-		reader             BlockReader
-		maxBlockSize       uint64
-		iterHasPendingData bool
-	}{
-		{
-			desc:   "in-memory",
-			writer: NewMemoryBlockWriter(indexBuf, bloomsBuf),
-			reader: NewByteReader(indexBuf, bloomsBuf),
-		},
-		{
-			desc:   "directory",
-			writer: NewDirectoryBlockWriter(tmpDir),
-			reader: NewDirectoryBlockReader(tmpDir),
-		},
-		{
-			desc:   "max block size",
-			writer: NewDirectoryBlockWriter(tmpDir),
-			reader: NewDirectoryBlockReader(tmpDir),
-			// Set max block big enough to fit a bunch of series but not all of them
-			maxBlockSize:       50 << 10,
-			iterHasPendingData: true,
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			schema := Schema{
-				version:     DefaultSchemaVersion,
-				encoding:    chunkenc.EncSnappy,
-				nGramLength: 10,
-				nGramSkip:   2,
-			}
-
-			builder, err := NewBlockBuilder(
-				BlockOptions{
-					Schema:         schema,
+		for _, tc := range []struct {
+			desc               string
+			writer             BlockWriter
+			reader             BlockReader
+			maxBlockSize       uint64
+			iterHasPendingData bool
+		}{
+			{
+				desc:   "in-memory",
+				writer: NewMemoryBlockWriter(indexBuf, bloomsBuf),
+				reader: NewByteReader(indexBuf, bloomsBuf),
+			},
+			{
+				desc:   "directory",
+				writer: NewDirectoryBlockWriter(tmpDir),
+				reader: NewDirectoryBlockReader(tmpDir),
+			},
+			{
+				desc:   "max block size",
+				writer: NewDirectoryBlockWriter(tmpDir),
+				reader: NewDirectoryBlockReader(tmpDir),
+				// Set max block big enough to fit a bunch of series but not all of them
+				maxBlockSize:       50 << 10,
+				iterHasPendingData: true,
+			},
+		} {
+			desc := fmt.Sprintf("%s/%s", tc.desc, enc)
+			t.Run(desc, func(t *testing.T) {
+				blockOpts := BlockOptions{
+					Schema: Schema{
+						version:     DefaultSchemaVersion,
+						encoding:    enc,
+						nGramLength: 10,
+						nGramSkip:   2,
+					},
 					SeriesPageSize: 100,
 					BloomPageSize:  10 << 10,
 					BlockSize:      tc.maxBlockSize,
-				},
-				tc.writer,
-			)
-
-			require.Nil(t, err)
-			itr := NewPeekingIter[SeriesWithBloom](NewSliceIter[SeriesWithBloom](data))
-			_, err = builder.BuildFrom(itr)
-			require.Nil(t, err)
-
-			firstPendingSeries, iterHasPendingData := itr.Peek()
-			require.Equal(t, tc.iterHasPendingData, iterHasPendingData)
-
-			processedData := data
-			if iterHasPendingData {
-				lastProcessedIdx := sort.Search(len(data), func(i int) bool {
-					return data[i].Series.Fingerprint >= firstPendingSeries.Series.Fingerprint
-				})
-				processedData = data[:lastProcessedIdx]
-			}
-
-			block := NewBlock(tc.reader)
-			querier := NewBlockQuerier(block)
-
-			err = block.LoadHeaders()
-			require.Nil(t, err)
-			require.Equal(t, block.blooms.schema, schema)
-
-			// Check processed data can be queried
-			for i := 0; i < len(processedData); i++ {
-				require.Equal(t, true, querier.Next(), "on iteration %d with error %v", i, querier.Err())
-				got := querier.At()
-				require.Equal(t, processedData[i].Series, got.Series)
-				for _, key := range keys[i] {
-					require.True(t, got.Bloom.Test(key))
 				}
-				require.NoError(t, querier.Err())
-			}
-			// ensure it's exhausted
-			require.False(t, querier.Next())
 
-			// test seek
-			if !iterHasPendingData {
-				i := numSeries / 2
-				halfData := data[i:]
-				halfKeys := keys[i:]
-				require.NoError(t, querier.Seek(halfData[0].Series.Fingerprint))
-				for j := 0; j < len(halfData); j++ {
-					require.Equal(t, true, querier.Next(), "on iteration %d", j)
+				builder, err := NewBlockBuilder(blockOpts, tc.writer)
+
+				require.Nil(t, err)
+				itr := NewPeekingIter[SeriesWithBloom](NewSliceIter[SeriesWithBloom](data))
+				_, err = builder.BuildFrom(itr)
+				require.Nil(t, err)
+
+				firstPendingSeries, iterHasPendingData := itr.Peek()
+				require.Equal(t, tc.iterHasPendingData, iterHasPendingData)
+
+				processedData := data
+				if iterHasPendingData {
+					lastProcessedIdx := sort.Search(len(data), func(i int) bool {
+						return data[i].Series.Fingerprint >= firstPendingSeries.Series.Fingerprint
+					})
+					processedData = data[:lastProcessedIdx]
+				}
+
+				block := NewBlock(tc.reader)
+				querier := NewBlockQuerier(block)
+
+				err = block.LoadHeaders()
+				require.Nil(t, err)
+				require.Equal(t, block.blooms.schema, blockOpts.Schema)
+
+				// Check processed data can be queried
+				for i := 0; i < len(processedData); i++ {
+					require.Equal(t, true, querier.Next(), "on iteration %d with error %v", i, querier.Err())
 					got := querier.At()
-					require.Equal(t, halfData[j].Series, got.Series)
-					for _, key := range halfKeys[j] {
+					require.Equal(t, processedData[i].Series, got.Series)
+					for _, key := range keys[i] {
 						require.True(t, got.Bloom.Test(key))
 					}
 					require.NoError(t, querier.Err())
 				}
+				// ensure it's exhausted
 				require.False(t, querier.Next())
-			}
 
-		})
+				// test seek
+				if !iterHasPendingData {
+					i := numSeries / 2
+					halfData := data[i:]
+					halfKeys := keys[i:]
+					require.NoError(t, querier.Seek(halfData[0].Series.Fingerprint))
+					for j := 0; j < len(halfData); j++ {
+						require.Equal(t, true, querier.Next(), "on iteration %d", j)
+						got := querier.At()
+						require.Equal(t, halfData[j].Series, got.Series)
+						for _, key := range halfKeys[j] {
+							require.True(t, got.Bloom.Test(key))
+						}
+						require.NoError(t, querier.Err())
+					}
+					require.False(t, querier.Next())
+				}
+
+			})
+		}
+
 	}
 }
 
@@ -308,6 +318,7 @@ func TestBlockReset(t *testing.T) {
 // one copy of the first set (duplicate data) and one copy of the second set (disjoint data).
 func TestMergeBuilder_Roundtrip(t *testing.T) {
 	t.Parallel()
+
 	numSeries := 100
 	numKeysPerSeries := 100
 	minTs, maxTs := model.Time(0), model.Time(10000)
@@ -322,6 +333,17 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 		1, // 1 block containing disjoint data
 	}
 
+	blockOpts := BlockOptions{
+		Schema: Schema{
+			version:     DefaultSchemaVersion,
+			encoding:    chunkenc.EncSnappy, // test with different encodings?
+			nGramLength: 4,                  // needs to match values from MkBasicSeriesWithBlooms
+			nGramSkip:   0,                  // needs to match values from MkBasicSeriesWithBlooms
+		},
+		SeriesPageSize: 100,
+		BloomPageSize:  10 << 10,
+	}
+
 	for i, copies := range sets {
 		for j := 0; j < copies; j++ {
 			// references for linking in memory reader+writer
@@ -331,17 +353,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 			writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 			reader := NewByteReader(indexBuf, bloomsBuf)
 
-			builder, err := NewBlockBuilder(
-				BlockOptions{
-					Schema: Schema{
-						version:  DefaultSchemaVersion,
-						encoding: chunkenc.EncSnappy,
-					},
-					SeriesPageSize: 100,
-					BloomPageSize:  10 << 10,
-				},
-				writer,
-			)
+			builder, err := NewBlockBuilder(blockOpts, writer)
 
 			require.Nil(t, err)
 			// each set of copies gets a different slice of the data
@@ -402,12 +414,12 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 		},
 		NewMetrics(nil),
 	)
-	builder, err := NewBlockBuilder(DefaultBlockOptions, writer)
+	builder, err := NewBlockBuilder(blockOpts, writer)
 	require.Nil(t, err)
 
 	checksum, _, err := mb.Build(builder)
 	require.Nil(t, err)
-	require.Equal(t, uint32(0x30712486), checksum)
+	require.Equal(t, uint32(0xc7b4210b), checksum)
 
 	// ensure the new block contains one copy of all the data
 	// by comparing it against an iterator over the source data

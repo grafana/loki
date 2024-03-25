@@ -97,6 +97,11 @@ func TestMappingEquivalence(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics, []string{})
+			// TODO (callum) refactor this test so that we won't need to set every
+			// possible sharding config option to true when we have multiple in the future
+			if tc.approximate {
+				mapper.quantileOverTimeSharding = true
+			}
 			_, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.NoError(t, err)
 

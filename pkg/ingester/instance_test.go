@@ -714,22 +714,19 @@ func Test_PipelineWrapper(t *testing.T) {
 
 	require.Equal(t, "test-user", wrapper.tenant)
 	require.Equal(t, `{job="3"}`, wrapper.query)
-	require.Equal(t, 1, wrapper.shards)
 	require.Equal(t, 10, wrapper.pipeline.sp.called) // we've passed every log line through the wrapper
 }
 
 type testPipelineWrapper struct {
 	query    string
 	tenant   string
-	shards   int
 	pipeline *mockPipeline
 }
 
-func (t *testPipelineWrapper) Wrap(_ context.Context, pipeline log.Pipeline, query, tenant string, shard int) log.Pipeline {
+func (t *testPipelineWrapper) Wrap(_ context.Context, pipeline log.Pipeline, query, tenant string) log.Pipeline {
 	t.tenant = tenant
 	t.query = query
 	t.pipeline.wrappedExtractor = pipeline
-	t.shards = shard
 	return t.pipeline
 }
 
@@ -807,22 +804,19 @@ func Test_ExtractorWrapper(t *testing.T) {
 	}
 
 	require.Equal(t, `sum(count_over_time({job="3"}[1m]))`, wrapper.query)
-	require.Equal(t, 1, wrapper.shards)
 	require.Equal(t, 10, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
 }
 
 type testExtractorWrapper struct {
 	query     string
 	tenant    string
-	shards    int
 	extractor *mockExtractor
 }
 
-func (t *testExtractorWrapper) Wrap(_ context.Context, extractor log.SampleExtractor, query, tenant string, shard int) log.SampleExtractor {
+func (t *testExtractorWrapper) Wrap(_ context.Context, extractor log.SampleExtractor, query, tenant string) log.SampleExtractor {
 	t.tenant = tenant
 	t.query = query
 	t.extractor.wrappedExtractor = extractor
-	t.shards = shard
 	return t.extractor
 }
 
