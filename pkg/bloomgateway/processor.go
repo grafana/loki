@@ -80,7 +80,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 	level.Debug(p.logger).Log("msg", "fetched metas", "count", len(metas), "duration", duration, "err", err)
 
 	for _, t := range tasks {
-		FromContext(t.ctx).AddFetchTime(duration)
+		FromContext(t.ctx).AddMetasFetchTime(duration)
 	}
 
 	if err != nil {
@@ -112,7 +112,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 	level.Debug(p.logger).Log("msg", "fetched blocks", "count", len(refs), "duration", duration, "err", err)
 
 	for _, t := range tasks {
-		FromContext(t.ctx).AddFetchTime(duration)
+		FromContext(t.ctx).AddBlocksFetchTime(duration)
 	}
 
 	if err != nil {

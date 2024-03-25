@@ -7,10 +7,10 @@ import (
 )
 
 type Stats struct {
-	Status                                                           string
-	NumTasks, NumFilters                                             int
-	ChunksRequested, ChunksFiltered, SeriesRequested, SeriesFiltered int
-	QueueTime, FetchTime, ProcessingTime, PostProcessingTime         time.Duration
+	Status                                                                         string
+	NumTasks, NumFilters                                                           int
+	ChunksRequested, ChunksFiltered, SeriesRequested, SeriesFiltered               int
+	QueueTime, MetasFetchTime, BlocksFetchTime, ProcessingTime, PostProcessingTime time.Duration
 }
 
 type statsKey int
@@ -49,7 +49,8 @@ func (s *Stats) KVArgs() []any {
 		"chunks_requested", s.ChunksRequested,
 		"chunks_filtered", s.ChunksFiltered,
 		"queue_time", s.QueueTime,
-		"fetch_time", s.FetchTime,
+		"metas_fetch_time", s.MetasFetchTime,
+		"blocks_fetch_time", s.BlocksFetchTime,
 		"processing_time", s.ProcessingTime,
 		"post_processing_time", s.PostProcessingTime,
 	}
@@ -62,11 +63,18 @@ func (s *Stats) AddQueueTime(t time.Duration) {
 	atomic.AddInt64((*int64)(&s.QueueTime), int64(t))
 }
 
-func (s *Stats) AddFetchTime(t time.Duration) {
+func (s *Stats) AddMetasFetchTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	atomic.AddInt64((*int64)(&s.FetchTime), int64(t))
+	atomic.AddInt64((*int64)(&s.MetasFetchTime), int64(t))
+}
+
+func (s *Stats) AddBlocksFetchTime(t time.Duration) {
+	if s == nil {
+		return
+	}
+	atomic.AddInt64((*int64)(&s.BlocksFetchTime), int64(t))
 }
 
 func (s *Stats) AddProcessingTime(t time.Duration) {
