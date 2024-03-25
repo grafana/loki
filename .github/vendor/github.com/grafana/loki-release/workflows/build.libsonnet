@@ -60,7 +60,7 @@ local releaseLibStep = common.releaseLibStep;
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
-        destination: 'loki-build-artifacts/${{ github.sha }}/images',  //TODO: make bucket configurable
+        destination: '${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images',  //TODO: make bucket configurable
         process_gcloudignore: false,
       }),
     ]),
@@ -211,7 +211,7 @@ local releaseLibStep = common.releaseLibStep;
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/dist',
-        destination: 'loki-build-artifacts/${{ github.sha }}',  //TODO: make bucket configurable
+        destination: '${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}',  //TODO: make bucket configurable
         process_gcloudignore: false,
       }),
     ]),
