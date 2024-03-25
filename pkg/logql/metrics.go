@@ -195,6 +195,12 @@ func RecordRangeAndInstantQueryMetrics(
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
 
+	if httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) == "true" {
+		logValues = append(logValues, "disable_pipeline_wrappers", "true")
+	} else {
+		logValues = append(logValues, "disable_pipeline_wrappers", "false")
+	}
+
 	level.Info(logger).Log(
 		logValues...,
 	)
