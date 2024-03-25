@@ -49,7 +49,7 @@ func TestFusedQuerier(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, itr.Next())
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, true)
+	querier := NewBlockQuerier(block, true, DefaultMaxPageSize)
 
 	n := 2
 	nReqs := numSeries / n
@@ -143,7 +143,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 	_, err = builder.BuildFrom(itr)
 	require.Nil(b, err)
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, true)
+	querier := NewBlockQuerier(block, true, DefaultMaxPageSize)
 
 	numRequestChains := 100
 	seriesPerRequest := 100

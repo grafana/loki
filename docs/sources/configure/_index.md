@@ -2362,6 +2362,11 @@ bloom_shipper:
   # CLI flag: -bloom.shipper.working-directory
   [working_directory: <string> | default = "bloom-shipper"]
 
+  # Maximum size of bloom pages that should be queried. Larger pages than this
+  # limit are skipped when querying blooms to limit memory usage.
+  # CLI flag: -bloom.max-query-page-size
+  [max_query_page_size: <int> | default = 64MiB]
+
   blocks_downloading_queue:
     # The count of parallel workers that download Bloom Blocks.
     # CLI flag: -bloom.shipper.blocks-downloading-queue.workers-count

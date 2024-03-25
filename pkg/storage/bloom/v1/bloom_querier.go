@@ -10,6 +10,7 @@ type LazyBloomIter struct {
 	usePool bool
 
 	b *Block
+	m int // max page size in bytes
 
 	// state
 	initialized  bool
@@ -23,10 +24,11 @@ type LazyBloomIter struct {
 // will be returned to the pool for efficiency.
 // This can only safely be used when the underlying bloom
 // bytes don't escape the decoder.
-func NewLazyBloomIter(b *Block, pool bool) *LazyBloomIter {
+func NewLazyBloomIter(b *Block, pool bool, maxSize int) *LazyBloomIter {
 	return &LazyBloomIter{
 		usePool: pool,
 		b:       b,
+		m:       maxSize,
 	}
 }
 
@@ -58,7 +60,7 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 			it.err = errors.Wrap(err, "getting blooms reader")
 			return
 		}
-		decoder, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.b.metrics)
+		decoder, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.m, it.b.metrics)
 		if err != nil {
 			it.err = errors.Wrap(err, "loading bloom page")
 			return
@@ -97,6 +99,7 @@ func (it *LazyBloomIter) next() bool {
 			it.curPage, err = it.b.blooms.BloomPageDecoder(
 				r,
 				it.curPageIndex,
+				it.m,
 				it.b.metrics,
 			)
 			if err != nil {

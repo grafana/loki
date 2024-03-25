@@ -41,8 +41,9 @@ type StoreWithMetrics interface {
 }
 
 type bloomStoreConfig struct {
-	workingDir string
-	numWorkers int
+	workingDir       string
+	numWorkers       int
+	maxBloomPageSize int
 }
 
 // Compiler check to ensure bloomStoreEntry implements the Store interface
@@ -192,8 +193,9 @@ func NewBloomStore(
 
 	// TODO(chaudum): Remove wrapper
 	cfg := bloomStoreConfig{
-		workingDir: storageConfig.BloomShipperConfig.WorkingDirectory,
-		numWorkers: storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
+		workingDir:       storageConfig.BloomShipperConfig.WorkingDirectory,
+		numWorkers:       storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
+		maxBloomPageSize: int(storageConfig.BloomShipperConfig.MaxQueryPageSize),
 	}
 
 	if err := util.EnsureDirectory(cfg.workingDir); err != nil {
