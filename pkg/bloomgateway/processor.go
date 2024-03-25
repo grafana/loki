@@ -97,13 +97,21 @@ func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) er
 		return err
 	}
 
+	defer func() {
+		for i := range bqs {
+			if bqs[i] == nil {
+				continue
+			}
+			bqs[i].Close()
+		}
+	}()
+
 	return concurrency.ForEachJob(ctx, len(bqs), p.concurrency, func(ctx context.Context, i int) error {
 		bq := bqs[i]
 		if bq == nil {
 			// TODO(chaudum): Add metric for skipped blocks
 			return nil
 		}
-		defer bq.Close()
 
 		block := data[i]
 		level.Debug(p.logger).Log(
