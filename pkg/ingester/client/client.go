@@ -91,6 +91,7 @@ func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamC
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, cfg.GRPCUnaryClientInterceptors...)
 	unaryInterceptors = append(unaryInterceptors, server.UnaryClientQueryTagsInterceptor)
+	unaryInterceptors = append(unaryInterceptors, server.UnaryClientHTTPHeadersInterceptor)
 	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
 	if !cfg.Internal {
 		unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
@@ -100,6 +101,7 @@ func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamC
 	var streamInterceptors []grpc.StreamClientInterceptor
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
 	streamInterceptors = append(streamInterceptors, server.StreamClientQueryTagsInterceptor)
+	streamInterceptors = append(streamInterceptors, server.StreamClientHTTPHeadersInterceptor)
 	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
 	if !cfg.Internal {
 		streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
