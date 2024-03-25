@@ -7,6 +7,7 @@
 package pmetric
 
 import (
+	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 )
 
@@ -18,11 +19,12 @@ import (
 // Must use NewGauge function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type Gauge struct {
-	orig *otlpmetrics.Gauge
+	orig  *otlpmetrics.Gauge
+	state *internal.State
 }
 
-func newGauge(orig *otlpmetrics.Gauge) Gauge {
-	return Gauge{orig}
+func newGauge(orig *otlpmetrics.Gauge, state *internal.State) Gauge {
+	return Gauge{orig: orig, state: state}
 }
 
 // NewGauge creates a new empty Gauge.
@@ -30,22 +32,26 @@ func newGauge(orig *otlpmetrics.Gauge) Gauge {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewGauge() Gauge {
-	return newGauge(&otlpmetrics.Gauge{})
+	state := internal.StateMutable
+	return newGauge(&otlpmetrics.Gauge{}, &state)
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
 // resetting the current instance to its zero value
 func (ms Gauge) MoveTo(dest Gauge) {
+	ms.state.AssertMutable()
+	dest.state.AssertMutable()
 	*dest.orig = *ms.orig
 	*ms.orig = otlpmetrics.Gauge{}
 }
 
 // DataPoints returns the DataPoints associated with this Gauge.
 func (ms Gauge) DataPoints() NumberDataPointSlice {
-	return newNumberDataPointSlice(&ms.orig.DataPoints)
+	return newNumberDataPointSlice(&ms.orig.DataPoints, ms.state)
 }
 
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Gauge) CopyTo(dest Gauge) {
+	dest.state.AssertMutable()
 	ms.DataPoints().CopyTo(dest.DataPoints())
 }

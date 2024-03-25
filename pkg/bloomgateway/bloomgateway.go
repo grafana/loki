@@ -114,7 +114,8 @@ func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus
 		logger:  logger,
 		metrics: newMetrics(reg, constants.Loki, metricsSubsystem),
 		workerConfig: workerConfig{
-			maxItems: cfg.NumMultiplexItems,
+			maxItems:         cfg.NumMultiplexItems,
+			queryConcurrency: cfg.BlockQueryConcurrency,
 		},
 		pendingTasks: &atomic.Int64{},
 
@@ -218,6 +219,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	filters := syntax.ExtractLineFilters(req.Plan.AST)
+	g.metrics.receivedFilters.Observe(float64(len(filters)))
 
 	// Shortcut if request does not contain filters
 	if len(filters) == 0 {

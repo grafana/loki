@@ -90,11 +90,11 @@ func (m *mockCompactorClient) SetDeleteRequests(d []DeleteRequest) {
 }
 
 func (m *mockCompactorClient) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]DeleteRequest, error) {
+	m.mx.Lock()
+	defer m.mx.Unlock()
 	if m.err != nil {
 		return nil, m.err
 	}
-	m.mx.Lock()
-	defer m.mx.Unlock()
 	return m.delRequests, nil
 }
 
@@ -113,5 +113,7 @@ func (m *mockCompactorClient) Name() string {
 func (m *mockCompactorClient) Stop() {}
 
 func (m *mockCompactorClient) SetErr(err error) {
+	m.mx.Lock()
+	defer m.mx.Unlock()
 	m.err = err
 }

@@ -1,6 +1,7 @@
 package push
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"testing"
@@ -517,7 +518,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stats := newPushStats()
-			pushReq := otlpToLokiPushRequest(tc.generateLogs(), "foo", fakeRetention{}, tc.otlpConfig, tc.tracker, stats)
+			pushReq := otlpToLokiPushRequest(context.Background(), tc.generateLogs(), "foo", fakeRetention{}, tc.otlpConfig, tc.tracker, stats)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
 		})

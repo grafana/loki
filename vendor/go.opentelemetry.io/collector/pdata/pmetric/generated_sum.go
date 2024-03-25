@@ -7,6 +7,7 @@
 package pmetric
 
 import (
+	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 )
 
@@ -18,11 +19,12 @@ import (
 // Must use NewSum function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type Sum struct {
-	orig *otlpmetrics.Sum
+	orig  *otlpmetrics.Sum
+	state *internal.State
 }
 
-func newSum(orig *otlpmetrics.Sum) Sum {
-	return Sum{orig}
+func newSum(orig *otlpmetrics.Sum, state *internal.State) Sum {
+	return Sum{orig: orig, state: state}
 }
 
 // NewSum creates a new empty Sum.
@@ -30,12 +32,15 @@ func newSum(orig *otlpmetrics.Sum) Sum {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewSum() Sum {
-	return newSum(&otlpmetrics.Sum{})
+	state := internal.StateMutable
+	return newSum(&otlpmetrics.Sum{}, &state)
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
 // resetting the current instance to its zero value
 func (ms Sum) MoveTo(dest Sum) {
+	ms.state.AssertMutable()
+	dest.state.AssertMutable()
 	*dest.orig = *ms.orig
 	*ms.orig = otlpmetrics.Sum{}
 }
@@ -47,6 +52,7 @@ func (ms Sum) AggregationTemporality() AggregationTemporality {
 
 // SetAggregationTemporality replaces the aggregationtemporality associated with this Sum.
 func (ms Sum) SetAggregationTemporality(v AggregationTemporality) {
+	ms.state.AssertMutable()
 	ms.orig.AggregationTemporality = otlpmetrics.AggregationTemporality(v)
 }
 
@@ -57,16 +63,18 @@ func (ms Sum) IsMonotonic() bool {
 
 // SetIsMonotonic replaces the ismonotonic associated with this Sum.
 func (ms Sum) SetIsMonotonic(v bool) {
+	ms.state.AssertMutable()
 	ms.orig.IsMonotonic = v
 }
 
 // DataPoints returns the DataPoints associated with this Sum.
 func (ms Sum) DataPoints() NumberDataPointSlice {
-	return newNumberDataPointSlice(&ms.orig.DataPoints)
+	return newNumberDataPointSlice(&ms.orig.DataPoints, ms.state)
 }
 
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Sum) CopyTo(dest Sum) {
+	dest.state.AssertMutable()
 	dest.SetAggregationTemporality(ms.AggregationTemporality())
 	dest.SetIsMonotonic(ms.IsMonotonic())
 	ms.DataPoints().CopyTo(dest.DataPoints())

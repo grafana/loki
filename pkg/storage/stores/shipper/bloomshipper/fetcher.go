@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dolthub/swiss"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -20,7 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
-var downloadQueueCapacity = 100000
+var downloadQueueCapacity = 10000
 
 type options struct {
 	ignoreNotFound bool // ignore 404s from object storage; default=true
@@ -60,7 +61,7 @@ type Fetcher struct {
 	client Client
 
 	metasCache      cache.Cache
-	blocksCache     cache.TypedCache[string, BlockDirectory]
+	blocksCache     Cache
 	localFSResolver KeyResolver
 
 	q *downloadQueue[BlockRef, BlockDirectory]
@@ -70,7 +71,7 @@ type Fetcher struct {
 	logger  log.Logger
 }
 
-func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blocksCache cache.TypedCache[string, BlockDirectory], reg prometheus.Registerer, logger log.Logger) (*Fetcher, error) {
+func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blocksCache Cache, reg prometheus.Registerer, logger log.Logger) (*Fetcher, error) {
 	fetcher := &Fetcher{
 		cfg:             cfg,
 		client:          client,
@@ -193,7 +194,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 	var enqueueTime time.Duration
 	for i := 0; i < n; i++ {
 		key := f.client.Block(refs[i]).Addr()
-		dir, isFound, err := f.getBlockDir(ctx, key)
+		dir, isFound, err := f.fromCache(ctx, key)
 		if err != nil {
 			return results, err
 		}
@@ -205,6 +206,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 				item:    refs[i],
 				key:     key,
 				idx:     i,
+				async:   cfg.fetchAsync, // increase ref count on cache only when fetching synchronous
 				results: responses,
 				errors:  errors,
 			})
@@ -216,7 +218,9 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 		}
 		found++
 		f.metrics.blocksFound.Inc()
-		results[i] = dir.BlockQuerier()
+		results[i] = dir.BlockQuerier(func() error {
+			return f.blocksCache.Release(ctx, key)
+		})
 	}
 
 	// fetchAsync defines whether the function may return early or whether it
@@ -243,7 +247,10 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 			return results, err
 		case res := <-responses:
 			found++
-			results[res.idx] = res.item.BlockQuerier()
+			key := f.client.Block(refs[res.idx]).Addr()
+			results[res.idx] = res.item.BlockQuerier(func() error {
+				return f.blocksCache.Release(ctx, key)
+			})
 		}
 	}
 
@@ -259,7 +266,7 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 	}
 
 	// check if block was fetched while task was waiting in queue
-	result, exists, err := f.getBlockDir(ctx, task.key)
+	result, exists, err := f.fromCache(ctx, task.key)
 	if err != nil {
 		task.errors <- err
 		return
@@ -267,7 +274,6 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 
 	// return item from cache
 	if exists {
-		level.Debug(f.logger).Log("msg", "send download response", "reason", "cache")
 		task.results <- downloadResponse[BlockDirectory]{
 			item: result,
 			key:  task.key,
@@ -283,8 +289,20 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 		return
 	}
 
+	key := f.client.Block(result.BlockRef).Addr()
+	if task.async {
+		// put item into cache
+		err = f.blocksCache.Put(ctx, key, result)
+	} else {
+		// put item into cache and increase ref counter
+		err = f.blocksCache.PutInc(ctx, key, result)
+	}
+	if err != nil {
+		task.errors <- err
+		return
+	}
+
 	// return item from storage
-	level.Debug(f.logger).Log("msg", "send download response", "reason", "storage")
 	task.results <- downloadResponse[BlockDirectory]{
 		item: result,
 		key:  task.key,
@@ -292,29 +310,23 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 	}
 }
 
-// getBlockDir resolves a block directory without fetching the block from
-// remote object storage. Returns three arguments: the block directory, a
-// boolean whether the block was found in cache, and optionally an error.
-func (f *Fetcher) getBlockDir(ctx context.Context, key string) (BlockDirectory, bool, error) {
+func (f *Fetcher) fromCache(ctx context.Context, key string) (BlockDirectory, bool, error) {
 	var zero BlockDirectory
 
 	if ctx.Err() != nil {
-		return zero, false, errors.Wrap(ctx.Err(), "get block")
+		return zero, false, errors.Wrap(ctx.Err(), "from cache")
 	}
 
-	_, fromCache, _, err := f.blocksCache.Fetch(ctx, []string{key})
-	if err != nil {
-		return zero, false, err
+	item, found := f.blocksCache.Get(ctx, key)
+
+	// item wasn't found
+	if !found {
+		return zero, false, nil
 	}
 
 	// item found in cache
-	if len(fromCache) == 1 {
-		f.metrics.blocksFetchedSize.WithLabelValues(sourceCache).Observe(float64(fromCache[0].Size()))
-		return fromCache[0], true, nil
-	}
-
-	// item wasn't found
-	return zero, false, nil
+	f.metrics.blocksFetchedSize.WithLabelValues(sourceCache).Observe(float64(item.Size()))
+	return item, true, nil
 }
 
 func (f *Fetcher) fetchBlock(ctx context.Context, ref BlockRef) (BlockDirectory, error) {
@@ -329,8 +341,6 @@ func (f *Fetcher) fetchBlock(ctx context.Context, ref BlockRef) (BlockDirectory,
 		return zero, err
 	}
 
-	// item found in storage
-	err = f.writeBackBlocks(ctx, []BlockDirectory{fromStorage})
 	f.metrics.blocksFetchedSize.WithLabelValues(sourceStorage).Observe(float64(fromStorage.Size()))
 	return fromStorage, err
 }
@@ -345,7 +355,7 @@ func (f *Fetcher) loadBlocksFromFS(_ context.Context, refs []BlockRef) ([]BlockD
 		// since it is stripped when the archive is extracted into a folder
 		path = strings.TrimSuffix(path, ".tar.gz")
 		if ok, clean := f.isBlockDir(path); ok {
-			blockDirs = append(blockDirs, NewBlockDirectory(ref, path, f.logger))
+			blockDirs = append(blockDirs, NewBlockDirectory(ref, path))
 		} else {
 			_ = clean(path)
 			missing = append(missing, ref)
@@ -382,14 +392,6 @@ func isBlockDir(path string, logger log.Logger) (bool, func(string) error) {
 	return true, nil
 }
 
-func (f *Fetcher) writeBackBlocks(ctx context.Context, blocks []BlockDirectory) error {
-	keys := make([]string, len(blocks))
-	for i := range blocks {
-		keys[i] = f.client.Block(blocks[i].BlockRef).Addr()
-	}
-	return f.blocksCache.Store(ctx, keys, blocks)
-}
-
 type processFunc[T any, R any] func(context.Context, downloadRequest[T, R])
 
 type downloadRequest[T any, R any] struct {
@@ -397,6 +399,7 @@ type downloadRequest[T any, R any] struct {
 	item    T
 	key     string
 	idx     int
+	async   bool
 	results chan<- downloadResponse[R]
 	errors  chan<- error
 }
@@ -408,12 +411,14 @@ type downloadResponse[R any] struct {
 }
 
 type downloadQueue[T any, R any] struct {
-	queue   chan downloadRequest[T, R]
-	mu      keymutex.KeyMutex
-	wg      sync.WaitGroup
-	done    chan struct{}
-	process processFunc[T, R]
-	logger  log.Logger
+	queue         chan downloadRequest[T, R]
+	enqueued      *swiss.Map[string, struct{}]
+	enqueuedMutex sync.Mutex
+	mu            keymutex.KeyMutex
+	wg            sync.WaitGroup
+	done          chan struct{}
+	process       processFunc[T, R]
+	logger        log.Logger
 }
 
 func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R], logger log.Logger) (*downloadQueue[T, R], error) {
@@ -424,11 +429,12 @@ func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R]
 		return nil, errors.New("queue requires at least 1 worker")
 	}
 	q := &downloadQueue[T, R]{
-		queue:   make(chan downloadRequest[T, R], size),
-		mu:      keymutex.NewHashed(workers),
-		done:    make(chan struct{}),
-		process: process,
-		logger:  logger,
+		queue:    make(chan downloadRequest[T, R], size),
+		enqueued: swiss.NewMap[string, struct{}](uint32(size)),
+		mu:       keymutex.NewHashed(workers),
+		done:     make(chan struct{}),
+		process:  process,
+		logger:   logger,
 	}
 	for i := 0; i < workers; i++ {
 		q.wg.Add(1)
@@ -438,7 +444,23 @@ func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R]
 }
 
 func (q *downloadQueue[T, R]) enqueue(t downloadRequest[T, R]) {
-	q.queue <- t
+	if !t.async {
+		q.queue <- t
+	}
+	// for async task we attempt to dedupe task already in progress.
+	q.enqueuedMutex.Lock()
+	defer q.enqueuedMutex.Unlock()
+	if q.enqueued.Has(t.key) {
+		return
+	}
+	select {
+	case q.queue <- t:
+		q.enqueued.Put(t.key, struct{}{})
+	default:
+		// todo we probably want a metric on dropped items
+		level.Warn(q.logger).Log("msg", "download queue is full, dropping item", "key", t.key)
+		return
+	}
 }
 
 func (q *downloadQueue[T, R]) runWorker() {
@@ -463,6 +485,11 @@ func (q *downloadQueue[T, R]) do(ctx context.Context, task downloadRequest[T, R]
 		err := q.mu.UnlockKey(task.key)
 		if err != nil {
 			level.Error(q.logger).Log("msg", "failed to unlock key in block lock", "key", task.key, "err", err)
+		}
+		if task.async {
+			q.enqueuedMutex.Lock()
+			_ = q.enqueued.Delete(task.key)
+			q.enqueuedMutex.Unlock()
 		}
 	}()
 
