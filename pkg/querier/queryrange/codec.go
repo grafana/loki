@@ -612,6 +612,11 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		header.Set(httpreq.LokiActorPathHeader, actor)
 	}
 
+	// Add original results
+	if originalResults := httpreq.ExtractHeader(ctx, httpreq.LokiOriginalQueryResultsHeader); originalResults != "" {
+		header.Set(httpreq.LokiOriginalQueryResultsHeader, originalResults)
+	}
+
 	// Add limits
 	if limits := querylimits.ExtractQueryLimitsContext(ctx); limits != nil {
 		err := querylimits.InjectQueryLimitsHeader(&header, limits)

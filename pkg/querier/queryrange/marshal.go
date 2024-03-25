@@ -272,6 +272,11 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		ctx = httpreq.InjectActorPath(ctx, actor)
 	}
 
+	// Add keep original results
+	if originalResults, ok := req.Metadata[httpreq.LokiOriginalQueryResultsHeader]; ok {
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiOriginalQueryResultsHeader, originalResults)
+	}
+
 	// Add limits
 	if encodedLimits, ok := req.Metadata[querylimits.HTTPHeaderQueryLimitsKey]; ok {
 		limits, err := querylimits.UnmarshalQueryLimits([]byte(encodedLimits))
@@ -362,6 +367,12 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
 	if actor != "" {
 		result.Metadata[httpreq.LokiActorPathHeader] = actor
+	}
+
+	// Keep Original Results header
+	originalResults := httpreq.ExtractHeader(ctx, httpreq.LokiOriginalQueryResultsHeader)
+	if originalResults != "" {
+		result.Metadata[httpreq.LokiOriginalQueryResultsHeader] = originalResults
 	}
 
 	// Add limits
