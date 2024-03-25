@@ -149,13 +149,62 @@ spec:
       {{- range $port := .Values.networkPolicy.externalStorage.ports }} 
       - port: "{{ $port }}"
         protocol: TCP
-      {{- end }}à
+      {{- end }}
   {{- if .Values.networkPolicy.externalStorage.cidrs }}
     {{- range $cidr := .Values.networkPolicy.externalStorage.cidrs }}
     toCIDR:
     - {{ $cidr }}
     {{- end }}
   {{- end }}
+{{- end }}
+
+{{- if .Values.networkPolicy.egressWorld.enabled }}
+{{- $global := . }}
+{{- $componentsList := list "read" "write" "backend" }}
+{{- if .Values.tableManager.enabled }}
+{{- $componentsList = append $componentsList "table-manager" }}
+{{- end }}
+{{- range $component := $componentsList }}
+{{- with $global }}
+---
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-{{ $component }}-world-egress
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- if eq $component "read" }}
+      {{- include "loki.readSelectorLabels" . | nindent 6 }}
+      {{- else if eq $component "write" }}
+      {{- include "loki.writeSelectorLabels" . | nindent 6 }}
+      {{- else if eq $component "table-manager" }}
+      {{- include "loki.tableManagerSelectorLabels" . | nindent 6 }}
+      {{- else }}
+      {{- include "loki.backendSelectorLabels" . | nindent 6 }}
+      {{- end }}
+  egress:
+  - toEntities:
+    - world
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- if .Values.networkPolicy.egressKubeApiserver.enabled }}
+---
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-backend-kubeapiserver-egress
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "loki.backendSelectorLabels" . | nindent 6 }}
+  egress:
+  - toEntities:
+    - kube-apiserver
 {{- end }}
 
 {{- end }}

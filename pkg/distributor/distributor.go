@@ -74,10 +74,13 @@ type Config struct {
 
 	// WriteFailuresLoggingCfg customizes write failures logging behavior.
 	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Experimental. Customize the logging of write failures."`
+
+	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
+	cfg.OTLPConfig.RegisterFlags(fs)
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
@@ -121,6 +124,8 @@ type Distributor struct {
 
 	// Push failures rate limiter.
 	writeFailuresManager *writefailures.Manager
+
+	RequestParserWrapper push.RequestParserWrapper
 
 	// metrics
 	ingesterAppends        *prometheus.CounterVec
@@ -360,7 +365,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(validationContext, lbs, entry); err != nil {
+				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue
@@ -431,7 +436,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				if d.usageTracker != nil {
-					d.usageTracker.DiscardedBytesAdd(tenantID, validation.RateLimited, lbs, float64(discardedStreamBytes))
+					d.usageTracker.DiscardedBytesAdd(ctx, tenantID, validation.RateLimited, lbs, float64(discardedStreamBytes))
 				}
 			}
 		}

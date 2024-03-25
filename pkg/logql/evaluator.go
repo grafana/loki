@@ -646,7 +646,7 @@ func (r AbsentRangeVectorEvaluator) Error() error {
 	return r.iter.Error()
 }
 
-// binOpExpr explicitly does not handle when both legs are literals as
+// newBinOpStepEvaluator explicitly does not handle when both legs are literals as
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr
 func newBinOpStepEvaluator(
 	ctx context.Context,

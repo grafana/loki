@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
@@ -54,21 +55,23 @@ func newMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*BloomStore, st
 			BlocksDownloadingQueue: config.DownloadingQueueConfig{
 				WorkersCount: 1,
 			},
-			BlocksCache: cache.EmbeddedCacheConfig{
-				MaxSizeItems: 1000,
-				TTL:          1 * time.Hour,
+			BlocksCache: config.BlocksCacheConfig{
+				SoftLimit:     1 << 20,
+				HardLimit:     2 << 20,
+				TTL:           time.Hour,
+				PurgeInterval: time.Hour,
 			},
 		},
 	}
 
+	reg := prometheus.NewPedanticRegistry()
 	metrics := storage.NewClientMetrics()
 	t.Cleanup(metrics.Unregister)
 	logger := log.NewLogfmtLogger(os.Stderr)
 
 	metasCache := cache.NewMockCache()
-	blocksCache := NewBlocksCache(storageConfig.BloomShipperConfig.BlocksCache, prometheus.NewPedanticRegistry(), logger)
-
-	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, logger)
+	blocksCache := NewFsBlocksCache(storageConfig.BloomShipperConfig.BlocksCache, prometheus.NewPedanticRegistry(), logger)
+	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, reg, logger)
 	if err == nil {
 		t.Cleanup(store.Stop)
 	}
@@ -297,4 +300,87 @@ func TestBloomShipper_WorkingDir(t *testing.T) {
 		_, err = store.FetchBlocks(ctx, []BlockRef{b.BlockRef})
 		require.NoError(t, err)
 	})
+}
+
+func TestTablesForRange(t *testing.T) {
+	conf := storageconfig.PeriodConfig{
+		From: parseDayTime("2024-01-01"),
+		IndexTables: storageconfig.IndexPeriodicTableConfig{
+			PeriodicTableConfig: storageconfig.PeriodicTableConfig{
+				Period: 24 * time.Hour,
+			},
+		},
+	}
+	for _, tc := range []struct {
+		desc     string
+		interval Interval
+		exp      []string
+	}{
+		{
+			desc: "few days",
+			interval: Interval{
+				Start: parseTime("2024-01-01 00:00"),
+				End:   parseTime("2024-01-03 00:00"),
+			},
+			exp: []string{"19723", "19724"},
+		},
+		{
+			desc: "few days with offset",
+			interval: Interval{
+				Start: parseTime("2024-01-01 00:00"),
+				End:   parseTime("2024-01-03 00:01"),
+			},
+			exp: []string{"19723", "19724", "19725"},
+		},
+		{
+			desc:     "one day",
+			interval: NewInterval(parseDayTime("2024-01-01").Bounds()),
+			exp:      []string{"19723"},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.exp, tablesForRange(conf, tc.interval))
+		})
+	}
+}
+
+func TestBloomStore_SortBlocks(t *testing.T) {
+	now := parseTime("2024-02-01 00:00")
+
+	refs := make([]BlockRef, 10)
+	bqs := make([]*CloseableBlockQuerier, 10)
+
+	for i := 0; i < 10; i++ {
+		refs[i] = BlockRef{
+			Ref: Ref{
+				TenantID: "fake",
+				Bounds: v1.NewBounds(
+					model.Fingerprint(i*1000),
+					model.Fingerprint((i+1)*1000-1),
+				),
+				StartTimestamp: now,
+				EndTimestamp:   now.Add(12 * time.Hour),
+			},
+		}
+		if i%2 == 0 {
+			bqs[i] = &CloseableBlockQuerier{
+				BlockRef: refs[i],
+			}
+		}
+	}
+
+	// shuffle the slice of block queriers
+	rand.Shuffle(len(bqs), func(i, j int) { bqs[i], bqs[j] = bqs[j], bqs[i] })
+
+	// sort the block queriers based on the refs
+	sortBlocks(bqs, refs)
+
+	// assert order of block queriers
+	for i := 0; i < 10; i++ {
+		if i%2 == 0 {
+			require.Equal(t, refs[i], bqs[i].BlockRef)
+		} else {
+			require.Nil(t, nil, bqs[i])
+		}
+	}
 }

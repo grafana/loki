@@ -13,6 +13,8 @@ const (
 
 	statusSuccess = "success"
 	statusFailure = "failure"
+
+	tenantLabel = "tenant"
 )
 
 type Metrics struct {
@@ -24,13 +26,13 @@ type Metrics struct {
 	compactionCompleted *prometheus.CounterVec
 	compactionTime      *prometheus.HistogramVec
 
-	tenantsDiscovered    prometheus.Counter
-	tenantsOwned         prometheus.Counter
-	tenantsSkipped       prometheus.Counter
-	tenantsStarted       prometheus.Counter
-	tenantsCompleted     *prometheus.CounterVec
-	tenantsCompletedTime *prometheus.HistogramVec
-	tenantsSeries        prometheus.Histogram
+	tenantsDiscovered   prometheus.Counter
+	tenantsOwned        prometheus.Counter
+	tenantsSkipped      prometheus.Counter
+	tenantsStarted      prometheus.Counter
+	tenantTableRanges   *prometheus.CounterVec
+	seriesPerCompaction prometheus.Histogram
+	bytesPerCompaction  prometheus.Histogram
 
 	blocksReused prometheus.Counter
 
@@ -38,6 +40,9 @@ type Metrics struct {
 	blocksDeleted prometheus.Counter
 	metasCreated  prometheus.Counter
 	metasDeleted  prometheus.Counter
+
+	progress      prometheus.Gauge
+	timePerTenant *prometheus.CounterVec
 }
 
 func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
@@ -54,7 +59,8 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 			Subsystem: metricsSubsystem,
 			Name:      "chunk_series_size",
 			Help:      "Uncompressed size of chunks in a series",
-			Buckets:   prometheus.ExponentialBucketsRange(1024, 1073741824, 10),
+			// 256B -> 100GB, 10 buckets
+			Buckets: prometheus.ExponentialBucketsRange(256, 100<<30, 10),
 		}),
 
 		compactionsStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{
@@ -101,26 +107,27 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 			Name:      "tenants_started_total",
 			Help:      "Number of tenants started to process during the current compaction run",
 		}),
-		tenantsCompleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		tenantTableRanges: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "tenants_completed_total",
-			Help:      "Number of tenants successfully processed during the current compaction run",
+			Name:      "tenant_table_ranges_completed_total",
+			Help:      "Number of tenants table ranges (table, tenant, keyspace) processed during the current compaction run",
 		}, []string{"status"}),
-		tenantsCompletedTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+		seriesPerCompaction: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "tenants_time_seconds",
-			Help:      "Time spent processing tenants.",
-			Buckets:   prometheus.DefBuckets,
-		}, []string{"status"}),
-		tenantsSeries: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespace,
-			Subsystem: metricsSubsystem,
-			Name:      "tenants_series",
-			Help:      "Number of series processed per tenant in the owned fingerprint-range.",
+			Name:      "series_per_compaction",
+			Help:      "Number of series during compaction (tenant, table, fingerprint-range). Includes series which copied from other blocks and don't need to be indexed",
 			// Up to 10M series per tenant, way more than what we expect given our max_global_streams_per_user limits
-			Buckets: prometheus.ExponentialBucketsRange(1, 10000000, 10),
+			Buckets: prometheus.ExponentialBucketsRange(1, 10e6, 10),
+		}),
+		bytesPerCompaction: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "bytes_per_compaction",
+			Help:      "Number of source bytes from chunks added during a compaction cycle (the tenant, table, keyspace tuple).",
+			// 1KB -> 100GB, 10 buckets
+			Buckets: prometheus.ExponentialBucketsRange(1<<10, 100<<30, 10),
 		}),
 		blocksReused: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
@@ -152,6 +159,22 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 			Name:      "metas_deleted_total",
 			Help:      "Number of metas deleted",
 		}),
+
+		progress: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "progress",
+			Help:      "Progress of the compaction process as a percentage. 1 means compaction is complete.",
+		}),
+
+		// TODO(owen-d): cleanup tenant metrics over time as ring changes
+		// TODO(owen-d): histogram for distributions?
+		timePerTenant: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "tenant_compaction_seconds_total",
+			Help:      "Time spent processing a tenant.",
+		}, []string{tenantLabel}),
 	}
 
 	return &m

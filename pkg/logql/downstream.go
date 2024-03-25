@@ -329,6 +329,23 @@ func ParseShards(strs []string) (Shards, error) {
 	return shards, nil
 }
 
+func ParseShardCount(strs []string) int {
+	if len(strs) == 0 {
+		return 0
+	}
+
+	for _, str := range strs {
+		shard, err := astmapper.ParseShard(str)
+		if err != nil {
+			continue
+		}
+
+		return shard.Of
+	}
+
+	return 0
+}
+
 type Downstreamable interface {
 	Downstreamer(context.Context) Downstreamer
 }

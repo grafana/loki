@@ -8,6 +8,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -34,18 +36,20 @@ type TSDBStore interface {
 		tenant string,
 		id tsdb.Identifier,
 		bounds v1.FingerprintBounds,
-	) (v1.CloseableIterator[*v1.Series], error)
+	) (v1.Iterator[*v1.Series], error)
 }
 
 // BloomTSDBStore is a wrapper around the storage.Client interface which
 // implements the TSDBStore interface for this pkg.
 type BloomTSDBStore struct {
 	storage storage.Client
+	logger  log.Logger
 }
 
-func NewBloomTSDBStore(storage storage.Client) *BloomTSDBStore {
+func NewBloomTSDBStore(storage storage.Client, logger log.Logger) *BloomTSDBStore {
 	return &BloomTSDBStore{
 		storage: storage,
+		logger:  logger,
 	}
 }
 
@@ -84,7 +88,7 @@ func (b *BloomTSDBStore) LoadTSDB(
 	tenant string,
 	id tsdb.Identifier,
 	bounds v1.FingerprintBounds,
-) (v1.CloseableIterator[*v1.Series], error) {
+) (v1.Iterator[*v1.Series], error) {
 	withCompression := id.Name() + gzipExtension
 
 	data, err := b.storage.GetUserFile(ctx, table.Addr(), tenant, withCompression)
@@ -111,8 +115,13 @@ func (b *BloomTSDBStore) LoadTSDB(
 	}
 
 	idx := tsdb.NewTSDBIndex(reader)
+	defer func() {
+		if err := idx.Close(); err != nil {
+			level.Error(b.logger).Log("msg", "failed to close index", "err", err)
+		}
+	}()
 
-	return NewTSDBSeriesIter(ctx, idx, bounds), nil
+	return NewTSDBSeriesIter(ctx, idx, bounds)
 }
 
 // TSDBStore is an interface for interacting with the TSDB,
@@ -126,92 +135,47 @@ type forSeries interface {
 		fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta),
 		matchers ...*labels.Matcher,
 	) error
-	Close() error
 }
 
-type TSDBSeriesIter struct {
-	f      forSeries
-	bounds v1.FingerprintBounds
-	ctx    context.Context
+func NewTSDBSeriesIter(ctx context.Context, f forSeries, bounds v1.FingerprintBounds) (v1.Iterator[*v1.Series], error) {
+	// TODO(salvacorts): Create a pool
+	series := make([]*v1.Series, 0, 100)
 
-	ch          chan *v1.Series
-	initialized bool
-	next        *v1.Series
-	err         error
-}
-
-func NewTSDBSeriesIter(ctx context.Context, f forSeries, bounds v1.FingerprintBounds) *TSDBSeriesIter {
-	return &TSDBSeriesIter{
-		f:      f,
-		bounds: bounds,
-		ctx:    ctx,
-		ch:     make(chan *v1.Series),
-	}
-}
-
-func (t *TSDBSeriesIter) Next() bool {
-	if !t.initialized {
-		t.initialized = true
-		t.background()
-	}
-
-	select {
-	case <-t.ctx.Done():
-		return false
-	case next, ok := <-t.ch:
-		t.next = next
-		return ok
-	}
-}
-
-func (t *TSDBSeriesIter) At() *v1.Series {
-	return t.next
-}
-
-func (t *TSDBSeriesIter) Err() error {
-	if t.err != nil {
-		return t.err
-	}
-
-	return t.ctx.Err()
-}
-
-func (t *TSDBSeriesIter) Close() error {
-	return t.f.Close()
-}
-
-// background iterates over the tsdb file, populating the next
-// value via a channel to handle backpressure
-func (t *TSDBSeriesIter) background() {
-	go func() {
-		t.err = t.f.ForSeries(
-			t.ctx,
-			t.bounds,
-			0, math.MaxInt64,
-			func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
-
+	if err := f.ForSeries(
+		ctx,
+		bounds,
+		0, math.MaxInt64,
+		func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+			select {
+			case <-ctx.Done():
+				return
+			default:
 				res := &v1.Series{
 					Fingerprint: fp,
 					Chunks:      make(v1.ChunkRefs, 0, len(chks)),
 				}
 				for _, chk := range chks {
 					res.Chunks = append(res.Chunks, v1.ChunkRef{
-						Start:    model.Time(chk.MinTime),
-						End:      model.Time(chk.MaxTime),
+						From:     model.Time(chk.MinTime),
+						Through:  model.Time(chk.MaxTime),
 						Checksum: chk.Checksum,
 					})
 				}
 
-				select {
-				case <-t.ctx.Done():
-					return
-				case t.ch <- res:
-				}
-			},
-			labels.MustNewMatcher(labels.MatchEqual, "", ""),
-		)
-		close(t.ch)
-	}()
+				series = append(series, res)
+			}
+		},
+		labels.MustNewMatcher(labels.MatchEqual, "", ""),
+	); err != nil {
+		return nil, err
+	}
+
+	select {
+	case <-ctx.Done():
+		return v1.NewEmptyIter[*v1.Series](), ctx.Err()
+	default:
+		return v1.NewCancelableIter[*v1.Series](ctx, v1.NewSliceIter[*v1.Series](series)), nil
+	}
 }
 
 type TSDBStores struct {
@@ -223,6 +187,7 @@ func NewTSDBStores(
 	schemaCfg config.SchemaConfig,
 	storeCfg baseStore.Config,
 	clientMetrics baseStore.ClientMetrics,
+	logger log.Logger,
 ) (*TSDBStores, error) {
 	res := &TSDBStores{
 		schemaCfg: schemaCfg,
@@ -236,7 +201,7 @@ func NewTSDBStores(
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create object client")
 			}
-			res.stores[i] = NewBloomTSDBStore(storage.NewIndexStorageClient(c, cfg.IndexTables.PathPrefix))
+			res.stores[i] = NewBloomTSDBStore(storage.NewIndexStorageClient(c, cfg.IndexTables.PathPrefix), logger)
 		}
 	}
 
@@ -295,7 +260,7 @@ func (s *TSDBStores) LoadTSDB(
 	tenant string,
 	id tsdb.Identifier,
 	bounds v1.FingerprintBounds,
-) (v1.CloseableIterator[*v1.Series], error) {
+) (v1.Iterator[*v1.Series], error) {
 	store, err := s.storeForPeriod(table.DayTime)
 	if err != nil {
 		return nil, err

@@ -443,14 +443,16 @@ overrides:
     max_global_streams_per_user: 1
     max_chunks_per_query: 1000000
     blocked_queries:
-    - hash: 12345
+    - pattern: ""
+      hash: 12345
       types: metric,limited
-    - pattern: |
-        .*prod.*
+    - pattern: .*prod.*
       regex: true
-    - types: metric
-    - pattern: |
-        sum(rate({env="prod"}[1m]))
+    - pattern: ""
+      types: metric
+    - pattern: sum(rate({env="prod"}[1m]))
+    - pattern: '{kubernetes_namespace_name="my-app"}'
+    - pattern: ""
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
@@ -505,6 +507,12 @@ overrides:
 								{
 									Pattern: `sum(rate({env="prod"}[1m]))`,
 								},
+								{
+									Pattern: `{kubernetes_namespace_name="my-app"}`,
+								},
+								{
+									Pattern: "",
+								},
 							},
 						},
 					},
@@ -537,6 +545,12 @@ overrides:
 							},
 							{
 								Pattern: `sum(rate({env="prod"}[1m]))`,
+							},
+							{
+								Pattern: `{kubernetes_namespace_name="my-app"}`,
+							},
+							{
+								Pattern: "",
 							},
 						},
 					},
@@ -843,7 +857,7 @@ ruler:
     client:
       name: remote-write-me
       url: http://remote.write.me
-      timeout: 10s
+      remote_timeout: 10s
       proxy_url: http://proxy.through.me
       follow_redirects: true
       headers:
@@ -1201,7 +1215,7 @@ ruler:
     client:
       name: remote-write-me
       url: http://remote.write.me
-      timeout: 10s
+      remote_timeout: 10s
       proxy_url: http://proxy.through.me
       follow_redirects: true
       headers:
@@ -1560,7 +1574,7 @@ ruler:
     client:
       name: remote-write-me
       url: http://remote.write.me
-      timeout: 10s
+      remote_timeout: 10s
       proxy_url: http://proxy.through.me
       follow_redirects: true
       headers:
@@ -2300,7 +2314,7 @@ ruler:
     client:
       name: remote-write-me
       url: http://remote.write.me
-      timeout: 10s
+      remote_timeout: 10s
       proxy_url: http://proxy.through.me
       follow_redirects: true
       headers:
@@ -3065,7 +3079,7 @@ ruler:
     client:
       name: remote-write-me
       url: http://remote.write.me
-      timeout: 10s
+      remote_timeout: 10s
       proxy_url: http://proxy.through.me
       follow_redirects: true
       headers:

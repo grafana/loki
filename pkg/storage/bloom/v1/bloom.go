@@ -12,6 +12,14 @@ import (
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
+// NB(chaudum): Some block pages are way bigger than others (400MiB and
+// bigger), and loading multiple pages into memory in parallel can cause the
+// gateways to OOM.
+// Figure out a decent maximum page size that we can process.
+// TODO(chaudum): Make max page size configurable
+var maxPageSize = 32 << 20 // 32MB
+var ErrPageTooLarge = errors.Errorf("bloom page too large: size limit is %.1fMiB", float64(maxPageSize)/float64(1<<20))
+
 type Bloom struct {
 	filter.ScalableBloomFilter
 }
@@ -87,6 +95,25 @@ func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHe
 	decoder := NewBloomPageDecoder(b)
 
 	return decoder, nil
+}
+
+func LazyDecodeBloomPageNoCompression(r io.Reader, page BloomPageHeader) (*BloomPageDecoder, error) {
+	if page.Len != page.DecompressedLen+4 {
+		return nil, errors.New("the Len and DecompressedLen of the page do not match")
+	}
+	data := make([]byte, page.Len)
+
+	_, err := io.ReadFull(r, data)
+	if err != nil {
+		return nil, errors.Wrap(err, "reading bloom page")
+	}
+	dec := encoding.DecWith(data)
+
+	if err := dec.CheckCrc(castagnoliTable); err != nil {
+		return nil, errors.Wrap(err, "checksumming bloom page")
+	}
+
+	return NewBloomPageDecoder(dec.Get()), nil
 }
 
 func NewBloomPageDecoder(data []byte) *BloomPageDecoder {
@@ -238,9 +265,18 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int) (*BloomPageD
 	}
 
 	page := b.pageHeaders[pageIdx]
+	// fmt.Printf("pageIdx=%d page=%+v size=%.2fMiB\n", pageIdx, page, float64(page.Len)/float64(1<<20))
+
+	if page.Len > maxPageSize {
+		return nil, ErrPageTooLarge
+	}
 
 	if _, err := r.Seek(int64(page.Offset), io.SeekStart); err != nil {
 		return nil, errors.Wrap(err, "seeking to bloom page")
+	}
+
+	if b.schema.encoding == chunkenc.EncNone {
+		return LazyDecodeBloomPageNoCompression(r, page)
 	}
 
 	return LazyDecodeBloomPage(r, b.schema.DecompressorPool(), page)

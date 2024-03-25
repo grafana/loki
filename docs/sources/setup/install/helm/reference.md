@@ -83,7 +83,7 @@ false
 			<td>int</td>
 			<td>Minimum autoscaling replicas for the backend.</td>
 			<td><pre lang="json">
-2
+3
 </pre>
 </td>
 		</tr>
@@ -3123,6 +3123,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>networkPolicy.egressKubeApiserver.enabled</td>
+			<td>bool</td>
+			<td>Enable additional cilium egress rules to kube-apiserver for backend.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>networkPolicy.egressWorld.enabled</td>
+			<td>bool</td>
+			<td>Enable additional cilium egress rules to external world for write, read and backend.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>networkPolicy.enabled</td>
 			<td>bool</td>
 			<td>Specifies whether Network Policies should be created</td>
@@ -3324,6 +3342,15 @@ null
 			<td>read.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the read</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the read pods</td>
 			<td><pre lang="json">
 []
 </pre>

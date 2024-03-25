@@ -8,6 +8,7 @@ local releaseLibStep = common.releaseLibStep;
   image: function(
     name,
     path,
+    dockerfile='Dockerfile',
     context='release',
     platform=[
       'linux/amd64',
@@ -42,23 +43,68 @@ local releaseLibStep = common.releaseLibStep;
       |||),
 
       step.new('Build and export', 'docker/build-push-action@v5')
-      + step.withTimeoutMinutes(25)
+      + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
+      + step.withEnv({
+        IMAGE_TAG: '${{ needs.version.outputs.version }}',
+      })
       + step.with({
         context: context,
-        file: 'release/%s/Dockerfile' % path,
+        file: 'release/%s/%s' % [path, dockerfile],
         platforms: '${{ matrix.platform }}',
         tags: '${{ env.IMAGE_PREFIX }}/%s:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}' % [name],
         outputs: 'type=docker,dest=release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
+        'build-args': 'IMAGE_TAG=${{ needs.version.outputs.version }}',
       }),
       step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
-        destination: 'loki-build-artifacts/${{ github.sha }}/images',  //TODO: make bucket configurable
+        destination: '${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images',  //TODO: make bucket configurable
         process_gcloudignore: false,
       }),
     ]),
+
+
+  weeklyImage: function(
+    name,
+    path,
+    dockerfile='Dockerfile',
+    context='release',
+    platform=[
+      'linux/amd64',
+      'linux/arm64',
+      'linux/arm',
+    ]
+              )
+    job.new()
+    + job.withSteps([
+      common.fetchReleaseLib,
+      common.fetchReleaseRepo,
+      common.setupNode,
+
+      step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
+      step.new('set up docker buildx', 'docker/setup-buildx-action@v3'),
+      step.new('Login to DockerHub (from vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
+
+      releaseStep('Get weekly version')
+      + step.withId('weekly-version')
+      + step.withRun(|||
+        echo "version=$(./tools/image-tag)" >> $GITHUB_OUTPUT
+      |||),
+
+      step.new('Build and push', 'docker/build-push-action@v5')
+      + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
+      + step.with({
+        context: context,
+        file: 'release/%s/%s' % [path, dockerfile],
+        platforms: '%s' % std.join(',', platform),
+        push: true,
+        tags: '${{ env.IMAGE_PREFIX }}/%s:${{ steps.weekly-version.outputs.version }}' % [name],
+        'build-args': 'IMAGE_TAG=${{ steps.weekly-version.outputs.version }}',
+      }),
+    ]),
+
 
   version:
     job.new()
@@ -67,6 +113,8 @@ local releaseLibStep = common.releaseLibStep;
       common.fetchReleaseRepo,
       common.setupNode,
       common.extractBranchName,
+      common.githubAppToken,
+      common.setToken,
       releaseLibStep('get release version')
       + step.withId('version')
       + step.withRun(|||
@@ -75,11 +123,17 @@ local releaseLibStep = common.releaseLibStep;
           --consider-all-branches \
           --dry-run \
           --dry-run-output release.json \
+          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --manifest-file .release-please-manifest.json \
+          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --release-type simple \
-          --repo-url="${{ env.RELEASE_REPO }}" \
+          --repo-url "${{ env.RELEASE_REPO }}" \
+          --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GH_TOKEN }}" \
+          --token "${{ steps.github_app_token.outputs.token }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+
+        cat release.json
 
         if [[ `jq length release.json` -gt 1 ]]; then 
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
@@ -102,11 +156,12 @@ local releaseLibStep = common.releaseLibStep;
       pr_created: '${{ steps.version.outputs.pr_created }}',
     }),
 
-  dist: function(buildImage, skipArm=true)
+  dist: function(buildImage, skipArm=true, useGCR=false, makeTargets=['dist', 'packages'])
     job.new()
     + job.withSteps([
       common.fetchReleaseRepo,
       common.googleAuth,
+      common.setupGoogleCloudSdk,
       step.new('get nfpm signing keys', 'grafana/shared-workflows/actions/get-vault-secrets@main')
       + step.withId('get-secrets')
       + step.with({
@@ -117,6 +172,7 @@ local releaseLibStep = common.releaseLibStep;
       }),
 
       releaseStep('build artifacts')
+      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.withEnv({
         BUILD_IN_CONTAINER: false,
         DRONE_TAG: '${{ needs.version.outputs.version }}',
@@ -125,29 +181,37 @@ local releaseLibStep = common.releaseLibStep;
         SKIP_ARM: skipArm,
       })
       //TODO: the workdir here is loki specific
-      + step.withRun(|||
-        cat <<EOF | docker run \
-          --interactive \
-          --env BUILD_IN_CONTAINER \
-          --env DRONE_TAG \
-          --env IMAGE_TAG \
-          --env NFPM_PASSPHRASE \
-          --env NFPM_SIGNING_KEY \
-          --env NFPM_SIGNING_KEY_FILE \
-          --env SKIP_ARM \
-          --volume .:/src/loki \
-          --workdir /src/loki \
-          --entrypoint /bin/sh "%s"
-          git config --global --add safe.directory /src/loki
-          echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
-          make dist packages
-        EOF
-      ||| % buildImage),
+      + step.withRun(
+        (
+          if useGCR then |||
+            gcloud auth configure-docker
+          ||| else ''
+        ) +
+        |||
+          cat <<EOF | docker run \
+            --interactive \
+            --env BUILD_IN_CONTAINER \
+            --env DRONE_TAG \
+            --env IMAGE_TAG \
+            --env NFPM_PASSPHRASE \
+            --env NFPM_SIGNING_KEY \
+            --env NFPM_SIGNING_KEY_FILE \
+            --env SKIP_ARM \
+            --volume .:/src/loki \
+            --workdir /src/loki \
+            --entrypoint /bin/sh "%s"
+            git config --global --add safe.directory /src/loki
+            echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
+            make %s
+          EOF
+        ||| % [buildImage, std.join(' ', makeTargets)]
+      ),
 
-      step.new('upload build artifacts', 'google-github-actions/upload-cloud-storage@v2')
+      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
+      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/dist',
-        destination: 'loki-build-artifacts/${{ github.sha }}',  //TODO: make bucket configurable
+        destination: '${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}',  //TODO: make bucket configurable
         process_gcloudignore: false,
       }),
     ]),

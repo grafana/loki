@@ -70,8 +70,29 @@ func appendPodStatus(ctx context.Context, k k8s.Client, component, stack, ns str
 		return nil, kverrors.Wrap(err, "failed to list pods for LokiStack component", "name", stack, "component", component)
 	}
 	for _, pod := range pods.Items {
-		phase := pod.Status.Phase
-		psm[phase] = append(psm[phase], pod.Name)
+		status := podStatus(&pod)
+		psm[status] = append(psm[status], pod.Name)
 	}
 	return psm, nil
+}
+
+func podStatus(pod *corev1.Pod) lokiv1.PodStatus {
+	status := pod.Status
+	switch status.Phase {
+	case corev1.PodFailed:
+		return lokiv1.PodFailed
+	case corev1.PodPending:
+		return lokiv1.PodPending
+	case corev1.PodRunning:
+	default:
+		return lokiv1.PodStatusUnknown
+	}
+
+	for _, c := range status.ContainerStatuses {
+		if !c.Ready {
+			return lokiv1.PodRunning
+		}
+	}
+
+	return lokiv1.PodReady
 }
