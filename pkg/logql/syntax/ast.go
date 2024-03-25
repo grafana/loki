@@ -1338,6 +1338,10 @@ func (e *RangeAggregationExpr) String() string {
 
 // impl SampleExpr
 func (e *RangeAggregationExpr) Shardable(topLevel bool) bool {
+	// Here we are blocking sharding of quantile operations if they are not
+	// the top level aggregation in a query, such as max(quantile_over_time(...)).
+	// The sharding here will be blocked even if the feature flag in the shardmapper
+	// to enable sharding of quantile queries is enabled.
 	if e.Operation == OpRangeTypeQuantile && !topLevel {
 		return false
 	}

@@ -89,13 +89,13 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder, topLevel bool)
 	case *syntax.MatchersExpr, *syntax.PipelineExpr:
 		return m.mapLogSelectorExpr(e.(syntax.LogSelectorExpr), r)
 	case *syntax.VectorAggregationExpr:
-		return m.mapVectorAggregationExpr(e, r, false)
+		return m.mapVectorAggregationExpr(e, r, topLevel)
 	case *syntax.LabelReplaceExpr:
 		return m.mapLabelReplaceExpr(e, r, topLevel)
 	case *syntax.RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e, r, topLevel)
 	case *syntax.BinOpExpr:
-		return m.mapBinOpExpr(e, r, true)
+		return m.mapBinOpExpr(e, r, topLevel)
 	default:
 		return nil, 0, errors.Errorf("unexpected expr type (%T) for ASTMapper type (%T) ", expr, m)
 	}
