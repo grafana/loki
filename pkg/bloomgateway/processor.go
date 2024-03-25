@@ -45,7 +45,7 @@ func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.M
 		"msg", "process tasks with bounds",
 		"tenant", tenant,
 		"tasks", len(tasks),
-		"bounds", JoinFunc(bounds, ",", func(e v1.FingerprintBounds) string { return e.String() }),
+		"bounds", len(bounds),
 	)
 
 	for ts, tasks := range group(tasks, func(t Task) config.DayTime { return t.table }) {
@@ -140,13 +140,6 @@ func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.Close
 		}
 
 		block := data[i]
-		level.Debug(p.logger).Log(
-			"msg", "process block with tasks",
-			"job", i+1,
-			"of_jobs", len(bqs),
-			"block", block.ref,
-			"num_tasks", len(block.tasks),
-		)
 
 		if !block.ref.Bounds.Equal(bq.Bounds) {
 			return errors.Errorf("block and querier bounds differ: %s vs %s", block.ref.Bounds, bq.Bounds)

@@ -56,7 +56,6 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
@@ -262,15 +261,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 		// TODO(owen-d): include capacity in constructor?
 		task.responses = responsesPool.Get(len(seriesForDay.series))
-
-		level.Debug(sp).Log(
-			"msg", "created task for day",
-			"task", task.ID,
-			"day", seriesForDay.day,
-			"interval", seriesForDay.interval.String(),
-			"nSeries", len(seriesForDay.series),
-			"filters", JoinFunc(filters, ";", func(e syntax.LineFilterExpr) string { return e.String() }),
-		)
 		tasks = append(tasks, task)
 	}
 
