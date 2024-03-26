@@ -8,6 +8,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/grafana/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -501,6 +502,17 @@ func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
 	// TODO(owen-d): use a specific type/validation instead
 	// of using range query parameters (superset)
 	return ParseRangeQuery(r)
+}
+
+func ParseIndexShardsQuery(r *http.Request) (*RangeQuery, datasize.ByteSize, error) {
+	// TODO(owen-d): use a specific type/validation instead
+	// of using range query parameters (superset)
+	parsed, err := ParseRangeQuery(r)
+	if err != nil {
+		return nil, 0, err
+	}
+	targetBytes, err := parseBytes(r, "targetBytesPerShard", true)
+	return parsed, targetBytes, err
 }
 
 func NewVolumeRangeQueryWithDefaults(matchers string) *logproto.VolumeRequest {

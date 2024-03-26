@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
@@ -290,7 +291,7 @@ func TestInstanceFor(t *testing.T) {
 				Params: logql.ParamsWithShardsOverride{
 					Params: newParams(),
 					ShardsOverride: logql.Shards{
-						{Shard: 0, Of: 2},
+						logql.NewPowerOfTwoShard(astmapper.ShardAnnotation{Shard: 0, Of: 2}),
 					}.Encode(),
 				},
 			},
@@ -298,7 +299,7 @@ func TestInstanceFor(t *testing.T) {
 				Params: logql.ParamsWithShardsOverride{
 					Params: newParams(),
 					ShardsOverride: logql.Shards{
-						{Shard: 1, Of: 2},
+						logql.NewPowerOfTwoShard(astmapper.ShardAnnotation{Shard: 1, Of: 2}),
 					}.Encode(),
 				},
 			},
@@ -363,8 +364,10 @@ func TestInstanceDownstream(t *testing.T) {
 		queries := []logql.DownstreamQuery{
 			{
 				Params: logql.ParamsWithShardsOverride{
-					Params:         logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: expr},
-					ShardsOverride: logql.Shards{{Shard: 0, Of: 2}}.Encode(),
+					Params: logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: expr},
+					ShardsOverride: logql.Shards{
+						logql.NewPowerOfTwoShard(astmapper.ShardAnnotation{Shard: 0, Of: 2}),
+					}.Encode(),
 				},
 			},
 		}

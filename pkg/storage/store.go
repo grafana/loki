@@ -364,9 +364,11 @@ func decodeReq(req logql.QueryParams) ([]*labels.Matcher, model.Time, model.Time
 	return matchers, from, through, nil
 }
 
+// TODO(owen-d): refactor this. Injecting shard labels via matchers is a big hack and we shouldn't continue
+// doing it, _but_ it requires adding `fingerprintfilter` support to much of our storage interfaces
 func injectShardLabel(shards []string, matchers []*labels.Matcher) ([]*labels.Matcher, error) {
 	if shards != nil {
-		parsed, err := logql.ParseShards(shards)
+		parsed, _, err := logql.ParseShards(shards)
 		if err != nil {
 			return nil, err
 		}

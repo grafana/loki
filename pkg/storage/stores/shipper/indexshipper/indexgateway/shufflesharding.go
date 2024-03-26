@@ -21,6 +21,7 @@ var (
 
 type Limits interface {
 	IndexGatewayShardSize(tenantID string) int
+	TSDBMaxBytesPerShard(string) int
 }
 
 type ShardingStrategy interface {

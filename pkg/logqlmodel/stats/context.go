@@ -43,6 +43,7 @@ type Context struct {
 	querier  Querier
 	ingester Ingester
 	caches   Caches
+	index    Index
 
 	// store is the store statistics collected across the query path
 	store Store
@@ -115,6 +116,11 @@ func (c *Context) Caches() Caches {
 	}
 }
 
+// Index returns the index statistics accumulated so far.
+func (c *Context) Index() Index {
+	return c.index
+}
+
 // Reset clears the statistics.
 func (c *Context) Reset() {
 	c.mtx.Lock()
@@ -125,6 +131,7 @@ func (c *Context) Reset() {
 	c.ingester.Reset()
 	c.result.Reset()
 	c.caches.Reset()
+	c.index.Reset()
 }
 
 // Result calculates the summary based on store and ingester data.
@@ -137,6 +144,7 @@ func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalE
 		},
 		Ingester: c.ingester,
 		Caches:   c.caches,
+		Index:    c.index,
 	})
 
 	r.ComputeSummary(execTime, queueTime, totalEntriesReturned)
@@ -160,6 +168,15 @@ func JoinIngesters(ctx context.Context, inc Ingester) {
 	defer stats.mtx.Unlock()
 
 	stats.ingester.Merge(inc)
+}
+
+// JoinIndex joins the index statistics in a concurrency-safe manner.
+func JoinIndex(ctx context.Context, index Index) {
+	stats := FromContext(ctx)
+	stats.mtx.Lock()
+	defer stats.mtx.Unlock()
+
+	stats.index.Merge(index)
 }
 
 // ComputeSummary compute the summary of the statistics.
@@ -226,6 +243,11 @@ func (i *Ingester) Merge(m Ingester) {
 	i.TotalReached += m.TotalReached
 }
 
+func (i *Index) Merge(m Index) {
+	i.TotalChunks += m.TotalChunks
+	i.PostFilterChunks += m.PostFilterChunks
+}
+
 func (c *Caches) Merge(m Caches) {
 	c.Chunk.Merge(m.Chunk)
 	c.Index.Merge(m.Index)
@@ -267,6 +289,7 @@ func (r *Result) Merge(m Result) {
 	r.Ingester.Merge(m.Ingester)
 	r.Caches.Merge(m.Caches)
 	r.Summary.Merge(m.Summary)
+	r.Index.Merge(m.Index)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
 		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime), int(r.Summary.TotalEntriesReturned))
 }
