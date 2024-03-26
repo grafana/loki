@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/stores/series"
 )
@@ -28,9 +29,9 @@ var ErrInvalidShardQuery = errors.New("incompatible index shard query")
 
 type Interface interface {
 	Add(labels []logproto.LabelAdapter, fp model.Fingerprint) labels.Labels
-	Lookup(matchers []*labels.Matcher, shard *astmapper.ShardAnnotation) ([]model.Fingerprint, error)
-	LabelNames(shard *astmapper.ShardAnnotation) ([]string, error)
-	LabelValues(name string, shard *astmapper.ShardAnnotation) ([]string, error)
+	Lookup(matchers []*labels.Matcher, shard *logql.Shard) ([]model.Fingerprint, error)
+	LabelNames(shard *logql.Shard) ([]string, error)
+	LabelValues(name string, shard *logql.Shard) ([]string, error)
 	Delete(labels labels.Labels, fp model.Fingerprint)
 }
 
@@ -71,14 +72,20 @@ func (ii *InvertedIndex) getShards(shard *astmapper.ShardAnnotation) []*indexSha
 	return result
 }
 
-func (ii *InvertedIndex) validateShard(shard *astmapper.ShardAnnotation) error {
+func (ii *InvertedIndex) validateShard(shard *logql.Shard) (*astmapper.ShardAnnotation, error) {
 	if shard == nil {
-		return nil
+		return nil, nil
 	}
-	if int(ii.totalShards)%shard.Of != 0 || uint32(shard.Of) > ii.totalShards {
-		return fmt.Errorf("%w index_shard:%d query_shard:%v", ErrInvalidShardQuery, ii.totalShards, shard)
+
+	s := shard.PowerOfTwo
+	if s == nil {
+		return nil, errors.New("inverted index only supports shard annotations with `PowerOfTwo`")
 	}
-	return nil
+
+	if int(ii.totalShards)%s.Of != 0 || uint32(s.Of) > ii.totalShards {
+		return nil, fmt.Errorf("%w index_shard:%d query_shard:%v", ErrInvalidShardQuery, ii.totalShards, s)
+	}
+	return s, nil
 }
 
 // Add a fingerprint under the specified labels.
@@ -150,8 +157,9 @@ func labelsString(b *bytes.Buffer, ls labels.Labels) {
 }
 
 // Lookup all fingerprints for the provided matchers.
-func (ii *InvertedIndex) Lookup(matchers []*labels.Matcher, shard *astmapper.ShardAnnotation) ([]model.Fingerprint, error) {
-	if err := ii.validateShard(shard); err != nil {
+func (ii *InvertedIndex) Lookup(matchers []*labels.Matcher, s *logql.Shard) ([]model.Fingerprint, error) {
+	shard, err := ii.validateShard(s)
+	if err != nil {
 		return nil, err
 	}
 
@@ -175,8 +183,9 @@ func (ii *InvertedIndex) Lookup(matchers []*labels.Matcher, shard *astmapper.Sha
 }
 
 // LabelNames returns all label names.
-func (ii *InvertedIndex) LabelNames(shard *astmapper.ShardAnnotation) ([]string, error) {
-	if err := ii.validateShard(shard); err != nil {
+func (ii *InvertedIndex) LabelNames(s *logql.Shard) ([]string, error) {
+	shard, err := ii.validateShard(s)
+	if err != nil {
 		return nil, err
 	}
 	shards := ii.getShards(shard)
@@ -190,8 +199,9 @@ func (ii *InvertedIndex) LabelNames(shard *astmapper.ShardAnnotation) ([]string,
 }
 
 // LabelValues returns the values for the given label.
-func (ii *InvertedIndex) LabelValues(name string, shard *astmapper.ShardAnnotation) ([]string, error) {
-	if err := ii.validateShard(shard); err != nil {
+func (ii *InvertedIndex) LabelValues(name string, s *logql.Shard) ([]string, error) {
+	shard, err := ii.validateShard(s)
+	if err != nil {
 		return nil, err
 	}
 	shards := ii.getShards(shard)

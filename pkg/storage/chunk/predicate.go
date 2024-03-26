@@ -6,6 +6,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/plan"
 )
 
+// TODO(owen-d): rename. This is not a predicate and is confusing.
 type Predicate struct {
 	Matchers []*labels.Matcher
 	plan     *plan.QueryPlan
