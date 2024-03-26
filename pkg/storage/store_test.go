@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/util/httpreq"
+
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -932,6 +934,37 @@ func Test_PipelineWrapper(t *testing.T) {
 	require.Equal(t, 28, wrapper.pipeline.sp.called) // we've passed every log line through the wrapper
 }
 
+func Test_PipelineWrapper_disabled(t *testing.T) {
+	s := &LokiStore{
+		Store: storeFixture,
+		cfg: Config{
+			MaxChunkBatchSize: 10,
+		},
+		chunkMetrics: NilMetrics,
+	}
+	wrapper := &testPipelineWrapper{
+		pipeline: newMockPipeline(),
+	}
+
+	s.SetPipelineWrapper(wrapper)
+	ctx = user.InjectOrgID(context.Background(), "test-user")
+	ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, "true")
+	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), []astmapper.ShardAnnotation{{Shard: 1, Of: 5}}, nil)})
+
+	if err != nil {
+		t.Errorf("store.SelectLogs() error = %v", err)
+		return
+	}
+	defer logit.Close()
+	for logit.Next() {
+		require.NoError(t, logit.Error()) // consume the iterator
+	}
+
+	require.Equal(t, "", wrapper.tenant)
+	require.Equal(t, "", wrapper.query)
+	require.Equal(t, 0, wrapper.pipeline.sp.called) // we've passed every log line through the wrapper
+}
+
 type testPipelineWrapper struct {
 	query    string
 	pipeline *mockPipeline
@@ -1015,6 +1048,36 @@ func Test_SampleWrapper(t *testing.T) {
 	require.Equal(t, "test-user", wrapper.tenant)
 	require.Equal(t, "count_over_time({foo=~\"ba.*\"}[1s])", wrapper.query)
 	require.Equal(t, 28, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
+}
+
+func Test_SampleWrapper_disabled(t *testing.T) {
+	s := &LokiStore{
+		Store: storeFixture,
+		cfg: Config{
+			MaxChunkBatchSize: 10,
+		},
+		chunkMetrics: NilMetrics,
+	}
+	wrapper := &testExtractorWrapper{
+		extractor: newMockExtractor(),
+	}
+	s.SetExtractorWrapper(wrapper)
+
+	ctx = user.InjectOrgID(context.Background(), "test-user")
+	ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, "true")
+	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), []astmapper.ShardAnnotation{{Shard: 1, Of: 3}}, nil)})
+	if err != nil {
+		t.Errorf("store.SelectSamples() error = %v", err)
+		return
+	}
+	defer it.Close()
+	for it.Next() {
+		require.NoError(t, it.Error()) // consume the iterator
+	}
+
+	require.Equal(t, "", wrapper.tenant)
+	require.Equal(t, "", wrapper.query)
+	require.Equal(t, 0, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
 }
 
 type testExtractorWrapper struct {

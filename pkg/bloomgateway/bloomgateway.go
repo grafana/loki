@@ -220,7 +220,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, errors.New("from time must not be after through time")
 	}
 
-	filters := syntax.ExtractLineFilters(req.Plan.AST)
+	filters := v1.ExtractTestableLineFilters(req.Plan.AST)
 	g.metrics.receivedFilters.Observe(float64(len(filters)))
 
 	// Shortcut if request does not contain filters

@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/grafana/loki/pkg/util/httpreq"
+
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
@@ -435,7 +437,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		return nil, err
 	}
 
-	if i.pipelineWrapper != nil {
+	if i.pipelineWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
@@ -489,7 +491,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	if i.extractorWrapper != nil {
+	if i.extractorWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
