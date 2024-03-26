@@ -40,11 +40,9 @@ var (
 	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
 	errAzureInvalidAccountKey         = errors.New("azure account key is not valid base64")
 
-	errS3EndpointUnparseable      = errors.New("s3 endpoint is not parseable")
+	errS3EndpointUnparseable       = errors.New("s3 endpoint is not parseable")
 	errS3EndpointUnsupportedScheme = errors.New("scheme of S3 endpoint URL is unsupported")
-	errS3EndpointNotAWS           = errors.New("AWS s3 endpoint URL format is invalid")
-	errS3EndpointWrongRegion      = errors.New("s3 region used in endpoint URL is incorrect")
-	errS3EndpointNotS3            = errors.New("s3 endpoint format is not a valid s3 URL")
+	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 must include correct region")
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
@@ -58,7 +56,7 @@ var (
 )
 
 const (
-	awsEndpoint            = "amazonaws.com"
+	awsEndpointSuffix      = ".amazonaws.com"
 	gcpAccountTypeExternal = "external_account"
 )
 

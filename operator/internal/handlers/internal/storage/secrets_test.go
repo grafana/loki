@@ -542,21 +542,7 @@ func TestS3Extract(t *testing.T) {
 					"access_key_secret": []byte("secret"),
 				},
 			},
-			wantError: "s3 endpoint URL scheme is missing or invalid",
-		},
-		{
-			name: "AWS endpoint format invalid",
-			secret: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "test"},
-				Data: map[string][]byte{
-					"endpoint":          []byte("http://invalid"),
-					"region":            []byte("region"),
-					"bucketnames":       []byte("this,that"),
-					"access_key_id":     []byte("id"),
-					"access_key_secret": []byte("secret"),
-				},
-			},
-			wantError: "AWS s3 endpoint URL format is invalid",
+			wantError: "scheme of S3 endpoint URL is unsupported: ",
 		},
 		{
 			name: "s3 region used in endpoint URL is incorrect",
@@ -570,7 +556,7 @@ func TestS3Extract(t *testing.T) {
 					"access_key_secret": []byte("secret"),
 				},
 			},
-			wantError: "s3 region used in endpoint URL is incorrect",
+			wantError: "endpoint for AWS S3 must include correct region: https://s3.region.amazonaws.com",
 		},
 		{
 			name: "s3 endpoint format is not a valid s3 URL",
@@ -584,7 +570,7 @@ func TestS3Extract(t *testing.T) {
 					"access_key_secret": []byte("secret"),
 				},
 			},
-			wantError: "s3 endpoint format is not a valid s3 URL",
+			wantError: "endpoint for AWS S3 must include correct region: https://s3.region.amazonaws.com",
 		},
 	}
 	for _, tst := range table {
