@@ -56,6 +56,10 @@ var queryTests = []struct {
 				}
 			],
 			"stats" : {
+				"index": {
+					"postFilterChunks": 0,
+					"totalChunks": 0
+				},
 				"ingester" : {
 					"store": {
 						"chunksDownloadTime": 0,

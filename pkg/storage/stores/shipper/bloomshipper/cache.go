@@ -95,8 +95,8 @@ type BlockDirectory struct {
 	size int64
 }
 
-func (b BlockDirectory) Block() *v1.Block {
-	return v1.NewBlock(v1.NewDirectoryBlockReader(b.Path))
+func (b BlockDirectory) Block(metrics *v1.Metrics) *v1.Block {
+	return v1.NewBlock(v1.NewDirectoryBlockReader(b.Path), metrics)
 }
 
 func (b BlockDirectory) Size() int64 {
@@ -120,9 +120,13 @@ func (b *BlockDirectory) resolveSize() error {
 
 // BlockQuerier returns a new block querier from the directory.
 // The passed function `close` is called when the the returned querier is closed.
-func (b BlockDirectory) BlockQuerier(close func() error) *CloseableBlockQuerier {
+func (b BlockDirectory) BlockQuerier(
+	usePool bool,
+	close func() error,
+	metrics *v1.Metrics,
+) *CloseableBlockQuerier {
 	return &CloseableBlockQuerier{
-		BlockQuerier: v1.NewBlockQuerier(b.Block()),
+		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), usePool),
 		BlockRef:     b.BlockRef,
 		close:        close,
 	}
