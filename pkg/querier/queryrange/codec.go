@@ -413,6 +413,11 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		ctx = httpreq.InjectQueryTags(ctx, queryTags)
 	}
 
+	// Add disable pipleine wrappers
+	if disableWrappers := httpReq.Header.Get(httpreq.LokiDisablePipelineWrappersHeader); disableWrappers != "" {
+		httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, disableWrappers)
+	}
+
 	// Add query metrics
 	if queueTimeHeader := httpReq.Header.Get(string(httpreq.QueryQueueTimeHTTPHeader)); queueTimeHeader != "" {
 		queueTime, err := time.ParseDuration(queueTimeHeader)
