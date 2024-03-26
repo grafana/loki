@@ -35,10 +35,23 @@ func FromContext(ctx context.Context) *Stats {
 	return o.(*Stats)
 }
 
+// aggregates the total duration
+func (s *Stats) Duration() (dur time.Duration) {
+	dur += s.QueueTime.Load()
+	dur += s.MetasFetchTime.Load()
+	dur += s.BlocksFetchTime.Load()
+	dur += s.ProcessingTime.Load()
+	dur += s.PostProcessingTime.Load()
+	return
+}
+
 func (s *Stats) KVArgs() []any {
 	if s == nil {
 		return []any{}
 	}
+	chunksRemaining := s.ChunksRequested - s.ChunksFiltered
+	filterRatio := float64(s.ChunksFiltered) / float64(max(s.ChunksRequested, 1))
+
 	return []any{
 		"status", s.Status,
 		"tasks", s.NumTasks,
@@ -46,11 +59,14 @@ func (s *Stats) KVArgs() []any {
 		"series_filtered", s.SeriesFiltered,
 		"chunks_requested", s.ChunksRequested,
 		"chunks_filtered", s.ChunksFiltered,
+		"chunks_remaining", chunksRemaining,
+		"filter_ratio", filterRatio,
 		"queue_time", s.QueueTime.Load(),
 		"metas_fetch_time", s.MetasFetchTime.Load(),
 		"blocks_fetch_time", s.BlocksFetchTime.Load(),
 		"processing_time", s.ProcessingTime.Load(),
 		"post_processing_time", s.PostProcessingTime.Load(),
+		"duration", s.Duration(),
 	}
 }
 
