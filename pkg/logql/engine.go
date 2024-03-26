@@ -256,7 +256,10 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
 	statResult.Log(level.Debug(spLogger))
 
-	status, _ := server.ClientHTTPStatusAndError(err)
+	status := 200
+	if err != nil {
+		status, _ = server.ClientHTTPStatusAndError(err)
+	}
 
 	if q.record {
 		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data)
