@@ -475,7 +475,7 @@ func validateS3Endpoint(endpoint string, region string) error {
 		return errS3EndpointUnparseable
 	}
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return errS3EndpointUnsuportedScheme
+		return fmt.Errorf("%w: %s", errS3EndpointUnsupportedScheme, parsedURL.Scheme)
 	}
 	if !strings.HasSuffix(endpoint, awsEndpoint) {
 		return errS3EndpointNotAWS
