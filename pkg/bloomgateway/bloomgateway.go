@@ -288,7 +288,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		go g.consumeTask(ctx, task, tasksCh)
 	}
 
-	sp.Log("enqueue_duration", time.Since(queueStart).String())
+	sp.Log("msg", "enqueued tasks", "duration", time.Since(queueStart).String())
 
 	remaining := len(tasks)
 
@@ -335,9 +335,14 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	g.metrics.requestedChunks.Observe(float64(preFilterChunks))
 	g.metrics.filteredChunks.Observe(float64(preFilterChunks - postFilterChunks))
 
-	level.Info(sp).Log(
-		"msg", "return filtered chunk refs",
-	)
+	stats.Status = "success"
+	stats.SeriesRequested = preFilterSeries
+	stats.SeriesFiltered = preFilterSeries - postFilterSeries
+	stats.ChunksRequested = preFilterChunks
+	stats.ChunksFiltered = preFilterChunks - postFilterChunks
+
+	sp.Log("msg", "return filtered chunk refs")
+
 	return &logproto.FilterChunkRefResponse{ChunkRefs: filtered}, nil
 }
 

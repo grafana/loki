@@ -2,7 +2,7 @@ package bloomgateway
 
 import (
 	"context"
-	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
+	"sync/atomic" //lint:ignore
 	"time"
 )
 
@@ -19,9 +19,7 @@ var ctxKey = statsKey(0)
 
 // ContextWithEmptyStats returns a context with empty stats.
 func ContextWithEmptyStats(ctx context.Context) (*Stats, context.Context) {
-	stats := &Stats{
-		Status: "unknown",
-	}
+	stats := &Stats{Status: "unknown"}
 	ctx = context.WithValue(ctx, ctxKey, stats)
 	return stats, ctx
 }
@@ -41,7 +39,6 @@ func (s *Stats) KVArgs() []any {
 		return []any{}
 	}
 	return []any{
-		"msg", "bloomgateway.FilterChunkRefs",
 		"status", s.Status,
 		"tasks", s.NumTasks,
 		"series_requested", s.SeriesRequested,
