@@ -477,14 +477,11 @@ func validateS3Endpoint(endpoint string, region string) error {
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		return fmt.Errorf("%w: %s", errS3EndpointUnsupportedScheme, parsedURL.Scheme)
 	}
-	if !strings.HasSuffix(endpoint, awsEndpoint) {
-		return errS3EndpointNotAWS
-	}
-	if !strings.HasSuffix(endpoint, fmt.Sprintf("%s.%s", region, awsEndpoint)) {
-		return errS3EndpointWrongRegion
-	}
-	if !strings.HasSuffix(endpoint, fmt.Sprintf("s3.%s.%s", region, awsEndpoint)) {
-		return errS3EndpointNotS3
+	if strings.HasSuffix(endpoint, awsEndpointSuffix) {
+		validEndpoint := fmt.Sprintf("https://s3.%s%s", region, awsEndpointSuffix)
+		if endpoint != validEndpoint {
+			return fmt.Errorf("%w: %s", errS3EndpointAWSInvalid, validEndpoint)
+		}
 	}
 	return nil
 }
