@@ -86,7 +86,7 @@ func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHe
 	}
 	defer pool.PutReader(decompressor)
 
-	b := make([]byte, page.DecompressedLen)
+	b := BlockPool.Get(page.DecompressedLen)[:page.DecompressedLen]
 
 	if _, err = io.ReadFull(decompressor, b); err != nil {
 		return nil, errors.Wrap(err, "decompressing bloom page")
@@ -97,11 +97,13 @@ func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHe
 	return decoder, nil
 }
 
+// shortcut to skip allocations when we know the page is not compressed
 func LazyDecodeBloomPageNoCompression(r io.Reader, page BloomPageHeader) (*BloomPageDecoder, error) {
+	// data + checksum
 	if page.Len != page.DecompressedLen+4 {
 		return nil, errors.New("the Len and DecompressedLen of the page do not match")
 	}
-	data := make([]byte, page.Len)
+	data := BlockPool.Get(page.Len)[:page.Len]
 
 	_, err := io.ReadFull(r, data)
 	if err != nil {
@@ -150,6 +152,21 @@ type BloomPageDecoder struct {
 	n   int // number of blooms in page
 	cur *Bloom
 	err error
+}
+
+// Relinquish returns the underlying byte slice to the pool
+// for efficiency. It's intended to be used as a
+// perf optimization.
+// This can only safely be used when the underlying bloom
+// bytes don't escape the decoder:
+// on reads in the bloom-gw but not in the bloom-compactor
+func (d *BloomPageDecoder) Relinquish() {
+	data := d.data
+	d.data = nil
+
+	if cap(data) > 0 {
+		BlockPool.Put(data)
+	}
 }
 
 func (d *BloomPageDecoder) Reset() {

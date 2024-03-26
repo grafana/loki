@@ -74,7 +74,7 @@ func dummyBloomGen(t *testing.T, opts v1.BlockOptions, store v1.Iterator[*v1.Ser
 	for i, b := range blocks {
 		bqs = append(bqs, &bloomshipper.CloseableBlockQuerier{
 			BlockRef:     refs[i],
-			BlockQuerier: v1.NewBlockQuerier(b),
+			BlockQuerier: v1.NewBlockQuerier(b, false),
 		})
 	}
 

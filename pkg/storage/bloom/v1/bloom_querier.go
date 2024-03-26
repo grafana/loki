@@ -7,6 +7,8 @@ type BloomQuerier interface {
 }
 
 type LazyBloomIter struct {
+	usePool bool
+
 	b *Block
 
 	// state
@@ -16,9 +18,15 @@ type LazyBloomIter struct {
 	curPage      *BloomPageDecoder
 }
 
-func NewLazyBloomIter(b *Block) *LazyBloomIter {
+// NewLazyBloomIter returns a new lazy bloom iterator.
+// If pool is true, the underlying byte slice of the bloom page
+// will be returned to the pool for efficiency.
+// This can only safely be used when the underlying bloom
+// bytes don't escape the decoder.
+func NewLazyBloomIter(b *Block, pool bool) *LazyBloomIter {
 	return &LazyBloomIter{
-		b: b,
+		usePool: pool,
+		b:       b,
 	}
 }
 
@@ -38,6 +46,12 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 	// if we need a different page or the current page hasn't been loaded,
 	// load the desired page
 	if it.curPageIndex != offset.Page || it.curPage == nil {
+
+		// drop the current page if it exists and
+		// we're using the pool
+		if it.curPage != nil && it.usePool {
+			it.curPage.Relinquish()
+		}
 
 		r, err := it.b.reader.Blooms()
 		if err != nil {
@@ -97,8 +111,14 @@ func (it *LazyBloomIter) next() bool {
 			if it.curPage.Err() != nil {
 				return false
 			}
+
 			// we've exhausted the current page, progress to next
 			it.curPageIndex++
+			// drop the current page if it exists and
+			// we're using the pool
+			if it.usePool {
+				it.curPage.Relinquish()
+			}
 			it.curPage = nil
 			continue
 		}

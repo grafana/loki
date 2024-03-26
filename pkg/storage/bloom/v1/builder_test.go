@@ -117,7 +117,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 				}
 
 				block := NewBlock(tc.reader, NewMetrics(nil))
-				querier := NewBlockQuerier(block)
+				querier := NewBlockQuerier(block, false)
 
 				err = block.LoadHeaders()
 				require.Nil(t, err)
@@ -218,7 +218,7 @@ func TestMergeBuilder(t *testing.T) {
 		itr := NewSliceIter[SeriesWithBloom](data[min:max])
 		_, err = builder.BuildFrom(itr)
 		require.Nil(t, err)
-		blocks = append(blocks, NewPeekingIter[*SeriesWithBloom](NewBlockQuerier(NewBlock(reader, NewMetrics(nil)))))
+		blocks = append(blocks, NewPeekingIter[*SeriesWithBloom](NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), false)))
 	}
 
 	// We're not testing the ability to extend a bloom in this test
@@ -252,7 +252,7 @@ func TestMergeBuilder(t *testing.T) {
 	require.Nil(t, err)
 
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block)
+	querier := NewBlockQuerier(block, false)
 
 	EqualIterators[*SeriesWithBloom](
 		t,
@@ -296,7 +296,7 @@ func TestBlockReset(t *testing.T) {
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block)
+	querier := NewBlockQuerier(block, false)
 
 	rounds := make([][]model.Fingerprint, 2)
 
@@ -362,7 +362,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 			_, err = builder.BuildFrom(itr)
 			require.Nil(t, err)
 			block := NewBlock(reader, NewMetrics(nil))
-			querier := NewBlockQuerier(block)
+			querier := NewBlockQuerier(block, false)
 
 			// rather than use the block querier directly, collect it's data
 			// so we can use it in a few places later
@@ -423,7 +423,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 	// ensure the new block contains one copy of all the data
 	// by comparing it against an iterator over the source data
-	mergedBlockQuerier := NewBlockQuerier(NewBlock(reader, NewMetrics(nil)))
+	mergedBlockQuerier := NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), false)
 	sourceItr := NewSliceIter[*SeriesWithBloom](PointerSlice[SeriesWithBloom](xs))
 
 	EqualIterators[*SeriesWithBloom](

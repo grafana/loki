@@ -26,6 +26,10 @@ var downloadQueueCapacity = 10000
 type options struct {
 	ignoreNotFound bool // ignore 404s from object storage; default=true
 	fetchAsync     bool // dispatch downloading of block and return immediately; default=false
+	// return bloom blocks to pool after iteration; default=false
+	// NB(owen-d): this can only be safely used when blooms are not captured outside
+	// of iteration or it can introduce use-after-free bugs
+	usePool bool
 }
 
 func (o *options) apply(opts ...FetchOption) {
@@ -45,6 +49,12 @@ func WithIgnoreNotFound(v bool) FetchOption {
 func WithFetchAsync(v bool) FetchOption {
 	return func(opts *options) {
 		opts.fetchAsync = v
+	}
+}
+
+func WithPool(v bool) FetchOption {
+	return func(opts *options) {
+		opts.usePool = v
 	}
 }
 
@@ -186,7 +196,7 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 // FetchBlocks implements fetcher
 func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error) {
 	// apply fetch options
-	cfg := &options{ignoreNotFound: true, fetchAsync: false}
+	cfg := &options{ignoreNotFound: true, fetchAsync: false, usePool: false}
 	cfg.apply(opts...)
 
 	// first, resolve blocks from cache and enqueue missing blocks to download queue
@@ -229,6 +239,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 		found++
 		f.metrics.blocksFound.Inc()
 		results[i] = dir.BlockQuerier(
+			cfg.usePool,
 			func() error {
 				return f.blocksCache.Release(ctx, key)
 			},
@@ -262,6 +273,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 			found++
 			key := f.client.Block(refs[res.idx]).Addr()
 			results[res.idx] = res.item.BlockQuerier(
+				cfg.usePool,
 				func() error {
 					return f.blocksCache.Release(ctx, key)
 				},
