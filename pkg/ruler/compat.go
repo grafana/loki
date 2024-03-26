@@ -349,12 +349,11 @@ func (exprAdapter) PromQLExpr()                           {}
 func (exprAdapter) Type() parser.ValueType                { return parser.ValueType("unimplemented") }
 func (exprAdapter) Pretty(_ int) string                   { return "" }
 
-type noopRuleDependencyController struct {
-}
+type noopRuleDependencyController struct{}
 
 // Prometheus rules manager calls AnalyseRules to determine the dependents and dependencies of a rule
 // which it then uses to decide if a rule within a group is eligible for concurrent execution.
 // AnalyseRules is a noop for Loki since there is no dependency relation between rules.
-func (*noopRuleDependencyController) AnalyseRules(rules []rules.Rule) {
+func (*noopRuleDependencyController) AnalyseRules([]rules.Rule) {
 	// Do nothing
 }
