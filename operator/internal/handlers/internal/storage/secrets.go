@@ -472,7 +472,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 func validateS3Endpoint(endpoint string, region string) error {
 	parsedURL, err := url.Parse(endpoint)
 	if err != nil {
-		return errS3EndpointUnparseable
+		return fmt.Errorf("%w: %w", errS3EndpointUnparseable, err)
 	}
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		return fmt.Errorf("%w: %s", errS3EndpointUnsupportedScheme, parsedURL.Scheme)
