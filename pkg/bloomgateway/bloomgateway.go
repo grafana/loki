@@ -51,7 +51,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
@@ -63,6 +62,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
@@ -196,15 +196,17 @@ func (g *Gateway) stopping(_ error) error {
 
 // FilterChunkRefs implements BloomGatewayServer
 func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest) (*logproto.FilterChunkRefResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomgateway.FilterChunkRefs")
-	defer sp.Finish()
-
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	logger := log.With(g.logger, "tenant", tenantID)
+	sp, ctx := spanlogger.NewWithLogger(
+		ctx,
+		log.With(g.logger, "tenant", tenantID),
+		"bloomgateway.FilterChunkRefs",
+	)
+	defer sp.Finish()
 
 	// start time == end time --> empty response
 	if req.From.Equal(req.Through) {
@@ -237,7 +239,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}, nil
 	}
 
-	sp.LogKV(
+	sp.Log(
 		"filters", len(filters),
 		"days", len(seriesByDay),
 		"series_requested", len(req.Refs),
@@ -254,7 +256,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		// TODO(owen-d): include capacity in constructor?
 		task.responses = responsesPool.Get(len(seriesForDay.series))
 
-		level.Debug(g.logger).Log(
+		level.Debug(sp).Log(
 			"msg", "created task for day",
 			"task", task.ID,
 			"day", seriesForDay.day,
@@ -276,7 +278,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	for _, task := range tasks {
 		task := task
 		task.enqueueTime = time.Now()
-		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "table", task.table, "series", len(task.series))
+		level.Info(sp).Log("msg", "enqueue task", "task", task.ID, "table", task.table, "series", len(task.series))
 
 		// TODO(owen-d): gracefully handle full queues
 		if err := g.queue.Enqueue(tenantID, nil, task, func() {
@@ -289,7 +291,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		go g.consumeTask(ctx, task, tasksCh)
 	}
 
-	sp.LogKV("enqueue_duration", time.Since(queueStart).String())
+	sp.Log("enqueue_duration", time.Since(queueStart).String())
 
 	remaining := len(tasks)
 
@@ -305,7 +307,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		case <-ctx.Done():
 			return nil, errors.Wrap(ctx.Err(), "request failed")
 		case task := <-tasksCh:
-			level.Info(logger).Log("msg", "task done", "task", task.ID, "err", task.Err())
+			level.Info(sp).Log("msg", "task done", "task", task.ID, "err", task.Err())
 			if task.Err() != nil {
 				return nil, errors.Wrap(task.Err(), "request failed")
 			}
@@ -314,7 +316,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}
 	}
 
-	sp.LogKV("msg", "received all responses")
+	sp.Log("msg", "received all responses")
 
 	filtered := filterChunkRefs(req, responses)
 
@@ -333,7 +335,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	g.metrics.requestedChunks.Observe(float64(preFilterChunks))
 	g.metrics.filteredChunks.Observe(float64(preFilterChunks - postFilterChunks))
 
-	level.Info(logger).Log(
+	level.Info(sp).Log(
 		"msg", "return filtered chunk refs",
 		"requested_series", preFilterSeries,
 		"filtered_series", preFilterSeries-postFilterSeries,

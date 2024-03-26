@@ -23,9 +23,11 @@ import (
 	"github.com/grafana/loki/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/loghttp/push"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler_config "github.com/grafana/loki/pkg/ruler/config"
 	"github.com/grafana/loki/pkg/ruler/util"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -49,8 +51,8 @@ const (
 
 	bytesInMB = 1048576
 
-	defaultPerStreamRateLimit   = 3 << 20   // 3MB
-	DefaultTSDBMaxBytesPerShard = 600 << 20 // 600MB
+	defaultPerStreamRateLimit   = 3 << 20 // 3MB
+	DefaultTSDBMaxBytesPerShard = sharding.DefaultTSDBMaxBytesPerShard
 	defaultPerStreamBurstLimit  = 5 * defaultPerStreamRateLimit
 
 	DefaultPerTenantQueryTimeout = "1m"
@@ -95,6 +97,7 @@ type Limits struct {
 	MaxQueryParallelism        int              `yaml:"max_query_parallelism" json:"max_query_parallelism"`
 	TSDBMaxQueryParallelism    int              `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
 	TSDBMaxBytesPerShard       flagext.ByteSize `yaml:"tsdb_max_bytes_per_shard" json:"tsdb_max_bytes_per_shard"`
+	TSDBShardingStrategy       string           `yaml:"tsdb_sharding_strategy" json:"tsdb_sharding_strategy"`
 	CardinalityLimit           int              `yaml:"cardinality_limit" json:"cardinality_limit"`
 	MaxStreamsMatchersPerQuery int              `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
 	MaxConcurrentTailRequests  int              `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
@@ -270,7 +273,16 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 32, "Maximum number of queries that will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.TSDBMaxQueryParallelism, "querier.tsdb-max-query-parallelism", 128, "Maximum number of queries will be scheduled in parallel by the frontend for TSDB schemas.")
 	_ = l.TSDBMaxBytesPerShard.Set(strconv.Itoa(DefaultTSDBMaxBytesPerShard))
-	f.Var(&l.TSDBMaxBytesPerShard, "querier.tsdb-max-bytes-per-shard", "Maximum number of bytes assigned to a single sharded query. Also expressible in human readable forms (1GB, etc).")
+	f.Var(&l.TSDBMaxBytesPerShard, "querier.tsdb-max-bytes-per-shard", "Target maximum number of bytes assigned to a single sharded query. Also expressible in human readable forms (1GB, etc). Note: This is a _target_ and not an absolute limit. The actual limit can be higher, but the query planner will try to build shards up to this limit.")
+	f.StringVar(
+		&l.TSDBShardingStrategy,
+		"limits.tsdb-sharding-strategy",
+		logql.PowerOfTwoVersion.String(),
+		fmt.Sprintf(
+			"sharding strategy to use in query planning. Suggested to use %s once all nodes can recognize it.",
+			logql.BoundedVersion.String(),
+		),
+	)
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Maximum number of stream matchers per query.")
 	f.IntVar(&l.MaxConcurrentTailRequests, "querier.max-concurrent-tail-requests", 10, "Maximum number of concurrent tail requests.")
@@ -430,6 +442,10 @@ func (l *Limits) Validate() error {
 
 	if err := l.OTLPConfig.Validate(); err != nil {
 		return err
+	}
+
+	if _, err := logql.ParseShardVersion(l.TSDBShardingStrategy); err != nil {
+		return errors.Wrap(err, "invalid tsdb sharding strategy")
 	}
 
 	if _, err := chunkenc.ParseEncoding(l.BloomBlockEncoding); err != nil {
@@ -593,6 +609,11 @@ func (o *Overrides) TSDBMaxQueryParallelism(_ context.Context, userID string) in
 // TSDBMaxBytesPerShard returns the maximum number of bytes assigned to a specific shard in a tsdb query
 func (o *Overrides) TSDBMaxBytesPerShard(userID string) int {
 	return o.getOverridesForUser(userID).TSDBMaxBytesPerShard.Val()
+}
+
+// TSDBShardingStrategy returns the sharding strategy to use in query planning.
+func (o *Overrides) TSDBShardingStrategy(userID string) string {
+	return o.getOverridesForUser(userID).TSDBShardingStrategy
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the
