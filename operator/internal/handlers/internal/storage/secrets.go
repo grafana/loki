@@ -41,7 +41,7 @@ var (
 	errAzureInvalidAccountKey         = errors.New("azure account key is not valid base64")
 
 	errS3EndpointUnparseable      = errors.New("s3 endpoint is not parseable")
-	errS3EndpointUnsuportedScheme = errors.New("s3 endpoint URL scheme is missing or invalid")
+	errS3EndpointUnsupportedScheme = errors.New("scheme of S3 endpoint URL is unsupported")
 	errS3EndpointNotAWS           = errors.New("AWS s3 endpoint URL format is invalid")
 	errS3EndpointWrongRegion      = errors.New("s3 region used in endpoint URL is incorrect")
 	errS3EndpointNotS3            = errors.New("s3 endpoint format is not a valid s3 URL")
