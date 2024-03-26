@@ -613,6 +613,11 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		header.Set(httpreq.LokiActorPathHeader, actor)
 	}
 
+	// Add disable wrappers
+	if disableWrappers := httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader); disableWrappers != "" {
+		header.Set(httpreq.LokiDisablePipelineWrappersHeader, disableWrappers)
+	}
+
 	// Add limits
 	if limits := querylimits.ExtractQueryLimitsContext(ctx); limits != nil {
 		err := querylimits.InjectQueryLimitsHeader(&header, limits)

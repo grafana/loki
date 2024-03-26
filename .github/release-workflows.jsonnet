@@ -46,7 +46,7 @@ local imagePrefix = 'grafana';
   ),
   'minor-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
-      branches=['k[0-9]+'],
+      branches=['k[0-9]+', 'main'],
       buildImage=buildImage,
       checkTemplate=checkTemplate,
       golangCiLintVersion=golangCiLintVersion,
@@ -63,7 +63,7 @@ local imagePrefix = 'grafana';
   ),
   'release.yml': std.manifestYamlDoc(
     lokiRelease.releaseWorkflow(
-      branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+'],
+      branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+', 'main'],
       getDockerCredsFromVault=true,
       imagePrefix='grafana',
       releaseLibRef=releaseLibRef,

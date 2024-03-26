@@ -291,8 +291,8 @@ func (c *BlocksCache) Get(ctx context.Context, key string) (BlockDirectory, bool
 		return BlockDirectory{}, false
 	}
 
-	c.lock.RLock()
-	defer c.lock.RUnlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
 	entry := c.get(key)
 	if entry == nil {
@@ -454,4 +454,10 @@ func (c *BlocksCache) evictExpiredItems(ttl time.Duration) {
 			c.evict(k, v, reasonExpired)
 		}
 	}
+}
+
+func (c *BlocksCache) len() (int, bool) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.lru.Len(), c.lru.Len() == len(c.entries)
 }
