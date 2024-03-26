@@ -7,7 +7,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/prometheus/prometheus/util/pool"
+	"github.com/grafana/loki/pkg/util/pool"
 )
 
 const (
@@ -32,10 +32,30 @@ var (
 		},
 	}
 
-	// 4KB -> 128MB
-	BlockPool = BytePool{
+	// 1KB -> 1MB, 2x growth
+	seriesPagePool = BytePool{
 		pool: pool.New(
-			4<<10, 128<<20, 4,
+			1<<10, 1<<20, 2,
+			func(size int) interface{} {
+				return make([]byte, size)
+			}),
+	}
+
+	// 1MB -> 128MB
+	BlockPool = BytePool{
+		pool: pool.NewWithSizes(
+			[]int{
+				1 << 20,
+				2 << 20,
+				4 << 20,
+				8 << 20,
+				16 << 20,
+				32 << 20,
+				48 << 20,
+				64 << 20,
+				96 << 20,
+				128 << 20,
+			},
 			func(size int) interface{} {
 				return make([]byte, size)
 			}),

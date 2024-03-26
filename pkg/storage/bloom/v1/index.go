@@ -166,8 +166,8 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 		return nil, errors.Wrap(err, "seeking to series page")
 	}
 
-	data := BlockPool.Get(header.Len)[:header.Len]
-	defer BlockPool.Put(data)
+	data := seriesPagePool.Get(header.Len)[:header.Len]
+	defer seriesPagePool.Put(data)
 	_, err = io.ReadFull(r, data)
 	if err != nil {
 		return nil, errors.Wrap(err, "reading series page")
