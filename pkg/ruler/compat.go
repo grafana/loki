@@ -152,18 +152,19 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 		groupLoader := NewCachingGroupLoader(GroupLoader{})
 
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:      registry,
-			Queryable:       memStore,
-			QueryFunc:       queryFn,
-			Context:         user.InjectOrgID(ctx, userID),
-			ExternalURL:     cfg.ExternalURL.URL,
-			NotifyFunc:      ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),
-			Logger:          logger,
-			Registerer:      reg,
-			OutageTolerance: cfg.OutageTolerance,
-			ForGracePeriod:  cfg.ForGracePeriod,
-			ResendDelay:     cfg.ResendDelay,
-			GroupLoader:     groupLoader,
+			Appendable:               registry,
+			Queryable:                memStore,
+			QueryFunc:                queryFn,
+			Context:                  user.InjectOrgID(ctx, userID),
+			ExternalURL:              cfg.ExternalURL.URL,
+			NotifyFunc:               ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),
+			Logger:                   logger,
+			Registerer:               reg,
+			OutageTolerance:          cfg.OutageTolerance,
+			ForGracePeriod:           cfg.ForGracePeriod,
+			ResendDelay:              cfg.ResendDelay,
+			GroupLoader:              groupLoader,
+			RuleDependencyController: &noopRuleDependencyController{},
 		})
 
 		cachingManager := &CachingRulesManager{
@@ -347,3 +348,13 @@ func (exprAdapter) PositionRange() posrange.PositionRange { return posrange.Posi
 func (exprAdapter) PromQLExpr()                           {}
 func (exprAdapter) Type() parser.ValueType                { return parser.ValueType("unimplemented") }
 func (exprAdapter) Pretty(_ int) string                   { return "" }
+
+type noopRuleDependencyController struct {
+}
+
+// Prometheus rules manager calls AnalyseRules to determine the dependents and dependencies of a rule
+// which it then uses to decide if a rule within a group is eligible for concurrent execution.
+// AnalyseRules is a noop for Loki since there is no dependency relation between rules.
+func (*noopRuleDependencyController) AnalyseRules(rules []rules.Rule) {
+	// Do nothing
+}
