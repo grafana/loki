@@ -2,7 +2,7 @@ package bloomgateway
 
 import (
 	"context"
-	"sync/atomic" //lint:ignore
+	"sync/atomic" //lint:ignore faillint
 	"time"
 )
 
