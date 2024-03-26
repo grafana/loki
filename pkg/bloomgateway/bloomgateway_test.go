@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -139,7 +138,7 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	tenantID := "test"
 
-	logger := log.NewLogfmtLogger(os.Stderr)
+	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 
 	kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), logger, reg)
