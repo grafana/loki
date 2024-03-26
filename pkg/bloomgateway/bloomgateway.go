@@ -56,7 +56,6 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
@@ -206,10 +205,16 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		log.With(g.logger, "tenant", tenantID),
 		"bloomgateway.FilterChunkRefs",
 	)
-	defer sp.Finish()
+
+	stats, ctx := ContextWithEmptyStats(ctx)
+	defer func() {
+		level.Info(sp).Log(stats.KVArgs()...)
+		sp.Finish()
+	}()
 
 	// start time == end time --> empty response
 	if req.From.Equal(req.Through) {
+		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: []*logproto.GroupedChunkRefs{},
 		}, nil
@@ -217,23 +222,28 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	// start time > end time --> error response
 	if req.Through.Before(req.From) {
+		stats.Status = labelFailure
 		return nil, errors.New("from time must not be after through time")
 	}
 
 	filters := v1.ExtractTestableLineFilters(req.Plan.AST)
+	stats.NumFilters = len(filters)
 	g.metrics.receivedFilters.Observe(float64(len(filters)))
 
 	// Shortcut if request does not contain filters
 	if len(filters) == 0 {
+		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: req.Refs,
 		}, nil
 	}
 
 	seriesByDay := partitionRequest(req)
+	stats.NumTasks = len(seriesByDay)
 
 	// no tasks --> empty response
 	if len(seriesByDay) == 0 {
+		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: []*logproto.GroupedChunkRefs{},
 		}, nil
@@ -255,15 +265,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 		// TODO(owen-d): include capacity in constructor?
 		task.responses = responsesPool.Get(len(seriesForDay.series))
-
-		level.Debug(sp).Log(
-			"msg", "created task for day",
-			"task", task.ID,
-			"day", seriesForDay.day,
-			"interval", seriesForDay.interval.String(),
-			"nSeries", len(seriesForDay.series),
-			"filters", JoinFunc(filters, ";", func(e syntax.LineFilterExpr) string { return e.String() }),
-		)
 		tasks = append(tasks, task)
 	}
 
@@ -285,13 +286,14 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			// When enqueuing, we also add the task to the pending tasks
 			_ = g.pendingTasks.Inc()
 		}); err != nil {
+			stats.Status = labelFailure
 			return nil, errors.Wrap(err, "failed to enqueue task")
 		}
 		// TODO(owen-d): use `concurrency` lib, bound parallelism
 		go g.consumeTask(ctx, task, tasksCh)
 	}
 
-	sp.Log("enqueue_duration", time.Since(queueStart).String())
+	sp.Log("msg", "enqueued tasks", "duration", time.Since(queueStart).String())
 
 	remaining := len(tasks)
 
@@ -305,10 +307,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	for remaining > 0 {
 		select {
 		case <-ctx.Done():
+			stats.Status = "cancel"
 			return nil, errors.Wrap(ctx.Err(), "request failed")
 		case task := <-tasksCh:
 			level.Info(sp).Log("msg", "task done", "task", task.ID, "err", task.Err())
 			if task.Err() != nil {
+				stats.Status = labelFailure
 				return nil, errors.Wrap(task.Err(), "request failed")
 			}
 			responses = append(responses, task.responses)
@@ -318,7 +322,10 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	sp.Log("msg", "received all responses")
 
+	start := time.Now()
 	filtered := filterChunkRefs(req, responses)
+	duration := time.Since(start)
+	stats.AddPostProcessingTime(duration)
 
 	// free up the responses
 	for _, resp := range responses {
@@ -335,13 +342,14 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	g.metrics.requestedChunks.Observe(float64(preFilterChunks))
 	g.metrics.filteredChunks.Observe(float64(preFilterChunks - postFilterChunks))
 
-	level.Info(sp).Log(
-		"msg", "return filtered chunk refs",
-		"requested_series", preFilterSeries,
-		"filtered_series", preFilterSeries-postFilterSeries,
-		"requested_chunks", preFilterChunks,
-		"filtered_chunks", preFilterChunks-postFilterChunks,
-	)
+	stats.Status = "success"
+	stats.SeriesRequested = preFilterSeries
+	stats.SeriesFiltered = preFilterSeries - postFilterSeries
+	stats.ChunksRequested = preFilterChunks
+	stats.ChunksFiltered = preFilterChunks - postFilterChunks
+
+	sp.Log("msg", "return filtered chunk refs")
+
 	return &logproto.FilterChunkRefResponse{ChunkRefs: filtered}, nil
 }
 
