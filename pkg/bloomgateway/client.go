@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util/constants"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -270,9 +271,6 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 			"from", from.Time(),
 			"through", through.Time(),
 			"num_refs", len(rs.groups),
-			"refs", JoinFunc(rs.groups, ",", func(e *logproto.GroupedChunkRefs) string {
-				return model.Fingerprint(e.Fingerprint).String()
-			}),
 			"plan", plan.String(),
 			"plan_hash", plan.Hash(),
 		)
@@ -355,6 +353,16 @@ func replicationSetsWithBounds(subRing ring.ReadRing, instances []ring.InstanceD
 		tr, err := bloomutils.TokenRangesForInstance(inst.Id, instances)
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
+		}
+
+		if len(tr) == 0 {
+			level.Warn(util_log.Logger).Log(
+				"subroutine", "replicationSetsWithBounds",
+				"msg", "instance has no token ranges - should not be possible",
+				"instance", inst.Id,
+				"n_instances", len(instances),
+			)
+			continue
 		}
 
 		// NB(owen-d): this will send requests to the wrong nodes if RF>1 since it only checks the

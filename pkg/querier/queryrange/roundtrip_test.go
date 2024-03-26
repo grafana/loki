@@ -1380,6 +1380,9 @@ func (f fakeLimits) VolumeEnabled(_ string) bool {
 func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 	return valid.DefaultTSDBMaxBytesPerShard
 }
+func (f fakeLimits) TSDBShardingStrategy(string) string {
+	return logql.PowerOfTwoVersion.String()
+}
 
 type ingesterQueryOpts struct {
 	queryStoreOnly       bool

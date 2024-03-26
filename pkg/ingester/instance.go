@@ -38,7 +38,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -504,16 +503,9 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	stats := stats.FromContext(ctx)
 	var iters []iter.SampleIterator
 
-	var shard *astmapper.ShardAnnotation
-	shards, err := logql.ParseShards(req.Shards)
+	shard, err := parseShardFromRequest(req.Shards)
 	if err != nil {
 		return nil, err
-	}
-	if len(shards) > 1 {
-		return nil, errors.New("only one shard per ingester query is supported")
-	}
-	if len(shards) == 1 {
-		shard = &shards[0]
 	}
 	selector, err := expr.Selector()
 	if err != nil {
@@ -823,11 +815,11 @@ func (i *instance) forMatchingStreams(
 	// and is used to select the correct inverted index
 	ts time.Time,
 	matchers []*labels.Matcher,
-	shards *astmapper.ShardAnnotation,
+	shard *logql.Shard,
 	fn func(*stream) error,
 ) error {
 	filters, matchers := util.SplitFiltersAndMatchers(matchers)
-	ids, err := i.index.Lookup(ts, matchers, shards)
+	ids, err := i.index.Lookup(ts, matchers, shard)
 	if err != nil {
 		return err
 	}
@@ -934,9 +926,9 @@ func (i *instance) openTailersCount() uint32 {
 	return uint32(len(i.tailers))
 }
 
-func parseShardFromRequest(reqShards []string) (*astmapper.ShardAnnotation, error) {
-	var shard *astmapper.ShardAnnotation
-	shards, err := logql.ParseShards(reqShards)
+func parseShardFromRequest(reqShards []string) (*logql.Shard, error) {
+	var shard *logql.Shard
+	shards, _, err := logql.ParseShards(reqShards)
 	if err != nil {
 		return nil, err
 	}
