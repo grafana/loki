@@ -62,6 +62,7 @@ type Entry struct {
 type Stage interface {
 	Name() string
 	Run(chan Entry) chan Entry
+	Cleanup()
 }
 
 func (entry *Entry) copy() *Entry {
@@ -227,4 +228,9 @@ func New(logger log.Logger, jobName *string, stageType string,
 		jobName:    jobName,
 	}
 	return creator(params)
+}
+
+// Cleanup implements Stage.
+func (*stageProcessor) Cleanup() {
+	// no-op
 }

@@ -123,6 +123,11 @@ func (g *geoIPStage) Name() string {
 	return StageTypeGeoIP
 }
 
+// Cleanup implements Stage.
+func (*geoIPStage) Cleanup() {
+	// no-op
+}
+
 func (g *geoIPStage) process(labels model.LabelSet, extracted map[string]interface{}, _ *time.Time, _ *string) {
 	var ip net.IP
 	if g.cfgs.Source != nil {
