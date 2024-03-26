@@ -243,6 +243,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 			func() error {
 				return f.blocksCache.Release(ctx, key)
 			},
+			f.cfg.maxBloomPageSize,
 			f.bloomMetrics,
 		)
 	}
@@ -277,6 +278,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 				func() error {
 					return f.blocksCache.Release(ctx, key)
 				},
+				f.cfg.maxBloomPageSize,
 				f.bloomMetrics,
 			)
 		}
