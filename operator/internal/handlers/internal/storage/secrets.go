@@ -58,8 +58,8 @@ var (
 )
 
 const (
-	gcpAccountTypeExternal = "external_account"
 	awsEndpoint            = "amazonaws.com"
+	gcpAccountTypeExternal = "external_account"
 )
 
 func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
