@@ -118,10 +118,19 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		return err
 	}
 
-	return p.processBlocks(ctx, bqs, data)
+	start = time.Now()
+	res := p.processBlocks(ctx, bqs, data)
+	duration = time.Since(start)
+
+	for _, t := range tasks {
+		FromContext(t.ctx).AddProcessingTime(duration)
+	}
+
+	return res
 }
 
 func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.CloseableBlockQuerier, data []blockWithTasks) error {
+
 	defer func() {
 		for i := range bqs {
 			if bqs[i] == nil {
@@ -188,7 +197,7 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 
 	for _, task := range tasks {
 		stats := FromContext(task.ctx)
-		stats.AddProcessingTime(duration)
+		stats.AddTotalProcessingTime(duration)
 		stats.IncProcessedBlocks()
 	}
 
