@@ -55,6 +55,7 @@ func loadRuntimeConfig(r io.Reader) (interface{}, error) {
 	return overrides, nil
 }
 
+// tenantLimitsFromRuntimeConfig implements validation.Limits
 type tenantLimitsFromRuntimeConfig struct {
 	c *runtimeconfig.Manager
 }
@@ -85,20 +86,28 @@ func newtenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.Tenan
 	return &tenantLimitsFromRuntimeConfig{c: c}
 }
 
-func tenantConfigFromRuntimeConfig(c *runtimeconfig.Manager) runtime.TenantConfig {
-	if c == nil {
+type tenantConfigProvider struct {
+	c *runtimeconfig.Manager
+}
+
+func newTenantConfigProvider(c *runtimeconfig.Manager) runtime.TenantConfigProvider {
+	return &tenantConfigProvider{c: c}
+}
+
+// TenantConfig returns the user config or default config if none was defined.
+func (t *tenantConfigProvider) TenantConfig(userID string) *runtime.Config {
+	if t.c == nil {
 		return nil
 	}
-	return func(userID string) *runtime.Config {
-		cfg, ok := c.GetConfig().(*runtimeConfigValues)
-		if !ok || cfg == nil {
-			return nil
-		}
-		if tenantCfg, ok := cfg.TenantConfig[userID]; ok {
-			return tenantCfg
-		}
-		return cfg.DefaultConfig
+
+	cfg, ok := t.c.GetConfig().(*runtimeConfigValues)
+	if !ok || cfg == nil {
+		return nil
 	}
+	if tenantCfg, ok := cfg.TenantConfig[userID]; ok {
+		return tenantCfg
+	}
+	return cfg.DefaultConfig
 }
 
 func multiClientRuntimeConfigChannel(manager *runtimeconfig.Manager) func() <-chan kv.MultiRuntimeConfig {

@@ -4,13 +4,15 @@ import (
 	"compress/flate"
 	"compress/gzip"
 	"fmt"
-	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/pkg/push"
 	"io"
 	"math"
 	"mime"
 	"net/http"
 	"time"
+
+	"github.com/go-kit/log/level"
+
+	"github.com/grafana/loki/pkg/push"
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
@@ -100,7 +102,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		structuredMetadataSize int64
 	)
 	for retentionPeriod, size := range pushStats.LogLinesBytes {
-		retentionHours := retentionPeriodToString(retentionPeriod)
+		retentionHours := RetentionPeriodToString(retentionPeriod)
 
 		bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
 		bytesReceivedStats.Inc(size)
@@ -108,7 +110,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	}
 
 	for retentionPeriod, size := range pushStats.StructuredMetadataBytes {
-		retentionHours := retentionPeriodToString(retentionPeriod)
+		retentionHours := RetentionPeriodToString(retentionPeriod)
 
 		structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
 		bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
@@ -238,8 +240,8 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 			pushStats.StructuredMetadataBytes[retentionPeriod] += entryLabelsSize
 
 			if tracker != nil {
-				tracker.ReceivedBytesAdd(userID, retentionPeriod, lbs, float64(len(e.Line)))
-				tracker.ReceivedBytesAdd(userID, retentionPeriod, lbs, float64(entryLabelsSize))
+				tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(len(e.Line)))
+				tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(entryLabelsSize))
 			}
 
 			if e.Timestamp.After(pushStats.MostRecentEntryTimestamp) {
@@ -251,7 +253,7 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 	return &req, pushStats, nil
 }
 
-func retentionPeriodToString(retentionPeriod time.Duration) string {
+func RetentionPeriodToString(retentionPeriod time.Duration) string {
 	var retentionHours string
 	if retentionPeriod > 0 {
 		retentionHours = fmt.Sprintf("%d", int64(math.Floor(retentionPeriod.Hours())))

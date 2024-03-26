@@ -183,10 +183,6 @@ func (dr *dnsDiscoveryMechanism) NewAddress(addresses []resolver.Address) {
 	dr.UpdateState(resolver.State{Addresses: addresses})
 }
 
-func (dr *dnsDiscoveryMechanism) NewServiceConfig(string) {
-	// This method is deprecated, and service config isn't supported.
-}
-
 func (dr *dnsDiscoveryMechanism) ParseServiceConfig(string) *serviceconfig.ParseResult {
 	return &serviceconfig.ParseResult{Err: fmt.Errorf("service config not supported")}
 }

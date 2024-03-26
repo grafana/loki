@@ -39,6 +39,7 @@ import (
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/xds/bootstrap"
+	"google.golang.org/grpc/xds/internal/xdsclient/tlscreds"
 )
 
 const (
@@ -60,6 +61,7 @@ const (
 func init() {
 	bootstrap.RegisterCredentials(&insecureCredsBuilder{})
 	bootstrap.RegisterCredentials(&googleDefaultCredsBuilder{})
+	bootstrap.RegisterCredentials(&tlsCredsBuilder{})
 }
 
 // For overriding in unit tests.
@@ -69,20 +71,32 @@ var bootstrapFileReadFunc = os.ReadFile
 // package `xds/bootstrap` and encapsulates an insecure credential.
 type insecureCredsBuilder struct{}
 
-func (i *insecureCredsBuilder) Build(json.RawMessage) (credentials.Bundle, error) {
-	return insecure.NewBundle(), nil
+func (i *insecureCredsBuilder) Build(json.RawMessage) (credentials.Bundle, func(), error) {
+	return insecure.NewBundle(), func() {}, nil
 }
 
 func (i *insecureCredsBuilder) Name() string {
 	return "insecure"
 }
 
+// tlsCredsBuilder implements the `Credentials` interface defined in
+// package `xds/bootstrap` and encapsulates a TLS credential.
+type tlsCredsBuilder struct{}
+
+func (t *tlsCredsBuilder) Build(config json.RawMessage) (credentials.Bundle, func(), error) {
+	return tlscreds.NewBundle(config)
+}
+
+func (t *tlsCredsBuilder) Name() string {
+	return "tls"
+}
+
 // googleDefaultCredsBuilder implements the `Credentials` interface defined in
 // package `xds/boostrap` and encapsulates a Google Default credential.
 type googleDefaultCredsBuilder struct{}
 
-func (d *googleDefaultCredsBuilder) Build(json.RawMessage) (credentials.Bundle, error) {
-	return google.NewDefaultCredentials(), nil
+func (d *googleDefaultCredsBuilder) Build(json.RawMessage) (credentials.Bundle, func(), error) {
+	return google.NewDefaultCredentials(), func() {}, nil
 }
 
 func (d *googleDefaultCredsBuilder) Name() string {
@@ -151,6 +165,10 @@ type ServerConfig struct {
 	// when a resource is deleted, nor will it remove the existing resource value
 	// from its cache.
 	IgnoreResourceDeletion bool
+
+	// Cleanups are called when the xDS client for this server is closed. Allows
+	// cleaning up resources created specifically for this ServerConfig.
+	Cleanups []func()
 }
 
 // CredsDialOption returns the configured credentials as a grpc dial option.
@@ -206,12 +224,13 @@ func (sc *ServerConfig) UnmarshalJSON(data []byte) error {
 		if c == nil {
 			continue
 		}
-		bundle, err := c.Build(cc.Config)
+		bundle, cancel, err := c.Build(cc.Config)
 		if err != nil {
 			return fmt.Errorf("failed to build credentials bundle from bootstrap for %q: %v", cc.Type, err)
 		}
 		sc.Creds = ChannelCreds(cc)
 		sc.credsDialOption = grpc.WithCredentialsBundle(bundle)
+		sc.Cleanups = append(sc.Cleanups, cancel)
 		break
 	}
 	return nil
@@ -499,18 +518,10 @@ func newConfigFromContents(data []byte) (*Config, error) {
 				return nil, fmt.Errorf("xds: json.Unmarshal(%v) for field %q failed during bootstrap: %v", string(v), k, err)
 			}
 		case "client_default_listener_resource_name_template":
-			if !envconfig.XDSFederation {
-				logger.Warningf("Bootstrap field %v is not support when Federation is disabled", k)
-				continue
-			}
 			if err := json.Unmarshal(v, &config.ClientDefaultListenerResourceNameTemplate); err != nil {
 				return nil, fmt.Errorf("xds: json.Unmarshal(%v) for field %q failed during bootstrap: %v", string(v), k, err)
 			}
 		case "authorities":
-			if !envconfig.XDSFederation {
-				logger.Warningf("Bootstrap field %v is not support when Federation is disabled", k)
-				continue
-			}
 			if err := json.Unmarshal(v, &config.Authorities); err != nil {
 				return nil, fmt.Errorf("xds: json.Unmarshal(%v) for field %q failed during bootstrap: %v", string(v), k, err)
 			}

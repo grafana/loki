@@ -363,6 +363,17 @@ func (b *LabelsBuilder) Add(category LabelCategory, labels ...labels.Label) *Lab
 		if b.BaseHas(name) {
 			name = fmt.Sprintf("%s%s", name, duplicateSuffix)
 		}
+
+		if name == logqlmodel.ErrorLabel {
+			b.err = l.Value
+			continue
+		}
+
+		if name == logqlmodel.ErrorDetailsLabel {
+			b.errDetails = l.Value
+			continue
+		}
+
 		b.Set(category, name, l.Value)
 	}
 	return b

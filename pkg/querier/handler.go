@@ -93,6 +93,18 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 			return nil, err
 		}
 		return &queryrange.IndexStatsResponse{Response: result}, nil
+	case *logproto.ShardsRequest:
+		request := loghttp.NewRangeQueryWithDefaults()
+		request.Start = concrete.From.Time()
+		request.End = concrete.Through.Time()
+		request.Query = concrete.GetQuery()
+		request.UpdateStep()
+		result, err := h.api.IndexShardsHandler(ctx, request, concrete.TargetBytesPerShard)
+		if err != nil {
+			return nil, err
+		}
+		return &queryrange.ShardsResponse{Response: result}, nil
+
 	case *logproto.VolumeRequest:
 		result, err := h.api.VolumeHandler(ctx, concrete)
 		if err != nil {

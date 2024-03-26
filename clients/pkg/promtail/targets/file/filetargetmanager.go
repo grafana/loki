@@ -65,6 +65,12 @@ func NewFileTargetManager(
 		reg = prometheus.DefaultRegisterer
 	}
 
+	noopRegistry := util.NoopRegistry{}
+	noopSdMetrics, err := discovery.CreateAndRegisterSDMetrics(noopRegistry)
+	if err != nil {
+		return nil, err
+	}
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
@@ -76,7 +82,12 @@ func NewFileTargetManager(
 		watcher:            watcher,
 		targetEventHandler: make(chan fileTargetEvent),
 		syncers:            map[string]*targetSyncer{},
-		manager:            discovery.NewManager(ctx, log.With(logger, "component", "discovery")),
+		manager: discovery.NewManager(
+			ctx,
+			log.With(logger, "component", "discovery"),
+			noopRegistry,
+			noopSdMetrics,
+		),
 	}
 
 	hostname, err := hostname()

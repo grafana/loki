@@ -28,7 +28,8 @@ func TestExplain(t *testing.T) {
 	defaultEv := NewDefaultEvaluator(querier, 30*time.Second)
 	downEv := &DownstreamEvaluator{Downstreamer: MockDownstreamer{regular}, defaultEvaluator: defaultEv}
 
-	mapper := NewShardMapper(ConstantShards(4), nilShardMetrics, []string{ShardQuantileOverTime})
+	strategy := NewPowerOfTwoStrategy(ConstantShards(4))
+	mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
 	_, _, expr, err := mapper.Parse(syntax.MustParseExpr(query))
 	require.NoError(t, err)
 

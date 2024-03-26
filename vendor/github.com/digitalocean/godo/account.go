@@ -27,6 +27,7 @@ type Account struct {
 	ReservedIPLimit int       `json:"reserved_ip_limit,omitempty"`
 	VolumeLimit     int       `json:"volume_limit,omitempty"`
 	Email           string    `json:"email,omitempty"`
+	Name            string    `json:"name,omitempty"`
 	UUID            string    `json:"uuid,omitempty"`
 	EmailVerified   bool      `json:"email_verified,omitempty"`
 	Status          string    `json:"status,omitempty"`

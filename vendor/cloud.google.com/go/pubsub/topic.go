@@ -228,7 +228,7 @@ type TopicConfig struct {
 	// timestamp](https://cloud.google.com/pubsub/docs/replay-overview#seek_to_a_time)
 	// that is up to `RetentionDuration` in the past. If this field is
 	// not set, message retention is controlled by settings on individual
-	// subscriptions. Cannot be more than 7 days or less than 10 minutes.
+	// subscriptions. Cannot be more than 31 days or less than 10 minutes.
 	//
 	// For more information, see https://cloud.google.com/pubsub/docs/replay-overview#topic_message_retention.
 	RetentionDuration optional.Duration
@@ -287,7 +287,7 @@ type TopicConfigToUpdate struct {
 	// and may change.
 	MessageStoragePolicy *MessageStoragePolicy
 
-	// If set to a positive duration between 10 minutes and 7 days, RetentionDuration is changed.
+	// If set to a positive duration between 10 minutes and 31 days, RetentionDuration is changed.
 	// If set to a negative value, this clears RetentionDuration from the topic.
 	// If nil, the retention duration remains unchanged.
 	RetentionDuration optional.Duration
@@ -589,7 +589,6 @@ func (t *Topic) Publish(ctx context.Context, msg *Message) *PublishResult {
 	t.initBundler()
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	// TODO(aboulhosn) [from bcmills] consider changing the semantics of bundler to perform this logic so we don't have to do it here
 	if t.stopped {
 		ipubsub.SetPublishResult(r, "", ErrTopicStopped)
 		return r

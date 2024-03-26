@@ -25,18 +25,23 @@
 package xdsresource
 
 import (
-	"google.golang.org/grpc/xds/internal"
+	"fmt"
+
+	"google.golang.org/grpc/internal"
+	xdsinternal "google.golang.org/grpc/xds/internal"
 	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
 func init() {
-	internal.ResourceTypeMapForTesting = make(map[string]any)
-	internal.ResourceTypeMapForTesting[version.V3ListenerURL] = listenerType
-	internal.ResourceTypeMapForTesting[version.V3RouteConfigURL] = routeConfigType
-	internal.ResourceTypeMapForTesting[version.V3ClusterURL] = clusterType
-	internal.ResourceTypeMapForTesting[version.V3EndpointsURL] = endpointsType
+	xdsinternal.ResourceTypeMapForTesting = make(map[string]any)
+	xdsinternal.ResourceTypeMapForTesting[version.V3ListenerURL] = listenerType
+	xdsinternal.ResourceTypeMapForTesting[version.V3RouteConfigURL] = routeConfigType
+	xdsinternal.ResourceTypeMapForTesting[version.V3ClusterURL] = clusterType
+	xdsinternal.ResourceTypeMapForTesting[version.V3EndpointsURL] = endpointsType
+
+	internal.TriggerXDSResourceNameNotFoundForTesting = triggerResourceNotFoundForTesting
 }
 
 // Producer contains a single method to discover resource configuration from a
@@ -161,4 +166,21 @@ func (r resourceTypeState) TypeName() string {
 
 func (r resourceTypeState) AllResourcesRequiredInSotW() bool {
 	return r.allResourcesRequiredInSotW
+}
+
+func triggerResourceNotFoundForTesting(cb func(Type, string) error, typeName, resourceName string) error {
+	var typ Type
+	switch typeName {
+	case ListenerResourceTypeName:
+		typ = listenerType
+	case RouteConfigTypeName:
+		typ = routeConfigType
+	case ClusterResourceTypeName:
+		typ = clusterType
+	case EndpointsResourceTypeName:
+		typ = endpointsType
+	default:
+		return fmt.Errorf("unknown type name %q", typeName)
+	}
+	return cb(typ, resourceName)
 }

@@ -1,8 +1,5 @@
-# OAI object model
+# OpenAPI v2 object model [![Build Status](https://github.com/go-openapi/spec/actions/workflows/go-test.yml/badge.svg)](https://github.com/go-openapi/spec/actions?query=workflow%3A"go+test") [![codecov](https://codecov.io/gh/go-openapi/spec/branch/master/graph/badge.svg)](https://codecov.io/gh/go-openapi/spec)
 
-[![Build Status](https://travis-ci.org/go-openapi/spec.svg?branch=master)](https://travis-ci.org/go-openapi/spec)
-<!-- [![Build status](https://ci.appveyor.com/api/projects/status/x377t5o9ennm847o/branch/master?svg=true)](https://ci.appveyor.com/project/casualjim/go-openapi/spec/branch/master) -->
-[![codecov](https://codecov.io/gh/go-openapi/spec/branch/master/graph/badge.svg)](https://codecov.io/gh/go-openapi/spec)
 [![Slack Status](https://slackin.goswagger.io/badge.svg)](https://slackin.goswagger.io)
 [![license](http://img.shields.io/badge/license-Apache%20v2-orange.svg)](https://raw.githubusercontent.com/go-openapi/spec/master/LICENSE)
 [![Go Reference](https://pkg.go.dev/badge/github.com/go-openapi/spec.svg)](https://pkg.go.dev/github.com/go-openapi/spec)

@@ -105,7 +105,7 @@ These instructions assume you are using the zone aware ingester jsonnet deployme
 
 1. if you're using an automated reconcilliation/deployment system like flux, disable it now (for example using flux ignore), if possible for just the default ingester StatefulSet
 
-1. Shutdown flush the default ingesters, unregistering them from the ring, you can do this by port-forwarding each ingester pod and using the endpoint: `"http://url:PORT/ingester/shutdown?flush=true&delete_ring_tokens=true&terminate=false"`
+1. Shutdown flush the default ingesters, unregistering them from the ring, you can do this by port-forwarding each ingester Pod and using the endpoint: `"http://url:PORT/ingester/shutdown?flush=true&delete_ring_tokens=true&terminate=false"`
 
 1. manually scale down the default ingester StatefulSet to 0 replicas, we do this via `tk apply` but you could do it via modifying the yaml
 

@@ -80,3 +80,11 @@ func (f LazyIndex) Volume(ctx context.Context, userID string, from, through mode
 	}
 	return i.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 }
+
+func (f LazyIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+	i, err := f()
+	if err != nil {
+		return err
+	}
+	return i.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+}

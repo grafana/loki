@@ -381,6 +381,9 @@ func (n notReadyAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _
 func (n notReadyAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	return 0, errNotReady
 }
+func (n notReadyAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
+	return 0, errNotReady
+}
 func (n notReadyAppender) Commit() error   { return errNotReady }
 func (n notReadyAppender) Rollback() error { return errNotReady }
 
@@ -396,6 +399,9 @@ func (n discardingAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels,
 	return 0, nil
 }
 func (n discardingAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	return 0, nil
+}
+func (n discardingAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
 	return 0, nil
 }
 func (n discardingAppender) Commit() error   { return nil }

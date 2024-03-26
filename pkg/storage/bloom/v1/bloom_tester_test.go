@@ -47,16 +47,16 @@ func TestFiltersToBloomTests(t *testing.T) {
 			expectMatch: false,
 		},
 		{
-			name:        "notEq match",
+			name:        "notEq doesnt exist",
 			query:       `{app="fake"} != "nope"`,
 			bloom:       fakeBloom{"foo", "bar"},
 			expectMatch: true,
 		},
 		{
-			name:        "notEq no match",
+			name:        "notEq exists",
 			query:       `{app="fake"} != "foo"`,
 			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: false,
+			expectMatch: true, // Still should match because it's NotEQ
 		},
 		{
 			name:        "or filter both match",
@@ -89,22 +89,22 @@ func TestFiltersToBloomTests(t *testing.T) {
 			expectMatch: true,
 		},
 		{
-			name:        "Not or filter right no match",
+			name:        "NotEq OR filter right exists",
 			query:       `{app="fake"} != "nope" or "bar"`,
 			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: false,
+			expectMatch: true, // Still should match because it's NotEQ
 		},
 		{
-			name:        "Not or filter left no match",
+			name:        "Not OR filter left exists",
 			query:       `{app="fake"} != "foo" or "nope"`,
 			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: false,
+			expectMatch: true, // Still should match because it's NotEQ
 		},
 		{
-			name:        "Not or filter no match",
+			name:        "NotEq OR filter both exists",
 			query:       `{app="fake"} != "foo" or "bar"`,
 			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: false,
+			expectMatch: true, // Still should match because it's NotEQ
 		},
 		{
 			name:        "complex filter match",
@@ -125,10 +125,10 @@ func TestFiltersToBloomTests(t *testing.T) {
 			expectMatch: true,
 		},
 		{
-			name:        "regex match none",
+			name:        "regex match all notEq",
 			query:       `{app="fake"} !~ ".*"`,
 			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: false,
+			expectMatch: true, // Still should match,
 		},
 		{
 			name:        "regex match",
@@ -138,9 +138,15 @@ func TestFiltersToBloomTests(t *testing.T) {
 		},
 		{
 			name:        "regex no match",
-			query:       `{app="fake"} !~ "nope|.*foo.*"`,
+			query:       `{app="fake"} |~ ".*not.*"`,
 			bloom:       fakeBloom{"foo", "bar"},
 			expectMatch: false,
+		},
+		{
+			name:        "regex notEq right exists",
+			query:       `{app="fake"} !~ "nope|.*foo.*"`,
+			bloom:       fakeBloom{"foo", "bar"},
+			expectMatch: true, // Still should match because it's NotEQ
 		},
 		{
 			name:        "complex regex match",
@@ -149,19 +155,24 @@ func TestFiltersToBloomTests(t *testing.T) {
 			expectMatch: true,
 		},
 		{
-			name:        "complex regex no match",
+			name:        "complex regex with notEq exists",
 			query:       `{app="fake"} |~ "(nope|.*not.*|.*foo.*)" or "(no|ba)" !~ "noz.*"`,
 			bloom:       fakeBloom{"foo", "bar", "baz", "fuzz", "noz"},
-			expectMatch: false,
+			expectMatch: true, // Still should match because it's NotEQ
+		},
+		{
+			name:        "line filter after line format",
+			query:       `{app="fake"} |= "foo" | line_format "thisNewTextShouldMatch" |= "thisNewTextShouldMatch"`,
+			bloom:       fakeBloom{"foo"},
+			expectMatch: true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)
 			assert.NoError(t, err)
-			filters := syntax.ExtractLineFilters(expr)
+			filters := ExtractTestableLineFilters(expr)
 
 			bloomTests := FiltersToBloomTest(fakeNgramBuilder{}, filters...)
-
 			assert.Equal(t, tc.expectMatch, bloomTests.Matches(tc.bloom))
 		})
 	}

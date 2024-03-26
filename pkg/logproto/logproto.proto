@@ -83,6 +83,7 @@ message SampleQueryRequest {
   Plan plan = 6 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
 }
 
+// TODO(owen-d): fix. This will break rollouts as soon as the internal repr is changed.
 message Plan {
   bytes raw = 1;
 }
@@ -297,6 +298,7 @@ message LabelNamesForMetricNameRequest {
   ];
 }
 
+// TODO(owen-d): fix. This will break rollouts as soon as the internal repr is changed.
 message LineFilter {
   bytes raw = 1;
 }

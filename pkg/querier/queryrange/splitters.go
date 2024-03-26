@@ -75,6 +75,15 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 				Matchers: r.GetMatchers(),
 			})
 		}
+	case *logproto.ShardsRequest:
+		factory = func(start, end time.Time) {
+			reqs = append(reqs, &logproto.ShardsRequest{
+				From:                model.TimeFromUnix(start.Unix()),
+				Through:             model.TimeFromUnix(end.Unix()),
+				Query:               r.Query,
+				TargetBytesPerShard: r.TargetBytesPerShard,
+			})
+		}
 	case *logproto.VolumeRequest:
 		factory = func(start, end time.Time) {
 			reqs = append(reqs, &logproto.VolumeRequest{

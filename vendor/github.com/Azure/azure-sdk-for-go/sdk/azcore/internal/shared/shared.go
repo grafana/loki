@@ -16,14 +16,23 @@ import (
 	"time"
 )
 
+// NOTE: when adding a new context key type, it likely needs to be
+// added to the deny-list of key types in ContextWithDeniedValues
+
 // CtxWithHTTPHeaderKey is used as a context key for adding/retrieving http.Header.
 type CtxWithHTTPHeaderKey struct{}
 
 // CtxWithRetryOptionsKey is used as a context key for adding/retrieving RetryOptions.
 type CtxWithRetryOptionsKey struct{}
 
-// CtxIncludeResponseKey is used as a context key for retrieving the raw response.
-type CtxIncludeResponseKey struct{}
+// CtxWithCaptureResponse is used as a context key for retrieving the raw response.
+type CtxWithCaptureResponse struct{}
+
+// CtxWithTracingTracer is used as a context key for adding/retrieving tracing.Tracer.
+type CtxWithTracingTracer struct{}
+
+// CtxAPINameKey is used as a context key for adding/retrieving the API name.
+type CtxAPINameKey struct{}
 
 // Delay waits for the duration to elapse or the context to be cancelled.
 func Delay(ctx context.Context, delay time.Duration) error {
@@ -35,22 +44,64 @@ func Delay(ctx context.Context, delay time.Duration) error {
 	}
 }
 
-// RetryAfter returns non-zero if the response contains a Retry-After header value.
+// RetryAfter returns non-zero if the response contains one of the headers with a "retry after" value.
+// Headers are checked in the following order: retry-after-ms, x-ms-retry-after-ms, retry-after
 func RetryAfter(resp *http.Response) time.Duration {
 	if resp == nil {
 		return 0
 	}
-	ra := resp.Header.Get(HeaderRetryAfter)
-	if ra == "" {
-		return 0
+
+	type retryData struct {
+		header string
+		units  time.Duration
+
+		// custom is used when the regular algorithm failed and is optional.
+		// the returned duration is used verbatim (units is not applied).
+		custom func(string) time.Duration
 	}
-	// retry-after values are expressed in either number of
-	// seconds or an HTTP-date indicating when to try again
-	if retryAfter, _ := strconv.Atoi(ra); retryAfter > 0 {
-		return time.Duration(retryAfter) * time.Second
-	} else if t, err := time.Parse(time.RFC1123, ra); err == nil {
-		return time.Until(t)
+
+	nop := func(string) time.Duration { return 0 }
+
+	// the headers are listed in order of preference
+	retries := []retryData{
+		{
+			header: HeaderRetryAfterMS,
+			units:  time.Millisecond,
+			custom: nop,
+		},
+		{
+			header: HeaderXMSRetryAfterMS,
+			units:  time.Millisecond,
+			custom: nop,
+		},
+		{
+			header: HeaderRetryAfter,
+			units:  time.Second,
+
+			// retry-after values are expressed in either number of
+			// seconds or an HTTP-date indicating when to try again
+			custom: func(ra string) time.Duration {
+				t, err := time.Parse(time.RFC1123, ra)
+				if err != nil {
+					return 0
+				}
+				return time.Until(t)
+			},
+		},
 	}
+
+	for _, retry := range retries {
+		v := resp.Header.Get(retry.header)
+		if v == "" {
+			continue
+		}
+		if retryAfter, _ := strconv.Atoi(v); retryAfter > 0 {
+			return time.Duration(retryAfter) * retry.units
+		} else if d := retry.custom(v); d > 0 {
+			return d
+		}
+	}
+
 	return 0
 }
 
@@ -78,26 +129,21 @@ func ValidateModVer(moduleVersion string) error {
 	return nil
 }
 
-// ExtractModuleName returns "module", "package.Client" from "module/package.Client" or
-// "package", "package.Client" from "package.Client" when there's no "module/" prefix.
-// If clientName is malformed, an error is returned.
-func ExtractModuleName(clientName string) (string, string, error) {
-	// uses unnamed capturing for "module", "package.Client", and "package"
-	regex, err := regexp.Compile(`^(?:([a-z0-9]+)/)?(([a-z0-9]+)\.(?:[A-Za-z0-9]+))$`)
-	if err != nil {
-		return "", "", err
-	}
+// ContextWithDeniedValues wraps an existing [context.Context], denying access to certain context values.
+// Pipeline policies that create new requests to be sent down their own pipeline MUST wrap the caller's
+// context with an instance of this type. This is to prevent context values from flowing across disjoint
+// requests which can have unintended side-effects.
+type ContextWithDeniedValues struct {
+	context.Context
+}
 
-	matches := regex.FindStringSubmatch(clientName)
-	if len(matches) < 4 {
-		return "", "", fmt.Errorf("malformed clientName %s", clientName)
+// Value implements part of the [context.Context] interface.
+// It acts as a deny-list for certain context keys.
+func (c *ContextWithDeniedValues) Value(key any) any {
+	switch key.(type) {
+	case CtxAPINameKey, CtxWithCaptureResponse, CtxWithHTTPHeaderKey, CtxWithRetryOptionsKey, CtxWithTracingTracer:
+		return nil
+	default:
+		return c.Context.Value(key)
 	}
-
-	// the first match is the entire string, the second is "module", the third is
-	// "package.Client" and the fourth is "package".
-	// if there was no "module/" prefix, the second match will be the empty string
-	if matches[1] != "" {
-		return matches[1], matches[2], nil
-	}
-	return matches[3], matches[2], nil
 }

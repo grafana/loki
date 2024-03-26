@@ -64,6 +64,13 @@ const (
 	// a required parameter might be missing or out of range.
 	ErrCodeInvalidRequestException = "InvalidRequestException"
 
+	// ErrCodeInvalidRequestRegionException for service response error code
+	// "InvalidRequestRegionException".
+	//
+	// Indicates that a token provided as input to the request was issued by and
+	// is only usable by calling IAM Identity Center endpoints in another region.
+	ErrCodeInvalidRequestRegionException = "InvalidRequestRegionException"
+
 	// ErrCodeInvalidScopeException for service response error code
 	// "InvalidScopeException".
 	//
@@ -100,6 +107,7 @@ var exceptionFromCode = map[string]func(protocol.ResponseMetadata) error{
 	"InvalidClientMetadataException": newErrorInvalidClientMetadataException,
 	"InvalidGrantException":          newErrorInvalidGrantException,
 	"InvalidRequestException":        newErrorInvalidRequestException,
+	"InvalidRequestRegionException":  newErrorInvalidRequestRegionException,
 	"InvalidScopeException":          newErrorInvalidScopeException,
 	"SlowDownException":              newErrorSlowDownException,
 	"UnauthorizedClientException":    newErrorUnauthorizedClientException,

@@ -46,3 +46,12 @@ func (e ETag) WeakEquals(other ETag) bool {
 func (e ETag) IsWeak() bool {
 	return len(e) >= 4 && strings.HasPrefix(string(e), "W/\"") && strings.HasSuffix(string(e), "\"")
 }
+
+// MatchConditions specifies HTTP options for conditional requests.
+type MatchConditions struct {
+	// Optionally limit requests to resources that have a matching ETag.
+	IfMatch *ETag
+
+	// Optionally limit requests to resources that do not match the ETag.
+	IfNoneMatch *ETag
+}

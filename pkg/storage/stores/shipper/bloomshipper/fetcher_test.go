@@ -108,7 +108,7 @@ func TestMetasFetcher(t *testing.T) {
 			c, err := NewBloomClient(cfg, oc, logger)
 			require.NoError(t, err)
 
-			fetcher, err := NewFetcher(cfg, c, metasCache, nil, nil, logger)
+			fetcher, err := NewFetcher(cfg, c, metasCache, nil, nil, logger, v1.NewMetrics(nil))
 			require.NoError(t, err)
 
 			// prepare metas cache
@@ -286,7 +286,7 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 	c, err := NewBloomClient(cfg, oc, log.NewNopLogger())
 	require.NoError(t, err)
 
-	fetcher, err := NewFetcher(cfg, c, nil, nil, nil, log.NewNopLogger())
+	fetcher, err := NewFetcher(cfg, c, nil, nil, nil, log.NewNopLogger(), v1.NewMetrics(nil))
 	require.NoError(t, err)
 
 	found, missing, err := fetcher.loadBlocksFromFS(context.Background(), refs)
@@ -314,7 +314,7 @@ func createBlockDir(t *testing.T, path string) {
 func TestFetcher_IsBlockDir(t *testing.T) {
 	cfg := bloomStoreConfig{numWorkers: 1}
 
-	fetcher, _ := NewFetcher(cfg, nil, nil, nil, nil, log.NewNopLogger())
+	fetcher, _ := NewFetcher(cfg, nil, nil, nil, nil, log.NewNopLogger(), v1.NewMetrics(nil))
 
 	t.Run("path does not exist", func(t *testing.T) {
 		base := t.TempDir()

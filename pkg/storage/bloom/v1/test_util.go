@@ -41,7 +41,7 @@ func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromT
 	itr := NewSliceIter[SeriesWithBloom](data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
-	block := NewBlock(reader)
+	block := NewBlock(reader, NewMetrics(nil))
 	return block, data, keys
 }
 

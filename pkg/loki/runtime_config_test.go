@@ -98,9 +98,9 @@ configs:
         log_push_request: true
 `)
 
-	user1 := runtimeGetter("1")
-	user2 := runtimeGetter("2")
-	user3 := runtimeGetter("3")
+	user1 := runtimeGetter.TenantConfig("1")
+	user2 := runtimeGetter.TenantConfig("2")
+	user3 := runtimeGetter.TenantConfig("3")
 
 	require.Equal(t, false, user1.LogPushRequest)
 	require.Equal(t, false, user1.LimitedLogPushErrors)
@@ -110,7 +110,7 @@ configs:
 	require.Equal(t, true, user3.LogPushRequest)
 }
 
-func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfig {
+func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfigProvider {
 	t.Helper()
 	f, err := os.CreateTemp(t.TempDir(), "bar")
 	require.NoError(t, err)
@@ -140,7 +140,7 @@ func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfig {
 		require.NoError(t, runtimeConfig.AwaitTerminated(context.Background()))
 	}()
 
-	return tenantConfigFromRuntimeConfig(runtimeConfig)
+	return newTenantConfigProvider(runtimeConfig)
 }
 
 func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {

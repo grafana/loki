@@ -2,13 +2,15 @@ package distributor
 
 import (
 	"context"
-	"github.com/grafana/dskit/user"
-	"github.com/grafana/loki/pkg/loghttp/push"
-	"github.com/grafana/loki/pkg/logproto"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/grafana/dskit/user"
+
+	"github.com/grafana/loki/pkg/loghttp/push"
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"

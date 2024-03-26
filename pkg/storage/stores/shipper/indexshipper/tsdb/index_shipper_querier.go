@@ -134,31 +134,46 @@ func (i *indexShipperQuerier) Volume(ctx context.Context, userID string, from, t
 	return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 }
 
-type resultAccumulator struct {
-	mtx   sync.Mutex
-	items []interface{}
-	merge func(xs []interface{}) (interface{}, error)
+func (i *indexShipperQuerier) ForSeries(ctx context.Context, userID string, fpFilter tsdbindex.FingerprintFilter, from, through model.Time, fn func(labels.Labels, model.Fingerprint, []tsdbindex.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+	idx, err := i.indices(ctx, from, through, userID)
+	if err != nil {
+		return err
+	}
+
+	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
 }
 
-func newResultAccumulator(merge func(xs []interface{}) (interface{}, error)) *resultAccumulator {
-	return &resultAccumulator{
+type resultAccumulator[T any] struct {
+	mtx   sync.Mutex
+	items []T
+	merge func(xs []T) (T, error)
+}
+
+// TODO(owen-d): make generic to avoid casting at runtime.
+func newResultAccumulator[T any](merge func(xs []T) (T, error)) *resultAccumulator[T] {
+	return &resultAccumulator[T]{
 		merge: merge,
 	}
 }
 
-func (acc *resultAccumulator) Add(item interface{}) {
+func (acc *resultAccumulator[T]) Add(item T) {
 	acc.mtx.Lock()
 	defer acc.mtx.Unlock()
 	acc.items = append(acc.items, item)
 
 }
 
-func (acc *resultAccumulator) Merge() (interface{}, error) {
+func (acc *resultAccumulator[T]) Merge() (res T, err error) {
 	acc.mtx.Lock()
 	defer acc.mtx.Unlock()
 
-	if len(acc.items) == 0 {
-		return nil, ErrEmptyAccumulator
+	ln := len(acc.items)
+	if ln == 0 {
+		return res, ErrEmptyAccumulator
+	}
+
+	if ln == 1 {
+		return acc.items[0], nil
 	}
 
 	return acc.merge(acc.items)

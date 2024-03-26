@@ -86,11 +86,3 @@ type ClusterUpdate struct {
 	// Raw is the resource from the xds response.
 	Raw *anypb.Any
 }
-
-// ClusterUpdateErrTuple is a tuple with the update and error. It contains the
-// results from unmarshal functions. It's used to pass unmarshal results of
-// multiple resources together, e.g. in maps like `map[string]{Update,error}`.
-type ClusterUpdateErrTuple struct {
-	Update ClusterUpdate
-	Err    error
-}

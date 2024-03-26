@@ -67,3 +67,11 @@ github-changelog-generator -org digitalocean -repo godo
 5. Update the `Tag version` and `Release title` field with the new godo version.  Be sure the version has a `v` prefixed in both places. Ex `v1.8.0`.
 6. Copy the changelog bullet points to the description field.
 7. Publish the release.
+
+## Go Version Support
+
+This project follows the support [policy of Go](https://go.dev/doc/devel/release#policy)
+as its support policy. The two latest major releases of Go are supported by the project.
+[CI workflows](.github/workflows/ci.yml) should test against both supported versions.
+[go.mod](./go.mod) should specify the oldest of the supported versions to give
+downstream users of godo flexibility.

@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	DefaultBlockOptions = NewBlockOptions(4, 1, 50<<20) // 50MB
+	DefaultBlockOptions = NewBlockOptions(0, 4, 1, 50<<20) // EncNone, 50MB
 )
 
 type BlockOptions struct {
@@ -70,9 +70,10 @@ type BlockBuilder struct {
 	blooms *BloomBlockBuilder
 }
 
-func NewBlockOptions(NGramLength, NGramSkip, MaxBlockSizeBytes uint64) BlockOptions {
+func NewBlockOptions(enc chunkenc.Encoding, NGramLength, NGramSkip, MaxBlockSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
 		version:     byte(1),
+		encoding:    enc,
 		nGramLength: NGramLength,
 		nGramSkip:   NGramSkip,
 	})

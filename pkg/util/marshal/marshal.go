@@ -155,6 +155,16 @@ func WriteIndexStatsResponseJSON(r *indexStats.Stats, w io.Writer) error {
 	return s.Flush()
 }
 
+// WriteIndexShardsResponseJSON marshals a indexgatewaypb.ShardsResponse to JSON and then
+// writes it to the provided io.Writer.
+func WriteIndexShardsResponseJSON(r *logproto.ShardsResponse, w io.Writer) error {
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	s.WriteVal(r)
+	s.WriteRaw("\n")
+	return s.Flush()
+}
+
 // WriteVolumeResponseJSON marshals a logproto.VolumeResponse to JSON and then
 // writes it to the provided io.Writer.
 func WriteVolumeResponseJSON(r *logproto.VolumeResponse, w io.Writer) error {

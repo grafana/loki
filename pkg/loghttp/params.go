@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -199,4 +200,22 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 		query = newExpr.String()
 	}
 	return query, nil
+}
+
+func parseBytes(r *http.Request, field string, optional bool) (val datasize.ByteSize, err error) {
+	s := r.Form.Get(field)
+
+	if s == "" {
+		if !optional {
+			return 0, fmt.Errorf("missing %s", field)
+		}
+		return val, nil
+	}
+
+	if err := val.UnmarshalText([]byte(s)); err != nil {
+		return 0, errors.Wrapf(err, "invalid %s: %s", field, s)
+	}
+
+	return val, nil
+
 }

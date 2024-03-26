@@ -149,7 +149,7 @@ spec:
       {{- range $port := .Values.networkPolicy.externalStorage.ports }} 
       - port: "{{ $port }}"
         protocol: TCP
-      {{- end }}à
+      {{- end }}
   {{- if .Values.networkPolicy.externalStorage.cidrs }}
     {{- range $cidr := .Values.networkPolicy.externalStorage.cidrs }}
     toCIDR:

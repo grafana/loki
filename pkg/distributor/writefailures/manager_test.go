@@ -20,18 +20,20 @@ func TestWriteFailuresLogging(t *testing.T) {
 		buf := bytes.NewBuffer(nil)
 		logger := log.NewLogfmtLogger(buf)
 
-		f := func(tenantID string) *runtime.Config {
-			if tenantID == "good-tenant" {
-				return &runtime.Config{
-					LimitedLogPushErrors: true,
+		f := &providerMock{
+			tenantConfig: func(tenantID string) *runtime.Config {
+				if tenantID == "good-tenant" {
+					return &runtime.Config{
+						LimitedLogPushErrors: true,
+					}
 				}
-			}
-			if tenantID == "bad-tenant" {
-				return &runtime.Config{
-					LimitedLogPushErrors: false,
+				if tenantID == "bad-tenant" {
+					return &runtime.Config{
+						LimitedLogPushErrors: false,
+					}
 				}
-			}
-			return &runtime.Config{}
+				return &runtime.Config{}
+			},
 		}
 
 		runtimeCfg, err := runtime.NewTenantConfigs(f)
@@ -55,12 +57,14 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	logger := log.NewLogfmtLogger(buf)
 
-	f := func(tenantID string) *runtime.Config {
-		return &runtime.Config{
-			LimitedLogPushErrors: true,
-		}
+	provider := &providerMock{
+		tenantConfig: func(tenantID string) *runtime.Config {
+			return &runtime.Config{
+				LimitedLogPushErrors: true,
+			}
+		},
 	}
-	runtimeCfg, err := runtime.NewTenantConfigs(f)
+	runtimeCfg, err := runtime.NewTenantConfigs(provider)
 	require.NoError(t, err)
 
 	t.Run("with zero rate limiting", func(t *testing.T) {
@@ -126,7 +130,7 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 	})
 
 	t.Run("limit is per-tenant", func(t *testing.T) {
-		runtimeCfg, err := runtime.NewTenantConfigs(f)
+		runtimeCfg, err := runtime.NewTenantConfigs(provider)
 		require.NoError(t, err)
 		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1000)}, runtimeCfg, "ingester")
 
@@ -160,4 +164,12 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 		require.Contains(t, content, "1y")
 		require.Contains(t, content, "3z")
 	})
+}
+
+type providerMock struct {
+	tenantConfig func(string) *runtime.Config
+}
+
+func (m *providerMock) TenantConfig(userID string) *runtime.Config {
+	return m.tenantConfig(userID)
 }

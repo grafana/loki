@@ -65,6 +65,10 @@ func (a *PusherAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _
 	return 0, errors.New("native histograms are unsupported")
 }
 
+func (a *PusherAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
+	return 0, errors.New("created timestamps are unsupported")
+}
+
 func (a *PusherAppender) Commit() error {
 	a.totalWrites.Inc()
 

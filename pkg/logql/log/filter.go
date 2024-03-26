@@ -9,8 +9,9 @@ import (
 	"github.com/grafana/regexp"
 	"github.com/grafana/regexp/syntax"
 
-	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/util"
 )
 
 // Checker is an interface that matches against the input line or regexp.

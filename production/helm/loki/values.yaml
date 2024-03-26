@@ -993,6 +993,8 @@ read:
   legacyReadTarget: false
   # -- Additional CLI args for the read
   extraArgs: []
+  # -- Containers to add to the read pods
+  extraContainers: []
   # -- Environment variables to add to the read pods
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the read pods
@@ -1047,7 +1049,7 @@ backend:
     # -- Enable autoscaling for the backend.
     enabled: false
     # -- Minimum autoscaling replicas for the backend.
-    minReplicas: 2
+    minReplicas: 3
     # -- Maximum autoscaling replicas for the backend.
     maxReplicas: 6
     # -- Target CPU utilization percentage for the backend.

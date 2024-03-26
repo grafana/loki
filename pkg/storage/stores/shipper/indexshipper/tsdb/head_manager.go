@@ -800,6 +800,14 @@ func (t *tenantHeads) Volume(ctx context.Context, userID string, from, through m
 	return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 }
 
+func (t *tenantHeads) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+	idx, ok := t.tenantIndex(userID, from, through)
+	if !ok {
+		return nil
+	}
+	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+}
+
 // helper only used in building TSDBs
 func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error) error {
 	for i, shard := range t.tenants {

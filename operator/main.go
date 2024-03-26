@@ -15,6 +15,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	runtimemetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	ctrlconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -218,7 +219,11 @@ func main() {
 	}
 
 	logger.Info("registering metrics")
-	metrics.RegisterMetricCollectors()
+	err = metrics.RegisterLokiStackCollector(logger, mgr.GetClient(), runtimemetrics.Registry)
+	if err != nil {
+		logger.Error(err, "failed to register metrics")
+		os.Exit(1)
+	}
 
 	logger.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

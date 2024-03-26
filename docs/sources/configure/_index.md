@@ -1939,6 +1939,10 @@ client:
 # CLI flag: -bloom-gateway.worker-concurrency
 [worker_concurrency: <int> | default = 4]
 
+# Number of blocks processed concurrently on a single worker.
+# CLI flag: -bloom-gateway.block-query-concurrency
+[block_query_concurrency: <int> | default = 4]
+
 # Maximum number of outstanding tasks per tenant.
 # CLI flag: -bloom-gateway.max-outstanding-per-tenant
 [max_outstanding_per_tenant: <int> | default = 1024]
@@ -2369,17 +2373,16 @@ bloom_shipper:
     [max_tasks_enqueued_per_tenant: <int> | default = 10000]
 
   blocks_cache:
-    # Cache for bloom blocks. Whether embedded cache is enabled.
-    # CLI flag: -bloom.blocks-cache.enabled
-    [enabled: <boolean> | default = false]
+    # Cache for bloom blocks. Soft limit of the cache in bytes. Exceeding this
+    # limit will trigger evictions of least recently used items in the
+    # background.
+    # CLI flag: -bloom.blocks-cache.soft-limit
+    [soft_limit: <int> | default = 32GiB]
 
-    # Cache for bloom blocks. Maximum memory size of the cache in MB.
-    # CLI flag: -bloom.blocks-cache.max-size-mb
-    [max_size_mb: <int> | default = 100]
-
-    # Cache for bloom blocks. Maximum number of entries in the cache.
-    # CLI flag: -bloom.blocks-cache.max-size-items
-    [max_size_items: <int> | default = 0]
+    # Cache for bloom blocks. Hard limit of the cache in bytes. Exceeding this
+    # limit will block execution until soft limit is deceeded.
+    # CLI flag: -bloom.blocks-cache.hard-limit
+    [hard_limit: <int> | default = 64GiB]
 
     # Cache for bloom blocks. The time to live for items in the cache before
     # they get purged.
@@ -2692,18 +2695,18 @@ ring:
 # CLI flag: -bloom-compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
-# How many index periods (days) to wait before building bloom filters for a
-# table. This can be used to lower cost by not re-writing data to object storage
-# too frequently since recent data changes more often.
-# CLI flag: -bloom-compactor.min-table-compaction-period
-[min_table_compaction_period: <int> | default = 1]
+# Newest day-table offset (from today, inclusive) to compact. Increase to lower
+# cost by not re-writing data to object storage too frequently since recent data
+# changes more often at the cost of not having blooms available as quickly.
+# CLI flag: -bloom-compactor.min-table-offset
+[min_table_offset: <int> | default = 1]
 
-# The maximum number of index periods (days) to build bloom filters for a table.
-# This can be used to lower cost by not trying to compact older data which
-# doesn't change. This can be optimized by aligning it with the maximum
-# `reject_old_samples_max_age` setting of any tenant.
-# CLI flag: -bloom-compactor.max-table-compaction-period
-[max_table_compaction_period: <int> | default = 7]
+# Oldest day-table offset (from today, inclusive) to compact. This can be used
+# to lower cost by not trying to compact older data which doesn't change. This
+# can be optimized by aligning it with the maximum `reject_old_samples_max_age`
+# setting of any tenant.
+# CLI flag: -bloom-compactor.max-table-offset
+[max_table_offset: <int> | default = 2]
 
 # Number of workers to run in parallel for compaction.
 # CLI flag: -bloom-compactor.worker-parallelism
@@ -2868,10 +2871,17 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.tsdb-max-query-parallelism
 [tsdb_max_query_parallelism: <int> | default = 128]
 
-# Maximum number of bytes assigned to a single sharded query. Also expressible
-# in human readable forms (1GB, etc).
+# Target maximum number of bytes assigned to a single sharded query. Also
+# expressible in human readable forms (1GB, etc). Note: This is a _target_ and
+# not an absolute limit. The actual limit can be higher, but the query planner
+# will try to build shards up to this limit.
 # CLI flag: -querier.tsdb-max-bytes-per-shard
 [tsdb_max_bytes_per_shard: <int> | default = 600MB]
+
+# sharding strategy to use in query planning. Suggested to use bounded once all
+# nodes can recognize it.
+# CLI flag: -limits.tsdb-sharding-strategy
+[tsdb_sharding_strategy: <string> | default = "power_of_two"]
 
 # Cardinality limit for index queries.
 # CLI flag: -store.cardinality-limit
@@ -3201,6 +3211,10 @@ shard_streams:
 # Scalable Bloom Filter desired false-positive rate.
 # CLI flag: -bloom-compactor.false-positive-rate
 [bloom_false_positive_rate: <float> | default = 0.01]
+
+# Compression algorithm for bloom block pages.
+# CLI flag: -bloom-compactor.block-encoding
+[bloom_block_encoding: <string> | default = "none"]
 
 # Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.
 # CLI flag: -bloom-gateway.blocks-downloading-parallelism
@@ -4544,6 +4558,72 @@ memcached_client:
   # Reset circuit-breaker counts after this long (if zero then never reset).
   # CLI flag: -<prefix>.memcached.circuit-breaker-interval
   [circuit_breaker_interval: <duration> | default = 10s]
+
+  # Enable connecting to Memcached with TLS.
+  # CLI flag: -<prefix>.memcached.tls-enabled
+  [tls_enabled: <boolean> | default = false]
+
+  # Path to the client certificate, which will be used for authenticating with
+  # the server. Also requires the key path to be configured.
+  # CLI flag: -<prefix>.memcached.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to the key for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -<prefix>.memcached.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # Path to the CA certificates to validate server certificate against. If not
+  # set, the host's root CA certificates are used.
+  # CLI flag: -<prefix>.memcached.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
+  # Override the expected name on the server certificate.
+  # CLI flag: -<prefix>.memcached.tls-server-name
+  [tls_server_name: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -<prefix>.memcached.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # Override the default cipher suite list (separated by commas). Allowed
+  # values:
+  # 
+  # Secure Ciphers:
+  # - TLS_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_RSA_WITH_AES_256_GCM_SHA384
+  # - TLS_AES_128_GCM_SHA256
+  # - TLS_AES_256_GCM_SHA384
+  # - TLS_CHACHA20_POLY1305_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
+  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+  # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+  # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+  # 
+  # Insecure Ciphers:
+  # - TLS_RSA_WITH_RC4_128_SHA
+  # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_CBC_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
+  # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
+  # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+  # CLI flag: -<prefix>.memcached.tls-cipher-suites
+  [tls_cipher_suites: <string> | default = ""]
+
+  # Override the default minimum TLS version. Allowed values: VersionTLS10,
+  # VersionTLS11, VersionTLS12, VersionTLS13
+  # CLI flag: -<prefix>.memcached.tls-min-version
+  [tls_min_version: <string> | default = ""]
 
 redis:
   # Redis Server or Cluster configuration endpoint to use for caching. A

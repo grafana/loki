@@ -7,13 +7,18 @@
 package internal
 
 type ByteSlice struct {
-	orig *[]byte
+	orig  *[]byte
+	state *State
 }
 
 func GetOrigByteSlice(ms ByteSlice) *[]byte {
 	return ms.orig
 }
 
-func NewByteSlice(orig *[]byte) ByteSlice {
-	return ByteSlice{orig: orig}
+func GetByteSliceState(ms ByteSlice) *State {
+	return ms.state
+}
+
+func NewByteSlice(orig *[]byte, state *State) ByteSlice {
+	return ByteSlice{orig: orig, state: state}
 }

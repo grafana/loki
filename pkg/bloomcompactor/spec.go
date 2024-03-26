@@ -217,7 +217,7 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		return false
 	}
 
-	b.curr = v1.NewBlock(reader)
+	b.curr = v1.NewBlock(reader, b.metrics.bloomMetrics)
 	return true
 }
 

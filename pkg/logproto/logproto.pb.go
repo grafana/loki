@@ -386,6 +386,7 @@ func (m *SampleQueryRequest) GetDeletes() []*Delete {
 	return nil
 }
 
+// TODO(owen-d): fix. This will break rollouts as soon as the internal repr is changed.
 type Plan struct {
 	Raw []byte `protobuf:"bytes,1,opt,name=raw,proto3" json:"raw,omitempty"`
 }
@@ -1740,6 +1741,7 @@ func (m *LabelNamesForMetricNameRequest) GetMetricName() string {
 	return ""
 }
 
+// TODO(owen-d): fix. This will break rollouts as soon as the internal repr is changed.
 type LineFilter struct {
 	Raw []byte `protobuf:"bytes,1,opt,name=raw,proto3" json:"raw,omitempty"`
 }

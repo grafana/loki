@@ -9,6 +9,7 @@ package pmetric
 import (
 	"sort"
 
+	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 )
 
@@ -20,18 +21,20 @@ import (
 // Must use NewExponentialHistogramDataPointSlice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ExponentialHistogramDataPointSlice struct {
-	orig *[]*otlpmetrics.ExponentialHistogramDataPoint
+	orig  *[]*otlpmetrics.ExponentialHistogramDataPoint
+	state *internal.State
 }
 
-func newExponentialHistogramDataPointSlice(orig *[]*otlpmetrics.ExponentialHistogramDataPoint) ExponentialHistogramDataPointSlice {
-	return ExponentialHistogramDataPointSlice{orig}
+func newExponentialHistogramDataPointSlice(orig *[]*otlpmetrics.ExponentialHistogramDataPoint, state *internal.State) ExponentialHistogramDataPointSlice {
+	return ExponentialHistogramDataPointSlice{orig: orig, state: state}
 }
 
 // NewExponentialHistogramDataPointSlice creates a ExponentialHistogramDataPointSlice with 0 elements.
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewExponentialHistogramDataPointSlice() ExponentialHistogramDataPointSlice {
 	orig := []*otlpmetrics.ExponentialHistogramDataPoint(nil)
-	return newExponentialHistogramDataPointSlice(&orig)
+	state := internal.StateMutable
+	return newExponentialHistogramDataPointSlice(&orig, &state)
 }
 
 // Len returns the number of elements in the slice.
@@ -50,7 +53,7 @@ func (es ExponentialHistogramDataPointSlice) Len() int {
 //	    ... // Do something with the element
 //	}
 func (es ExponentialHistogramDataPointSlice) At(i int) ExponentialHistogramDataPoint {
-	return newExponentialHistogramDataPoint((*es.orig)[i])
+	return newExponentialHistogramDataPoint((*es.orig)[i], es.state)
 }
 
 // EnsureCapacity is an operation that ensures the slice has at least the specified capacity.
@@ -66,6 +69,7 @@ func (es ExponentialHistogramDataPointSlice) At(i int) ExponentialHistogramDataP
 //	    // Here should set all the values for e.
 //	}
 func (es ExponentialHistogramDataPointSlice) EnsureCapacity(newCap int) {
+	es.state.AssertMutable()
 	oldCap := cap(*es.orig)
 	if newCap <= oldCap {
 		return
@@ -79,6 +83,7 @@ func (es ExponentialHistogramDataPointSlice) EnsureCapacity(newCap int) {
 // AppendEmpty will append to the end of the slice an empty ExponentialHistogramDataPoint.
 // It returns the newly added ExponentialHistogramDataPoint.
 func (es ExponentialHistogramDataPointSlice) AppendEmpty() ExponentialHistogramDataPoint {
+	es.state.AssertMutable()
 	*es.orig = append(*es.orig, &otlpmetrics.ExponentialHistogramDataPoint{})
 	return es.At(es.Len() - 1)
 }
@@ -86,6 +91,8 @@ func (es ExponentialHistogramDataPointSlice) AppendEmpty() ExponentialHistogramD
 // MoveAndAppendTo moves all elements from the current slice and appends them to the dest.
 // The current slice will be cleared.
 func (es ExponentialHistogramDataPointSlice) MoveAndAppendTo(dest ExponentialHistogramDataPointSlice) {
+	es.state.AssertMutable()
+	dest.state.AssertMutable()
 	if *dest.orig == nil {
 		// We can simply move the entire vector and avoid any allocations.
 		*dest.orig = *es.orig
@@ -98,6 +105,7 @@ func (es ExponentialHistogramDataPointSlice) MoveAndAppendTo(dest ExponentialHis
 // RemoveIf calls f sequentially for each element present in the slice.
 // If f returns true, the element is removed from the slice.
 func (es ExponentialHistogramDataPointSlice) RemoveIf(f func(ExponentialHistogramDataPoint) bool) {
+	es.state.AssertMutable()
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
@@ -111,18 +119,18 @@ func (es ExponentialHistogramDataPointSlice) RemoveIf(f func(ExponentialHistogra
 		(*es.orig)[newLen] = (*es.orig)[i]
 		newLen++
 	}
-	// TODO: Prevent memory leak by erasing truncated values.
 	*es.orig = (*es.orig)[:newLen]
 }
 
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es ExponentialHistogramDataPointSlice) CopyTo(dest ExponentialHistogramDataPointSlice) {
+	dest.state.AssertMutable()
 	srcLen := es.Len()
 	destCap := cap(*dest.orig)
 	if srcLen <= destCap {
 		(*dest.orig) = (*dest.orig)[:srcLen:destCap]
 		for i := range *es.orig {
-			newExponentialHistogramDataPoint((*es.orig)[i]).CopyTo(newExponentialHistogramDataPoint((*dest.orig)[i]))
+			newExponentialHistogramDataPoint((*es.orig)[i], es.state).CopyTo(newExponentialHistogramDataPoint((*dest.orig)[i], dest.state))
 		}
 		return
 	}
@@ -130,7 +138,7 @@ func (es ExponentialHistogramDataPointSlice) CopyTo(dest ExponentialHistogramDat
 	wrappers := make([]*otlpmetrics.ExponentialHistogramDataPoint, srcLen)
 	for i := range *es.orig {
 		wrappers[i] = &origs[i]
-		newExponentialHistogramDataPoint((*es.orig)[i]).CopyTo(newExponentialHistogramDataPoint(wrappers[i]))
+		newExponentialHistogramDataPoint((*es.orig)[i], es.state).CopyTo(newExponentialHistogramDataPoint(wrappers[i], dest.state))
 	}
 	*dest.orig = wrappers
 }
@@ -139,5 +147,6 @@ func (es ExponentialHistogramDataPointSlice) CopyTo(dest ExponentialHistogramDat
 // provided less function so that two instances of ExponentialHistogramDataPointSlice
 // can be compared.
 func (es ExponentialHistogramDataPointSlice) Sort(less func(a, b ExponentialHistogramDataPoint) bool) {
+	es.state.AssertMutable()
 	sort.SliceStable(*es.orig, func(i, j int) bool { return less(es.At(i), es.At(j)) })
 }

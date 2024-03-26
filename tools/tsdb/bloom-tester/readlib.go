@@ -141,8 +141,9 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 				casted := idx.(*tsdb.TSDBFile).Index.(*tsdb.TSDBIndex)
 				_ = casted.ForSeries(
 					context.Background(),
-					nil, model.Earliest, model.Latest,
-					func(ls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
+					"", nil,
+					model.Earliest, model.Latest,
+					func(ls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
 						seriesString := ls.String()
 						seriesStringHash := FNV32a(seriesString)
 						pos, _ := strconv.Atoi(seriesStringHash)
@@ -272,6 +273,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 								)
 							*/
 						} // For every series
+						return false
 					},
 					labels.MustNewMatcher(labels.MatchEqual, "", ""),
 				)

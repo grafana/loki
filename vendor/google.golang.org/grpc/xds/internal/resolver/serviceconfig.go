@@ -29,7 +29,6 @@ import (
 
 	xxhash "github.com/cespare/xxhash/v2"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/grpcrand"
 	"google.golang.org/grpc/internal/grpcutil"
 	iresolver "google.golang.org/grpc/internal/resolver"
@@ -70,16 +69,6 @@ type xdsChildConfig struct {
 
 type xdsClusterManagerConfig struct {
 	Children map[string]xdsChildConfig `json:"children"`
-}
-
-// pruneActiveClusters deletes entries in r.activeClusters with zero
-// references.
-func (r *xdsResolver) pruneActiveClusters() {
-	for cluster, ci := range r.activeClusters {
-		if atomic.LoadInt32(&ci.refCount) == 0 {
-			delete(r.activeClusters, cluster)
-		}
-	}
 }
 
 // serviceConfigJSON produces a service config in JSON format representing all
@@ -182,10 +171,7 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 	}
 
 	lbCtx := clustermanager.SetPickedCluster(rpcInfo.Context, cluster.name)
-	// Request Hashes are only applicable for a Ring Hash LB.
-	if envconfig.XDSRingHash {
-		lbCtx = ringhash.SetRequestHash(lbCtx, cs.generateHash(rpcInfo, rt.hashPolicies))
-	}
+	lbCtx = ringhash.SetRequestHash(lbCtx, cs.generateHash(rpcInfo, rt.hashPolicies))
 
 	config := &iresolver.RPCConfig{
 		// Communicate to the LB policy the chosen cluster and request hash, if Ring Hash LB policy.
@@ -196,10 +182,9 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 			if v := atomic.AddInt32(ref, -1); v == 0 {
 				// This entry will be removed from activeClusters when
 				// producing the service config for the empty update.
-				select {
-				case cs.r.updateCh <- suWithError{emptyUpdate: true}:
-				default:
-				}
+				cs.r.serializer.Schedule(func(context.Context) {
+					cs.r.onClusterRefDownToZero()
+				})
 			}
 		},
 		Interceptor: interceptor,
@@ -341,100 +326,10 @@ func (cs *configSelector) stop() {
 	// selector; we need another update to delete clusters from the config (if
 	// we don't have another update pending already).
 	if needUpdate {
-		select {
-		case cs.r.updateCh <- suWithError{emptyUpdate: true}:
-		default:
-		}
+		cs.r.serializer.Schedule(func(context.Context) {
+			cs.r.onClusterRefDownToZero()
+		})
 	}
-}
-
-// A global for testing.
-var newWRR = wrr.NewRandom
-
-// newConfigSelector creates the config selector for su; may add entries to
-// r.activeClusters for previously-unseen clusters.
-func (r *xdsResolver) newConfigSelector(su serviceUpdate) (*configSelector, error) {
-	cs := &configSelector{
-		r: r,
-		virtualHost: virtualHost{
-			httpFilterConfigOverride: su.virtualHost.HTTPFilterConfigOverride,
-			retryConfig:              su.virtualHost.RetryConfig,
-		},
-		routes:           make([]route, len(su.virtualHost.Routes)),
-		clusters:         make(map[string]*clusterInfo),
-		httpFilterConfig: su.ldsConfig.httpFilterConfig,
-	}
-
-	for i, rt := range su.virtualHost.Routes {
-		clusters := newWRR()
-		if rt.ClusterSpecifierPlugin != "" {
-			clusterName := clusterSpecifierPluginPrefix + rt.ClusterSpecifierPlugin
-			clusters.Add(&routeCluster{
-				name: clusterName,
-			}, 1)
-			cs.initializeCluster(clusterName, xdsChildConfig{
-				ChildPolicy: balancerConfig(su.clusterSpecifierPlugins[rt.ClusterSpecifierPlugin]),
-			})
-		} else {
-			for cluster, wc := range rt.WeightedClusters {
-				clusterName := clusterPrefix + cluster
-				clusters.Add(&routeCluster{
-					name:                     clusterName,
-					httpFilterConfigOverride: wc.HTTPFilterConfigOverride,
-				}, int64(wc.Weight))
-				cs.initializeCluster(clusterName, xdsChildConfig{
-					ChildPolicy: newBalancerConfig(cdsName, cdsBalancerConfig{Cluster: cluster}),
-				})
-			}
-		}
-		cs.routes[i].clusters = clusters
-
-		var err error
-		cs.routes[i].m, err = xdsresource.RouteToMatcher(rt)
-		if err != nil {
-			return nil, err
-		}
-		cs.routes[i].actionType = rt.ActionType
-		if rt.MaxStreamDuration == nil {
-			cs.routes[i].maxStreamDuration = su.ldsConfig.maxStreamDuration
-		} else {
-			cs.routes[i].maxStreamDuration = *rt.MaxStreamDuration
-		}
-
-		cs.routes[i].httpFilterConfigOverride = rt.HTTPFilterConfigOverride
-		cs.routes[i].retryConfig = rt.RetryConfig
-		cs.routes[i].hashPolicies = rt.HashPolicies
-	}
-
-	// Account for this config selector's clusters.  Do this after no further
-	// errors may occur.  Note: cs.clusters are pointers to entries in
-	// activeClusters.
-	for _, ci := range cs.clusters {
-		atomic.AddInt32(&ci.refCount, 1)
-	}
-
-	return cs, nil
-}
-
-// initializeCluster initializes entries in cs.clusters map, creating entries in
-// r.activeClusters as necessary.  Any created entries will have a ref count set
-// to zero as their ref count will be incremented by incRefs.
-func (cs *configSelector) initializeCluster(clusterName string, cfg xdsChildConfig) {
-	ci := cs.r.activeClusters[clusterName]
-	if ci == nil {
-		ci = &clusterInfo{refCount: 0}
-		cs.r.activeClusters[clusterName] = ci
-	}
-	cs.clusters[clusterName] = ci
-	cs.clusters[clusterName].cfg = cfg
-}
-
-type clusterInfo struct {
-	// number of references to this cluster; accessed atomically
-	refCount int32
-	// cfg is the child configuration for this cluster, containing either the
-	// csp config or the cds cluster config.
-	cfg xdsChildConfig
 }
 
 type interceptorList struct {

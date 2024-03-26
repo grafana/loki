@@ -27,6 +27,7 @@ type Limits interface {
 	TSDBMaxQueryParallelism(context.Context, string) int
 	// TSDBMaxBytesPerShard returns the limit to the number of bytes a single shard
 	TSDBMaxBytesPerShard(string) int
+	TSDBShardingStrategy(userID string) string
 
 	RequiredLabels(context.Context, string) []string
 	RequiredNumberLabels(context.Context, string) int
