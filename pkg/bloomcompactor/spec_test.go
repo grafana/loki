@@ -152,7 +152,7 @@ func TestSimpleBloomGenerator(t *testing.T) {
 				expectedRefs := v1.PointerSlice(data)
 				outputRefs := make([]*v1.SeriesWithBloom, 0, len(data))
 				for _, block := range outputBlocks {
-					bq := v1.NewBlockQuerier(block, v1.NewMetrics(nil))
+					bq := v1.NewBlockQuerier(block, false)
 					for bq.Next() {
 						outputRefs = append(outputRefs, bq.At())
 					}
