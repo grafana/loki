@@ -24,7 +24,6 @@ package drain
 
 import (
 	"math"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -32,7 +31,12 @@ import (
 
 	"github.com/hashicorp/golang-lru/simplelru"
 	"github.com/prometheus/common/model"
-	"golang.org/x/exp/slices"
+)
+
+const (
+	timeResolution = model.Time(int64(time.Second*10) / 1e6)
+
+	defaultVolumeSize = 500
 )
 
 type Config struct {
@@ -43,119 +47,6 @@ type Config struct {
 	ExtraDelimiters []string
 	MaxClusters     int
 	ParamString     string
-}
-
-type LogCluster struct {
-	id       int
-	Size     int
-	Tokens   []string
-	Stringer func([]string) string
-	Samples  []string
-	Volume   Volume
-}
-
-const (
-	timeResolution = model.Time(int64(time.Second*10) / 1e6)
-	maxSamples     = 10
-
-	defaultVolumeSize = 500
-)
-
-func (c *LogCluster) String() string {
-	if c.Stringer != nil {
-		return c.Stringer(c.Tokens)
-	}
-	return strings.Join(c.Tokens, " ")
-}
-
-func truncateTimestamp(ts model.Time) model.Time { return ts - ts%timeResolution }
-
-type Volume struct {
-	Values []model.SamplePair
-}
-
-func initVolume(ts model.Time) Volume {
-	v := Volume{Values: make([]model.SamplePair, 1, defaultVolumeSize)}
-	v.Values[0] = model.SamplePair{
-		Timestamp: ts,
-		Value:     1,
-	}
-	return v
-}
-
-// ForRange returns a new Volume with only the values
-// in the given range [start:end).
-// start and end are in milliseconds since epoch.
-func (x *Volume) ForRange(start, end model.Time) *Volume {
-	if len(x.Values) == 0 {
-		// Should not be the case.
-		return new(Volume)
-	}
-	first := x.Values[0].Timestamp
-	last := x.Values[len(x.Values)-1].Timestamp
-	if start >= end || first >= end || last < start {
-		return new(Volume)
-	}
-	var lo int
-	if start > first {
-		lo = sort.Search(len(x.Values), func(i int) bool {
-			return x.Values[i].Timestamp >= start
-		})
-	}
-	hi := len(x.Values)
-	if end < last {
-		hi = sort.Search(len(x.Values), func(i int) bool {
-			return x.Values[i].Timestamp >= end
-		})
-	}
-	return &Volume{
-		Values: x.Values[lo:hi],
-	}
-}
-
-func (x *Volume) Matches() int64 {
-	var m int64
-	for i := range x.Values {
-		m += int64(x.Values[i].Value)
-	}
-	return m
-}
-
-func (x *Volume) Add(ts model.Time) {
-	t := truncateTimestamp(ts)
-	first := x.Values[0].Timestamp // can't be empty
-	last := x.Values[len(x.Values)-1].Timestamp
-	switch {
-	case last == t:
-		// Should be the most common case.
-		x.Values[len(x.Values)-1].Value++
-	case first > t:
-		// Prepend.
-		x.Values = slices.Grow(x.Values, 1)
-		copy(x.Values[1:], x.Values)
-		x.Values[0] = model.SamplePair{Timestamp: t, Value: 1}
-	case last < t:
-		// Append.
-		x.Values = append(x.Values, model.SamplePair{Timestamp: t, Value: 1})
-	default:
-		// Find with binary search and update.
-		index := sort.Search(len(x.Values), func(i int) bool {
-			return x.Values[i].Timestamp >= t
-		})
-		if index < len(x.Values) && x.Values[index].Timestamp == t {
-			x.Values[index].Value++
-		} else {
-			x.Values = slices.Insert(x.Values, index, model.SamplePair{Timestamp: t, Value: 1})
-		}
-	}
-}
-
-func (c *LogCluster) append(content string, ts model.Time) {
-	c.Volume.Add(ts)
-	// TODO: Should we sample lines randomly? Keep last N?
-	if len(c.Samples) < maxSamples {
-		c.Samples = append(c.Samples, content)
-	}
 }
 
 func createLogClusterCache(maxSize int) *LogClusterCache {
@@ -218,10 +109,11 @@ type Node struct {
 
 func DefaultConfig() *Config {
 	return &Config{
-		LogClusterDepth: 4,
-		SimTh:           0.4,
+		LogClusterDepth: 8,
+		SimTh:           0.3,
 		MaxChildren:     100,
 		ParamString:     "<*>",
+		MaxClusters:     0,
 	}
 }
 
@@ -254,15 +146,15 @@ func (d *Drain) Iterate(fn func(*LogCluster) bool) {
 	d.idToCluster.Iterate(fn)
 }
 
-func (d *Drain) TrainTokens(content string, tokens []string, stringer func([]string) string, ts int64) *LogCluster {
-	return d.train(content, tokens, stringer, ts)
+func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts int64) *LogCluster {
+	return d.train(tokens, stringer, ts)
 }
 
 func (d *Drain) Train(content string, ts int64) *LogCluster {
-	return d.train(content, d.getContentAsTokens(content), nil, ts)
+	return d.train(d.getContentAsTokens(content), nil, ts)
 }
 
-func (d *Drain) train(content string, tokens []string, stringer func([]string) string, ts int64) *LogCluster {
+func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64) *LogCluster {
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
 	// Match no existing log cluster
 	if matchCluster == nil {
@@ -273,7 +165,6 @@ func (d *Drain) train(content string, tokens []string, stringer func([]string) s
 			id:       clusterID,
 			Size:     1,
 			Stringer: stringer,
-			Samples:  []string{content},
 			Volume:   initVolume(model.TimeFromUnixNano(ts)),
 		}
 		d.idToCluster.Set(clusterID, matchCluster)
@@ -282,7 +173,7 @@ func (d *Drain) train(content string, tokens []string, stringer func([]string) s
 		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
 		matchCluster.Tokens = newTemplateTokens
 		matchCluster.Size++
-		matchCluster.append(content, model.TimeFromUnixNano(ts))
+		matchCluster.append(model.TimeFromUnixNano(ts))
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
 	}

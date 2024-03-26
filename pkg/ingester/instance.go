@@ -216,7 +216,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record.UserID = i.instanceID
 	defer recordPool.PutRecord(record)
 	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
-
+	// todo removed
 	loggerinfo.Push(req)
 	var appendErr error
 	for _, reqStream := range req.Streams {
@@ -382,7 +382,6 @@ func (i *instance) chunkFormatAt(at model.Time) (byte, chunkenc.HeadBlockFmt, er
 	}
 
 	return chunkFormat, headblock, nil
-
 }
 
 // getOrCreateStream returns the stream or creates it.
