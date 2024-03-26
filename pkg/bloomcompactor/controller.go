@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
@@ -285,7 +286,7 @@ func (s *SimpleBloomController) loadWorkForGap(
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
-) (v1.CloseableIterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBloom], error) {
+) (v1.Iterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBloom], error) {
 	// load a series iterator for the gap
 	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.bounds)
 	if err != nil {
@@ -339,13 +340,18 @@ func (s *SimpleBloomController) buildGaps(
 	// With these in hand, we can download the old blocks and use them to
 	// accelerate bloom generation for the new blocks.
 
+	blockEnc, err := chunkenc.ParseEncoding(s.limits.BloomBlockEncoding(tenant))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse block encoding")
+	}
+
 	var (
 		blockCt      int
 		tsdbCt       = len(work)
 		nGramSize    = uint64(s.limits.BloomNGramLength(tenant))
 		nGramSkip    = uint64(s.limits.BloomNGramSkip(tenant))
 		maxBlockSize = uint64(s.limits.BloomCompactorMaxBlockSize(tenant))
-		blockOpts    = v1.NewBlockOptions(nGramSize, nGramSkip, maxBlockSize)
+		blockOpts    = v1.NewBlockOptions(blockEnc, nGramSize, nGramSkip, maxBlockSize)
 		created      []bloomshipper.Meta
 		totalSeries  int
 		bytesAdded   int

@@ -10,25 +10,29 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 
+	"github.com/grafana/dskit/concurrency"
+
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
-func newProcessor(id string, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
+func newProcessor(id string, concurrency int, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
 	return &processor{
-		id:      id,
-		store:   store,
-		logger:  logger,
-		metrics: metrics,
+		id:          id,
+		concurrency: concurrency,
+		store:       store,
+		logger:      logger,
+		metrics:     metrics,
 	}
 }
 
 type processor struct {
-	id      string
-	store   bloomshipper.Store
-	logger  log.Logger
-	metrics *workerMetrics
+	id          string
+	concurrency int // concurrency at which bloom blocks are processed
+	store       bloomshipper.Store
+	logger      log.Logger
+	metrics     *workerMetrics
 }
 
 func (p *processor) run(ctx context.Context, tasks []Task) error {
@@ -93,31 +97,41 @@ func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) er
 		return err
 	}
 
-	// TODO(chaudum): use `concurrency` lib with bound parallelism
-	for i, bq := range bqs {
-		block := data[i]
+	defer func() {
+		for i := range bqs {
+			if bqs[i] == nil {
+				continue
+			}
+			bqs[i].Close()
+		}
+	}()
+
+	return concurrency.ForEachJob(ctx, len(bqs), p.concurrency, func(ctx context.Context, i int) error {
+		bq := bqs[i]
 		if bq == nil {
 			// TODO(chaudum): Add metric for skipped blocks
-			continue
+			return nil
 		}
+
+		block := data[i]
 		level.Debug(p.logger).Log(
 			"msg", "process block with tasks",
+			"job", i+1,
+			"of_jobs", len(bqs),
 			"block", block.ref,
-			"block_bounds", block.ref.Bounds,
-			"querier_bounds", bq.Bounds,
 			"num_tasks", len(block.tasks),
 		)
+
 		if !block.ref.Bounds.Equal(bq.Bounds) {
-			bq.Close()
 			return errors.Errorf("block and querier bounds differ: %s vs %s", block.ref.Bounds, bq.Bounds)
 		}
+
 		err := p.processBlock(ctx, bq.BlockQuerier, block.tasks)
-		bq.Close()
 		if err != nil {
 			return errors.Wrap(err, "processing block")
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerier, tasks []Task) error {

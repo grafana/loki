@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/grafana/loki/pkg/util/httpreq"
+
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
@@ -221,7 +223,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
-				s, err := i.createStream(reqStream, record)
+				s, err := i.createStream(ctx, reqStream, record)
 				// Lock before adding to maps
 				if err == nil {
 					s.chunkMtx.Lock()
@@ -261,7 +263,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Record) (*stream, error) {
+func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stream, record *wal.Record) (*stream, error) {
 	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
 	// reducing the stream limits, for instance.
 	var err error
@@ -300,7 +302,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
 		if i.customStreamsTracker != nil {
-			i.customStreamsTracker.DiscardedBytesAdd(i.instanceID, validation.StreamLimit, labels, float64(bytes))
+			i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))
 		}
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, i.instanceID)
 	}
@@ -386,9 +388,9 @@ func (i *instance) chunkFormatAt(at model.Time) (byte, chunkenc.HeadBlockFmt, er
 // getOrCreateStream returns the stream or creates it.
 // It's safe to use this function if returned stream is not consistency sensitive to streamsMap(e.g. ingesterRecoverer),
 // otherwise use streamsMap.LoadOrStoreNew with locking stream's chunkMtx inside.
-func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *wal.Record) (*stream, error) {
+func (i *instance) getOrCreateStream(ctx context.Context, pushReqStream logproto.Stream, record *wal.Record) (*stream, error) {
 	s, _, err := i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
-		return i.createStream(pushReqStream, record)
+		return i.createStream(ctx, pushReqStream, record)
 	}, nil)
 
 	return s, err
@@ -436,13 +438,13 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		return nil, err
 	}
 
-	if i.pipelineWrapper != nil {
+	if i.pipelineWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		pipeline = i.pipelineWrapper.Wrap(ctx, pipeline, expr.String(), userID)
+		pipeline = i.pipelineWrapper.Wrap(ctx, pipeline, req.Plan.String(), userID)
 	}
 
 	stats := stats.FromContext(ctx)
@@ -490,13 +492,13 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	if i.extractorWrapper != nil {
+	if i.extractorWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		extractor = i.extractorWrapper.Wrap(ctx, extractor, expr.String(), userID)
+		extractor = i.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
 	}
 
 	stats := stats.FromContext(ctx)
