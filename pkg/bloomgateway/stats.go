@@ -2,15 +2,16 @@ package bloomgateway
 
 import (
 	"context"
-	"sync/atomic" //lint:ignore faillint
 	"time"
+
+	"go.uber.org/atomic"
 )
 
 type Stats struct {
 	Status                                                                         string
 	NumTasks, NumFilters                                                           int
 	ChunksRequested, ChunksFiltered, SeriesRequested, SeriesFiltered               int
-	QueueTime, MetasFetchTime, BlocksFetchTime, ProcessingTime, PostProcessingTime time.Duration
+	QueueTime, MetasFetchTime, BlocksFetchTime, ProcessingTime, PostProcessingTime atomic.Duration
 }
 
 type statsKey int
@@ -45,11 +46,11 @@ func (s *Stats) KVArgs() []any {
 		"series_filtered", s.SeriesFiltered,
 		"chunks_requested", s.ChunksRequested,
 		"chunks_filtered", s.ChunksFiltered,
-		"queue_time", s.QueueTime,
-		"metas_fetch_time", s.MetasFetchTime,
-		"blocks_fetch_time", s.BlocksFetchTime,
-		"processing_time", s.ProcessingTime,
-		"post_processing_time", s.PostProcessingTime,
+		"queue_time", s.QueueTime.Load(),
+		"metas_fetch_time", s.MetasFetchTime.Load(),
+		"blocks_fetch_time", s.BlocksFetchTime.Load(),
+		"processing_time", s.ProcessingTime.Load(),
+		"post_processing_time", s.PostProcessingTime.Load(),
 	}
 }
 
@@ -57,33 +58,33 @@ func (s *Stats) AddQueueTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	atomic.AddInt64((*int64)(&s.QueueTime), int64(t))
+	s.QueueTime.Add(t)
 }
 
 func (s *Stats) AddMetasFetchTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	atomic.AddInt64((*int64)(&s.MetasFetchTime), int64(t))
+	s.MetasFetchTime.Add(t)
 }
 
 func (s *Stats) AddBlocksFetchTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	atomic.AddInt64((*int64)(&s.BlocksFetchTime), int64(t))
+	s.BlocksFetchTime.Add(t)
 }
 
 func (s *Stats) AddProcessingTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	atomic.AddInt64((*int64)(&s.ProcessingTime), int64(t))
+	s.ProcessingTime.Add(t)
 }
 
 func (s *Stats) AddPostProcessingTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	atomic.AddInt64((*int64)(&s.PostProcessingTime), int64(t))
+	s.PostProcessingTime.Add(t)
 }
