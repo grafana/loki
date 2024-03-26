@@ -1,9 +1,11 @@
 concurrency:
   group: "create-release-pr-${{ github.sha }}"
 env:
+  BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
   BUILD_TIMEOUT: 40
   CHANGELOG_PATH: "CHANGELOG.md"
   DOCKER_USERNAME: "grafana"
+  DRY_RUN: false
   IMAGE_PREFIX: "grafana"
   RELEASE_LIB_REF: "main"
   RELEASE_REPO: "grafana/loki"
@@ -81,14 +83,15 @@ jobs:
           --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --label "backport main,autorelease: pending,product-approved" \
           --manifest-file .release-please-manifest.json \
-          --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/loki-build-artifacts/${SHA}) of ${SHA}" \
+          --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/${BUILD_ARTIFACTS_BUCKET}/${SHA}) of ${SHA}" \
           --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
           --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token "${{ steps.github_app_token.outputs.token }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
+          --dry-run ${{ fromJSON(env.DRY_RUN) }}
         
       working-directory: "lib"
   dist:
@@ -146,7 +149,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}"
         path: "release/dist"
         process_gcloudignore: false
   fluent-bit:
@@ -203,7 +206,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -265,7 +268,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -327,7 +330,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/logcli-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -391,7 +394,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -453,7 +456,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -517,7 +520,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -581,7 +584,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -645,7 +648,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/promtail-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -709,7 +712,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
