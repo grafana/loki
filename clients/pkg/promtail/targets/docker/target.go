@@ -1,10 +1,8 @@
 package docker
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,7 +10,6 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
@@ -24,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 
+	"github.com/grafana/loki/v3/pkg/framedstdcopy"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -109,22 +107,22 @@ func (t *Target) processLoop(ctx context.Context) {
 	}
 
 	// Start transferring
-	rstdout, wstdout := io.Pipe()
-	rstderr, wstderr := io.Pipe()
+	cstdout := make(chan []byte, 1)
+	cstderr := make(chan []byte, 1)
 	t.wg.Add(1)
 	go func() {
 		defer func() {
 			t.wg.Done()
-			wstdout.Close()
-			wstderr.Close()
+			close(cstdout)
+			close(cstderr)
 			t.Stop()
 		}()
 		var written int64
 		var err error
 		if inspectInfo.Config.Tty {
-			written, err = io.Copy(wstdout, logs)
+			written, err = framedstdcopy.NoHeaderFramedStdCopy(cstdout, logs)
 		} else {
-			written, err = stdcopy.StdCopy(wstdout, wstderr, logs)
+			written, err = framedstdcopy.FramedStdCopy(cstdout, cstderr, logs)
 		}
 		if err != nil {
 			level.Warn(t.logger).Log("msg", "could not transfer logs", "written", written, "container", t.containerName, "err", err)
@@ -135,8 +133,8 @@ func (t *Target) processLoop(ctx context.Context) {
 
 	// Start processing
 	t.wg.Add(2)
-	go t.process(rstdout, "stdout")
-	go t.process(rstderr, "stderr")
+	go t.process(cstdout, "stdout")
+	go t.process(cstderr, "stderr")
 
 	// Wait until done
 	<-ctx.Done()
@@ -149,81 +147,98 @@ func (t *Target) processLoop(ctx context.Context) {
 func extractTs(line string) (time.Time, string, error) {
 	pair := strings.SplitN(line, " ", 2)
 	if len(pair) != 2 {
-		return time.Now(), line, fmt.Errorf("Could not find timestamp in '%s'", line)
+		return time.Now(), line, fmt.Errorf("could not find timestamp in '%s'", line)
 	}
 	ts, err := time.Parse("2006-01-02T15:04:05.999999999Z07:00", pair[0])
 	if err != nil {
-		return time.Now(), line, fmt.Errorf("Could not parse timestamp from '%s': %w", pair[0], err)
+		return time.Now(), line, fmt.Errorf("could not parse timestamp from '%s': %w", pair[0], err)
 	}
 	return ts, pair[1], nil
 }
 
-// https://devmarkpro.com/working-big-files-golang
-func readLine(r *bufio.Reader) (string, error) {
-	var (
-		isPrefix = true
-		err      error
-		line, ln []byte
-	)
-
-	for isPrefix && err == nil {
-		line, isPrefix, err = r.ReadLine()
-		ln = append(ln, line...)
-	}
-
-	return string(ln), err
-}
-
-func (t *Target) process(r io.Reader, logStream string) {
+func (t *Target) process(frames chan []byte, logStream string) {
 	defer func() {
 		t.wg.Done()
 	}()
 
-	reader := bufio.NewReader(r)
-	for {
-		line, err := readLine(reader)
+	// softMaxBuffer is to prevent unlimited memory growth.
+	// In principle this introduces the same issue that we are compensating for,
+	// i.e. split messages, however there should be some limit and so this number
+	// is chosen to be "very high" just not "OOM high" (which admittedly is not
+	// a universally defined threshold).
+	const softMaxBuffer = 16 * 1024 * 1024
+	var (
+		payloadAcc *strings.Builder = new(strings.Builder)
+		curTs      time.Time        = time.Now()
+	)
+	for frame := range frames {
+		// Split frame into timestamp and payload
+		ts, payload, err := extractTs(string(frame))
 		if err != nil {
-			if err == io.EOF {
-				break
+			if payloadAcc.Len() == 0 {
+				// If we are currently accumulating a line split over multiple frames, we would still expect
+				// timestamps in every frame, but since we don't use those secondary ones, we don't log an error in that case.
+				level.Error(t.logger).Log("msg", "error reading docker log line, skipping line", "err", err)
+				t.metrics.dockerErrors.Inc()
+				continue
 			}
-			level.Error(t.logger).Log("msg", "error reading docker log line, skipping line", "err", err)
-			t.metrics.dockerErrors.Inc()
+			ts = curTs
 		}
 
-		ts, line, err := extractTs(line)
-		if err != nil {
-			level.Error(t.logger).Log("msg", "could not extract timestamp, skipping line", "err", err)
-			t.metrics.dockerErrors.Inc()
+		// Fast path: Most log lines are a single frame. If we have a full line in frame and buffer is empty,
+		// then don't use the buffer at all.
+		if payloadAcc.Len() == 0 && strings.HasSuffix(payload, "\n") {
+			t.handleOutput(logStream, ts, payload)
 			continue
 		}
 
-		// Add all labels from the config, relabel and filter them.
-		lb := labels.NewBuilder(nil)
-		for k, v := range t.labels {
-			lb.Set(string(k), string(v))
+		// If time has changed, we are looking at a different event (although we should have seen a new line..),
+		// so flush the buffer.
+		if payloadAcc.Len() > 0 && ts != curTs {
+			t.handleOutput(logStream, curTs, payloadAcc.String())
+			payloadAcc = new(strings.Builder)
 		}
-		lb.Set(dockerLabelLogStream, logStream)
-		processed, _ := relabel.Process(lb.Labels(), t.relabelConfig...)
-
-		filtered := make(model.LabelSet)
-		for _, lbl := range processed {
-			if strings.HasPrefix(lbl.Name, "__") {
-				continue
-			}
-			filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+		// Add to buffer
+		payloadAcc.WriteString(payload)
+		curTs = ts
+		// Send immediately if line ended or we built a very large event
+		if strings.HasSuffix(payload, "\n") || payloadAcc.Len() >= softMaxBuffer {
+			t.handleOutput(logStream, curTs, payloadAcc.String())
+			payloadAcc = new(strings.Builder)
 		}
-
-		t.handler.Chan() <- api.Entry{
-			Labels: filtered,
-			Entry: logproto.Entry{
-				Timestamp: ts,
-				Line:      line,
-			},
-		}
-		t.metrics.dockerEntries.Inc()
-		t.positions.Put(positions.CursorKey(t.containerName), ts.Unix())
-		t.since = ts.Unix()
 	}
+}
+
+func (t *Target) handleOutput(logStream string, ts time.Time, payload string) {
+	// We don't output trailing newlines
+	payload = strings.TrimSuffix(payload, "\n")
+	payload = strings.TrimSuffix(payload, "\r")
+	// Add all labels from the config, relabel and filter them.
+	lb := labels.NewBuilder(nil)
+	for k, v := range t.labels {
+		lb.Set(string(k), string(v))
+	}
+	lb.Set(dockerLabelLogStream, logStream)
+	processed, _ := relabel.Process(lb.Labels(), t.relabelConfig...)
+
+	filtered := make(model.LabelSet)
+	for _, lbl := range processed {
+		if strings.HasPrefix(lbl.Name, "__") {
+			continue
+		}
+		filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+	}
+
+	t.handler.Chan() <- api.Entry{
+		Labels: filtered,
+		Entry: logproto.Entry{
+			Timestamp: ts,
+			Line:      payload,
+		},
+	}
+	t.metrics.dockerEntries.Inc()
+	t.positions.Put(positions.CursorKey(t.containerName), ts.Unix())
+	t.since = ts.Unix()
 }
 
 // startIfNotRunning starts processing container logs. The operation is idempotent , i.e. the processing cannot be started twice.
