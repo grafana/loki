@@ -56,6 +56,7 @@ func (s *Stats) KVArgs() []any {
 		"msg", "stats-report",
 		"status", s.Status,
 		"tasks", s.NumTasks,
+		"filters", s.NumFilters,
 		"series_requested", s.SeriesRequested,
 		"series_filtered", s.SeriesFiltered,
 		"chunks_requested", s.ChunksRequested,
