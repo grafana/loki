@@ -214,6 +214,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	// start time == end time --> empty response
 	if req.From.Equal(req.Through) {
+		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: []*logproto.GroupedChunkRefs{},
 		}, nil
@@ -221,6 +222,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	// start time > end time --> error response
 	if req.Through.Before(req.From) {
+		stats.Status = labelFailure
 		return nil, errors.New("from time must not be after through time")
 	}
 
@@ -230,6 +232,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	// Shortcut if request does not contain filters
 	if len(filters) == 0 {
+		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: req.Refs,
 		}, nil
@@ -240,6 +243,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	// no tasks --> empty response
 	if len(seriesByDay) == 0 {
+		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: []*logproto.GroupedChunkRefs{},
 		}, nil
@@ -282,6 +286,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			// When enqueuing, we also add the task to the pending tasks
 			_ = g.pendingTasks.Inc()
 		}); err != nil {
+			stats.Status = labelFailure
 			return nil, errors.Wrap(err, "failed to enqueue task")
 		}
 		// TODO(owen-d): use `concurrency` lib, bound parallelism
@@ -302,10 +307,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	for remaining > 0 {
 		select {
 		case <-ctx.Done():
+			stats.Status = "cancel"
 			return nil, errors.Wrap(ctx.Err(), "request failed")
 		case task := <-tasksCh:
 			level.Info(sp).Log("msg", "task done", "task", task.ID, "err", task.Err())
 			if task.Err() != nil {
+				stats.Status = labelFailure
 				return nil, errors.Wrap(task.Err(), "request failed")
 			}
 			responses = append(responses, task.responses)
