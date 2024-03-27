@@ -3,7 +3,7 @@ loki:
   commonConfig:
     replication_factor: 1
   image:
-    tag: "2.8.9"
+    tag: "k195-51c54ad"
 deploymentMode: Distributed
 backend:
   replicas: 0
@@ -12,7 +12,7 @@ read:
 write:
   replicas: 0
 ingester:
-  replicas: 2
+  replicas: 3
 querier:
   replicas: 1
 queryFrontend:
