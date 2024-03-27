@@ -227,7 +227,7 @@ func TestParseRequest(t *testing.T) {
 				require.Equal(t, test.expectedStructuredMetadataBytes, structuredMetadataBytesReceived)
 				require.Equal(t, test.expectedBytes, bytesReceived)
 				require.Equalf(t, tracker.Total(), float64(bytesReceived), "tracked usage bytes must equal bytes received metric")
-				require.Equal(t, test.expectedBytes, bytesReceived)
+				require.Equal(t, test.expectedLines, linesReceived)
 				require.Equal(t, float64(test.expectedStructuredMetadataBytes), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedBytes), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedLines), testutil.ToFloat64(linesIngested.WithLabelValues("fake")))
