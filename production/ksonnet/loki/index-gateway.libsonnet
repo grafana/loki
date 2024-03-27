@@ -68,14 +68,14 @@
   else {},
 
 
-  index_gateway_pdb:  if $._config.use_index_gateway then
-      podDisruptionBudget.new('index-gateway-pdb') +
-      podDisruptionBudget.mixin.metadata.withLabels({ name: 'index-gateway-pdb' }) +
-      podDisruptionBudget.mixin.spec.selector.withMatchLabels({
-        name: $.index_gateway_statefulset.metadata.name,
-      }) +
-      podDisruptionBudget.mixin.spec.withMaxUnavailable(1)
-   else {},
+  index_gateway_pdb: if $._config.use_index_gateway then
+    podDisruptionBudget.new('index-gateway-pdb') +
+    podDisruptionBudget.mixin.metadata.withLabels({ name: 'index-gateway-pdb' }) +
+    podDisruptionBudget.mixin.spec.selector.withMatchLabels({
+      name: $.index_gateway_statefulset.metadata.name,
+    }) +
+    podDisruptionBudget.mixin.spec.withMaxUnavailable(1)
+  else {},
 
   index_gateway_service: if $._config.use_index_gateway then
     k.util.serviceFor($.index_gateway_statefulset, $._config.service_ignored_labels)
