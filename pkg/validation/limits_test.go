@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/loghttp/push"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 func TestLimitsTagsYamlMatchJson(t *testing.T) {
@@ -338,6 +339,7 @@ func TestLimitsValidation(t *testing.T) {
 	} {
 		desc := fmt.Sprintf("%s/%s", tc.limits.DeletionMode, tc.limits.BloomBlockEncoding)
 		t.Run(desc, func(t *testing.T) {
+			tc.limits.TSDBShardingStrategy = logql.PowerOfTwoVersion.String() // hacky but needed for test
 			if tc.expected == nil {
 				require.NoError(t, tc.limits.Validate())
 			} else {

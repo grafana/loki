@@ -96,7 +96,8 @@ func TestMappingEquivalence(t *testing.T) {
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics, []string{})
+			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
+			mapper := NewShardMapper(strategy, nilShardMetrics, []string{})
 			// TODO (callum) refactor this test so that we won't need to set every
 			// possible sharding config option to true when we have multiple in the future
 			if tc.approximate {
@@ -166,7 +167,8 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics, []string{ShardQuantileOverTime})
+			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
+			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
 			_, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.NoError(t, err)
 
@@ -200,7 +202,8 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics, []string{ShardQuantileOverTime})
+			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
+			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
 			_, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.NoError(t, err)
 
@@ -265,7 +268,8 @@ func TestShardCounter(t *testing.T) {
 			require.NoError(t, err)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics, []string{ShardQuantileOverTime})
+			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
+			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
 			noop, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.NoError(t, err)
 
@@ -620,10 +624,10 @@ func TestFormat_ShardedExpr(t *testing.T) {
 			name: "ConcatSampleExpr",
 			in: &ConcatSampleExpr{
 				DownstreamSampleExpr: DownstreamSampleExpr{
-					shard: &astmapper.ShardAnnotation{
+					shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 						Shard: 0,
 						Of:    3,
-					},
+					}).Ptr(),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeRate,
 						Left: &syntax.LogRange{
@@ -636,10 +640,10 @@ func TestFormat_ShardedExpr(t *testing.T) {
 				},
 				next: &ConcatSampleExpr{
 					DownstreamSampleExpr: DownstreamSampleExpr{
-						shard: &astmapper.ShardAnnotation{
+						shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 							Shard: 1,
 							Of:    3,
-						},
+						}).Ptr(),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
 							Left: &syntax.LogRange{
@@ -652,10 +656,10 @@ func TestFormat_ShardedExpr(t *testing.T) {
 					},
 					next: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
 								Shard: 1,
 								Of:    3,
-							},
+							}).Ptr(),
 							SampleExpr: &syntax.RangeAggregationExpr{
 								Operation: syntax.OpRangeTypeRate,
 								Left: &syntax.LogRange{
@@ -701,7 +705,8 @@ func TestPrettierWithoutShards(t *testing.T) {
 	q := `((quantile_over_time(0.5,{foo="bar"} | json | unwrap bytes[1d]) by (cluster) > 42) and (count by (cluster)(max_over_time({foo="baz"} |= "error" | json | unwrap bytes[1d]) by (cluster,namespace)) > 10))`
 	e := syntax.MustParseExpr(q)
 
-	mapper := NewShardMapper(ConstantShards(4), nilShardMetrics, []string{})
+	strategy := NewPowerOfTwoStrategy(ConstantShards(4))
+	mapper := NewShardMapper(strategy, nilShardMetrics, []string{})
 	_, _, mapped, err := mapper.Parse(e)
 	require.NoError(t, err)
 	got := syntax.Prettify(mapped)
@@ -737,43 +742,4 @@ and
   >
     10`
 	assert.Equal(t, expected, got)
-}
-
-func TestParseShardCount(t *testing.T) {
-	for _, st := range []struct {
-		name     string
-		shards   []string
-		expected int
-	}{
-		{
-			name:     "empty shards",
-			shards:   []string{},
-			expected: 0,
-		},
-		{
-			name:     "single shard",
-			shards:   []string{"0_of_3"},
-			expected: 3,
-		},
-		{
-			name:     "single shard with error",
-			shards:   []string{"0_of_"},
-			expected: 0,
-		},
-		{
-			name:     "multiple shards",
-			shards:   []string{"0_of_3", "0_of_4"},
-			expected: 3,
-		},
-		{
-			name:     "multiple shards with errors",
-			shards:   []string{"_of_3", "0_of_4"},
-			expected: 4,
-		},
-	} {
-		t.Run(st.name, func(t *testing.T) {
-			require.Equal(t, st.expected, ParseShardCount(st.shards))
-		})
-
-	}
 }

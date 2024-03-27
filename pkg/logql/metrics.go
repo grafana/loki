@@ -2,10 +2,12 @@ package logql
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -32,6 +34,7 @@ const (
 	QueryTypeLabels  = "labels"
 	QueryTypeSeries  = "series"
 	QueryTypeStats   = "stats"
+	QueryTypeShards  = "shards"
 	QueryTypeVolume  = "volume"
 
 	latencyTypeSlow = "slow"
@@ -128,6 +131,11 @@ func RecordRangeAndInstantQueryMetrics(
 
 	logValues := make([]interface{}, 0, 50)
 
+	var bloomRatio float64 // what % are filtered
+	if stats.Index.TotalChunks > 0 {
+		bloomRatio = float64(stats.Index.TotalChunks-stats.Index.PostFilterChunks) / float64(stats.Index.TotalChunks)
+	}
+
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
 		"query", query,
@@ -191,6 +199,9 @@ func RecordRangeAndInstantQueryMetrics(
 		"ingester_post_filter_lines", stats.Ingester.Store.Chunk.GetPostFilterLines(),
 		// Time spent being blocked on congestion control.
 		"congestion_control_latency", stats.CongestionControlLatency(),
+		"index_total_chunks", stats.Index.TotalChunks,
+		"index_post_bloom_filter_chunks", stats.Index.PostFilterChunks,
+		"index_bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
@@ -364,6 +375,58 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned)
+
+	level.Info(logger).Log(logValues...)
+
+	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
+}
+
+func RecordShardsQueryMetrics(
+	ctx context.Context,
+	log log.Logger,
+	start,
+	end time.Time,
+	query string,
+	targetBytesPerShard uint64,
+	status string,
+	shards int,
+	stats logql_stats.Result,
+) {
+	var (
+		logger      = fixLogger(ctx, log)
+		latencyType = latencyTypeFast
+		queryType   = QueryTypeShards
+	)
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	var bloomRatio float64 // what % are filtered
+	if stats.Index.TotalChunks > 0 {
+		bloomRatio = float64(stats.Index.TotalChunks-stats.Index.PostFilterChunks) / float64(stats.Index.TotalChunks)
+	}
+	logValues := make([]interface{}, 0, 15)
+	logValues = append(logValues,
+		"latency", latencyType,
+		"query_type", queryType,
+		"start", start.Format(time.RFC3339Nano),
+		"end", end.Format(time.RFC3339Nano),
+		"start_delta", time.Since(start),
+		"end_delta", time.Since(end),
+		"length", end.Sub(start),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"query", query,
+		"query_hash", util.HashedQuery(query),
+		"target_bytes_per_shard", datasize.ByteSize(targetBytesPerShard).HumanReadable(),
+		"shards", shards,
+		"index_total_chunks", stats.Index.TotalChunks,
+		"index_post_bloom_filter_chunks", stats.Index.PostFilterChunks,
+		"index_bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
+	)
 
 	level.Info(logger).Log(logValues...)
 

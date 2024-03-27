@@ -35,9 +35,15 @@ type Store interface {
 	Stop()
 }
 
+type StoreWithMetrics interface {
+	Store
+	BloomMetrics() *v1.Metrics
+}
+
 type bloomStoreConfig struct {
-	workingDir string
-	numWorkers int
+	workingDir       string
+	numWorkers       int
+	maxBloomPageSize int
 }
 
 // Compiler check to ensure bloomStoreEntry implements the Store interface
@@ -123,8 +129,8 @@ func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParam
 }
 
 // FetchBlocks implements Store.
-func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef, _ ...FetchOption) ([]*CloseableBlockQuerier, error) {
-	return b.fetcher.FetchBlocks(ctx, refs)
+func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error) {
+	return b.fetcher.FetchBlocks(ctx, refs, opts...)
 }
 
 // Fetcher implements Store.
@@ -144,12 +150,14 @@ func (b bloomStoreEntry) Stop() {
 }
 
 // Compiler check to ensure BloomStore implements the Store interface
-var _ Store = &BloomStore{}
+var _ StoreWithMetrics = &BloomStore{}
 
 type BloomStore struct {
-	stores             []*bloomStoreEntry
-	storageConfig      storage.Config
-	metrics            *storeMetrics
+	stores        []*bloomStoreEntry
+	storageConfig storage.Config
+	metrics       *storeMetrics
+	bloomMetrics  *v1.Metrics
+
 	logger             log.Logger
 	defaultKeyResolver // TODO(owen-d): impl schema aware resolvers
 }
@@ -166,6 +174,7 @@ func NewBloomStore(
 	store := &BloomStore{
 		storageConfig: storageConfig,
 		metrics:       newStoreMetrics(reg, constants.Loki, "bloom_store"),
+		bloomMetrics:  v1.NewMetrics(reg),
 		logger:        logger,
 	}
 
@@ -184,8 +193,9 @@ func NewBloomStore(
 
 	// TODO(chaudum): Remove wrapper
 	cfg := bloomStoreConfig{
-		workingDir: storageConfig.BloomShipperConfig.WorkingDirectory,
-		numWorkers: storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
+		workingDir:       storageConfig.BloomShipperConfig.WorkingDirectory,
+		numWorkers:       storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
+		maxBloomPageSize: int(storageConfig.BloomShipperConfig.MaxQueryPageSize),
 	}
 
 	if err := util.EnsureDirectory(cfg.workingDir); err != nil {
@@ -204,7 +214,7 @@ func NewBloomStore(
 		}
 
 		regWithLabels := prometheus.WrapRegistererWith(prometheus.Labels{"store": periodicConfig.From.String()}, reg)
-		fetcher, err := NewFetcher(cfg, bloomClient, metasCache, blocksCache, regWithLabels, logger)
+		fetcher, err := NewFetcher(cfg, bloomClient, metasCache, blocksCache, regWithLabels, logger, store.bloomMetrics)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating fetcher for period %s", periodicConfig.From)
 		}
@@ -219,6 +229,10 @@ func NewBloomStore(
 	}
 
 	return store, nil
+}
+
+func (b *BloomStore) BloomMetrics() *v1.Metrics {
+	return b.bloomMetrics
 }
 
 // Impements KeyResolver

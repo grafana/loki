@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util/constants"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -55,9 +56,6 @@ var (
 			}
 		},
 	}
-
-	// NB(chaudum): Should probably be configurable, but I don't want yet another user setting.
-	maxQueryParallelism = 10
 )
 
 type ringGetBuffers struct {
@@ -106,10 +104,6 @@ type ClientConfig struct {
 	// GRPCClientConfig configures the gRPC connection between the Bloom Gateway client and the server.
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 
-	// LogGatewayRequests configures if requests sent to the gateway should be logged or not.
-	// The log messages are of type debug and contain the address of the gateway and the relevant tenant.
-	LogGatewayRequests bool `yaml:"log_gateway_requests"`
-
 	// Ring is the Bloom Gateway ring used to find the appropriate Bloom Gateway instance
 	// this client should talk to.
 	Ring ring.ReadRing `yaml:"-"`
@@ -129,7 +123,6 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+"grpc", f)
 	i.Cache.RegisterFlagsWithPrefix(prefix+"cache.", f)
 	f.BoolVar(&i.CacheResults, prefix+"cache_results", false, "Flag to control whether to cache bloom gateway client requests/responses.")
-	f.BoolVar(&i.LogGatewayRequests, prefix+"log-gateway-requests", false, "Flag to control whether requests sent to the gateway should be logged or not.")
 }
 
 func (i *ClientConfig) Validate() error {
@@ -257,7 +250,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 
 	results := make([][]*logproto.GroupedChunkRefs, len(servers))
 	count := 0
-	err = concurrency.ForEachJob(ctx, len(servers), maxQueryParallelism, func(ctx context.Context, i int) error {
+	err = concurrency.ForEachJob(ctx, len(servers), len(servers), func(ctx context.Context, i int) error {
 		rs := servers[i]
 
 		// randomize order of addresses so we don't hotspot the first server in the list
@@ -270,9 +263,6 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 			"from", from.Time(),
 			"through", through.Time(),
 			"num_refs", len(rs.groups),
-			"refs", JoinFunc(rs.groups, ",", func(e *logproto.GroupedChunkRefs) string {
-				return model.Fingerprint(e.Fingerprint).String()
-			}),
 			"plan", plan.String(),
 			"plan_hash", plan.Hash(),
 		)
@@ -355,6 +345,16 @@ func replicationSetsWithBounds(subRing ring.ReadRing, instances []ring.InstanceD
 		tr, err := bloomutils.TokenRangesForInstance(inst.Id, instances)
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
+		}
+
+		if len(tr) == 0 {
+			level.Warn(util_log.Logger).Log(
+				"subroutine", "replicationSetsWithBounds",
+				"msg", "instance has no token ranges - should not be possible",
+				"instance", inst.Id,
+				"n_instances", len(instances),
+			)
+			continue
 		}
 
 		// NB(owen-d): this will send requests to the wrong nodes if RF>1 since it only checks the
