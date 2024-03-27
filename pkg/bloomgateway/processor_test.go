@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -88,6 +89,11 @@ func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef
 
 func TestProcessor(t *testing.T) {
 	ctx := context.Background()
+	// create a span for the request, because the processer annotates the span
+	// with the blocks that have been processed
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "TestProcessor")
+	t.Cleanup(sp.Finish)
+
 	tenant := "fake"
 	now := mktime("2024-01-27 12:00")
 	metrics := newWorkerMetrics(prometheus.NewPedanticRegistry(), constants.Loki, "bloom_gatway")

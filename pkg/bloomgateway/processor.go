@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/dskit/concurrency"
@@ -171,13 +172,11 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 	iters := make([]v1.PeekingIterator[v1.Request], 0, len(tasks))
 
 	for _, task := range tasks {
-		// md, _ := blockQuerier.Metadata()
-		// blk := bloomshipper.BlockRefFrom(task.Tenant, task.table.String(), md)
-		//
-		// Why don't we get the span from the task context even though we create it
-		// at the beginning of the request handler?
-		// sp := opentracing.SpanFromContext(task.ctx)
-		// sp.LogKV("process block", blk.String())
+		if sp := opentracing.SpanFromContext(task.ctx); sp != nil {
+			md, _ := blockQuerier.Metadata()
+			blk := bloomshipper.BlockRefFrom(task.Tenant, task.table.String(), md)
+			sp.LogKV("process block", blk.String())
+		}
 
 		it := v1.NewPeekingIter(task.RequestIter(tokenizer))
 		iters = append(iters, it)
