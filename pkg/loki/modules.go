@@ -1057,6 +1057,10 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(defaultHandler)
 	}
 
+	if t.Cfg.Frontend.ExperimentalAPIsEnabled {
+		t.Server.HTTP.Path("/loki/api/experimental/detected_fields").Methods("GET", "POST").Handler(frontendHandler)
+	}
+
 	if t.frontend == nil {
 		return services.NewIdleService(nil, func(_ error) error {
 			if t.stopper != nil {
