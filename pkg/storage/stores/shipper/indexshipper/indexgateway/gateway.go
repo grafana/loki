@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -355,8 +356,8 @@ func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*
 
 func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.IndexGateway_GetShardsServer) error {
 	ctx := server.Context()
-	log, _ := spanlogger.New(context.Background(), "IndexGateway.GetShards")
-	defer log.Finish()
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "indexgateway.GetShards")
+	defer sp.Finish()
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -412,11 +413,8 @@ func (g *Gateway) getShardsWithBlooms(
 	// as getting it _very_ wrong could harm some cache locality benefits on the bloom-gws by
 	// sending multiple requests to the entire keyspace).
 
-	sp, ctx := spanlogger.NewWithLogger(
-		ctx,
-		log.With(g.log, "tenant", instanceID),
-		"indexgateway.getShardsWithBlooms",
-	)
+	logger := log.With(g.log, "tenant", instanceID)
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "indexgateway.getShardsWithBlooms")
 	defer sp.Finish()
 
 	// 1) for all bounds, get chunk refs
@@ -473,17 +471,10 @@ func (g *Gateway) getShardsWithBlooms(
 		resp.Shards = shards
 	}
 
-	level.Debug(g.log).Log(
-		"msg", "shards response",
-		"total_chunks", statistics.Index.TotalChunks,
-		"post_filter_chunks", statistics.Index.PostFilterChunks,
-		"shards", len(resp.Shards),
-		"query", req.Query,
-		"target_bytes_per_shard", datasize.ByteSize(req.TargetBytesPerShard).HumanReadable(),
-	)
+	sp.LogKV("msg", "send shards response", "shards", len(resp.Shards))
 
-	level.Debug(sp).Log(
-		"msg", "shards response",
+	level.Debug(logger).Log(
+		"msg", "send shards response",
 		"total_chunks", statistics.Index.TotalChunks,
 		"post_filter_chunks", statistics.Index.PostFilterChunks,
 		"shards", len(resp.Shards),
