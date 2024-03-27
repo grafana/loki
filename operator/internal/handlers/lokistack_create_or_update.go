@@ -83,7 +83,7 @@ func CreateOrUpdateLokiStack(
 		certRotationRequiredAt = stack.Annotations[manifests.AnnotationCertRotationRequiredAt]
 	}
 
-	timeoutConfig, err := manifests.NewTimeoutConfig(stack.Spec.Limits)
+	err = manifests.ValidatePerTenantConfig(stack.Spec.Limits)
 	if err != nil {
 		if errors.Is(err, manifests.ErrInvalidPerTenantConfig) {
 			ll.Error(err, "invalid per-tenant config")
@@ -93,6 +93,10 @@ func CreateOrUpdateLokiStack(
 				Requeue: false,
 			}
 		}
+	}
+
+	timeoutConfig, err := manifests.NewTimeoutConfig(stack.Spec.Limits)
+	if err != nil {
 		ll.Error(err, "failed to parse query timeout")
 		return "", &status.DegradedError{
 			Message: fmt.Sprintf("Error parsing query timeout: %s", err),

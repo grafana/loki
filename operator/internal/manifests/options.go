@@ -145,13 +145,6 @@ func NewTimeoutConfig(s *lokiv1.LimitsSpec) (TimeoutConfig, error) {
 		return defaultTimeoutConfig, nil
 	}
 
-	for _, config := range s.Tenants {
-		c := lokiv1.PerTenantLimitsTemplateSpec{}
-		if config == c {
-			return TimeoutConfig{}, ErrInvalidPerTenantConfig
-		}
-	}
-
 	queryTimeout := lokiDefaultQueryTimeout
 	if s.Global != nil && s.Global.QueryLimits != nil && s.Global.QueryLimits.QueryTimeout != "" {
 		var err error
@@ -204,4 +197,16 @@ func calculateHTTPTimeouts(queryTimeout time.Duration) TimeoutConfig {
 			UpstreamWriteTimeout: writeTimeout,
 		},
 	}
+}
+
+func ValidatePerTenantConfig(s *lokiv1.LimitsSpec) error {
+	if s != nil && s.Tenants != nil {
+		for _, config := range s.Tenants {
+			c := lokiv1.PerTenantLimitsTemplateSpec{}
+			if config == c {
+				return ErrInvalidPerTenantConfig
+			}
+		}
+	}
+	return nil
 }
