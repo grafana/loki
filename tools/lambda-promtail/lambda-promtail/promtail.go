@@ -198,6 +198,12 @@ func (c *promtailClient) send(ctx context.Context, buf []byte) (int, error) {
 		req.Header.Set("Authorization", "Bearer "+bearerToken)
 	}
 
+	if len(extraHeaders) > 0 {
+		for key, value := range extraHeaders {
+			req.Header.Set(key, value)
+		}
+	}
+
 	resp, err := c.http.Do(req.WithContext(ctx))
 	if err != nil {
 		return -1, err
