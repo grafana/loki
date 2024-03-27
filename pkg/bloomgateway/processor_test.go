@@ -89,8 +89,6 @@ func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef
 
 func TestProcessor(t *testing.T) {
 	ctx := context.Background()
-	// create a span for the request, because the processer annotates the span
-	// with the blocks that have been processed
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "TestProcessor")
 	t.Cleanup(sp.Finish)
 
