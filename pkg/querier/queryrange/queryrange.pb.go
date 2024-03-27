@@ -1972,7 +1972,6 @@ func (this *ShardsResponse) Equal(that interface{}) bool {
 	}
 	return true
 }
-
 func (this *DetectedFieldsResponse) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -2009,7 +2008,6 @@ func (this *DetectedFieldsResponse) Equal(that interface{}) bool {
 	}
 	return true
 }
-
 func (this *QueryResponse) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -2259,7 +2257,6 @@ func (this *QueryResponse_ShardsResponse) Equal(that interface{}) bool {
 	}
 	return true
 }
-
 func (this *QueryResponse_DetectedFields) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -2284,7 +2281,6 @@ func (this *QueryResponse_DetectedFields) Equal(that interface{}) bool {
 	}
 	return true
 }
-
 func (this *QueryRequest) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -2491,7 +2487,6 @@ func (this *QueryRequest_ShardsRequest) Equal(that interface{}) bool {
 	}
 	return true
 }
-
 func (this *QueryRequest_DetectedFields) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -2516,7 +2511,6 @@ func (this *QueryRequest_DetectedFields) Equal(that interface{}) bool {
 	}
 	return true
 }
-
 func (this *LokiRequest) GoString() string {
 	if this == nil {
 		return "nil"
@@ -2707,7 +2701,6 @@ func (this *ShardsResponse) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-
 func (this *DetectedFieldsResponse) GoString() string {
 	if this == nil {
 		return "nil"
@@ -2719,14 +2712,11 @@ func (this *DetectedFieldsResponse) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-
 func (this *QueryResponse) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-
 	s := make([]string, 0, 15)
-
 	s = append(s, "&queryrange.QueryResponse{")
 	if this.Status != nil {
 		s = append(s, "Status: "+fmt.Sprintf("%#v", this.Status)+",\n")
@@ -2809,7 +2799,6 @@ func (this *QueryResponse_ShardsResponse) GoString() string {
 		`ShardsResponse:` + fmt.Sprintf("%#v", this.ShardsResponse) + `}`}, ", ")
 	return s
 }
-
 func (this *QueryResponse_DetectedFields) GoString() string {
 	if this == nil {
 		return "nil"
@@ -2818,14 +2807,11 @@ func (this *QueryResponse_DetectedFields) GoString() string {
 		`DetectedFields:` + fmt.Sprintf("%#v", this.DetectedFields) + `}`}, ", ")
 	return s
 }
-
 func (this *QueryRequest) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-
 	s := make([]string, 0, 13)
-
 	s = append(s, "&queryrange.QueryRequest{")
 	if this.Request != nil {
 		s = append(s, "Request: "+fmt.Sprintf("%#v", this.Request)+",\n")
@@ -2902,7 +2888,6 @@ func (this *QueryRequest_ShardsRequest) GoString() string {
 		`ShardsRequest:` + fmt.Sprintf("%#v", this.ShardsRequest) + `}`}, ", ")
 	return s
 }
-
 func (this *QueryRequest_DetectedFields) GoString() string {
 	if this == nil {
 		return "nil"
@@ -2911,7 +2896,6 @@ func (this *QueryRequest_DetectedFields) GoString() string {
 		`DetectedFields:` + fmt.Sprintf("%#v", this.DetectedFields) + `}`}, ", ")
 	return s
 }
-
 func valueToGoStringQueryrange(v interface{}, typ string) string {
 	rv := reflect.ValueOf(v)
 	if rv.IsNil() {
@@ -4025,7 +4009,6 @@ func (m *QueryResponse_ShardsResponse) MarshalToSizedBuffer(dAtA []byte) (int, e
 	}
 	return len(dAtA) - i, nil
 }
-
 func (m *QueryResponse_DetectedFields) MarshalTo(dAtA []byte) (int, error) {
 	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
@@ -4046,7 +4029,6 @@ func (m *QueryResponse_DetectedFields) MarshalToSizedBuffer(dAtA []byte) (int, e
 	}
 	return len(dAtA) - i, nil
 }
-
 func (m *QueryRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -4238,7 +4220,6 @@ func (m *QueryRequest_ShardsRequest) MarshalToSizedBuffer(dAtA []byte) (int, err
 	}
 	return len(dAtA) - i, nil
 }
-
 func (m *QueryRequest_DetectedFields) MarshalTo(dAtA []byte) (int, error) {
 	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
@@ -4259,7 +4240,6 @@ func (m *QueryRequest_DetectedFields) MarshalToSizedBuffer(dAtA []byte) (int, er
 	}
 	return len(dAtA) - i, nil
 }
-
 func encodeVarintQueryrange(dAtA []byte, offset int, v uint64) int {
 	offset -= sovQueryrange(v)
 	base := offset
@@ -4763,7 +4743,6 @@ func (m *QueryResponse_ShardsResponse) Size() (n int) {
 	}
 	return n
 }
-
 func (m *QueryResponse_DetectedFields) Size() (n int) {
 	if m == nil {
 		return 0
@@ -4776,7 +4755,6 @@ func (m *QueryResponse_DetectedFields) Size() (n int) {
 	}
 	return n
 }
-
 func (m *QueryRequest) Size() (n int) {
 	if m == nil {
 		return 0
@@ -4881,7 +4859,6 @@ func (m *QueryRequest_ShardsRequest) Size() (n int) {
 	}
 	return n
 }
-
 func (m *QueryRequest_DetectedFields) Size() (n int) {
 	if m == nil {
 		return 0
@@ -5088,7 +5065,6 @@ func (this *ShardsResponse) String() string {
 	}, "")
 	return s
 }
-
 func (this *DetectedFieldsResponse) String() string {
 	if this == nil {
 		return "nil"
@@ -5100,7 +5076,6 @@ func (this *DetectedFieldsResponse) String() string {
 	}, "")
 	return s
 }
-
 func (this *QueryResponse) String() string {
 	if this == nil {
 		return "nil"
@@ -5212,16 +5187,6 @@ func (this *QueryResponse_DetectedFields) String() string {
 	}, "")
 	return s
 }
-func (this *QueryResponse_ShardsResponse) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&QueryResponse_ShardsResponse{`,
-		`ShardsResponse:` + strings.Replace(fmt.Sprintf("%v", this.ShardsResponse), "ShardsResponse", "ShardsResponse", 1) + `,`,
-		`}`,
-	}, "")
-	return s
-}
 func (this *QueryRequest) String() string {
 	if this == nil {
 		return "nil"
@@ -5313,7 +5278,6 @@ func (this *QueryRequest_ShardsRequest) String() string {
 	}, "")
 	return s
 }
-
 func (this *QueryRequest_DetectedFields) String() string {
 	if this == nil {
 		return "nil"
@@ -5324,7 +5288,6 @@ func (this *QueryRequest_DetectedFields) String() string {
 	}, "")
 	return s
 }
-
 func valueToStringQueryrange(v interface{}) string {
 	rv := reflect.ValueOf(v)
 	if rv.IsNil() {
@@ -7848,129 +7811,6 @@ func (m *DetectedFieldsResponse) Unmarshal(dAtA []byte) error {
 			}
 			if m.Response == nil {
 				m.Response = &github_com_grafana_loki_pkg_logproto.DetectedFieldsResponse{}
-			}
-			if err := m.Response.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Headers", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowQueryrange
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthQueryrange
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthQueryrange
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Headers = append(m.Headers, github_com_grafana_loki_pkg_querier_queryrange_queryrangebase_definitions.PrometheusResponseHeader{})
-			if err := m.Headers[len(m.Headers)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipQueryrange(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthQueryrange
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthQueryrange
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *ShardsResponse) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowQueryrange
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: ShardsResponse: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ShardsResponse: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Response", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowQueryrange
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthQueryrange
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthQueryrange
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Response == nil {
-				m.Response = &github_com_grafana_loki_pkg_logproto.ShardsResponse{}
 			}
 			if err := m.Response.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
