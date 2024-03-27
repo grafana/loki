@@ -21,7 +21,7 @@ type Config struct {
 	TailProxyURL string           `yaml:"tail_proxy_url"`
 	TLS          tls.ClientConfig `yaml:"tail_tls_config"`
 
-  ExperimentalAPIsEnabled bool `yaml:"experimental_apis_enabled"`
+	ExperimentalAPIsEnabled bool `yaml:"experimental_apis_enabled"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.

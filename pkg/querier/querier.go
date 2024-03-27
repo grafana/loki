@@ -903,10 +903,10 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 	return &logproto.DetectedFieldsResponse{
 		Fields: []*logproto.DetectedField{
 			{
-				Label: "foo",
-				Type:  logproto.DetectedFieldString,
-        Cardinality: 1,
+				Label:       "foo",
+				Type:        logproto.DetectedFieldString,
+				Cardinality: 1,
 			},
-    },
-  }, nil
+		},
+	}, nil
 }

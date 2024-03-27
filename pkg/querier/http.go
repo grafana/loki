@@ -386,7 +386,7 @@ func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.De
 			Fields: []*logproto.DetectedField{},
 		}, nil
 	}
-  return resp, nil
+	return resp, nil
 }
 
 func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.Expr, limit uint32) error {

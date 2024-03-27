@@ -505,7 +505,7 @@ func RecordDetectedFieldsQueryMetrics(ctx context.Context, log log.Logger, start
 		"status", status,
 		// "duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 	)
-  //TODO(twhitney): add stats and exec time
+	//TODO(twhitney): add stats and exec time
 	// execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
 
