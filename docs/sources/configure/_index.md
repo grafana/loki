@@ -2353,9 +2353,10 @@ tsdb_shipper:
 
 # Configures Bloom Shipper.
 bloom_shipper:
-  # Working directory to store downloaded Bloom Blocks.
+  # Working directory to store downloaded bloom blocks. Supports multiple
+  # directories, separated by comma.
   # CLI flag: -bloom.shipper.working-directory
-  [working_directory: <string> | default = "bloom-shipper"]
+  [working_directory: <string> | default = "/data/blooms"]
 
   # Maximum size of bloom pages that should be queried. Larger pages than this
   # limit are skipped when querying blooms to limit memory usage.

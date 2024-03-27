@@ -51,7 +51,7 @@ func newMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*BloomStore, st
 
 	storageConfig := storage.Config{
 		BloomShipperConfig: config.Config{
-			WorkingDirectory: workDir,
+			WorkingDirectory: []string{workDir},
 			BlocksDownloadingQueue: config.DownloadingQueueConfig{
 				WorkersCount: 1,
 			},

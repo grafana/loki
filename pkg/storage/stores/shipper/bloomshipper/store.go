@@ -41,7 +41,7 @@ type StoreWithMetrics interface {
 }
 
 type bloomStoreConfig struct {
-	workingDir       string
+	workingDirs      []string
 	numWorkers       int
 	maxBloomPageSize int
 }
@@ -193,13 +193,15 @@ func NewBloomStore(
 
 	// TODO(chaudum): Remove wrapper
 	cfg := bloomStoreConfig{
-		workingDir:       storageConfig.BloomShipperConfig.WorkingDirectory,
+		workingDirs:      storageConfig.BloomShipperConfig.WorkingDirectory,
 		numWorkers:       storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
 		maxBloomPageSize: int(storageConfig.BloomShipperConfig.MaxQueryPageSize),
 	}
 
-	if err := util.EnsureDirectory(cfg.workingDir); err != nil {
-		return nil, errors.Wrapf(err, "failed to create working directory for bloom store: '%s'", cfg.workingDir)
+	for _, wd := range cfg.workingDirs {
+		if err := util.EnsureDirectory(wd); err != nil {
+			return nil, errors.Wrapf(err, "failed to create working directory for bloom store: '%s'", wd)
+		}
 	}
 
 	for _, periodicConfig := range periodicConfigs {

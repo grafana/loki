@@ -41,8 +41,8 @@ func newMockBloomClient(t *testing.T) (*BloomClient, string) {
 	dir := t.TempDir()
 	logger := log.NewLogfmtLogger(os.Stderr)
 	cfg := bloomStoreConfig{
-		workingDir: dir,
-		numWorkers: 3,
+		workingDirs: []string{dir},
+		numWorkers:  3,
 	}
 	client, err := NewBloomClient(cfg, oc, logger)
 	require.NoError(t, err)
