@@ -663,12 +663,9 @@ func (t *Loki) setupModuleManager() error {
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor},
-		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
+		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway},
 
-		// TODO(salvacorts): We added the BloomCompactor component to the `all` target to ease testing.
-		//                   We should remove it before releasing the feature since we don’t think any user running
-		//                   the single binary will benefit from the blooms given their scale in terms of ingested data
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor, BloomCompactor},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
