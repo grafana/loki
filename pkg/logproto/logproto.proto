@@ -453,3 +453,26 @@ message DetectedField {
   DetectedFieldType type = 2;
   uint64 cardinality = 3;
 }
+
+
+message DetectedLabelsRequest {
+  google.protobuf.Timestamp start = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = true
+  ];
+  google.protobuf.Timestamp end = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = true
+  ];
+  string query = 3;
+}
+
+
+message DetectedLabelsResponse {
+  repeated DetectedLabels detectedLabels = 1;
+}
+
+message DetectedLabels {
+  string label = 1;
+  // TODO(shantanu) check if need to add unwrapfunc here
+}
