@@ -29,23 +29,14 @@ type ctxKeyType string
 const ctxKey ctxKeyType = "stats"
 
 const (
-<<<<<<< HEAD
 	queryTypeLog            = "log"
 	queryTypeMetric         = "metric"
 	queryTypeSeries         = "series"
 	queryTypeLabel          = "label"
 	queryTypeStats          = "stats"
 	queryTypeVolume         = "volume"
+	queryTypeShards         = "shards"
 	queryTypeDetectedFields = "detected_fields"
-=======
-	queryTypeLog    = "log"
-	queryTypeMetric = "metric"
-	queryTypeSeries = "series"
-	queryTypeLabel  = "label"
-	queryTypeStats  = "stats"
-	queryTypeVolume = "volume"
-	queryTypeShards = "shards"
->>>>>>> origin/main
 )
 
 var (
