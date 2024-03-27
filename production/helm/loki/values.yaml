@@ -866,6 +866,8 @@ write:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 # Configuration for the table-manager
 tableManager:
   # -- Specifies whether the table-manager should be enabled
@@ -1041,6 +1043,8 @@ read:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 # Configuration for the backend pod(s)
 backend:
   # -- Number of replicas for the backend
@@ -1149,6 +1153,8 @@ backend:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 # Configuration for the single binary node(s)
 singleBinary:
   # -- Number of replicas for the single binary
@@ -1236,6 +1242,8 @@ singleBinary:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 # Use either this ingress or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.
 # You'll need to supply authn configuration for your ingress controller.
@@ -1554,6 +1562,7 @@ minio:
       purge: false
   persistence:
     size: 5Gi
+    annotations: {}
   resources:
     requests:
       cpu: 100m

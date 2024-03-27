@@ -205,6 +205,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.persistence.dataVolumeParameters</td>
 			<td>object</td>
 			<td>Parameters used for the `data` volume when volumeClaimEnabled if false</td>
@@ -2429,6 +2438,7 @@ false
   "drivesPerNode": 2,
   "enabled": false,
   "persistence": {
+    "annotations": {},
     "size": "5Gi"
   },
   "replicas": 1,
@@ -3447,6 +3457,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>read.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -4008,6 +4027,15 @@ null
 			<td>singleBinary.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for single binary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -4730,6 +4758,15 @@ null
 			<td>write.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for write pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>

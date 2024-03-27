@@ -180,6 +180,12 @@ spec:
       kind: PersistentVolumeClaim
       metadata:
         name: storage
+        {{- if .Values.singleBinary.persistence.annotations }}
+        {{- with .Values.singleBinary.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- end }}
       spec:
         accessModes:
           - ReadWriteOnce
