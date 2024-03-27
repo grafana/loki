@@ -15,10 +15,9 @@ import (
 // NB(chaudum): Some block pages are way bigger than others (400MiB and
 // bigger), and loading multiple pages into memory in parallel can cause the
 // gateways to OOM.
-// Figure out a decent maximum page size that we can process.
-// TODO(chaudum): Make max page size configurable
-var maxPageSize = 64 << 20 // 64MB
-var ErrPageTooLarge = errors.Errorf("bloom page too large: size limit is %.1fMiB", float64(maxPageSize)/float64(1<<20))
+// Figure out a decent default maximum page size that we can process.
+var DefaultMaxPageSize = 64 << 20 // 64MB
+var ErrPageTooLarge = errors.Errorf("bloom page too large")
 
 type Bloom struct {
 	filter.ScalableBloomFilter
@@ -276,7 +275,7 @@ func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) (uint32, error) {
 	return checksum, nil
 }
 
-func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, metrics *Metrics) (res *BloomPageDecoder, err error) {
+func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize int, metrics *Metrics) (res *BloomPageDecoder, err error) {
 	if pageIdx < 0 || pageIdx >= len(b.pageHeaders) {
 		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonOOB).Inc()
 		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonOOB).Add(float64(b.pageHeaders[pageIdx].DecompressedLen))
@@ -292,7 +291,7 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, metrics *Met
 		return nil, ErrPageTooLarge
 	}
 
-	if _, err := r.Seek(int64(page.Offset), io.SeekStart); err != nil {
+	if _, err = r.Seek(int64(page.Offset), io.SeekStart); err != nil {
 		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonErr).Inc()
 		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonErr).Add(float64(page.DecompressedLen))
 		return nil, errors.Wrap(err, "seeking to bloom page")
