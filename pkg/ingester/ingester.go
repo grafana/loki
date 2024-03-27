@@ -1360,13 +1360,13 @@ func adjustQueryStartTime(maxLookBackPeriod time.Duration, start, now time.Time)
 	return start
 }
 
-func (i *Ingester) GetDetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+func (i *Ingester) GetDetectedFields(_ context.Context, _ *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
 	return &logproto.DetectedFieldsResponse{
 		Fields: []*logproto.DetectedField{
 			{
-				Label: "foo",
-				Type:  logproto.DetectedFieldString,
-				Cardinality:  1,
+				Label:       "foo",
+				Type:        logproto.DetectedFieldString,
+				Cardinality: 1,
 			},
 		},
 	}, nil
