@@ -7,6 +7,7 @@ env:
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
   IMAGE_PREFIX: "grafana"
+  RELEASE_AS: "3.0.0-rc.1"
   RELEASE_LIB_REF: "main"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
@@ -818,11 +819,11 @@ jobs:
           echo "pr_created=true" >> $GITHUB_OUTPUT
         fi
       working-directory: "lib"
-name: "Prepare Patch Release PR"
+name: "Prepare Loki 3.0 release"
 "on":
   push:
     branches:
-    - "release-[0-9]+.[0-9]+.x"
+    - "main"
 permissions:
   contents: "write"
   id-token: "write"
