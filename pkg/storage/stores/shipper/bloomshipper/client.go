@@ -256,9 +256,14 @@ type BloomClient struct {
 }
 
 func NewBloomClient(cfg bloomStoreConfig, client client.ObjectClient, logger log.Logger) (*BloomClient, error) {
+	fsResolver, err := NewShardedPrefixedResolver(cfg.workingDirs, defaultKeyResolver{})
+	if err != nil {
+		return nil, errors.Wrap(err, "creating fs resolver")
+	}
+
 	return &BloomClient{
 		KeyResolver: defaultKeyResolver{}, // TODO(owen-d): hook into schema, similar to `{,Parse}ExternalKey`
-		fsResolver:  NewPrefixedResolver(cfg.workingDir, defaultKeyResolver{}),
+		fsResolver:  fsResolver,
 		concurrency: cfg.numWorkers,
 		client:      client,
 		logger:      logger,

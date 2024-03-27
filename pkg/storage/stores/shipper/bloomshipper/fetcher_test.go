@@ -100,7 +100,7 @@ func TestMetasFetcher(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
 			metasCache := cache.NewMockCache()
-			cfg := bloomStoreConfig{workingDir: t.TempDir(), numWorkers: 1}
+			cfg := bloomStoreConfig{workingDirs: []string{t.TempDir()}, numWorkers: 1}
 
 			oc, err := local.NewFSObjectClient(local.FSConfig{Directory: dir})
 			require.NoError(t, err)
@@ -259,7 +259,7 @@ func TestFetcher_DownloadQueue(t *testing.T) {
 
 func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 	base := t.TempDir()
-	cfg := bloomStoreConfig{workingDir: base, numWorkers: 1}
+	cfg := bloomStoreConfig{workingDirs: []string{base}, numWorkers: 1}
 	resolver := NewPrefixedResolver(base, defaultKeyResolver{})
 
 	refs := []BlockRef{
