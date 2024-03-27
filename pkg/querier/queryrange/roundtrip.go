@@ -246,22 +246,23 @@ func NewMiddleware(
 			statsRT          = indexStatsTripperware.Wrap(next)
 			seriesVolumeRT   = seriesVolumeTripperware.Wrap(next)
 			detectedFieldsRT = next //TODO(twhitney): add middlewares for detected fields
+			detectedLabelsRT = next // TODO(shantanu): add middlewares
 		)
 
-		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, detectedFieldsRT, limits)
+		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, detectedFieldsRT, detectedLabelsRT, limits)
 	}), StopperWrapper{resultsCache, statsCache, volumeCache}, nil
 }
 
 type roundTripper struct {
 	logger log.Logger
 
-	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields base.Handler
+	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels base.Handler
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields base.Handler, limits Limits) roundTripper {
+func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels base.Handler, limits Limits) roundTripper {
 	return roundTripper{
 		logger:         logger,
 		limited:        limited,
@@ -274,6 +275,7 @@ func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labe
 		indexStats:     indexStats,
 		seriesVolume:   seriesVolume,
 		detectedFields: detectedFields,
+		detectedLabels: detectedLabels,
 		next:           next,
 	}
 }
@@ -378,6 +380,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 		)
 
 		return r.detectedFields.Do(ctx, req)
+	// TODO(shantanu): Add DetectedLabels
 	default:
 		return r.next.Do(ctx, req)
 	}
@@ -412,6 +415,7 @@ const (
 	VolumeRangeOp    = "volume_range"
 	IndexShardsOp    = "index_shards"
 	DetectedFieldsOp = "detected_fields"
+	DetectedLabelsOp = "detected_labels"
 )
 
 func getOperation(path string) string {
@@ -434,6 +438,8 @@ func getOperation(path string) string {
 		return IndexShardsOp
 	case path == "/loki/api/experimental/detected_fields":
 		return DetectedFieldsOp
+	case path == "/loki/api/alphav1/detected_labels":
+		return DetectedLabelsOp
 	default:
 		return ""
 	}

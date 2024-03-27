@@ -87,6 +87,18 @@ func ParseLabelQuery(r *http.Request) (*logproto.LabelRequest, error) {
 	return req, nil
 }
 
+func ParseDetectedLabelsQuery(r *http.Request) (*logproto.DetectedLabelsRequest, error) {
+	start, end, err := bounds(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return &logproto.DetectedLabelsRequest{
+		Start: &start,
+		End:   &end,
+	}, nil
+}
+
 func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest, error) {
 	req := &logproto.DetectedFieldsRequest{}
 

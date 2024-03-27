@@ -335,6 +335,10 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		return &LabelRequest{
 			LabelRequest: *concrete.Labels,
 		}, ctx, nil
+	case *QueryRequest_DetectedLabels:
+		return &DetectedLabelsRequest{
+			DetectedLabelsRequest: *concrete.DetectedLabels,
+		}, ctx, nil
 	default:
 		return nil, ctx, fmt.Errorf("unsupported request type while unwrapping, got (%T)", req.Request)
 	}
@@ -361,6 +365,8 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 		result.Request = &QueryRequest_Streams{Streams: req}
 	case *logproto.ShardsRequest:
 		result.Request = &QueryRequest_ShardsRequest{ShardsRequest: req}
+	case *DetectedLabelsRequest:
+		result.Request = &QueryRequest_DetectedLabels{DetectedLabels: &req.DetectedLabelsRequest}
 	default:
 		return nil, fmt.Errorf("unsupported request type while wrapping, got (%T)", r)
 	}
