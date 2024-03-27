@@ -44,6 +44,7 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/go-kit/log"
@@ -56,7 +57,6 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
@@ -113,7 +113,8 @@ func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus
 		logger:  logger,
 		metrics: newMetrics(reg, constants.Loki, metricsSubsystem),
 		workerConfig: workerConfig{
-			maxItems: cfg.NumMultiplexItems,
+			maxItems:         cfg.NumMultiplexItems,
+			queryConcurrency: cfg.BlockQueryConcurrency,
 		},
 		pendingTasks: &atomic.Int64{},
 
@@ -194,9 +195,6 @@ func (g *Gateway) stopping(_ error) error {
 
 // FilterChunkRefs implements BloomGatewayServer
 func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest) (*logproto.FilterChunkRefResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomgateway.FilterChunkRefs")
-	defer sp.Finish()
-
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -204,8 +202,17 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	logger := log.With(g.logger, "tenant", tenantID)
 
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomgateway.FilterChunkRefs")
+	stats, ctx := ContextWithEmptyStats(ctx)
+	defer func() {
+		level.Info(logger).Log(stats.KVArgs()...)
+		sp.LogKV(stats.KVArgs()...)
+		sp.Finish()
+	}()
+
 	// start time == end time --> empty response
 	if req.From.Equal(req.Through) {
+		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: []*logproto.GroupedChunkRefs{},
 		}, nil
@@ -213,22 +220,28 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	// start time > end time --> error response
 	if req.Through.Before(req.From) {
+		stats.Status = labelFailure
 		return nil, errors.New("from time must not be after through time")
 	}
 
-	filters := syntax.ExtractLineFilters(req.Plan.AST)
+	filters := v1.ExtractTestableLineFilters(req.Plan.AST)
+	stats.NumFilters = len(filters)
+	g.metrics.receivedFilters.Observe(float64(len(filters)))
 
 	// Shortcut if request does not contain filters
 	if len(filters) == 0 {
+		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: req.Refs,
 		}, nil
 	}
 
 	seriesByDay := partitionRequest(req)
+	stats.NumTasks = len(seriesByDay)
 
 	// no tasks --> empty response
 	if len(seriesByDay) == 0 {
+		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: []*logproto.GroupedChunkRefs{},
 		}, nil
@@ -250,15 +263,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 		// TODO(owen-d): include capacity in constructor?
 		task.responses = responsesPool.Get(len(seriesForDay.series))
-
-		level.Debug(g.logger).Log(
-			"msg", "created task for day",
-			"task", task.ID,
-			"day", seriesForDay.day,
-			"interval", seriesForDay.interval.String(),
-			"nSeries", len(seriesForDay.series),
-			"filters", JoinFunc(filters, ";", func(e syntax.LineFilterExpr) string { return e.String() }),
-		)
 		tasks = append(tasks, task)
 	}
 
@@ -280,13 +284,14 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			// When enqueuing, we also add the task to the pending tasks
 			_ = g.pendingTasks.Inc()
 		}); err != nil {
+			stats.Status = labelFailure
 			return nil, errors.Wrap(err, "failed to enqueue task")
 		}
 		// TODO(owen-d): use `concurrency` lib, bound parallelism
 		go g.consumeTask(ctx, task, tasksCh)
 	}
 
-	sp.LogKV("enqueue_duration", time.Since(queueStart).String())
+	sp.LogKV("msg", "enqueued tasks", "duration", time.Since(queueStart).String())
 
 	remaining := len(tasks)
 
@@ -300,10 +305,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	for remaining > 0 {
 		select {
 		case <-ctx.Done():
+			stats.Status = "cancel"
 			return nil, errors.Wrap(ctx.Err(), "request failed")
 		case task := <-tasksCh:
 			level.Info(logger).Log("msg", "task done", "task", task.ID, "err", task.Err())
 			if task.Err() != nil {
+				stats.Status = labelFailure
 				return nil, errors.Wrap(task.Err(), "request failed")
 			}
 			responses = append(responses, task.responses)
@@ -313,7 +320,10 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	sp.LogKV("msg", "received all responses")
 
+	start := time.Now()
 	filtered := filterChunkRefs(req, responses)
+	duration := time.Since(start)
+	stats.AddPostProcessingTime(duration)
 
 	// free up the responses
 	for _, resp := range responses {
@@ -330,13 +340,14 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	g.metrics.requestedChunks.Observe(float64(preFilterChunks))
 	g.metrics.filteredChunks.Observe(float64(preFilterChunks - postFilterChunks))
 
-	level.Info(logger).Log(
-		"msg", "return filtered chunk refs",
-		"requested_series", preFilterSeries,
-		"filtered_series", preFilterSeries-postFilterSeries,
-		"requested_chunks", preFilterChunks,
-		"filtered_chunks", preFilterChunks-postFilterChunks,
-	)
+	stats.Status = "success"
+	stats.SeriesRequested = preFilterSeries
+	stats.SeriesFiltered = preFilterSeries - postFilterSeries
+	stats.ChunksRequested = preFilterChunks
+	stats.ChunksFiltered = preFilterChunks - postFilterChunks
+
+	sp.LogKV("msg", "return filtered chunk refs")
+
 	return &logproto.FilterChunkRefResponse{ChunkRefs: filtered}, nil
 }
 
@@ -347,14 +358,11 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 // Once the tasks is closed, it will send the task with the results from the
 // block querier to the supplied task channel.
 func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Task) {
-	logger := log.With(g.logger, "task", task.ID)
-
 	for res := range task.resCh {
 		select {
 		case <-ctx.Done():
-			level.Debug(logger).Log("msg", "drop partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
+			// do nothing
 		default:
-			level.Debug(logger).Log("msg", "accept partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
 			task.responses = append(task.responses, res)
 		}
 	}
@@ -368,18 +376,20 @@ func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Tas
 	}
 }
 
-// merges a list of responses via a heap. The same fingerprints and chunks can be present in multiple responses,
-// but each response must be ordered by fingerprint
+// merges a list of responses via a heap. The same fingerprints and chunks can be present in multiple responses.
+// Individual responses do not need to be be ordered beforehand.
 func orderedResponsesByFP(responses [][]v1.Output) v1.Iterator[v1.Output] {
 	if len(responses) == 0 {
 		return v1.NewEmptyIter[v1.Output]()
 	}
 	if len(responses) == 1 {
+		sort.Slice(responses[0], func(i, j int) bool { return responses[0][i].Fp < responses[0][j].Fp })
 		return v1.NewSliceIter(responses[0])
 	}
 
 	itrs := make([]v1.PeekingIterator[v1.Output], 0, len(responses))
 	for _, r := range responses {
+		sort.Slice(r, func(i, j int) bool { return r[i].Fp < r[j].Fp })
 		itrs = append(itrs, v1.NewPeekingIter(v1.NewSliceIter(r)))
 	}
 	return v1.NewHeapIterator[v1.Output](

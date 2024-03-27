@@ -367,7 +367,7 @@ func mergeSwaggerProps(primary *spec.Swagger, m *spec.Swagger) []string {
 	return skipped
 }
 
-// nolint: unparam
+//nolint:unparam
 func mergeExternalDocs(primary *spec.ExternalDocumentation, m *spec.ExternalDocumentation) []string {
 	if primary.Description == "" {
 		primary.Description = m.Description

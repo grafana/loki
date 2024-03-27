@@ -397,6 +397,7 @@ const (
 	IndexStatsOp   = "index_stats"
 	VolumeOp       = "volume"
 	VolumeRangeOp  = "volume_range"
+	IndexShardsOp  = "index_shards"
 )
 
 func getOperation(path string) string {
@@ -415,6 +416,8 @@ func getOperation(path string) string {
 		return VolumeOp
 	case path == "/loki/api/v1/index/volume_range":
 		return VolumeRangeOp
+	case path == "/loki/api/v1/index/shards":
+		return IndexShardsOp
 	default:
 		return ""
 	}
@@ -426,6 +429,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 		statsHandler := indexStatsTripperware.Wrap(next)
 
 		queryRangeMiddleware := []base.Middleware{
+			QueryMetricsMiddleware(metrics.QueryMetrics),
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
@@ -703,6 +707,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 		statsHandler := indexStatsTripperware.Wrap(next)
 
 		queryRangeMiddleware := []base.Middleware{
+			QueryMetricsMiddleware(metrics.QueryMetrics),
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
 		}

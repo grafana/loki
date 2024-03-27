@@ -9,6 +9,7 @@ package plog
 import (
 	"sort"
 
+	"go.opentelemetry.io/collector/pdata/internal"
 	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
 )
 
@@ -20,18 +21,20 @@ import (
 // Must use NewResourceLogsSlice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ResourceLogsSlice struct {
-	orig *[]*otlplogs.ResourceLogs
+	orig  *[]*otlplogs.ResourceLogs
+	state *internal.State
 }
 
-func newResourceLogsSlice(orig *[]*otlplogs.ResourceLogs) ResourceLogsSlice {
-	return ResourceLogsSlice{orig}
+func newResourceLogsSlice(orig *[]*otlplogs.ResourceLogs, state *internal.State) ResourceLogsSlice {
+	return ResourceLogsSlice{orig: orig, state: state}
 }
 
 // NewResourceLogsSlice creates a ResourceLogsSlice with 0 elements.
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewResourceLogsSlice() ResourceLogsSlice {
 	orig := []*otlplogs.ResourceLogs(nil)
-	return newResourceLogsSlice(&orig)
+	state := internal.StateMutable
+	return newResourceLogsSlice(&orig, &state)
 }
 
 // Len returns the number of elements in the slice.
@@ -50,7 +53,7 @@ func (es ResourceLogsSlice) Len() int {
 //	    ... // Do something with the element
 //	}
 func (es ResourceLogsSlice) At(i int) ResourceLogs {
-	return newResourceLogs((*es.orig)[i])
+	return newResourceLogs((*es.orig)[i], es.state)
 }
 
 // EnsureCapacity is an operation that ensures the slice has at least the specified capacity.
@@ -66,6 +69,7 @@ func (es ResourceLogsSlice) At(i int) ResourceLogs {
 //	    // Here should set all the values for e.
 //	}
 func (es ResourceLogsSlice) EnsureCapacity(newCap int) {
+	es.state.AssertMutable()
 	oldCap := cap(*es.orig)
 	if newCap <= oldCap {
 		return
@@ -79,6 +83,7 @@ func (es ResourceLogsSlice) EnsureCapacity(newCap int) {
 // AppendEmpty will append to the end of the slice an empty ResourceLogs.
 // It returns the newly added ResourceLogs.
 func (es ResourceLogsSlice) AppendEmpty() ResourceLogs {
+	es.state.AssertMutable()
 	*es.orig = append(*es.orig, &otlplogs.ResourceLogs{})
 	return es.At(es.Len() - 1)
 }
@@ -86,6 +91,8 @@ func (es ResourceLogsSlice) AppendEmpty() ResourceLogs {
 // MoveAndAppendTo moves all elements from the current slice and appends them to the dest.
 // The current slice will be cleared.
 func (es ResourceLogsSlice) MoveAndAppendTo(dest ResourceLogsSlice) {
+	es.state.AssertMutable()
+	dest.state.AssertMutable()
 	if *dest.orig == nil {
 		// We can simply move the entire vector and avoid any allocations.
 		*dest.orig = *es.orig
@@ -98,6 +105,7 @@ func (es ResourceLogsSlice) MoveAndAppendTo(dest ResourceLogsSlice) {
 // RemoveIf calls f sequentially for each element present in the slice.
 // If f returns true, the element is removed from the slice.
 func (es ResourceLogsSlice) RemoveIf(f func(ResourceLogs) bool) {
+	es.state.AssertMutable()
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
@@ -111,18 +119,18 @@ func (es ResourceLogsSlice) RemoveIf(f func(ResourceLogs) bool) {
 		(*es.orig)[newLen] = (*es.orig)[i]
 		newLen++
 	}
-	// TODO: Prevent memory leak by erasing truncated values.
 	*es.orig = (*es.orig)[:newLen]
 }
 
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es ResourceLogsSlice) CopyTo(dest ResourceLogsSlice) {
+	dest.state.AssertMutable()
 	srcLen := es.Len()
 	destCap := cap(*dest.orig)
 	if srcLen <= destCap {
 		(*dest.orig) = (*dest.orig)[:srcLen:destCap]
 		for i := range *es.orig {
-			newResourceLogs((*es.orig)[i]).CopyTo(newResourceLogs((*dest.orig)[i]))
+			newResourceLogs((*es.orig)[i], es.state).CopyTo(newResourceLogs((*dest.orig)[i], dest.state))
 		}
 		return
 	}
@@ -130,7 +138,7 @@ func (es ResourceLogsSlice) CopyTo(dest ResourceLogsSlice) {
 	wrappers := make([]*otlplogs.ResourceLogs, srcLen)
 	for i := range *es.orig {
 		wrappers[i] = &origs[i]
-		newResourceLogs((*es.orig)[i]).CopyTo(newResourceLogs(wrappers[i]))
+		newResourceLogs((*es.orig)[i], es.state).CopyTo(newResourceLogs(wrappers[i], dest.state))
 	}
 	*dest.orig = wrappers
 }
@@ -139,5 +147,6 @@ func (es ResourceLogsSlice) CopyTo(dest ResourceLogsSlice) {
 // provided less function so that two instances of ResourceLogsSlice
 // can be compared.
 func (es ResourceLogsSlice) Sort(less func(a, b ResourceLogs) bool) {
+	es.state.AssertMutable()
 	sort.SliceStable(*es.orig, func(i, j int) bool { return less(es.At(i), es.At(j)) })
 }

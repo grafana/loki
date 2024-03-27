@@ -20,11 +20,12 @@ import (
 // Must use NewScopeMetrics function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ScopeMetrics struct {
-	orig *otlpmetrics.ScopeMetrics
+	orig  *otlpmetrics.ScopeMetrics
+	state *internal.State
 }
 
-func newScopeMetrics(orig *otlpmetrics.ScopeMetrics) ScopeMetrics {
-	return ScopeMetrics{orig}
+func newScopeMetrics(orig *otlpmetrics.ScopeMetrics, state *internal.State) ScopeMetrics {
+	return ScopeMetrics{orig: orig, state: state}
 }
 
 // NewScopeMetrics creates a new empty ScopeMetrics.
@@ -32,19 +33,22 @@ func newScopeMetrics(orig *otlpmetrics.ScopeMetrics) ScopeMetrics {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewScopeMetrics() ScopeMetrics {
-	return newScopeMetrics(&otlpmetrics.ScopeMetrics{})
+	state := internal.StateMutable
+	return newScopeMetrics(&otlpmetrics.ScopeMetrics{}, &state)
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
 // resetting the current instance to its zero value
 func (ms ScopeMetrics) MoveTo(dest ScopeMetrics) {
+	ms.state.AssertMutable()
+	dest.state.AssertMutable()
 	*dest.orig = *ms.orig
 	*ms.orig = otlpmetrics.ScopeMetrics{}
 }
 
 // Scope returns the scope associated with this ScopeMetrics.
 func (ms ScopeMetrics) Scope() pcommon.InstrumentationScope {
-	return pcommon.InstrumentationScope(internal.NewInstrumentationScope(&ms.orig.Scope))
+	return pcommon.InstrumentationScope(internal.NewInstrumentationScope(&ms.orig.Scope, ms.state))
 }
 
 // SchemaUrl returns the schemaurl associated with this ScopeMetrics.
@@ -54,16 +58,18 @@ func (ms ScopeMetrics) SchemaUrl() string {
 
 // SetSchemaUrl replaces the schemaurl associated with this ScopeMetrics.
 func (ms ScopeMetrics) SetSchemaUrl(v string) {
+	ms.state.AssertMutable()
 	ms.orig.SchemaUrl = v
 }
 
 // Metrics returns the Metrics associated with this ScopeMetrics.
 func (ms ScopeMetrics) Metrics() MetricSlice {
-	return newMetricSlice(&ms.orig.Metrics)
+	return newMetricSlice(&ms.orig.Metrics, ms.state)
 }
 
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ScopeMetrics) CopyTo(dest ScopeMetrics) {
+	dest.state.AssertMutable()
 	ms.Scope().CopyTo(dest.Scope())
 	dest.SetSchemaUrl(ms.SchemaUrl())
 	ms.Metrics().CopyTo(dest.Metrics())
