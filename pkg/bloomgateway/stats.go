@@ -8,10 +8,15 @@ import (
 )
 
 type Stats struct {
-	Status                                                                         string
-	NumTasks, NumFilters                                                           int
-	ChunksRequested, ChunksFiltered, SeriesRequested, SeriesFiltered               int
-	QueueTime, MetasFetchTime, BlocksFetchTime, ProcessingTime, PostProcessingTime atomic.Duration
+	Status                              string
+	NumTasks, NumFilters                int
+	ChunksRequested, ChunksFiltered     int
+	SeriesRequested, SeriesFiltered     int
+	QueueTime                           *atomic.Duration
+	MetasFetchTime, BlocksFetchTime     *atomic.Duration
+	ProcessingTime, TotalProcessingTime *atomic.Duration
+	PostProcessingTime                  *atomic.Duration
+	ProcessedBlocks                     *atomic.Int32
 }
 
 type statsKey int
@@ -20,7 +25,16 @@ var ctxKey = statsKey(0)
 
 // ContextWithEmptyStats returns a context with empty stats.
 func ContextWithEmptyStats(ctx context.Context) (*Stats, context.Context) {
-	stats := &Stats{Status: "unknown"}
+	stats := &Stats{
+		Status:              "unknown",
+		ProcessedBlocks:     atomic.NewInt32(0),
+		QueueTime:           atomic.NewDuration(0),
+		MetasFetchTime:      atomic.NewDuration(0),
+		BlocksFetchTime:     atomic.NewDuration(0),
+		ProcessingTime:      atomic.NewDuration(0),
+		TotalProcessingTime: atomic.NewDuration(0),
+		PostProcessingTime:  atomic.NewDuration(0),
+	}
 	ctx = context.WithValue(ctx, ctxKey, stats)
 	return stats, ctx
 }
@@ -56,6 +70,8 @@ func (s *Stats) KVArgs() []any {
 		"msg", "stats-report",
 		"status", s.Status,
 		"tasks", s.NumTasks,
+		"filters", s.NumFilters,
+		"blocks_processed", s.ProcessedBlocks.Load(),
 		"series_requested", s.SeriesRequested,
 		"series_filtered", s.SeriesFiltered,
 		"chunks_requested", s.ChunksRequested,
@@ -99,9 +115,23 @@ func (s *Stats) AddProcessingTime(t time.Duration) {
 	s.ProcessingTime.Add(t)
 }
 
+func (s *Stats) AddTotalProcessingTime(t time.Duration) {
+	if s == nil {
+		return
+	}
+	s.TotalProcessingTime.Add(t)
+}
+
 func (s *Stats) AddPostProcessingTime(t time.Duration) {
 	if s == nil {
 		return
 	}
 	s.PostProcessingTime.Add(t)
+}
+
+func (s *Stats) IncProcessedBlocks() {
+	if s == nil {
+		return
+	}
+	s.ProcessedBlocks.Inc()
 }
