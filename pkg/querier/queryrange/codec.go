@@ -435,7 +435,7 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		ctx = httpreq.InjectQueryTags(ctx, queryTags)
 	}
 
-	// Add disable pipeline wrappers
+	// Add disable pipleine wrappers
 	if disableWrappers := httpReq.Header.Get(httpreq.LokiDisablePipelineWrappersHeader); disableWrappers != "" {
 		httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, disableWrappers)
 	}
@@ -846,7 +846,6 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			"query":               []string{request.GetQuery()},
 			"targetBytesPerShard": []string{fmt.Sprintf("%d", request.TargetBytesPerShard)},
 		}
-
 		u := &url.URL{
 			Path:     "/loki/api/v1/index/shards",
 			RawQuery: params.Encode(),
