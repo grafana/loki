@@ -824,7 +824,6 @@ name: "Prepare Loki 3.0 release"
   push:
     branches:
     - "main"
-    - "add-major-release-workflow"
 permissions:
   contents: "write"
   id-token: "write"

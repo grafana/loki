@@ -67,7 +67,7 @@ local imagePrefix = 'grafana';
   ),
   'three-zero-release.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
-      branches=['main', 'add-major-release-workflow'],
+      branches=['main'],
       buildImage=buildImage,
       checkTemplate=checkTemplate,
       golangCiLintVersion=golangCiLintVersion,
