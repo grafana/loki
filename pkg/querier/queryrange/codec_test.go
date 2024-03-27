@@ -1593,6 +1593,10 @@ var (
 				"queryReferencedStructuredMetadata": true
 			}
 		},
+		"index": {
+			"postFilterChunks": 0,
+			"totalChunks": 0
+		},
 		"cache": {
 			"chunk": {
 				"entriesFound": 0,

@@ -63,21 +63,19 @@ jobs:
           VERSION: ${{ env.version }}
           OCP_DIR: ${{ env.ocpDir || ''}}
         run: |
-          mkdir operators/loki-operator/${VERSION} 
+          mkdir operators/loki-operator/${VERSION}
           cp -R ./tmp/operator/bundle/community${OCP_DIR}/* operators/loki-operator/${VERSION}
           rm -f "operators/loki-operator/${VERSION}/bundle.Dockerfile"
           rm -rf ./tmp
 
       - name: Add OpenShift Supported versions to redhat catalog
         if: ${{ inputs.org == 'redhat-openshift-ecosystem' }}
-        env:
-          VERSION: ${{ env.version }} 
-          OCP_SUPPORTED_VERSIONS: ${{ env.ocpSupportedVersions || ''}}
         uses: fjogeleit/yaml-update-action@main
         with:
-          valueFile: "operators/loki-operator/${VERSION}/metadata/annotations.yaml"
+          valueFile: "operators/loki-operator/${{ env.version }}/metadata/annotations.yaml"
           propertyPath: "annotations['com.redhat.openshift.versions']"
-          value: ${OCP_SUPPORTED_VERSIONS}
+          value: ${{ env.ocpSupportedVersions }}
+          commitChange: false
 
       - name: Use CLA approved github bot
         run: |

@@ -200,6 +200,8 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.Labels, nil
 	case *QueryResponse_Stats:
 		return concrete.Stats, nil
+	case *QueryResponse_ShardsResponse:
+		return concrete.ShardsResponse, nil
 	case *QueryResponse_Prom:
 		return concrete.Prom, nil
 	case *QueryResponse_Streams:
@@ -243,6 +245,8 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_TopkSketches{response}
 	case *QuantileSketchResponse:
 		p.Response = &QueryResponse_QuantileSketches{response}
+	case *ShardsResponse:
+		p.Response = &QueryResponse_ShardsResponse{response}
 	default:
 		return nil, fmt.Errorf("invalid response format, got (%T)", res)
 	}
@@ -270,6 +274,11 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 	// Add actor path
 	if actor, ok := req.Metadata[httpreq.LokiActorPathHeader]; ok {
 		ctx = httpreq.InjectActorPath(ctx, actor)
+	}
+
+	// Add disable wrappers
+	if disableWrappers, ok := req.Metadata[httpreq.LokiDisablePipelineWrappersHeader]; ok {
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, disableWrappers)
 	}
 
 	// Add limits
@@ -306,6 +315,8 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		return concrete.Instant, ctx, nil
 	case *QueryRequest_Stats:
 		return concrete.Stats, ctx, nil
+	case *QueryRequest_ShardsRequest:
+		return concrete.ShardsRequest, ctx, nil
 	case *QueryRequest_Volume:
 		return concrete.Volume, ctx, nil
 	case *QueryRequest_Streams:
@@ -325,7 +336,7 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 			LabelRequest: *concrete.Labels,
 		}, ctx, nil
 	default:
-		return nil, ctx, fmt.Errorf("unsupported request type, got (%T)", req.Request)
+		return nil, ctx, fmt.Errorf("unsupported request type while unwrapping, got (%T)", req.Request)
 	}
 }
 
@@ -348,8 +359,10 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 		result.Request = &QueryRequest_Instant{Instant: req}
 	case *LokiRequest:
 		result.Request = &QueryRequest_Streams{Streams: req}
+	case *logproto.ShardsRequest:
+		result.Request = &QueryRequest_ShardsRequest{ShardsRequest: req}
 	default:
-		return nil, fmt.Errorf("unsupported request type, got (%T)", r)
+		return nil, fmt.Errorf("unsupported request type while wrapping, got (%T)", r)
 	}
 
 	// Add query tags
@@ -362,6 +375,12 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
 	if actor != "" {
 		result.Metadata[httpreq.LokiActorPathHeader] = actor
+	}
+
+	// Keep disable wrappers
+	disableWrappers := httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader)
+	if disableWrappers != "" {
+		result.Metadata[httpreq.LokiDisablePipelineWrappersHeader] = disableWrappers
 	}
 
 	// Add limits

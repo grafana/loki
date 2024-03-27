@@ -45,7 +45,7 @@ func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.M
 		"msg", "process tasks with bounds",
 		"tenant", tenant,
 		"tasks", len(tasks),
-		"bounds", JoinFunc(bounds, ",", func(e v1.FingerprintBounds) string { return e.String() }),
+		"bounds", len(bounds),
 	)
 
 	for ts, tasks := range group(tasks, func(t Task) config.DayTime { return t.table }) {
@@ -73,29 +73,64 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		Interval: interval,
 		Keyspace: v1.NewBounds(minFpRange.Min, maxFpRange.Max),
 	}
+
+	start := time.Now()
 	metas, err := p.store.FetchMetas(ctx, metaSearch)
+	duration := time.Since(start)
+	level.Debug(p.logger).Log("msg", "fetched metas", "count", len(metas), "duration", duration, "err", err)
+
+	for _, t := range tasks {
+		FromContext(t.ctx).AddMetasFetchTime(duration)
+	}
+
 	if err != nil {
 		return err
 	}
 
 	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
-	level.Info(p.logger).Log("msg", "blocks for metas", "num_metas", len(metas), "num_blocks", len(blocksRefs))
-	return p.processBlocks(ctx, partitionTasks(tasks, blocksRefs))
-}
 
-func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) error {
+	data := partitionTasks(tasks, blocksRefs)
+
 	refs := make([]bloomshipper.BlockRef, 0, len(data))
 	for _, block := range data {
 		refs = append(refs, block.ref)
 	}
 
-	start := time.Now()
-	bqs, err := p.store.FetchBlocks(ctx, refs, bloomshipper.WithFetchAsync(true), bloomshipper.WithIgnoreNotFound(true))
-	level.Debug(p.logger).Log("msg", "fetch blocks", "count", len(bqs), "duration", time.Since(start), "err", err)
+	start = time.Now()
+	bqs, err := p.store.FetchBlocks(
+		ctx,
+		refs,
+		bloomshipper.WithFetchAsync(true),
+		bloomshipper.WithIgnoreNotFound(true),
+		// NB(owen-d): we relinquish bloom pages to a pool
+		// after iteration for performance (alloc reduction).
+		// This is safe to do here because we do not capture
+		// the underlying bloom []byte outside of iteration
+		bloomshipper.WithPool(true),
+	)
+	duration = time.Since(start)
+	level.Debug(p.logger).Log("msg", "fetched blocks", "count", len(refs), "duration", duration, "err", err)
+
+	for _, t := range tasks {
+		FromContext(t.ctx).AddBlocksFetchTime(duration)
+	}
 
 	if err != nil {
 		return err
 	}
+
+	return p.processBlocks(ctx, bqs, data)
+}
+
+func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.CloseableBlockQuerier, data []blockWithTasks) error {
+	defer func() {
+		for i := range bqs {
+			if bqs[i] == nil {
+				continue
+			}
+			bqs[i].Close()
+		}
+	}()
 
 	return concurrency.ForEachJob(ctx, len(bqs), p.concurrency, func(ctx context.Context, i int) error {
 		bq := bqs[i]
@@ -103,16 +138,8 @@ func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) er
 			// TODO(chaudum): Add metric for skipped blocks
 			return nil
 		}
-		defer bq.Close()
 
 		block := data[i]
-		level.Debug(p.logger).Log(
-			"msg", "process block with tasks",
-			"job", i+1,
-			"of_jobs", len(bqs),
-			"block", block.ref,
-			"num_tasks", len(block.tasks),
-		)
 
 		if !block.ref.Bounds.Equal(bq.Bounds) {
 			return errors.Errorf("block and querier bounds differ: %s vs %s", block.ref.Bounds, bq.Bounds)
@@ -160,10 +187,16 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 
 	start := time.Now()
 	err = fq.Run()
+	duration := time.Since(start)
+
 	if err != nil {
-		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelFailure).Observe(time.Since(start).Seconds())
+		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelFailure).Observe(duration.Seconds())
 	} else {
-		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelSuccess).Observe(time.Since(start).Seconds())
+		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelSuccess).Observe(duration.Seconds())
+	}
+
+	for _, task := range tasks {
+		FromContext(task.ctx).AddProcessingTime(duration)
 	}
 
 	return err

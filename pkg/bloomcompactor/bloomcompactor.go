@@ -56,8 +56,7 @@ type Compactor struct {
 
 	sharding util_ring.TenantSharding
 
-	metrics   *Metrics
-	btMetrics *v1.Metrics
+	metrics *Metrics
 }
 
 func New(
@@ -69,7 +68,7 @@ func New(
 	ring ring.ReadRing,
 	ringLifeCycler *ring.BasicLifecycler,
 	limits Limits,
-	store bloomshipper.Store,
+	store bloomshipper.StoreWithMetrics,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Compactor, error) {
@@ -80,6 +79,7 @@ func New(
 		sharding:   util_ring.NewTenantShuffleSharding(ring, ringLifeCycler, limits.BloomCompactorShardSize),
 		limits:     limits,
 		bloomStore: store,
+		metrics:    NewMetrics(r, store.BloomMetrics()),
 	}
 
 	tsdbStore, err := NewTSDBStores(schemaCfg, storeCfg, clientMetrics, logger)
@@ -87,10 +87,6 @@ func New(
 		return nil, errors.Wrap(err, "failed to create TSDB store")
 	}
 	c.tsdbStore = tsdbStore
-
-	// initialize metrics
-	c.btMetrics = v1.NewMetrics(prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer_", r))
-	c.metrics = NewMetrics(r, c.btMetrics)
 
 	chunkLoader := NewStoreChunkLoader(
 		fetcherProvider,
@@ -276,12 +272,12 @@ func (c *Compactor) runOne(ctx context.Context) error {
 func (c *Compactor) tables(ts time.Time) *dayRangeIterator {
 	// adjust the minimum by one to make it inclusive, which is more intuitive
 	// for a configuration variable
-	adjustedMin := min(c.cfg.MinTableCompactionPeriod - 1)
-	minCompactionPeriod := time.Duration(adjustedMin) * config.ObjectStorageIndexRequiredPeriod
-	maxCompactionPeriod := time.Duration(c.cfg.MaxTableCompactionPeriod) * config.ObjectStorageIndexRequiredPeriod
+	adjustedMin := min(c.cfg.MinTableOffset - 1)
+	minCompactionDelta := time.Duration(adjustedMin) * config.ObjectStorageIndexRequiredPeriod
+	maxCompactionDelta := time.Duration(c.cfg.MaxTableOffset) * config.ObjectStorageIndexRequiredPeriod
 
-	from := ts.Add(-maxCompactionPeriod).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod) * int64(config.ObjectStorageIndexRequiredPeriod)
-	through := ts.Add(-minCompactionPeriod).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod) * int64(config.ObjectStorageIndexRequiredPeriod)
+	from := ts.Add(-maxCompactionDelta).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod) * int64(config.ObjectStorageIndexRequiredPeriod)
+	through := ts.Add(-minCompactionDelta).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod) * int64(config.ObjectStorageIndexRequiredPeriod)
 
 	fromDay := config.NewDayTime(model.TimeFromUnixNano(from))
 	throughDay := config.NewDayTime(model.TimeFromUnixNano(through))

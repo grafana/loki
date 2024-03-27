@@ -15,10 +15,9 @@ import (
 // NB(chaudum): Some block pages are way bigger than others (400MiB and
 // bigger), and loading multiple pages into memory in parallel can cause the
 // gateways to OOM.
-// Figure out a decent maximum page size that we can process.
-// TODO(chaudum): Make max page size configurable
-var maxPageSize = 32 << 20 // 32MB
-var ErrPageTooLarge = errors.Errorf("bloom page too large: size limit is %.1fMiB", float64(maxPageSize)/float64(1<<20))
+// Figure out a decent default maximum page size that we can process.
+var DefaultMaxPageSize = 64 << 20 // 64MB
+var ErrPageTooLarge = errors.Errorf("bloom page too large")
 
 type Bloom struct {
 	filter.ScalableBloomFilter
@@ -86,7 +85,7 @@ func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHe
 	}
 	defer pool.PutReader(decompressor)
 
-	b := make([]byte, page.DecompressedLen)
+	b := BlockPool.Get(page.DecompressedLen)[:page.DecompressedLen]
 
 	if _, err = io.ReadFull(decompressor, b); err != nil {
 		return nil, errors.Wrap(err, "decompressing bloom page")
@@ -95,6 +94,27 @@ func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHe
 	decoder := NewBloomPageDecoder(b)
 
 	return decoder, nil
+}
+
+// shortcut to skip allocations when we know the page is not compressed
+func LazyDecodeBloomPageNoCompression(r io.Reader, page BloomPageHeader) (*BloomPageDecoder, error) {
+	// data + checksum
+	if page.Len != page.DecompressedLen+4 {
+		return nil, errors.New("the Len and DecompressedLen of the page do not match")
+	}
+	data := BlockPool.Get(page.Len)[:page.Len]
+
+	_, err := io.ReadFull(r, data)
+	if err != nil {
+		return nil, errors.Wrap(err, "reading bloom page")
+	}
+	dec := encoding.DecWith(data)
+
+	if err := dec.CheckCrc(castagnoliTable); err != nil {
+		return nil, errors.Wrap(err, "checksumming bloom page")
+	}
+
+	return NewBloomPageDecoder(dec.Get()), nil
 }
 
 func NewBloomPageDecoder(data []byte) *BloomPageDecoder {
@@ -131,6 +151,21 @@ type BloomPageDecoder struct {
 	n   int // number of blooms in page
 	cur *Bloom
 	err error
+}
+
+// Relinquish returns the underlying byte slice to the pool
+// for efficiency. It's intended to be used as a
+// perf optimization.
+// This can only safely be used when the underlying bloom
+// bytes don't escape the decoder:
+// on reads in the bloom-gw but not in the bloom-compactor
+func (d *BloomPageDecoder) Relinquish() {
+	data := d.data
+	d.data = nil
+
+	if cap(data) > 0 {
+		BlockPool.Put(data)
+	}
 }
 
 func (d *BloomPageDecoder) Reset() {
@@ -240,8 +275,10 @@ func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) (uint32, error) {
 	return checksum, nil
 }
 
-func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int) (*BloomPageDecoder, error) {
+func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize int, metrics *Metrics) (res *BloomPageDecoder, err error) {
 	if pageIdx < 0 || pageIdx >= len(b.pageHeaders) {
+		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonOOB).Inc()
+		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonOOB).Add(float64(b.pageHeaders[pageIdx].DecompressedLen))
 		return nil, fmt.Errorf("invalid page (%d) for bloom page decoding", pageIdx)
 	}
 
@@ -249,12 +286,30 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int) (*BloomPageD
 	// fmt.Printf("pageIdx=%d page=%+v size=%.2fMiB\n", pageIdx, page, float64(page.Len)/float64(1<<20))
 
 	if page.Len > maxPageSize {
+		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonTooLarge).Inc()
+		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonTooLarge).Add(float64(page.DecompressedLen))
 		return nil, ErrPageTooLarge
 	}
 
-	if _, err := r.Seek(int64(page.Offset), io.SeekStart); err != nil {
+	if _, err = r.Seek(int64(page.Offset), io.SeekStart); err != nil {
+		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonErr).Inc()
+		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonErr).Add(float64(page.DecompressedLen))
 		return nil, errors.Wrap(err, "seeking to bloom page")
 	}
 
-	return LazyDecodeBloomPage(r, b.schema.DecompressorPool(), page)
+	if b.schema.encoding == chunkenc.EncNone {
+		res, err = LazyDecodeBloomPageNoCompression(r, page)
+	} else {
+		res, err = LazyDecodeBloomPage(r, b.schema.DecompressorPool(), page)
+	}
+
+	if err != nil {
+		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonErr).Inc()
+		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonErr).Add(float64(page.DecompressedLen))
+		return nil, errors.Wrap(err, "decoding bloom page")
+	}
+
+	metrics.pagesRead.WithLabelValues(pageTypeBloom).Inc()
+	metrics.bytesRead.WithLabelValues(pageTypeBloom).Add(float64(page.DecompressedLen))
+	return res, nil
 }
