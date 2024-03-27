@@ -11,7 +11,7 @@ env:
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: true
   USE_GITHUB_APP_TOKEN: true
-  VERSIONING_STRATEGY: "always-bump-major"
+  VERSIONING_STRATEGY: "default"
 jobs:
   check:
     uses: "grafana/loki-release/.github/workflows/check.yml@main"

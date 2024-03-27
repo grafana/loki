@@ -79,7 +79,7 @@ local imagePrefix = 'grafana';
       skipArm=true,
       skipValidation=true,
       useGitHubAppToken=true,
-      versioningStrategy='always-bump-major',
+      versioningStrategy='default',
     ) + {
       name: 'Prepare Major Release PR from main',
     }, false, false
