@@ -226,7 +226,8 @@ func TestParseRequest(t *testing.T) {
 				assert.NotNil(t, data, "Should give data for %d", index)
 				require.Equal(t, test.expectedStructuredMetadataBytes, structuredMetadataBytesReceived)
 				require.Equal(t, test.expectedBytes, bytesReceived)
-				require.Equal(t, test.expectedLines, linesReceived)
+				require.Equalf(t, tracker.Total(), float64(bytesReceived), "tracked usage bytes must equal bytes received metric")
+				require.Equal(t, test.expectedBytes, bytesReceived)
 				require.Equal(t, float64(test.expectedStructuredMetadataBytes), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedBytes), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedLines), testutil.ToFloat64(linesIngested.WithLabelValues("fake")))
@@ -255,6 +256,14 @@ func NewMockTracker() *MockCustomTracker {
 		receivedBytes:  map[string]float64{},
 		discardedBytes: map[string]float64{},
 	}
+}
+
+func (t *MockCustomTracker) Total() float64 {
+	total := float64(0)
+	for _, v := range t.receivedBytes {
+		total += v
+	}
+	return total
 }
 
 // DiscardedBytesAdd implements CustomTracker.
