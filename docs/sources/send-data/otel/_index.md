@@ -33,7 +33,7 @@ And enable it in `service.pipelines`:
 ```yaml
 service:
   pipelines:
-    metrics:
+    logs:
       receivers: [...]
       processors: [...]
       exporters: [..., otlphttp]
@@ -57,7 +57,7 @@ exporters:
 service:
   extensions: [basicauth/otlp]
   pipelines:
-    metrics:
+    logs:
       receivers: [...]
       processors: [...]
       exporters: [..., otlphttp]

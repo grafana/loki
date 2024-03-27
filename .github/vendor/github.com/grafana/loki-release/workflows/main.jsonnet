@@ -8,10 +8,12 @@
   validateGel: import 'validate-gel.libsonnet',
   releasePRWorkflow: function(
     branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+'],
+    buildArtifactsBucket='loki-build-artifacts',
     buildImage='grafana/loki-build-image:0.33.0',
     changelogPath='CHANGELOG.md',
     checkTemplate='./.github/workflows/check.yml',
     distMakeTargets=['dist', 'packages'],
+    dryRun=false,
     dockerUsername='grafana',
     golangCiLintVersion='v1.55.1',
     imageBuildTimeoutMin=25,
@@ -40,9 +42,11 @@
       group: 'create-release-pr-${{ github.sha }}',
     },
     env: {
+      BUILD_ARTIFACTS_BUCKET: buildArtifactsBucket,
       BUILD_TIMEOUT: imageBuildTimeoutMin,
       CHANGELOG_PATH: changelogPath,
       DOCKER_USERNAME: dockerUsername,
+      DRY_RUN: dryRun,
       IMAGE_PREFIX: imagePrefix,
       RELEASE_LIB_REF: releaseLibRef,
       RELEASE_REPO: releaseRepo,
@@ -72,6 +76,7 @@
   },
   releaseWorkflow: function(
     branches=['release-[0-9].[0-9].x', 'k[0-9]*'],
+    buildArtifactsBucket='loki-build-artifacts',
     dockerUsername='grafanabot',
     getDockerCredsFromVault=false,
     imagePrefix='grafana',
@@ -96,6 +101,7 @@
       group: 'create-release-${{ github.sha }}',
     },
     env: {
+      BUILD_ARTIFACTS_BUCKET: buildArtifactsBucket,
       IMAGE_PREFIX: imagePrefix,
       RELEASE_LIB_REF: releaseLibRef,
       RELEASE_REPO: releaseRepo,

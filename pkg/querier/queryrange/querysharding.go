@@ -189,13 +189,27 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		ast.maxShards,
 		r,
 		ast.statsHandler,
+		ast.next,
 		ast.limits,
 	)
 	if !ok {
 		return ast.next.Do(ctx, r)
 	}
 
-	mapper := logql.NewShardMapper(resolver, ast.metrics, ast.shardAggregation)
+	v := ast.limits.TSDBShardingStrategy(tenants[0])
+	version, err := logql.ParseShardVersion(v)
+	if err != nil {
+		level.Warn(logger).Log(
+			"msg", "failed to parse shard version",
+			"fallback", version.String(),
+			"err", err.Error(),
+			"user", tenants[0],
+			"query", r.GetQuery(),
+		)
+	}
+	strategy := version.Strategy(resolver, uint64(ast.limits.TSDBMaxBytesPerShard(tenants[0])))
+
+	mapper := logql.NewShardMapper(strategy, ast.metrics, ast.shardAggregation)
 
 	noop, bytesPerShard, parsed, err := mapper.Parse(params.GetExpression())
 	if err != nil {
@@ -232,9 +246,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	// Merge index and volume stats result cache stats from shard resolver into the query stats.
-	res.Statistics.Caches.StatsResult.Merge(resolverStats.Caches().StatsResult)
-	res.Statistics.Caches.VolumeResult.Merge(resolverStats.Caches().VolumeResult)
-
+	res.Statistics.Merge(resolverStats.Result(0, 0, 0))
 	value, err := marshal.NewResultValue(res.Data)
 	if err != nil {
 		return nil, err

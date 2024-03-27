@@ -29,6 +29,7 @@ type ctxKeyType string
 const ctxKey ctxKeyType = "stats"
 
 const (
+<<<<<<< HEAD
 	queryTypeLog            = "log"
 	queryTypeMetric         = "metric"
 	queryTypeSeries         = "series"
@@ -36,6 +37,15 @@ const (
 	queryTypeStats          = "stats"
 	queryTypeVolume         = "volume"
 	queryTypeDetectedFields = "detected_fields"
+=======
+	queryTypeLog    = "log"
+	queryTypeMetric = "metric"
+	queryTypeSeries = "series"
+	queryTypeLabel  = "label"
+	queryTypeStats  = "stats"
+	queryTypeVolume = "volume"
+	queryTypeShards = "shards"
+>>>>>>> origin/main
 )
 
 var (
@@ -163,6 +173,9 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &stats.Result{} // TODO: support stats in proto
 					totalEntries = 1
 					queryType = queryTypeStats
+				case *ShardsResponse:
+					responseStats = &r.Response.Statistics
+					queryType = queryTypeShards
 				case *DetectedFieldsResponse:
 					responseStats = &stats.Result{} // TODO: support stats in detected fields
 					totalEntries = 1

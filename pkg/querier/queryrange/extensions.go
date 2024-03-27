@@ -221,6 +221,22 @@ func (m *QuantileSketchResponse) WithHeaders(h []queryrangebase.PrometheusRespon
 	return m
 }
 
+func (m *ShardsResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+	if m != nil {
+		return convertPrometheusResponseHeadersToPointers(m.Headers)
+	}
+	return nil
+}
+
+func (m *ShardsResponse) SetHeader(name, value string) {
+	m.Headers = setHeader(m.Headers, name, value)
+}
+
+func (m *ShardsResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+	m.Headers = h
+	return m
+}
+
 // GetHeaders returns the HTTP headers in the response.
 func (m *DetectedFieldsResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	if m != nil {
