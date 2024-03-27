@@ -2,6 +2,7 @@ package stores
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
 	"github.com/prometheus/common/model"
@@ -10,6 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/errors"
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
@@ -173,6 +175,14 @@ func (c CompositeStore) GetChunks(ctx context.Context, userID string, from, thro
 		fetchers = append(fetchers, fetcher...)
 		return nil
 	})
+
+	// Protect ourselves against OOMing.
+	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
+	if maxChunksPerQuery > 0 && len(chunkIDs) > maxChunksPerQuery {
+		err := errors.QueryError(fmt.Sprintf("Query %v fetched too many chunks (%d > %d)", predicate, len(chunkIDs), maxChunksPerQuery))
+		return nil, nil, err
+	}
+
 	return chunkIDs, fetchers, err
 }
 

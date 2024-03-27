@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/grafana/dskit/test"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -306,6 +308,83 @@ func TestCompositeStore_GetChunkFetcher(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Same(t, tc.expectedFetcher, cs.GetChunkFetcher(tc.tm))
+		})
+	}
+}
+
+type mockStoreGetChunks struct {
+	mockStoreGetChunkFetcher
+	chunkCount int
+}
+
+func (m mockStoreGetChunks) GetChunks(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+	return make([][]chunk.Chunk, m.chunkCount), []*fetcher.Fetcher{m.chunkFetcher}, nil
+}
+
+type mockStoreLimits struct {
+	MaxChunksPerQuery int
+}
+
+func (ml mockStoreLimits) MaxChunksPerQuery(string) int {
+	return ml.MaxChunksPerQuery
+}
+
+func (ml mockStoreLimits) MaxQueryLength(context.Context, string) time.Duration {
+	// mock
+	return time.Duration(1000 * 1000 * 1000 * 60 * 60 * 24)
+}
+
+var (
+	ctx = user.InjectOrgID(context.Background(), "fake")
+)
+
+func TestCompositeStore_GetChunks_MaxChunksPerQuery(t *testing.T) {
+	cs := []CompositeStore{
+		{
+			limits: mockStoreLimits{10},
+			stores: []compositeStoreEntry{
+				{
+					model.TimeFromUnix(10),
+					mockStoreGetChunks{mockStoreGetChunkFetcher{mockStore(0), &fetcher.Fetcher{}}, 5},
+				},
+			},
+		},
+		{
+			limits: mockStoreLimits{10},
+			stores: []compositeStoreEntry{
+				{
+					model.TimeFromUnix(10),
+					mockStoreGetChunks{mockStoreGetChunkFetcher{mockStore(2), &fetcher.Fetcher{}}, 100},
+				},
+			},
+		},
+	}
+
+	for _, tc := range []struct {
+		name                string
+		tmf                 model.Time
+		tmt                 model.Time
+		cs                  CompositeStore
+		expectedChunkLength int
+	}{
+		{
+			name:                "store with 5 chunks",
+			tmf:                 model.TimeFromUnix(10),
+			tmt:                 model.TimeFromUnix(20),
+			cs:                  cs[0],
+			expectedChunkLength: 5,
+		},
+		{
+			name:                "store with 100 chunks",
+			tmf:                 model.TimeFromUnix(10),
+			tmt:                 model.TimeFromUnix(20),
+			cs:                  cs[1],
+			expectedChunkLength: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actualChunks, _, _ := tc.cs.GetChunks(ctx, "fake", tc.tmf, tc.tmt)
+			require.Equal(t, tc.expectedChunkLength, len(actualChunks))
 		})
 	}
 }
