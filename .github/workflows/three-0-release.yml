@@ -7,11 +7,12 @@ env:
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
   IMAGE_PREFIX: "grafana"
+  RELEASE_AS: "3.0.0-rc.1"
   RELEASE_LIB_REF: "main"
   RELEASE_REPO: "grafana/loki"
-  SKIP_VALIDATION: true
+  SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
-  VERSIONING_STRATEGY: "default"
+  VERSIONING_STRATEGY: "always-bump-patch"
 jobs:
   check:
     uses: "grafana/loki-release/.github/workflows/check.yml@main"
@@ -19,7 +20,7 @@ jobs:
       build_image: "grafana/loki-build-image:0.33.0"
       golang_ci_lint_version: "v1.55.1"
       release_lib_ref: "main"
-      skip_validation: true
+      skip_validation: false
       use_github_app_token: true
   create-release-pr:
     needs:
@@ -124,7 +125,7 @@ jobs:
         DRONE_TAG: "${{ needs.version.outputs.version }}"
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
         NFPM_SIGNING_KEY_FILE: "nfpm-private-key.key"
-        SKIP_ARM: true
+        SKIP_ARM: false
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "build artifacts"
       run: |
@@ -768,19 +769,36 @@ jobs:
       name: "get release version"
       run: |
         npm install
-        npm exec -- release-please release-pr \
-          --consider-all-branches \
-          --dry-run \
-          --dry-run-output release.json \
-          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
-          --manifest-file .release-please-manifest.json \
-          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
-          --release-type simple \
-          --repo-url "${{ env.RELEASE_REPO }}" \
-          --separate-pull-requests false \
-          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token "${{ steps.github_app_token.outputs.token }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        if [[ -z "${{ env.RELEASE_AS }}" ]]; then
+          npm exec -- release-please release-pr \
+            --consider-all-branches \
+            --dry-run \
+            --dry-run-output release.json \
+            --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --manifest-file .release-please-manifest.json \
+            --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --release-type simple \
+            --repo-url "${{ env.RELEASE_REPO }}" \
+            --separate-pull-requests false \
+            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+            --token "${{ steps.github_app_token.outputs.token }}" \
+            --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        else
+          npm exec -- release-please release-pr \
+            --consider-all-branches \
+            --dry-run \
+            --dry-run-output release.json \
+            --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --manifest-file .release-please-manifest.json \
+            --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --release-type simple \
+            --repo-url "${{ env.RELEASE_REPO }}" \
+            --separate-pull-requests false \
+            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+            --token "${{ steps.github_app_token.outputs.token }}" \
+            --release-as "${{ env.RELEASE_AS }}"
+        fi
         
         cat release.json
         
@@ -799,7 +817,7 @@ jobs:
           echo "pr_created=true" >> $GITHUB_OUTPUT
         fi
       working-directory: "lib"
-name: "Prepare Major Release PR from main"
+name: "Prepare Loki 3.0 release"
 "on":
   push:
     branches:

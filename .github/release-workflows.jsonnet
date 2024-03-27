@@ -65,7 +65,7 @@ local imagePrefix = 'grafana';
       name: 'Prepare Minor Release PR from Weekly',
     }, false, false
   ),
-  'major-release-pr.yml': std.manifestYamlDoc(
+  'three-zero-release.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
       branches=['main', 'add-major-release-workflow'],
       buildImage=buildImage,
@@ -76,12 +76,12 @@ local imagePrefix = 'grafana';
       imagePrefix=imagePrefix,
       releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
-      skipArm=true,
-      skipValidation=true,
+      skipArm=false,
+      skipValidation=false,
       useGitHubAppToken=true,
-      versioningStrategy='default',
+      releaseAs='3.0.0-rc.1',
     ) + {
-      name: 'Prepare Major Release PR from main',
+      name: 'Prepare Loki 3.0 release',
     }, false, false
   ),
   'release.yml': std.manifestYamlDoc(
