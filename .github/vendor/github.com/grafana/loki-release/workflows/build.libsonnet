@@ -231,5 +231,8 @@ local releaseLibStep = common.releaseLibStep;
         destination: '${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}',  //TODO: make bucket configurable
         process_gcloudignore: false,
       }),
-    ]),
+    ])
+    + job.withOutputs({
+      version: '${{ needs.version.outputs.version }}',
+    }),
 }
