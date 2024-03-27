@@ -97,6 +97,10 @@
 * [10301](https://github.com/grafana/loki/pull/10301) **wildum**: users can now define `additional_fields` in cloudflare configuration.
 * [10755](https://github.com/grafana/loki/pull/10755) **hainenber**: Lambda-Promtail: Add support for dropping labels passed via env var
 
+##### Bug Fixes
+
+* [12374](https://github.com/grafana/loki/pull/12374) **jonaslb**: Promtail: Fix handling of docker logs when a line is split in multiple frames
+
 ## [2.9.6](https://github.com/grafana/loki/compare/v2.9.5...v2.9.6) (2024-03-21)
 
 
