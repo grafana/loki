@@ -26,6 +26,7 @@
   local container = k.core.v1.container,
   local volumeMount = k.core.v1.volumeMount,
   local statefulSet = k.apps.v1.statefulSet,
+  local podDisruptionBudget = k.policy.v1.podDisruptionBudget,
 
   // Use PVC for index_gateway instead of node disk.
   index_gateway_data_pvc:: if $._config.use_index_gateway then
@@ -65,6 +66,16 @@
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
     statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001)  // 10001 is the group ID assigned to Loki in the Dockerfile
   else {},
+
+
+  index_gateway_pdb:  if $._config.use_index_gateway then
+      podDisruptionBudget.new('index-gateway-pdb') +
+      podDisruptionBudget.mixin.metadata.withLabels({ name: 'index-gateway-pdb' }) +
+      podDisruptionBudget.mixin.spec.selector.withMatchLabels({
+        name: $.index_gateway_statefulset.metadata.name,
+      }) +
+      podDisruptionBudget.mixin.spec.withMaxUnavailable(1)
+   else {},
 
   index_gateway_service: if $._config.use_index_gateway then
     k.util.serviceFor($.index_gateway_statefulset, $._config.service_ignored_labels)
