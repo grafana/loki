@@ -1915,11 +1915,6 @@ client:
   # bloom-gateway-client.grpc
   [grpc_client_config: <grpc_client>]
 
-  # Flag to control whether requests sent to the gateway should be logged or
-  # not.
-  # CLI flag: -bloom-gateway-client.log-gateway-requests
-  [log_gateway_requests: <boolean> | default = false]
-
   results_cache:
     # The cache block configures the cache backend.
     # The CLI flags prefix for this block configuration is:
@@ -2370,7 +2365,7 @@ bloom_shipper:
   blocks_downloading_queue:
     # The count of parallel workers that download Bloom Blocks.
     # CLI flag: -bloom.shipper.blocks-downloading-queue.workers-count
-    [workers_count: <int> | default = 100]
+    [workers_count: <int> | default = 16]
 
     # Maximum number of task in queue per tenant per bloom-gateway. Enqueuing
     # the tasks above this limit will fail an error.

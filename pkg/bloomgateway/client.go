@@ -56,9 +56,6 @@ var (
 			}
 		},
 	}
-
-	// NB(chaudum): Should probably be configurable, but I don't want yet another user setting.
-	maxQueryParallelism = 10
 )
 
 type ringGetBuffers struct {
@@ -107,10 +104,6 @@ type ClientConfig struct {
 	// GRPCClientConfig configures the gRPC connection between the Bloom Gateway client and the server.
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 
-	// LogGatewayRequests configures if requests sent to the gateway should be logged or not.
-	// The log messages are of type debug and contain the address of the gateway and the relevant tenant.
-	LogGatewayRequests bool `yaml:"log_gateway_requests"`
-
 	// Ring is the Bloom Gateway ring used to find the appropriate Bloom Gateway instance
 	// this client should talk to.
 	Ring ring.ReadRing `yaml:"-"`
@@ -130,7 +123,6 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+"grpc", f)
 	i.Cache.RegisterFlagsWithPrefix(prefix+"cache.", f)
 	f.BoolVar(&i.CacheResults, prefix+"cache_results", false, "Flag to control whether to cache bloom gateway client requests/responses.")
-	f.BoolVar(&i.LogGatewayRequests, prefix+"log-gateway-requests", false, "Flag to control whether requests sent to the gateway should be logged or not.")
 }
 
 func (i *ClientConfig) Validate() error {
@@ -258,7 +250,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 
 	results := make([][]*logproto.GroupedChunkRefs, len(servers))
 	count := 0
-	err = concurrency.ForEachJob(ctx, len(servers), maxQueryParallelism, func(ctx context.Context, i int) error {
+	err = concurrency.ForEachJob(ctx, len(servers), len(servers), func(ctx context.Context, i int) error {
 		rs := servers[i]
 
 		// randomize order of addresses so we don't hotspot the first server in the list
