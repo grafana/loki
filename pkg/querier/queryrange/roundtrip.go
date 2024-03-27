@@ -245,7 +245,7 @@ func NewMiddleware(
 			instantRT        = instantMetricTripperware.Wrap(next)
 			statsRT          = indexStatsTripperware.Wrap(next)
 			seriesVolumeRT   = seriesVolumeTripperware.Wrap(next)
-			detectedFieldsRT = next
+			detectedFieldsRT = next //TODO(twhitney): add middlewares for detected fields
 		)
 
 		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, detectedFieldsRT, limits)
