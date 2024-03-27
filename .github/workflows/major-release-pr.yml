@@ -9,9 +9,9 @@ env:
   IMAGE_PREFIX: "grafana"
   RELEASE_LIB_REF: "main"
   RELEASE_REPO: "grafana/loki"
-  SKIP_VALIDATION: false
+  SKIP_VALIDATION: true
   USE_GITHUB_APP_TOKEN: true
-  VERSIONING_STRATEGY: "always-bump-patch"
+  VERSIONING_STRATEGY: "always-bump-major"
 jobs:
   check:
     uses: "grafana/loki-release/.github/workflows/check.yml@main"
@@ -19,7 +19,7 @@ jobs:
       build_image: "grafana/loki-build-image:0.33.0"
       golang_ci_lint_version: "v1.55.1"
       release_lib_ref: "main"
-      skip_validation: false
+      skip_validation: true
       use_github_app_token: true
   create-release-pr:
     needs:
@@ -124,7 +124,7 @@ jobs:
         DRONE_TAG: "${{ needs.version.outputs.version }}"
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
         NFPM_SIGNING_KEY_FILE: "nfpm-private-key.key"
-        SKIP_ARM: false
+        SKIP_ARM: true
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "build artifacts"
       run: |
@@ -799,11 +799,12 @@ jobs:
           echo "pr_created=true" >> $GITHUB_OUTPUT
         fi
       working-directory: "lib"
-name: "Prepare Patch Release PR"
+name: "Prepare Major Release PR from main"
 "on":
   push:
     branches:
-    - "release-[0-9]+.[0-9]+.x"
+    - "main"
+    - "add-major-release-workflow"
 permissions:
   contents: "write"
   id-token: "write"

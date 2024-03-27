@@ -799,12 +799,11 @@ jobs:
           echo "pr_created=true" >> $GITHUB_OUTPUT
         fi
       working-directory: "lib"
-name: "create release PR"
+name: "Prepare Minor Release PR from Weekly"
 "on":
   push:
     branches:
     - "k[0-9]+"
-    - "main"
 permissions:
   contents: "write"
   id-token: "write"

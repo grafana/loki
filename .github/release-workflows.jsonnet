@@ -42,11 +42,13 @@ local imagePrefix = 'grafana';
       skipValidation=false,
       useGitHubAppToken=true,
       versioningStrategy='always-bump-patch',
-    ), false, false
+    ) + {
+      name: 'Prepare Patch Release PR',
+    }, false, false
   ),
   'minor-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
-      branches=['k[0-9]+', 'main'],
+      branches=['k[0-9]+'],
       buildImage=buildImage,
       checkTemplate=checkTemplate,
       golangCiLintVersion=golangCiLintVersion,
@@ -59,7 +61,28 @@ local imagePrefix = 'grafana';
       skipValidation=false,
       useGitHubAppToken=true,
       versioningStrategy='always-bump-minor',
-    ), false, false
+    ) + {
+      name: 'Prepare Minor Release PR from Weekly',
+    }, false, false
+  ),
+  'major-release-pr.yml': std.manifestYamlDoc(
+    lokiRelease.releasePRWorkflow(
+      branches=['main', 'add-major-release-workflow'],
+      buildImage=buildImage,
+      checkTemplate=checkTemplate,
+      golangCiLintVersion=golangCiLintVersion,
+      imageBuildTimeoutMin=imageBuildTimeoutMin,
+      imageJobs=imageJobs,
+      imagePrefix=imagePrefix,
+      releaseLibRef=releaseLibRef,
+      releaseRepo='grafana/loki',
+      skipArm=true,
+      skipValidation=true,
+      useGitHubAppToken=true,
+      versioningStrategy='always-bump-major',
+    ) + {
+      name: 'Prepare Major Release PR from main',
+    }, false, false
   ),
   'release.yml': std.manifestYamlDoc(
     lokiRelease.releaseWorkflow(
