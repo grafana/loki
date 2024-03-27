@@ -90,13 +90,16 @@ func FiltersToBloomTest(b NGramBuilder, filters ...syntax.LineFilterExpr) BloomT
 
 func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest {
 	switch filter.Ty {
-	case labels.MatchEqual, labels.MatchNotEqual:
-		var test BloomTest = newStringTest(b, filter.Match)
-		if filter.Ty == labels.MatchNotEqual {
-			test = newNotTest(test)
-		}
-		return test
-	case labels.MatchRegexp, labels.MatchNotRegexp:
+	case labels.MatchNotEqual, labels.MatchNotRegexp:
+		// We cannot test _negated_ filters with a bloom filter since blooms are probabilistic
+		// filters that can only tell us if a string _might_ exist.
+		// For example, for `!= "foo"`, the bloom filter might tell us that the string "foo" might exist
+		// but because we are not sure, we cannot discard that chunk because it might actually not be there.
+		// Therefore, we return a test that always returns true.
+		return MatchAll
+	case labels.MatchEqual:
+		return newStringTest(b, filter.Match)
+	case labels.MatchRegexp:
 		reg, err := regexpsyntax.Parse(filter.Match, regexpsyntax.Perl)
 		if err != nil {
 			// TODO: log error
@@ -111,11 +114,7 @@ func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest
 			return MatchAll
 		}
 
-		var test BloomTest = matcherFilterWrapper{filter: matcher}
-		if filter.Ty == labels.MatchNotRegexp {
-			test = newNotTest(test)
-		}
-		return test
+		return matcherFilterWrapper{filter: matcher}
 	default:
 		return MatchAll
 	}

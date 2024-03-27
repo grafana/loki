@@ -334,7 +334,7 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		// 	}
 		// }
 		querier := &bloomshipper.CloseableBlockQuerier{
-			BlockQuerier: v1.NewBlockQuerier(block, false),
+			BlockQuerier: v1.NewBlockQuerier(block, false, v1.DefaultMaxPageSize),
 			BlockRef:     blockRef,
 		}
 		queriers = append(queriers, querier)

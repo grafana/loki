@@ -35,7 +35,7 @@ var (
 	// 4KB -> 128MB
 	BlockPool = BytePool{
 		pool: pool.New(
-			4<<10, 128<<20, 4,
+			4<<10, 128<<20, 2,
 			func(size int) interface{} {
 				return make([]byte, size)
 			}),

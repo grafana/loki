@@ -46,6 +46,7 @@ func newCacheKeyGen(limits CacheLimits) keyGen {
 	return keyGen{limits}
 }
 
+// TODO(owen-d): need to implement our own key-generation which accounts for fingerprint ranges requested.
 func (k keyGen) GenerateCacheKey(ctx context.Context, tenant string, r resultscache.Request) string {
 	return resultscache.ConstSplitter(k.BloomGatewayCacheKeyInterval(tenant)).GenerateCacheKey(ctx, tenant, r)
 }
