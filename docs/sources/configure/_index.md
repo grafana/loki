@@ -2351,7 +2351,8 @@ tsdb_shipper:
 
   [ingesterdbretainperiod: <duration>]
 
-# Configures Bloom Shipper.
+# Configures the bloom shipper component, which contains the store abstraction
+# to fetch bloom filters from and put them to object storage.
 bloom_shipper:
   # Working directory to store downloaded bloom blocks. Supports multiple
   # directories, separated by comma.
