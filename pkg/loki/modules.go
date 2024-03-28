@@ -98,6 +98,7 @@ const (
 	CacheGenerationLoader         string = "cache-generation-loader"
 	Ingester                      string = "ingester"
 	PatternIngester               string = "pattern-ingester"
+	PatternTee                    string = "pattern-tee"
 	IngesterQuerier               string = "ingester-querier"
 	IngesterQueryTagsInterceptors string = "ingester-query-tags-interceptors"
 	QueryFrontend                 string = "query-frontend"
@@ -596,19 +597,32 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 	if !t.Cfg.Pattern.Enabled {
 		return nil, nil
 	}
+	t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.PatternIngester, err = pattern.New(t.Cfg.Pattern, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
 	logproto.RegisterPatternServer(t.Server.GRPC, t.PatternIngester)
-	// todo wrap with middleware
-	t.Tee = t.PatternIngester
+
 	t.Server.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
 
 	if t.Cfg.InternalServer.Enable {
 		t.InternalServer.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
 	}
 	return t.PatternIngester, nil
+}
+
+func (t *Loki) initPatternTee() (_ services.Service, err error) {
+	if !t.Cfg.Pattern.Enabled {
+		return nil, nil
+	}
+	tee, err := pattern.NewTee(t.Cfg.Pattern, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
+	if err != nil {
+		return nil, err
+	}
+	// todo wrap with middleware
+	t.Tee = tee
+	return tee, nil
 }
 
 func (t *Loki) initTableManager() (services.Service, error) {

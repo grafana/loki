@@ -4,19 +4,18 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"net/http"
 	"sync"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	ring_client "github.com/grafana/dskit/ring/client"
-	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/pattern/clientpool"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -48,15 +47,13 @@ func (cfg *Config) Validate() error {
 type Ingester struct {
 	services.Service
 	lifecycler        *ring.Lifecycler
-	ring              *ring.Ring
-	pool              *ring_client.Pool
+
 	lifecyclerWatcher *services.FailureWatcher
 
 	cfg        Config
 	registerer prometheus.Registerer
 	logger     log.Logger
 
-	ingesterAppends *prometheus.CounterVec
 	instancesMtx    sync.RWMutex
 	instances       map[string]*instance
 }
@@ -74,10 +71,6 @@ func New(
 		logger:     log.With(logger, "component", "pattern-ingester"),
 		registerer: registerer,
 		instances:  make(map[string]*instance),
-		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Name: "pattern_ingester_appends_total",
-			Help: "The total number of batch appends sent to pattern ingesters.",
-		}, []string{"ingester", "status"}),
 	}
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 	var err error
@@ -85,20 +78,10 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	i.ring, err = ring.New(cfg.LifecyclerConfig.RingConfig, "pattern-ingester", "pattern-ring", i.logger, registerer)
-	if err != nil {
-		return nil, err
-	}
-	factory := cfg.factory
-	if factory == nil {
-		factory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
-			return clientpool.NewClient(cfg.ClientConfig, addr)
-		})
-	}
-	i.pool = clientpool.NewPool("pattern-ingester", cfg.ClientConfig.PoolConfig, i.ring, cfg.factory, logger, metricsNamespace)
 
 	i.lifecyclerWatcher = services.NewFailureWatcher()
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
+
 	return i, nil
 }
 
@@ -107,49 +90,18 @@ func (i *Ingester) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	i.lifecycler.ServeHTTP(w, r)
 }
 
-// Duplicate Implements distributor.Tee which is used to tee distributor requests to pattern ingesters.
-func (i *Ingester) Duplicate(tenant string, streams []distributor.KeyedStream) {
-	for idx := range streams {
-		go func(stream distributor.KeyedStream) {
-			if err := i.sendStream(stream); err != nil {
-				level.Error(i.logger).Log("msg", "failed to send stream to pattern ingester", "err", err)
-			}
-		}(streams[idx])
-	}
-}
-
-func (i *Ingester) sendStream(stream distributor.KeyedStream) error {
-	var descs [1]ring.InstanceDesc
-	replicationSet, err := i.ring.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
-	if err != nil {
-		return err
-	}
-	if replicationSet.Instances == nil {
-		return errors.New("no instances found")
-	}
-	addr := replicationSet.Instances[0].Addr
-	client, err := i.pool.GetClientFor(addr)
-	if err != nil {
-		return err
-	}
-	req := &logproto.PushRequest{
-		Streams: []logproto.Stream{
-			stream.Stream,
-		},
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), i.cfg.ClientConfig.RemoteTimeout)
-	defer cancel()
-	_, err = client.(logproto.PatternClient).Push(ctx, req)
-	if err != nil {
-		i.ingesterAppends.WithLabelValues(addr, "fail").Inc()
-		return err
-	}
-	i.ingesterAppends.WithLabelValues(addr, "success").Inc()
-	return nil
-}
 
 func (i *Ingester) starting(ctx context.Context) error {
+	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
+	err := i.lifecycler.StartAsync(context.Background())
+	if err != nil {
+		return err
+	}
+
+	err = i.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return err
+	}
 	// todo: start flush queue.
 	return nil
 }
@@ -167,6 +119,21 @@ func (i *Ingester) stopping(_ error) error {
 func (i *Ingester) TransferOut(_ context.Context) error {
 	// todo may be.
 	return ring.ErrTransferDisabled
+}
+
+// Watch implements grpc_health_v1.HealthCheck.
+func (*Ingester) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health_WatchServer) error {
+	return nil
+}
+
+// ReadinessHandler is used to indicate to k8s when the ingesters are ready for
+// the addition removal of another ingester. Returns 204 when the ingester is
+// ready, 500 otherwise.
+func (i *Ingester) CheckReady(ctx context.Context) error {
+	if s := i.State(); s != services.Running && s != services.Stopping {
+		return fmt.Errorf("ingester not ready: %v", s)
+	}
+	return i.lifecycler.CheckReady(ctx)
 }
 
 func (i *Ingester) Flush() {
