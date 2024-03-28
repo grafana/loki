@@ -575,7 +575,7 @@ func (o *Overrides) MaxQueryLength(_ context.Context, userID string) time.Durati
 // so nooping in Loki until then.
 func (o *Overrides) MaxChunksPerQueryFromStore(_ string) int { return 0 }
 
-// MaxQueryLength returns the limit of the series of metric queries.
+// MaxQuerySeries returns the limit of the series of metric queries.
 func (o *Overrides) MaxQuerySeries(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
 }
@@ -688,7 +688,7 @@ func (o *Overrides) MaxLineSize(userID string) int {
 	return o.getOverridesForUser(userID).MaxLineSize.Val()
 }
 
-// MaxLineSizeShouldTruncate returns whether lines longer than max should be truncated.
+// MaxLineSizeTruncate returns whether lines longer than max should be truncated.
 func (o *Overrides) MaxLineSizeTruncate(userID string) bool {
 	return o.getOverridesForUser(userID).MaxLineSizeTruncate
 }
