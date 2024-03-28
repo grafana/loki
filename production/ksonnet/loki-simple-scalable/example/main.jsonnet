@@ -30,6 +30,9 @@ loki {
       common: {
         path_prefix: '/loki',
         replication_factor: 1,
+        compactor: {
+          compactor_grpc_address: '%s.%s.svc.cluster.local:%d' % [$.backend_service.metadata.name, namespace, grpc_listen_port],
+        },
         storage: {
           s3: {
             s3: s3Url,
