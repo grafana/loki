@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/opentracing/opentracing-go/mocktracer"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -421,6 +423,97 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tt.want, got)
 		})
+	}
+}
+
+func TestLokiRequestSpanLogging(t *testing.T) {
+	now := time.Now()
+	end := now.Add(time.Duration(1000 * time.Second))
+	req := LokiRequest{
+		StartTs: now,
+		EndTs:   end,
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "start" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+			if field.Key == "end" {
+				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
+			}
+		}
+	}
+}
+
+func TestLokiInstantRequestSpanLogging(t *testing.T) {
+	now := time.Now()
+	req := LokiInstantRequest{
+		TimeTs: now,
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "ts" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+		}
+	}
+}
+
+func TestLokiSeriesRequestSpanLogging(t *testing.T) {
+	now := time.Now()
+	end := now.Add(time.Duration(1000 * time.Second))
+	req := LokiSeriesRequest{
+		StartTs: now,
+		EndTs:   end,
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "start" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+			if field.Key == "end" {
+				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
+
+			}
+		}
+	}
+}
+
+func TestLabelRequestSpanLogging(t *testing.T) {
+	now := time.Now()
+	end := now.Add(time.Duration(1000 * time.Second))
+	req := LabelRequest{
+		LabelRequest: logproto.LabelRequest{
+			Start: &now,
+			End:   &end,
+		},
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "start" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+			if field.Key == "end" {
+				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
+
+			}
+		}
 	}
 }
 
