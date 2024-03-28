@@ -226,7 +226,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 			f.metrics.downloadQueueSize.Observe(float64(len(f.q.queue)))
 			start := time.Now()
 			f.q.enqueue(downloadRequest[BlockRef, BlockDirectory]{
-				ctx:     ctx,
+				ctx:     context.Background(),
 				item:    refs[i],
 				key:     key,
 				idx:     i,
