@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/opentracing/opentracing-go"
-
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/opentracing/opentracing-go"
 )
 
 type Handler struct {
@@ -120,6 +119,13 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		return &queryrange.DetectedFieldsResponse{
 			Response: result,
 		}, nil
+	case *queryrange.DetectedLabelsRequest:
+		result, err := h.api.DetectedLabelsHandler(ctx, &concrete.DetectedLabelsRequest)
+		if err != nil {
+			return nil, err
+		}
+
+		return &queryrange.DetectedLabelsResponse{Response: result}, nil
 	default:
 		return nil, fmt.Errorf("unsupported query type %T", req)
 	}

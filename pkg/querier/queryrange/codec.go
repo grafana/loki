@@ -1348,6 +1348,10 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 		if err := marshal.WriteDetectedFieldsResponseJSON(response.Response, w); err != nil {
 			return err
 		}
+	case *DetectedLabelsResponse:
+		if err := marshal.WriteDetectedLabelsResponseJSON(response.Response, w); err != nil {
+			return err
+		}
 	default:
 		return httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response format, got (%T)", res))
 	}

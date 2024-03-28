@@ -212,6 +212,8 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.TopkSketches, nil
 	case *QueryResponse_QuantileSketches:
 		return concrete.QuantileSketches, nil
+	case *QueryResponse_DetectedLabels:
+		return concrete.DetectedLabels, nil
 	default:
 		return nil, fmt.Errorf("unsupported QueryResponse response type, got (%T)", res.Response)
 	}
@@ -247,6 +249,8 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_QuantileSketches{response}
 	case *ShardsResponse:
 		p.Response = &QueryResponse_ShardsResponse{response}
+	case *DetectedLabelsResponse:
+		p.Response = &QueryResponse_DetectedLabels{response}
 	default:
 		return nil, fmt.Errorf("invalid response format, got (%T)", res)
 	}
