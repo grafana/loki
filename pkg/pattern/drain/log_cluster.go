@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/grafana/loki/pkg/pattern/iter"
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
 )
@@ -25,6 +26,10 @@ func (c *LogCluster) String() string {
 
 func (c *LogCluster) append(ts model.Time) {
 	c.Volume.Add(ts)
+}
+
+func (c *LogCluster) SampleIterator(from, through model.Time) iter.Iterator {
+	return iter.NewSlice(c.String(), c.Volume.ForRange(from, through).Values)
 }
 
 func truncateTimestamp(ts model.Time) model.Time { return ts - ts%timeResolution }

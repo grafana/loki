@@ -42,6 +42,7 @@ import (
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
+	"github.com/grafana/loki/pkg/pattern"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -85,6 +86,7 @@ type Config struct {
 	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
+	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
 	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor"`
 	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway"`
@@ -180,6 +182,7 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
 	c.Server.RegisterFlags(throwaway)
 	c.InternalServer.RegisterFlags(throwaway)
+	c.Pattern.RegisterFlags(throwaway)
 
 	throwaway.VisitAll(func(f *flag.Flag) {
 		// Ignore errors when setting new values. We have a test to verify that it works.
@@ -192,12 +195,16 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 
 		case "server.http-listen-port":
 			_ = f.Value.Set("3100")
+
+		case "pattern-ingester.distributor.replication-factor":
+			_ = f.Value.Set("1")
 		}
 
 		fs.Var(f.Value, f.Name, f.Usage)
 	})
 
 	c.Server.DisableRequestSuccessLog = true
+	// c.Pattern.LifecyclerConfig.RingConfig.ReplicationFactor = 1
 }
 
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.
@@ -260,6 +267,10 @@ func (c *Config) Validate() error {
 		return errors.Wrap(err, "invalid bloom_compactor config")
 	}
 
+	if err := c.Pattern.Validate(); err != nil {
+		return errors.Wrap(err, "invalid pattern_ingester config")
+	}
+
 	if err := ValidateConfigCompatibility(*c); err != nil {
 		return err
 	}
@@ -307,6 +318,7 @@ type Loki struct {
 	TenantLimits              validation.TenantLimits
 	distributor               *distributor.Distributor
 	Ingester                  ingester.Interface
+	PatternIngester           *pattern.Ingester
 	Querier                   querier.Querier
 	cacheGenerationLoader     queryrangebase.CacheGenNumberLoader
 	querierAPI                *querier.QuerierAPI
@@ -627,6 +639,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics)
 	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
+	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -654,6 +667,7 @@ func (t *Loki) setupModuleManager() error {
 		IndexGateway:             {Server, Store, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
 		BloomGateway:             {Server, BloomStore, BloomGatewayRing, Analytics},
 		BloomCompactor:           {Server, BloomStore, BloomCompactorRing, Analytics, Store},
+		PatternIngester:          {Server, MemberlistKV, Analytics},
 		IngesterQuerier:          {Ring},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
@@ -668,7 +682,7 @@ func (t *Loki) setupModuleManager() error {
 		// TODO(salvacorts): We added the BloomCompactor component to the `all` target to ease testing.
 		//                   We should remove it before releasing the feature since we don’t think any user running
 		//                   the single binary will benefit from the blooms given their scale in terms of ingested data
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor, BloomCompactor},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor, BloomCompactor},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
@@ -744,7 +758,6 @@ func (t *Loki) setupModuleManager() error {
 			a[idx] = InternalServer
 			deps[key] = a
 		}
-
 	}
 
 	for mod, targets := range deps {

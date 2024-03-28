@@ -33,11 +33,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/bloomcompactor"
-	"github.com/grafana/loki/pkg/loggerinfo"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/bloomcompactor"
 	"github.com/grafana/loki/pkg/bloomgateway"
 	"github.com/grafana/loki/pkg/compactor"
 	compactorclient "github.com/grafana/loki/pkg/compactor/client"
@@ -48,10 +45,12 @@ import (
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/pattern"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -98,6 +97,7 @@ const (
 	Querier                       string = "querier"
 	CacheGenerationLoader         string = "cache-generation-loader"
 	Ingester                      string = "ingester"
+	PatternIngester               string = "pattern-ingester"
 	IngesterQuerier               string = "ingester-querier"
 	IngesterQueryTagsInterceptors string = "ingester-query-tags-interceptors"
 	QueryFrontend                 string = "query-frontend"
@@ -592,6 +592,25 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	return t.Ingester, nil
 }
 
+func (t *Loki) initPatternIngester() (_ services.Service, err error) {
+	if !t.Cfg.Pattern.Enabled {
+		return nil, nil
+	}
+	t.PatternIngester, err = pattern.New(t.Cfg.Pattern, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
+	if err != nil {
+		return nil, err
+	}
+	logproto.RegisterPatternServer(t.Server.GRPC, t.PatternIngester)
+	// todo wrap with middleware
+	t.Tee = t.PatternIngester
+	t.Server.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
+	}
+	return t.PatternIngester, nil
+}
+
 func (t *Loki) initTableManager() (services.Service, error) {
 	level.Warn(util_log.Logger).Log("msg", "table manager is deprecated. Consider migrating to tsdb index which relies on a compactor instead.")
 
@@ -860,6 +879,7 @@ type ingesterQueryOptions struct {
 func (i ingesterQueryOptions) QueryStoreOnly() bool {
 	return i.Config.QueryStoreOnly
 }
+
 func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
 	return i.Config.QueryIngestersWithin
 }
@@ -1036,7 +1056,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/loki/api/v1/query").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/label").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/labels").Methods("GET", "POST").Handler(frontendHandler)
-	t.Server.HTTP.Path("/loki/api/v1/patterns").Methods("GET", "POST").HandlerFunc(loggerinfo.Patterns)
+	// t.Server.HTTP.Path("/loki/api/v1/patterns").Methods("GET", "POST").HandlerFunc(loggerinfo.Patterns)
 	t.Server.HTTP.Path("/loki/api/v1/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(frontendHandler)
@@ -1127,7 +1147,6 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		t.Overrides,
 		t.Cfg.MetricsNamespace,
 	)
-
 	if err != nil {
 		return
 	}
@@ -1245,6 +1264,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.BloomGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.BloomCompactor.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Pattern.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
 	if t.Cfg.InternalServer.Enable {
@@ -1446,7 +1466,6 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 		managerMode = lokiring.ServerMode
 	}
 	rm, err := lokiring.NewRingManager(indexGatewayRingKey, managerMode, t.Cfg.IndexGateway.Ring, t.Cfg.IndexGateway.Ring.ReplicationFactor, indexgateway.NumTokens, util_log.Logger, prometheus.DefaultRegisterer)
-
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new index gateway ring manager")
 	}
@@ -1544,7 +1563,6 @@ func (t *Loki) initQuerySchedulerRing() (_ services.Service, err error) {
 		managerMode = lokiring.ServerMode
 	}
 	rm, err := lokiring.NewRingManager(schedulerRingKey, managerMode, t.Cfg.QueryScheduler.SchedulerRing, scheduler.ReplicationFactor, scheduler.NumTokens, util_log.Logger, prometheus.DefaultRegisterer)
-
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new scheduler ring manager")
 	}

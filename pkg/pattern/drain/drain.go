@@ -29,7 +29,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/hashicorp/golang-lru/simplelru"
+	"github.com/hashicorp/golang-lru/v2/simplelru"
 	"github.com/prometheus/common/model"
 )
 
@@ -53,21 +53,21 @@ func createLogClusterCache(maxSize int) *LogClusterCache {
 	if maxSize == 0 {
 		maxSize = math.MaxInt
 	}
-	cache, _ := simplelru.NewLRU(maxSize, nil)
+	cache, _ := simplelru.NewLRU[int, *LogCluster](maxSize, nil)
 	return &LogClusterCache{
 		cache: cache,
 	}
 }
 
 type LogClusterCache struct {
-	cache simplelru.LRUCache
+	cache simplelru.LRUCache[int, *LogCluster]
 }
 
 func (c *LogClusterCache) Values() []*LogCluster {
 	values := make([]*LogCluster, 0)
 	for _, key := range c.cache.Keys() {
 		if value, ok := c.cache.Peek(key); ok {
-			values = append(values, value.(*LogCluster))
+			values = append(values, value)
 		}
 	}
 	return values
@@ -80,7 +80,7 @@ func (c *LogClusterCache) Set(key int, cluster *LogCluster) {
 func (c *LogClusterCache) Iterate(fn func(*LogCluster) bool) {
 	for _, key := range c.cache.Keys() {
 		if value, ok := c.cache.Peek(key); ok {
-			if !fn(value.(*LogCluster)) {
+			if !fn(value) {
 				return
 			}
 		}
@@ -92,7 +92,7 @@ func (c *LogClusterCache) Get(key int) *LogCluster {
 	if !ok {
 		return nil
 	}
-	return cluster.(*LogCluster)
+	return cluster
 }
 
 func createNode() *Node {
@@ -142,9 +142,9 @@ func (d *Drain) Clusters() []*LogCluster {
 	return d.idToCluster.Values()
 }
 
-func (d *Drain) Iterate(fn func(*LogCluster) bool) {
-	d.idToCluster.Iterate(fn)
-}
+// func (d *Drain) Iterate(fn func(*LogCluster) bool) {
+// 	d.idToCluster.Iterate(fn)
+// }
 
 func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts int64) *LogCluster {
 	return d.train(tokens, stringer, ts)

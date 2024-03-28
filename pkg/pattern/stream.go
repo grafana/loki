@@ -3,9 +3,11 @@ package pattern
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/pattern/drain"
+	"github.com/grafana/loki/pkg/pattern/iter"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -53,4 +55,12 @@ func (s *stream) Push(
 		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
 	}
 	return nil
+}
+
+func (s *stream) SampleIterator(ctx context.Context, from, through time.Time) (iter.Iterator, error) {
+	// todo we should improve locking.
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	// todo
+	return nil, nil
 }

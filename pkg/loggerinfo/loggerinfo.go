@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,7 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/loggerinfo/drain"
+	// "github.com/grafana/loki/pkg/loggerinfo/drain"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/util"
@@ -60,16 +59,16 @@ type serviceLoggerInfo struct {
 	m sync.Mutex
 
 	logfmtTokens []string
-	patterns     *drain.Drain
+	// patterns     *drain.Drain
 }
 
-var drainConfig = &drain.Config{
-	LogClusterDepth: readConfig[int]("LOG_CLUSTER_DEPTH", strconv.Atoi, 4),
-	SimTh:           readConfig[float64]("LOG_SIM_TH", parseFloat, 0.4),
-	MaxChildren:     100,
-	ParamString:     "<*>",
-	MaxClusters:     0,
-}
+// var drainConfig = &drain.Config{
+// 	LogClusterDepth: readConfig[int]("LOG_CLUSTER_DEPTH", strconv.Atoi, 4),
+// 	SimTh:           readConfig[float64]("LOG_SIM_TH", parseFloat, 0.4),
+// 	MaxChildren:     100,
+// 	ParamString:     "<*>",
+// 	MaxClusters:     0,
+// }
 
 func parseFloat(s string) (float64, error) { return strconv.ParseFloat(s, 64) }
 
@@ -88,7 +87,7 @@ func readConfig[T any](name string, fn func(string) (T, error), d T) T {
 func newServiceLoggerInfo() *serviceLoggerInfo {
 	return &serviceLoggerInfo{
 		logfmtTokens: readConfig[[]string]("LOG_LOGFMT_KEYS", parseLogFmtKeys, nil),
-		patterns:     drain.New(drainConfig),
+		// patterns:     drain.New(drainConfig),
 	}
 }
 
@@ -101,11 +100,11 @@ func (s *serviceLoggerInfo) push(stream push.Stream) {
 	defer s.m.Unlock()
 	for _, entry := range stream.Entries {
 		if len(s.logfmtTokens) > 0 && IsLogFmt(entry.Line) {
-			tokens := TokenizeLogFmt(entry.Line, s.logfmtTokens...)
-			s.patterns.TrainTokens(entry.Line, tokens, LogFmtPattern, entry.Timestamp.UnixNano())
+			// tokens := TokenizeLogFmt(entry.Line, s.logfmtTokens...)
+			// s.patterns.TrainTokens(entry.Line, tokens, LogFmtPattern, entry.Timestamp.UnixNano())
 			continue
 		}
-		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
+		// s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
 	}
 }
 
@@ -176,23 +175,23 @@ func (s *serviceLoggerInfo) getPatterns(start, end model.Time, minMatches int64)
 	s.m.Lock()
 	defer s.m.Unlock()
 	resp := PatternsResponse{Patterns: make([]*Pattern, 0, 1<<10)}
-	s.patterns.Iterate(func(cluster *drain.LogCluster) bool {
-		volume := cluster.Volume.ForRange(start, end)
-		matches := volume.Matches()
-		if matches == 0 || (minMatches > 0 && matches < minMatches) {
-			return true
-		}
-		resp.Patterns = append(resp.Patterns, &Pattern{
-			Name:    "", // TODO
-			Pattern: cluster.String(),
-			Matches: matches,
-			Volume:  volume.Values,
-			Samples: cluster.Samples,
-		})
-		return true
-	})
-	sort.Slice(resp.Patterns, func(i, j int) bool {
-		return resp.Patterns[i].Pattern <= resp.Patterns[j].Pattern
-	})
+	// s.patterns.Iterate(func(cluster *drain.LogCluster) bool {
+	// 	volume := cluster.Volume.ForRange(start, end)
+	// 	matches := volume.Matches()
+	// 	if matches == 0 || (minMatches > 0 && matches < minMatches) {
+	// 		return true
+	// 	}
+	// 	resp.Patterns = append(resp.Patterns, &Pattern{
+	// 		Name:    "", // TODO
+	// 		Pattern: cluster.String(),
+	// 		Matches: matches,
+	// 		Volume:  volume.Values,
+	// 		Samples: cluster.Samples,
+	// 	})
+	// 	return true
+	// })
+	// sort.Slice(resp.Patterns, func(i, j int) bool {
+	// 	return resp.Patterns[i].Pattern <= resp.Patterns[j].Pattern
+	// })
 	return resp
 }
