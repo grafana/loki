@@ -90,6 +90,7 @@ func TestMappingEquivalence(t *testing.T) {
 				logproto.FORWARD,
 				uint32(limit),
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 
@@ -162,6 +163,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 				logproto.FORWARD,
 				uint32(limit),
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 			qry := regular.Query(params)
@@ -196,6 +198,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 				0,
 				logproto.FORWARD,
 				uint32(limit),
+				nil,
 				nil,
 			)
 			require.NoError(t, err)
@@ -263,6 +266,7 @@ func TestShardCounter(t *testing.T) {
 				interval,
 				logproto.FORWARD,
 				uint32(limit),
+				nil,
 				nil,
 			)
 			require.NoError(t, err)
@@ -523,6 +527,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 				interval,
 				logproto.FORWARD,
 				uint32(limit),
+				nil,
 				nil,
 			)
 			require.NoError(t, err)

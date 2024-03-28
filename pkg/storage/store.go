@@ -366,6 +366,7 @@ func decodeReq(req logql.QueryParams) ([]*labels.Matcher, model.Time, model.Time
 
 // TODO(owen-d): refactor this. Injecting shard labels via matchers is a big hack and we shouldn't continue
 // doing it, _but_ it requires adding `fingerprintfilter` support to much of our storage interfaces
+// or a way to transform the base store into a more specialized variant.
 func injectShardLabel(shards []string, matchers []*labels.Matcher) ([]*labels.Matcher, error) {
 	if shards != nil {
 		parsed, _, err := logql.ParseShards(shards)
@@ -402,7 +403,12 @@ func (s *LokiStore) SetPipelineWrapper(wrapper lokilog.PipelineWrapper) {
 }
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
-func (s *LokiStore) lazyChunks(ctx context.Context, from, through model.Time, predicate chunk.Predicate) ([]*LazyChunk, error) {
+func (s *LokiStore) lazyChunks(
+	ctx context.Context,
+	from, through model.Time,
+	predicate chunk.Predicate,
+	storeChunksOverride *logproto.ChunkRefGroup,
+) ([]*LazyChunk, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -411,7 +417,7 @@ func (s *LokiStore) lazyChunks(ctx context.Context, from, through model.Time, pr
 	stats := stats.FromContext(ctx)
 
 	start := time.Now()
-	chks, fetchers, err := s.GetChunks(ctx, userID, from, through, predicate)
+	chks, fetchers, err := s.GetChunks(ctx, userID, from, through, predicate, storeChunksOverride)
 	stats.AddChunkRefsFetchTime(time.Since(start))
 
 	if err != nil {
@@ -487,7 +493,7 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan))
+	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan), req.GetStoreChunks())
 	if err != nil {
 		return nil, err
 	}

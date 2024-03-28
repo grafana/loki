@@ -35,6 +35,9 @@ message LokiRequest {
   string path = 7;
   repeated string shards = 8 [(gogoproto.jsontag) = "shards"];
   Plan plan = 10 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
+  // If populated, these represent the chunk references that the querier should
+  // use to fetch the data, plus any other chunks reported by ingesters.
+  logproto.ChunkRefGroup storeChunks = 11 [(gogoproto.jsontag) = "storeChunks"];
 }
 
 message LokiInstantRequest {
@@ -48,6 +51,9 @@ message LokiInstantRequest {
   string path = 5;
   repeated string shards = 6 [(gogoproto.jsontag) = "shards"];
   Plan plan = 7 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
+  // If populated, these represent the chunk references that the querier should
+  // use to fetch the data, plus any other chunks reported by ingesters.
+  logproto.ChunkRefGroup storeChunks = 8 [(gogoproto.jsontag) = "storeChunks"];
 }
 
 message Plan {

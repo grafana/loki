@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"container/heap"
 	"context"
-	"errors"
 	"fmt"
 	io "io"
 	"net/http"
@@ -14,14 +13,12 @@ import (
 	strings "strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/timestamp"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -32,6 +29,8 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	indexStats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
@@ -267,52 +266,19 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 
 	switch op := getOperation(r.URL.Path); op {
 	case QueryRangeOp:
-		rangeQuery, err := loghttp.ParseRangeQuery(r)
+		req, err := parseRangeQueryWithStoreChunksExtension(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		parsed, err := syntax.ParseExpr(rangeQuery.Query)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
-		return &LokiRequest{
-			Query:     rangeQuery.Query,
-			Limit:     rangeQuery.Limit,
-			Direction: rangeQuery.Direction,
-			StartTs:   rangeQuery.Start.UTC(),
-			EndTs:     rangeQuery.End.UTC(),
-			Step:      rangeQuery.Step.Milliseconds(),
-			Interval:  rangeQuery.Interval.Milliseconds(),
-			Path:      r.URL.Path,
-			Shards:    rangeQuery.Shards,
-			Plan: &plan.QueryPlan{
-				AST: parsed,
-			},
-		}, nil
+		return req, nil
 	case InstantQueryOp:
-		req, err := loghttp.ParseInstantQuery(r)
+		req, err := parseInstantQueryWithStoreChunksExtension(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		parsed, err := syntax.ParseExpr(req.Query)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
-		return &LokiInstantRequest{
-			Query:     req.Query,
-			Limit:     req.Limit,
-			Direction: req.Direction,
-			TimeTs:    req.Ts.UTC(),
-			Path:      r.URL.Path,
-			Shards:    req.Shards,
-			Plan: &plan.QueryPlan{
-				AST: parsed,
-			},
-		}, nil
+		return req, nil
 	case SeriesOp:
 		req, err := loghttp.ParseAndValidateSeriesQuery(r)
 		if err != nil {
@@ -452,52 +418,19 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 
 	switch op := getOperation(httpReq.URL.Path); op {
 	case QueryRangeOp:
-		req, err := loghttp.ParseRangeQuery(httpReq)
+		req, err := parseRangeQueryWithStoreChunksExtension(httpReq)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		parsed, err := syntax.ParseExpr(req.Query)
-		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
-		return &LokiRequest{
-			Query:     req.Query,
-			Limit:     req.Limit,
-			Direction: req.Direction,
-			StartTs:   req.Start.UTC(),
-			EndTs:     req.End.UTC(),
-			Step:      req.Step.Milliseconds(),
-			Interval:  req.Interval.Milliseconds(),
-			Path:      r.Url,
-			Shards:    req.Shards,
-			Plan: &plan.QueryPlan{
-				AST: parsed,
-			},
-		}, ctx, nil
+		return req, ctx, nil
 	case InstantQueryOp:
-		req, err := loghttp.ParseInstantQuery(httpReq)
+		req, err := parseInstantQueryWithStoreChunksExtension(httpReq)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		parsed, err := syntax.ParseExpr(req.Query)
-		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
-		return &LokiInstantRequest{
-			Query:     req.Query,
-			Limit:     req.Limit,
-			Direction: req.Direction,
-			TimeTs:    req.Ts.UTC(),
-			Path:      r.Url,
-			Shards:    req.Shards,
-			Plan: &plan.QueryPlan{
-				AST: parsed,
-			},
-		}, ctx, nil
+		return req, ctx, nil
 	case SeriesOp:
 		req, err := loghttp.ParseAndValidateSeriesQuery(httpReq)
 		if err != nil {
@@ -688,6 +621,17 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 		if request.Interval != 0 {
 			params["interval"] = []string{fmt.Sprintf("%f", float64(request.Interval)/float64(1e3))}
+		}
+		// undocumented param to allow specifying store chunks for a request,
+		// used in bounded tsdb sharding
+		// TODO(owen-d): version & encode in body instead? We're experiencing the limits
+		// using the same reprs for internal vs external APIs and maybe we should handle that.
+		if request.StoreChunks != nil {
+			b, err := request.StoreChunks.Marshal()
+			if err != nil {
+				return nil, errors.Wrap(err, "marshaling store chunks")
+			}
+			params["storeChunks"] = []string{string(b)}
 		}
 		u := &url.URL{
 			// the request could come /api/prom/query but we want to only use the new api.
@@ -1637,6 +1581,10 @@ func (p paramsSeriesWrapper) Shards() []string {
 	return p.GetShards()
 }
 
+func (p paramsSeriesWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
 type paramsLabelWrapper struct {
 	*LabelRequest
 }
@@ -1669,6 +1617,10 @@ func (p paramsLabelWrapper) Shards() []string {
 	return make([]string, 0)
 }
 
+func (p paramsLabelWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
 type paramsStatsWrapper struct {
 	*logproto.IndexStatsRequest
 }
@@ -1699,6 +1651,10 @@ func (p paramsStatsWrapper) Direction() logproto.Direction {
 func (p paramsStatsWrapper) Limit() uint32 { return 0 }
 func (p paramsStatsWrapper) Shards() []string {
 	return make([]string, 0)
+}
+
+func (p paramsStatsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
 }
 
 func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryrangebase.PrometheusResponseHeader {
@@ -1799,4 +1755,79 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 			Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
 		},
 	}
+}
+
+func parseRangeQueryWithStoreChunksExtension(r *http.Request) (*LokiRequest, error) {
+	rangeQuery, err := loghttp.ParseRangeQuery(r)
+	if err != nil {
+		return nil, err
+	}
+
+	parsed, err := syntax.ParseExpr(rangeQuery.Query)
+	if err != nil {
+		return nil, err
+	}
+
+	storeChunks, err := parseStoreChunks(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LokiRequest{
+		Query:       rangeQuery.Query,
+		Limit:       rangeQuery.Limit,
+		Direction:   rangeQuery.Direction,
+		StartTs:     rangeQuery.Start.UTC(),
+		EndTs:       rangeQuery.End.UTC(),
+		Step:        rangeQuery.Step.Milliseconds(),
+		Interval:    rangeQuery.Interval.Milliseconds(),
+		Path:        r.URL.Path,
+		Shards:      rangeQuery.Shards,
+		StoreChunks: storeChunks,
+		Plan: &plan.QueryPlan{
+			AST: parsed,
+		},
+	}, nil
+}
+
+func parseInstantQueryWithStoreChunksExtension(r *http.Request) (*LokiInstantRequest, error) {
+	req, err := loghttp.ParseInstantQuery(r)
+	if err != nil {
+		return nil, err
+	}
+
+	parsed, err := syntax.ParseExpr(req.Query)
+	if err != nil {
+		return nil, err
+	}
+
+	storeChunks, err := parseStoreChunks(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LokiInstantRequest{
+		Query:       req.Query,
+		Limit:       req.Limit,
+		Direction:   req.Direction,
+		TimeTs:      req.Ts.UTC(),
+		Path:        r.URL.Path,
+		Shards:      req.Shards,
+		StoreChunks: storeChunks,
+		Plan: &plan.QueryPlan{
+			AST: parsed,
+		},
+	}, nil
+}
+
+// escape hatch for including store chunks in the request
+func parseStoreChunks(r *http.Request) (*logproto.ChunkRefGroup, error) {
+	if s := r.Form.Get("storeChunks"); s != "" {
+		storeChunks := &logproto.ChunkRefGroup{}
+		if err := storeChunks.Unmarshal([]byte(s)); err != nil {
+			return nil, errors.Wrap(err, "unmarshaling storeChunks")
+		}
+		return storeChunks, nil
+	}
+	return nil, nil
 }

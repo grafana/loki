@@ -66,6 +66,9 @@ message QueryRequest {
   repeated string shards = 7 [(gogoproto.jsontag) = "shards,omitempty"];
   repeated Delete deletes = 8;
   Plan plan = 9 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
+  // If populated, these represent the chunk references that the querier should
+  // use to fetch the data, plus any other chunks reported by ingesters.
+  ChunkRefGroup storeChunks = 10 [(gogoproto.jsontag) = "storeChunks"];
 }
 
 message SampleQueryRequest {
@@ -81,6 +84,9 @@ message SampleQueryRequest {
   repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
   repeated Delete deletes = 5;
   Plan plan = 6 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
+  // If populated, these represent the chunk references that the querier should
+  // use to fetch the data, plus any other chunks reported by ingesters.
+  ChunkRefGroup storeChunks = 10 [(gogoproto.jsontag) = "storeChunks"];
 }
 
 // TODO(owen-d): fix. This will break rollouts as soon as the internal repr is changed.
@@ -270,6 +276,13 @@ message ChunkRef {
   // The checksum is not written to the external storage. We use crc32,
   // Castagnoli table. See http://www.evanjones.ca/crc32c.html.
   uint32 checksum = 5 [(gogoproto.jsontag) = "-"];
+}
+
+message ChunkRefGroup {
+  repeated ChunkRef refs = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "refs"
+  ];
 }
 
 message LabelValuesForMetricNameRequest {
