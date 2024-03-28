@@ -13,6 +13,7 @@ import (
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/controllers/loki/internal/lokistack"
+	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
 // RecordingRuleReconciler reconciles a RecordingRule object
@@ -46,8 +47,14 @@ func (r *RecordingRuleReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RecordingRuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr)
+	return r.buildController(k8s.NewCtrlBuilder(b))
+}
+
+func (r *RecordingRuleReconciler) buildController(bld k8s.Builder) error {
+	return bld.
 		For(&lokiv1.RecordingRule{}).
 		Watches(&corev1.Namespace{}, &handler.EnqueueRequestForObject{}, builder.OnlyMetadata).
+		WithLogConstructor(genericLogConstructor(r.Log, RecordingRuleCtrlName)).
 		Complete(r)
 }

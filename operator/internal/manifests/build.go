@@ -119,7 +119,7 @@ func ApplyDefaultSettings(opts *Options) error {
 	spec := DefaultLokiStackSpec(opts.Stack.Size)
 
 	if err := mergo.Merge(spec, opts.Stack, mergo.WithOverride); err != nil {
-		return kverrors.Wrap(err, "failed merging stack user options", "name", opts.Name)
+		return kverrors.Wrap(err, "failed merging stack user options")
 	}
 
 	strictOverrides := lokiv1.LokiStackSpec{

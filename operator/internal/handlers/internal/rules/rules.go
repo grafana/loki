@@ -9,6 +9,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -52,7 +53,7 @@ func BuildOptions(
 
 	rulerConfig, err = getRulerConfig(ctx, k, stackKey)
 	if err != nil {
-		log.Error(err, "failed to lookup ruler config", "key", stackKey)
+		log.Error(err, "failed to lookup ruler config")
 	}
 
 	if rulerConfig != nil && rulerConfig.RemoteWriteSpec != nil && rulerConfig.RemoteWriteSpec.ClientSpec != nil {
@@ -66,7 +67,7 @@ func BuildOptions(
 					Requeue: false,
 				}
 			}
-			return nil, nil, ruler, ocpOpts, kverrors.Wrap(err, "failed to lookup lokistack ruler secret", "name", key)
+			return nil, nil, ruler, ocpOpts, kverrors.Wrap(err, "failed to lookup lokistack ruler secret", "secret", klog.KRef(key.Namespace, key.Name))
 		}
 
 		rulerSecret, err = ExtractRulerSecret(&rs, rulerConfig.RemoteWriteSpec.ClientSpec.AuthorizationType)

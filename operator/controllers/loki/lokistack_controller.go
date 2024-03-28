@@ -17,6 +17,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -139,18 +140,20 @@ type LokiStackReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	ll := logWithLokiStackRef(r.Log, req, LokiStackCtrlName)
+
 	ok, err := state.IsManaged(ctx, req, r.Client)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 	if !ok {
-		r.Log.Info("Skipping reconciliation for unmanaged lokistack resource", "name", req.NamespacedName)
+		ll.Info("skipping reconciliation for unmanaged lokistack resource")
 		// Stop requeueing for unmanaged LokiStack custom resources
 		return ctrl.Result{}, nil
 	}
 
 	var degraded *status.DegradedError
-	credentialMode, err := r.updateResources(ctx, req)
+	credentialMode, err := r.updateResources(ctx, ll, req)
 	switch {
 	case errors.As(err, &degraded):
 		// degraded errors are handled by status.Refresh below
@@ -172,9 +175,9 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
-func (r *LokiStackReconciler) updateResources(ctx context.Context, req ctrl.Request) (lokiv1.CredentialMode, error) {
+func (r *LokiStackReconciler) updateResources(ctx context.Context, log logr.Logger, req ctrl.Request) (lokiv1.CredentialMode, error) {
 	if r.FeatureGates.BuiltInCertManagement.Enabled {
-		if err := handlers.CreateOrRotateCertificates(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates); err != nil {
+		if err := handlers.CreateOrRotateCertificates(ctx, log, req, r.Client, r.Scheme, r.FeatureGates); err != nil {
 			return "", err
 		}
 	}
@@ -214,7 +217,8 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
 		Watches(&corev1.Service{}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
 		Watches(&corev1.Secret{}, r.enqueueForStorageSecret(), createUpdateOrDeletePred).
-		Watches(&corev1.ConfigMap{}, r.enqueueForStorageCA(), createUpdateOrDeletePred)
+		Watches(&corev1.ConfigMap{}, r.enqueueForStorageCA(), createUpdateOrDeletePred).
+		WithLogConstructor(lokiStackLogConstructor(r.Log, LokiStackCtrlName))
 
 	if r.FeatureGates.LokiStackAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
@@ -324,7 +328,10 @@ func (r *LokiStackReconciler) enqueueForStorageSecret() handler.EventHandler {
 						Name:      stack.Name,
 					},
 				})
-				r.Log.Info("Enqueued requests for LokiStack because of Storage Secret resource change", "LokiStack", stack.Name, "Secret", obj.GetName())
+				r.Log.Info("Enqueued requests for LokiStack because of Storage Secret resource change",
+					"lokistack", klog.KRef(stack.Namespace, stack.Name),
+					"secret", klog.KRef(obj.GetNamespace(), obj.GetName()),
+				)
 
 				return requests
 			}
@@ -359,7 +366,10 @@ func (r *LokiStackReconciler) enqueueForStorageCA() handler.EventHandler {
 					Name:      stack.Name,
 				},
 			})
-			r.Log.Info("Enqueued request for LokiStack because of Storage CA resource change", "LokiStack", stack.Name, "ConfigMap", obj.GetName())
+			r.Log.Info("Enqueued request for LokiStack because of Storage CA resource change",
+				"lokistack", klog.KRef(stack.Namespace, stack.Name),
+				"configmap", klog.KRef(obj.GetNamespace(), obj.GetName()),
+			)
 		}
 
 		return requests
