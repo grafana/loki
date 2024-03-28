@@ -151,6 +151,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 		retentionPeriodForUser := tenantsRetention.RetentionPeriodFor(userID, lbs)
 
 		stats.StructuredMetadataBytes[retentionPeriodForUser] += int64(resourceAttributesAsStructuredMetadataSize)
+		if tracker != nil {
+			tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(resourceAttributesAsStructuredMetadataSize))
+		}
+
 		stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser], resourceAttributesAsStructuredMetadata...)
 
 		for j := 0; j < sls.Len(); j++ {
@@ -202,6 +206,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 
 			scopeAttributesAsStructuredMetadataSize := labelsSize(scopeAttributesAsStructuredMetadata)
 			stats.StructuredMetadataBytes[retentionPeriodForUser] += int64(scopeAttributesAsStructuredMetadataSize)
+			if tracker != nil {
+				tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(scopeAttributesAsStructuredMetadataSize))
+			}
+
 			stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser], scopeAttributesAsStructuredMetadata...)
 			for k := 0; k < logs.Len(); k++ {
 				log := logs.At(k)

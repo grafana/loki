@@ -77,7 +77,6 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/querylimits"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
-	util_ring "github.com/grafana/loki/pkg/util/ring"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -86,49 +85,49 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 
 // The various modules that make up Loki.
 const (
-	Ring                          string = "ring"
-	RuntimeConfig                 string = "runtime-config"
-	Overrides                     string = "overrides"
-	OverridesExporter             string = "overrides-exporter"
-	TenantConfigs                 string = "tenant-configs"
-	Server                        string = "server"
-	InternalServer                string = "internal-server"
-	Distributor                   string = "distributor"
-	Querier                       string = "querier"
-	CacheGenerationLoader         string = "cache-generation-loader"
-	Ingester                      string = "ingester"
-	PatternIngester               string = "pattern-ingester"
-	PatternTee                    string = "pattern-tee"
-	IngesterQuerier               string = "ingester-querier"
-	IngesterQueryTagsInterceptors string = "ingester-query-tags-interceptors"
-	QueryFrontend                 string = "query-frontend"
-	QueryFrontendTripperware      string = "query-frontend-tripperware"
-	QueryLimiter                  string = "query-limiter"
-	QueryLimitsInterceptors       string = "query-limits-interceptors"
-	QueryLimitsTripperware        string = "query-limits-tripper"
-	RulerStorage                  string = "ruler-storage"
-	Ruler                         string = "ruler"
-	RuleEvaluator                 string = "rule-evaluator"
-	Store                         string = "store"
-	TableManager                  string = "table-manager"
-	MemberlistKV                  string = "memberlist-kv"
-	Compactor                     string = "compactor"
-	BloomGateway                  string = "bloom-gateway"
-	BloomGatewayRing              string = "bloom-gateway-ring"
-	IndexGateway                  string = "index-gateway"
-	IndexGatewayRing              string = "index-gateway-ring"
-	IndexGatewayInterceptors      string = "index-gateway-interceptors"
-	QueryScheduler                string = "query-scheduler"
-	QuerySchedulerRing            string = "query-scheduler-ring"
-	BloomCompactor                string = "bloom-compactor"
-	BloomCompactorRing            string = "bloom-compactor-ring"
-	BloomStore                    string = "bloom-store"
-	All                           string = "all"
-	Read                          string = "read"
-	Write                         string = "write"
-	Backend                       string = "backend"
-	Analytics                     string = "analytics"
-	InitCodec                     string = "init-codec"
+	Ring                     string = "ring"
+	RuntimeConfig            string = "runtime-config"
+	Overrides                string = "overrides"
+	OverridesExporter        string = "overrides-exporter"
+	TenantConfigs            string = "tenant-configs"
+	Server                   string = "server"
+	InternalServer           string = "internal-server"
+	Distributor              string = "distributor"
+	Querier                  string = "querier"
+	CacheGenerationLoader    string = "cache-generation-loader"
+	Ingester                 string = "ingester"
+	PatternIngester          string = "pattern-ingester"
+	PatternTee               string = "pattern-tee"
+	IngesterQuerier          string = "ingester-querier"
+	IngesterGRPCInterceptors string = "ingester-query-tags-interceptors"
+	QueryFrontend            string = "query-frontend"
+	QueryFrontendTripperware string = "query-frontend-tripperware"
+	QueryLimiter             string = "query-limiter"
+	QueryLimitsInterceptors  string = "query-limits-interceptors"
+	QueryLimitsTripperware   string = "query-limits-tripper"
+	RulerStorage             string = "ruler-storage"
+	Ruler                    string = "ruler"
+	RuleEvaluator            string = "rule-evaluator"
+	Store                    string = "store"
+	TableManager             string = "table-manager"
+	MemberlistKV             string = "memberlist-kv"
+	Compactor                string = "compactor"
+	BloomGateway             string = "bloom-gateway"
+	BloomGatewayRing         string = "bloom-gateway-ring"
+	IndexGateway             string = "index-gateway"
+	IndexGatewayRing         string = "index-gateway-ring"
+	IndexGatewayInterceptors string = "index-gateway-interceptors"
+	QueryScheduler           string = "query-scheduler"
+	QuerySchedulerRing       string = "query-scheduler-ring"
+	BloomCompactor           string = "bloom-compactor"
+	BloomCompactorRing       string = "bloom-compactor-ring"
+	BloomStore               string = "bloom-store"
+	All                      string = "all"
+	Read                     string = "read"
+	Write                    string = "write"
+	Backend                  string = "backend"
+	Analytics                string = "analytics"
+	InitCodec                string = "init-codec"
 )
 
 const (
@@ -406,7 +405,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader),
+		httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
@@ -416,6 +415,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
+	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
 	volumeHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.VolumeInstant", t.Overrides)
 	volumeRangeHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.VolumeRange", t.Overrides)
 	seriesHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.Series", t.Overrides)
@@ -467,6 +467,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if querierWorkerServiceConfig.QuerierRunningStandalone() {
 		labelsHTTPMiddleware = middleware.Merge(httpMiddleware, labelsHTTPMiddleware)
 		indexStatsHTTPMiddleware = middleware.Merge(httpMiddleware, indexStatsHTTPMiddleware)
+		indexShardsHTTPMiddleware = middleware.Merge(httpMiddleware, indexShardsHTTPMiddleware)
 		volumeHTTPMiddleware = middleware.Merge(httpMiddleware, volumeHTTPMiddleware)
 		volumeRangeHTTPMiddleware = middleware.Merge(httpMiddleware, volumeRangeHTTPMiddleware)
 		seriesHTTPMiddleware = middleware.Merge(httpMiddleware, seriesHTTPMiddleware)
@@ -497,6 +498,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 		router.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(seriesHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(indexStatsHTTPMiddleware.Wrap(httpHandler))
+		router.Path("/loki/api/v1/index/shards").Methods("GET", "POST").Handler(indexShardsHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/volume").Methods("GET", "POST").Handler(volumeHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/volume_range").Methods("GET", "POST").Handler(volumeRangeHTTPMiddleware.Wrap(httpHandler))
 
@@ -1017,7 +1019,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader),
+		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
@@ -1073,6 +1075,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/loki/api/v1/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/index/shards").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/volume").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/volume_range").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/query").Methods("GET", "POST").Handler(frontendHandler)
@@ -1086,6 +1089,10 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		// defer tail endpoints to the default handler
 		t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(defaultHandler)
 		t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(defaultHandler)
+	}
+
+	if t.Cfg.Frontend.ExperimentalAPIsEnabled {
+		t.Server.HTTP.Path("/loki/api/experimental/detected_fields").Methods("GET", "POST").Handler(frontendHandler)
 	}
 
 	if t.frontend == nil {
@@ -1509,15 +1516,14 @@ func (t *Loki) initBloomCompactor() (services.Service, error) {
 	}
 	logger := log.With(util_log.Logger, "component", "bloom-compactor")
 
-	shuffleSharding := util_ring.NewTenantShuffleSharding(t.bloomCompactorRingManager.Ring, t.bloomCompactorRingManager.RingLifecycler, t.Overrides.BloomCompactorShardSize)
-
 	return bloomcompactor.New(
 		t.Cfg.BloomCompactor,
 		t.Cfg.SchemaConfig,
 		t.Cfg.StorageConfig,
 		t.ClientMetrics,
 		t.Store,
-		shuffleSharding,
+		t.bloomCompactorRingManager.Ring,
+		t.bloomCompactorRingManager.RingLifecycler,
 		t.Overrides,
 		t.BloomStore,
 		logger,
@@ -1606,10 +1612,19 @@ func (t *Loki) initQueryLimitsInterceptors() (services.Service, error) {
 	return nil, nil
 }
 
-func (t *Loki) initIngesterQueryTagsInterceptors() (services.Service, error) {
+func (t *Loki) initIngesterGRPCInterceptors() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing ingester query tags interceptors")
-	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, serverutil.StreamServerQueryTagsInterceptor)
-	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, serverutil.UnaryServerQueryTagsInterceptor)
+	t.Cfg.Server.GRPCStreamMiddleware = append(
+		t.Cfg.Server.GRPCStreamMiddleware,
+		serverutil.StreamServerQueryTagsInterceptor,
+		serverutil.StreamServerHTTPHeadersInterceptor,
+	)
+
+	t.Cfg.Server.GRPCMiddleware = append(
+		t.Cfg.Server.GRPCMiddleware,
+		serverutil.UnaryServerQueryTagsInterceptor,
+		serverutil.UnaryServerHTTPHeadersnIterceptor,
+	)
 
 	return nil, nil
 }

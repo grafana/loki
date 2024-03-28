@@ -43,7 +43,7 @@ type StreamSampleExtractor interface {
 // SampleExtractorWrapper takes an extractor, wraps it is some desired functionality
 // and returns a new pipeline
 type SampleExtractorWrapper interface {
-	Wrap(ctx context.Context, extractor SampleExtractor, query, tenant string, shards int) SampleExtractor
+	Wrap(ctx context.Context, extractor SampleExtractor, query, tenant string) SampleExtractor
 }
 
 type lineSampleExtractor struct {

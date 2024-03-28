@@ -149,6 +149,14 @@ type mockLimits struct {
 	shardSize int
 }
 
+func (m mockLimits) RetentionPeriod(_ string) time.Duration {
+	panic("implement me")
+}
+
+func (m mockLimits) StreamRetention(_ string) []validation.StreamRetention {
+	panic("implement me")
+}
+
 func (m mockLimits) AllByUserID() map[string]*validation.Limits {
 	panic("implement me")
 }

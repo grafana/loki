@@ -123,7 +123,9 @@ func TestBlocksCache_PutAndGet(t *testing.T) {
 	_, found = cache.Get(ctx, "a")
 	require.True(t, found)
 
-	require.Equal(t, 3, cache.lru.Len())
+	l, ok := cache.len()
+	require.True(t, ok)
+	require.Equal(t, 3, l)
 
 	// check LRU order
 	elem := cache.lru.Front()
@@ -187,8 +189,9 @@ func TestBlocksCache_TTLEviction(t *testing.T) {
 	_, found = cache.Get(ctx, "b")
 	require.True(t, found)
 
-	require.Equal(t, 1, cache.lru.Len())
-	require.Equal(t, 1, len(cache.entries))
+	l, ok := cache.len()
+	require.True(t, ok)
+	require.Equal(t, 1, l)
 }
 
 func TestBlocksCache_LRUEviction(t *testing.T) {
@@ -224,8 +227,9 @@ func TestBlocksCache_LRUEviction(t *testing.T) {
 
 	time.Sleep(time.Second)
 
-	require.Equal(t, 3, cache.lru.Len())
-	require.Equal(t, 3, len(cache.entries))
+	l, ok := cache.len()
+	require.True(t, ok)
+	require.Equal(t, 3, l)
 
 	// key "b" was evicted because it was the oldest
 	// and it had no ref counts

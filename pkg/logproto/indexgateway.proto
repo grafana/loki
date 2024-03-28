@@ -2,7 +2,9 @@ syntax = "proto3";
 
 package indexgatewaypb;
 
+import "gogoproto/gogo.proto";
 import "pkg/logproto/logproto.proto";
+import "pkg/logqlmodel/stats/stats.proto";
 
 option go_package = "github.com/grafana/loki/pkg/logproto";
 
@@ -25,4 +27,55 @@ service IndexGateway {
   // Note: this MUST be the same as the variant defined in
   // logproto.proto on the Querier service.
   rpc GetVolume(logproto.VolumeRequest) returns (logproto.VolumeResponse) {}
+
+  // GetShards is an optimized implemented shard-planning implementation
+  // on the index gateway and not on the ingester.
+  rpc GetShards(ShardsRequest) returns (stream ShardsResponse);
+}
+
+message ShardsRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "from"
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "through"
+  ];
+  string query = 3 [(gogoproto.jsontag) = "query"];
+  uint64 target_bytes_per_shard = 4 [(gogoproto.jsontag) = "targetBytesPerShard"];
+}
+
+message ShardsResponse {
+  repeated Shard shards = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "shards"
+  ];
+  stats.Result statistics = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "statistics"
+  ];
+}
+
+message Shard {
+  FPBounds bounds = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "bounds"
+  ];
+  logproto.IndexStatsResponse stats = 2 [(gogoproto.jsontag) = "stats"];
+}
+
+// FPBounds is identical to the definition in `pkg/storage/bloom/v1/bounds.FingerprintBounds`
+// which ensures we can cast between them without allocations.
+message FPBounds {
+  uint64 min = 1 [
+    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint",
+    (gogoproto.jsontag) = "min"
+  ];
+  uint64 max = 2 [
+    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint",
+    (gogoproto.jsontag) = "max"
+  ];
 }
