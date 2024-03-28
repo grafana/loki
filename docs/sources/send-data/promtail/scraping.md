@@ -128,6 +128,37 @@ There are different types of labels present in Promtail:
   uniqueness of the streams. It is set to the absolute path of the file the line
   was read from.
 
+### Example of File Discovery  
+To scrape a set of log files defined manually on a machine, one can use `static_configs` or `file_sd_configs`. Using static_configs, one must reload Promtail to apply modifications. Using `file_sd_configs` that reload is not needed. Promtail reloads discovery files when they are updated.  
+
+The below excerpt of Promtail's configuration show a file_sd_configs that is used to scrape `apt` and `dpkg`'s logs.  
+
+```yaml
+scrape_configs:
+ - job_name: apt-dpkg
+    file_sd_configs:
+      - files:
+        - /etc/promtail/dpkg-apt.yaml
+    refresh_interval: 5m
+```  
+The targets to be scraped by Promtail are defined in `/etc/promtail/dpkg-apt.yaml`. In fact, Promtail read the target to scrape in the list of file provided under `files`.  
+
+Below is the content of `/etc/promtail/dpkg-apt.yaml`.  
+```yaml
+- targets: ["localhost"]
+  labels:
+    job: dpkg
+    __path__: /var/log/dpkg.log
+- targets: ["localhost"]
+  labels:
+    job: apt
+    __path__: /var/log/apt/*.log
+```  
+
+As one can realize, `/etc/promtail/dpkg-apt.yaml` contains the list of targets we would have defined under [static_configs](https://grafana.com/docs/loki/latest/send-data/promtail/configuration/#static_configs).  
+It defines two targets. The first one with label job set to `dpkg` and `__path__` specifying dpkg's log file: `/var/log/dpkg.log`. The second has two labels: the label `job` and again `__path__` specifying the path to APT's log files. This `__path__` contains a glob. Every log file matching that regular expression will be scrapped under that target.  
+To summarize, the above `/etc/promtail/dpkg-apt.yaml` showcase YAML format of file_sd_config discovery file. The JSON format can be seen [here](https://grafana.com/docs/loki/latest/send-data/promtail/configuration/#file_sd_config),  
+
 ### Kubernetes Discovery
 
 While Promtail can use the Kubernetes API to discover pods as
