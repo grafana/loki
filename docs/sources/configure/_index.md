@@ -2363,15 +2363,9 @@ bloom_shipper:
   # CLI flag: -bloom.max-query-page-size
   [max_query_page_size: <int> | default = 64MiB]
 
-  blocks_downloading_queue:
-    # The count of parallel workers that download Bloom Blocks.
-    # CLI flag: -bloom.shipper.blocks-downloading-queue.workers-count
-    [workers_count: <int> | default = 16]
-
-    # Maximum number of task in queue per tenant per bloom-gateway. Enqueuing
-    # the tasks above this limit will fail an error.
-    # CLI flag: -bloom.shipper.blocks-downloading-queue.max_tasks_enqueued_per_tenant
-    [max_tasks_enqueued_per_tenant: <int> | default = 10000]
+  # The amount of maximum concurrent bloom blocks downloads.
+  # CLI flag: -bloom.download-parallelism
+  [download_parallelism: <int> | default = 16]
 
   blocks_cache:
     # Cache for bloom blocks. Soft limit of the cache in bytes. Exceeding this
