@@ -122,9 +122,47 @@ func (p *Pipeline) Run(in chan Entry) chan Entry {
 	})
 	// chain all stages together.
 	for _, m := range p.stages {
-		in = m.Run(in)
+		in = runStageInParallel(in, m, 10)
 	}
 	return in
+}
+
+// parallelism is the number of parallel goroutines you want
+func runStageInParallel(in chan Entry, stage Stage, parallelism int) chan Entry {
+	// create a slice to store all output channels
+	var outChans []chan Entry
+
+	for i := 0; i < parallelism; i++ {
+		outChans = append(outChans, stage.Run(in))
+	}
+
+	// merge all output channels into one cahnnel
+	return merge(outChans...)
+}
+
+func merge(channels ...chan Entry) chan Entry {
+	var wg sync.WaitGroup
+	out := make(chan Entry)
+
+	output := func(c chan Entry) {
+		defer wg.Done()
+		for n := range c {
+			out <- n
+		}
+	}
+
+	wg.Add(len(channels))
+	for _, c := range channels {
+		go output(c)
+	}
+
+	// start a goroutine to close the final output channel
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+
+	return out
 }
 
 // Name implements Stage
