@@ -620,8 +620,7 @@ func (t *Loki) initPatternTee() (_ services.Service, err error) {
 	if err != nil {
 		return nil, err
 	}
-	// todo wrap with middleware
-	t.Tee = tee
+	t.Tee = distributor.WrapTee(t.Tee, tee)
 	return tee, nil
 }
 
