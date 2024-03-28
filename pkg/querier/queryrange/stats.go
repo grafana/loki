@@ -37,6 +37,7 @@ const (
 	queryTypeVolume         = "volume"
 	queryTypeShards         = "shards"
 	queryTypeDetectedFields = "detected_fields"
+	queryTypeDetectedLabels = "detected_labels"
 )
 
 var (
@@ -64,6 +65,8 @@ func recordQueryMetrics(data *queryData) {
 		logql.RecordVolumeQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.QueryString(), data.params.Limit(), data.params.Step(), data.status, *data.statistics)
 	case queryTypeDetectedFields:
 		logql.RecordDetectedFieldsQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.QueryString(), data.status, *data.statistics)
+	case queryTypeDetectedLabels:
+		logql.RecordDetectedLabelsQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.QueryString(), data.status, *data.statistics)
 	default:
 		level.Error(logger).Log("msg", "failed to record query metrics", "err", fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got %s", data.queryType))
 	}

@@ -253,3 +253,20 @@ func (m *DetectedFieldsResponse) WithHeaders(h []queryrangebase.PrometheusRespon
 	m.Headers = h
 	return m
 }
+
+// GetHeaders returns the HTTP headers in the response.
+func (m *DetectedLabelsResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+	if m != nil {
+		return convertPrometheusResponseHeadersToPointers(m.Headers)
+	}
+	return nil
+}
+
+func (m *DetectedLabelsResponse) SetHeader(name, value string) {
+	m.Headers = setHeader(m.Headers, name, value)
+}
+
+func (m *DetectedLabelsResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+	m.Headers = h
+	return m
+}

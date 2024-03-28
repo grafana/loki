@@ -1058,6 +1058,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	if t.Cfg.Frontend.ExperimentalAPIsEnabled {
 		t.Server.HTTP.Path("/loki/api/experimental/detected_fields").Methods("GET", "POST").Handler(frontendHandler)
+		t.Server.HTTP.Path("/loki/api/experimental/detected_labels").Methods("GET", "POST").Handler(frontendHandler)
 	}
 
 	if t.frontend == nil {
