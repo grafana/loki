@@ -336,7 +336,7 @@ type Config struct {
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig boltdb.IndexCfg           `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
 	TSDBShipperConfig   indexshipper.Config       `yaml:"tsdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required fields only required when TSDB is defined in config."`
-	BloomShipperConfig  bloomshipperconfig.Config `yaml:"bloom_shipper" doc:"description=Configures Bloom Shipper."`
+	BloomShipperConfig  bloomshipperconfig.Config `yaml:"bloom_shipper" doc:"description=Configures the bloom shipper component, which contains the store abstraction to fetch bloom filters from and put them to object storage."`
 
 	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.
 	// It is required for getting chunk ids of recently flushed chunks from the ingesters.

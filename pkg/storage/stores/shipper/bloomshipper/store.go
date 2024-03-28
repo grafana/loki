@@ -278,7 +278,7 @@ func NewBloomStore(
 	// TODO(chaudum): Remove wrapper
 	cfg := bloomStoreConfig{
 		workingDirs:      storageConfig.BloomShipperConfig.WorkingDirectory,
-		numWorkers:       storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
+		numWorkers:       storageConfig.BloomShipperConfig.DownloadParallelism,
 		maxBloomPageSize: int(storageConfig.BloomShipperConfig.MaxQueryPageSize),
 	}
 

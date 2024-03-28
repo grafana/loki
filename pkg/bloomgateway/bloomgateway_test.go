@@ -72,10 +72,8 @@ func setupBloomStore(t *testing.T) *bloomshipper.BloomStore {
 	}
 	storageCfg := storage.Config{
 		BloomShipperConfig: bloomshipperconfig.Config{
-			WorkingDirectory: []string{t.TempDir()},
-			BlocksDownloadingQueue: bloomshipperconfig.DownloadingQueueConfig{
-				WorkersCount: 1,
-			},
+			WorkingDirectory:    []string{t.TempDir()},
+			DownloadParallelism: 1,
 			BlocksCache: bloomshipperconfig.BlocksCacheConfig{
 				SoftLimit: flagext.Bytes(10 << 20),
 				HardLimit: flagext.Bytes(20 << 20),
