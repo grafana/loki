@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.47.2
 
 - [ENHANCEMENT] Allow for additional pipeline stages to be configured on the `selfMonitoring` `Podlogs` resource.
+- [ENHANCEMENT] Allow for additional pipeline stages to be configured on the `selfMonitoring` `PodLogs` resource.
 -
 ## 5.47.1
 
