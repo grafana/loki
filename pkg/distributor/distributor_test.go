@@ -802,17 +802,25 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 }
 
 func TestParseStreamLabels(t *testing.T) {
+	defaultLimit := &validation.Limits{}
+	flagext.DefaultValues(defaultLimit)
+
 	for _, tc := range []struct {
-		name                           string
-		origLabels                     string
-		disableServiceNameLabelMapping bool
-		expectedLabels                 labels.Labels
-		expectedErr                    error
+		name           string
+		origLabels     string
+		expectedLabels labels.Labels
+		expectedErr    error
+		generateLimits func() *validation.Limits
 	}{
 		{
-			name:                           "service name label mapping disabled",
-			disableServiceNameLabelMapping: true,
-			origLabels:                     `{foo="bar"}`,
+			name: "service name label mapping disabled",
+			generateLimits: func() *validation.Limits {
+				limits := &validation.Limits{}
+				flagext.DefaultValues(limits)
+				limits.DiscoverServiceName = nil
+				return limits
+			},
+			origLabels: `{foo="bar"}`,
 			expectedLabels: labels.Labels{
 				{
 					Name:  "foo",
@@ -821,15 +829,27 @@ func TestParseStreamLabels(t *testing.T) {
 			},
 		},
 		{
-			name:                           "no labels defined - service name label mapping disabled",
-			disableServiceNameLabelMapping: true,
-			origLabels:                     `{}`,
-			expectedErr:                    fmt.Errorf(validation.MissingLabelsErrorMsg),
+			name: "no labels defined - service name label mapping disabled",
+			generateLimits: func() *validation.Limits {
+				limits := &validation.Limits{}
+				flagext.DefaultValues(limits)
+				limits.DiscoverServiceName = nil
+				return limits
+			},
+			origLabels:  `{}`,
+			expectedErr: fmt.Errorf(validation.MissingLabelsErrorMsg),
 		},
 		{
-			name:       "no labels defined",
-			origLabels: `{}`,
+			name:       "service name label enabled",
+			origLabels: `{foo="bar"}`,
+			generateLimits: func() *validation.Limits {
+				return defaultLimit
+			},
 			expectedLabels: labels.Labels{
+				{
+					Name:  "foo",
+					Value: "bar",
+				},
 				{
 					Name:  labelServiceName,
 					Value: serviceUnknown,
@@ -837,8 +857,14 @@ func TestParseStreamLabels(t *testing.T) {
 			},
 		},
 		{
-			name:       "service name label enabled",
+			name:       "service name label should not get counted against max labels count",
 			origLabels: `{foo="bar"}`,
+			generateLimits: func() *validation.Limits {
+				limits := &validation.Limits{}
+				flagext.DefaultValues(limits)
+				limits.MaxLabelNamesPerSeries = 1
+				return limits
+			},
 			expectedLabels: labels.Labels{
 				{
 					Name:  "foo",
@@ -853,6 +879,9 @@ func TestParseStreamLabels(t *testing.T) {
 		{
 			name:       "use label service as service name",
 			origLabels: `{container="nginx", foo="bar", service="auth"}`,
+			generateLimits: func() *validation.Limits {
+				return defaultLimit
+			},
 			expectedLabels: labels.Labels{
 				{
 					Name:  "container",
@@ -873,11 +902,7 @@ func TestParseStreamLabels(t *testing.T) {
 			},
 		},
 	} {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		if tc.disableServiceNameLabelMapping {
-			limits.DiscoverServiceName = nil
-		}
+		limits := tc.generateLimits()
 		distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
 		d := distributors[0]
 

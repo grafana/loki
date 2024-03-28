@@ -731,6 +731,11 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 		return nil, "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
+	if err := d.validator.ValidateLabels(vContext, ls, stream); err != nil {
+		return nil, "", 0, err
+	}
+
+	// We do not want to count service_name added by us in the stream limit so adding it after validating original labels.
 	if !ls.Has(labelServiceName) && len(vContext.discoverServiceName) > 0 {
 		serviceName := serviceUnknown
 		for _, labelName := range vContext.discoverServiceName {
@@ -742,10 +747,6 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 
 		ls = labels.NewBuilder(ls).Set(labelServiceName, serviceName).Labels()
 		stream.Labels = ls.String()
-	}
-
-	if err := d.validator.ValidateLabels(vContext, ls, stream); err != nil {
-		return nil, "", 0, err
 	}
 
 	lsHash := ls.Hash()
