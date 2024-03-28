@@ -281,7 +281,7 @@ The `-labelname` and `-labelvalue` flags should also be provided, as these are
 used by Loki Canary to filter the log stream to only process logs for the
 current instance of the canary. Ensure that the values provided to the flags are
 unique to each instance of Loki Canary. Grafana Labs' Tanka config
-accomplishes this by passing in the pod name as the label value.
+accomplishes this by passing in the Pod name as the label value.
 
 If Loki Canary reports a high number of `unexpected_entries`, Loki Canary may
 not be waiting long enough and the value for the `-wait` flag should be

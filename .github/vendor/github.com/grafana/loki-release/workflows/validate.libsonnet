@@ -1,6 +1,7 @@
 local common = import 'common.libsonnet';
 local job = common.job;
 local step = common.step;
+local _validationJob = common.validationJob;
 
 local setupValidationDeps = function(job) job {
   steps: [
@@ -35,15 +36,7 @@ local setupValidationDeps = function(job) job {
   ] + job.steps,
 };
 
-local validationJob = job.new()
-                      + job.withContainer({
-                        image: '${{ inputs.build_image }}',
-                      })
-                      + job.withEnv({
-                        BUILD_IN_CONTAINER: false,
-                        SKIP_VALIDATION: '${{ inputs.skip_validation }}',
-                      });
-
+local validationJob = _validationJob(false);
 
 {
   local validationMakeStep = function(name, target)
@@ -55,6 +48,13 @@ local validationJob = job.new()
     validationJob
     + job.withSteps([
       validationMakeStep('test', 'test'),
+    ])
+  ),
+
+  integration: setupValidationDeps(
+    validationJob
+    + job.withSteps([
+      validationMakeStep('integration', 'test-integration'),
     ])
   ),
 
