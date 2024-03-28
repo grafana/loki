@@ -912,7 +912,7 @@ func (q *SingleTenantQuerier) DetectedFields(_ context.Context, _ *logproto.Dete
 	}, nil
 }
 
-func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+func (q *SingleTenantQuerier) DetectedLabels(_ context.Context, _ *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
 	return &logproto.DetectedLabelsResponse{
 		DetectedLabels: []*logproto.DetectedLabels{
 			{Label: "namespace"},
