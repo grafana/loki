@@ -1,17 +1,34 @@
 ---
-# version: "3"
+version: "3"
 
 networks:
   loki:
 
 services:
-  loki:
-    image: kolesnikovae/loki-loggerinfo:22270e
-#   build:
-#     context: ../../
-#     dockerfile: cmd/loki/Dockerfile
-#     no_cache: true
-    command: "-config.file=/etc/loki/config.yaml"
+  read:
+    image: grafana/loki:2.9.2
+    command: "-config.file=/etc/loki/config.yaml -target=read"
+    ports:
+      - 3101:3100
+      - 7946
+      - 9095
+    volumes:
+      - ./loki-config.yaml:/etc/loki/config.yaml
+    depends_on:
+      - minio
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: &loki-dns
+      loki:
+        aliases:
+          - loki
+
+  write:
+    image: grafana/loki:2.9.2
+    command: "-config.file=/etc/loki/config.yaml -target=write"
     ports:
       - 3102:3100
       - 7946
@@ -23,16 +40,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    environment:
-      LOG_CLUSTER_DEPTH: "8" # Default: 4
-      LOG_SIM_TH: "0.3"      # Default: 0.4
-      # LOG_LOGFMT_KEYS: "level,logger,caller,component"
     depends_on:
       - minio
     networks:
-      loki:
-        aliases:
-          - loki
+      <<: *loki-dns
 
   promtail:
     image: grafana/promtail:2.9.2
@@ -110,7 +121,8 @@ services:
   gateway:
     image: nginx:latest
     depends_on:
-      - loki
+      - read
+      - write
     entrypoint:
       - sh
       - -euc
@@ -135,31 +147,31 @@ services:
             }
 
             location = /api/prom/push {
-              proxy_pass       http://loki:3100\$$request_uri;
+              proxy_pass       http://write:3100\$$request_uri;
             }
 
             location = /api/prom/tail {
-              proxy_pass       http://loki:3100\$$request_uri;
+              proxy_pass       http://read:3100\$$request_uri;
               proxy_set_header Upgrade \$$http_upgrade;
               proxy_set_header Connection "upgrade";
             }
 
             location ~ /api/prom/.* {
-              proxy_pass       http://loki:3100\$$request_uri;
+              proxy_pass       http://read:3100\$$request_uri;
             }
 
             location = /loki/api/v1/push {
-              proxy_pass       http://loki:3100\$$request_uri;
+              proxy_pass       http://write:3100\$$request_uri;
             }
 
             location = /loki/api/v1/tail {
-              proxy_pass       http://loki:3100\$$request_uri;
+              proxy_pass       http://read:3100\$$request_uri;
               proxy_set_header Upgrade \$$http_upgrade;
               proxy_set_header Connection "upgrade";
             }
 
             location ~ /loki/api/.* {
-              proxy_pass       http://loki:3100\$$request_uri;
+              proxy_pass       http://read:3100\$$request_uri;
             }
           }
         }
