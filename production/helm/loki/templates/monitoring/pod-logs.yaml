@@ -18,6 +18,9 @@ metadata:
 spec:
   pipelineStages:
     - cri: { }
+    {{- with .additionalPipelineStages }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   relabelings:
     - action: replace
       sourceLabels:
