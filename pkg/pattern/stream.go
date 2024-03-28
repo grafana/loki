@@ -60,8 +60,10 @@ func (s *stream) Iterator(ctx context.Context, from, through model.Time) (iter.I
 	// todo we should improve locking.
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	clusters := s.patterns.Clusters()
 	iters := make([]iter.Iterator, len(clusters))
+
 	for i, cluster := range clusters {
 		iters[i] = cluster.Iterator(from, through)
 	}

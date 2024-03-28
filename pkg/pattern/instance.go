@@ -47,6 +47,8 @@ func newInstance(instanceID string, logger log.Logger) (*instance, error) {
 	return i, nil
 }
 
+// Push pushes the log entries in the given PushRequest to the appropriate streams.
+// It returns an error if any error occurs during the push operation.
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	appendErr := multierror.New()
 
@@ -69,6 +71,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr.Err()
 }
 
+// Iterator returns an iterator of pattern samples matching the given query patterns request.
 func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequest) (iter.Iterator, error) {
 	matchers, err := syntax.ParseMatchers(req.Selector, true)
 	if err != nil {

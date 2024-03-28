@@ -19,8 +19,12 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/pattern/clientpool"
+	"github.com/grafana/loki/pkg/pattern/iter"
+	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
+
+const readBatchSize = 1024
 
 type Config struct {
 	Enabled          bool                  `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester is enabled."`
@@ -116,11 +120,6 @@ func (i *Ingester) stopping(_ error) error {
 	return nil
 }
 
-func (i *Ingester) TransferOut(_ context.Context) error {
-	// todo may be.
-	return ring.ErrTransferDisabled
-}
-
 // Watch implements grpc_health_v1.HealthCheck.
 func (*Ingester) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health_WatchServer) error {
 	return nil
@@ -138,6 +137,11 @@ func (i *Ingester) CheckReady(ctx context.Context) error {
 
 func (i *Ingester) Flush() {
 	// todo flush or use transfer out
+}
+
+func (i *Ingester) TransferOut(_ context.Context) error {
+	// todo may be.
+	return ring.ErrTransferDisabled
 }
 
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
@@ -166,8 +170,23 @@ func (i *Ingester) Query(req *logproto.QueryPatternsRequest, stream logproto.Pat
 	if err != nil {
 		return err
 	}
-	defer iterator.Close()
-	// todo batch send patterns.
+	defer util.LogErrorWithContext(ctx, "closing iterator", iterator.Close)
+	return sendPatternSample(ctx, iterator, stream)
+}
+
+func sendPatternSample(ctx context.Context, it iter.Iterator, stream logproto.Pattern_QueryServer) error {
+	for ctx.Err() == nil {
+		batch, err := iter.ReadBatch(it, readBatchSize)
+		if err != nil {
+			return err
+		}
+		if err := stream.Send(batch); err != nil && err != context.Canceled {
+			return err
+		}
+		if len(batch.Series) == 0 {
+			return nil
+		}
+	}
 	return nil
 }
 

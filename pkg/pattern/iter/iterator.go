@@ -18,6 +18,7 @@ func NewSlice(pattern string, s []logproto.PatternSample) Iterator {
 	return &sliceIterator{
 		values:  s,
 		pattern: pattern,
+		i:       -1,
 	}
 }
 
@@ -28,11 +29,8 @@ type sliceIterator struct {
 }
 
 func (s *sliceIterator) Next() bool {
-	if s.i >= len(s.values) {
-		return false
-	}
 	s.i++
-	return true
+	return s.i < len(s.values)
 }
 
 func (s *sliceIterator) Pattern() string {
