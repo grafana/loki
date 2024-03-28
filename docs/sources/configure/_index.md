@@ -2824,6 +2824,11 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
 
+# List of labels to map to service_name label, if not present in the stream
+# labels during ingestion. Empty list disables setting the label.
+# CLI flag: -validation.discover-service-name
+[discover_service_name: <list of strings> | default = [service app application container container_name app_kubernetes_io_name component workload job]]
+
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
 [max_streams_per_user: <int> | default = 0]
