@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"golang.org/x/time/rate"
 
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 )
 
@@ -92,6 +93,9 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 
 	// TODO(dannyk): use hedging client to handle requests, do NOT hedge retries
 
+	start := time.Now()
+	statsCtx := stats.FromContext(ctx)
+
 	rc, sz, err := a.retrier.Do(
 		func(attempt int) (io.ReadCloser, int64, error) {
 			a.metrics.requests.Add(1)
@@ -110,6 +114,8 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 				time.Sleep(delay)
 				a.metrics.backoffSec.Add(delay.Seconds())
 			}
+
+			statsCtx.AddCongestionControlLatency(time.Since(start))
 
 			// It is vitally important that retries are DISABLED in the inner implementation.
 			// Some object storage clients implement retries internally, and this will interfere here.

@@ -422,6 +422,7 @@ func TestResultsCache(t *testing.T) {
 			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 		},
 		false,
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -467,6 +468,7 @@ func TestResultsCacheRecent(t *testing.T) {
 		func(_ context.Context, tenantIDs []string, r Request) int {
 			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 		},
+		false,
 		false,
 		nil,
 	)
@@ -577,6 +579,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				func(_ context.Context, tenantIDs []string, r Request) int {
 					return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 				},
+				false,
 				false,
 				nil,
 			)

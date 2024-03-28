@@ -1,5 +1,7 @@
 package storage
 
+import "fmt"
+
 const (
 	// EnvAlibabaCloudAccessKeyID is the environment variable to specify the AlibabaCloud client id to access S3.
 	EnvAlibabaCloudAccessKeyID = "ALIBABA_CLOUD_ACCESS_KEY_ID"
@@ -13,12 +15,24 @@ const (
 	EnvAWSSseKmsEncryptionContext = "AWS_SSE_KMS_ENCRYPTION_CONTEXT"
 	// EnvAWSRoleArn is the environment variable to specify the AWS role ARN secret for the federated identity workflow.
 	EnvAWSRoleArn = "AWS_ROLE_ARN"
-	// EnvAWSWebIdentityToken is the environment variable to specify the path to the web identity token file used in the federated identity workflow.
+	// EnvAWSWebIdentityTokenFile is the environment variable to specify the path to the web identity token file used in the federated identity workflow.
 	EnvAWSWebIdentityTokenFile = "AWS_WEB_IDENTITY_TOKEN_FILE"
+	// EnvAWSCredentialsFile is the environment variable to specify the path to the shared credentials file
+	EnvAWSCredentialsFile = "AWS_SHARED_CREDENTIALS_FILE"
+	// EnvAWSSdkLoadConfig is the environment that enabled the AWS SDK to enable the shared credentials file to be loaded
+	EnvAWSSdkLoadConfig = "AWS_SDK_LOAD_CONFIG"
 	// EnvAzureStorageAccountName is the environment variable to specify the Azure storage account name to access the container.
 	EnvAzureStorageAccountName = "AZURE_STORAGE_ACCOUNT_NAME"
 	// EnvAzureStorageAccountKey is the environment variable to specify the Azure storage account key to access the container.
 	EnvAzureStorageAccountKey = "AZURE_STORAGE_ACCOUNT_KEY"
+	// EnvAzureClientID is the environment variable used to pass the Managed Identity client-ID to the container.
+	EnvAzureClientID = "AZURE_CLIENT_ID"
+	// EnvAzureTenantID is the environment variable used to pass the Managed Identity tenant-ID to the container.
+	EnvAzureTenantID = "AZURE_TENANT_ID"
+	// EnvAzureSubscriptionID is the environment variable used to pass the Managed Identity subscription-ID to the container.
+	EnvAzureSubscriptionID = "AZURE_SUBSCRIPTION_ID"
+	// EnvAzureFederatedTokenFile is the environment variable used to store the path to the Managed Identity token.
+	EnvAzureFederatedTokenFile = "AZURE_FEDERATED_TOKEN_FILE"
 	// EnvGoogleApplicationCredentials is the environment variable to specify path to key.json
 	EnvGoogleApplicationCredentials = "GOOGLE_APPLICATION_CREDENTIALS"
 	// EnvSwiftPassword is the environment variable to specify the OpenStack Swift password.
@@ -55,18 +69,30 @@ const (
 	KeyAWSRoleArn = "role_arn"
 	// KeyAWSAudience is the audience for the AWS STS workflow.
 	KeyAWSAudience = "audience"
+	// KeyAWSCredentialsFilename is the config filename containing the AWS authentication credentials.
+	KeyAWSCredentialsFilename = "credentials"
 
 	// KeyAzureStorageAccountKey is the secret data key for the Azure storage account key.
 	KeyAzureStorageAccountKey = "account_key"
 	// KeyAzureStorageAccountName is the secret data key for the Azure storage account name.
 	KeyAzureStorageAccountName = "account_name"
+	// KeyAzureStorageClientID contains the UUID of the Managed Identity accessing the storage.
+	KeyAzureStorageClientID = "client_id"
+	// KeyAzureStorageTenantID contains the UUID of the Tenant hosting the Managed Identity.
+	KeyAzureStorageTenantID = "tenant_id"
+	// KeyAzureStorageSubscriptionID contains the UUID of the subscription hosting the Managed Identity.
+	KeyAzureStorageSubscriptionID = "subscription_id"
 	// KeyAzureStorageContainerName is the secret data key for the Azure storage container name.
 	KeyAzureStorageContainerName = "container"
 	// KeyAzureStorageEndpointSuffix is the secret data key for the Azure storage endpoint URL suffix.
 	KeyAzureStorageEndpointSuffix = "endpoint_suffix"
 	// KeyAzureEnvironmentName is the secret data key for the Azure cloud environment name.
 	KeyAzureEnvironmentName = "environment"
+	// KeyAzureAudience is the secret data key for customizing the audience used for the ServiceAccount token.
+	KeyAzureAudience = "audience"
 
+	// KeyGCPWorkloadIdentityProviderAudience is the secret data key for the GCP Workload Identity Provider audience.
+	KeyGCPWorkloadIdentityProviderAudience = "audience"
 	// KeyGCPStorageBucketName is the secret data key for the GCS bucket name.
 	KeyGCPStorageBucketName = "bucketname"
 	// KeyGCPServiceAccountKeyFilename is the service account key filename containing the Google authentication credentials.
@@ -94,22 +120,36 @@ const (
 	KeySwiftRegion = "region"
 	// KeySwiftUserDomainID is the secret data key for the OpenStack Swift user domain id.
 	KeySwiftUserDomainID = "user_domain_id"
-	// KeySwiftUserDomainID is the secret data key for the OpenStack Swift user domain name.
+	// KeySwiftUserDomainName is the secret data key for the OpenStack Swift user domain name.
 	KeySwiftUserDomainName = "user_domain_name"
 	// KeySwiftUserID is the secret data key for the OpenStack Swift user id.
 	KeySwiftUserID = "user_id"
-	// KeySwiftPassword is the secret data key for the OpenStack Swift password.
+	// KeySwiftUsername is the secret data key for the OpenStack Swift password.
 	KeySwiftUsername = "username"
 
-	saTokenVolumeK8sDirectory       = "/var/run/secrets/kubernetes.io/serviceaccount"
-	saTokenVolumeOcpDirectory       = "/var/run/secrets/openshift/serviceaccount"
-	saTokenVolumeName               = "bound-sa-token"
-	saTokenExpiration         int64 = 3600
+	saTokenVolumeName            = "bound-sa-token"
+	saTokenExpiration      int64 = 3600
+	saTokenVolumeMountPath       = "/var/run/secrets/storage/serviceaccount"
+
+	ServiceAccountTokenFilePath = saTokenVolumeMountPath + "/token"
 
 	secretDirectory  = "/etc/storage/secrets"
 	storageTLSVolume = "storage-tls"
 	caDirectory      = "/etc/storage/ca"
 
-	awsDefaultAudience   = "sts.amazonaws.com"
-	awsOpenShiftAudience = "openshift"
+	tokenAuthConfigVolumeName = "token-auth-config"
+	tokenAuthConfigDirectory  = "/etc/storage/token-auth"
+
+	awsDefaultAudience = "sts.amazonaws.com"
+
+	azureDefaultAudience = "api://AzureADTokenExchange"
+
+	azureManagedCredentialKeyClientID       = "azure_client_id"
+	azureManagedCredentialKeyTenantID       = "azure_tenant_id"
+	azureManagedCredentialKeySubscriptionID = "azure_subscription_id"
 )
+
+// ManagedCredentialsSecretName returns the name of the secret holding the managed credentials.
+func ManagedCredentialsSecretName(stackName string) string {
+	return fmt.Sprintf("%s-managed-credentials", stackName)
+}

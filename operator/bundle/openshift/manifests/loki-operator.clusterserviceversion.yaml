@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2024-01-25T11:08:45Z"
+    createdAt: "2024-03-19T14:29:51Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -164,8 +164,8 @@ metadata:
     features.operators.openshift.io/fips-compliant: "false"
     features.operators.openshift.io/proxy-aware: "true"
     features.operators.openshift.io/tls-profiles: "true"
-    features.operators.openshift.io/token-auth-aws: "false"
-    features.operators.openshift.io/token-auth-azure: "false"
+    features.operators.openshift.io/token-auth-aws: "true"
+    features.operators.openshift.io/token-auth-azure: "true"
     features.operators.openshift.io/token-auth-gcp: "false"
     olm.skipRange: '>=5.7.0-0 <5.9.0'
     operatorframework.io/cluster-monitoring: "true"
@@ -1449,6 +1449,17 @@ spec:
           - update
           - watch
         - apiGroups:
+          - cloudcredential.openshift.io
+          resources:
+          - credentialsrequests
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - update
+          - watch
+        - apiGroups:
           - config.openshift.io
           resources:
           - apiservers
@@ -1652,7 +1663,7 @@ spec:
           - subjectaccessreviews
           verbs:
           - create
-        serviceAccountName: default
+        serviceAccountName: loki-operator-controller-manager
       deployments:
       - label:
           app.kubernetes.io/instance: loki-operator-0.1.0
@@ -1753,6 +1764,7 @@ spec:
                 runAsNonRoot: true
                 seccompProfile:
                   type: RuntimeDefault
+              serviceAccountName: loki-operator-controller-manager
               terminationGracePeriodSeconds: 10
               volumes:
               - configMap:
@@ -1786,7 +1798,7 @@ spec:
           verbs:
           - create
           - patch
-        serviceAccountName: default
+        serviceAccountName: loki-operator-controller-manager
     strategy: deployment
   installModes:
   - supported: false

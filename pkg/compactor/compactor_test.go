@@ -286,7 +286,7 @@ func Test_schemaPeriodForTable(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual, actualFound := schemaPeriodForTable(tt.config, tt.tableName)
+			actual, actualFound := SchemaPeriodForTable(tt.config, tt.tableName)
 			require.Equal(t, tt.expectedFound, actualFound)
 			require.Equal(t, tt.expected, actual)
 		})
@@ -300,7 +300,7 @@ func Test_tableSort(t *testing.T) {
 		"index_19192",
 	}
 
-	sortTablesByRange(intervals)
+	SortTablesByRange(intervals)
 	require.Equal(t, []string{"index_19195", "index_19192", "index_19191"}, intervals)
 }
 

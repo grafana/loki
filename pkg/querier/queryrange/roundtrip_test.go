@@ -865,6 +865,7 @@ func TestPostQueries(t *testing.T) {
 		handler,
 		handler,
 		handler,
+		handler,
 		fakeLimits{},
 	).Do(ctx, lreq)
 	require.NoError(t, err)
@@ -1237,24 +1238,27 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 }
 
 type fakeLimits struct {
-	maxQueryLength            time.Duration
-	maxQueryParallelism       int
-	tsdbMaxQueryParallelism   int
-	maxQueryLookback          time.Duration
-	maxEntriesLimitPerQuery   int
-	maxSeries                 int
-	splitDuration             map[string]time.Duration
-	metadataSplitDuration     map[string]time.Duration
-	ingesterSplitDuration     map[string]time.Duration
-	minShardingLookback       time.Duration
-	queryTimeout              time.Duration
-	requiredLabels            []string
-	requiredNumberLabels      int
-	maxQueryBytesRead         int
-	maxQuerierBytesRead       int
-	maxStatsCacheFreshness    time.Duration
-	maxMetadataCacheFreshness time.Duration
-	volumeEnabled             bool
+	maxQueryLength              time.Duration
+	maxQueryParallelism         int
+	tsdbMaxQueryParallelism     int
+	maxQueryLookback            time.Duration
+	maxEntriesLimitPerQuery     int
+	maxSeries                   int
+	splitDuration               map[string]time.Duration
+	metadataSplitDuration       map[string]time.Duration
+	recentMetadataSplitDuration map[string]time.Duration
+	recentMetadataQueryWindow   map[string]time.Duration
+	instantMetricSplitDuration  map[string]time.Duration
+	ingesterSplitDuration       map[string]time.Duration
+	minShardingLookback         time.Duration
+	queryTimeout                time.Duration
+	requiredLabels              []string
+	requiredNumberLabels        int
+	maxQueryBytesRead           int
+	maxQuerierBytesRead         int
+	maxStatsCacheFreshness      time.Duration
+	maxMetadataCacheFreshness   time.Duration
+	volumeEnabled               bool
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1264,11 +1268,32 @@ func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
 	return f.splitDuration[key]
 }
 
+func (f fakeLimits) InstantMetricQuerySplitDuration(key string) time.Duration {
+	if f.instantMetricSplitDuration == nil {
+		return 0
+	}
+	return f.instantMetricSplitDuration[key]
+}
+
 func (f fakeLimits) MetadataQuerySplitDuration(key string) time.Duration {
 	if f.metadataSplitDuration == nil {
 		return 0
 	}
 	return f.metadataSplitDuration[key]
+}
+
+func (f fakeLimits) RecentMetadataQuerySplitDuration(key string) time.Duration {
+	if f.recentMetadataSplitDuration == nil {
+		return 0
+	}
+	return f.recentMetadataSplitDuration[key]
+}
+
+func (f fakeLimits) RecentMetadataQueryWindow(key string) time.Duration {
+	if f.recentMetadataQueryWindow == nil {
+		return 0
+	}
+	return f.recentMetadataQueryWindow[key]
 }
 
 func (f fakeLimits) IngesterQuerySplitDuration(key string) time.Duration {
@@ -1355,6 +1380,9 @@ func (f fakeLimits) VolumeEnabled(_ string) bool {
 
 func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 	return valid.DefaultTSDBMaxBytesPerShard
+}
+func (f fakeLimits) TSDBShardingStrategy(string) string {
+	return logql.PowerOfTwoVersion.String()
 }
 
 type ingesterQueryOpts struct {

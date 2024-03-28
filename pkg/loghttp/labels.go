@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/buger/jsonparser"
 	"github.com/gorilla/mux"
+	"github.com/grafana/jsonparser"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -75,6 +75,20 @@ func ParseLabelQuery(r *http.Request) (*logproto.LabelRequest, error) {
 		Values: ok,
 		Name:   name,
 	}
+
+	start, end, err := bounds(r)
+	if err != nil {
+		return nil, err
+	}
+	req.Start = &start
+	req.End = &end
+
+	req.Query = query(r)
+	return req, nil
+}
+
+func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest, error) {
+	req := &logproto.DetectedFieldsRequest{}
 
 	start, end, err := bounds(r)
 	if err != nil {

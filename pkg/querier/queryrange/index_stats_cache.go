@@ -123,6 +123,7 @@ func NewIndexStatsCacheMiddleware(
 		},
 		parallelismForReq,
 		retentionEnabled,
+		false,
 		metrics,
 	)
 }

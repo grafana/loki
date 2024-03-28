@@ -11,7 +11,7 @@ import (
 
 %union{
   Expr                    Expr
-  Filter                  labels.MatchType
+  Filter                  log.LineMatchType
   Grouping                *Grouping
   Labels                  []string
   LogExpr                 LogSelectorExpr
@@ -239,10 +239,10 @@ labelReplaceExpr:
     ;
 
 filter:
-      PIPE_MATCH                       { $$ = labels.MatchRegexp }
-    | PIPE_EXACT                       { $$ = labels.MatchEqual }
-    | NRE                              { $$ = labels.MatchNotRegexp }
-    | NEQ                              { $$ = labels.MatchNotEqual }
+      PIPE_MATCH                       { $$ = log.LineMatchRegexp }
+    | PIPE_EXACT                       { $$ = log.LineMatchEqual }
+    | NRE                              { $$ = log.LineMatchNotRegexp }
+    | NEQ                              { $$ = log.LineMatchNotEqual }
     ;
 
 selector:
@@ -287,9 +287,9 @@ filterOp:
   ;
 
 orFilter:
-    STRING                                              { $$ = newLineFilterExpr(labels.MatchEqual, "", $1) }
-  | filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS	{ $$ = newLineFilterExpr(labels.MatchEqual, $1, $3) }
-  | STRING OR orFilter                                  { $$ = newOrLineFilter(newLineFilterExpr(labels.MatchEqual, "", $1), $3) }
+    STRING                                              { $$ = newLineFilterExpr(log.LineMatchEqual, "", $1) }
+  | filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS	{ $$ = newLineFilterExpr(log.LineMatchEqual, $1, $3) }
+  | STRING OR orFilter                                  { $$ = newOrLineFilter(newLineFilterExpr(log.LineMatchEqual, "", $1), $3) }
   ;
 
 lineFilter:

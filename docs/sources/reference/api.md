@@ -147,10 +147,10 @@ Some Loki API endpoints return a result of a matrix, a vector, or a stream:
 
 The API accepts several formats for timestamps:
 
-* An integer with ten or fewer digits is interpreted as a Unix timestamp in seconds.
-* More than ten digits are interpreted as a Unix timestamp in nanoseconds.
-* A floating point number is a Unix timestamp with fractions of a second.
-* A string in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
+- An integer with ten or fewer digits is interpreted as a Unix timestamp in seconds.
+- More than ten digits are interpreted as a Unix timestamp in nanoseconds.
+- A floating point number is a Unix timestamp with fractions of a second.
+- A string in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
 
 {{% admonition type="note" %}}
 When using `/api/v1/push`, you must send the timestamp as a string and not a number, otherwise the endpoint will return a 400 error.
@@ -205,7 +205,7 @@ The example below show all possible statistics returned with their respective de
 
 ## Ingest logs
 
-```
+```bash
 POST /loki/api/v1/push
 ```
 
@@ -219,7 +219,7 @@ These POST requests require the `Content-Type` HTTP header to be `application/x-
 
 Alternatively, if the `Content-Type` header is set to `application/json`, a JSON post body can be sent in the following format:
 
-```
+```json
 {
   "streams": [
     {
@@ -241,7 +241,7 @@ You can optionally attach [structured metadata]({{< relref "../get-started/label
 The JSON object must be a valid JSON object with string keys and string values. The JSON object should not contain any nested object.
 The JSON object must be set immediately after the log line. Here is an example of a log entry with some structured metadata attached:
 
-```
+```json
 "values": [
     [ "<unix epoch in nanoseconds>", "<log line>", {"trace_id": "0242ac120002", "user_id": "superUser123"}]
 ]
@@ -261,7 +261,7 @@ curl -H "Content-Type: application/json" \
 
 ## Query logs at a single point in time
 
-```
+```bash
 GET /loki/api/v1/query
 ```
 
@@ -278,7 +278,7 @@ In microservices mode, `/loki/api/v1/query` is exposed by the querier and the qu
 
 Response format:
 
-```
+```json
 {
   "status": "success",
   "data": {
@@ -291,7 +291,7 @@ Response format:
 
 where `<vector value>` is:
 
-```
+```json
 {
   "metric": {
     <label key-value pairs>
@@ -305,7 +305,7 @@ where `<vector value>` is:
 
 and `<stream value>` is:
 
-```
+```json
 {
   "stream": {
     <label key-value pairs>
@@ -408,8 +408,8 @@ curl -u "Tenant1|Tenant2|Tenant3:$API_TOKEN" \
   --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
 ```
 
-
 To query against your hosted log tenant in Grafana Cloud, use the **User** and **URL** values provided in the Loki logging service details of your Grafana Cloud stack. You can find this information in the [Cloud Portal](https://grafana.com/docs/grafana-cloud/account-management/cloud-portal/#your-grafana-cloud-stack). Use an access policy token in your queries for authentication. The password in this example is an access policy token that has been defined in the `API_TOKEN` environment variable:
+
 ```bash
 curl -u "User:$API_TOKEN" \
   -G -s "<URL-PROVIDED-IN-LOKI-DATA-SOURCE-SETTINGS>/loki/api/v1/query" \
@@ -418,7 +418,7 @@ curl -u "User:$API_TOKEN" \
 
 ## Query logs within a range of time
 
-```
+```bash
 GET /loki/api/v1/query_range
 ```
 
@@ -445,7 +445,7 @@ Use the `interval` parameter when making log queries to Loki, or queries which r
 
 Response format:
 
-```
+```json
 {
   "status": "success",
   "data": {
@@ -458,7 +458,7 @@ Response format:
 
 where `<matrix value>` is:
 
-```
+```json
 {
   "metric": {
     <label key-value pairs>
@@ -477,7 +477,7 @@ The items in the `values` array are sorted by timestamp, and the oldest item is 
 
 And `<stream value>` is:
 
-```
+```json
 {
   "stream": {
     <label key-value pairs>
@@ -604,7 +604,7 @@ gave this response:
 
 ## Query labels
 
-```
+```bash
 GET /loki/api/v1/labels
 ```
 
@@ -620,7 +620,7 @@ In microservices mode, `/loki/api/v1/labels` is exposed by the querier.
 
 Response format:
 
-```
+```bash
 {
   "status": "success",
   "data": [
@@ -653,7 +653,7 @@ gave this response:
 
 ## Query label values
 
-```
+```bash
 GET /loki/api/v1/label/<name>/values
 ```
 
@@ -670,7 +670,7 @@ In microservices mode, `/loki/api/v1/label/<name>/values` is exposed by the quer
 
 Response format:
 
-```
+```json
 {
   "status": "success",
   "data": [
@@ -784,7 +784,7 @@ gave this response:
 
 ## Query log statistics
 
-```
+```bash
 GET `/loki/api/v1/index/stats`
 ```
 
@@ -820,16 +820,20 @@ It can be used for better understanding the throughput requirements and data top
 
 ## Query log volume
 
-```
+```bash
 GET /loki/api/v1/index/volume
 GET /loki/api/v1/index/volume_range
 ```
+
+{{< admonition type="note" >}}
+You must configure `volume_enabled: true` to enable this feature.
+{{< /admonition >}}
 
 The `/loki/api/v1/index/volume` and `/loki/api/v1/index/volume_range` endpoints can be used to query the index for volume information about label and label-value combinations. This is helpful in exploring the logs Loki has ingested to find high or low volume streams. The `volume` endpoint returns results for a single point in time, the time the query was processed. Each datapoint represents an aggregation of the matching label or series over the requested time period, returned in a Prometheus style vector response. The `volume_range` endoint returns a series of datapoints over a range of time, in Prometheus style matrix response, for each matching set of labels or series. The number of timestamps returned when querying `volume_range` will be determined by the provided `step` parameter and the requested time range.
 
 The `query` should be a valid LogQL stream selector, for example `{job="foo", env=~".+"}`. By default, these endpoints will aggregate into series consisting of all matches for labels included in the query. For example, assuming you have the streams `{job="foo", env="prod", team="alpha"}`, `{job="bar", env="prod", team="beta"}`, `{job="foo", env="dev", team="alpha"}`, and `{job="bar", env="dev", team="beta"}` in your system. The query `{job="foo", env=~".+"}` would return the two metric series `{job="foo", env="dev"}` and `{job="foo", env="prod"}`, each with datapoints representing the accumulate values of chunks for the streams matching that selector, which in this case would be the streams `{job="foo", env="dev", team="alpha"}` and `{job="foo", env="prod", team="alpha"}`, respectively.
 
-There are two parameters which can affect the aggregation strategy. First, a comma-seperated list of `targetLabels` can be provided, allowing volumes to be aggregated by the speficied `targetLabels` only. This is useful for negations. For example, if you said `{team="alpha", env!="dev"}`, the default behavior would include `env` in the aggregation set. However, maybe you're looking for all non-dev jobs for team alpha, and you don't care which env those are in (other than caring that they're not dev jobs). To achieve this, you could specify `targetLabels=team,job`, resulting in a single metric series (in this case) of `{team="alpha", job="foo}`.
+There are two parameters which can affect the aggregation strategy. First, a comma-separated list of `targetLabels` can be provided, allowing volumes to be aggregated by the speficied `targetLabels` only. This is useful for negations. For example, if you said `{team="alpha", env!="dev"}`, the default behavior would include `env` in the aggregation set. However, maybe you're looking for all non-dev jobs for team alpha, and you don't care which env those are in (other than caring that they're not dev jobs). To achieve this, you could specify `targetLabels=team,job`, resulting in a single metric series (in this case) of `{team="alpha", job="foo}`.
 
 The other way to change aggregations is with the `aggregateBy` parameter. The default value for this is `series`, which aggregates into combinations of matching key-value pairs. Alternately this can be specified as `labels`, which will aggregate into labels only. In this case, the response will have a metric series with a label name matching each label, and a label value of `""`. This is useful for exploring logs at a high level. For example, if you wanted to know what percentage of your logs had a `team` label, you could query your logs with `aggregateBy=labels` and a query with either an exact or regex match on `team`, or by including `team` in the list of `targetLabels`.
 
@@ -847,7 +851,7 @@ You can URL-encode these parameters directly in the request body by using the PO
 
 ## Stream logs
 
-```
+```bash
 GET /loki/api/v1/tail
 ```
 
@@ -864,7 +868,7 @@ In microservices mode, `/loki/api/v1/tail` is exposed by the querier.
 
 Response format (streamed):
 
-```
+```json
 {
   "streams": [
     {
@@ -892,7 +896,7 @@ Response format (streamed):
 
 ## Readiness probe
 
-```
+```bash
 GET /ready
 ```
 
@@ -903,7 +907,7 @@ In microservices mode, the `/ready` endpoint is exposed by all components.
 
 ## Change log level
 
-```
+```bash
 GET /log_level
 POST /log_level
 ```
@@ -919,7 +923,7 @@ In microservices mode, the `/log_level` endpoint is exposed by all components.
 
 ## Prometheus metrics
 
-```
+```bash
 GET /metrics
 ```
 
@@ -931,7 +935,7 @@ In microservices mode, the `/metrics` endpoint is exposed by all components.
 
 ## Show current configuration
 
-```
+```bash
 GET /config
 ```
 
@@ -943,7 +947,7 @@ In microservices mode, the `/config` endpoint is exposed by all components.
 
 ## List running services
 
-```
+```bash
 GET /services
 ```
 
@@ -960,7 +964,7 @@ Services can have the following states:
 
 ## Show build information
 
-```
+```bash
 GET /loki/api/v1/status/buildinfo
 ```
 
@@ -968,7 +972,7 @@ GET /loki/api/v1/status/buildinfo
 
 ## Flush in-memory chunks to backing store
 
-```
+```bash
 POST /flush
 ```
 
@@ -979,7 +983,7 @@ In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
 ## Prepare ingester shutdown
 
-```
+```bash
 GET, POST, DELETE /ingester/prepare_shutdown
 ```
 
@@ -999,7 +1003,7 @@ This API endpoint is usually used by Kubernetes-specific scale down automations 
 
 ## Flush in-memory chunks and shut down
 
-```
+```bash
 GET, POST /ingester/shutdown
 ```
 
@@ -1025,7 +1029,7 @@ In microservices mode, the `/ingester/shutdown` endpoint is exposed by the inges
 
 ## Distributor ring status
 
-```
+```bash
 GET /distributor/ring
 ```
 
@@ -1033,20 +1037,23 @@ Displays a web page with the distributor hash ring status, including the state, 
 
 ## Index gateway ring status
 
-```
+```bash
 GET /indexgateway/ring
 ```
 
 Displays a web page with the index gateway hash ring status, including the state, health, and last heartbeat time of each index gateway.
 
-
 ## Ruler
 
 The ruler API endpoints require to configure a backend object storage to store the recording rules and alerts. The ruler API uses the concept of a "namespace" when creating rule groups. This is a stand-in for the name of the rule file in Prometheus. Rule groups must be named uniquely within a namespace.
 
+{{< admonition type="note" >}}
+You must configure `enable_api: true` to enable this feature.
+{{< /admonition >}}
+
 ### Ruler ring status
 
-```
+```bash
 GET /ruler/ring
 ```
 
@@ -1054,7 +1061,7 @@ Displays a web page with the ruler hash ring status, including the state, health
 
 ### List rule groups
 
-```
+```bash
 GET /loki/api/v1/rules
 ```
 
@@ -1100,7 +1107,7 @@ List all rules configured for the authenticated tenant. This endpoint returns a 
 
 ### Get rule groups by namespace
 
-```
+```bash
 GET /loki/api/v1/rules/{namespace}
 ```
 
@@ -1123,7 +1130,7 @@ rules:
 
 ### Get rule group
 
-```
+```bash
 GET /loki/api/v1/rules/{namespace}/{groupName}
 ```
 
@@ -1131,7 +1138,7 @@ Returns the rule group matching the request namespace and group name.
 
 ### Set rule group
 
-```
+```bash
 POST /loki/api/v1/rules/{namespace}
 ```
 
@@ -1160,7 +1167,7 @@ rules:
 
 ### Delete rule group
 
-```
+```bash
 DELETE /loki/api/v1/rules/{namespace}/{groupName}
 
 ```
@@ -1169,7 +1176,7 @@ Deletes a rule group by namespace and group name. This endpoints returns `202` o
 
 ### Delete namespace
 
-```
+```bash
 DELETE /loki/api/v1/rules/{namespace}
 ```
 
@@ -1177,17 +1184,21 @@ Deletes all the rule groups in a namespace (including the namespace itself). Thi
 
 ### List rules
 
-```
-GET /prometheus/api/v1/rules
+```bash
+GET /prometheus/api/v1/rules?type={alert|record}&file={}&rule_group={}&rule_name={}
 ```
 
 Prometheus-compatible rules endpoint to list alerting and recording rules that are currently loaded.
+
+The `type` parameter is optional. If set, only the specified type of rule is returned.
+
+The `file`, `rule_group` and `rule_name` parameters are optional, and can accept multiple values. If set, the response content is filtered accordingly.
 
 For more information, refer to the [Prometheus rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) documentation.
 
 ### List alerts
 
-```
+```bash
 GET /prometheus/api/v1/alerts
 ```
 
@@ -1199,7 +1210,7 @@ For more information, refer to the Prometheus [alerts](https://prometheus.io/doc
 
 ### Compactor ring status
 
-```
+```bash
 GET /compactor/ring
 ```
 
@@ -1207,7 +1218,7 @@ Displays a web page with the compactor hash ring status, including the state, he
 
 ### Request log deletion
 
-```
+```bash
 POST /loki/api/v1/delete
 PUT /loki/api/v1/delete
 ```
@@ -1248,7 +1259,7 @@ curl -u "Tenant1:$API_TOKEN" \
 
 ### List log deletion requests
 
-```
+```bash
 GET /loki/api/v1/delete
 ```
 
@@ -1259,7 +1270,7 @@ Log entry deletion is supported _only_ when the BoltDB Shipper is configured for
 
 List the existing delete requests using the following API:
 
-```
+```bash
 GET /loki/api/v1/delete
 ```
 
@@ -1285,7 +1296,7 @@ curl -u "Tenant1:$API_TOKEN" \
 
 ### Request cancellation of a delete request
 
-```
+```bash
 DELETE /loki/api/v1/delete
 ```
 
@@ -1298,14 +1309,14 @@ Log entry deletion is supported _only_ when the BoltDB Shipper is configured for
 
 Cancel a delete request using this compactor endpoint:
 
-```
+```bash
 DELETE /loki/api/v1/delete
 ```
 
 Query parameters:
 
 - `request_id=<request_id>`: Identifies the delete request to cancel; IDs are found using the `delete` endpoint.
-- `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled. 
+- `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled.
   {{% admonition type="note" %}}
   some data from the request may still be deleted and the deleted request will be listed as 'processed'.
   {{% /admonition %}}
@@ -1316,7 +1327,7 @@ A 204 response indicates success.
 
 Example cURL command:
 
-```
+```bash
 curl -X DELETE \
   '<compactor_addr>/loki/api/v1/delete?request_id=<request_id>' \
   -H 'X-Scope-OrgID: <tenant-id>'
@@ -1332,7 +1343,7 @@ curl -u "Tenant1:$API_TOKEN" \
 
 ## Format a LogQL query
 
-```
+```bash
 GET /loki/api/v1/format_query
 POST /loki/api/v1/format_query
 ```

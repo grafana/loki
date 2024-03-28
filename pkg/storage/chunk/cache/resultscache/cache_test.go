@@ -61,7 +61,6 @@ func TestPartition(t *testing.T) {
 				mkAPIResponse(0, 100, 10),
 			},
 		},
-
 		{
 			name: "Test with a complete miss.",
 			input: &MockRequest{
@@ -173,6 +172,123 @@ func TestPartition(t *testing.T) {
 			s := ResultsCache{
 				extractor:      MockExtractor{},
 				minCacheExtent: 10,
+			}
+			reqs, resps, err := s.partition(tc.input, tc.prevCachedResponse)
+			require.Nil(t, err)
+			require.Equal(t, tc.expectedRequests, reqs)
+			require.Equal(t, tc.expectedCachedResponse, resps)
+		})
+	}
+}
+
+func TestPartition_onlyUseEntireExtent(t *testing.T) {
+	for _, tc := range []struct {
+		name                   string
+		input                  Request
+		prevCachedResponse     []Extent
+		expectedRequests       []Request
+		expectedCachedResponse []Response
+	}{
+		{
+			name: "overlapping extent - right",
+			input: &MockRequest{
+				Start: time.UnixMilli(0),
+				End:   time.UnixMilli(100),
+			},
+			prevCachedResponse: []Extent{
+				mkExtent(60, 120),
+			},
+			expectedRequests: []Request{
+				&MockRequest{
+					Start: time.UnixMilli(0),
+					End:   time.UnixMilli(100),
+				},
+			},
+		},
+		{
+			name: "overlapping extent - left",
+			input: &MockRequest{
+				Start: time.UnixMilli(20),
+				End:   time.UnixMilli(100),
+			},
+			prevCachedResponse: []Extent{
+				mkExtent(0, 50),
+			},
+			expectedRequests: []Request{
+				&MockRequest{
+					Start: time.UnixMilli(20),
+					End:   time.UnixMilli(100),
+				},
+			},
+		},
+		{
+			name: "overlapping extent larger than the request",
+			input: &MockRequest{
+				Start: time.UnixMilli(20),
+				End:   time.UnixMilli(100),
+			},
+			prevCachedResponse: []Extent{
+				mkExtent(0, 120),
+			},
+			expectedRequests: []Request{
+				&MockRequest{
+					Start: time.UnixMilli(20),
+					End:   time.UnixMilli(100),
+				},
+			},
+		},
+		{
+			name: "overlapping extent within the requested query range",
+			input: &MockRequest{
+				Start: time.UnixMilli(0),
+				End:   time.UnixMilli(120),
+			},
+			prevCachedResponse: []Extent{
+				mkExtent(0, 100),
+			},
+			expectedRequests: []Request{
+				&MockRequest{
+					Start: time.UnixMilli(100),
+					End:   time.UnixMilli(120),
+				},
+			},
+			expectedCachedResponse: []Response{
+				mkAPIResponse(0, 100, 10),
+			},
+		},
+		{
+			name: "multiple overlapping extents",
+			input: &MockRequest{
+				Start: time.UnixMilli(50),
+				End:   time.UnixMilli(200),
+			},
+			prevCachedResponse: []Extent{
+				mkExtent(0, 80),
+				mkExtent(100, 150),
+				mkExtent(150, 180),
+				mkExtent(200, 250),
+			},
+			expectedRequests: []Request{
+				&MockRequest{
+					Start: time.UnixMilli(50),
+					End:   time.UnixMilli(100),
+				},
+				&MockRequest{
+					Start: time.UnixMilli(180),
+					End:   time.UnixMilli(200),
+				},
+			},
+			expectedCachedResponse: []Response{
+				mkAPIResponse(100, 150, 10),
+				mkAPIResponse(150, 180, 10),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := ResultsCache{
+				extractor:           MockExtractor{},
+				minCacheExtent:      10,
+				onlyUseEntireExtent: true,
 			}
 			reqs, resps, err := s.partition(tc.input, tc.prevCachedResponse)
 			require.Nil(t, err)
@@ -491,6 +607,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 				},
 				nil,
 				false,
+				false,
 			)
 			require.NoError(t, err)
 
@@ -533,6 +650,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 			return 10
 		},
 		nil,
+		false,
 		false,
 	)
 	require.NoError(t, err)

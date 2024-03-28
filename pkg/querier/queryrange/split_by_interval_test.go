@@ -159,10 +159,12 @@ func Test_splitQuery(t *testing.T) {
 
 		t.Run(requestType, func(t *testing.T) {
 			for name, intervals := range map[string]struct {
-				input         interval
-				expected      []interval
-				splitInterval time.Duration
-				splitter      splitter
+				input                            interval
+				expected                         []interval
+				expectedWithoutIngesterSplits    []interval
+				splitInterval                    time.Duration
+				splitter                         splitter
+				recentMetadataQueryWindowEnabled bool
 			}{
 				"no change": {
 					input: interval{
@@ -255,6 +257,16 @@ func Test_splitQuery(t *testing.T) {
 							end:   refTime,
 						},
 					},
+					expectedWithoutIngesterSplits: []interval{
+						{
+							start: refTime.Add(-time.Hour).Truncate(time.Second),
+							end:   time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC),
+							end:   refTime,
+						},
+					},
 					splitInterval: time.Hour,
 					splitter: newDefaultSplitter(
 						fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
@@ -292,6 +304,32 @@ func Test_splitQuery(t *testing.T) {
 						},
 						{
 							start: time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC),
+							end:   refTime,
+						},
+					},
+					expectedWithoutIngesterSplits: []interval{
+						{
+							start: refTime.Add(-4 * time.Hour).Add(-30 * time.Minute).Truncate(time.Second),
+							end:   time.Date(2023, 1, 15, 4, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 4, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 7, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 7, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC),
 							end:   refTime,
 						},
 					},
@@ -394,10 +432,300 @@ func Test_splitQuery(t *testing.T) {
 						ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour, queryStoreOnly: true},
 					),
 				},
+				"metadata recent query window should not affect other query types": {
+					input: interval{
+						start: refTime.Add(-4 * time.Hour).Truncate(time.Second),
+						end:   refTime,
+					},
+					expected: []interval{
+						{
+							start: refTime.Add(-4 * time.Hour).Truncate(time.Second),
+							end:   time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 7, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 7, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC),
+							end:   refTime,
+						},
+					},
+					splitInterval: time.Hour,
+					splitter: newDefaultSplitter(
+						fakeLimits{
+							recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
+							recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 3 * time.Hour},
+						}, nil,
+					),
+					recentMetadataQueryWindowEnabled: true,
+				},
 			} {
 				t.Run(name, func(t *testing.T) {
 					req := tc.requestBuilderFunc(intervals.input.start, intervals.input.end)
 					var want []queryrangebase.Request
+
+					// ingester splits do not apply for metadata queries
+					var expected []interval
+					switch req.(type) {
+					case *LabelRequest, *LokiSeriesRequest:
+						expected = intervals.expectedWithoutIngesterSplits
+
+						if intervals.recentMetadataQueryWindowEnabled {
+							t.Skip("this flow is tested in Test_splitRecentMetadataQuery")
+						}
+					}
+
+					if expected == nil {
+						expected = intervals.expected
+					}
+
+					for _, exp := range expected {
+						want = append(want, tc.requestBuilderFunc(exp.start, exp.end))
+					}
+
+					if intervals.splitInterval == 0 {
+						intervals.splitInterval = time.Hour
+					}
+
+					if intervals.splitter == nil {
+						intervals.splitter = newDefaultSplitter(fakeLimits{}, nil)
+					}
+
+					splits, err := intervals.splitter.split(refTime, []string{tenantID}, req, intervals.splitInterval)
+					require.NoError(t, err)
+					assertSplits(t, want, splits)
+				})
+			}
+		})
+	}
+}
+
+func Test_splitRecentMetadataQuery(t *testing.T) {
+	type interval struct {
+		start, end time.Time
+	}
+
+	expectedSplitGap := util.SplitGap
+
+	for requestType, tc := range map[string]struct {
+		requestBuilderFunc func(start, end time.Time) queryrangebase.Request
+	}{
+		"series request": {
+			requestBuilderFunc: func(start, end time.Time) queryrangebase.Request {
+				return &LokiSeriesRequest{
+					Match:   []string{"match1"},
+					StartTs: start,
+					EndTs:   end,
+					Path:    "/series",
+					Shards:  []string{"shard1"},
+				}
+			},
+		},
+		"label names request": {
+			requestBuilderFunc: func(start, end time.Time) queryrangebase.Request {
+				return NewLabelRequest(start, end, `{foo="bar"}`, "", "/labels")
+			},
+		},
+		"label values request": {
+			requestBuilderFunc: func(start, end time.Time) queryrangebase.Request {
+				return NewLabelRequest(start, end, `{foo="bar"}`, "test", "/label/test/values")
+			},
+		},
+	} {
+		t.Run(requestType, func(t *testing.T) {
+			for name, intervals := range map[string]struct {
+				input         interval
+				expected      []interval
+				splitInterval time.Duration
+				splitter      splitter
+			}{
+				"wholly within recent metadata query window": {
+					input: interval{
+						start: refTime.Add(-time.Hour),
+						end:   refTime,
+					},
+					expected: []interval{
+						{
+							start: refTime.Add(-time.Hour),
+							end:   time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC),
+							end:   refTime,
+						},
+					},
+					splitInterval: time.Hour,
+					splitter: newDefaultSplitter(
+						fakeLimits{
+							recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
+							recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 2 * time.Hour},
+						}, nil,
+					),
+				},
+				"start aligns with recent metadata query window": {
+					input: interval{
+						start: refTime.Add(-1 * time.Hour),
+						end:   refTime,
+					},
+					expected: []interval{
+						{
+							start: refTime.Add(-time.Hour),
+							end:   time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC),
+							end:   refTime,
+						},
+					},
+					splitInterval: time.Hour,
+					splitter: newDefaultSplitter(
+						fakeLimits{
+							recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
+							recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 1 * time.Hour},
+						}, nil,
+					),
+				},
+				"partially within recent metadata query window": {
+					input: interval{
+						start: refTime.Add(-3 * time.Hour),
+						end:   refTime,
+					},
+					expected: []interval{
+						{
+							start: refTime.Add(-3 * time.Hour),
+							end:   time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 7, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 7, 0, 0, 0, time.UTC),
+							end:   refTime.Add(-time.Hour).Add(-expectedSplitGap),
+						},
+						// apply split_recent_metadata_queries_by_interval for recent metadata queries
+						{
+							start: refTime.Add(-time.Hour),
+							end:   time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC),
+							end:   refTime,
+						},
+					},
+					splitInterval: time.Hour,
+					splitter: newDefaultSplitter(
+						fakeLimits{
+							recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
+							recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 1 * time.Hour},
+						}, nil,
+					),
+				},
+				"outside recent metadata query window": {
+					input: interval{
+						start: refTime.Add(-4 * time.Hour),
+						end:   refTime.Add(-2 * time.Hour),
+					},
+					expected: []interval{
+						{
+							start: refTime.Add(-4 * time.Hour),
+							end:   time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC),
+							end:   refTime.Add(-2 * time.Hour),
+						},
+					},
+					splitInterval: time.Hour,
+					splitter: newDefaultSplitter(
+						fakeLimits{
+							recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
+							recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 1 * time.Hour},
+						}, nil,
+					),
+				},
+				"end aligns with recent metadata query window": {
+					input: interval{
+						start: refTime.Add(-3 * time.Hour),
+						end:   refTime.Add(-1 * time.Hour),
+					},
+					expected: []interval{
+						{
+							start: refTime.Add(-3 * time.Hour),
+							end:   time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 7, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 7, 0, 0, 0, time.UTC),
+							end:   refTime.Add(-1 * time.Hour),
+						},
+					},
+					splitInterval: time.Hour,
+					splitter: newDefaultSplitter(
+						fakeLimits{
+							recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
+							recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 1 * time.Hour},
+						}, nil,
+					),
+				},
+				"recent metadata window not configured": {
+					input: interval{
+						start: refTime.Add(-3 * time.Hour),
+						end:   refTime,
+					},
+					expected: []interval{
+						{
+							start: refTime.Add(-3 * time.Hour),
+							end:   time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 7, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 7, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC),
+							end:   refTime,
+						},
+					},
+					splitInterval: time.Hour,
+				},
+			} {
+				t.Run(name, func(t *testing.T) {
+					req := tc.requestBuilderFunc(intervals.input.start, intervals.input.end)
+					var want []queryrangebase.Request
+
 					for _, exp := range intervals.expected {
 						want = append(want, tc.requestBuilderFunc(exp.start, exp.end))
 					}
@@ -412,22 +740,7 @@ func Test_splitQuery(t *testing.T) {
 
 					splits, err := intervals.splitter.split(refTime, []string{tenantID}, req, intervals.splitInterval)
 					require.NoError(t, err)
-					if !assert.Equal(t, want, splits) {
-						t.Logf("expected and actual do not match\n")
-						defer t.Fail()
-
-						if len(want) != len(splits) {
-							t.Logf("expected %d splits, got %d\n", len(want), len(splits))
-							return
-						}
-
-						for j := 0; j < len(want); j++ {
-							exp := want[j]
-							act := splits[j]
-							equal := assert.Equal(t, exp, act)
-							t.Logf("\t#%d [matches: %v]: expected %q/%q got %q/%q\n", j, equal, exp.GetStart(), exp.GetEnd(), act.GetStart(), act.GetEnd())
-						}
-					}
+					assertSplits(t, want, splits)
 				})
 			}
 		})
@@ -1539,7 +1852,11 @@ func Test_ExitEarly(t *testing.T) {
 
 	res, err := split.Do(ctx, req)
 
-	require.Equal(t, int(req.Limit), callCt)
+	mtx.Lock()
+	count := callCt
+	mtx.Unlock()
+
+	require.Equal(t, int(req.Limit), count)
 	require.NoError(t, err)
 	require.Equal(t, expected, res)
 }
@@ -1609,4 +1926,25 @@ func Test_DoesntDeadlock(t *testing.T) {
 	// give runtime a bit of slack when catching up -- this isn't an exact science :(
 	// Allow for 1% increase in goroutines
 	require.LessOrEqual(t, endingGoroutines, startingGoroutines*101/100)
+}
+
+func assertSplits(t *testing.T, want, splits []queryrangebase.Request) {
+	t.Helper()
+
+	if !assert.Equal(t, want, splits) {
+		t.Logf("expected and actual do not match\n")
+		defer t.Fail()
+
+		if len(want) != len(splits) {
+			t.Logf("expected %d splits, got %d\n", len(want), len(splits))
+			return
+		}
+
+		for j := 0; j < len(want); j++ {
+			exp := want[j]
+			act := splits[j]
+			equal := assert.Equal(t, exp, act)
+			t.Logf("\t#%d [matches: %v]: expected %q/%q got %q/%q\n", j, equal, exp.GetStart(), exp.GetEnd(), act.GetStart(), act.GetEnd())
+		}
+	}
 }

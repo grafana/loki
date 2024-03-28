@@ -17,6 +17,14 @@ const (
 
 var errDisallowedIdentityShard = errors.New("shard with factor of 1 is explicitly disallowed. It's equivalent to no sharding")
 
+type FingerprintFilter interface {
+	// TODO(owen-d): Match() is redundant and can be inferred from GetFromThrough()
+	// TODO(owen-d): GetFromThrough should just return FingerprintBounds as it's a better utility struct.
+	Match(model.Fingerprint) bool
+	// GetFromThrough shows the [minimum, maximum) fingerprints. If there is no maximum, math.MaxUint64 may be used
+	GetFromThrough() (model.Fingerprint, model.Fingerprint)
+}
+
 // ShardAnnotation is a convenience struct which holds data from a parsed shard label
 // Of MUST be a power of 2 to ensure sharding logic works correctly.
 type ShardAnnotation struct {
@@ -72,9 +80,9 @@ func (shard ShardAnnotation) Validate() error {
 	return nil
 }
 
-// Bounds shows the [minimum, maximum) fingerprints. If there is no maximum
+// GetFromThrough shows the [minimum, maximum) fingerprints. If there is no maximum
 // fingerprint (for example the last shard), math.MaxUint64 is used as the maximum.
-func (shard ShardAnnotation) Bounds() (model.Fingerprint, model.Fingerprint) {
+func (shard ShardAnnotation) GetFromThrough() (model.Fingerprint, model.Fingerprint) {
 	requiredBits := model.Fingerprint(shard.RequiredBits())
 	from := model.Fingerprint(shard.Shard) << (64 - requiredBits)
 

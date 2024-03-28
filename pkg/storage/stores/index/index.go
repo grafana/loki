@@ -11,6 +11,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
 )
 
@@ -28,6 +30,17 @@ type BaseReader interface {
 type StatsReader interface {
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
 	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+	GetShards(
+		ctx context.Context,
+		userID string,
+		from, through model.Time,
+		targetBytesPerShard uint64,
+		predicate chunk.Predicate,
+	) (*logproto.ShardsResponse, error)
+
+	// If the underlying index supports it, this will return the ForSeries interface
+	// which is used in bloom-filter accelerated sharding calculation optimization.
+	HasForSeries(from, through model.Time) (sharding.ForSeries, bool)
 }
 
 type Reader interface {
@@ -137,6 +150,24 @@ func (m MonitoredReaderWriter) Volume(ctx context.Context, userID string, from, 
 	return vol, nil
 }
 
+func (m MonitoredReaderWriter) GetShards(
+	ctx context.Context,
+	userID string,
+	from, through model.Time,
+	targetBytesPerShard uint64,
+	predicate chunk.Predicate,
+) (*logproto.ShardsResponse, error) {
+	var shards *logproto.ShardsResponse
+	if err := loki_instrument.TimeRequest(ctx, "shards", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		shards, err = m.rw.GetShards(ctx, userID, from, through, targetBytesPerShard, predicate)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	return shards, nil
+}
+
 func (m MonitoredReaderWriter) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 	m.rw.SetChunkFilterer(chunkFilter)
 }
@@ -145,4 +176,30 @@ func (m MonitoredReaderWriter) IndexChunk(ctx context.Context, from, through mod
 	return loki_instrument.TimeRequest(ctx, "index_chunk", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		return m.rw.IndexChunk(ctx, from, through, chk)
 	})
+}
+
+func (m MonitoredReaderWriter) HasForSeries(from, through model.Time) (sharding.ForSeries, bool) {
+	if impl, ok := m.rw.HasForSeries(from, through); ok {
+		wrapped := sharding.ForSeriesFunc(
+			func(
+				ctx context.Context,
+				userID string,
+				fpFilter index.FingerprintFilter,
+				from model.Time,
+				through model.Time,
+				fn func(
+					labels.Labels,
+					model.Fingerprint,
+					[]index.ChunkMeta,
+				) (stop bool),
+				matchers ...*labels.Matcher,
+			) error {
+				return loki_instrument.TimeRequest(ctx, "for_series", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+					return impl.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+				})
+			},
+		)
+		return wrapped, true
+	}
+	return nil, false
 }

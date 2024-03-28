@@ -14,7 +14,10 @@ type Limits interface {
 	queryrangebase.Limits
 	logql.Limits
 	QuerySplitDuration(string) time.Duration
+	InstantMetricQuerySplitDuration(string) time.Duration
 	MetadataQuerySplitDuration(string) time.Duration
+	RecentMetadataQuerySplitDuration(string) time.Duration
+	RecentMetadataQueryWindow(string) time.Duration
 	IngesterQuerySplitDuration(string) time.Duration
 	MaxQuerySeries(context.Context, string) int
 	MaxEntriesLimitPerQuery(context.Context, string) int
@@ -24,6 +27,7 @@ type Limits interface {
 	TSDBMaxQueryParallelism(context.Context, string) int
 	// TSDBMaxBytesPerShard returns the limit to the number of bytes a single shard
 	TSDBMaxBytesPerShard(string) int
+	TSDBShardingStrategy(userID string) string
 
 	RequiredLabels(context.Context, string) []string
 	RequiredNumberLabels(context.Context, string) int

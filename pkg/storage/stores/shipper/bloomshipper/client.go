@@ -5,20 +5,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"io"
-	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 const (
@@ -30,59 +31,151 @@ const (
 )
 
 type Ref struct {
-	TenantID                       string
-	TableName                      string
-	MinFingerprint, MaxFingerprint uint64
-	StartTimestamp, EndTimestamp   model.Time
-	Checksum                       uint32
+	TenantID                     string
+	TableName                    string
+	Bounds                       v1.FingerprintBounds
+	StartTimestamp, EndTimestamp model.Time
+	Checksum                     uint32
+}
+
+// Hash hashes the ref
+// NB(owen-d): we don't include the tenant in the hash
+// as it's not included in the data and leaving it out gives
+// flexibility for migrating data between tenants
+func (r Ref) Hash(h hash.Hash32) error {
+	if err := r.Bounds.Hash(h); err != nil {
+		return err
+	}
+
+	var enc encoding.Encbuf
+
+	enc.PutString(r.TableName)
+	enc.PutBE64(uint64(r.StartTimestamp))
+	enc.PutBE64(uint64(r.EndTimestamp))
+	enc.PutBE32(r.Checksum)
+
+	_, err := h.Write(enc.Get())
+	return errors.Wrap(err, "writing BlockRef")
 }
 
 // Cmp returns the fingerprint's position relative to the bounds
 func (r Ref) Cmp(fp uint64) v1.BoundsCheck {
-	if fp < r.MinFingerprint {
-		return v1.Before
-	} else if fp > r.MaxFingerprint {
-		return v1.After
-	}
-	return v1.Overlap
+	return r.Bounds.Cmp(model.Fingerprint(fp))
+}
+
+func (r Ref) Interval() Interval {
+	return NewInterval(r.StartTimestamp, r.EndTimestamp)
 }
 
 type BlockRef struct {
 	Ref
-	IndexPath string
-	BlockPath string
+}
+
+func (r BlockRef) String() string {
+	return defaultKeyResolver{}.Block(r).Addr()
 }
 
 type MetaRef struct {
 	Ref
-	FilePath string
+}
+
+func (r MetaRef) String() string {
+	return defaultKeyResolver{}.Meta(r).Addr()
 }
 
 // todo rename it
 type Meta struct {
 	MetaRef `json:"-"`
 
-	Tombstones []BlockRef
-	Blocks     []BlockRef
+	// The specific TSDB files used to generate the block.
+	Sources []tsdb.SingleTenantTSDBIdentifier
+
+	// A list of blocks that were generated
+	Blocks []BlockRef
+}
+
+func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, error) {
+	if len(m.Sources) == 0 {
+		return tsdb.SingleTenantTSDBIdentifier{}, errors.New("no sources")
+	}
+
+	mostRecent := m.Sources[0]
+	for _, source := range m.Sources[1:] {
+		if source.TS.After(mostRecent.TS) {
+			mostRecent = source
+		}
+	}
+
+	return mostRecent, nil
+}
+
+func MetaRefFrom(
+	tenant,
+	table string,
+	bounds v1.FingerprintBounds,
+	sources []tsdb.SingleTenantTSDBIdentifier,
+	blocks []BlockRef,
+) (MetaRef, error) {
+
+	h := v1.Crc32HashPool.Get()
+	defer v1.Crc32HashPool.Put(h)
+
+	err := bounds.Hash(h)
+	if err != nil {
+		return MetaRef{}, errors.Wrap(err, "writing OwnershipRange")
+	}
+
+	for _, source := range sources {
+		err = source.Hash(h)
+		if err != nil {
+			return MetaRef{}, errors.Wrap(err, "writing Sources")
+		}
+	}
+
+	var (
+		start, end model.Time
+	)
+
+	for i, block := range blocks {
+		if i == 0 || block.StartTimestamp.Before(start) {
+			start = block.StartTimestamp
+		}
+
+		if block.EndTimestamp.After(end) {
+			end = block.EndTimestamp
+		}
+
+		err = block.Hash(h)
+		if err != nil {
+			return MetaRef{}, errors.Wrap(err, "writing Blocks")
+		}
+	}
+
+	return MetaRef{
+		Ref: Ref{
+			TenantID:       tenant,
+			TableName:      table,
+			Bounds:         bounds,
+			StartTimestamp: start,
+			EndTimestamp:   end,
+			Checksum:       h.Sum32(),
+		},
+	}, nil
+
 }
 
 type MetaSearchParams struct {
-	TenantID                       string
-	MinFingerprint, MaxFingerprint model.Fingerprint
-	StartTimestamp, EndTimestamp   model.Time
+	TenantID string
+	Interval Interval
+	Keyspace v1.FingerprintBounds
 }
 
 type MetaClient interface {
-	// Returns all metas that are within MinFingerprint-MaxFingerprint fingerprint range
-	// and intersect time period from StartTimestamp to EndTimestamp.
-	GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
+	KeyResolver
+	GetMeta(ctx context.Context, ref MetaRef) (Meta, error)
+	GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, error)
 	PutMeta(ctx context.Context, meta Meta) error
-	DeleteMeta(ctx context.Context, meta Meta) error
-}
-
-type LazyBlock struct {
-	BlockRef
-	Data io.ReadCloser
+	DeleteMetas(ctx context.Context, refs []MetaRef) error
 }
 
 type Block struct {
@@ -90,282 +183,237 @@ type Block struct {
 	Data io.ReadSeekCloser
 }
 
+// CloseableReadSeekerAdapter is a wrapper around io.ReadSeeker to make it io.Closer
+// if it doesn't already implement it.
+type ClosableReadSeekerAdapter struct {
+	io.ReadSeeker
+}
+
+func (c ClosableReadSeekerAdapter) Close() error {
+	if closer, ok := c.ReadSeeker.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
+func BlockRefFrom(tenant, table string, md v1.BlockMetadata) BlockRef {
+	return BlockRef{
+		Ref: Ref{
+			TenantID:       tenant,
+			TableName:      table,
+			Bounds:         md.Series.Bounds,
+			StartTimestamp: md.Series.FromTs,
+			EndTimestamp:   md.Series.ThroughTs,
+			Checksum:       md.Checksum,
+		},
+	}
+}
+
+func BlockFrom(tenant, table string, blk *v1.Block) (Block, error) {
+	md, _ := blk.Metadata()
+	ref := BlockRefFrom(tenant, table, md)
+
+	// TODO(owen-d): pool
+	buf := bytes.NewBuffer(nil)
+	err := v1.TarGz(buf, blk.Reader())
+
+	if err != nil {
+		return Block{}, errors.Wrap(err, "archiving+compressing block")
+	}
+
+	reader := bytes.NewReader(buf.Bytes())
+
+	return Block{
+		BlockRef: ref,
+		Data:     ClosableReadSeekerAdapter{reader},
+	}, nil
+}
+
 type BlockClient interface {
-	GetBlock(ctx context.Context, reference BlockRef) (LazyBlock, error)
-	PutBlocks(ctx context.Context, blocks []Block) ([]Block, error)
-	DeleteBlocks(ctx context.Context, blocks []BlockRef) error
+	KeyResolver
+	GetBlock(ctx context.Context, ref BlockRef) (BlockDirectory, error)
+	GetBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error)
+	PutBlock(ctx context.Context, block Block) error
+	DeleteBlocks(ctx context.Context, refs []BlockRef) error
 }
 
 type Client interface {
 	MetaClient
 	BlockClient
+	IsObjectNotFoundErr(err error) bool
+	ObjectClient() client.ObjectClient
 	Stop()
 }
 
-// todo add logger
-func NewBloomClient(periodicConfigs []config.PeriodConfig, storageConfig storage.Config, clientMetrics storage.ClientMetrics) (*BloomClient, error) {
-	periodicObjectClients := make(map[config.DayTime]client.ObjectClient)
-	for _, periodicConfig := range periodicConfigs {
-		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
-		if err != nil {
-			return nil, fmt.Errorf("error creating object client '%s': %w", periodicConfig.ObjectType, err)
-		}
-		periodicObjectClients[periodicConfig.From] = objectClient
+// Compiler check to ensure BloomClient implements the Client interface
+var _ Client = &BloomClient{}
+
+type BloomClient struct {
+	KeyResolver
+	concurrency int
+	client      client.ObjectClient
+	logger      log.Logger
+	fsResolver  KeyResolver
+}
+
+func NewBloomClient(cfg bloomStoreConfig, client client.ObjectClient, logger log.Logger) (*BloomClient, error) {
+	fsResolver, err := NewShardedPrefixedResolver(cfg.workingDirs, defaultKeyResolver{})
+	if err != nil {
+		return nil, errors.Wrap(err, "creating fs resolver")
 	}
+
 	return &BloomClient{
-		periodicConfigs:       periodicConfigs,
-		storageConfig:         storageConfig,
-		periodicObjectClients: periodicObjectClients,
+		KeyResolver: defaultKeyResolver{}, // TODO(owen-d): hook into schema, similar to `{,Parse}ExternalKey`
+		fsResolver:  fsResolver,
+		concurrency: cfg.numWorkers,
+		client:      client,
+		logger:      logger,
 	}, nil
 }
 
-type BloomClient struct {
-	periodicConfigs       []config.PeriodConfig
-	storageConfig         storage.Config
-	periodicObjectClients map[config.DayTime]client.ObjectClient
+func (b *BloomClient) ObjectClient() client.ObjectClient {
+	return b.client
 }
 
-func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
-	tablesByPeriod := tablesByPeriod(b.periodicConfigs, params.StartTimestamp, params.EndTimestamp)
-
-	var metas []Meta
-	for periodFrom, tables := range tablesByPeriod {
-		periodClient := b.periodicObjectClients[periodFrom]
-		for _, table := range tables {
-			prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
-			list, _, err := periodClient.List(ctx, prefix, "")
-			if err != nil {
-				return nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
-			}
-			for _, object := range list {
-				metaRef, err := createMetaRef(object.Key, params.TenantID, table)
-
-				if err != nil {
-					return nil, err
-				}
-				if metaRef.MaxFingerprint < uint64(params.MinFingerprint) || uint64(params.MaxFingerprint) < metaRef.MinFingerprint ||
-					metaRef.EndTimestamp.Before(params.StartTimestamp) || metaRef.StartTimestamp.After(params.EndTimestamp) {
-					continue
-				}
-				meta, err := b.downloadMeta(ctx, metaRef, periodClient)
-				if err != nil {
-					return nil, err
-				}
-				metas = append(metas, meta)
-			}
-		}
-	}
-	return metas, nil
+func (b *BloomClient) IsObjectNotFoundErr(err error) bool {
+	return b.client.IsObjectNotFoundErr(err)
 }
 
 func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
-	periodFrom, err := findPeriod(b.periodicConfigs, meta.StartTimestamp)
-	if err != nil {
-		return fmt.Errorf("error updloading meta file: %w", err)
-	}
 	data, err := json.Marshal(meta)
 	if err != nil {
-		return fmt.Errorf("can not marshal the meta to json: %w", err)
+		return fmt.Errorf("failed to encode meta file %s: %w", meta.String(), err)
 	}
-	key := createMetaObjectKey(meta.MetaRef.Ref)
-	return b.periodicObjectClients[periodFrom].PutObject(ctx, key, bytes.NewReader(data))
+	key := b.Meta(meta.MetaRef).Addr()
+	return b.client.PutObject(ctx, key, bytes.NewReader(data))
 }
 
-func createBlockObjectKey(meta Ref) string {
-	blockParentFolder := fmt.Sprintf("%x-%x", meta.MinFingerprint, meta.MaxFingerprint)
-	filename := fmt.Sprintf("%d-%d-%x", meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
-	return strings.Join([]string{rootFolder, meta.TableName, meta.TenantID, bloomsFolder, blockParentFolder, filename}, delimiter)
+func (b *BloomClient) DeleteMetas(ctx context.Context, refs []MetaRef) error {
+	err := concurrency.ForEachJob(ctx, len(refs), b.concurrency, func(ctx context.Context, idx int) error {
+		key := b.Meta(refs[idx]).Addr()
+		return b.client.DeleteObject(ctx, key)
+	})
+
+	return err
 }
 
-func createMetaObjectKey(meta Ref) string {
-	filename := fmt.Sprintf("%x-%x-%d-%d-%x", meta.MinFingerprint, meta.MaxFingerprint, meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
-	return strings.Join([]string{rootFolder, meta.TableName, meta.TenantID, metasFolder, filename}, delimiter)
-}
+// GetBlock downloads the blocks from objectStorage and returns the directory
+// in which the block data resides
+func (b *BloomClient) GetBlock(ctx context.Context, ref BlockRef) (BlockDirectory, error) {
+	key := b.Block(ref).Addr()
 
-func findPeriod(configs []config.PeriodConfig, ts model.Time) (config.DayTime, error) {
-	for i := len(configs) - 1; i >= 0; i-- {
-		periodConfig := configs[i]
-		if periodConfig.From.Before(ts) || periodConfig.From.Equal(ts) {
-			return periodConfig.From, nil
-		}
-	}
-	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", ts)
-}
-
-func (b *BloomClient) DeleteMeta(ctx context.Context, meta Meta) error {
-	periodFrom, err := findPeriod(b.periodicConfigs, meta.StartTimestamp)
+	rc, _, err := b.client.GetObject(ctx, key)
 	if err != nil {
-		return err
+		return BlockDirectory{}, fmt.Errorf("failed to get block file %s: %w", key, err)
 	}
-	key := createMetaObjectKey(meta.MetaRef.Ref)
-	return b.periodicObjectClients[periodFrom].DeleteObject(ctx, key)
+	defer rc.Close()
+
+	path := b.fsResolver.Block(ref).LocalPath()
+	// the block directory should not contain the .tar.gz extension
+	path = strings.TrimSuffix(path, ".tar.gz")
+	err = util.EnsureDirectory(path)
+	if err != nil {
+		return BlockDirectory{}, fmt.Errorf("failed to create block directory %s: %w", path, err)
+	}
+
+	err = v1.UnTarGz(path, rc)
+	if err != nil {
+		return BlockDirectory{}, fmt.Errorf("failed to extract block file %s: %w", key, err)
+	}
+
+	return NewBlockDirectory(ref, path), nil
 }
 
-// GetBlock downloads the blocks from objectStorage and returns the downloaded block
-func (b *BloomClient) GetBlock(ctx context.Context, reference BlockRef) (LazyBlock, error) {
-	period, err := findPeriod(b.periodicConfigs, reference.StartTimestamp)
-	if err != nil {
-		return LazyBlock{}, fmt.Errorf("error while period lookup: %w", err)
-	}
-	objectClient := b.periodicObjectClients[period]
-	readCloser, _, err := objectClient.GetObject(ctx, createBlockObjectKey(reference.Ref))
-	if err != nil {
-		return LazyBlock{}, fmt.Errorf("error while fetching object from storage: %w", err)
-	}
-	return LazyBlock{
-		BlockRef: reference,
-		Data:     readCloser,
-	}, nil
-}
-
-func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, error) {
-	results := make([]Block, len(blocks))
-	//todo move concurrency to the config
-	err := concurrency.ForEachJob(ctx, len(blocks), 100, func(ctx context.Context, idx int) error {
-		block := blocks[idx]
-		defer func(Data io.ReadCloser) {
-			_ = Data.Close()
-		}(block.Data)
-
-		period, err := findPeriod(b.periodicConfigs, block.StartTimestamp)
+func (b *BloomClient) GetBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
+	// TODO(chaudum): Integrate download queue
+	// The current implementation does brute-force download of all blocks with maximum concurrency.
+	// However, we want that a single block is downloaded only exactly once, even if it is requested
+	// multiple times concurrently.
+	results := make([]BlockDirectory, len(refs))
+	err := concurrency.ForEachJob(ctx, len(refs), b.concurrency, func(ctx context.Context, idx int) error {
+		block, err := b.GetBlock(ctx, refs[idx])
 		if err != nil {
-			return fmt.Errorf("error uploading block file: %w", err)
+			return err
 		}
-		key := createBlockObjectKey(block.Ref)
-		objectClient := b.periodicObjectClients[period]
-
-		_, err = block.Data.Seek(0, 0)
-		if err != nil {
-			return fmt.Errorf("error uploading block file: %w", err)
-		}
-
-		err = objectClient.PutObject(ctx, key, block.Data)
-		if err != nil {
-			return fmt.Errorf("error uploading block file: %w", err)
-		}
-		block.BlockPath = key
 		results[idx] = block
 		return nil
 	})
+
 	return results, err
 }
 
+func (b *BloomClient) PutBlock(ctx context.Context, block Block) error {
+	defer func(Data io.ReadCloser) {
+		_ = Data.Close()
+	}(block.Data)
+
+	key := b.Block(block.BlockRef).Addr()
+	_, err := block.Data.Seek(0, 0)
+	if err != nil {
+		return fmt.Errorf("failed to seek block file %s: %w", key, err)
+	}
+
+	err = b.client.PutObject(ctx, key, block.Data)
+	if err != nil {
+		return fmt.Errorf("failed to put block file %s: %w", key, err)
+	}
+	return nil
+}
+
 func (b *BloomClient) DeleteBlocks(ctx context.Context, references []BlockRef) error {
-	//todo move concurrency to the config
-	return concurrency.ForEachJob(ctx, len(references), 100, func(ctx context.Context, idx int) error {
+	return concurrency.ForEachJob(ctx, len(references), b.concurrency, func(ctx context.Context, idx int) error {
 		ref := references[idx]
-		period, err := findPeriod(b.periodicConfigs, ref.StartTimestamp)
+		key := b.Block(ref).Addr()
+		err := b.client.DeleteObject(ctx, key)
+
 		if err != nil {
-			return fmt.Errorf("error deleting block file: %w", err)
-		}
-		key := createBlockObjectKey(ref.Ref)
-		objectClient := b.periodicObjectClients[period]
-		err = objectClient.DeleteObject(ctx, key)
-		if err != nil {
-			return fmt.Errorf("error deleting block file: %w", err)
+			return fmt.Errorf("failed to delete block file %s: %w", key, err)
 		}
 		return nil
 	})
 }
 
 func (b *BloomClient) Stop() {
-	for _, objectClient := range b.periodicObjectClients {
-		objectClient.Stop()
-	}
+	b.client.Stop()
 }
 
-func (b *BloomClient) downloadMeta(ctx context.Context, metaRef MetaRef, client client.ObjectClient) (Meta, error) {
+func (b *BloomClient) GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, error) {
+	results := make([]Meta, len(refs))
+	err := concurrency.ForEachJob(ctx, len(refs), b.concurrency, func(ctx context.Context, idx int) error {
+		meta, err := b.GetMeta(ctx, refs[idx])
+		if err != nil {
+			return err
+		}
+		results[idx] = meta
+		return nil
+	})
+	return results, err
+}
+
+func (b *BloomClient) GetMeta(ctx context.Context, ref MetaRef) (Meta, error) {
 	meta := Meta{
-		MetaRef: metaRef,
+		MetaRef: ref,
 	}
-	reader, _, err := client.GetObject(ctx, metaRef.FilePath)
+	key := b.KeyResolver.Meta(ref).Addr()
+	reader, _, err := b.client.GetObject(ctx, key)
 	if err != nil {
-		return Meta{}, fmt.Errorf("error downloading meta file %s : %w", metaRef.FilePath, err)
+		return Meta{}, fmt.Errorf("failed to get meta file%s: %w", key, err)
 	}
 	defer reader.Close()
 
 	err = json.NewDecoder(reader).Decode(&meta)
 	if err != nil {
-		return Meta{}, fmt.Errorf("error unmarshalling content of meta file %s: %w", metaRef.FilePath, err)
+		return Meta{}, fmt.Errorf("failed to decode meta file %s: %w", key, err)
 	}
 	return meta, nil
 }
 
-func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef, error) {
-	fileName := objectKey[strings.LastIndex(objectKey, delimiter)+1:]
-	parts := strings.Split(fileName, fileNamePartDelimiter)
-	if len(parts) != 5 {
-		return MetaRef{}, fmt.Errorf("%s filename parts count must be 5 but was %d: [%s]", objectKey, len(parts), strings.Join(parts, ", "))
-	}
-
-	minFingerprint, err := strconv.ParseUint(parts[0], 16, 64)
-	if err != nil {
-		return MetaRef{}, fmt.Errorf("error parsing minFingerprint %s : %w", parts[0], err)
-	}
-	maxFingerprint, err := strconv.ParseUint(parts[1], 16, 64)
-	if err != nil {
-		return MetaRef{}, fmt.Errorf("error parsing maxFingerprint %s : %w", parts[1], err)
-	}
-	startTimestamp, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil {
-		return MetaRef{}, fmt.Errorf("error parsing startTimestamp %s : %w", parts[2], err)
-	}
-	endTimestamp, err := strconv.ParseInt(parts[3], 10, 64)
-	if err != nil {
-		return MetaRef{}, fmt.Errorf("error parsing endTimestamp %s : %w", parts[3], err)
-	}
-	checksum, err := strconv.ParseUint(parts[4], 16, 64)
-	if err != nil {
-		return MetaRef{}, fmt.Errorf("error parsing checksum %s : %w", parts[4], err)
-	}
-	return MetaRef{
-		Ref: Ref{
-			TenantID:       tenantID,
-			TableName:      tableName,
-			MinFingerprint: minFingerprint,
-			MaxFingerprint: maxFingerprint,
-			StartTimestamp: model.Time(startTimestamp),
-			EndTimestamp:   model.Time(endTimestamp),
-			Checksum:       uint32(checksum),
-		},
-		FilePath: objectKey,
-	}, nil
-}
-
-func tablesByPeriod(periodicConfigs []config.PeriodConfig, start, end model.Time) map[config.DayTime][]string {
-	result := make(map[config.DayTime][]string)
-	for i := len(periodicConfigs) - 1; i >= 0; i-- {
-		periodConfig := periodicConfigs[i]
-		if end.Before(periodConfig.From.Time) {
-			continue
-		}
-		owningPeriodStartTs := math.Max64(periodConfig.From.Unix(), start.Unix())
-		owningPeriodEndTs := end.Unix()
-		if i != len(periodicConfigs)-1 {
-			nextPeriodConfig := periodicConfigs[i+1]
-			owningPeriodEndTs = math.Min64(nextPeriodConfig.From.Add(-1*time.Second).Unix(), owningPeriodEndTs)
-		}
-		result[periodConfig.From] = tablesForRange(periodicConfigs[i], owningPeriodStartTs, owningPeriodEndTs)
-		if !start.Before(periodConfig.From.Time) {
-			break
+func findPeriod(configs []config.PeriodConfig, ts model.Time) (config.DayTime, error) {
+	for i := len(configs) - 1; i >= 0; i-- {
+		periodConfig := configs[i]
+		if !periodConfig.From.Time.After(ts) {
+			return periodConfig.From, nil
 		}
 	}
-	return result
-}
-
-func tablesForRange(periodConfig config.PeriodConfig, from, to int64) []string {
-	interval := periodConfig.IndexTables.Period
-	step := int64(interval.Seconds())
-	lower := from / step
-	upper := to / step
-	tables := make([]string, 0, 1+upper-lower)
-	prefix := periodConfig.IndexTables.Prefix
-	for i := lower; i <= upper; i++ {
-		tables = append(tables, joinTableName(prefix, i))
-	}
-	return tables
-}
-
-func joinTableName(prefix string, tableNumber int64) string {
-	return fmt.Sprintf("%s%d", prefix, tableNumber)
+	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", ts)
 }

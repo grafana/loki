@@ -30,7 +30,6 @@ import (
 	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	v3aggregateclusterpb "github.com/envoyproxy/go-control-plane/envoy/extensions/clusters/aggregate/v3"
 	v3tlspb "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
-	"github.com/golang/protobuf/proto"
 
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/pretty"
@@ -38,6 +37,7 @@ import (
 	"google.golang.org/grpc/internal/xds/matcher"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
@@ -87,9 +87,6 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 	case v3clusterpb.Cluster_ROUND_ROBIN:
 		lbPolicy = []byte(`[{"xds_wrr_locality_experimental": {"childPolicy": [{"round_robin": {}}]}}]`)
 	case v3clusterpb.Cluster_RING_HASH:
-		if !envconfig.XDSRingHash {
-			return ClusterUpdate{}, fmt.Errorf("unexpected lbPolicy %v in response: %+v", cluster.GetLbPolicy(), cluster)
-		}
 		rhc := cluster.GetRingHashLbConfig()
 		if rhc.GetHashFunction() != v3clusterpb.Cluster_RingHashLbConfig_XX_HASH {
 			return ClusterUpdate{}, fmt.Errorf("unsupported ring_hash hash function %v in response: %+v", rhc.GetHashFunction(), cluster)
@@ -132,24 +129,18 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 	// Process security configuration received from the control plane iff the
 	// corresponding environment variable is set.
 	var sc *SecurityConfig
-	if envconfig.XDSClientSideSecurity {
-		var err error
-		if sc, err = securityConfigFromCluster(cluster); err != nil {
-			return ClusterUpdate{}, err
-		}
+	if sc, err = securityConfigFromCluster(cluster); err != nil {
+		return ClusterUpdate{}, err
 	}
 
 	// Process outlier detection received from the control plane iff the
 	// corresponding environment variable is set.
 	var od json.RawMessage
-	if envconfig.XDSOutlierDetection {
-		var err error
-		if od, err = outlierConfigFromCluster(cluster); err != nil {
-			return ClusterUpdate{}, err
-		}
+	if od, err = outlierConfigFromCluster(cluster); err != nil {
+		return ClusterUpdate{}, err
 	}
 
-	if cluster.GetLoadBalancingPolicy() != nil && envconfig.XDSCustomLBPolicy {
+	if cluster.GetLoadBalancingPolicy() != nil {
 		lbPolicy, err = xdslbregistry.ConvertToServiceConfig(cluster.GetLoadBalancingPolicy(), 0)
 		if err != nil {
 			return ClusterUpdate{}, fmt.Errorf("error converting LoadBalancingPolicy %v in response: %+v: %v", cluster.GetLoadBalancingPolicy(), cluster, err)
@@ -201,9 +192,6 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 		}
 		return ret, nil
 	case cluster.GetType() == v3clusterpb.Cluster_LOGICAL_DNS:
-		if !envconfig.XDSAggregateAndDNS {
-			return ClusterUpdate{}, fmt.Errorf("unsupported cluster type (%v, %v) in response: %+v", cluster.GetType(), cluster.GetClusterType(), cluster)
-		}
 		ret.ClusterType = ClusterTypeLogicalDNS
 		dnsHN, err := dnsHostNameFromCluster(cluster)
 		if err != nil {
@@ -212,9 +200,6 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 		ret.DNSHostName = dnsHN
 		return ret, nil
 	case cluster.GetClusterType() != nil && cluster.GetClusterType().Name == "envoy.clusters.aggregate":
-		if !envconfig.XDSAggregateAndDNS {
-			return ClusterUpdate{}, fmt.Errorf("unsupported cluster type (%v, %v) in response: %+v", cluster.GetType(), cluster.GetClusterType(), cluster)
-		}
 		clusters := &v3aggregateclusterpb.ClusterConfig{}
 		if err := proto.Unmarshal(cluster.GetClusterType().GetTypedConfig().GetValue(), clusters); err != nil {
 			return ClusterUpdate{}, fmt.Errorf("failed to unmarshal resource: %v", err)

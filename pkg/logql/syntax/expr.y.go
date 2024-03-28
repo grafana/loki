@@ -4,7 +4,6 @@ package syntax
 
 import __yyfmt__ "fmt"
 
-
 import (
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/prometheus/prometheus/model/labels"
@@ -14,7 +13,7 @@ import (
 type exprSymType struct {
 	yys                   int
 	Expr                  Expr
-	Filter                labels.MatchType
+	Filter                log.LineMatchType
 	Grouping              *Grouping
 	Labels                []string
 	LogExpr               LogSelectorExpr
@@ -265,7 +264,6 @@ var exprStatenames = [...]string{}
 const exprEofCode = 1
 const exprErrCode = 2
 const exprInitialStackSize = 16
-
 
 var exprExca = [...]int{
 	-1, 1,
@@ -553,7 +551,6 @@ var exprErrorMessages = [...]struct {
 	token int
 	msg   string
 }{}
-
 
 /*	parser for yacc output	*/
 
@@ -1162,22 +1159,22 @@ exprdefault:
 	case 57:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.Filter = labels.MatchRegexp
+			exprVAL.Filter = log.LineMatchRegexp
 		}
 	case 58:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.Filter = labels.MatchEqual
+			exprVAL.Filter = log.LineMatchEqual
 		}
 	case 59:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.Filter = labels.MatchNotRegexp
+			exprVAL.Filter = log.LineMatchNotRegexp
 		}
 	case 60:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.Filter = labels.MatchNotEqual
+			exprVAL.Filter = log.LineMatchNotEqual
 		}
 	case 61:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
@@ -1296,17 +1293,17 @@ exprdefault:
 	case 84:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.OrFilter = newLineFilterExpr(labels.MatchEqual, "", exprDollar[1].str)
+			exprVAL.OrFilter = newLineFilterExpr(log.LineMatchEqual, "", exprDollar[1].str)
 		}
 	case 85:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.OrFilter = newLineFilterExpr(labels.MatchEqual, exprDollar[1].FilterOp, exprDollar[3].str)
+			exprVAL.OrFilter = newLineFilterExpr(log.LineMatchEqual, exprDollar[1].FilterOp, exprDollar[3].str)
 		}
 	case 86:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.OrFilter = newOrLineFilter(newLineFilterExpr(labels.MatchEqual, "", exprDollar[1].str), exprDollar[3].OrFilter)
+			exprVAL.OrFilter = newOrLineFilter(newLineFilterExpr(log.LineMatchEqual, "", exprDollar[1].str), exprDollar[3].OrFilter)
 		}
 	case 87:
 		exprDollar = exprS[exprpt-2 : exprpt+1]

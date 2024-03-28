@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/loki/common"
 	frontend "github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
@@ -272,6 +273,12 @@ storage_config:
       store-1:
         endpoint: s3://foo-bucket
         region: us-west1
-Named store from this example can be used by setting object_store to store-1 in period_config.`},
+Named store from this example can be used by setting object_store to store-1 in period_config.`,
+		},
+		{
+			Name:       "attributes_config",
+			StructType: []reflect.Type{reflect.TypeOf(push.AttributesConfig{})},
+			Desc:       "Define actions for matching OpenTelemetry (OTEL) attributes.",
+		},
 	}
 )

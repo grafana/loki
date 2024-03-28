@@ -7,11 +7,12 @@ import (
 	"io"
 	"math"
 	"math/rand"
-	"sort"
+	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
@@ -20,22 +21,28 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util/constants"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
+	// BlocksOwnerRead is the operation used to check the authoritative owners of a block
+	// (replicas included) that are available for queries (a bloom gateway is available for
+	// queries only when ACTIVE).
+	BlocksOwnerRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 	// groupedChunksRefPool pooling slice of logproto.GroupedChunkRefs [64, 128, 256, ..., 65536]
 	groupedChunksRefPool = queue.NewSlicePool[*logproto.GroupedChunkRefs](1<<6, 1<<16, 2)
 	// ringGetBuffersPool pooling for ringGetBuffers to avoid calling ring.MakeBuffersForGet() for each request
@@ -97,10 +104,6 @@ type ClientConfig struct {
 	// GRPCClientConfig configures the gRPC connection between the Bloom Gateway client and the server.
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 
-	// LogGatewayRequests configures if requests sent to the gateway should be logged or not.
-	// The log messages are of type debug and contain the address of the gateway and the relevant tenant.
-	LogGatewayRequests bool `yaml:"log_gateway_requests"`
-
 	// Ring is the Bloom Gateway ring used to find the appropriate Bloom Gateway instance
 	// this client should talk to.
 	Ring ring.ReadRing `yaml:"-"`
@@ -120,7 +123,6 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+"grpc", f)
 	i.Cache.RegisterFlagsWithPrefix(prefix+"cache.", f)
 	f.BoolVar(&i.CacheResults, prefix+"cache_results", false, "Flag to control whether to cache bloom gateway client requests/responses.")
-	f.BoolVar(&i.LogGatewayRequests, prefix+"log-gateway-requests", false, "Flag to control whether requests sent to the gateway should be logged or not.")
 }
 
 func (i *ClientConfig) Validate() error {
@@ -138,7 +140,7 @@ func (i *ClientConfig) Validate() error {
 }
 
 type Client interface {
-	FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...syntax.LineFilter) ([]*logproto.GroupedChunkRefs, error)
+	FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error)
 }
 
 type GatewayClient struct {
@@ -212,6 +214,14 @@ func NewClient(
 	}, nil
 }
 
+func JoinFunc[S ~[]E, E any](elems S, sep string, f func(e E) string) string {
+	res := make([]string, len(elems))
+	for i := range elems {
+		res[i] = f(elems[i])
+	}
+	return strings.Join(res, sep)
+}
+
 func shuffleAddrs(addrs []string) []string {
 	rand.Shuffle(len(addrs), func(i, j int) {
 		addrs[i], addrs[j] = addrs[j], addrs[i]
@@ -220,52 +230,78 @@ func shuffleAddrs(addrs []string) []string {
 }
 
 // FilterChunkRefs implements Client
-func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...syntax.LineFilter) ([]*logproto.GroupedChunkRefs, error) {
+func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
 	if !c.limits.BloomGatewayEnabled(tenant) {
 		return groups, nil
 	}
 
 	subRing := GetShuffleShardingSubring(c.ring, tenant, c.limits)
-	rs, err := subRing.GetAllHealthy(BlocksRead)
+	rs, err := subRing.GetAllHealthy(BlocksOwnerRead)
 	if err != nil {
 		return nil, errors.Wrap(err, "bloom gateway get healthy instances")
 	}
 
-	streamsByInst, err := c.groupFingerprintsByServer(groups, subRing, rs.Instances)
+	servers, err := replicationSetsWithBounds(subRing, rs.Instances)
+
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "bloom gateway get replication sets")
 	}
+	servers = partitionByReplicationSet(groups, servers)
 
-	filteredChunkRefs := groupedChunksRefPool.Get(len(groups))
-	defer groupedChunksRefPool.Put(filteredChunkRefs)
+	results := make([][]*logproto.GroupedChunkRefs, len(servers))
+	count := 0
+	err = concurrency.ForEachJob(ctx, len(servers), len(servers), func(ctx context.Context, i int) error {
+		rs := servers[i]
 
-	for _, item := range streamsByInst {
 		// randomize order of addresses so we don't hotspot the first server in the list
-		addrs := shuffleAddrs(item.instance.addrs)
-		err := c.doForAddrs(addrs, func(client logproto.BloomGatewayClient) error {
+		addrs := shuffleAddrs(rs.rs.GetAddresses())
+		level.Info(c.logger).Log(
+			"msg", "do FilterChunkRefs for addresses",
+			"progress", fmt.Sprintf("%d/%d", i+1, len(servers)),
+			"bounds", JoinFunc(rs.ranges, ",", func(e v1.FingerprintBounds) string { return e.String() }),
+			"addrs", strings.Join(addrs, ","),
+			"from", from.Time(),
+			"through", through.Time(),
+			"num_refs", len(rs.groups),
+			"plan", plan.String(),
+			"plan_hash", plan.Hash(),
+		)
+
+		return c.doForAddrs(addrs, func(client logproto.BloomGatewayClient) error {
 			req := &logproto.FilterChunkRefRequest{
 				From:    from,
 				Through: through,
-				Refs:    item.fingerprints,
-				Filters: filters,
+				Refs:    rs.groups,
+				Plan:    plan,
 			}
 			resp, err := client.FilterChunkRefs(ctx, req)
 			if err != nil {
 				return err
 			}
-			filteredChunkRefs = append(filteredChunkRefs, resp.ChunkRefs...)
+			results[i] = resp.ChunkRefs
+			count += len(resp.ChunkRefs)
 			return nil
 		})
-		if err != nil {
-			return nil, err
-		}
+	})
+
+	if err != nil {
+		return nil, err
 	}
-	return filteredChunkRefs, nil
+	return flatten(results, count), nil
+}
+
+func flatten(input [][]*logproto.GroupedChunkRefs, n int) []*logproto.GroupedChunkRefs {
+	result := make([]*logproto.GroupedChunkRefs, 0, n)
+	for _, res := range input {
+		result = append(result, res...)
+	}
+	return result
 }
 
 // doForAddrs sequetially calls the provided callback function fn for each
 // address in given slice addrs until the callback function does not return an
 // error.
+// TODO(owen-d): parallelism
 func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGatewayClient) error) error {
 	var err error
 	var poolClient ringclient.PoolClient
@@ -273,12 +309,12 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 	for _, addr := range addrs {
 		poolClient, err = c.pool.GetClientFor(addr)
 		if err != nil {
-			level.Error(c.logger).Log("msg", fmt.Sprintf("failed to get client for instance %s", addr), "err", err)
+			level.Error(c.logger).Log("msg", "failed to get client for instance", "addr", addr, "err", err)
 			continue
 		}
 		err = fn(poolClient.(logproto.BloomGatewayClient))
 		if err != nil {
-			level.Error(c.logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err)
+			level.Error(c.logger).Log("msg", "client do failed for instance", "addr", addr, "err", err)
 			continue
 		}
 		return nil
@@ -286,127 +322,116 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 	return err
 }
 
-func (c *GatewayClient) groupFingerprintsByServer(groups []*logproto.GroupedChunkRefs, subRing ring.ReadRing, instances []ring.InstanceDesc) ([]instanceWithFingerprints, error) {
-	servers, err := serverAddressesWithTokenRanges(subRing, instances)
-	if err != nil {
-		return nil, err
-	}
-	boundedFingerprints := partitionFingerprintsByAddresses(groups, servers)
-	return groupByInstance(boundedFingerprints), nil
+func mapTokenRangeToFingerprintRange(r bloomutils.Range[uint32]) v1.FingerprintBounds {
+	minFp := uint64(r.Min) << 32
+	maxFp := uint64(r.Max) << 32
+	return v1.NewBounds(
+		model.Fingerprint(minFp),
+		model.Fingerprint(maxFp|math.MaxUint32),
+	)
 }
 
-func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.InstanceDesc) ([]addrsWithTokenRange, error) {
+type rsWithRanges struct {
+	rs     ring.ReplicationSet
+	ranges []v1.FingerprintBounds
+	groups []*logproto.GroupedChunkRefs
+}
+
+func replicationSetsWithBounds(subRing ring.ReadRing, instances []ring.InstanceDesc) ([]rsWithRanges, error) {
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 
-	servers := make([]addrsWithTokenRange, 0, len(instances))
-	it := bloomutils.NewInstanceSortMergeIterator(instances)
-	for it.Next() {
-		// We can use on of the tokens from the token range
-		// to obtain all addresses for that token.
-		rs, err := subRing.Get(it.At().MaxToken, BlocksRead, bufDescs, bufHosts, bufZones)
+	servers := make([]rsWithRanges, 0, len(instances))
+	for _, inst := range instances {
+		tr, err := bloomutils.TokenRangesForInstance(inst.Id, instances)
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
 		}
-		servers = append(servers, addrsWithTokenRange{
-			id:       it.At().Instance.Id,
-			addrs:    rs.GetAddresses(),
-			minToken: it.At().MinToken,
-			maxToken: it.At().MaxToken,
-		})
-	}
 
-	if len(servers) > 0 && servers[len(servers)-1].maxToken < math.MaxUint32 {
-		// append the instance for the token range between the greates token and MaxUint32
-		servers = append(servers, addrsWithTokenRange{
-			id:       servers[0].id,
-			addrs:    servers[0].addrs,
-			minToken: servers[len(servers)-1].maxToken + 1,
-			maxToken: math.MaxUint32,
+		if len(tr) == 0 {
+			level.Warn(util_log.Logger).Log(
+				"subroutine", "replicationSetsWithBounds",
+				"msg", "instance has no token ranges - should not be possible",
+				"instance", inst.Id,
+				"n_instances", len(instances),
+			)
+			continue
+		}
+
+		// NB(owen-d): this will send requests to the wrong nodes if RF>1 since it only checks the
+		// first token when assigning replicasets
+		rs, err := subRing.Get(tr[0], BlocksOwnerRead, bufDescs, bufHosts, bufZones)
+		if err != nil {
+			return nil, errors.Wrap(err, "bloom gateway get ring")
+		}
+
+		bounds := make([]v1.FingerprintBounds, 0, len(tr)/2)
+		for i := 0; i < len(tr); i += 2 {
+			b := v1.NewBounds(
+				model.Fingerprint(uint64(tr[i])<<32),
+				model.Fingerprint(uint64(tr[i+1])<<32|math.MaxUint32),
+			)
+			bounds = append(bounds, b)
+		}
+
+		servers = append(servers, rsWithRanges{
+			rs:     rs,
+			ranges: bounds,
 		})
 	}
 	return servers, nil
 }
 
-type instanceWithToken struct {
-	instance ring.InstanceDesc
-	token    uint32
-}
+func partitionByReplicationSet(fingerprints []*logproto.GroupedChunkRefs, rs []rsWithRanges) (result []rsWithRanges) {
+	for _, inst := range rs {
+		for _, bounds := range inst.ranges {
+			min, _ := slices.BinarySearchFunc(fingerprints, bounds, func(g *logproto.GroupedChunkRefs, b v1.FingerprintBounds) int {
+				if g.Fingerprint < uint64(b.Min) {
+					return -1
+				} else if g.Fingerprint > uint64(b.Min) {
+					return 1
+				}
+				return 0
+			})
 
-type addrsWithTokenRange struct {
-	id                 string
-	addrs              []string
-	minToken, maxToken uint32
-}
+			max, _ := slices.BinarySearchFunc(fingerprints, bounds, func(g *logproto.GroupedChunkRefs, b v1.FingerprintBounds) int {
+				if g.Fingerprint <= uint64(b.Max) {
+					return -1
+				} else if g.Fingerprint > uint64(b.Max) {
+					return 1
+				}
+				return 0
+			})
 
-func (s addrsWithTokenRange) cmp(token uint32) v1.BoundsCheck {
-	if token < s.minToken {
-		return v1.Before
-	} else if token > s.maxToken {
-		return v1.After
-	}
-	return v1.Overlap
-}
+			// fingerprint is out of boundaries
+			if min == len(fingerprints) || max == 0 {
+				continue
+			}
 
-type instanceWithFingerprints struct {
-	instance     addrsWithTokenRange
-	fingerprints []*logproto.GroupedChunkRefs
-}
-
-func partitionFingerprintsByAddresses(fingerprints []*logproto.GroupedChunkRefs, addresses []addrsWithTokenRange) (result []instanceWithFingerprints) {
-	for _, instance := range addresses {
-
-		min := sort.Search(len(fingerprints), func(i int) bool {
-			return instance.cmp(uint32(fingerprints[i].Fingerprint)) > v1.Before
-		})
-
-		max := sort.Search(len(fingerprints), func(i int) bool {
-			return instance.cmp(uint32(fingerprints[i].Fingerprint)) == v1.After
-		})
-
-		// fingerprint is out of boundaries
-		if min == len(fingerprints) || max == 0 {
-			continue
+			inst.groups = append(inst.groups, fingerprints[min:max]...)
 		}
 
-		result = append(result, instanceWithFingerprints{instance: instance, fingerprints: fingerprints[min:max]})
+		if len(inst.groups) > 0 {
+			result = append(result, inst)
+		}
 	}
 
 	return result
 }
 
-// groupByInstance groups fingerprints by server instance
-func groupByInstance(boundedFingerprints []instanceWithFingerprints) []instanceWithFingerprints {
-	if len(boundedFingerprints) == 0 {
-		return []instanceWithFingerprints{}
+// GetShuffleShardingSubring returns the subring to be used for a given user.
+// This function should be used both by index gateway servers and clients in
+// order to guarantee the same logic is used.
+func GetShuffleShardingSubring(ring ring.ReadRing, tenantID string, limits Limits) ring.ReadRing {
+	shardSize := limits.BloomGatewayShardSize(tenantID)
+
+	// A shard size of 0 means shuffle sharding is disabled for this specific user,
+	// so we just return the full ring so that indexes will be sharded across all index gateways.
+	// Since we set the shard size to replication factor if shard size is 0, this
+	// can only happen if both the shard size and the replication factor are set
+	// to 0.
+	if shardSize <= 0 {
+		return ring
 	}
 
-	result := make([]instanceWithFingerprints, 0, len(boundedFingerprints))
-	pos := make(map[string]int, len(boundedFingerprints))
-
-	for _, cur := range boundedFingerprints {
-		if len(cur.fingerprints) == 0 {
-			continue
-		}
-		// Copy fingerprint slice, otherwise we mutate the original
-		// TODO(chaudum): Use SlicePool
-		tmp := make([]*logproto.GroupedChunkRefs, len(cur.fingerprints))
-		_ = copy(tmp, cur.fingerprints)
-
-		idx, ok := pos[cur.instance.id]
-		if ok {
-			result[idx].fingerprints = append(result[idx].fingerprints, tmp...)
-			continue
-		}
-
-		pos[cur.instance.id] = len(result)
-		result = append(result, instanceWithFingerprints{
-			instance: addrsWithTokenRange{
-				id:    cur.instance.id,
-				addrs: cur.instance.addrs,
-			},
-			fingerprints: tmp,
-		})
-	}
-
-	return result
+	return ring.ShuffleShard(tenantID, shardSize)
 }

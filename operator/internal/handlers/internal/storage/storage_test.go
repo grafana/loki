@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -43,6 +44,17 @@ var (
 			"bucketnames":       []byte("bucket1,bucket2"),
 			"access_key_id":     []byte("a-secret-id"),
 			"access_key_secret": []byte("a-secret-key"),
+		},
+	}
+
+	defaultTokenCCOAuthSecret = corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "some-stack-secret",
+			Namespace: "some-ns",
+		},
+		Data: map[string][]byte{
+			"bucketnames": []byte("bucket1,bucket2"),
+			"region":      []byte("a-region"),
 		},
 	}
 
@@ -123,6 +135,79 @@ func TestBuildOptions_WhenMissingSecret_SetDegraded(t *testing.T) {
 	require.Equal(t, degradedErr, err)
 }
 
+func TestBuildOptions_WhenMissingCloudCredentialsSecret_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	fg := configv1.FeatureGates{
+		OpenShift: configv1.OpenShiftFeatureGates{
+			TokenCCOAuthEnv: true,
+		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Missing OpenShift cloud credentials secret",
+		Reason:  lokiv1.ReasonMissingTokenCCOAuthSecret,
+		Requeue: true,
+	}
+
+	stack := &lokiv1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Storage: lokiv1.ObjectStorageSpec{
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						Version:       lokiv1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
+				Secret: lokiv1.ObjectStorageSecretSpec{
+					Name: defaultTokenCCOAuthSecret.Name,
+					Type: lokiv1.ObjectStorageSecretS3,
+				},
+			},
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		_, isLokiStack := object.(*lokiv1.LokiStack)
+		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {
+			k.SetClientObject(object, stack)
+			return nil
+		}
+		if name.Name == defaultTokenCCOAuthSecret.Name {
+			k.SetClientObject(object, &defaultTokenCCOAuthSecret)
+			return nil
+		}
+		if name.Name == fmt.Sprintf("%s-aws-creds", stack.Name) {
+			return apierrors.NewNotFound(schema.GroupResource{}, "cloud credentials auth secret is not found")
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	_, err := BuildOptions(context.TODO(), k, stack, fg)
+
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
+}
+
 func TestBuildOptions_WhenInvalidSecret_SetDegraded(t *testing.T) {
 	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
@@ -134,7 +219,7 @@ func TestBuildOptions_WhenInvalidSecret_SetDegraded(t *testing.T) {
 	}
 
 	degradedErr := &status.DegradedError{
-		Message: "Invalid object storage secret contents: missing secret field",
+		Message: "Invalid object storage secret contents: missing secret field: bucketnames",
 		Reason:  lokiv1.ReasonInvalidObjectStorageSecret,
 		Requeue: false,
 	}

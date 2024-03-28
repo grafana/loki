@@ -62,6 +62,11 @@ limits_config:
   ingestion_burst_size_mb: 50
   reject_old_samples: false
   allow_structured_metadata: true
+  otlp_config:
+    resource_attributes:
+      attributes_config:
+        - action: index_label
+          attributes: ["service.name"]
 
 storage_config:
   named_stores:
@@ -84,7 +89,6 @@ bloom_gateway:
 
 bloom_compactor:
   enabled: false
-  working_directory: {{.dataPath}}/bloom-compactor
 
 compactor:
   working_directory: {{.dataPath}}/compactor

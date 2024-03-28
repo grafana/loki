@@ -427,10 +427,12 @@ func Test_codec_DecodeResponse(t *testing.T) {
 func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 	// test fixtures from pkg/util/marshal_test
 	var queryTests = []struct {
+		name     string
 		actual   parser.Value
 		expected string
 	}{
 		{
+			"basic",
 			logqlmodel.Streams{
 				logproto.Stream{
 					Entries: []logproto.Entry{
@@ -462,6 +464,7 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 		},
 		// vector test
 		{
+			"vector",
 			promql.Vector{
 				{
 					T: 1568404331324,
@@ -524,6 +527,7 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 		},
 		// matrix test
 		{
+			"matrix",
 			promql.Matrix{
 				{
 					Floats: []promql.FPoint{
@@ -607,50 +611,53 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 	}
 	codec := RequestProtobufCodec{}
 	for i, queryTest := range queryTests {
-		params := url.Values{
-			"query": []string{`{app="foo"}`},
-		}
-		u := &url.URL{
-			Path:     "/loki/api/v1/query_range",
-			RawQuery: params.Encode(),
-		}
-		httpReq := &http.Request{
-			Method:     "GET",
-			RequestURI: u.String(),
-			URL:        u,
-		}
-		req, err := codec.DecodeRequest(context.TODO(), httpReq, nil)
-		require.NoError(t, err)
+		i := i
+		t.Run(queryTest.name, func(t *testing.T) {
+			params := url.Values{
+				"query": []string{`{app="foo"}`},
+			}
+			u := &url.URL{
+				Path:     "/loki/api/v1/query_range",
+				RawQuery: params.Encode(),
+			}
+			httpReq := &http.Request{
+				Method:     "GET",
+				RequestURI: u.String(),
+				URL:        u,
+			}
+			req, err := codec.DecodeRequest(context.TODO(), httpReq, nil)
+			require.NoError(t, err)
 
-		// parser.Value -> queryrange.QueryResponse
-		var b bytes.Buffer
-		result := logqlmodel.Result{
-			Data:       queryTest.actual,
-			Statistics: statsResult,
-		}
-		err = WriteQueryResponseProtobuf(&logql.LiteralParams{}, result, &b)
-		require.NoError(t, err)
+			// parser.Value -> queryrange.QueryResponse
+			var b bytes.Buffer
+			result := logqlmodel.Result{
+				Data:       queryTest.actual,
+				Statistics: statsResult,
+			}
+			err = WriteQueryResponseProtobuf(&logql.LiteralParams{}, result, &b)
+			require.NoError(t, err)
 
-		// queryrange.QueryResponse -> queryrangebase.Response
-		querierResp := &http.Response{
-			StatusCode: 200,
-			Body:       io.NopCloser(&b),
-			Header: http.Header{
-				"Content-Type": []string{ProtobufType},
-			},
-		}
-		resp, err := codec.DecodeResponse(context.TODO(), querierResp, req)
-		require.NoError(t, err)
+			// queryrange.QueryResponse -> queryrangebase.Response
+			querierResp := &http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(&b),
+				Header: http.Header{
+					"Content-Type": []string{ProtobufType},
+				},
+			}
+			resp, err := codec.DecodeResponse(context.TODO(), querierResp, req)
+			require.NoError(t, err)
 
-		// queryrange.Response -> JSON
-		ctx := user.InjectOrgID(context.Background(), "1")
-		httpResp, err := codec.EncodeResponse(ctx, httpReq, resp)
-		require.NoError(t, err)
+			// queryrange.Response -> JSON
+			ctx := user.InjectOrgID(context.Background(), "1")
+			httpResp, err := codec.EncodeResponse(ctx, httpReq, resp)
+			require.NoError(t, err)
 
-		body, _ := io.ReadAll(httpResp.Body)
-		require.JSONEqf(t, queryTest.expected, string(body), "Protobuf Decode Query Test %d failed", i)
+			body, err := io.ReadAll(httpResp.Body)
+			require.NoError(t, err)
+			require.JSONEqf(t, queryTest.expected, string(body), "Protobuf Decode Query Test %d failed", i)
+		})
 	}
-
 }
 
 func Test_codec_EncodeRequest(t *testing.T) {
@@ -1554,6 +1561,7 @@ var (
 					"totalDuplicates": 8
 				},
 				"chunksDownloadTime": 0,
+				"congestionControlLatency": 0,
 				"totalChunksRef": 0,
 				"totalChunksDownloaded": 0,
 				"chunkRefsFetchTime": 0,
@@ -1578,11 +1586,16 @@ var (
 					"totalDuplicates": 19
 				},
 				"chunksDownloadTime": 16,
+				"congestionControlLatency": 0,
 				"totalChunksRef": 17,
 				"totalChunksDownloaded": 18,
 				"chunkRefsFetchTime": 19,
 				"queryReferencedStructuredMetadata": true
 			}
+		},
+		"index": {
+			"postFilterChunks": 0,
+			"totalChunks": 0
 		},
 		"cache": {
 			"chunk": {
@@ -1636,6 +1649,16 @@ var (
 				"queryLengthServed": 0
 			},
 		  "volumeResult": {
+				"entriesFound": 0,
+				"entriesRequested": 0,
+				"entriesStored": 0,
+				"bytesReceived": 0,
+				"bytesSent": 0,
+				"requests": 0,
+				"downloadTime": 0,
+				"queryLengthServed": 0
+			},
+		  "instantMetricResult": {
 				"entriesFound": 0,
 				"entriesRequested": 0,
 				"entriesStored": 0,
@@ -2001,6 +2024,7 @@ var (
 					TotalDuplicates:   19,
 				},
 				ChunksDownloadTime:        16,
+				CongestionControlLatency:  0,
 				TotalChunksRef:            17,
 				TotalChunksDownloaded:     18,
 				ChunkRefsFetchTime:        19,
@@ -2027,13 +2051,14 @@ var (
 		},
 
 		Caches: stats.Caches{
-			Chunk:        stats.Cache{},
-			Index:        stats.Cache{},
-			StatsResult:  stats.Cache{},
-			VolumeResult: stats.Cache{},
-			SeriesResult: stats.Cache{},
-			LabelResult:  stats.Cache{},
-			Result:       stats.Cache{},
+			Chunk:               stats.Cache{},
+			Index:               stats.Cache{},
+			StatsResult:         stats.Cache{},
+			VolumeResult:        stats.Cache{},
+			SeriesResult:        stats.Cache{},
+			LabelResult:         stats.Cache{},
+			Result:              stats.Cache{},
+			InstantMetricResult: stats.Cache{},
 		},
 	}
 )

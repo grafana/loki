@@ -110,13 +110,28 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.TablesToCompact, "compactor.tables-to-compact", 0, "Number of tables that compactor will try to compact. Newer tables are chosen when this is less than the number of tables available.")
 	f.IntVar(&cfg.SkipLatestNTables, "compactor.skip-latest-n-tables", 0, "Do not compact N latest tables. Together with -compactor.run-once and -compactor.tables-to-compact, this is useful when clearing compactor backlogs.")
 
-	cfg.CompactorRing.RegisterFlagsWithPrefix("compactor.", "collectors/", f)
+	// Ring
+	skipFlags := []string{
+		"compactor.ring.num-tokens",
+		"compactor.ring.replication-factor",
+	}
+	cfg.CompactorRing.RegisterFlagsWithPrefix("compactor.", "collectors/", f, skipFlags...)
+	f.IntVar(&cfg.CompactorRing.NumTokens, "compactor.ring.num-tokens", ringNumTokens, fmt.Sprintf("IGNORED: Num tokens is fixed to %d", ringNumTokens))
+	f.IntVar(&cfg.CompactorRing.ReplicationFactor, "compactor.ring.replication-factor", ringReplicationFactor, fmt.Sprintf("IGNORED: Replication factor is fixed to %d", ringReplicationFactor))
 }
 
 // Validate verifies the config does not contain inappropriate values
 func (cfg *Config) Validate() error {
 	if cfg.MaxCompactionParallelism < 1 {
 		return errors.New("max compaction parallelism must be >= 1")
+	}
+
+	if cfg.CompactorRing.NumTokens != ringNumTokens {
+		return errors.New("Num tokens must not be changed as it will not take effect")
+	}
+
+	if cfg.CompactorRing.ReplicationFactor != ringReplicationFactor {
+		return errors.New("Replication factor must not be changed as it will not take effect")
 	}
 
 	if cfg.RetentionEnabled {
@@ -512,7 +527,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 
 	// do the initial compaction
 	if err := c.RunCompaction(ctx, false); err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to run compaction", err)
+		level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
 	}
 
 	c.wg.Add(1)
@@ -526,7 +541,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 			select {
 			case <-ticker.C:
 				if err := c.RunCompaction(ctx, false); err != nil {
-					level.Error(util_log.Logger).Log("msg", "failed to run compaction", err)
+					level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
 				}
 			case <-ctx.Done():
 				return
@@ -539,7 +554,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 		go func() {
 			defer c.wg.Done()
 			if err := c.RunCompaction(ctx, true); err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to apply retention", err)
+				level.Error(util_log.Logger).Log("msg", "failed to apply retention", "err", err)
 			}
 
 			ticker := time.NewTicker(c.cfg.ApplyRetentionInterval)
@@ -549,7 +564,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 				select {
 				case <-ticker.C:
 					if err := c.RunCompaction(ctx, true); err != nil {
-						level.Error(util_log.Logger).Log("msg", "failed to apply retention", err)
+						level.Error(util_log.Logger).Log("msg", "failed to apply retention", "err", err)
 					}
 				case <-ctx.Done():
 					return
@@ -578,7 +593,7 @@ func (c *Compactor) stopping(_ error) error {
 }
 
 func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRetention bool) error {
-	schemaCfg, ok := schemaPeriodForTable(c.schemaConfig, tableName)
+	schemaCfg, ok := SchemaPeriodForTable(c.schemaConfig, tableName)
 	if !ok {
 		level.Error(util_log.Logger).Log("msg", "skipping compaction since we can't find schema for table", "table", tableName)
 		return nil
@@ -720,7 +735,7 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) (err
 	}
 
 	// process most recent tables first
-	sortTablesByRange(tables)
+	SortTablesByRange(tables)
 
 	// apply passed in compaction limits
 	if c.cfg.SkipLatestNTables <= len(tables) {
@@ -866,7 +881,7 @@ func (c *Compactor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c.ring.ServeHTTP(w, req)
 }
 
-func sortTablesByRange(tables []string) {
+func SortTablesByRange(tables []string) {
 	tableRanges := make(map[string]model.Interval)
 	for _, table := range tables {
 		tableRanges[table] = retention.ExtractIntervalFromTableName(table)
@@ -876,10 +891,9 @@ func sortTablesByRange(tables []string) {
 		// less than if start time is after produces a most recent first sort order
 		return tableRanges[tables[i]].Start.After(tableRanges[tables[j]].Start)
 	})
-
 }
 
-func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {
+func SchemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {
 	tableInterval := retention.ExtractIntervalFromTableName(tableName)
 	schemaCfg, err := cfg.SchemaForTime(tableInterval.Start)
 	if err != nil || schemaCfg.IndexTables.TableFor(tableInterval.Start) != tableName {

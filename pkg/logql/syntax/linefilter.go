@@ -1,8 +1,7 @@
 package syntax
 
 import (
-	"github.com/prometheus/prometheus/model/labels"
-
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
@@ -40,7 +39,7 @@ func (lf LineFilter) MarshalTo(b []byte) (int, error) {
 
 func (lf *LineFilter) Unmarshal(b []byte) error {
 	buf := encoding.DecWith(b)
-	lf.Ty = labels.MatchType(buf.Uvarint())
+	lf.Ty = log.LineMatchType(buf.Uvarint())
 	lf.Match = buf.UvarintStr()
 	lf.Op = buf.UvarintStr()
 	return nil

@@ -468,7 +468,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		}
 		defer segmentCloser.Close()
 
-		segmentRecoveryErr := RecoverWAL(segmentReader, recoverer)
+		segmentRecoveryErr := RecoverWAL(ctx, segmentReader, recoverer)
 		if segmentRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
 			level.Error(i.logger).Log(
@@ -871,12 +871,9 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 }
 
 // Query the ingests for log streams matching a set of matchers.
-func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) (err error) {
+func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
-
-	start := time.Now().UTC()
-	var lines int32
 
 	if req.Plan == nil {
 		parsed, err := syntax.ParseLogSelector(req.Selector, true)
@@ -887,17 +884,6 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			AST: parsed,
 		}
 	}
-
-	defer func() {
-		status := "successful"
-		if err != nil {
-			status = "failed"
-		}
-		statsCtx := stats.FromContext(ctx)
-		execTime := time.Since(start)
-		logql.RecordIngesterStreamsQueryMetrics(ctx, i.logger, req.Start, req.End, req.Selector, status, req.Limit, lines, req.Shards,
-			statsCtx.Result(execTime, time.Duration(0), 0))
-	}()
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -940,17 +926,14 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		batchLimit = -1
 	}
 
-	lines, err = sendBatches(ctx, it, queryServer, batchLimit)
-	return err
+	return sendBatches(ctx, it, queryServer, batchLimit)
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
-func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) (err error) {
+func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
 	sp := opentracing.SpanFromContext(ctx)
-	start := time.Now().UTC()
-	var lines int32
 
 	// If the plan is empty we want all series to be returned.
 	if req.Plan == nil {
@@ -962,17 +945,6 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			AST: parsed,
 		}
 	}
-
-	defer func() {
-		status := "successful"
-		if err != nil {
-			status = "failed"
-		}
-		statsCtx := stats.FromContext(ctx)
-		execTime := time.Since(start)
-		logql.RecordIngesterSeriesQueryMetrics(ctx, i.logger, req.Start, req.End, req.Selector, status, lines, req.Shards,
-			statsCtx.Result(execTime, time.Duration(0), 0))
-	}()
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -1012,8 +984,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 
 	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	lines, err = sendSampleBatches(ctx, it, queryServer)
-	return err
+	return sendSampleBatches(ctx, it, queryServer)
 }
 
 // asyncStoreMaxLookBack returns a max look back period only if active index type is one of async index stores like `boltdb-shipper` and `tsdb`.
@@ -1387,4 +1358,16 @@ func adjustQueryStartTime(maxLookBackPeriod time.Duration, start, now time.Time)
 		}
 	}
 	return start
+}
+
+func (i *Ingester) GetDetectedFields(_ context.Context, _ *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	return &logproto.DetectedFieldsResponse{
+		Fields: []*logproto.DetectedField{
+			{
+				Label:       "foo",
+				Type:        logproto.DetectedFieldString,
+				Cardinality: 1,
+			},
+		},
+	}, nil
 }

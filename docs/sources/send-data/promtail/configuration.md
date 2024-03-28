@@ -1940,7 +1940,7 @@ users with thousands of services it can be more efficient to use the Consul API
 directly which has basic support for filtering nodes (currently by node
 metadata and a single tag).
 
-### docker_sd_config
+### docker_sd_configs
 
 Docker service discovery allows retrieving targets from a Docker daemon.
 It will only watch containers of the Docker daemon referenced with the host parameter. Docker

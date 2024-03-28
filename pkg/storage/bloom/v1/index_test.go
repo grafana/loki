@@ -10,6 +10,7 @@ import (
 )
 
 func TestBloomOffsetEncoding(t *testing.T) {
+	t.Parallel()
 	src := BloomOffset{Page: 1, ByteOffset: 2}
 	enc := &encoding.Encbuf{}
 	src.Encode(enc, BloomOffset{})
@@ -22,18 +23,19 @@ func TestBloomOffsetEncoding(t *testing.T) {
 }
 
 func TestSeriesEncoding(t *testing.T) {
+	t.Parallel()
 	src := SeriesWithOffset{
 		Series: Series{
 			Fingerprint: model.Fingerprint(1),
 			Chunks: []ChunkRef{
 				{
-					Start:    1,
-					End:      2,
+					From:     1,
+					Through:  2,
 					Checksum: 3,
 				},
 				{
-					Start:    4,
-					End:      5,
+					From:     4,
+					Through:  5,
 					Checksum: 6,
 				},
 			},
@@ -54,6 +56,7 @@ func TestSeriesEncoding(t *testing.T) {
 }
 
 func TestChunkRefCompare(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		desc                              string
 		left, right, exclusive, inclusive ChunkRefs
@@ -68,53 +71,53 @@ func TestChunkRefCompare(t *testing.T) {
 		{
 			desc:      "left empty",
 			left:      nil,
-			right:     ChunkRefs{{Start: 1, End: 2}},
+			right:     ChunkRefs{{From: 1, Through: 2}},
 			exclusive: nil,
 			inclusive: nil,
 		},
 		{
 			desc:      "right empty",
-			left:      ChunkRefs{{Start: 1, End: 2}},
+			left:      ChunkRefs{{From: 1, Through: 2}},
 			right:     nil,
-			exclusive: ChunkRefs{{Start: 1, End: 2}},
+			exclusive: ChunkRefs{{From: 1, Through: 2}},
 			inclusive: nil,
 		},
 		{
 			desc:      "left before right",
-			left:      ChunkRefs{{Start: 1, End: 2}},
-			right:     ChunkRefs{{Start: 3, End: 4}},
-			exclusive: ChunkRefs{{Start: 1, End: 2}},
+			left:      ChunkRefs{{From: 1, Through: 2}},
+			right:     ChunkRefs{{From: 3, Through: 4}},
+			exclusive: ChunkRefs{{From: 1, Through: 2}},
 			inclusive: nil,
 		},
 		{
 			desc:      "left after right",
-			left:      ChunkRefs{{Start: 3, End: 4}},
-			right:     ChunkRefs{{Start: 1, End: 2}},
-			exclusive: ChunkRefs{{Start: 3, End: 4}},
+			left:      ChunkRefs{{From: 3, Through: 4}},
+			right:     ChunkRefs{{From: 1, Through: 2}},
+			exclusive: ChunkRefs{{From: 3, Through: 4}},
 			inclusive: nil,
 		},
 		{
 			desc: "left overlaps right",
 			left: ChunkRefs{
-				{Start: 1, End: 3},
-				{Start: 2, End: 4},
-				{Start: 3, End: 5},
-				{Start: 4, End: 6},
-				{Start: 5, End: 7},
+				{From: 1, Through: 3},
+				{From: 2, Through: 4},
+				{From: 3, Through: 5},
+				{From: 4, Through: 6},
+				{From: 5, Through: 7},
 			},
 			right: ChunkRefs{
-				{Start: 2, End: 4},
-				{Start: 4, End: 6},
-				{Start: 5, End: 6}, // not in left
+				{From: 2, Through: 4},
+				{From: 4, Through: 6},
+				{From: 5, Through: 6}, // not in left
 			},
 			exclusive: ChunkRefs{
-				{Start: 1, End: 3},
-				{Start: 3, End: 5},
-				{Start: 5, End: 7},
+				{From: 1, Through: 3},
+				{From: 3, Through: 5},
+				{From: 5, Through: 7},
 			},
 			inclusive: ChunkRefs{
-				{Start: 2, End: 4},
-				{Start: 4, End: 6},
+				{From: 2, Through: 4},
+				{From: 4, Through: 6},
 			},
 		},
 	} {

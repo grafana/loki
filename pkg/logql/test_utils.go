@@ -34,6 +34,20 @@ type MockQuerier struct {
 	streams []logproto.Stream
 }
 
+func (q MockQuerier) extractOldShard(xs []string) (*astmapper.ShardAnnotation, error) {
+	parsed, version, err := ParseShards(xs)
+	if err != nil {
+		return nil, err
+	}
+
+	if version != PowerOfTwoVersion {
+		return nil, fmt.Errorf("unsupported shard version: %d", version)
+	}
+
+	return parsed[0].PowerOfTwo, nil
+
+}
+
 func (q MockQuerier) SelectLogs(_ context.Context, req SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
@@ -48,11 +62,10 @@ func (q MockQuerier) SelectLogs(_ context.Context, req SelectLogParams) (iter.En
 
 	var shard *astmapper.ShardAnnotation
 	if len(req.Shards) > 0 {
-		shards, err := ParseShards(req.Shards)
+		shard, err = q.extractOldShard(req.Shards)
 		if err != nil {
 			return nil, err
 		}
-		shard = &shards[0]
 	}
 
 	var matched []logproto.Stream
@@ -174,11 +187,10 @@ func (q MockQuerier) SelectSamples(_ context.Context, req SelectSampleParams) (i
 
 	var shard *astmapper.ShardAnnotation
 	if len(req.Shards) > 0 {
-		shards, err := ParseShards(req.Shards)
+		shard, err = q.extractOldShard(req.Shards)
 		if err != nil {
 			return nil, err
 		}
-		shard = &shards[0]
 	}
 
 	var matched []logproto.Stream
@@ -215,7 +227,7 @@ type MockDownstreamer struct {
 
 func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return m }
 
-func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
+func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery, _ Accumulator) ([]logqlmodel.Result, error) {
 	results := make([]logqlmodel.Result, 0, len(queries))
 	for _, query := range queries {
 		res, err := m.Query(query.Params).Exec(ctx)

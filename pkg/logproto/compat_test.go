@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/plan"
 )
 
 // This test verifies that jsoninter uses our custom method for marshalling.
@@ -287,7 +288,7 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 	}{
 		{
 			desc:     "empty request",
-			expected: `0`,
+			expected: `0/0`,
 		},
 		{
 			desc: "request no filters",
@@ -299,19 +300,16 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 					},
 				},
 			},
-			expected: `9962287286179718960`,
+			expected: `9962287286179718960/0`,
 		},
 		{
 			desc: "request with filters but no chunks",
 			request: FilterChunkRefRequest{
-				Filters: []syntax.LineFilter{
-					{
-						Ty:    0,
-						Match: "uuid",
-					},
+				Plan: plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"} |= "uuid"`),
 				},
 			},
-			expected: `0/0-uuid-`,
+			expected: `0/938557591`,
 		},
 		{
 			desc: "request with filters and chunks",
@@ -326,18 +324,11 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 						Tenant:      "test",
 					},
 				},
-				Filters: []syntax.LineFilter{
-					{
-						Ty:    0,
-						Match: "uuid",
-					},
-					{
-						Ty:    1,
-						Match: "trace",
-					},
+				Plan: plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"} |= "uuid" != "trace"`),
 				},
 			},
-			expected: `8827404902424034886/0-uuid-,1-trace-`,
+			expected: `8827404902424034886/2710035654`,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

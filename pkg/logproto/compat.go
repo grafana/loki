@@ -11,6 +11,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/cespare/xxhash/v2"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
@@ -354,6 +355,9 @@ func (m *FilterChunkRefRequest) GetStep() int64 {
 	return 0
 }
 
+// TODO(owen-d): why does this return the hash of all the refs instead of the query?
+// The latter should be significantly cheaper, more helpful (readable), and just as correct
+// at being a unique identifier for the request.
 // GetQuery returns the query of the request.
 // The query is the hash for the input chunks refs and the filter expressions.
 func (m *FilterChunkRefRequest) GetQuery() string {
@@ -367,24 +371,8 @@ func (m *FilterChunkRefRequest) GetQuery() string {
 		chunksHash = h.Sum64()
 	}
 
-	// Short circuit if there are no filters.
-	if len(m.Filters) == 0 {
-		return fmt.Sprintf("%d", chunksHash)
-	}
-
-	var sb strings.Builder
-	for i, filter := range m.Filters {
-		if i > 0 {
-			sb.WriteString(",")
-		}
-		sb.Write(fmt.Appendf(encodeBuf[:0], "%d", filter.Ty))
-		sb.WriteString("-")
-		sb.WriteString(filter.Match)
-		sb.WriteString("-")
-		sb.WriteString(filter.Op)
-	}
-
-	return fmt.Sprintf("%d/%s", chunksHash, sb.String())
+	// TODO(salvacorts): plan.String() will return the whole query. This is not optimal since we are only interested in the filter expressions.
+	return fmt.Sprintf("%d/%d", chunksHash, m.Plan.Hash())
 }
 
 // GetCachingOptions returns the caching options.
@@ -417,4 +405,43 @@ func (m *FilterChunkRefRequest) WithStartEndForCache(start, end time.Time) resul
 	clone.Refs = chunkRefs
 
 	return &clone
+}
+
+func (m *ShardsRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
+
+func (m *ShardsRequest) GetStart() time.Time {
+	return time.Unix(0, m.From.UnixNano())
+}
+
+func (m *ShardsRequest) GetEnd() time.Time {
+	return time.Unix(0, m.Through.UnixNano())
+}
+
+func (m *ShardsRequest) GetStep() int64 { return 0 }
+
+func (m *ShardsRequest) WithStartEnd(start, end time.Time) definitions.Request {
+	clone := *m
+	clone.From = model.TimeFromUnixNano(start.UnixNano())
+	clone.Through = model.TimeFromUnixNano(end.UnixNano())
+	return &clone
+}
+
+func (m *ShardsRequest) WithQuery(query string) definitions.Request {
+	clone := *m
+	clone.Query = query
+	return &clone
+}
+
+func (m *ShardsRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	return m.WithStartEnd(start, end).(resultscache.Request)
+}
+
+func (m *ShardsRequest) LogToSpan(sp opentracing.Span) {
+	fields := []otlog.Field{
+		otlog.String("from", timestamp.Time(int64(m.From)).String()),
+		otlog.String("through", timestamp.Time(int64(m.Through)).String()),
+		otlog.String("query", m.GetQuery()),
+		otlog.String("target_bytes_per_shard", datasize.ByteSize(m.TargetBytesPerShard).HumanReadable()),
+	}
+	sp.LogFields(fields...)
 }

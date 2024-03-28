@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -46,7 +47,10 @@ func Test_GetShards(t *testing.T) {
 
 func Test_ValidateShards(t *testing.T) {
 	ii := NewWithShards(32)
-	require.NoError(t, ii.validateShard(&astmapper.ShardAnnotation{Shard: 1, Of: 16}))
+	_, err := ii.validateShard(
+		logql.NewPowerOfTwoShard(astmapper.ShardAnnotation{Shard: 1, Of: 16}).Ptr(),
+	)
+	require.NoError(t, err)
 }
 
 var (
@@ -95,9 +99,9 @@ func TestDeleteAddLoopkup(t *testing.T) {
 
 func Test_hash_mapping(t *testing.T) {
 	lbs := labels.Labels{
-		labels.Label{Name: "compose_project", Value: "loki-boltdb-storage-s3"},
+		labels.Label{Name: "compose_project", Value: "loki-tsdb-storage-s3"},
 		labels.Label{Name: "compose_service", Value: "ingester-2"},
-		labels.Label{Name: "container_name", Value: "loki-boltdb-storage-s3_ingester-2_1"},
+		labels.Label{Name: "container_name", Value: "loki-tsdb-storage-s3_ingester-2_1"},
 		labels.Label{Name: "filename", Value: "/var/log/docker/790fef4c6a587c3b386fe85c07e03f3a1613f4929ca3abaa4880e14caadb5ad1/json.log"},
 		labels.Label{Name: "host", Value: "docker-desktop"},
 		labels.Label{Name: "source", Value: "stderr"},
@@ -108,7 +112,8 @@ func Test_hash_mapping(t *testing.T) {
 			ii := NewWithShards(shard)
 			ii.Add(logproto.FromLabelsToLabelAdapters(lbs), 1)
 
-			res, err := ii.Lookup([]*labels.Matcher{{Type: labels.MatchEqual, Name: "compose_project", Value: "loki-boltdb-storage-s3"}}, &astmapper.ShardAnnotation{Shard: int(labelsSeriesIDHash(lbs) % 16), Of: 16})
+			x := logql.NewPowerOfTwoShard(astmapper.ShardAnnotation{Shard: int(labelsSeriesIDHash(lbs) % 16), Of: 16})
+			res, err := ii.Lookup([]*labels.Matcher{{Type: labels.MatchEqual, Name: "compose_project", Value: "loki-tsdb-storage-s3"}}, &x)
 			require.NoError(t, err)
 			require.Len(t, res, 1)
 			require.Equal(t, model.Fingerprint(1), res[0])
@@ -131,7 +136,8 @@ func Test_NoMatcherLookup(t *testing.T) {
 	// with shard param
 	ii = NewWithShards(16)
 	ii.Add(logproto.FromLabelsToLabelAdapters(lbs), 1)
-	ids, err = ii.Lookup(nil, &astmapper.ShardAnnotation{Shard: int(labelsSeriesIDHash(lbs) % 16), Of: 16})
+	x := logql.NewPowerOfTwoShard(astmapper.ShardAnnotation{Shard: int(labelsSeriesIDHash(lbs) % 16), Of: 16})
+	ids, err = ii.Lookup(nil, &x)
 	require.Nil(t, err)
 	require.Equal(t, model.Fingerprint(1), ids[0])
 }
@@ -151,10 +157,10 @@ func Test_ConsistentMapping(t *testing.T) {
 
 	shardMax := 8
 	for i := 0; i < shardMax; i++ {
-		shard := &astmapper.ShardAnnotation{
+		shard := logql.NewPowerOfTwoShard(astmapper.ShardAnnotation{
 			Shard: i,
 			Of:    shardMax,
-		}
+		}).Ptr()
 
 		aIDs, err := a.Lookup([]*labels.Matcher{
 			labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),

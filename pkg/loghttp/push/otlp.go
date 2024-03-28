@@ -2,6 +2,7 @@ package push
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -9,10 +10,10 @@ import (
 	"sort"
 	"time"
 
-	prometheustranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
@@ -28,38 +29,31 @@ const (
 	attrServiceName     = "service.name"
 )
 
-var blessedAttributesNormalized = make([]string, len(blessedAttributes))
-
-func init() {
-	for i := range blessedAttributes {
-		blessedAttributesNormalized[i] = prometheustranslator.NormalizeLabel(blessedAttributes[i])
-	}
-}
-
 func newPushStats() *Stats {
 	return &Stats{
-		logLinesBytes:           map[time.Duration]int64{},
-		structuredMetadataBytes: map[time.Duration]int64{},
+		LogLinesBytes:                   map[time.Duration]int64{},
+		StructuredMetadataBytes:         map[time.Duration]int64{},
+		ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{},
 	}
 }
 
-func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits) (*logproto.PushRequest, *Stats, error) {
+func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error) {
 	stats := newPushStats()
 	otlpLogs, err := extractLogs(r, stats)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	req := otlpToLokiPushRequest(otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), stats)
+	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), tracker, stats)
 	return req, stats, nil
 }
 
 func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
-	pushStats.contentEncoding = r.Header.Get(contentEnc)
+	pushStats.ContentEncoding = r.Header.Get(contentEnc)
 	// bodySize should always reflect the compressed size of the request body
 	bodySize := loki_util.NewSizeReader(r.Body)
 	var body io.Reader = bodySize
-	if pushStats.contentEncoding == gzipContentEncoding {
+	if pushStats.ContentEncoding == gzipContentEncoding {
 		r, err := gzip.NewReader(bodySize)
 		if err != nil {
 			return plog.NewLogs(), err
@@ -74,12 +68,12 @@ func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
 		return plog.NewLogs(), err
 	}
 
-	pushStats.bodySize = bodySize.Size()
+	pushStats.BodySize = bodySize.Size()
 
 	req := plogotlp.NewExportRequest()
 
-	pushStats.contentType = r.Header.Get(contentType)
-	switch pushStats.contentType {
+	pushStats.ContentType = r.Header.Get(contentType)
+	switch pushStats.ContentType {
 	case pbContentType:
 		err := req.UnmarshalProto(buf)
 		if err != nil {
@@ -101,7 +95,7 @@ func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, stats *Stats) *logproto.PushRequest {
+func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, tracker UsageTracker, stats *Stats) *logproto.PushRequest {
 	if ld.LogRecordCount() == 0 {
 		return &logproto.PushRequest{}
 	}
@@ -114,11 +108,11 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		res := rls.At(i).Resource()
 		resAttrs := res.Attributes()
 
-		if v, _ := resAttrs.Get(attrServiceName); v.AsString() == "" {
+		if v, ok := resAttrs.Get(attrServiceName); !ok || v.AsString() == "" {
 			resAttrs.PutStr(attrServiceName, "unknown_service")
 		}
 		resourceAttributesAsStructuredMetadata := make(push.LabelsAdapter, 0, resAttrs.Len())
-		streamLabels := make(model.LabelSet, len(blessedAttributesNormalized))
+		streamLabels := make(model.LabelSet, 30) // we have a default labels limit of 30 so just initialize the map of same size
 
 		resAttrs.Range(func(k string, v pcommon.Value) bool {
 			action := otlpConfig.ActionForResourceAttribute(k)
@@ -139,21 +133,29 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		})
 
 		if err := streamLabels.Validate(); err != nil {
-			stats.errs = append(stats.errs, fmt.Errorf("invalid labels: %w", err))
+			stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels: %w", err))
 			continue
 		}
 		labelsStr := streamLabels.String()
 
 		lbs := modelLabelsSetToLabelsList(streamLabels)
+
 		if _, ok := pushRequestsByStream[labelsStr]; !ok {
 			pushRequestsByStream[labelsStr] = logproto.Stream{
 				Labels: labelsStr,
 			}
-			stats.streamLabelsSize += int64(labelsSize(logproto.FromLabelsToLabelAdapters(lbs)))
+			stats.StreamLabelsSize += int64(labelsSize(logproto.FromLabelsToLabelAdapters(lbs)))
 		}
 
 		resourceAttributesAsStructuredMetadataSize := labelsSize(resourceAttributesAsStructuredMetadata)
-		stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(resourceAttributesAsStructuredMetadataSize)
+		retentionPeriodForUser := tenantsRetention.RetentionPeriodFor(userID, lbs)
+
+		stats.StructuredMetadataBytes[retentionPeriodForUser] += int64(resourceAttributesAsStructuredMetadataSize)
+		if tracker != nil {
+			tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(resourceAttributesAsStructuredMetadataSize))
+		}
+
+		stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser], resourceAttributesAsStructuredMetadata...)
 
 		for j := 0; j < sls.Len(); j++ {
 			scope := sls.At(j).Scope()
@@ -203,7 +205,12 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 			}
 
 			scopeAttributesAsStructuredMetadataSize := labelsSize(scopeAttributesAsStructuredMetadata)
-			stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(scopeAttributesAsStructuredMetadataSize)
+			stats.StructuredMetadataBytes[retentionPeriodForUser] += int64(scopeAttributesAsStructuredMetadataSize)
+			if tracker != nil {
+				tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(scopeAttributesAsStructuredMetadataSize))
+			}
+
+			stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser], scopeAttributesAsStructuredMetadata...)
 			for k := 0; k < logs.Len(); k++ {
 				log := logs.At(k)
 
@@ -223,11 +230,18 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 				stream.Entries = append(stream.Entries, entry)
 				pushRequestsByStream[labelsStr] = stream
 
-				stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
-				stats.logLinesBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(len(entry.Line))
-				stats.numLines++
-				if entry.Timestamp.After(stats.mostRecentEntryTimestamp) {
-					stats.mostRecentEntryTimestamp = entry.Timestamp
+				metadataSize := int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
+				stats.StructuredMetadataBytes[retentionPeriodForUser] += metadataSize
+				stats.LogLinesBytes[retentionPeriodForUser] += int64(len(entry.Line))
+
+				if tracker != nil {
+					tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(len(entry.Line)))
+					tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(metadataSize))
+				}
+
+				stats.NumLines++
+				if entry.Timestamp.After(stats.MostRecentEntryTimestamp) {
+					stats.MostRecentEntryTimestamp = entry.Timestamp
 				}
 			}
 		}
@@ -338,7 +352,7 @@ func attributeToLabels(k string, v pcommon.Value, prefix string) push.LabelsAdap
 	if prefix != "" {
 		keyWithPrefix = prefix + "_" + k
 	}
-	keyWithPrefix = prometheustranslator.NormalizeLabel(keyWithPrefix)
+	keyWithPrefix = prometheus.NormalizeLabel(keyWithPrefix)
 
 	typ := v.Type()
 	if typ == pcommon.ValueTypeMap {

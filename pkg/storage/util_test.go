@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	loki_util "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -146,7 +147,7 @@ func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnota
 	return req
 }
 
-func newSampleQuery(query string, start, end time.Time, deletes []*logproto.Delete) *logproto.SampleQueryRequest {
+func newSampleQuery(query string, start, end time.Time, shards []astmapper.ShardAnnotation, deletes []*logproto.Delete) *logproto.SampleQueryRequest {
 	req := &logproto.SampleQueryRequest{
 		Selector: query,
 		Start:    start,
@@ -155,6 +156,9 @@ func newSampleQuery(query string, start, end time.Time, deletes []*logproto.Dele
 		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(query),
 		},
+	}
+	for _, shard := range shards {
+		req.Shards = append(req.Shards, shard.String())
 	}
 	return req
 }
@@ -265,6 +269,14 @@ func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time,
 
 func (m *mockChunkStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*index_stats.Stats, error) {
 	return nil, nil
+}
+
+func (m *mockChunkStore) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {
+	return nil, nil
+}
+
+func (m *mockChunkStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
+	return nil, false
 }
 
 func (m *mockChunkStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {

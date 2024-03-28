@@ -1,30 +1,12 @@
 package push
 
 import (
+	"flag"
 	"fmt"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/model/relabel"
 )
-
-var blessedAttributes = []string{
-	"service.name",
-	"service.namespace",
-	"service.instance.id",
-	"deployment.environment",
-	"cloud.region",
-	"cloud.availability_zone",
-	"k8s.cluster.name",
-	"k8s.namespace.name",
-	"k8s.pod.name",
-	"k8s.container.name",
-	"container.name",
-	"k8s.replicaset.name",
-	"k8s.deployment.name",
-	"k8s.statefulset.name",
-	"k8s.daemonset.name",
-	"k8s.cronjob.name",
-	"k8s.job.name",
-}
 
 // Action is the action to be performed on OTLP Resource Attribute.
 type Action string
@@ -44,31 +26,63 @@ var (
 	errAttributesAndRegexBothSet = fmt.Errorf("only one of attributes or regex must be set")
 )
 
-var DefaultOTLPConfig = OTLPConfig{
-	ResourceAttributes: ResourceAttributesConfig{
-		AttributesConfig: []AttributesConfig{
-			{
-				Action:     IndexLabel,
-				Attributes: blessedAttributes,
+func DefaultOTLPConfig(cfg GlobalOTLPConfig) OTLPConfig {
+	return OTLPConfig{
+		ResourceAttributes: ResourceAttributesConfig{
+			AttributesConfig: []AttributesConfig{
+				{
+					Action:     IndexLabel,
+					Attributes: cfg.DefaultOTLPResourceAttributesAsIndexLabels,
+				},
 			},
 		},
-	},
+	}
 }
 
 type OTLPConfig struct {
-	ResourceAttributes ResourceAttributesConfig `yaml:"resource_attributes,omitempty"`
-	ScopeAttributes    []AttributesConfig       `yaml:"scope_attributes,omitempty"`
-	LogAttributes      []AttributesConfig       `yaml:"log_attributes,omitempty"`
+	ResourceAttributes ResourceAttributesConfig `yaml:"resource_attributes,omitempty" doc:"description=Configuration for resource attributes to store them as index labels or Structured Metadata or drop them altogether"`
+	ScopeAttributes    []AttributesConfig       `yaml:"scope_attributes,omitempty" doc:"description=Configuration for scope attributes to store them as Structured Metadata or drop them altogether"`
+	LogAttributes      []AttributesConfig       `yaml:"log_attributes,omitempty" doc:"description=Configuration for log attributes to store them as Structured Metadata or drop them altogether"`
 }
 
-func (c *OTLPConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	*c = DefaultOTLPConfig
-	type plain OTLPConfig
-	if err := unmarshal((*plain)(c)); err != nil {
-		return err
-	}
+type GlobalOTLPConfig struct {
+	DefaultOTLPResourceAttributesAsIndexLabels []string `yaml:"default_resource_attributes_as_index_labels"`
+}
 
-	return nil
+// RegisterFlags registers distributor-related flags.
+func (cfg *GlobalOTLPConfig) RegisterFlags(fs *flag.FlagSet) {
+	cfg.DefaultOTLPResourceAttributesAsIndexLabels = []string{
+		"service.name",
+		"service.namespace",
+		"service.instance.id",
+		"deployment.environment",
+		"cloud.region",
+		"cloud.availability_zone",
+		"k8s.cluster.name",
+		"k8s.namespace.name",
+		"k8s.pod.name",
+		"k8s.container.name",
+		"container.name",
+		"k8s.replicaset.name",
+		"k8s.deployment.name",
+		"k8s.statefulset.name",
+		"k8s.daemonset.name",
+		"k8s.cronjob.name",
+		"k8s.job.name",
+	}
+	fs.Var((*flagext.StringSlice)(&cfg.DefaultOTLPResourceAttributesAsIndexLabels), "distributor.otlp.default_resource_attributes_as_index_labels", "List of default otlp resource attributes to be picked as index labels")
+}
+
+// ApplyGlobalOTLPConfig applies global otlp config, specifically DefaultOTLPResourceAttributesAsIndexLabels for the start.
+func (c *OTLPConfig) ApplyGlobalOTLPConfig(config GlobalOTLPConfig) {
+	if !c.ResourceAttributes.IgnoreDefaults && len(config.DefaultOTLPResourceAttributesAsIndexLabels) != 0 {
+		c.ResourceAttributes.AttributesConfig = append([]AttributesConfig{
+			{
+				Action:     IndexLabel,
+				Attributes: config.DefaultOTLPResourceAttributesAsIndexLabels,
+			},
+		}, c.ResourceAttributes.AttributesConfig...)
+	}
 }
 
 func (c *OTLPConfig) actionForAttribute(attribute string, cfgs []AttributesConfig) Action {
@@ -115,9 +129,9 @@ func (c *OTLPConfig) Validate() error {
 }
 
 type AttributesConfig struct {
-	Action     Action         `yaml:"action,omitempty"`
-	Attributes []string       `yaml:"attributes,omitempty"`
-	Regex      relabel.Regexp `yaml:"regex,omitempty"`
+	Action     Action         `yaml:"action,omitempty" doc:"description=Configures action to take on matching attributes. It allows one of [structured_metadata, drop] for all attribute types. It additionally allows index_label action for resource attributes"`
+	Attributes []string       `yaml:"attributes,omitempty" doc:"description=List of attributes to configure how to store them or drop them altogether"`
+	Regex      relabel.Regexp `yaml:"regex,omitempty" doc:"description=Regex to choose attributes to configure how to store them or drop them altogether"`
 }
 
 func (c *AttributesConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -146,21 +160,6 @@ func (c *AttributesConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 }
 
 type ResourceAttributesConfig struct {
-	IgnoreDefaults   bool               `yaml:"ignore_defaults,omitempty"`
-	AttributesConfig []AttributesConfig `yaml:"attributes,omitempty"`
-}
-
-func (c *ResourceAttributesConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	type plain ResourceAttributesConfig
-	if err := unmarshal((*plain)(c)); err != nil {
-		return err
-	}
-
-	if !c.IgnoreDefaults {
-		c.AttributesConfig = append([]AttributesConfig{
-			DefaultOTLPConfig.ResourceAttributes.AttributesConfig[0],
-		}, c.AttributesConfig...)
-	}
-
-	return nil
+	IgnoreDefaults   bool               `yaml:"ignore_defaults,omitempty" doc:"default=false|description=Configure whether to ignore the default list of resource attributes set in 'distributor.otlp.default_resource_attributes_as_index_labels' to be stored as index labels and only use the given resource attributes config"`
+	AttributesConfig []AttributesConfig `yaml:"attributes_config,omitempty"`
 }

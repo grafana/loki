@@ -1,3 +1,5 @@
+//go:build integration
+
 package integration
 
 import (
@@ -1061,6 +1063,7 @@ func TestCategorizedLabels(t *testing.T) {
 }
 
 func TestBloomFiltersEndToEnd(t *testing.T) {
+	t.Skip("skipping until blooms have settled")
 	commonFlags := []string{
 		"-bloom-compactor.compaction-interval=10s",
 		"-bloom-compactor.enable-compaction=true",

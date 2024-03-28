@@ -70,7 +70,6 @@ func TestLabelsCache(t *testing.T) {
 			cache.NewMockCache(),
 			nil,
 			nil,
-			nil,
 			func(_ context.Context, _ []string, _ queryrangebase.Request) int {
 				return 1
 			},
@@ -82,173 +81,124 @@ func TestLabelsCache(t *testing.T) {
 		return cacheMiddleware
 	}
 
-	cacheMiddleware := setupCacheMW()
-	for _, values := range []bool{false, true} {
-		prefix := "labels"
-		if values {
-			prefix = "label values"
+	composeLabelsResp := func(lbls []string, splits int64) *LokiLabelNamesResponse {
+		return &LokiLabelNamesResponse{
+			Status:  "success",
+			Version: uint32(loghttp.VersionV1),
+			Data:    lbls,
+			Statistics: stats.Result{
+				Summary: stats.Summary{
+					Splits: splits,
+				},
+			},
 		}
-		t.Run(prefix+": cache the response for the same request", func(t *testing.T) {
-			start := testTime.Truncate(time.Millisecond)
-			end := start.Add(time.Hour)
 
-			labelsReq := LabelRequest{
-				LabelRequest: logproto.LabelRequest{
-					Start: &start,
-					End:   &end,
-				},
-			}
-
-			if values {
-				labelsReq.Values = true
-				labelsReq.Name = "foo"
-				labelsReq.Query = `{cluster="eu-west1"}`
-			}
-
-			labelsResp := &LokiLabelNamesResponse{
-				Status:  "success",
-				Version: uint32(loghttp.VersionV1),
-				Data:    []string{"bar", "buzz"},
-				Statistics: stats.Result{
-					Summary: stats.Summary{
-						Splits: 1,
-					},
-				},
-			}
-
-			called := 0
-			handler := cacheMiddleware.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-				called++
-
-				// should request the entire length with no partitioning as nothing is cached yet.
-				require.Equal(t, labelsReq.GetStart(), r.GetStart())
-				require.Equal(t, labelsReq.GetEnd(), r.GetEnd())
-
-				got := r.(*LabelRequest)
-				require.Equal(t, labelsReq.GetName(), got.GetName())
-				require.Equal(t, labelsReq.GetValues(), got.GetValues())
-				require.Equal(t, labelsReq.GetQuery(), got.GetQuery())
-
-				return labelsResp, nil
-			}))
-
-			ctx := user.InjectOrgID(context.Background(), "fake")
-			got, err := handler.Do(ctx, &labelsReq)
-			require.NoError(t, err)
-			require.Equal(t, 1, called) // called actual handler, as not cached.
-			require.Equal(t, labelsResp, got)
-
-			// Doing same request again shouldn't change anything.
-			called = 0
-			got, err = handler.Do(ctx, &labelsReq)
-			require.NoError(t, err)
-			require.Equal(t, 0, called)
-			require.Equal(t, labelsResp, got)
-		})
 	}
 
-	// reset cacheMiddleware
-	cacheMiddleware = setupCacheMW()
+	start := testTime.Truncate(time.Millisecond)
+	end := start.Add(time.Hour)
+	labelsReq := &LabelRequest{
+		LabelRequest: logproto.LabelRequest{
+			Start: &start,
+			End:   &end,
+		},
+	}
+	labelsResp := composeLabelsResp([]string{"bar", "buzz"}, 1)
+
+	var downstreamHandlerFunc func(context.Context, queryrangebase.Request) (queryrangebase.Response, error)
+	downstreamHandler := &mockDownstreamHandler{fn: func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		return downstreamHandlerFunc(ctx, req)
+	}}
+
 	for _, values := range []bool{false, true} {
+		labelsReq := labelsReq
 		prefix := "labels"
+
 		if values {
-			prefix = "label values"
+			prefix = "label values: "
+			labelsReq.Values = true
+			labelsReq.Name = "foo"
+			labelsReq.Query = `{cluster="eu-west1"}`
 		}
-		t.Run(prefix+": a new request with overlapping time range should reuse part of the previous request for the overlap", func(t *testing.T) {
-			cacheMiddleware := setupCacheMW()
 
-			start := testTime.Truncate(time.Millisecond)
-			end := start.Add(time.Hour)
+		for _, tc := range []struct {
+			name                                 string
+			req                                  queryrangebase.Request
+			expectedQueryStart, expectedQueryEnd time.Time
+			downstreamResponse                   *LokiLabelNamesResponse
+			downstreamCalls                      int
+			expectedReponse                      *LokiLabelNamesResponse
+		}{
+			{
+				name:            "return cached response for the same request",
+				downstreamCalls: 0,
+				expectedReponse: labelsResp,
+				req:             labelsReq,
+			},
+			{
+				name:               "a new request with overlapping time range should reuse results of the previous request",
+				req:                labelsReq.WithStartEnd(labelsReq.GetStart(), labelsReq.GetEnd().Add(15*time.Minute)),
+				expectedQueryStart: labelsReq.GetEnd(),
+				expectedQueryEnd:   labelsReq.GetEnd().Add(15 * time.Minute),
+				downstreamCalls:    1,
+				downstreamResponse: composeLabelsResp([]string{"fizz"}, 1),
+				expectedReponse:    composeLabelsResp([]string{"bar", "buzz", "fizz"}, 2),
+			},
+			{
+				// To avoid returning incorrect results, we only use extents that are entirely within the requested query range.
+				name:               "cached response not entirely within the requested range",
+				req:                labelsReq.WithStartEnd(labelsReq.GetStart().Add(15*time.Minute), labelsReq.GetEnd().Add(-15*time.Minute)),
+				expectedQueryStart: labelsReq.GetStart().Add(15 * time.Minute),
+				expectedQueryEnd:   labelsReq.GetEnd().Add(-15 * time.Minute),
+				downstreamCalls:    1,
+				downstreamResponse: composeLabelsResp([]string{"buzz", "fizz"}, 1),
+				expectedReponse:    composeLabelsResp([]string{"buzz", "fizz"}, 1),
+			},
+		} {
+			t.Run(prefix+tc.name, func(t *testing.T) {
+				cacheMiddleware := setupCacheMW()
+				downstreamHandler.ResetCount()
+				downstreamHandlerFunc = func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+					// should request the entire length with no partitioning as nothing is cached yet.
+					require.Equal(t, labelsReq.GetStart(), r.GetStart())
+					require.Equal(t, labelsReq.GetEnd(), r.GetEnd())
 
-			labelsReq1 := LabelRequest{
-				LabelRequest: logproto.LabelRequest{
-					Start: &start,
-					End:   &end,
-				},
-			}
+					got := r.(*LabelRequest)
+					require.Equal(t, labelsReq.GetName(), got.GetName())
+					require.Equal(t, labelsReq.GetValues(), got.GetValues())
+					require.Equal(t, labelsReq.GetQuery(), got.GetQuery())
 
-			if values {
-				labelsReq1.Values = true
-				labelsReq1.Name = "foo"
-				labelsReq1.Query = `{cluster="eu-west1"}`
-			}
+					return labelsResp, nil
+				}
 
-			labelsResp1 := &LokiLabelNamesResponse{
-				Status:  "success",
-				Version: uint32(loghttp.VersionV1),
-				Data:    []string{"bar", "buzz"},
-				Statistics: stats.Result{
-					Summary: stats.Summary{
-						Splits: 1,
-					},
-				},
-			}
+				handler := cacheMiddleware.Wrap(downstreamHandler)
 
-			called := 0
-			handler := cacheMiddleware.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-				called++
+				ctx := user.InjectOrgID(context.Background(), "fake")
+				got, err := handler.Do(ctx, labelsReq)
+				require.NoError(t, err)
+				require.Equal(t, 1, downstreamHandler.Called()) // call downstream handler, as not cached.
+				require.Equal(t, labelsResp, got)
 
-				// should request the entire length with no partitioning as nothing is cached yet.
-				require.Equal(t, labelsReq1.GetStart(), r.GetStart())
-				require.Equal(t, labelsReq1.GetEnd(), r.GetEnd())
+				downstreamHandler.ResetCount()
+				downstreamHandlerFunc = func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+					require.Equal(t, tc.expectedQueryStart, r.GetStart())
+					require.Equal(t, tc.expectedQueryEnd, r.GetEnd())
 
-				got := r.(*LabelRequest)
-				require.Equal(t, labelsReq1.GetName(), got.GetName())
-				require.Equal(t, labelsReq1.GetValues(), got.GetValues())
-				require.Equal(t, labelsReq1.GetQuery(), got.GetQuery())
+					got := r.(*LabelRequest)
+					require.Equal(t, labelsReq.GetName(), got.GetName())
+					require.Equal(t, labelsReq.GetValues(), got.GetValues())
+					require.Equal(t, labelsReq.GetQuery(), got.GetQuery())
 
-				return labelsResp1, nil
-			}))
+					return tc.downstreamResponse, nil
+				}
 
-			ctx := user.InjectOrgID(context.Background(), "fake")
-			got, err := handler.Do(ctx, &labelsReq1)
-			require.NoError(t, err)
-			require.Equal(t, 1, called)
-			require.Equal(t, labelsResp1, got)
+				got, err = handler.Do(ctx, tc.req)
+				require.NoError(t, err)
+				require.Equal(t, tc.downstreamCalls, downstreamHandler.Called())
+				require.Equal(t, tc.expectedReponse, got)
 
-			labelsReq2 := labelsReq1.WithStartEnd(labelsReq1.GetStart().Add(15*time.Minute), labelsReq1.GetEnd().Add(15*time.Minute))
-
-			called = 0
-			handler = cacheMiddleware.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-				called++
-
-				// make downstream request only for the non-overlapping portion of the query.
-				require.Equal(t, labelsReq1.GetEnd(), r.GetStart())
-				require.Equal(t, labelsReq2.GetEnd(), r.GetEnd())
-
-				got := r.(*LabelRequest)
-				require.Equal(t, labelsReq1.GetName(), got.GetName())
-				require.Equal(t, labelsReq1.GetValues(), got.GetValues())
-				require.Equal(t, labelsReq1.GetQuery(), got.GetQuery())
-
-				return &LokiLabelNamesResponse{
-					Status:  "success",
-					Version: uint32(loghttp.VersionV1),
-					Data:    []string{"fizz"},
-					Statistics: stats.Result{
-						Summary: stats.Summary{
-							Splits: 1,
-						},
-					},
-				}, nil
-			}))
-
-			got, err = handler.Do(ctx, labelsReq2)
-			require.NoError(t, err)
-			require.Equal(t, 1, called)
-			// two splits as we merge the results from the extent and downstream request
-			labelsResp1.Statistics.Summary.Splits = 2
-			require.Equal(t, &LokiLabelNamesResponse{
-				Status:  "success",
-				Version: uint32(loghttp.VersionV1),
-				Data:    []string{"bar", "buzz", "fizz"},
-				Statistics: stats.Result{
-					Summary: stats.Summary{
-						Splits: 2,
-					},
-				},
-			}, got)
-		})
+			})
+		}
 	}
 }
 
@@ -310,7 +260,6 @@ func TestLabelCache_freshness(t *testing.T) {
 				cache.NewMockCache(),
 				nil,
 				nil,
-				nil,
 				func(_ context.Context, _ []string, _ queryrangebase.Request) int {
 					return 1
 				},
@@ -363,67 +312,46 @@ func TestLabelCache_freshness(t *testing.T) {
 
 func TestLabelQueryCacheKey(t *testing.T) {
 	const (
-		defaultTenant       = "a"
-		alternateTenant     = "b"
-		defaultSplit        = time.Hour
-		ingesterSplit       = 90 * time.Minute
-		ingesterQueryWindow = defaultSplit * 3
+		defaultSplit                = time.Hour
+		recentMetadataSplitDuration = 30 * time.Minute
+		recentMetadataQueryWindow   = time.Hour
 	)
 
 	l := fakeLimits{
-		metadataSplitDuration: map[string]time.Duration{defaultTenant: defaultSplit, alternateTenant: defaultSplit},
-		ingesterSplitDuration: map[string]time.Duration{defaultTenant: ingesterSplit},
+		metadataSplitDuration:       map[string]time.Duration{tenantID: defaultSplit},
+		recentMetadataSplitDuration: map[string]time.Duration{tenantID: recentMetadataSplitDuration},
+		recentMetadataQueryWindow:   map[string]time.Duration{tenantID: recentMetadataQueryWindow},
 	}
 
 	cases := []struct {
-		name, tenantID string
-		start, end     time.Time
-		expectedSplit  time.Duration
-		iqo            util.IngesterQueryOptions
-		values         bool
+		name          string
+		start, end    time.Time
+		expectedSplit time.Duration
+		values        bool
+		limits        Limits
 	}{
 		{
-			name:          "outside ingester query window",
-			tenantID:      defaultTenant,
-			start:         time.Now().Add(-6 * time.Hour),
-			end:           time.Now().Add(-5 * time.Hour),
+			name:          "outside recent metadata query window",
+			start:         time.Now().Add(-3 * time.Hour),
+			end:           time.Now().Add(-2 * time.Hour),
 			expectedSplit: defaultSplit,
-			iqo: ingesterQueryOpts{
-				queryIngestersWithin: ingesterQueryWindow,
-				queryStoreOnly:       false,
-			},
+			limits:        l,
 		},
 		{
-			name:          "within ingester query window",
-			tenantID:      defaultTenant,
-			start:         time.Now().Add(-6 * time.Hour),
-			end:           time.Now().Add(-ingesterQueryWindow / 2),
-			expectedSplit: ingesterSplit,
-			iqo: ingesterQueryOpts{
-				queryIngestersWithin: ingesterQueryWindow,
-				queryStoreOnly:       false,
-			},
+			name:          "within recent metadata query window",
+			start:         time.Now().Add(-30 * time.Minute),
+			end:           time.Now(),
+			expectedSplit: recentMetadataSplitDuration,
+			limits:        l,
 		},
 		{
-			name:          "within ingester query window, but query store only",
-			tenantID:      defaultTenant,
-			start:         time.Now().Add(-6 * time.Hour),
-			end:           time.Now().Add(-ingesterQueryWindow / 2),
+			name:          "within recent metadata query window, but recent split duration is not configured",
+			start:         time.Now().Add(-30 * time.Minute),
+			end:           time.Now(),
 			expectedSplit: defaultSplit,
-			iqo: ingesterQueryOpts{
-				queryIngestersWithin: ingesterQueryWindow,
-				queryStoreOnly:       true,
-			},
-		},
-		{
-			name:          "within ingester query window, but no ingester split duration configured",
-			tenantID:      alternateTenant,
-			start:         time.Now().Add(-6 * time.Hour),
-			end:           time.Now().Add(-ingesterQueryWindow / 2),
-			expectedSplit: defaultSplit,
-			iqo: ingesterQueryOpts{
-				queryIngestersWithin: ingesterQueryWindow,
-				queryStoreOnly:       false,
+			limits: fakeLimits{
+				metadataSplitDuration:     map[string]time.Duration{tenantID: defaultSplit},
+				recentMetadataQueryWindow: map[string]time.Duration{tenantID: recentMetadataQueryWindow},
 			},
 		},
 	}
@@ -431,7 +359,7 @@ func TestLabelQueryCacheKey(t *testing.T) {
 	for _, values := range []bool{true, false} {
 		for _, tc := range cases {
 			t.Run(fmt.Sprintf("%s (values: %v)", tc.name, values), func(t *testing.T) {
-				keyGen := cacheKeyLabels{l, nil, tc.iqo}
+				keyGen := cacheKeyLabels{tc.limits, nil}
 
 				r := &LabelRequest{
 					LabelRequest: logproto.LabelRequest{
@@ -453,12 +381,12 @@ func TestLabelQueryCacheKey(t *testing.T) {
 				// and therefore we can't know the current interval apriori without duplicating the logic
 				var pattern *regexp.Regexp
 				if values {
-					pattern = regexp.MustCompile(fmt.Sprintf(`labelvalues:%s:%s:%s:(\d+):%d`, tc.tenantID, labelName, regexp.QuoteMeta(query), tc.expectedSplit))
+					pattern = regexp.MustCompile(fmt.Sprintf(`labelvalues:%s:%s:%s:(\d+):%d`, tenantID, labelName, regexp.QuoteMeta(query), tc.expectedSplit))
 				} else {
-					pattern = regexp.MustCompile(fmt.Sprintf(`labels:%s:(\d+):%d`, tc.tenantID, tc.expectedSplit))
+					pattern = regexp.MustCompile(fmt.Sprintf(`labels:%s:(\d+):%d`, tenantID, tc.expectedSplit))
 				}
 
-				require.Regexp(t, pattern, keyGen.GenerateCacheKey(context.Background(), tc.tenantID, r))
+				require.Regexp(t, pattern, keyGen.GenerateCacheKey(context.Background(), tenantID, r))
 			})
 		}
 	}
