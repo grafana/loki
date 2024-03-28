@@ -3,16 +3,16 @@ package logproto
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/opentracing/opentracing-go/mocktracer"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/timestamp"
 	"math"
 	"testing"
 	"time"
 	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/opentracing/opentracing-go/mocktracer"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -344,7 +344,7 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 
 func TestIndexStatsRequestSpanLogging(t *testing.T) {
 	now := time.Now()
-	end := now.Add(time.Duration(1000 * time.Second))
+	end := now.Add(1000 * time.Second)
 	req := IndexStatsRequest{
 		From:    model.Time(now.UnixMilli()),
 		Through: model.Time(end.UnixMilli()),
@@ -368,7 +368,7 @@ func TestIndexStatsRequestSpanLogging(t *testing.T) {
 
 func TestVolumeRequest(t *testing.T) {
 	now := time.Now()
-	end := now.Add(time.Duration(1000 * time.Second))
+	end := now.Add(1000 * time.Second)
 	req := VolumeRequest{
 		From:    model.Time(now.UnixMilli()),
 		Through: model.Time(end.UnixMilli()),

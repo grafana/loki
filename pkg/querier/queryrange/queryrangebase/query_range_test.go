@@ -3,8 +3,6 @@ package queryrangebase
 import (
 	"bytes"
 	"context"
-	"github.com/opentracing/opentracing-go/mocktracer"
-	"github.com/prometheus/prometheus/model/timestamp"
 	"io"
 	"net/http"
 	"strconv"
@@ -12,6 +10,8 @@ import (
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/opentracing/opentracing-go/mocktracer"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -274,7 +274,7 @@ func TestMergeAPIResponses(t *testing.T) {
 
 func TestPrometheusRequestSpanLogging(t *testing.T) {
 	now := time.Now()
-	end := now.Add(time.Duration(1000 * time.Second))
+	end := now.Add(1000 * time.Second)
 	req := PrometheusRequest{
 		Start: now,
 		End:   end,
@@ -290,7 +290,6 @@ func TestPrometheusRequestSpanLogging(t *testing.T) {
 			}
 			if field.Key == "end" {
 				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
-
 			}
 		}
 	}

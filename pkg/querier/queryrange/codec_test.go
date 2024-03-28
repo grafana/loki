@@ -5,8 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/opentracing/opentracing-go/mocktracer"
-	"github.com/prometheus/prometheus/model/timestamp"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,8 +16,10 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/user"
+	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
@@ -428,7 +428,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 
 func TestLokiRequestSpanLogging(t *testing.T) {
 	now := time.Now()
-	end := now.Add(time.Duration(1000 * time.Second))
+	end := now.Add(1000 * time.Second)
 	req := LokiRequest{
 		StartTs: now,
 		EndTs:   end,
@@ -469,7 +469,7 @@ func TestLokiInstantRequestSpanLogging(t *testing.T) {
 
 func TestLokiSeriesRequestSpanLogging(t *testing.T) {
 	now := time.Now()
-	end := now.Add(time.Duration(1000 * time.Second))
+	end := now.Add(1000 * time.Second)
 	req := LokiSeriesRequest{
 		StartTs: now,
 		EndTs:   end,
@@ -493,7 +493,7 @@ func TestLokiSeriesRequestSpanLogging(t *testing.T) {
 
 func TestLabelRequestSpanLogging(t *testing.T) {
 	now := time.Now()
-	end := now.Add(time.Duration(1000 * time.Second))
+	end := now.Add(1000 * time.Second)
 	req := LabelRequest{
 		LabelRequest: logproto.LabelRequest{
 			Start: &now,
