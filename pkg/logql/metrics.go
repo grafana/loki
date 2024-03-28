@@ -578,6 +578,6 @@ func extractShard(shards []string) *astmapper.ShardAnnotation {
 	return &shard
 }
 
-func RecordDetectedLabelsQueryMetrics(ctx context.Context, logger log.Logger, start time.Time, end time.Time, queryString string, status string, result logql_stats.Result) {
+func RecordDetectedLabelsQueryMetrics(_ context.Context, _ log.Logger, _ time.Time, _ time.Time, _ string, _ string, _ logql_stats.Result) {
 	// TODO(shantanu) log metrics here
 }
