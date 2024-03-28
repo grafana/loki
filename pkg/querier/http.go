@@ -411,7 +411,14 @@ func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.E
 
 // DetectedLabelsHandler returns a response for detected labels
 func (q *QuerierAPI) DetectedLabelsHandler(ctx context.Context, concrete *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
-	return nil, nil
+
+	return &logproto.DetectedLabelsResponse{
+		DetectedLabels: []*logproto.DetectedLabels{
+			{Label: "cluster"},
+			{Label: "namespace"},
+			{Label: "instance"},
+		},
+	}, nil
 }
 
 // WrapQuerySpanAndTimeout applies a context deadline and a span logger to a query call.
