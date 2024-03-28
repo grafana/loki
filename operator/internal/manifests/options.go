@@ -1,6 +1,7 @@
 package manifests
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -126,6 +127,8 @@ type TLSProfileSpec struct {
 	MinTLSVersion string
 }
 
+var ErrInvalidPerTenantConfig error = errors.New("invalid per-tenant config")
+
 // TLSCipherSuites transforms TLSProfileSpec.Ciphers from a slice
 // to a string of elements joined with a comma.
 func (o Options) TLSCipherSuites() string {
@@ -194,4 +197,16 @@ func calculateHTTPTimeouts(queryTimeout time.Duration) TimeoutConfig {
 			UpstreamWriteTimeout: writeTimeout,
 		},
 	}
+}
+
+func ValidatePerTenantConfig(s *lokiv1.LimitsSpec) error {
+	if s != nil && s.Tenants != nil {
+		for _, config := range s.Tenants {
+			c := lokiv1.PerTenantLimitsTemplateSpec{}
+			if config == c {
+				return ErrInvalidPerTenantConfig
+			}
+		}
+	}
+	return nil
 }

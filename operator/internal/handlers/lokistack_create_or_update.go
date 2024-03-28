@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -80,6 +81,18 @@ func CreateOrUpdateLokiStack(
 	certRotationRequiredAt := ""
 	if stack.Annotations != nil {
 		certRotationRequiredAt = stack.Annotations[manifests.AnnotationCertRotationRequiredAt]
+	}
+
+	err = manifests.ValidatePerTenantConfig(stack.Spec.Limits)
+	if err != nil {
+		if errors.Is(err, manifests.ErrInvalidPerTenantConfig) {
+			ll.Error(err, "invalid per-tenant config")
+			return "", &status.DegradedError{
+				Message: fmt.Sprintf("Invalid per-tenant limits config: %s", err),
+				Reason:  lokiv1.ReasonInvalidPerTenantLimitsConfig,
+				Requeue: false,
+			}
+		}
 	}
 
 	timeoutConfig, err := manifests.NewTimeoutConfig(stack.Spec.Limits)
