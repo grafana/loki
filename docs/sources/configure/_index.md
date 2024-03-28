@@ -2734,6 +2734,15 @@ ring:
 # and compact as many tables.
 # CLI flag: -bloom-compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
+
+retention:
+  # Enable bloom retention.
+  # CLI flag: -bloom-compactor.retention.enabled
+  [enabled: <boolean> | default = false]
+
+  # Max lookback days for retention.
+  # CLI flag: -bloom-compactor.retention.max-lookback-days
+  [max_lookback_days: <int> | default = 365]
 ```
 
 ### limits_config

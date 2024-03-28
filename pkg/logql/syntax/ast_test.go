@@ -449,16 +449,16 @@ func Test_FilterMatcher(t *testing.T) {
 
 func TestOrLineFilterTypes(t *testing.T) {
 	for _, tt := range []struct {
-		ty labels.MatchType
+		ty log.LineMatchType
 	}{
-		{labels.MatchEqual},
-		{labels.MatchNotEqual},
-		{labels.MatchRegexp},
-		{labels.MatchNotRegexp},
+		{log.LineMatchEqual},
+		{log.LineMatchNotEqual},
+		{log.LineMatchRegexp},
+		{log.LineMatchNotRegexp},
 	} {
 		t.Run("right inherits left's type", func(t *testing.T) {
 			left := &LineFilterExpr{LineFilter: LineFilter{Ty: tt.ty, Match: "something"}}
-			right := &LineFilterExpr{LineFilter: LineFilter{Ty: labels.MatchEqual, Match: "something"}}
+			right := &LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "something"}}
 
 			_ = newOrLineFilter(left, right)
 			require.Equal(t, tt.ty, right.Ty)

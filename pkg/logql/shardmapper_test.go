@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/astmapper"
@@ -529,7 +530,7 @@ func TestMapping(t *testing.T) {
 						MultiStages: syntax.MultiStageExpr{
 							&syntax.LineFilterExpr{
 								LineFilter: syntax.LineFilter{
-									Ty:    labels.MatchEqual,
+									Ty:    log.LineMatchEqual,
 									Match: "error",
 									Op:    "",
 								},
@@ -550,7 +551,7 @@ func TestMapping(t *testing.T) {
 							MultiStages: syntax.MultiStageExpr{
 								&syntax.LineFilterExpr{
 									LineFilter: syntax.LineFilter{
-										Ty:    labels.MatchEqual,
+										Ty:    log.LineMatchEqual,
 										Match: "error",
 										Op:    "",
 									},
