@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -98,6 +99,7 @@ func TestDistributor(t *testing.T) {
 		t.Run(fmt.Sprintf("[%d](lines=%v)", i, tc.lines), func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
+			limits.DiscoverServiceName = nil
 			limits.IngestionRateMB = ingestionRateLimit
 			limits.IngestionBurstSizeMB = ingestionRateLimit
 			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
@@ -134,10 +136,12 @@ func TestDistributor(t *testing.T) {
 func Test_IncrementTimestamp(t *testing.T) {
 	incrementingDisabled := &validation.Limits{}
 	flagext.DefaultValues(incrementingDisabled)
+	incrementingDisabled.DiscoverServiceName = nil
 	incrementingDisabled.RejectOldSamples = false
 
 	incrementingEnabled := &validation.Limits{}
 	flagext.DefaultValues(incrementingEnabled)
+	incrementingEnabled.DiscoverServiceName = nil
 	incrementingEnabled.RejectOldSamples = false
 	incrementingEnabled.IncrementDuplicateTimestamp = true
 
@@ -405,6 +409,7 @@ func Test_IncrementTimestamp(t *testing.T) {
 func TestDistributorPushConcurrently(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
+	limits.DiscoverServiceName = nil
 
 	distributors, ingesters := prepare(t, 1, 5, limits, nil)
 
@@ -497,6 +502,7 @@ func TestDistributorPushErrors(t *testing.T) {
 func Test_SortLabelsOnPush(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
+	limits.DiscoverServiceName = nil
 	ingester := &mockIngester{}
 	distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 
@@ -788,10 +794,108 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, &stream)
+		_, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
+	}
+}
+
+func TestParseStreamLabels(t *testing.T) {
+	for _, tc := range []struct {
+		name                           string
+		origLabels                     string
+		disableServiceNameLabelMapping bool
+		expectedLabels                 labels.Labels
+		expectedErr                    error
+	}{
+		{
+			name:                           "service name label mapping disabled",
+			disableServiceNameLabelMapping: true,
+			origLabels:                     `{foo="bar"}`,
+			expectedLabels: labels.Labels{
+				{
+					Name:  "foo",
+					Value: "bar",
+				},
+			},
+		},
+		{
+			name:                           "no labels defined - service name label mapping disabled",
+			disableServiceNameLabelMapping: true,
+			origLabels:                     `{}`,
+			expectedErr:                    fmt.Errorf(validation.MissingLabelsErrorMsg),
+		},
+		{
+			name:       "no labels defined",
+			origLabels: `{}`,
+			expectedLabels: labels.Labels{
+				{
+					Name:  labelServiceName,
+					Value: serviceUnknown,
+				},
+			},
+		},
+		{
+			name:       "service name label enabled",
+			origLabels: `{foo="bar"}`,
+			expectedLabels: labels.Labels{
+				{
+					Name:  "foo",
+					Value: "bar",
+				},
+				{
+					Name:  labelServiceName,
+					Value: serviceUnknown,
+				},
+			},
+		},
+		{
+			name:       "use label service as service name",
+			origLabels: `{container="nginx", foo="bar", service="auth"}`,
+			expectedLabels: labels.Labels{
+				{
+					Name:  "container",
+					Value: "nginx",
+				},
+				{
+					Name:  "foo",
+					Value: "bar",
+				},
+				{
+					Name:  "service",
+					Value: "auth",
+				},
+				{
+					Name:  labelServiceName,
+					Value: "auth",
+				},
+			},
+		},
+	} {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		if tc.disableServiceNameLabelMapping {
+			limits.DiscoverServiceName = nil
+		}
+		distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
+		d := distributors[0]
+
+		vCtx := d.validator.getValidationContextForTime(testTime, "123")
+
+		t.Run(tc.name, func(t *testing.T) {
+			lbs, lbsString, hash, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
+				Labels: tc.origLabels,
+			})
+			if tc.expectedErr != nil {
+				require.Equal(t, tc.expectedErr, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedLabels.String(), lbsString)
+			require.Equal(t, tc.expectedLabels, lbs)
+			require.Equal(t, tc.expectedLabels.Hash(), hash)
+		})
 	}
 }
 
