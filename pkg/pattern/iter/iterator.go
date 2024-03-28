@@ -1,18 +1,20 @@
 package iter
 
-import "github.com/prometheus/common/model"
+import (
+	"github.com/grafana/loki/pkg/logproto"
+)
 
 type Iterator interface {
 	Next() bool
 
 	Pattern() string
-	At() model.SamplePair
+	At() logproto.PatternSample
 
 	Error() error
 	Close() error
 }
 
-func NewSlice(pattern string, s []model.SamplePair) Iterator {
+func NewSlice(pattern string, s []logproto.PatternSample) Iterator {
 	return &sliceIterator{
 		values:  s,
 		pattern: pattern,
@@ -22,7 +24,7 @@ func NewSlice(pattern string, s []model.SamplePair) Iterator {
 type sliceIterator struct {
 	i       int
 	pattern string
-	values  []model.SamplePair
+	values  []logproto.PatternSample
 }
 
 func (s *sliceIterator) Next() bool {
@@ -37,7 +39,7 @@ func (s *sliceIterator) Pattern() string {
 	return s.pattern
 }
 
-func (s *sliceIterator) At() model.SamplePair {
+func (s *sliceIterator) At() logproto.PatternSample {
 	return s.values[s.i]
 }
 

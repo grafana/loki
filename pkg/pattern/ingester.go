@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	ring_client "github.com/grafana/dskit/ring/client"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/pattern/clientpool"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -46,7 +47,7 @@ func (cfg *Config) Validate() error {
 
 type Ingester struct {
 	services.Service
-	lifecycler        *ring.Lifecycler
+	lifecycler *ring.Lifecycler
 
 	lifecyclerWatcher *services.FailureWatcher
 
@@ -54,8 +55,8 @@ type Ingester struct {
 	registerer prometheus.Registerer
 	logger     log.Logger
 
-	instancesMtx    sync.RWMutex
-	instances       map[string]*instance
+	instancesMtx sync.RWMutex
+	instances    map[string]*instance
 }
 
 func New(
@@ -89,7 +90,6 @@ func New(
 func (i *Ingester) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	i.lifecycler.ServeHTTP(w, r)
 }
-
 
 func (i *Ingester) starting(ctx context.Context) error {
 	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
@@ -153,6 +153,21 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 }
 
 func (i *Ingester) Query(req *logproto.QueryPatternsRequest, stream logproto.Pattern_QueryServer) error {
+	ctx := stream.Context()
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return err
+	}
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return err
+	}
+	iterator, err := instance.Iterator(ctx, req)
+	if err != nil {
+		return err
+	}
+	defer iterator.Close()
+	// todo batch send patterns.
 	return nil
 }
 

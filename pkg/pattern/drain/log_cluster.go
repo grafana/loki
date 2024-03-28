@@ -4,9 +4,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/grafana/loki/pkg/pattern/iter"
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/pattern/iter"
 )
 
 type LogCluster struct {
@@ -28,19 +30,19 @@ func (c *LogCluster) append(ts model.Time) {
 	c.Volume.Add(ts)
 }
 
-func (c *LogCluster) SampleIterator(from, through model.Time) iter.Iterator {
+func (c *LogCluster) Iterator(from, through model.Time) iter.Iterator {
 	return iter.NewSlice(c.String(), c.Volume.ForRange(from, through).Values)
 }
 
 func truncateTimestamp(ts model.Time) model.Time { return ts - ts%timeResolution }
 
 type Volume struct {
-	Values []model.SamplePair
+	Values []logproto.PatternSample
 }
 
 func initVolume(ts model.Time) Volume {
-	v := Volume{Values: make([]model.SamplePair, 1, defaultVolumeSize)}
-	v.Values[0] = model.SamplePair{
+	v := Volume{Values: make([]logproto.PatternSample, 1, defaultVolumeSize)}
+	v.Values[0] = logproto.PatternSample{
 		Timestamp: ts,
 		Value:     1,
 	}
@@ -97,10 +99,10 @@ func (x *Volume) Add(ts model.Time) {
 		// Prepend.
 		x.Values = slices.Grow(x.Values, 1)
 		copy(x.Values[1:], x.Values)
-		x.Values[0] = model.SamplePair{Timestamp: t, Value: 1}
+		x.Values[0] = logproto.PatternSample{Timestamp: t, Value: 1}
 	case last < t:
 		// Append.
-		x.Values = append(x.Values, model.SamplePair{Timestamp: t, Value: 1})
+		x.Values = append(x.Values, logproto.PatternSample{Timestamp: t, Value: 1})
 	default:
 		// Find with binary search and update.
 		index := sort.Search(len(x.Values), func(i int) bool {
@@ -109,7 +111,7 @@ func (x *Volume) Add(ts model.Time) {
 		if index < len(x.Values) && x.Values[index].Timestamp == t {
 			x.Values[index].Value++
 		} else {
-			x.Values = slices.Insert(x.Values, index, model.SamplePair{Timestamp: t, Value: 1})
+			x.Values = slices.Insert(x.Values, index, logproto.PatternSample{Timestamp: t, Value: 1})
 		}
 	}
 }

@@ -3,7 +3,6 @@ package pattern
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/pattern/drain"
@@ -18,7 +17,7 @@ var drainConfig = &drain.Config{
 	SimTh:           0.3,
 	MaxChildren:     100,
 	ParamString:     "<*>",
-	MaxClusters:     0,
+	MaxClusters:     300,
 }
 
 type stream struct {
@@ -57,10 +56,14 @@ func (s *stream) Push(
 	return nil
 }
 
-func (s *stream) SampleIterator(ctx context.Context, from, through time.Time) (iter.Iterator, error) {
+func (s *stream) Iterator(ctx context.Context, from, through model.Time) (iter.Iterator, error) {
 	// todo we should improve locking.
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	// todo
-	return nil, nil
+	clusters := s.patterns.Clusters()
+	iters := make([]iter.Iterator, len(clusters))
+	for i, cluster := range clusters {
+		iters[i] = cluster.Iterator(from, through)
+	}
+	return iter.NewMerge(iters...), nil
 }

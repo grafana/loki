@@ -92,7 +92,7 @@ type instance struct {
 	streams *streamsMap
 
 	index  *index.Multi
-	mapper *fpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
+	mapper *FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
 
 	instanceID string
 
@@ -173,7 +173,7 @@ func newInstance(
 		writeFailures: writeFailures,
 		schemaconfig:  &c,
 	}
-	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
+	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
 	return i, err
 }
 
@@ -408,7 +408,7 @@ func (i *instance) removeStream(s *stream) {
 func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
 	var fp uint64
 	fp, i.buf = ls.HashWithoutLabels(i.buf, []string(nil)...)
-	return i.mapper.mapFP(model.Fingerprint(fp), ls)
+	return i.mapper.MapFP(model.Fingerprint(fp), ls)
 }
 
 // Return labels associated with given fingerprint. Used by fingerprint mapper.

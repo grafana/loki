@@ -9,10 +9,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/pkg/push"
 
 	// "github.com/grafana/loki/pkg/loggerinfo/drain"
 	"github.com/grafana/loki/pkg/logproto"
