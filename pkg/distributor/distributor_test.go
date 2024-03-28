@@ -145,6 +145,10 @@ func Test_IncrementTimestamp(t *testing.T) {
 	incrementingEnabled.RejectOldSamples = false
 	incrementingEnabled.IncrementDuplicateTimestamp = true
 
+	defaultLimits := &validation.Limits{}
+	flagext.DefaultValues(defaultLimits)
+	now := time.Now()
+
 	tests := map[string]struct {
 		limits       *validation.Limits
 		push         *logproto.PushRequest
@@ -385,6 +389,34 @@ func Test_IncrementTimestamp(t *testing.T) {
 							{Timestamp: time.Unix(123456, 0), Line: "hey1"},
 							{Timestamp: time.Unix(123458, 0), Line: "hey3"},
 							{Timestamp: time.Unix(123457, 0), Line: "hey2"},
+						},
+					},
+				},
+			},
+		},
+		"default limit adding service_name label": {
+			limits: defaultLimits,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: now.Add(-2 * time.Second), Line: "hey1"},
+							{Timestamp: now.Add(-time.Second), Line: "hey2"},
+							{Timestamp: now, Line: "hey3"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\", service_name=\"foo\"}",
+						Hash:   0x86ca305b6d86e8b0,
+						Entries: []logproto.Entry{
+							{Timestamp: now.Add(-2 * time.Second), Line: "hey1"},
+							{Timestamp: now.Add(-time.Second), Line: "hey2"},
+							{Timestamp: now, Line: "hey3"},
 						},
 					},
 				},
