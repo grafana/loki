@@ -40,4 +40,8 @@ func TestWrapTee(t *testing.T) {
 
 	wrappedTee = WrapTee(wrappedTee, tee3)
 	wrappedTee.Duplicate("3", streams)
+
+	tee1.AssertExpectations(t)
+	tee2.AssertExpectations(t)
+	tee3.AssertExpectations(t)
 }
