@@ -7,6 +7,7 @@ env:
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
   IMAGE_PREFIX: "grafana"
+  RELEASE_AS: "3.0.0-rc.1"
   RELEASE_LIB_REF: "main"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
@@ -85,20 +86,18 @@ jobs:
           --manifest-file .release-please-manifest.json \
           --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/${BUILD_ARTIFACTS_BUCKET}/${SHA}) of ${SHA}" \
           --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
-          --release-as "${{ needs.dist.outputs.version }}" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
           --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token "${{ steps.github_app_token.outputs.token }}" \
+          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
           --dry-run ${{ fromJSON(env.DRY_RUN) }}
         
       working-directory: "lib"
   dist:
     needs:
     - "version"
-    outputs:
-      version: "${{ needs.version.outputs.version }}"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"
@@ -818,11 +817,12 @@ jobs:
           echo "pr_created=true" >> $GITHUB_OUTPUT
         fi
       working-directory: "lib"
-name: "Prepare Patch Release PR"
+name: "Prepare Loki 3.0 release"
 "on":
   push:
     branches:
-    - "release-[0-9]+.[0-9]+.x"
+    - "main"
+    - "add-major-release-workflow"
 permissions:
   contents: "write"
   id-token: "write"

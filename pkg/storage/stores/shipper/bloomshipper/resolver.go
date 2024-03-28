@@ -2,6 +2,8 @@ package bloomshipper
 
 import (
 	"fmt"
+	"hash"
+	"hash/fnv"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -170,6 +172,50 @@ func (p PrefixedResolver) Block(ref BlockRef) Location {
 	return locations{
 		key(p.prefix),
 		p.KeyResolver.Block(ref),
+	}
+}
+
+type hashable interface {
+	Hash(hash.Hash32) error
+}
+
+type ShardedPrefixedResolver struct {
+	prefixes []string
+	KeyResolver
+}
+
+func NewShardedPrefixedResolver(prefixes []string, resolver KeyResolver) (KeyResolver, error) {
+	n := len(prefixes)
+	switch n {
+	case 0:
+		return nil, fmt.Errorf("requires at least 1 prefix")
+	case 1:
+		return NewPrefixedResolver(prefixes[0], resolver), nil
+	default:
+		return ShardedPrefixedResolver{
+			prefixes:    prefixes,
+			KeyResolver: resolver,
+		}, nil
+	}
+}
+
+func (r ShardedPrefixedResolver) prefix(ref hashable) key {
+	h := fnv.New32()
+	_ = ref.Hash(h)
+	return key(r.prefixes[h.Sum32()%uint32(len(r.prefixes))])
+}
+
+func (r ShardedPrefixedResolver) Meta(ref MetaRef) Location {
+	return locations{
+		r.prefix(ref),
+		r.KeyResolver.Meta(ref),
+	}
+}
+
+func (r ShardedPrefixedResolver) Block(ref BlockRef) Location {
+	return locations{
+		r.prefix(ref),
+		r.KeyResolver.Block(ref),
 	}
 }
 

@@ -15,10 +15,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	logqllog "github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -237,42 +237,44 @@ func NewMiddleware(
 
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		var (
-			metricRT       = metricsTripperware.Wrap(next)
-			limitedRT      = limitedTripperware.Wrap(next)
-			logFilterRT    = logFilterTripperware.Wrap(next)
-			seriesRT       = seriesTripperware.Wrap(next)
-			labelsRT       = labelsTripperware.Wrap(next)
-			instantRT      = instantMetricTripperware.Wrap(next)
-			statsRT        = indexStatsTripperware.Wrap(next)
-			seriesVolumeRT = seriesVolumeTripperware.Wrap(next)
+			metricRT         = metricsTripperware.Wrap(next)
+			limitedRT        = limitedTripperware.Wrap(next)
+			logFilterRT      = logFilterTripperware.Wrap(next)
+			seriesRT         = seriesTripperware.Wrap(next)
+			labelsRT         = labelsTripperware.Wrap(next)
+			instantRT        = instantMetricTripperware.Wrap(next)
+			statsRT          = indexStatsTripperware.Wrap(next)
+			seriesVolumeRT   = seriesVolumeTripperware.Wrap(next)
+			detectedFieldsRT = next //TODO(twhitney): add middlewares for detected fields
 		)
 
-		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, limits)
+		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, detectedFieldsRT, limits)
 	}), StopperWrapper{resultsCache, statsCache, volumeCache}, nil
 }
 
 type roundTripper struct {
 	logger log.Logger
 
-	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume base.Handler
+	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields base.Handler
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume base.Handler, limits Limits) roundTripper {
+func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields base.Handler, limits Limits) roundTripper {
 	return roundTripper{
-		logger:        logger,
-		limited:       limited,
-		log:           log,
-		limits:        limits,
-		metric:        metric,
-		series:        series,
-		labels:        labels,
-		instantMetric: instantMetric,
-		indexStats:    indexStats,
-		seriesVolume:  seriesVolume,
-		next:          next,
+		logger:         logger,
+		limited:        limited,
+		log:            log,
+		limits:         limits,
+		metric:         metric,
+		series:         series,
+		labels:         labels,
+		instantMetric:  instantMetric,
+		indexStats:     indexStats,
+		seriesVolume:   seriesVolume,
+		detectedFields: detectedFields,
+		next:           next,
 	}
 }
 
@@ -365,6 +367,17 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 		)
 
 		return r.seriesVolume.Do(ctx, req)
+	case *DetectedFieldsRequest:
+		level.Info(logger).Log(
+			"msg", "executing query",
+			"type", "detected fields",
+			"query", op.Query,
+			"length", op.End.Sub(*op.Start),
+			"start", op.Start,
+			"end", op.End,
+		)
+
+		return r.detectedFields.Do(ctx, req)
 	default:
 		return r.next.Do(ctx, req)
 	}
@@ -374,7 +387,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax.LogSelectorExpr, error) {
 	regexp := req.Form.Get("regexp")
 	if regexp != "" {
-		filterExpr, err := syntax.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
+		filterExpr, err := syntax.AddFilterExpr(expr, logqllog.LineMatchRegexp, "", regexp)
 		if err != nil {
 			return nil, err
 		}
@@ -390,14 +403,15 @@ func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax
 }
 
 const (
-	InstantQueryOp = "instant_query"
-	QueryRangeOp   = "query_range"
-	SeriesOp       = "series"
-	LabelNamesOp   = "labels"
-	IndexStatsOp   = "index_stats"
-	VolumeOp       = "volume"
-	VolumeRangeOp  = "volume_range"
-	IndexShardsOp  = "index_shards"
+	InstantQueryOp   = "instant_query"
+	QueryRangeOp     = "query_range"
+	SeriesOp         = "series"
+	LabelNamesOp     = "labels"
+	IndexStatsOp     = "index_stats"
+	VolumeOp         = "volume"
+	VolumeRangeOp    = "volume_range"
+	IndexShardsOp    = "index_shards"
+	DetectedFieldsOp = "detected_fields"
 )
 
 func getOperation(path string) string {
@@ -418,6 +432,8 @@ func getOperation(path string) string {
 		return VolumeRangeOp
 	case path == "/loki/api/v1/index/shards":
 		return IndexShardsOp
+	case path == "/loki/api/experimental/detected_fields":
+		return DetectedFieldsOp
 	default:
 		return ""
 	}

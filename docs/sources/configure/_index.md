@@ -817,6 +817,10 @@ The `frontend` block configures the Loki query-frontend.
 
 # The TLS configuration.
 [tail_tls_config: <tls_config>]
+
+# Whether to enable experimental APIs in the frontend.
+# CLI flag: -frontend.experimental-apis-enabled
+[experimental_apis_enabled: <boolean> | default = false]
 ```
 
 ### query_range
@@ -2353,9 +2357,10 @@ tsdb_shipper:
 
 # Configures Bloom Shipper.
 bloom_shipper:
-  # Working directory to store downloaded Bloom Blocks.
+  # Working directory to store downloaded bloom blocks. Supports multiple
+  # directories, separated by comma.
   # CLI flag: -bloom.shipper.working-directory
-  [working_directory: <string> | default = "bloom-shipper"]
+  [working_directory: <string> | default = "/data/blooms"]
 
   # Maximum size of bloom pages that should be queried. Larger pages than this
   # limit are skipped when querying blooms to limit memory usage.

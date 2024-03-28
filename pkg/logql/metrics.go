@@ -479,6 +479,36 @@ func RecordVolumeQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
 
+func RecordDetectedFieldsQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, status string, stats logql_stats.Result) {
+	var (
+		logger      = fixLogger(ctx, log)
+		latencyType = latencyTypeFast
+		queryType   = QueryTypeVolume
+	)
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	level.Info(logger).Log(
+		"latency", latencyType,
+		"query_type", queryType,
+		"query", query,
+		"query_hash", util.HashedQuery(query),
+		"start", start.Format(time.RFC3339Nano),
+		"end", end.Format(time.RFC3339Nano),
+		"start_delta", time.Since(start),
+		"end_delta", time.Since(end),
+		"length", end.Sub(start),
+		"status", status,
+		// "duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+	)
+	//TODO(twhitney): add stats and exec time
+	// execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
+}
+
 func recordUsageStats(queryType string, stats logql_stats.Result) {
 	if queryType == QueryTypeMetric {
 		bytePerSecondMetricUsage.Record(float64(stats.Summary.BytesProcessedPerSecond))
