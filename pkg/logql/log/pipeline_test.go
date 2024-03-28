@@ -240,7 +240,7 @@ func newPipelineFilter(start, end int64, lbls, structuredMetadata labels.Labels,
 		stages = append(stages, s)
 	})
 
-	stages = append(stages, mustFilter(NewFilter(filter, labels.MatchEqual)).ToStage())
+	stages = append(stages, mustFilter(NewFilter(filter, LineMatchEqual)).ToStage())
 
 	return PipelineFilter{start, end, matchers, NewPipeline(stages)}
 }
@@ -527,7 +527,7 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.ReportAllocs()
 
 	stages := []Stage{
-		mustFilter(NewFilter("metrics.go", labels.MatchEqual)).ToStage(),
+		mustFilter(NewFilter("metrics.go", LineMatchEqual)).ToStage(),
 		NewLogfmtParser(false, false),
 		NewAndLabelFilter(
 			NewDurationLabelFilter(LabelFilterGreaterThan, "duration", 10*time.Millisecond),
@@ -611,7 +611,7 @@ func jsonBenchmark(b *testing.B, parser Stage) {
 	b.ReportAllocs()
 
 	p := NewPipeline([]Stage{
-		mustFilter(NewFilter("metrics.go", labels.MatchEqual)).ToStage(),
+		mustFilter(NewFilter("metrics.go", LineMatchEqual)).ToStage(),
 		parser,
 	})
 	line := []byte(`{"ts":"2020-12-27T09:15:54.333026285Z","error":"action could not be completed", "context":{"file": "metrics.go"}}`)
@@ -643,7 +643,7 @@ func invalidJSONBenchmark(b *testing.B, parser Stage) {
 	b.ReportAllocs()
 
 	p := NewPipeline([]Stage{
-		mustFilter(NewFilter("invalid json", labels.MatchEqual)).ToStage(),
+		mustFilter(NewFilter("invalid json", LineMatchEqual)).ToStage(),
 		parser,
 	})
 	line := []byte(`invalid json`)
@@ -696,7 +696,7 @@ func logfmtBenchmark(b *testing.B, parser Stage) {
 	b.ReportAllocs()
 
 	p := NewPipeline([]Stage{
-		mustFilter(NewFilter("ts", labels.MatchEqual)).ToStage(),
+		mustFilter(NewFilter("ts", LineMatchEqual)).ToStage(),
 		parser,
 	})
 
