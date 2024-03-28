@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/opentracing/opentracing-go"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/opentracing/opentracing-go"
 )
 
 type Handler struct {
