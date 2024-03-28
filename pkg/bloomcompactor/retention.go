@@ -151,7 +151,13 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 	r.metrics.retentionRunning.Set(1)
 	defer r.metrics.retentionRunning.Set(0)
 
-	smallestRetention := smallestEnabledRetention(r.limits)
+	tenantsRetention := retentionByTenant(r.limits)
+	r.reportTenantsExceedingLookback(tenantsRetention)
+
+	defaultLimits := r.limits.DefaultLimits()
+	defaultRetention := findLongestRetention(time.Duration(defaultLimits.RetentionPeriod), defaultLimits.StreamRetention)
+
+	smallestRetention := smallestEnabledRetention(defaultRetention, tenantsRetention)
 	if smallestRetention == 0 {
 		level.Debug(r.logger).Log("msg", "no retention period set for any tenant, skipping retention")
 		return nil
@@ -233,6 +239,23 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 	return nil
 }
 
+func (r *RetentionManager) reportTenantsExceedingLookback(retentionByTenant map[string]time.Duration) {
+	if len(retentionByTenant) == 0 {
+		r.metrics.retentionTenantsExceedingLookback.Set(0)
+		return
+	}
+
+	var tenantsExceedingLookback int
+	for tenant, retention := range retentionByTenant {
+		if retention > time.Duration(r.cfg.MaxLookbackDays)*24*time.Hour {
+			level.Warn(r.logger).Log("msg", "tenant retention exceeds max lookback days", "tenant", tenant, "retention", retention.String())
+		}
+		tenantsExceedingLookback++
+	}
+
+	r.metrics.retentionTenantsExceedingLookback.Set(float64(tenantsExceedingLookback))
+}
+
 func findLongestRetention(globalRetention time.Duration, streamRetention []validation.StreamRetention) time.Duration {
 	if len(streamRetention) == 0 {
 		return globalRetention
@@ -248,13 +271,27 @@ func findLongestRetention(globalRetention time.Duration, streamRetention []valid
 	return globalRetention
 }
 
-// smallestEnabledRetention returns the smallest retention period across all tenants and the default.
-func smallestEnabledRetention(limits RetentionLimits) time.Duration {
-	defaultLimits := limits.DefaultLimits()
-	defaultRetention := findLongestRetention(time.Duration(defaultLimits.RetentionPeriod), defaultLimits.StreamRetention)
-
+func retentionByTenant(limits RetentionLimits) map[string]time.Duration {
 	all := limits.AllByUserID()
 	if len(all) == 0 {
+		return nil
+	}
+
+	retentions := make(map[string]time.Duration, len(all))
+	for tenant, lim := range all {
+		retention := findLongestRetention(time.Duration(lim.RetentionPeriod), lim.StreamRetention)
+		if retention == 0 {
+			continue
+		}
+		retentions[tenant] = retention
+	}
+
+	return retentions
+}
+
+// smallestEnabledRetention returns the smallest retention period across all tenants and the default.
+func smallestEnabledRetention(defaultRetention time.Duration, perTenantRetention map[string]time.Duration) time.Duration {
+	if len(perTenantRetention) == 0 {
 		return defaultRetention
 	}
 
@@ -263,9 +300,7 @@ func smallestEnabledRetention(limits RetentionLimits) time.Duration {
 		smallest = defaultRetention
 	}
 
-	for _, lim := range all {
-		retention := findLongestRetention(time.Duration(lim.RetentionPeriod), lim.StreamRetention)
-
+	for _, retention := range perTenantRetention {
 		// Skip unlimited retention
 		if retention == 0 {
 			continue

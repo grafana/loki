@@ -649,7 +649,11 @@ func TestSmallestRetention(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			retention := smallestEnabledRetention(tc.limits)
+			defaultLim := tc.limits.DefaultLimits()
+			defaultRetention := findLongestRetention(time.Duration(defaultLim.RetentionPeriod), defaultLim.StreamRetention)
+			tenantsRetention := retentionByTenant(tc.limits)
+
+			retention := smallestEnabledRetention(defaultRetention, tenantsRetention)
 			require.Equal(t, tc.expectedRetention, retention)
 		})
 	}

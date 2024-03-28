@@ -45,10 +45,11 @@ type Metrics struct {
 	timePerTenant *prometheus.CounterVec
 
 	// Retention metrics
-	retentionRunning             prometheus.Gauge
-	retentionTime                *prometheus.HistogramVec
-	retentionDaysPerIteration    *prometheus.HistogramVec
-	retentionTenantsPerIteration *prometheus.HistogramVec
+	retentionRunning                  prometheus.Gauge
+	retentionTime                     *prometheus.HistogramVec
+	retentionDaysPerIteration         *prometheus.HistogramVec
+	retentionTenantsPerIteration      *prometheus.HistogramVec
+	retentionTenantsExceedingLookback prometheus.Gauge
 }
 
 func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
@@ -215,6 +216,13 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 			// 1 tenant -> 10k tenants, 10 buckets
 			Buckets: prometheus.ExponentialBucketsRange(1, 10000, 10),
 		}, []string{"status"}),
+
+		retentionTenantsExceedingLookback: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "retention_tenants_exceeding_lookback",
+			Help:      "Number of tenants with a retention exceeding the configured retention lookback.",
+		}),
 	}
 
 	return &m
