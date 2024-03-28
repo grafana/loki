@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"sort"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -38,6 +40,10 @@ var (
 	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
 	errAzureInvalidAccountKey         = errors.New("azure account key is not valid base64")
 
+	errS3EndpointUnparseable       = errors.New("s3 endpoint is not parseable")
+	errS3EndpointUnsupportedScheme = errors.New("scheme of S3 endpoint URL is unsupported")
+	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 must include correct region")
+
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
 
@@ -49,7 +55,10 @@ var (
 	}
 )
 
-const gcpAccountTypeExternal = "external_account"
+const (
+	awsEndpointSuffix      = ".amazonaws.com"
+	gcpAccountTypeExternal = "external_account"
+)
 
 func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
 	var (
@@ -408,6 +417,8 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		SSE:     sseCfg,
 	}
 
+	err = validateS3Endpoint(string(endpoint), string(region))
+
 	switch credentialMode {
 	case lokiv1.CredentialModeTokenCCO:
 		cfg.STS = true
@@ -416,17 +427,21 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		if len(roleArn) != 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAWSRoleArn)
 		}
+
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
+		} else if len(endpoint) != 0 && err != nil {
+			return nil, err
 		}
-
 		return cfg, nil
 	case lokiv1.CredentialModeStatic:
 		cfg.Endpoint = string(endpoint)
 
 		if len(endpoint) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSEndpoint)
+		} else if len(region) != 0 && err != nil {
+			return nil, err
 		}
 		if len(id) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSAccessKeyID)
@@ -443,11 +458,30 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
+		} else if len(endpoint) != 0 && err != nil {
+			return nil, err
 		}
 		return cfg, nil
 	default:
 		return nil, fmt.Errorf("%w: %s", errSecretUnknownCredentialMode, credentialMode)
 	}
+}
+
+func validateS3Endpoint(endpoint string, region string) error {
+	parsedURL, err := url.Parse(endpoint)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errS3EndpointUnparseable, err)
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("%w: %s", errS3EndpointUnsupportedScheme, parsedURL.Scheme)
+	}
+	if strings.HasSuffix(endpoint, awsEndpointSuffix) {
+		validEndpoint := fmt.Sprintf("https://s3.%s%s", region, awsEndpointSuffix)
+		if endpoint != validEndpoint {
+			return fmt.Errorf("%w: %s", errS3EndpointAWSInvalid, validEndpoint)
+		}
+	}
+	return nil
 }
 
 func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {

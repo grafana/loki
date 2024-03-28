@@ -39,7 +39,7 @@ var (
 			Namespace: "some-ns",
 		},
 		Data: map[string][]byte{
-			"endpoint":          []byte("s3://your-endpoint"),
+			"endpoint":          []byte("https://s3.a-region.amazonaws.com"),
 			"region":            []byte("a-region"),
 			"bucketnames":       []byte("bucket1,bucket2"),
 			"access_key_id":     []byte("a-secret-id"),
