@@ -649,7 +649,7 @@ func TestSmallestRetention(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			retention := findSmallestRetention(tc.limits)
+			retention := smallestEnabledRetention(tc.limits)
 			require.Equal(t, tc.expectedRetention, retention)
 		})
 	}

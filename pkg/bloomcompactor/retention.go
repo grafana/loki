@@ -151,7 +151,7 @@ func (r *RetentionManager) Apply(ctx context.Context) error {
 	r.metrics.retentionRunning.Set(1)
 	defer r.metrics.retentionRunning.Set(0)
 
-	smallestRetention := findSmallestRetention(r.limits)
+	smallestRetention := smallestEnabledRetention(r.limits)
 	if smallestRetention == 0 {
 		level.Debug(r.logger).Log("msg", "no retention period set for any tenant, skipping retention")
 		return nil
@@ -248,9 +248,8 @@ func findLongestRetention(globalRetention time.Duration, streamRetention []valid
 	return globalRetention
 }
 
-// findSmallestRetention returns the smallest retention period across all tenants.
-// It also returns a boolean indicating if there is any retention period set at all
-func findSmallestRetention(limits RetentionLimits) time.Duration {
+// smallestEnabledRetention returns the smallest retention period across all tenants and the default.
+func smallestEnabledRetention(limits RetentionLimits) time.Duration {
 	defaultLimits := limits.DefaultLimits()
 	defaultRetention := findLongestRetention(time.Duration(defaultLimits.RetentionPeriod), defaultLimits.StreamRetention)
 
