@@ -22,6 +22,7 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -1271,15 +1272,22 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		return nil, errors.New("merging responses requires at least one response")
 	}
 	var mergedStats stats.Result
-	switch responses[0].(type) {
+	switch res := responses[0].(type) {
+	// LokiPromResponse type is used for both instant and range queries.
+	// Meaning, values that are merged can be either vector or matrix types.
 	case *LokiPromResponse:
+
+		codec := queryrangebase.PrometheusCodecForRangeQueries
+		if res.Response.Data.ResultType == model.ValVector.String() {
+			codec = queryrangebase.PrometheusCodecForInstantQueries
+		}
 
 		promResponses := make([]queryrangebase.Response, 0, len(responses))
 		for _, res := range responses {
 			mergedStats.MergeSplit(res.(*LokiPromResponse).Statistics)
 			promResponses = append(promResponses, res.(*LokiPromResponse).Response)
 		}
-		promRes, err := queryrangebase.PrometheusCodec.MergeResponse(promResponses...)
+		promRes, err := codec.MergeResponse(promResponses...)
 		if err != nil {
 			return nil, err
 		}
@@ -1800,7 +1808,7 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 		}
 		if _, ok := expr.(syntax.SampleExpr); ok {
 			return &LokiPromResponse{
-				Response: queryrangebase.NewEmptyPrometheusResponse(),
+				Response: queryrangebase.NewEmptyPrometheusResponse(model.ValMatrix), // range metric query
 			}, nil
 		}
 		return &LokiResponse{

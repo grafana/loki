@@ -49,8 +49,6 @@ func (cfg *InstantMetricCacheConfig) Validate() error {
 	return cfg.ResultsCacheConfig.Validate()
 }
 
-type instantMetricExtractor struct{}
-
 func NewInstantMetricCacheMiddleware(
 	log log.Logger,
 	limits Limits,
