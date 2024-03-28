@@ -96,6 +96,7 @@ func ParseDetectedLabelsQuery(r *http.Request) (*logproto.DetectedLabelsRequest,
 	return &logproto.DetectedLabelsRequest{
 		Start: &start,
 		End:   &end,
+		Query: query(r),
 	}, nil
 }
 

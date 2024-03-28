@@ -979,7 +979,7 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 
 		u := &url.URL{
-			Path:     "/loki/api/alphav1/detected_labels",
+			Path:     "/loki/api/experimental/detected_labels",
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{
@@ -1019,7 +1019,7 @@ func (c Codec) Path(r queryrangebase.Request) string {
 	case *DetectedFieldsRequest:
 		return "/loki/api/experimental/detected_fields"
 	case *DetectedLabelsRequest:
-		return "/api/alphav1/detected_labels"
+		return "/loki/api/experimental/detected_labels"
 	}
 
 	return "other"

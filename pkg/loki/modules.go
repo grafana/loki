@@ -1049,9 +1049,6 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/api/prom/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/series").Methods("GET", "POST").Handler(frontendHandler)
 
-	// TODO(shantanu): Add a feature flag here
-	t.Server.HTTP.Path("/loki/api/alphav1/detected_labels").Methods("GET", "POST").Handler(frontendHandler)
-
 	// Only register tailing requests if this process does not act as a Querier
 	// If this process is also a Querier the Querier will register the tail endpoints.
 	if !t.isModuleActive(Querier) {
@@ -1062,6 +1059,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	if t.Cfg.Frontend.ExperimentalAPIsEnabled {
 		t.Server.HTTP.Path("/loki/api/experimental/detected_fields").Methods("GET", "POST").Handler(frontendHandler)
+		t.Server.HTTP.Path("/loki/api/experimental/detected_labels").Methods("GET", "POST").Handler(frontendHandler)
 	}
 
 	if t.frontend == nil {
