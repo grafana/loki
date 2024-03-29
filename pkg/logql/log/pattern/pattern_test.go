@@ -230,3 +230,22 @@ func Test_ParseLineFilter(t *testing.T) {
 		})
 	}
 }
+
+func Test_ParseLiterals(t *testing.T) {
+	for _, tt := range []struct {
+		pattern string
+		lit     [][]byte
+		err     error
+	}{
+		{"<_>", [][]byte{}, nil},
+		{"", nil, newParseError("syntax error: unexpected $end, expecting IDENTIFIER or LITERAL", 1, 1)},
+		{"foo <_> bar <_>", [][]byte{[]byte("foo "), []byte(" bar ")}, nil},
+		{"<foo>", [][]byte{}, nil},
+	} {
+		t.Run(tt.pattern, func(t *testing.T) {
+			lit, err := ParseLiterals(tt.pattern)
+			require.Equal(t, tt.err, err)
+			require.Equal(t, tt.lit, lit)
+		})
+	}
+}

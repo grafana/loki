@@ -50,6 +50,20 @@ func ParseLineFilter(in []byte) (*Matcher, error) {
 	return &Matcher{e: e}, nil
 }
 
+func ParseLiterals(in string) ([][]byte, error) {
+	e, err := parseExpr(in)
+	if err != nil {
+		return nil, err
+	}
+	lit := make([][]byte, 0, len(e))
+	for _, n := range e {
+		if l, ok := n.(literals); ok {
+			lit = append(lit, l)
+		}
+	}
+	return lit, nil
+}
+
 // Matches matches the given line with the provided pattern.
 // Matches invalidates the previous returned captures array.
 func (m *Matcher) Matches(in []byte) [][]byte {
