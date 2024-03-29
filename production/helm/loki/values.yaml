@@ -1562,7 +1562,7 @@ minio:
       cpu: 100m
       memory: 128Mi
 # Create extra manifests via values. Would be passed through `tpl` for templating
-## objects can also be provided as multiline strings, useful for templating field names
+# objects can also be provided as multiline strings, useful for templating field names
 extraObjects: []
 # - apiVersion: v1
 #   kind: ConfigMap
