@@ -213,7 +213,7 @@ func Test_Error(t *testing.T) {
 	}
 }
 
-func Test_NewWithoutNamedCaptures(t *testing.T) {
+func Test_ParseLineFilter(t *testing.T) {
 	for _, tt := range []struct {
 		name string
 		err  error
