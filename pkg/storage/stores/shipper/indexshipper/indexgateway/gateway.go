@@ -214,7 +214,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	}
 
 	predicate := chunk.NewPredicate(matchers, &req.Plan)
-	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, predicate)
+	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, predicate, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +418,7 @@ func (g *Gateway) getShardsWithBlooms(
 	defer sp.Finish()
 
 	// 1) for all bounds, get chunk refs
-	grps, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, p)
+	grps, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, p, nil)
 	if err != nil {
 		return err
 	}

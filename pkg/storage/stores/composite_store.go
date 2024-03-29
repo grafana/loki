@@ -28,7 +28,14 @@ type ChunkFetcherProvider interface {
 }
 
 type ChunkFetcher interface {
-	GetChunks(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
+	GetChunks(
+		ctx context.Context,
+		userID string,
+		from,
+		through model.Time,
+		predicate chunk.Predicate,
+		storeChunksOverride *logproto.ChunkRefGroup,
+	) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 }
 
 type Store interface {
@@ -155,11 +162,18 @@ func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID stri
 	return result.Strings(), err
 }
 
-func (c CompositeStore) GetChunks(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (c CompositeStore) GetChunks(
+	ctx context.Context,
+	userID string,
+	from,
+	through model.Time,
+	predicate chunk.Predicate,
+	storeChunksOverride *logproto.ChunkRefGroup,
+) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	chunkIDs := [][]chunk.Chunk{}
 	fetchers := []*fetcher.Fetcher{}
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		ids, fetcher, err := store.GetChunks(innerCtx, userID, from, through, predicate)
+		ids, fetcher, err := store.GetChunks(innerCtx, userID, from, through, predicate, storeChunksOverride)
 		if err != nil {
 			return err
 		}
@@ -328,13 +342,6 @@ func (c CompositeStore) forStores(ctx context.Context, from, through model.Time,
 	j := sort.Search(len(c.stores), func(j int) bool {
 		return c.stores[j].start > through
 	})
-
-	min := func(a, b model.Time) model.Time {
-		if a < b {
-			return a
-		}
-		return b
-	}
 
 	start := from
 	for ; i < j; i++ {

@@ -29,8 +29,8 @@ func newStoreMock() *storeMock {
 	return &storeMock{}
 }
 
-func (s *storeMock) GetChunks(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
-	args := s.Called(ctx, userID, from, through, predicate)
+func (s *storeMock) GetChunks(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate, storeChunksOverride *logproto.ChunkRefGroup) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+	args := s.Called(ctx, userID, from, through, predicate, storeChunksOverride)
 	return args.Get(0).([][]chunk.Chunk), args.Get(1).([]*fetcher.Fetcher), args.Error(2)
 }
 
@@ -242,7 +242,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 			asyncStoreCfg := AsyncStoreCfg{IngesterQuerier: ingesterQuerier}
 			asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
 
-			chunks, fetchers, err := asyncStore.GetChunks(context.Background(), "fake", model.Now(), model.Now(), chunk.NewPredicate(nil, nil))
+			chunks, fetchers, err := asyncStore.GetChunks(context.Background(), "fake", model.Now(), model.Now(), chunk.NewPredicate(nil, nil), nil)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expectedChunks, chunks)
@@ -304,7 +304,7 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 			}
 			asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
 
-			_, _, err := asyncStore.GetChunks(context.Background(), "fake", tc.queryFrom, tc.queryThrough, chunk.NewPredicate(nil, nil))
+			_, _, err := asyncStore.GetChunks(context.Background(), "fake", tc.queryFrom, tc.queryThrough, chunk.NewPredicate(nil, nil), nil)
 			require.NoError(t, err)
 
 			expectedNumCalls := 0
