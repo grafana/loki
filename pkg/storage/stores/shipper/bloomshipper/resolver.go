@@ -32,6 +32,8 @@ type KeyResolver interface {
 	ParseMetaKey(Location) (MetaRef, error)
 	Block(BlockRef) Location
 	ParseBlockKey(Location) (BlockRef, error)
+	Tenant(tenant, table string) Location
+	TenantPrefix(loc Location) (string, error)
 }
 
 type defaultKeyResolver struct{}
@@ -124,6 +126,27 @@ func (defaultKeyResolver) ParseBlockKey(loc Location) (BlockRef, error) {
 			Checksum:       uint32(checksum),
 		},
 	}, nil
+}
+
+func (defaultKeyResolver) Tenant(tenant, table string) Location {
+	return simpleLocation{
+		BloomPrefix,
+		table,
+		tenant,
+	}
+}
+
+func (defaultKeyResolver) TenantPrefix(loc Location) (string, error) {
+	dir, fn := path.Split(loc.Addr())
+
+	dirParts := strings.Split(path.Clean(dir), "/")
+	dirParts = append(dirParts, path.Clean(fn))
+	if len(dirParts) < 3 {
+		return "", fmt.Errorf("directory parts count must be 3 or greater, but was %d : [%s]", len(dirParts), loc)
+	}
+
+	// The tenant is the third part of the directory. E.g. bloom/schema_b_table_20088/1/metas where 1 is the tenant
+	return dirParts[2], nil
 }
 
 type PrefixedResolver struct {

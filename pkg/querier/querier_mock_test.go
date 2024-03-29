@@ -580,6 +580,18 @@ func (q *querierMock) Volume(ctx context.Context, req *logproto.VolumeRequest) (
 	return resp.(*logproto.VolumeResponse), err
 }
 
+func (q *querierMock) DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	args := q.MethodCalled("DetectedFields", ctx, req)
+
+	resp := args.Get(0)
+	err := args.Error(1)
+	if resp == nil {
+		return nil, err
+	}
+
+	return resp.(*logproto.DetectedFieldsResponse), err
+}
+
 type engineMock struct {
 	util.ExtendedMock
 }

@@ -3,7 +3,6 @@ package v1
 import (
 	"github.com/grafana/regexp"
 	regexpsyntax "github.com/grafana/regexp/syntax"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -90,16 +89,16 @@ func FiltersToBloomTest(b NGramBuilder, filters ...syntax.LineFilterExpr) BloomT
 
 func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest {
 	switch filter.Ty {
-	case labels.MatchNotEqual, labels.MatchNotRegexp:
+	case log.LineMatchNotEqual, log.LineMatchNotRegexp:
 		// We cannot test _negated_ filters with a bloom filter since blooms are probabilistic
 		// filters that can only tell us if a string _might_ exist.
 		// For example, for `!= "foo"`, the bloom filter might tell us that the string "foo" might exist
 		// but because we are not sure, we cannot discard that chunk because it might actually not be there.
 		// Therefore, we return a test that always returns true.
 		return MatchAll
-	case labels.MatchEqual:
+	case log.LineMatchEqual:
 		return newStringTest(b, filter.Match)
-	case labels.MatchRegexp:
+	case log.LineMatchRegexp:
 		reg, err := regexpsyntax.Parse(filter.Match, regexpsyntax.Perl)
 		if err != nil {
 			// TODO: log error

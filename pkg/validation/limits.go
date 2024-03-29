@@ -80,6 +80,7 @@ type Limits struct {
 	MaxLineSize                 flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
 	MaxLineSizeTruncate         bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
+	DiscoverServiceName         []string         `yaml:"discover_service_name" json:"discover_service_name"`
 
 	// Ingester enforced limits.
 	MaxLocalStreamsPerUser  int              `yaml:"max_streams_per_user" json:"max_streams_per_user"`
@@ -240,6 +241,19 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 15, "Maximum number of label names per series.")
 	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", true, "Whether or not old samples will be rejected.")
 	f.BoolVar(&l.IncrementDuplicateTimestamp, "validation.increment-duplicate-timestamps", false, "Alter the log line timestamp during ingestion when the timestamp is the same as the previous entry for the same stream. When enabled, if a log line in a push request has the same timestamp as the previous line for the same stream, one nanosecond is added to the log line. This will preserve the received order of log lines with the exact same timestamp when they are queried, by slightly altering their stored timestamp. NOTE: This is imperfect, because Loki accepts out of order writes, and another push request for the same stream could contain duplicate timestamps to existing entries and they will not be incremented.")
+	l.DiscoverServiceName = []string{
+		"service",
+		"app",
+		"application",
+		"name",
+		"app_kubernetes_io_name",
+		"container",
+		"container_name",
+		"component",
+		"workload",
+		"job",
+	}
+	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
 
 	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
@@ -575,7 +589,7 @@ func (o *Overrides) MaxQueryLength(_ context.Context, userID string) time.Durati
 // so nooping in Loki until then.
 func (o *Overrides) MaxChunksPerQueryFromStore(_ string) int { return 0 }
 
-// MaxQueryLength returns the limit of the series of metric queries.
+// MaxQuerySeries returns the limit of the series of metric queries.
 func (o *Overrides) MaxQuerySeries(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
 }
@@ -688,7 +702,7 @@ func (o *Overrides) MaxLineSize(userID string) int {
 	return o.getOverridesForUser(userID).MaxLineSize.Val()
 }
 
-// MaxLineSizeShouldTruncate returns whether lines longer than max should be truncated.
+// MaxLineSizeTruncate returns whether lines longer than max should be truncated.
 func (o *Overrides) MaxLineSizeTruncate(userID string) bool {
 	return o.getOverridesForUser(userID).MaxLineSizeTruncate
 }
@@ -895,6 +909,10 @@ func (o *Overrides) PerStreamRateLimit(userID string) RateLimit {
 
 func (o *Overrides) IncrementDuplicateTimestamps(userID string) bool {
 	return o.getOverridesForUser(userID).IncrementDuplicateTimestamp
+}
+
+func (o *Overrides) DiscoverServiceName(userID string) []string {
+	return o.getOverridesForUser(userID).DiscoverServiceName
 }
 
 // VolumeEnabled returns whether volume endpoints are enabled for a user.

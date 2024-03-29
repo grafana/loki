@@ -175,7 +175,7 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 		if sp := opentracing.SpanFromContext(task.ctx); sp != nil {
 			md, _ := blockQuerier.Metadata()
 			blk := bloomshipper.BlockRefFrom(task.Tenant, task.table.String(), md)
-			sp.LogKV("process block", blk.String())
+			sp.LogKV("process block", blk.String(), "series", len(task.series))
 		}
 
 		it := v1.NewPeekingIter(task.RequestIter(tokenizer))

@@ -817,6 +817,10 @@ The `frontend` block configures the Loki query-frontend.
 
 # The TLS configuration.
 [tail_tls_config: <tls_config>]
+
+# Whether to enable experimental APIs in the frontend.
+# CLI flag: -frontend.experimental-apis-enabled
+[experimental_apis_enabled: <boolean> | default = false]
 ```
 
 ### query_range
@@ -2730,6 +2734,15 @@ ring:
 # and compact as many tables.
 # CLI flag: -bloom-compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
+
+retention:
+  # Enable bloom retention.
+  # CLI flag: -bloom-compactor.retention.enabled
+  [enabled: <boolean> | default = false]
+
+  # Max lookback days for retention.
+  # CLI flag: -bloom-compactor.retention.max-lookback-days
+  [max_lookback_days: <int> | default = 365]
 ```
 
 ### limits_config
@@ -2810,6 +2823,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # incremented.
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
+
+# If no service_name label exists, Loki maps a single label from the configured
+# list to service_name. If none of the configured labels exist in the stream,
+# label is set to unknown_service. Empty list disables setting the label.
+# CLI flag: -validation.discover-service-name
+[discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name component workload job]]
 
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user

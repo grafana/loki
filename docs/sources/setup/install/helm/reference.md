@@ -2854,6 +2854,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.selfMonitoring.podLogs.additionalPipelineStages</td>
+			<td>list</td>
+			<td>Additional pipeline stages to process logs after scraping https://grafana.com/docs/agent/latest/operator/api/#pipelinestagespec-a-namemonitoringgrafanacomv1alpha1pipelinestagespeca</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.selfMonitoring.podLogs.annotations</td>
 			<td>object</td>
 			<td>PodLogs annotations</td>

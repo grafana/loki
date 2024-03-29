@@ -241,6 +241,7 @@ type Client interface {
 	MetaClient
 	BlockClient
 	IsObjectNotFoundErr(err error) bool
+	ObjectClient() client.ObjectClient
 	Stop()
 }
 
@@ -268,6 +269,10 @@ func NewBloomClient(cfg bloomStoreConfig, client client.ObjectClient, logger log
 		client:      client,
 		logger:      logger,
 	}, nil
+}
+
+func (b *BloomClient) ObjectClient() client.ObjectClient {
+	return b.client
 }
 
 func (b *BloomClient) IsObjectNotFoundErr(err error) bool {
