@@ -2,7 +2,6 @@ package queryrange
 
 import (
 	"bytes"
-	"container/heap"
 	"context"
 	"errors"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 	strings "strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/util/loser"
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
@@ -1400,99 +1400,108 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 	}
 }
 
-// mergeOrderedNonOverlappingStreams merges a set of ordered, nonoverlapping responses by concatenating matching streams then running them through a heap to pull out limit values
-func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, direction logproto.Direction) []logproto.Stream {
+func mergeOrderedStreams(resps []*LokiResponse, limit uint32, direction logproto.Direction) []logproto.Stream {
 	var total int
-
-	// turn resps -> map[labels] []entries
-	groups := make(map[string]*byDir)
+loop:
 	for _, resp := range resps {
 		for _, stream := range resp.Data.Result {
-			s, ok := groups[stream.Labels]
-			if !ok {
-				s = &byDir{
-					direction: direction,
-					labels:    stream.Labels,
-				}
-				groups[stream.Labels] = s
-			}
-
-			s.markers = append(s.markers, stream.Entries)
 			total += len(stream.Entries)
-		}
-
-		// optimization: since limit has been reached, no need to append entries from subsequent responses
-		if total >= int(limit) {
-			break
+			if total > int(limit) {
+				break loop
+			}
 		}
 	}
 
-	keys := make([]string, 0, len(groups))
-	for key := range groups {
-		keys = append(keys, key)
-	}
-	if direction == logproto.BACKWARD {
-		sort.Sort(sort.Reverse(sort.StringSlice(keys)))
-	} else {
-		sort.Strings(keys)
-	}
-
-	// escape hatch, can just return all the streams
+	// shortcut
 	if total <= int(limit) {
-		results := make([]logproto.Stream, 0, len(keys))
-		for _, key := range keys {
-			results = append(results, logproto.Stream{
-				Labels:  key,
-				Entries: groups[key].merge(),
+		return mergeOrderedStreamsUnlimited(resps, direction)
+	}
+
+	// initial tree
+	at := func(m *mergeStreamIterator) sortedEntry { return m.cur }
+	maxVal, less := treeLess(direction)
+	tree := loser.New(nil, maxVal, at, less, func(m *mergeStreamIterator) {})
+	for _, resp := range resps {
+		for _, stream := range resp.Data.Result {
+			s := stream
+			tree.Push(&mergeStreamIterator{
+				stream: &s,
 			})
 		}
-		return results
 	}
 
-	pq := &priorityqueue{
-		direction: direction,
-	}
+	groups := make(map[string]*logproto.Stream)
+	for i := 0; i < int(limit) && tree.Next(); i++ {
+		topN := tree.Winner().cur
 
-	for _, key := range keys {
-		stream := &logproto.Stream{
-			Labels:  key,
-			Entries: groups[key].merge(),
-		}
-		if len(stream.Entries) > 0 {
-			pq.streams = append(pq.streams, stream)
-		}
-	}
-
-	heap.Init(pq)
-
-	resultDict := make(map[string]*logproto.Stream)
-
-	// we want the min(limit, num_entries)
-	for i := 0; i < int(limit) && pq.Len() > 0; i++ {
-		// grab the next entry off the queue. This will be a stream (to preserve labels) with one entry.
-		next := heap.Pop(pq).(*logproto.Stream)
-
-		s, ok := resultDict[next.Labels]
-		if !ok {
+		var ok bool
+		var s *logproto.Stream
+		if s, ok = groups[topN.labels]; !ok {
 			s = &logproto.Stream{
-				Labels:  next.Labels,
-				Entries: make([]logproto.Entry, 0, int(limit)/len(keys)), // allocation hack -- assume uniform distribution across labels
+				Labels: topN.labels,
+				Hash:   topN.streamHash,
 			}
-			resultDict[next.Labels] = s
+			groups[topN.labels] = s
 		}
-		// TODO: make allocation friendly
-		s.Entries = append(s.Entries, next.Entries...)
+		s.Entries = append(s.Entries, topN.entry)
 	}
 
-	results := make([]logproto.Stream, 0, len(resultDict))
-	for _, key := range keys {
-		stream, ok := resultDict[key]
-		if ok {
-			results = append(results, *stream)
+	// merge by stream and return order by labels string
+	orderedKeys := make([]string, 0, len(groups))
+	for key := range groups {
+		orderedKeys = append(orderedKeys, key)
+	}
+	if direction == logproto.BACKWARD {
+		sort.Sort(sort.Reverse(sort.StringSlice(orderedKeys)))
+	} else {
+		sort.Strings(orderedKeys)
+	}
+
+	streams := make([]logproto.Stream, 0, len(orderedKeys))
+	for _, key := range orderedKeys {
+		streams = append(streams, *groups[key])
+	}
+
+	return streams
+}
+
+func mergeOrderedStreamsUnlimited(resps []*LokiResponse, direction logproto.Direction) []logproto.Stream {
+	g := make(map[string]*logproto.Stream)
+	merged := make(map[string]struct{})
+	for _, resp := range resps {
+		for _, stream := range resp.Data.Result {
+			if _, ok := g[stream.Labels]; !ok {
+				s1 := stream
+				g[stream.Labels] = &s1
+			} else {
+				g[stream.Labels].Entries = append(g[stream.Labels].Entries, stream.Entries...)
+				merged[stream.Labels] = struct{}{}
+			}
+		}
+	}
+	for key := range merged {
+		if direction == logproto.BACKWARD {
+			sort.Sort(sort.Reverse(entries(g[key].Entries)))
+		} else {
+			sort.Sort(entries(g[key].Entries))
 		}
 	}
 
-	return results
+	orderedKeys := make([]string, 0, len(g))
+	for key := range g {
+		orderedKeys = append(orderedKeys, key)
+	}
+	if direction == logproto.BACKWARD {
+		sort.Sort(sort.Reverse(sort.StringSlice(orderedKeys)))
+	} else {
+		sort.Strings(orderedKeys)
+	}
+
+	streams := make([]logproto.Stream, 0, len(orderedKeys))
+	for _, key := range orderedKeys {
+		streams = append(streams, *g[key])
+	}
+	return streams
 }
 
 func toProtoMatrix(m loghttp.Matrix) []queryrangebase.SampleStream {
@@ -1851,7 +1860,7 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 		Statistics: mergedStats,
 		Data: LokiData{
 			ResultType: loghttp.ResultTypeStream,
-			Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
+			Result:     mergeOrderedStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
 		},
 	}
 }

@@ -1166,6 +1166,119 @@ func Test_codec_MergeResponse(t *testing.T) {
 			"",
 		},
 		{
+			"loki backward unlimited",
+			[]queryrangebase.Response{
+				&LokiResponse{
+					Status:    loghttp.QueryStatusSuccess,
+					Direction: logproto.BACKWARD,
+					Limit:     10,
+					Version:   1,
+					Data: LokiData{
+						ResultType: loghttp.ResultTypeStream,
+						Result: []logproto.Stream{
+							{
+								Labels: `{foo="bar", level="debug"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 11), Line: "11"},
+								},
+							},
+							{
+								Labels: `{foo="bar", level="error"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 12), Line: "12"},
+									{Timestamp: time.Unix(0, 10), Line: "10"},
+									{Timestamp: time.Unix(0, 9), Line: "9"},
+									{Timestamp: time.Unix(0, 8), Line: "8"},
+								},
+							},
+						},
+					},
+				},
+				&LokiResponse{
+					Status:    loghttp.QueryStatusSuccess,
+					Direction: logproto.BACKWARD,
+					Limit:     10,
+					Version:   1,
+					Data: LokiData{
+						ResultType: loghttp.ResultTypeStream,
+						Result: []logproto.Stream{
+							{
+								Labels: `{foo="bar", level="debug"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 6), Line: "6"},
+								},
+							},
+							{
+								Labels: `{foo="bar", level="error"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 7), Line: "7"},
+									{Timestamp: time.Unix(0, 5), Line: "5"},
+									{Timestamp: time.Unix(0, 4), Line: "4"},
+								},
+							},
+						},
+					},
+				},
+				&LokiResponse{
+					Status:    loghttp.QueryStatusSuccess,
+					Direction: logproto.BACKWARD,
+					Limit:     10,
+					Version:   1,
+					Data: LokiData{
+						ResultType: loghttp.ResultTypeStream,
+						Result: []logproto.Stream{
+							{
+								Labels: `{foo="bar", level="debug"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 2), Line: "2"},
+									{Timestamp: time.Unix(0, 1), Line: "1"},
+								},
+							},
+							{
+								Labels: `{foo="bar", level="error"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 3), Line: "3"},
+								},
+							},
+						},
+					},
+				},
+			},
+			&LokiResponse{
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.BACKWARD,
+				Limit:      10,
+				Version:    1,
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 3}},
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: []logproto.Stream{
+						{
+							Labels: `{foo="bar", level="error"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 12), Line: "12"},
+								{Timestamp: time.Unix(0, 10), Line: "10"},
+								{Timestamp: time.Unix(0, 9), Line: "9"},
+								{Timestamp: time.Unix(0, 8), Line: "8"},
+								{Timestamp: time.Unix(0, 7), Line: "7"},
+								{Timestamp: time.Unix(0, 5), Line: "5"},
+								{Timestamp: time.Unix(0, 4), Line: "4"},
+								{Timestamp: time.Unix(0, 3), Line: "3"},
+							},
+						},
+						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 11), Line: "11"},
+								{Timestamp: time.Unix(0, 6), Line: "6"},
+							},
+						},
+					},
+				},
+			},
+			false,
+		},
+		{
 			"loki backward limited",
 			[]queryrangebase.Response{
 				&LokiResponse{
@@ -2081,9 +2194,9 @@ func BenchmarkResponseMerge(b *testing.B) {
 			mergeStreams,
 		},
 		{
-			"mergeOrderedNonOverlappingStreams unlimited",
+			"mergeOrderedStreams unlimited",
 			uint32(streams * logsPerStream),
-			mergeOrderedNonOverlappingStreams,
+			mergeOrderedStreams,
 		},
 		{
 			"mergeStreams limited",
@@ -2091,9 +2204,9 @@ func BenchmarkResponseMerge(b *testing.B) {
 			mergeStreams,
 		},
 		{
-			"mergeOrderedNonOverlappingStreams limited",
+			"mergeOrderedStreams limited",
 			uint32(streams*logsPerStream - 1),
-			mergeOrderedNonOverlappingStreams,
+			mergeOrderedStreams,
 		},
 	} {
 		input := mkResps(resps, streams, logsPerStream, logproto.FORWARD)
