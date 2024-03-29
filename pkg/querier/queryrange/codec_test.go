@@ -511,7 +511,6 @@ func TestLabelRequestSpanLogging(t *testing.T) {
 			}
 			if field.Key == "end" {
 				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
-
 			}
 		}
 	}
