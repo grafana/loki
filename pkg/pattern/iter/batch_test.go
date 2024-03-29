@@ -3,8 +3,9 @@ package iter
 import (
 	"testing"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestReadBatch(t *testing.T) {

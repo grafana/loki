@@ -319,6 +319,7 @@ type Loki struct {
 	distributor               *distributor.Distributor
 	Ingester                  ingester.Interface
 	PatternIngester           *pattern.Ingester
+	PatternRingClient         *pattern.RingClient
 	Querier                   querier.Querier
 	cacheGenerationLoader     queryrangebase.CacheGenNumberLoader
 	querierAPI                *querier.QuerierAPI
@@ -649,7 +650,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Analytics, t.initAnalytics)
 	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
-	mm.RegisterModule(PatternTee, t.initPatternTee, modules.UserInvisibleModule)
+	mm.RegisterModule(PatternRingClient, t.initPatternRingClient, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -663,10 +664,10 @@ func (t *Loki) setupModuleManager() error {
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternTee, Analytics},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, Analytics},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
@@ -678,7 +679,7 @@ func (t *Loki) setupModuleManager() error {
 		BloomGateway:             {Server, BloomStore, BloomGatewayRing, Analytics},
 		BloomCompactor:           {Server, BloomStore, BloomCompactorRing, Analytics, Store},
 		PatternIngester:          {Server, MemberlistKV, Analytics},
-		PatternTee:               {Server, MemberlistKV, Analytics},
+		PatternRingClient:        {Server, MemberlistKV, Analytics},
 		IngesterQuerier:          {Ring},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},

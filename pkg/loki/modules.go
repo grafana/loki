@@ -97,7 +97,7 @@ const (
 	CacheGenerationLoader    string = "cache-generation-loader"
 	Ingester                 string = "ingester"
 	PatternIngester          string = "pattern-ingester"
-	PatternTee               string = "pattern-tee"
+	PatternRingClient        string = "pattern-ring-client"
 	IngesterQuerier          string = "ingester-querier"
 	IngesterGRPCInterceptors string = "ingester-query-tags-interceptors"
 	QueryFrontend            string = "query-frontend"
@@ -314,6 +314,14 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 }
 
 func (t *Loki) initDistributor() (services.Service, error) {
+	if t.Cfg.Pattern.Enabled {
+		patternTee, err := pattern.NewTee(t.Cfg.Pattern, t.PatternRingClient, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
+		if err != nil {
+			return nil, err
+		}
+		t.Tee = distributor.WrapTee(t.Tee, patternTee)
+	}
+
 	var err error
 	logger := log.With(util_log.Logger, "component", "distributor")
 	t.distributor, err = distributor.New(
@@ -379,7 +387,13 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	if t.Cfg.Pattern.Enabled {
+		_, err := pattern.NewIngesterQuerier(t.Cfg.Pattern, t.PatternRingClient, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
+		if err != nil {
+			return nil, err
+		}
+		// todo
+	}
 	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer, logger)
 	if err != nil {
 		return nil, err
@@ -614,16 +628,16 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 	return t.PatternIngester, nil
 }
 
-func (t *Loki) initPatternTee() (_ services.Service, err error) {
+func (t *Loki) initPatternRingClient() (_ services.Service, err error) {
 	if !t.Cfg.Pattern.Enabled {
 		return nil, nil
 	}
-	tee, err := pattern.NewTee(t.Cfg.Pattern, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
+	ringClient, err := pattern.NewRingClient(t.Cfg.Pattern, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
-	t.Tee = distributor.WrapTee(t.Tee, tee)
-	return tee, nil
+	t.PatternRingClient = ringClient
+	return ringClient, nil
 }
 
 func (t *Loki) initTableManager() (services.Service, error) {
