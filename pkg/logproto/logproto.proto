@@ -439,9 +439,10 @@ message DetectedFieldsResponse {
   repeated DetectedField fields = 1;
 }
 
-
 message DetectedField {
   string label = 1;
-  string type = 2;
+  string type = 2 [
+    (gogoproto.casttype) = "DetectedFieldType"
+  ];
   uint64 cardinality = 3;
 }
