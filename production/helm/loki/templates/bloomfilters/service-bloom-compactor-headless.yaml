@@ -1,0 +1,37 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed }}
+{{- if (eq .Values.loki.useBloomFilters true) -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.bloomCompactorFullname" . }}-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.bloomCompactorLabels" . | nindent 4 }}
+    {{- with .Values.bloomCompactor.serviceLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.loki.serviceAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  clusterIP: None
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+      protocol: TCP
+      {{- if .Values.bloomCompactor.appProtocol.grpc }}
+      appProtocol: {{ .Values.bloomCompactor.appProtocol.grpc }}
+      {{- end }}
+  selector:
+    {{- include "loki.bloomCompactorSelectorLabels" . | nindent 4 }}
+    name: bloom-compactor
+    rollout-group: bloom-compactor
+{{- end -}}
+{{- end -}}
