@@ -551,6 +551,11 @@ write_failures_logging:
   # logged or not. Default: false.
   # CLI flag: -distributor.write-failures-logging.add-insights-label
   [add_insights_label: <boolean> | default = false]
+
+otlp_config:
+  # List of default otlp resource attributes to be picked as index labels
+  # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
+  [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
 ```
 
 ### querier
@@ -812,6 +817,10 @@ The `frontend` block configures the Loki query-frontend.
 
 # The TLS configuration.
 [tail_tls_config: <tls_config>]
+
+# Whether to enable experimental APIs in the frontend.
+# CLI flag: -frontend.experimental-apis-enabled
+[experimental_apis_enabled: <boolean> | default = false]
 ```
 
 ### query_range
@@ -1758,6 +1767,12 @@ ring:
   # CLI flag: -index-gateway.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
+  # Deprecated: How many index gateway instances are assigned to each tenant.
+  # Use -index-gateway.shard-size instead. The shard size is also a per-tenant
+  # setting.
+  # CLI flag: -replication-factor
+  [replication_factor: <int> | default = 3]
+
   # Instance ID to register in the ring.
   # CLI flag: -index-gateway.ring.instance-id
   [instance_id: <string> | default = "<hostname>"]
@@ -1782,12 +1797,6 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
-
-  # Deprecated: How many index gateway instances are assigned to each tenant.
-  # Use -index-gateway.shard-size instead. The shard size is also a per-tenant
-  # setting.
-  # CLI flag: -replication-factor
-  [replication_factor: <int> | default = 3]
 ```
 
 ### bloom_gateway
@@ -1855,6 +1864,17 @@ ring:
   # CLI flag: -bloom-gateway.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
+  # Number of tokens to use in the ring. The bigger the number of tokens, the
+  # more fingerprint ranges the compactor will own, but the smaller these ranges
+  # will be. Bigger number of tokens means that more but smaller requests will
+  # be handled by each gateway.
+  # CLI flag: -bloom-gateway.ring.tokens
+  [num_tokens: <int> | default = 16]
+
+  # Factor for data replication.
+  # CLI flag: -bloom-gateway.ring.replication-factor
+  [replication_factor: <int> | default = 3]
+
   # Instance ID to register in the ring.
   # CLI flag: -bloom-gateway.ring.instance-id
   [instance_id: <string> | default = "<hostname>"]
@@ -1880,10 +1900,6 @@ ring:
   # CLI flag: -bloom-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
-  # Factor for data replication.
-  # CLI flag: -bloom-gateway.replication-factor
-  [replication_factor: <int> | default = 3]
-
 # Flag to enable or disable the bloom gateway component globally.
 # CLI flag: -bloom-gateway.enabled
 [enabled: <boolean> | default = false]
@@ -1902,11 +1918,6 @@ client:
   # The CLI flags prefix for this block configuration is:
   # bloom-gateway-client.grpc
   [grpc_client_config: <grpc_client>]
-
-  # Flag to control whether requests sent to the gateway should be logged or
-  # not.
-  # CLI flag: -bloom-gateway-client.log-gateway-requests
-  [log_gateway_requests: <boolean> | default = false]
 
   results_cache:
     # The cache block configures the cache backend.
@@ -1927,9 +1938,17 @@ client:
 # CLI flag: -bloom-gateway.worker-concurrency
 [worker_concurrency: <int> | default = 4]
 
+# Number of blocks processed concurrently on a single worker.
+# CLI flag: -bloom-gateway.block-query-concurrency
+[block_query_concurrency: <int> | default = 4]
+
 # Maximum number of outstanding tasks per tenant.
 # CLI flag: -bloom-gateway.max-outstanding-per-tenant
 [max_outstanding_per_tenant: <int> | default = 1024]
+
+# How many tasks are multiplexed at once.
+# CLI flag: -bloom-gateway.num-multiplex-tasks
+[num_multiplex_tasks: <int> | default = 512]
 ```
 
 ### storage_config
@@ -2338,14 +2357,20 @@ tsdb_shipper:
 
 # Configures Bloom Shipper.
 bloom_shipper:
-  # Working directory to store downloaded Bloom Blocks.
+  # Working directory to store downloaded bloom blocks. Supports multiple
+  # directories, separated by comma.
   # CLI flag: -bloom.shipper.working-directory
-  [working_directory: <string> | default = "bloom-shipper"]
+  [working_directory: <string> | default = "/data/blooms"]
+
+  # Maximum size of bloom pages that should be queried. Larger pages than this
+  # limit are skipped when querying blooms to limit memory usage.
+  # CLI flag: -bloom.max-query-page-size
+  [max_query_page_size: <int> | default = 64MiB]
 
   blocks_downloading_queue:
     # The count of parallel workers that download Bloom Blocks.
     # CLI flag: -bloom.shipper.blocks-downloading-queue.workers-count
-    [workers_count: <int> | default = 100]
+    [workers_count: <int> | default = 16]
 
     # Maximum number of task in queue per tenant per bloom-gateway. Enqueuing
     # the tasks above this limit will fail an error.
@@ -2353,17 +2378,16 @@ bloom_shipper:
     [max_tasks_enqueued_per_tenant: <int> | default = 10000]
 
   blocks_cache:
-    # Cache for bloom blocks. Whether embedded cache is enabled.
-    # CLI flag: -bloom.blocks-cache.enabled
-    [enabled: <boolean> | default = false]
+    # Cache for bloom blocks. Soft limit of the cache in bytes. Exceeding this
+    # limit will trigger evictions of least recently used items in the
+    # background.
+    # CLI flag: -bloom.blocks-cache.soft-limit
+    [soft_limit: <int> | default = 32GiB]
 
-    # Cache for bloom blocks. Maximum memory size of the cache in MB.
-    # CLI flag: -bloom.blocks-cache.max-size-mb
-    [max_size_mb: <int> | default = 100]
-
-    # Cache for bloom blocks. Maximum number of entries in the cache.
-    # CLI flag: -bloom.blocks-cache.max-size-items
-    [max_size_items: <int> | default = 0]
+    # Cache for bloom blocks. Hard limit of the cache in bytes. Exceeding this
+    # limit will block execution until soft limit is deceeded.
+    # CLI flag: -bloom.blocks-cache.hard-limit
+    [hard_limit: <int> | default = 64GiB]
 
     # Cache for bloom blocks. The time to live for items in the cache before
     # they get purged.
@@ -2638,6 +2662,11 @@ ring:
   # CLI flag: -bloom-compactor.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
+  # Number of tokens to use in the ring per compactor. Higher number of tokens
+  # will result in more and smaller files (metas and blocks.)
+  # CLI flag: -bloom-compactor.ring.num-tokens
+  [num_tokens: <int> | default = 10]
+
   # Instance ID to register in the ring.
   # CLI flag: -bloom-compactor.ring.instance-id
   [instance_id: <string> | default = "<hostname>"]
@@ -2671,18 +2700,18 @@ ring:
 # CLI flag: -bloom-compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
-# How many index periods (days) to wait before compacting a table. This can be
-# used to lower cost by not re-writing data to object storage too frequently
-# since recent data changes more often.
-# CLI flag: -bloom-compactor.min-table-compaction-period
-[min_table_compaction_period: <int> | default = 1]
+# Newest day-table offset (from today, inclusive) to compact. Increase to lower
+# cost by not re-writing data to object storage too frequently since recent data
+# changes more often at the cost of not having blooms available as quickly.
+# CLI flag: -bloom-compactor.min-table-offset
+[min_table_offset: <int> | default = 1]
 
-# How many index periods (days) to wait before compacting a table. This can be
-# used to lower cost by not trying to compact older data which doesn't change.
-# This can be optimized by aligning it with the maximum
-# `reject_old_samples_max_age` setting of any tenant.
-# CLI flag: -bloom-compactor.max-table-compaction-period
-[max_table_compaction_period: <int> | default = 7]
+# Oldest day-table offset (from today, inclusive) to compact. This can be used
+# to lower cost by not trying to compact older data which doesn't change. This
+# can be optimized by aligning it with the maximum `reject_old_samples_max_age`
+# setting of any tenant.
+# CLI flag: -bloom-compactor.max-table-offset
+[max_table_offset: <int> | default = 2]
 
 # Number of workers to run in parallel for compaction.
 # CLI flag: -bloom-compactor.worker-parallelism
@@ -2705,6 +2734,15 @@ ring:
 # and compact as many tables.
 # CLI flag: -bloom-compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
+
+retention:
+  # Enable bloom retention.
+  # CLI flag: -bloom-compactor.retention.enabled
+  [enabled: <boolean> | default = false]
+
+  # Max lookback days for retention.
+  # CLI flag: -bloom-compactor.retention.max-lookback-days
+  [max_lookback_days: <int> | default = 365]
 ```
 
 ### limits_config
@@ -2847,10 +2885,17 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.tsdb-max-query-parallelism
 [tsdb_max_query_parallelism: <int> | default = 128]
 
-# Maximum number of bytes assigned to a single sharded query. Also expressible
-# in human readable forms (1GB, etc).
+# Target maximum number of bytes assigned to a single sharded query. Also
+# expressible in human readable forms (1GB, etc). Note: This is a _target_ and
+# not an absolute limit. The actual limit can be higher, but the query planner
+# will try to build shards up to this limit.
 # CLI flag: -querier.tsdb-max-bytes-per-shard
 [tsdb_max_bytes_per_shard: <int> | default = 600MB]
+
+# sharding strategy to use in query planning. Suggested to use bounded once all
+# nodes can recognize it.
+# CLI flag: -limits.tsdb-sharding-strategy
+[tsdb_sharding_strategy: <string> | default = "power_of_two"]
 
 # Cardinality limit for index queries.
 # CLI flag: -store.cardinality-limit
@@ -3154,7 +3199,7 @@ shard_streams:
 # The shard size defines how many bloom gateways should be used by a tenant for
 # querying.
 # CLI flag: -bloom-gateway.shard-size
-[bloom_gateway_shard_size: <int> | default = 1]
+[bloom_gateway_shard_size: <int> | default = 0]
 
 # Whether to use the bloom gateway component in the read path to filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
@@ -3163,20 +3208,11 @@ shard_streams:
 # The shard size defines how many bloom compactors should be used by a tenant
 # when computing blooms. If it's set to 0, shuffle sharding is disabled.
 # CLI flag: -bloom-compactor.shard-size
-[bloom_compactor_shard_size: <int> | default = 1]
-
-# The maximum age of a table before it is compacted. Do not compact tables older
-# than the the configured time. Default to 7 days. 0s means no limit.
-# CLI flag: -bloom-compactor.max-table-age
-[bloom_compactor_max_table_age: <duration> | default = 168h]
+[bloom_compactor_shard_size: <int> | default = 0]
 
 # Whether to compact chunks into bloom filters.
 # CLI flag: -bloom-compactor.enable-compaction
 [bloom_compactor_enable_compaction: <boolean> | default = false]
-
-# The batch size of the chunks the bloom-compactor downloads at once.
-# CLI flag: -bloom-compactor.chunks-batch-size
-[bloom_compactor_chunks_batch_size: <int> | default = 100]
 
 # Length of the n-grams created when computing blooms from log lines.
 # CLI flag: -bloom-compactor.ngram-length
@@ -3189,6 +3225,10 @@ shard_streams:
 # Scalable Bloom Filter desired false-positive rate.
 # CLI flag: -bloom-compactor.false-positive-rate
 [bloom_false_positive_rate: <float> | default = 0.01]
+
+# Compression algorithm for bloom block pages.
+# CLI flag: -bloom-compactor.block-encoding
+[bloom_block_encoding: <string> | default = "none"]
 
 # Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.
 # CLI flag: -bloom-gateway.blocks-downloading-parallelism
@@ -3221,7 +3261,8 @@ otlp_config:
   # Configuration for resource attributes to store them as index labels or
   # Structured Metadata or drop them altogether
   resource_attributes:
-    # Configure whether to ignore the default list of resource attributes to be
+    # Configure whether to ignore the default list of resource attributes set in
+    # 'distributor.otlp.default_resource_attributes_as_index_labels' to be
     # stored as index labels and only use the given resource attributes config
     [ignore_defaults: <boolean> | default = false]
 
@@ -3820,6 +3861,14 @@ ring:
   # availability zones.
   # CLI flag: -common.storage.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
+
+  # Number of tokens to own in the ring.
+  # CLI flag: -common.storage.ring.num-tokens
+  [num_tokens: <int> | default = 128]
+
+  # Factor for data replication.
+  # CLI flag: -common.storage.ring.replication-factor
+  [replication_factor: <int> | default = 3]
 
   # Instance ID to register in the ring.
   # CLI flag: -common.storage.ring.instance-id
@@ -4523,6 +4572,72 @@ memcached_client:
   # Reset circuit-breaker counts after this long (if zero then never reset).
   # CLI flag: -<prefix>.memcached.circuit-breaker-interval
   [circuit_breaker_interval: <duration> | default = 10s]
+
+  # Enable connecting to Memcached with TLS.
+  # CLI flag: -<prefix>.memcached.tls-enabled
+  [tls_enabled: <boolean> | default = false]
+
+  # Path to the client certificate, which will be used for authenticating with
+  # the server. Also requires the key path to be configured.
+  # CLI flag: -<prefix>.memcached.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to the key for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -<prefix>.memcached.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # Path to the CA certificates to validate server certificate against. If not
+  # set, the host's root CA certificates are used.
+  # CLI flag: -<prefix>.memcached.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
+  # Override the expected name on the server certificate.
+  # CLI flag: -<prefix>.memcached.tls-server-name
+  [tls_server_name: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -<prefix>.memcached.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # Override the default cipher suite list (separated by commas). Allowed
+  # values:
+  # 
+  # Secure Ciphers:
+  # - TLS_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_RSA_WITH_AES_256_GCM_SHA384
+  # - TLS_AES_128_GCM_SHA256
+  # - TLS_AES_256_GCM_SHA384
+  # - TLS_CHACHA20_POLY1305_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
+  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+  # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+  # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+  # 
+  # Insecure Ciphers:
+  # - TLS_RSA_WITH_RC4_128_SHA
+  # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_CBC_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
+  # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
+  # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+  # CLI flag: -<prefix>.memcached.tls-cipher-suites
+  [tls_cipher_suites: <string> | default = ""]
+
+  # Override the default minimum TLS version. Allowed values: VersionTLS10,
+  # VersionTLS11, VersionTLS12, VersionTLS13
+  # CLI flag: -<prefix>.memcached.tls-min-version
+  [tls_min_version: <string> | default = ""]
 
 redis:
   # Redis Server or Cluster configuration endpoint to use for caching. A

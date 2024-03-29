@@ -1561,6 +1561,7 @@ var (
 					"totalDuplicates": 8
 				},
 				"chunksDownloadTime": 0,
+				"congestionControlLatency": 0,
 				"totalChunksRef": 0,
 				"totalChunksDownloaded": 0,
 				"chunkRefsFetchTime": 0,
@@ -1585,11 +1586,16 @@ var (
 					"totalDuplicates": 19
 				},
 				"chunksDownloadTime": 16,
+				"congestionControlLatency": 0,
 				"totalChunksRef": 17,
 				"totalChunksDownloaded": 18,
 				"chunkRefsFetchTime": 19,
 				"queryReferencedStructuredMetadata": true
 			}
+		},
+		"index": {
+			"postFilterChunks": 0,
+			"totalChunks": 0
 		},
 		"cache": {
 			"chunk": {
@@ -2018,6 +2024,7 @@ var (
 					TotalDuplicates:   19,
 				},
 				ChunksDownloadTime:        16,
+				CongestionControlLatency:  0,
 				TotalChunksRef:            17,
 				TotalChunksDownloaded:     18,
 				ChunkRefsFetchTime:        19,

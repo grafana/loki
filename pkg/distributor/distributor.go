@@ -39,6 +39,7 @@ import (
 	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
@@ -73,10 +74,13 @@ type Config struct {
 
 	// WriteFailuresLoggingCfg customizes write failures logging behavior.
 	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Experimental. Customize the logging of write failures."`
+
+	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
+	cfg.OTLPConfig.RegisterFlags(fs)
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
@@ -121,11 +125,15 @@ type Distributor struct {
 	// Push failures rate limiter.
 	writeFailuresManager *writefailures.Manager
 
+	RequestParserWrapper push.RequestParserWrapper
+
 	// metrics
 	ingesterAppends        *prometheus.CounterVec
 	ingesterAppendTimeouts *prometheus.CounterVec
 	replicationFactor      prometheus.Gauge
 	streamShardCount       prometheus.Counter
+
+	usageTracker push.UsageTracker
 }
 
 // New a distributor creates.
@@ -138,6 +146,7 @@ func New(
 	registerer prometheus.Registerer,
 	metricsNamespace string,
 	tee Tee,
+	usageTracker push.UsageTracker,
 	logger log.Logger,
 ) (*Distributor, error) {
 	factory := cfg.factory
@@ -153,7 +162,7 @@ func New(
 		return client.New(internalCfg, addr)
 	}
 
-	validator, err := NewValidator(overrides)
+	validator, err := NewValidator(overrides, usageTracker)
 	if err != nil {
 		return nil, err
 	}
@@ -185,6 +194,7 @@ func New(
 		healthyInstancesCount: atomic.NewUint32(0),
 		rateLimitStrat:        rateLimitStrat,
 		tee:                   tee,
+		usageTracker:          usageTracker,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_ingester_appends_total",
@@ -337,7 +347,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			// Truncate first so subsequent steps have consistent line lengths
 			d.truncateLines(validationContext, &stream)
 
-			stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
+			var lbs labels.Labels
+			lbs, stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -354,7 +365,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
+				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue
@@ -411,6 +422,24 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
+
+		if d.usageTracker != nil {
+			for _, stream := range req.Streams {
+				lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, &stream)
+				if err != nil {
+					continue
+				}
+
+				discardedStreamBytes := 0
+				for _, e := range stream.Entries {
+					discardedStreamBytes += len(e.Line)
+				}
+
+				if d.usageTracker != nil {
+					d.usageTracker.DiscardedBytesAdd(ctx, tenantID, validation.RateLimited, lbs, float64(discardedStreamBytes))
+				}
+			}
+		}
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -684,30 +713,29 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 }
 
 type labelData struct {
-	labels string
-	hash   uint64
+	ls   labels.Labels
+	hash uint64
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, uint64, error) {
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (labels.Labels, string, uint64, error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		labelVal := val.(labelData)
-		return labelVal.labels, labelVal.hash, nil
+		return labelVal.ls, labelVal.ls.String(), labelVal.hash, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		return "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		return nil, "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
 	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {
-		return "", 0, err
+		return nil, "", 0, err
 	}
 
-	lsVal := ls.String()
 	lsHash := ls.Hash()
 
-	d.labelCache.Add(key, labelData{lsVal, lsHash})
-	return lsVal, lsHash, nil
+	d.labelCache.Add(key, labelData{ls, lsHash})
+	return ls, ls.String(), lsHash, nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.

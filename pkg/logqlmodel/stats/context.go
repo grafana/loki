@@ -43,6 +43,7 @@ type Context struct {
 	querier  Querier
 	ingester Ingester
 	caches   Caches
+	index    Index
 
 	// store is the store statistics collected across the query path
 	store Store
@@ -96,6 +97,11 @@ func (c *Context) Ingester() Ingester {
 	}
 }
 
+// Store returns the store statistics accumulated so far.
+func (c *Context) Store() Store {
+	return c.store
+}
+
 // Caches returns the cache statistics accumulated so far.
 func (c *Context) Caches() Caches {
 	return Caches{
@@ -110,6 +116,11 @@ func (c *Context) Caches() Caches {
 	}
 }
 
+// Index returns the index statistics accumulated so far.
+func (c *Context) Index() Index {
+	return c.index
+}
+
 // Reset clears the statistics.
 func (c *Context) Reset() {
 	c.mtx.Lock()
@@ -120,6 +131,7 @@ func (c *Context) Reset() {
 	c.ingester.Reset()
 	c.result.Reset()
 	c.caches.Reset()
+	c.index.Reset()
 }
 
 // Result calculates the summary based on store and ingester data.
@@ -132,6 +144,7 @@ func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalE
 		},
 		Ingester: c.ingester,
 		Caches:   c.caches,
+		Index:    c.index,
 	})
 
 	r.ComputeSummary(execTime, queueTime, totalEntriesReturned)
@@ -148,13 +161,22 @@ func JoinResults(ctx context.Context, res Result) {
 	stats.result.Merge(res)
 }
 
-// JoinIngesterResult joins the ingester result statistics in a concurrency-safe manner.
+// JoinIngesters joins the ingester result statistics in a concurrency-safe manner.
 func JoinIngesters(ctx context.Context, inc Ingester) {
 	stats := FromContext(ctx)
 	stats.mtx.Lock()
 	defer stats.mtx.Unlock()
 
 	stats.ingester.Merge(inc)
+}
+
+// JoinIndex joins the index statistics in a concurrency-safe manner.
+func JoinIndex(ctx context.Context, index Index) {
+	stats := FromContext(ctx)
+	stats.mtx.Lock()
+	defer stats.mtx.Unlock()
+
+	stats.index.Merge(index)
 }
 
 // ComputeSummary compute the summary of the statistics.
@@ -183,6 +205,7 @@ func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration,
 func (s *Store) Merge(m Store) {
 	s.TotalChunksRef += m.TotalChunksRef
 	s.TotalChunksDownloaded += m.TotalChunksDownloaded
+	s.CongestionControlLatency += m.CongestionControlLatency
 	s.ChunksDownloadTime += m.ChunksDownloadTime
 	s.ChunkRefsFetchTime += m.ChunkRefsFetchTime
 	s.Chunk.HeadChunkBytes += m.Chunk.HeadChunkBytes
@@ -218,6 +241,11 @@ func (i *Ingester) Merge(m Ingester) {
 	i.TotalLinesSent += m.TotalLinesSent
 	i.TotalChunksMatched += m.TotalChunksMatched
 	i.TotalReached += m.TotalReached
+}
+
+func (i *Index) Merge(m Index) {
+	i.TotalChunks += m.TotalChunks
+	i.PostFilterChunks += m.PostFilterChunks
 }
 
 func (c *Caches) Merge(m Caches) {
@@ -261,6 +289,7 @@ func (r *Result) Merge(m Result) {
 	r.Ingester.Merge(m.Ingester)
 	r.Caches.Merge(m.Caches)
 	r.Summary.Merge(m.Summary)
+	r.Index.Merge(m.Index)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
 		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime), int(r.Summary.TotalEntriesReturned))
 }
@@ -277,6 +306,10 @@ func (r Result) ChunksDownloadTime() time.Duration {
 
 func (r Result) ChunkRefsFetchTime() time.Duration {
 	return time.Duration(r.Querier.Store.ChunkRefsFetchTime + r.Ingester.Store.ChunkRefsFetchTime)
+}
+
+func (r Result) CongestionControlLatency() time.Duration {
+	return time.Duration(r.Querier.Store.CongestionControlLatency)
 }
 
 func (r Result) TotalDuplicates() int64 {
@@ -358,6 +391,10 @@ func (c *Context) AddChunksDownloadTime(i time.Duration) {
 
 func (c *Context) AddChunkRefsFetchTime(i time.Duration) {
 	atomic.AddInt64(&c.store.ChunkRefsFetchTime, int64(i))
+}
+
+func (c *Context) AddCongestionControlLatency(i time.Duration) {
+	atomic.AddInt64(&c.store.CongestionControlLatency, int64(i))
 }
 
 func (c *Context) AddChunksDownloaded(i int64) {

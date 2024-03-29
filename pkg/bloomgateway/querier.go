@@ -10,7 +10,9 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/plan"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 type querierMetrics struct {
@@ -57,17 +59,21 @@ type BloomQuerier struct {
 	metrics *querierMetrics
 }
 
-func NewQuerier(c Client, logger log.Logger) *BloomQuerier {
-	return &BloomQuerier{c: c, logger: logger}
+func NewQuerier(c Client, r prometheus.Registerer, logger log.Logger) *BloomQuerier {
+	return &BloomQuerier{
+		c:       c,
+		metrics: newQuerierMetrics(r, constants.Loki, querierMetricsSubsystem),
+		logger:  logger,
+	}
 }
 
 func convertToShortRef(ref *logproto.ChunkRef) *logproto.ShortRef {
 	return &logproto.ShortRef{From: ref.From, Through: ref.Through, Checksum: ref.Checksum}
 }
 
-func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, filters ...syntax.LineFilter) ([]*logproto.ChunkRef, error) {
+func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, queryPlan plan.QueryPlan) ([]*logproto.ChunkRef, error) {
 	// Shortcut that does not require any filtering
-	if len(chunkRefs) == 0 || len(filters) == 0 {
+	if len(chunkRefs) == 0 || len(v1.ExtractTestableLineFilters(queryPlan.AST)) == 0 {
 		return chunkRefs, nil
 	}
 
@@ -79,7 +85,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	preFilterChunks := len(chunkRefs)
 	preFilterSeries := len(grouped)
 
-	refs, err := bq.c.FilterChunks(ctx, tenant, from, through, grouped, filters...)
+	refs, err := bq.c.FilterChunks(ctx, tenant, from, through, grouped, queryPlan)
 	if err != nil {
 		return nil, err
 	}

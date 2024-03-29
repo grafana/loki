@@ -66,6 +66,7 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 		},
 		Status: lokiv1.LokiStackStatus{
 			Storage: lokiv1.LokiStackStorageStatus{
+				CredentialMode: lokiv1.CredentialModeStatic,
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
 						Version:       lokiv1.ObjectStorageSchemaV11,
@@ -94,14 +95,17 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 		},
 	}
 
-	expected := []lokiv1.ObjectStorageSchema{
-		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
-			EffectiveDate: "2020-10-11",
-		},
-		{
-			Version:       lokiv1.ObjectStorageSchemaV12,
-			EffectiveDate: "2021-10-11",
+	expected := lokiv1.LokiStackStorageStatus{
+		CredentialMode: lokiv1.CredentialModeStatic,
+		Schemas: []lokiv1.ObjectStorageSchema{
+			{
+				Version:       lokiv1.ObjectStorageSchemaV11,
+				EffectiveDate: "2020-10-11",
+			},
+			{
+				Version:       lokiv1.ObjectStorageSchemaV12,
+				EffectiveDate: "2021-10-11",
+			},
 		},
 	}
 
@@ -115,7 +119,7 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 
 	sw.UpdateStub = func(_ context.Context, obj client.Object, _ ...client.SubResourceUpdateOption) error {
 		stack := obj.(*lokiv1.LokiStack)
-		require.Equal(t, expected, stack.Status.Storage.Schemas)
+		require.Equal(t, expected, stack.Status.Storage)
 		return nil
 	}
 

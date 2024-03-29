@@ -41,7 +41,7 @@ func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromT
 	itr := NewSliceIter[SeriesWithBloom](data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
-	block := NewBlock(reader)
+	block := NewBlock(reader, NewMetrics(nil))
 	return block, data, keys
 }
 
@@ -60,8 +60,8 @@ func MkBasicSeriesWithBlooms(nSeries, _ int, fromFp, throughFp model.Fingerprint
 		from := fromTs.Add(timeDelta * time.Duration(i))
 		series.Chunks = []ChunkRef{
 			{
-				Start:    from,
-				End:      from.Add(timeDelta),
+				From:     from,
+				Through:  from.Add(timeDelta),
 				Checksum: uint32(i),
 			},
 		}

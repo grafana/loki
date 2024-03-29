@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
@@ -15,6 +16,7 @@ import (
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util/encoding"
@@ -90,6 +92,21 @@ type Meta struct {
 
 	// A list of blocks that were generated
 	Blocks []BlockRef
+}
+
+func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, error) {
+	if len(m.Sources) == 0 {
+		return tsdb.SingleTenantTSDBIdentifier{}, errors.New("no sources")
+	}
+
+	mostRecent := m.Sources[0]
+	for _, source := range m.Sources[1:] {
+		if source.TS.After(mostRecent.TS) {
+			mostRecent = source
+		}
+	}
+
+	return mostRecent, nil
 }
 
 func MetaRefFrom(
@@ -179,16 +196,22 @@ func (c ClosableReadSeekerAdapter) Close() error {
 	return nil
 }
 
+func BlockRefFrom(tenant, table string, md v1.BlockMetadata) BlockRef {
+	return BlockRef{
+		Ref: Ref{
+			TenantID:       tenant,
+			TableName:      table,
+			Bounds:         md.Series.Bounds,
+			StartTimestamp: md.Series.FromTs,
+			EndTimestamp:   md.Series.ThroughTs,
+			Checksum:       md.Checksum,
+		},
+	}
+}
+
 func BlockFrom(tenant, table string, blk *v1.Block) (Block, error) {
 	md, _ := blk.Metadata()
-	ref := Ref{
-		TenantID:       tenant,
-		TableName:      table,
-		Bounds:         md.Series.Bounds,
-		StartTimestamp: md.Series.FromTs,
-		EndTimestamp:   md.Series.ThroughTs,
-		Checksum:       md.Checksum,
-	}
+	ref := BlockRefFrom(tenant, table, md)
 
 	// TODO(owen-d): pool
 	buf := bytes.NewBuffer(nil)
@@ -201,7 +224,7 @@ func BlockFrom(tenant, table string, blk *v1.Block) (Block, error) {
 	reader := bytes.NewReader(buf.Bytes())
 
 	return Block{
-		BlockRef: BlockRef{Ref: ref},
+		BlockRef: ref,
 		Data:     ClosableReadSeekerAdapter{reader},
 	}, nil
 }
@@ -218,6 +241,7 @@ type Client interface {
 	MetaClient
 	BlockClient
 	IsObjectNotFoundErr(err error) bool
+	ObjectClient() client.ObjectClient
 	Stop()
 }
 
@@ -233,13 +257,22 @@ type BloomClient struct {
 }
 
 func NewBloomClient(cfg bloomStoreConfig, client client.ObjectClient, logger log.Logger) (*BloomClient, error) {
+	fsResolver, err := NewShardedPrefixedResolver(cfg.workingDirs, defaultKeyResolver{})
+	if err != nil {
+		return nil, errors.Wrap(err, "creating fs resolver")
+	}
+
 	return &BloomClient{
 		KeyResolver: defaultKeyResolver{}, // TODO(owen-d): hook into schema, similar to `{,Parse}ExternalKey`
-		fsResolver:  NewPrefixedResolver(cfg.workingDir, defaultKeyResolver{}),
+		fsResolver:  fsResolver,
 		concurrency: cfg.numWorkers,
 		client:      client,
 		logger:      logger,
 	}, nil
+}
+
+func (b *BloomClient) ObjectClient() client.ObjectClient {
+	return b.client
 }
 
 func (b *BloomClient) IsObjectNotFoundErr(err error) bool {
@@ -249,7 +282,7 @@ func (b *BloomClient) IsObjectNotFoundErr(err error) bool {
 func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
 	data, err := json.Marshal(meta)
 	if err != nil {
-		return fmt.Errorf("can not marshal the meta to json: %w", err)
+		return fmt.Errorf("failed to encode meta file %s: %w", meta.String(), err)
 	}
 	key := b.Meta(meta.MetaRef).Addr()
 	return b.client.PutObject(ctx, key, bytes.NewReader(data))
@@ -264,21 +297,31 @@ func (b *BloomClient) DeleteMetas(ctx context.Context, refs []MetaRef) error {
 	return err
 }
 
-// GetBlock downloads the blocks from objectStorage and returns the downloaded block
+// GetBlock downloads the blocks from objectStorage and returns the directory
+// in which the block data resides
 func (b *BloomClient) GetBlock(ctx context.Context, ref BlockRef) (BlockDirectory, error) {
 	key := b.Block(ref).Addr()
-	readCloser, _, err := b.client.GetObject(ctx, key)
+
+	rc, _, err := b.client.GetObject(ctx, key)
 	if err != nil {
-		return BlockDirectory{}, fmt.Errorf("failed to get block from storage: %w", err)
+		return BlockDirectory{}, fmt.Errorf("failed to get block file %s: %w", key, err)
 	}
+	defer rc.Close()
 
 	path := b.fsResolver.Block(ref).LocalPath()
-	err = extractBlock(readCloser, path, b.logger)
+	// the block directory should not contain the .tar.gz extension
+	path = strings.TrimSuffix(path, ".tar.gz")
+	err = util.EnsureDirectory(path)
 	if err != nil {
-		return BlockDirectory{}, fmt.Errorf("failed to extract block into directory : %w", err)
+		return BlockDirectory{}, fmt.Errorf("failed to create block directory %s: %w", path, err)
 	}
 
-	return NewBlockDirectory(ref, path, b.logger), nil
+	err = v1.UnTarGz(path, rc)
+	if err != nil {
+		return BlockDirectory{}, fmt.Errorf("failed to extract block file %s: %w", key, err)
+	}
+
+	return NewBlockDirectory(ref, path), nil
 }
 
 func (b *BloomClient) GetBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
@@ -307,12 +350,12 @@ func (b *BloomClient) PutBlock(ctx context.Context, block Block) error {
 	key := b.Block(block.BlockRef).Addr()
 	_, err := block.Data.Seek(0, 0)
 	if err != nil {
-		return fmt.Errorf("error uploading block file %s : %w", key, err)
+		return fmt.Errorf("failed to seek block file %s: %w", key, err)
 	}
 
 	err = b.client.PutObject(ctx, key, block.Data)
 	if err != nil {
-		return fmt.Errorf("error uploading block file: %w", err)
+		return fmt.Errorf("failed to put block file %s: %w", key, err)
 	}
 	return nil
 }
@@ -324,7 +367,7 @@ func (b *BloomClient) DeleteBlocks(ctx context.Context, references []BlockRef) e
 		err := b.client.DeleteObject(ctx, key)
 
 		if err != nil {
-			return fmt.Errorf("error deleting block file: %w", err)
+			return fmt.Errorf("failed to delete block file %s: %w", key, err)
 		}
 		return nil
 	})
@@ -354,13 +397,13 @@ func (b *BloomClient) GetMeta(ctx context.Context, ref MetaRef) (Meta, error) {
 	key := b.KeyResolver.Meta(ref).Addr()
 	reader, _, err := b.client.GetObject(ctx, key)
 	if err != nil {
-		return Meta{}, fmt.Errorf("error downloading meta file %s : %w", key, err)
+		return Meta{}, fmt.Errorf("failed to get meta file%s: %w", key, err)
 	}
 	defer reader.Close()
 
 	err = json.NewDecoder(reader).Decode(&meta)
 	if err != nil {
-		return Meta{}, fmt.Errorf("error unmarshalling content of meta file %s: %w", key, err)
+		return Meta{}, fmt.Errorf("failed to decode meta file %s: %w", key, err)
 	}
 	return meta, nil
 }

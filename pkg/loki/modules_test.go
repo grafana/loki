@@ -2,7 +2,6 @@ package loki
 
 import (
 	"fmt"
-	"path"
 	"path/filepath"
 	"testing"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
+	bloomshipperconfig "github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
@@ -366,10 +366,16 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	// This would be overwritten by the default values setting.
 	cfg.StorageConfig = storage.Config{
 		FSConfig: local.FSConfig{Directory: dir},
+		BloomShipperConfig: bloomshipperconfig.Config{
+			WorkingDirectory: []string{filepath.Join(dir, "blooms")},
+			BlocksDownloadingQueue: bloomshipperconfig.DownloadingQueueConfig{
+				WorkersCount: 1,
+			},
+		},
 		BoltDBShipperConfig: boltdb.IndexCfg{
 			Config: indexshipper.Config{
-				ActiveIndexDirectory: path.Join(dir, "index"),
-				CacheLocation:        path.Join(dir, "cache"),
+				ActiveIndexDirectory: filepath.Join(dir, "index"),
+				CacheLocation:        filepath.Join(dir, "cache"),
 				Mode:                 indexshipper.ModeWriteOnly,
 				ResyncInterval:       24 * time.Hour,
 			},
@@ -402,7 +408,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.BloomCompactor.Ring.InstanceAddr = localhost
 	cfg.BloomGateway.Ring.InstanceAddr = localhost
 	cfg.CompactorConfig.CompactorRing.InstanceAddr = localhost
-	cfg.CompactorConfig.WorkingDirectory = path.Join(dir, "compactor")
+	cfg.CompactorConfig.WorkingDirectory = filepath.Join(dir, "compactor")
 
 	cfg.Ruler.Config.Ring.InstanceAddr = localhost
 	cfg.Ruler.Config.StoreConfig.Type = config.StorageTypeLocal

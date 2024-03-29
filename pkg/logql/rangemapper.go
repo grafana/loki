@@ -61,7 +61,7 @@ type RangeMapper struct {
 	splitAlignTs time.Time
 }
 
-// NewRangeMapperWithSplitAlign is similar to `NewRangeMapper` except it accepts additonal `splitAlign` argument and used to
+// NewRangeMapperWithSplitAlign is similar to `NewRangeMapper` except it accepts additional `splitAlign` argument and used to
 // align the subqueries generated according to that. Look at `rangeSplitAlign` method for more information.
 func NewRangeMapperWithSplitAlign(interval time.Duration, splitAlign time.Time, metrics *MapperMetrics, stats *MapperStats) (RangeMapper, error) {
 	rm, err := NewRangeMapper(interval, metrics, stats)

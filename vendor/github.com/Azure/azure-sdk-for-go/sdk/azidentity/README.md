@@ -1,9 +1,9 @@
 # Azure Identity Client Module for Go
 
-The Azure Identity module provides Azure Active Directory (Azure AD) token authentication support across the Azure SDK. It includes a set of `TokenCredential` implementations, which can be used with Azure SDK clients supporting token authentication.
+The Azure Identity module provides Microsoft Entra ID ([formerly Azure Active Directory](https://learn.microsoft.com/azure/active-directory/fundamentals/new-name)) token authentication support across the Azure SDK. It includes a set of `TokenCredential` implementations, which can be used with Azure SDK clients supporting token authentication.
 
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/Azure/azure-sdk-for-go/sdk/azidentity)](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity)
-| [Azure Active Directory documentation](https://docs.microsoft.com/azure/active-directory/)
+| [Microsoft Entra ID documentation](https://learn.microsoft.com/azure/active-directory/)
 | [Source code](https://github.com/Azure/azure-sdk-for-go/tree/main/sdk/azidentity)
 
 # Getting started
@@ -35,6 +35,12 @@ signed in to the [Azure CLI](https://docs.microsoft.com/cli/azure). To sign in t
 When no default browser is available, `az login` will use the device code
 authentication flow. This can also be selected manually by running `az login --use-device-code`.
 
+#### Authenticate via the Azure Developer CLI
+
+Developers coding outside of an IDE can also use the [Azure Developer CLI](https://aka.ms/azure-dev) to authenticate. Applications using the `DefaultAzureCredential` or the `AzureDeveloperCLICredential` can use the account logged in to the Azure Developer CLI to authenticate calls in their application when running locally.
+
+To authenticate with the Azure Developer CLI, run `azd auth login`. On a system with a default web browser, `azd` will launch the browser to authenticate. On systems without a default web browser, run `azd auth login --use-device-code` to use the device code authentication flow.
+
 ## Key concepts
 
 ### Credentials
@@ -44,9 +50,7 @@ service client to authenticate requests. Service clients across the Azure SDK
 accept a credential instance when they are constructed, and use that credential
 to authenticate requests.
 
-The `azidentity` module focuses on OAuth authentication with Azure Active
-Directory (AAD). It offers a variety of credential types capable of acquiring
-an Azure AD access token. See [Credential Types](#credential-types "Credential Types") for a list of this module's credential types.
+The `azidentity` module focuses on OAuth authentication with Microsoft Entra ID. It offers a variety of credential types capable of acquiring a Microsoft Entra access token. See [Credential Types](#credential-types "Credential Types") for a list of this module's credential types.
 
 ### DefaultAzureCredential
 
@@ -58,6 +62,7 @@ an Azure AD access token. See [Credential Types](#credential-types "Credential T
 1. **Workload Identity** - If the app is deployed on Kubernetes with environment variables set by the workload identity webhook, `DefaultAzureCredential` will authenticate the configured identity.
 1. **Managed Identity** - If the app is deployed to an Azure host with managed identity enabled, `DefaultAzureCredential` will authenticate with it.
 1. **Azure CLI** - If a user or service principal has authenticated via the Azure CLI `az login` command, `DefaultAzureCredential` will authenticate that identity.
+1. **Azure Developer CLI** - If the developer has authenticated via the Azure Developer CLI `azd auth login` command, the `DefaultAzureCredential` will authenticate with that account.
 
 > Note: `DefaultAzureCredential` is intended to simplify getting started with the SDK by handling common scenarios with reasonable default behaviors. Developers who want more control or whose scenario isn't served by the default settings should use other credential types.
 
@@ -152,6 +157,7 @@ client := armresources.NewResourceGroupsClient("subscription ID", chain, nil)
 |Credential|Usage
 |-|-
 |[AzureCLICredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#AzureCLICredential)|Authenticate as the user signed in to the Azure CLI
+|[`AzureDeveloperCLICredential`](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#AzureDeveloperCLICredential)|Authenticates as the user signed in to the Azure Developer CLI
 
 ## Environment Variables
 
@@ -161,16 +167,16 @@ client := armresources.NewResourceGroupsClient("subscription ID", chain, nil)
 
 |variable name|value
 |-|-
-|`AZURE_CLIENT_ID`|ID of an Azure Active Directory application
-|`AZURE_TENANT_ID`|ID of the application's Azure Active Directory tenant
+|`AZURE_CLIENT_ID`|ID of a Microsoft Entra application
+|`AZURE_TENANT_ID`|ID of the application's Microsoft Entra tenant
 |`AZURE_CLIENT_SECRET`|one of the application's client secrets
 
 #### Service principal with certificate
 
 |variable name|value
 |-|-
-|`AZURE_CLIENT_ID`|ID of an Azure Active Directory application
-|`AZURE_TENANT_ID`|ID of the application's Azure Active Directory tenant
+|`AZURE_CLIENT_ID`|ID of a Microsoft Entra application
+|`AZURE_TENANT_ID`|ID of the application's Microsoft Entra tenant
 |`AZURE_CLIENT_CERTIFICATE_PATH`|path to a certificate file including private key
 |`AZURE_CLIENT_CERTIFICATE_PASSWORD`|password of the certificate file, if any
 
@@ -178,12 +184,22 @@ client := armresources.NewResourceGroupsClient("subscription ID", chain, nil)
 
 |variable name|value
 |-|-
-|`AZURE_CLIENT_ID`|ID of an Azure Active Directory application
+|`AZURE_CLIENT_ID`|ID of a Microsoft Entra application
 |`AZURE_USERNAME`|a username (usually an email address)
 |`AZURE_PASSWORD`|that user's password
 
 Configuration is attempted in the above order. For example, if values for a
 client secret and certificate are both present, the client secret will be used.
+
+## Token caching
+
+Token caching is an `azidentity` feature that allows apps to:
+
+* Cache tokens in memory (default) or on disk (opt-in).
+* Improve resilience and performance.
+* Reduce the number of requests made to Microsoft Entra ID to obtain access tokens.
+
+For more details, see the [token caching documentation](https://aka.ms/azsdk/go/identity/caching).
 
 ## Troubleshooting
 
@@ -191,9 +207,7 @@ client secret and certificate are both present, the client secret will be used.
 
 Credentials return an `error` when they fail to authenticate or lack data they require to authenticate. For guidance on resolving errors from specific credential types, see the [troubleshooting guide](https://aka.ms/azsdk/go/identity/troubleshoot).
 
-For more details on handling specific Azure Active Directory errors please refer to the
-Azure Active Directory
-[error code documentation](https://docs.microsoft.com/azure/active-directory/develop/reference-aadsts-error-codes).
+For more details on handling specific Microsoft Entra errors, see the Microsoft Entra [error code documentation](https://learn.microsoft.com/azure/active-directory/develop/reference-error-codes).
 
 ### Logging
 

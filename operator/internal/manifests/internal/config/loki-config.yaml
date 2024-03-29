@@ -356,7 +356,7 @@ ruler:
       {{- with .Client }}
       name: {{ .Name }}
       url: {{ .URL }}
-      timeout: {{ .RemoteTimeout }}
+      remote_timeout: {{ .RemoteTimeout }}
       proxy_url: {{ .ProxyURL }}
       follow_redirects: {{ .FollowRedirects }}
       headers:

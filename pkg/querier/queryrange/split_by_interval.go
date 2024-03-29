@@ -223,7 +223,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 				intervals[i], intervals[j] = intervals[j], intervals[i]
 			}
 		}
-	case *LokiSeriesRequest, *LabelRequest, *logproto.IndexStatsRequest, *logproto.VolumeRequest:
+	case *LokiSeriesRequest, *LabelRequest, *logproto.IndexStatsRequest, *logproto.VolumeRequest, *logproto.ShardsRequest:
 		// Set this to 0 since this is not used in Series/Labels/Index Request.
 		limit = 0
 	default:

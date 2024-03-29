@@ -40,10 +40,11 @@ func NewNGramTokenizer(n, skip int) *NGramTokenizer {
 	return t
 }
 
+// Token implementsthe NGramBuilder interface
 // The Token iterator uses shared buffers for performance. The []byte returned by At()
 // is not safe for use after subsequent calls to Next()
-func (t *NGramTokenizer) Tokens(line string) NGramTokenIter {
-	return NGramTokenIter{
+func (t *NGramTokenizer) Tokens(line string) Iterator[[]byte] {
+	return &NGramTokenIter{
 		n:    t.N,
 		skip: t.Skip,
 
@@ -75,9 +76,11 @@ func (t *NGramTokenIter) Next() bool {
 
 		// if the start of the ngram is at the interval of our skip factor, emit it.
 		// we increment the skip due to modulo logic:
-		//   because `n % 0 is a divide by zero and n % 1 is always 0`
+		// because `n % 0 is a divide by zero and n % 1 is always 0`
 		if (t.runeIndex-t.n)%(t.skip+1) == 0 {
-			t.offset += (i + utf8.RuneLen(r))
+			// update the offset, but don't go past the end of the line;
+			// for instance invalid utf-8
+			t.offset = min(len(t.line), t.offset+i+utf8.RuneLen(r))
 			return true
 		}
 
@@ -97,17 +100,17 @@ type PrefixedTokenIter struct {
 	buf       []byte
 	prefixLen int
 
-	NGramTokenIter
+	Iterator[[]byte]
 }
 
 func (t *PrefixedTokenIter) At() []byte {
-	return append(t.buf[:t.prefixLen], t.NGramTokenIter.At()...)
+	return append(t.buf[:t.prefixLen], t.Iterator.At()...)
 }
 
-func NewPrefixedTokenIter(buf []byte, prefixLn int, iter NGramTokenIter) *PrefixedTokenIter {
+func NewPrefixedTokenIter(buf []byte, prefixLn int, iter Iterator[[]byte]) *PrefixedTokenIter {
 	return &PrefixedTokenIter{
-		buf:            buf,
-		prefixLen:      prefixLn,
-		NGramTokenIter: iter,
+		buf:       buf,
+		prefixLen: prefixLn,
+		Iterator:  iter,
 	}
 }

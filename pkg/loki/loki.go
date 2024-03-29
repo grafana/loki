@@ -38,6 +38,7 @@ import (
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
@@ -54,6 +55,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/util"
@@ -221,6 +223,9 @@ func (c *Config) Validate() error {
 	if err := c.Querier.Validate(); err != nil {
 		return errors.Wrap(err, "invalid querier config")
 	}
+	if err := c.QueryScheduler.Validate(); err != nil {
+		return errors.Wrap(err, "invalid query_scheduler config")
+	}
 	if err := c.TableManager.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tablemanager config")
 	}
@@ -238,6 +243,9 @@ func (c *Config) Validate() error {
 	}
 	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid boltdb-shipper config")
+	}
+	if err := c.IndexGateway.Validate(); err != nil {
+		return errors.Wrap(err, "invalid index_gateway config")
 	}
 	if err := c.CompactorConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid compactor config")
@@ -304,6 +312,7 @@ type Loki struct {
 	querierAPI                *querier.QuerierAPI
 	ingesterQuerier           *querier.IngesterQuerier
 	Store                     storage.Store
+	BloomStore                bloomshipper.StoreWithMetrics
 	tableManager              *index.TableManager
 	frontend                  Frontend
 	ruler                     *base_ruler.Ruler
@@ -322,21 +331,24 @@ type Loki struct {
 	bloomCompactorRingManager *lokiring.RingManager
 	bloomGatewayRingManager   *lokiring.RingManager
 
-	clientMetrics       storage.ClientMetrics
+	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
 	Tee                distributor.Tee
+	PushParserWrapper  push.RequestParserWrapper
 	HTTPAuthMiddleware middleware.Interface
 
 	Codec   Codec
 	Metrics *server.Metrics
+
+	UsageTracker push.UsageTracker
 }
 
 // New makes a new Loki.
 func New(cfg Config) (*Loki, error) {
 	loki := &Loki{
 		Cfg:                 cfg,
-		clientMetrics:       storage.NewClientMetrics(),
+		ClientMetrics:       storage.NewClientMetrics(),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
 		Codec:               queryrange.DefaultCodec,
 	}
@@ -592,9 +604,10 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
-	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Querier, t.initQuerier)
+	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
+	mm.RegisterModule(IngesterGRPCInterceptors, t.initIngesterGRPCInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendMiddleware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
@@ -602,6 +615,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RuleEvaluator, t.initRuleEvaluator, modules.UserInvisibleModule)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
+	mm.RegisterModule(BloomStore, t.initBloomStore)
 	mm.RegisterModule(BloomCompactor, t.initBloomCompactor)
 	mm.RegisterModule(BloomCompactorRing, t.initBloomCompactorRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
@@ -638,8 +652,8 @@ func (t *Loki) setupModuleManager() error {
 		TableManager:             {Server, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
 		IndexGateway:             {Server, Store, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
-		BloomGateway:             {Server, BloomGatewayRing, Analytics},
-		BloomCompactor:           {Server, BloomCompactorRing, Analytics, Store},
+		BloomGateway:             {Server, BloomStore, BloomGatewayRing, Analytics},
+		BloomCompactor:           {Server, BloomStore, BloomCompactorRing, Analytics, Store},
 		IngesterQuerier:          {Ring},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
@@ -649,9 +663,9 @@ func (t *Loki) setupModuleManager() error {
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor},
-		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
+		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway},
 
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor, BloomCompactor},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
@@ -693,6 +707,11 @@ func (t *Loki) setupModuleManager() error {
 	// first to initialize the ring that will also be used by the query frontend
 	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
+	}
+
+	// Initialise query tags interceptors on targets running ingester
+	if t.Cfg.isModuleEnabled(Ingester) || t.Cfg.isModuleEnabled(Write) || t.Cfg.isModuleEnabled(All) {
+		deps[Server] = append(deps[Server], IngesterGRPCInterceptors)
 	}
 
 	// Add bloom gateway ring in client mode to IndexGateway service dependencies if bloom filtering is enabled.

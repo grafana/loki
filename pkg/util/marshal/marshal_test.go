@@ -24,9 +24,14 @@ import (
 )
 
 const emptyStats = `{
+	"index": {
+		"postFilterChunks": 0,
+		"totalChunks": 0
+	},
 	"ingester" : {
 		"store": {
 			"chunksDownloadTime": 0,
+			"congestionControlLatency": 0,
 			"totalChunksRef": 0,
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
@@ -51,6 +56,7 @@ const emptyStats = `{
 	"querier": {
 		"store": {
 			"chunksDownloadTime": 0,
+			"congestionControlLatency": 0,
 			"totalChunksRef": 0,
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,

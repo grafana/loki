@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -100,6 +101,7 @@ common:
 			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
+			assert.EqualValues(t, flagext.StringSliceCSV{"/opt/loki/blooms"}, config.StorageConfig.BloomShipperConfig.WorkingDirectory)
 		})
 
 		t.Run("accepts paths both with and without trailing slash", func(t *testing.T) {
@@ -111,6 +113,7 @@ common:
 			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
+			assert.EqualValues(t, flagext.StringSliceCSV{"/opt/loki/blooms"}, config.StorageConfig.BloomShipperConfig.WorkingDirectory)
 		})
 
 		t.Run("does not rewrite custom (non-default) paths passed via config file", func(t *testing.T) {
@@ -1172,7 +1175,7 @@ func Test_applyIngesterRingConfig(t *testing.T) {
 		assert.Equal(t, 9,
 			reflect.TypeOf(distributor.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
-		assert.Equal(t, 13,
+		assert.Equal(t, 15,
 			reflect.TypeOf(lokiring.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(lokiring.RingConfig{}).String()))
 	})

@@ -691,6 +691,9 @@ monitoring:
       # -- PodLogs relabel configs to apply to samples before scraping
       # https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#relabelconfig
       relabelings: []
+      # -- Additional pipeline stages to process logs after scraping
+      # https://grafana.com/docs/agent/latest/operator/api/#pipelinestagespec-a-namemonitoringgrafanacomv1alpha1pipelinestagespeca
+      additionalPipelineStages: []
     # LogsInstance configuration
     logsInstance:
       # -- LogsInstance annotations
@@ -993,6 +996,8 @@ read:
   legacyReadTarget: false
   # -- Additional CLI args for the read
   extraArgs: []
+  # -- Containers to add to the read pods
+  extraContainers: []
   # -- Environment variables to add to the read pods
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the read pods
@@ -1047,7 +1052,7 @@ backend:
     # -- Enable autoscaling for the backend.
     enabled: false
     # -- Minimum autoscaling replicas for the backend.
-    minReplicas: 2
+    minReplicas: 3
     # -- Maximum autoscaling replicas for the backend.
     maxReplicas: 6
     # -- Target CPU utilization percentage for the backend.
@@ -1522,6 +1527,12 @@ networkPolicy:
     podSelector: {}
     # -- Specifies the namespace the discovery Pods are running in
     namespaceSelector: {}
+  egressWorld:
+    # -- Enable additional cilium egress rules to external world for write, read and backend.
+    enabled: false
+  egressKubeApiserver:
+    # -- Enable additional cilium egress rules to kube-apiserver for backend.
+    enabled: false
 # -------------------------------------
 # Configuration for `minio` child chart
 # -------------------------------------

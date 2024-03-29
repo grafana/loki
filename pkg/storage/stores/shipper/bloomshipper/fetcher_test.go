@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,7 +100,7 @@ func TestMetasFetcher(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
 			metasCache := cache.NewMockCache()
-			cfg := bloomStoreConfig{workingDir: t.TempDir(), numWorkers: 1}
+			cfg := bloomStoreConfig{workingDirs: []string{t.TempDir()}, numWorkers: 1}
 
 			oc, err := local.NewFSObjectClient(local.FSConfig{Directory: dir})
 			require.NoError(t, err)
@@ -107,7 +108,7 @@ func TestMetasFetcher(t *testing.T) {
 			c, err := NewBloomClient(cfg, oc, logger)
 			require.NoError(t, err)
 
-			fetcher, err := NewFetcher(cfg, c, metasCache, nil, logger)
+			fetcher, err := NewFetcher(cfg, c, metasCache, nil, nil, logger, v1.NewMetrics(nil))
 			require.NoError(t, err)
 
 			// prepare metas cache
@@ -138,9 +139,127 @@ func TestMetasFetcher(t *testing.T) {
 	}
 }
 
+func TestFetchOptions(t *testing.T) {
+	options := &options{
+		ignoreNotFound: false,
+		fetchAsync:     false,
+	}
+
+	options.apply(WithFetchAsync(true), WithIgnoreNotFound(true))
+
+	require.True(t, options.fetchAsync)
+	require.True(t, options.ignoreNotFound)
+}
+
+func TestFetcher_DownloadQueue(t *testing.T) {
+	t.Run("invalid arguments", func(t *testing.T) {
+		for _, tc := range []struct {
+			size, workers int
+			err           string
+		}{
+			{
+				size: 0, workers: 1, err: "queue size needs to be greater than 0",
+			},
+			{
+				size: 1, workers: 0, err: "queue requires at least 1 worker",
+			},
+		} {
+			tc := tc
+			t.Run(tc.err, func(t *testing.T) {
+				_, err := newDownloadQueue[bool, bool](
+					tc.size,
+					tc.workers,
+					func(ctx context.Context, r downloadRequest[bool, bool]) {},
+					log.NewNopLogger(),
+				)
+				require.ErrorContains(t, err, tc.err)
+			})
+		}
+	})
+
+	t.Run("cancelled context", func(t *testing.T) {
+		ctx := context.Background()
+
+		q, err := newDownloadQueue[bool, bool](
+			100,
+			1,
+			func(_ context.Context, _ downloadRequest[bool, bool]) {},
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+		t.Cleanup(q.close)
+
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		resultsCh := make(chan downloadResponse[bool], 1)
+		errorsCh := make(chan error, 1)
+
+		r := downloadRequest[bool, bool]{
+			ctx:     ctx,
+			item:    false,
+			key:     "test",
+			idx:     0,
+			results: resultsCh,
+			errors:  errorsCh,
+		}
+		q.enqueue(r)
+
+		select {
+		case err := <-errorsCh:
+			require.Error(t, err)
+		case res := <-resultsCh:
+			require.False(t, true, "got %+v should have received an error instead", res)
+		}
+
+	})
+
+	t.Run("process function is called with context and request as arguments", func(t *testing.T) {
+		ctx := context.Background()
+
+		q, err := newDownloadQueue[bool, bool](
+			100,
+			1,
+			func(_ context.Context, r downloadRequest[bool, bool]) {
+				r.results <- downloadResponse[bool]{
+					key:  r.key,
+					idx:  r.idx,
+					item: true,
+				}
+			},
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+		t.Cleanup(q.close)
+
+		resultsCh := make(chan downloadResponse[bool], 1)
+		errorsCh := make(chan error, 1)
+
+		r := downloadRequest[bool, bool]{
+			ctx:     ctx,
+			item:    false,
+			key:     "test",
+			idx:     0,
+			results: resultsCh,
+			errors:  errorsCh,
+		}
+		q.enqueue(r)
+
+		select {
+		case err := <-errorsCh:
+			require.False(t, true, "got %+v should have received a response instead", err)
+		case res := <-resultsCh:
+			require.True(t, res.item)
+			require.Equal(t, r.key, res.key)
+			require.Equal(t, r.idx, res.idx)
+		}
+
+	})
+}
+
 func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 	base := t.TempDir()
-	cfg := bloomStoreConfig{workingDir: base, numWorkers: 1}
+	cfg := bloomStoreConfig{workingDirs: []string{base}, numWorkers: 1}
 	resolver := NewPrefixedResolver(base, defaultKeyResolver{})
 
 	refs := []BlockRef{
@@ -152,9 +271,9 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x2000, 0x2fff)}},
 	}
 	dirs := []string{
-		resolver.Block(refs[0]).LocalPath(),
-		resolver.Block(refs[1]).LocalPath(),
-		resolver.Block(refs[2]).LocalPath(),
+		strings.TrimSuffix(resolver.Block(refs[0]).LocalPath(), ".tar.gz"),
+		strings.TrimSuffix(resolver.Block(refs[1]).LocalPath(), ".tar.gz"),
+		strings.TrimSuffix(resolver.Block(refs[2]).LocalPath(), ".tar.gz"),
 	}
 
 	createBlockDir(t, dirs[1])
@@ -167,7 +286,7 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 	c, err := NewBloomClient(cfg, oc, log.NewNopLogger())
 	require.NoError(t, err)
 
-	fetcher, err := NewFetcher(cfg, c, nil, nil, log.NewNopLogger())
+	fetcher, err := NewFetcher(cfg, c, nil, nil, nil, log.NewNopLogger(), v1.NewMetrics(nil))
 	require.NoError(t, err)
 
 	found, missing, err := fetcher.loadBlocksFromFS(context.Background(), refs)
@@ -193,7 +312,13 @@ func createBlockDir(t *testing.T, path string) {
 }
 
 func TestFetcher_IsBlockDir(t *testing.T) {
-	fetcher, _ := NewFetcher(bloomStoreConfig{}, nil, nil, nil, log.NewNopLogger())
+	cfg := bloomStoreConfig{
+		numWorkers:  1,
+		workingDirs: []string{t.TempDir()},
+	}
+
+	fetcher, err := NewFetcher(cfg, nil, nil, nil, nil, log.NewNopLogger(), v1.NewMetrics(nil))
+	require.NoError(t, err)
 
 	t.Run("path does not exist", func(t *testing.T) {
 		base := t.TempDir()

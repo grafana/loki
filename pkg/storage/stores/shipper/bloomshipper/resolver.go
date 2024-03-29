@@ -2,6 +2,8 @@ package bloomshipper
 
 import (
 	"fmt"
+	"hash"
+	"hash/fnv"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -29,6 +31,9 @@ type KeyResolver interface {
 	Meta(MetaRef) Location
 	ParseMetaKey(Location) (MetaRef, error)
 	Block(BlockRef) Location
+	ParseBlockKey(Location) (BlockRef, error)
+	Tenant(tenant, table string) Location
+	TenantPrefix(loc Location) (string, error)
 }
 
 type defaultKeyResolver struct{}
@@ -85,6 +90,65 @@ func (defaultKeyResolver) Block(ref BlockRef) Location {
 	}
 }
 
+func (defaultKeyResolver) ParseBlockKey(loc Location) (BlockRef, error) {
+	dir, fn := path.Split(loc.Addr())
+	fnParts := strings.Split(fn, "-")
+	if len(fnParts) != 3 {
+		return BlockRef{}, fmt.Errorf("failed to split filename parts of block key %s : len must be 3, but was %d", loc, len(fnParts))
+	}
+	interval, err := ParseIntervalFromParts(fnParts[0], fnParts[1])
+	if err != nil {
+		return BlockRef{}, fmt.Errorf("failed to parse bounds of meta key %s : %w", loc, err)
+	}
+	withoutExt := strings.TrimSuffix(fnParts[2], extTarGz)
+	checksum, err := strconv.ParseUint(withoutExt, 16, 64)
+	if err != nil {
+		return BlockRef{}, fmt.Errorf("failed to parse checksum of meta key %s : %w", loc, err)
+	}
+
+	dirParts := strings.Split(path.Clean(dir), "/")
+	if len(dirParts) < 5 {
+		return BlockRef{}, fmt.Errorf("directory parts count must be 5 or greater, but was %d : [%s]", len(dirParts), loc)
+	}
+
+	bounds, err := v1.ParseBoundsFromAddr(dirParts[len(dirParts)-1])
+	if err != nil {
+		return BlockRef{}, fmt.Errorf("failed to parse bounds of block key %s : %w", loc, err)
+	}
+
+	return BlockRef{
+		Ref: Ref{
+			TenantID:       dirParts[len(dirParts)-3],
+			TableName:      dirParts[len(dirParts)-4],
+			Bounds:         bounds,
+			StartTimestamp: interval.Start,
+			EndTimestamp:   interval.End,
+			Checksum:       uint32(checksum),
+		},
+	}, nil
+}
+
+func (defaultKeyResolver) Tenant(tenant, table string) Location {
+	return simpleLocation{
+		BloomPrefix,
+		table,
+		tenant,
+	}
+}
+
+func (defaultKeyResolver) TenantPrefix(loc Location) (string, error) {
+	dir, fn := path.Split(loc.Addr())
+
+	dirParts := strings.Split(path.Clean(dir), "/")
+	dirParts = append(dirParts, path.Clean(fn))
+	if len(dirParts) < 3 {
+		return "", fmt.Errorf("directory parts count must be 3 or greater, but was %d : [%s]", len(dirParts), loc)
+	}
+
+	// The tenant is the third part of the directory. E.g. bloom/schema_b_table_20088/1/metas where 1 is the tenant
+	return dirParts[2], nil
+}
+
 type PrefixedResolver struct {
 	prefix string
 	KeyResolver
@@ -108,6 +172,50 @@ func (p PrefixedResolver) Block(ref BlockRef) Location {
 	return locations{
 		key(p.prefix),
 		p.KeyResolver.Block(ref),
+	}
+}
+
+type hashable interface {
+	Hash(hash.Hash32) error
+}
+
+type ShardedPrefixedResolver struct {
+	prefixes []string
+	KeyResolver
+}
+
+func NewShardedPrefixedResolver(prefixes []string, resolver KeyResolver) (KeyResolver, error) {
+	n := len(prefixes)
+	switch n {
+	case 0:
+		return nil, fmt.Errorf("requires at least 1 prefix")
+	case 1:
+		return NewPrefixedResolver(prefixes[0], resolver), nil
+	default:
+		return ShardedPrefixedResolver{
+			prefixes:    prefixes,
+			KeyResolver: resolver,
+		}, nil
+	}
+}
+
+func (r ShardedPrefixedResolver) prefix(ref hashable) key {
+	h := fnv.New32()
+	_ = ref.Hash(h)
+	return key(r.prefixes[h.Sum32()%uint32(len(r.prefixes))])
+}
+
+func (r ShardedPrefixedResolver) Meta(ref MetaRef) Location {
+	return locations{
+		r.prefix(ref),
+		r.KeyResolver.Meta(ref),
+	}
+}
+
+func (r ShardedPrefixedResolver) Block(ref BlockRef) Location {
+	return locations{
+		r.prefix(ref),
+		r.KeyResolver.Block(ref),
 	}
 }
 

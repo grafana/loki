@@ -6,11 +6,22 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 )
+
+func keysToBloomTest(keys [][]byte) BloomTest {
+	var tokenizer fakeNgramBuilder
+	tests := make(BloomTests, 0, len(keys))
+	for _, key := range keys {
+		tests = append(tests, newStringTest(tokenizer, string(key)))
+	}
+
+	return tests
+}
 
 func TestFusedQuerier(t *testing.T) {
 	// references for linking in memory reader+writer
@@ -37,8 +48,8 @@ func TestFusedQuerier(t *testing.T) {
 	_, err = builder.BuildFrom(itr)
 	require.NoError(t, err)
 	require.False(t, itr.Next())
-	block := NewBlock(reader)
-	querier := NewBlockQuerier(block)
+	block := NewBlock(reader, NewMetrics(nil))
+	querier := NewBlockQuerier(block, true, DefaultMaxPageSize)
 
 	n := 2
 	nReqs := numSeries / n
@@ -54,7 +65,7 @@ func TestFusedQuerier(t *testing.T) {
 				Fp:       data[idx].Series.Fingerprint,
 				Chks:     data[idx].Series.Chunks,
 				Response: ch,
-				Searches: keys[idx],
+				Search:   keysToBloomTest(keys[idx]),
 			})
 		}
 		inputs = append(inputs, reqs)
@@ -84,7 +95,7 @@ func TestFusedQuerier(t *testing.T) {
 		g.Done()
 	}()
 
-	fused := querier.Fuse(itrs)
+	fused := querier.Fuse(itrs, log.NewNopLogger())
 
 	require.Nil(t, fused.Run())
 	for _, input := range inputs {
@@ -131,8 +142,8 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 	itr := NewSliceIter[SeriesWithBloom](data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(b, err)
-	block := NewBlock(reader)
-	querier := NewBlockQuerier(block)
+	block := NewBlock(reader, NewMetrics(nil))
+	querier := NewBlockQuerier(block, true, DefaultMaxPageSize)
 
 	numRequestChains := 100
 	seriesPerRequest := 100
@@ -201,7 +212,7 @@ func BenchmarkBlockQuerying(b *testing.B) {
 			for _, reqs := range requestChains {
 				itrs = append(itrs, NewPeekingIter[Request](NewSliceIter[Request](reqs)))
 			}
-			fused := querier.Fuse(itrs)
+			fused := querier.Fuse(itrs, log.NewNopLogger())
 			_ = fused.Run()
 		}
 	})

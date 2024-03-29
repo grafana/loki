@@ -92,12 +92,13 @@ func (m *HttpUri) validate(all bool) error {
 			errors = append(errors, err)
 		} else {
 
+			lt := time.Duration(4294967296*time.Second + 0*time.Nanosecond)
 			gte := time.Duration(0*time.Second + 0*time.Nanosecond)
 
-			if dur < gte {
+			if dur < gte || dur >= lt {
 				err := HttpUriValidationError{
 					field:  "Timeout",
-					reason: "value must be greater than or equal to 0s",
+					reason: "value must be inside range [0s, 1193046h28m16s)",
 				}
 				if !all {
 					return err
