@@ -89,7 +89,7 @@ func FiltersToBloomTest(b NGramBuilder, filters ...syntax.LineFilterExpr) BloomT
 
 func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest {
 	switch filter.Ty {
-	case log.LineMatchNotEqual, log.LineMatchNotRegexp:
+	case log.LineMatchNotEqual, log.LineMatchNotRegexp, log.LineMatchNotPattern:
 		// We cannot test _negated_ filters with a bloom filter since blooms are probabilistic
 		// filters that can only tell us if a string _might_ exist.
 		// For example, for `!= "foo"`, the bloom filter might tell us that the string "foo" might exist
@@ -114,6 +114,9 @@ func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest
 		}
 
 		return matcherFilterWrapper{filter: matcher}
+	case log.LineMatchPattern:
+		// TODO(kolesnikovae): Build stringTest from the deterministic part of the pattern
+		return MatchAll
 	default:
 		return MatchAll
 	}

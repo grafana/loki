@@ -355,7 +355,7 @@ func newLineFilterExpr(ty log.LineMatchType, op, match string) *LineFilterExpr {
 func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 	right.Ty = left.Ty
 
-	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp {
+	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp || left.Ty == log.LineMatchPattern {
 		left.Or = right
 		right.IsOrChild = true
 		return left
