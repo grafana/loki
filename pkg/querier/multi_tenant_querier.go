@@ -63,11 +63,24 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 		AST: parsed,
 	}
 
+	// in case of multiple tenants, we need to filter the store chunks by tenant if they are provided
+	storeOverridesByTenant := make(map[string][]logproto.ChunkRef)
+	if overrides := params.GetStoreChunks(); overrides != nil {
+		storeOverridesByTenant = partitionChunkRefsByTenant(params.GetStoreChunks().Refs)
+	}
+
 	iters := make([]iter.EntryIterator, len(matchedTenants))
 	i := 0
 	for id := range matchedTenants {
 		singleContext := user.InjectOrgID(ctx, id)
-		iter, err := q.Querier.SelectLogs(singleContext, params)
+
+		tenantParams := params
+
+		if tenantChunkOverrides, ok := storeOverridesByTenant[id]; ok {
+			tenantParams = tenantParams.WithStoreChunks(&logproto.ChunkRefGroup{Refs: tenantChunkOverrides})
+		}
+
+		iter, err := q.Querier.SelectLogs(singleContext, tenantParams)
 		if err != nil {
 			return nil, err
 		}
@@ -94,11 +107,23 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 	}
 	params.Selector = updatedSelector.String()
 
+	// in case of multiple tenants, we need to filter the store chunks by tenant if they are provided
+	storeOverridesByTenant := make(map[string][]logproto.ChunkRef)
+	if overrides := params.GetStoreChunks(); overrides != nil {
+		storeOverridesByTenant = partitionChunkRefsByTenant(params.GetStoreChunks().Refs)
+	}
+
 	iters := make([]iter.SampleIterator, len(matchedTenants))
 	i := 0
 	for id := range matchedTenants {
 		singleContext := user.InjectOrgID(ctx, id)
-		iter, err := q.Querier.SelectSamples(singleContext, params)
+		tenantParams := params
+
+		if tenantChunkOverrides, ok := storeOverridesByTenant[id]; ok {
+			tenantParams = tenantParams.WithStoreChunks(&logproto.ChunkRefGroup{Refs: tenantChunkOverrides})
+		}
+
+		iter, err := q.Querier.SelectSamples(singleContext, tenantParams)
 		if err != nil {
 			return nil, err
 		}
@@ -400,4 +425,12 @@ func NewTenantSampleIterator(iter iter.SampleIterator, id string) *TenantSampleI
 
 func (i *TenantSampleIterator) Labels() string {
 	return i.relabel.relabel(i.SampleIterator.Labels())
+}
+
+func partitionChunkRefsByTenant(refs []logproto.ChunkRef) map[string][]logproto.ChunkRef {
+	filtered := make(map[string][]logproto.ChunkRef)
+	for _, ref := range refs {
+		filtered[ref.UserID] = append(filtered[ref.UserID], ref)
+	}
+	return filtered
 }
