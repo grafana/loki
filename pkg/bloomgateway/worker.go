@@ -63,15 +63,14 @@ func (w *worker) starting(_ context.Context) error {
 	return nil
 }
 
-func (w *worker) running(_ context.Context) error {
+func (w *worker) running(ctx context.Context) error {
 	idx := queue.StartIndexWithLocalQueue
 
 	p := newProcessor(w.id, w.cfg.queryConcurrency, w.store, w.logger, w.metrics)
 
 	for st := w.State(); st == services.Running || st == services.Stopping; {
-		taskCtx := context.Background()
 		start := time.Now()
-		item, newIdx, err := w.queue.Dequeue(taskCtx, idx, w.id)
+		item, newIdx, err := w.queue.Dequeue(ctx, idx, w.id)
 		w.metrics.dequeueDuration.WithLabelValues(w.id).Observe(time.Since(start).Seconds())
 		if err != nil {
 			// We only return an error if the queue is stopped and dequeuing did not yield any items
