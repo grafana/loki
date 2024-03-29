@@ -15,7 +15,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 var nilShardMetrics = NewShardMapperMetrics(nil)
@@ -624,7 +624,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 			name: "ConcatSampleExpr",
 			in: &ConcatSampleExpr{
 				DownstreamSampleExpr: DownstreamSampleExpr{
-					shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
+					shard: NewPowerOfTwoShard(index.ShardAnnotation{
 						Shard: 0,
 						Of:    3,
 					}).Ptr(),
@@ -640,7 +640,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 				},
 				next: &ConcatSampleExpr{
 					DownstreamSampleExpr: DownstreamSampleExpr{
-						shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
+						shard: NewPowerOfTwoShard(index.ShardAnnotation{
 							Shard: 1,
 							Of:    3,
 						}).Ptr(),
@@ -656,7 +656,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 					},
 					next: &ConcatSampleExpr{
 						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: NewPowerOfTwoShard(astmapper.ShardAnnotation{
+							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 1,
 								Of:    3,
 							}).Ptr(),
