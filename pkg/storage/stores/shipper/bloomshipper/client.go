@@ -431,7 +431,7 @@ type listOpCache map[string]listOpResult
 type cachedListOpObjectClient struct {
 	client.ObjectClient
 	cache         listOpCache
-	mtx           sync.Mutex
+	mtx           sync.RWMutex
 	ttl, interval time.Duration
 	done          chan struct{}
 }
@@ -472,15 +472,16 @@ func (c *cachedListOpObjectClient) List(ctx context.Context, prefix string, deli
 	if delimiter != "" {
 		return nil, nil, fmt.Errorf("does not support LIST calls with delimiter: %s", delimiter)
 	}
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
+	c.mtx.RLock()
 	cached, found := c.cache[prefix]
+	c.mtx.RUnlock()
 	if found {
 		return cached.objects, cached.prefixes, nil
 	}
 
-	// prefix was not found in cache
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
 	objects, prefixes, err := c.ObjectClient.List(ctx, prefix, delimiter)
 	if err != nil {
 		return nil, nil, err
