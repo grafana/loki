@@ -160,7 +160,7 @@ func (s *Shard) Match(fp model.Fingerprint) bool {
 		return v1.BoundsFromProto(s.Bounded.Bounds).Match(fp)
 	}
 
-	return s.PowerOfTwo.TSDB().Match(fp)
+	return s.PowerOfTwo.Match(fp)
 }
 
 func (s *Shard) GetFromThrough() (model.Fingerprint, model.Fingerprint) {
