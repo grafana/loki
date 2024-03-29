@@ -398,6 +398,16 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			DetectedFieldsRequest: *req,
 			path:                  r.URL.Path,
 		}, nil
+	case PatternsQueryOp:
+		req, err := loghttp.ParsePatternsQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		return &QueryPatternsRequest{
+			QueryPatternsRequest: *req,
+			path:                 r.URL.Path,
+		}, nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusNotFound, fmt.Sprintf("unknown request path: %s", r.URL.Path))
 	}
@@ -600,6 +610,15 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		return &DetectedFieldsRequest{
 			DetectedFieldsRequest: *req,
 			path:                  httpReq.URL.Path,
+		}, ctx, nil
+	case PatternsQueryOp:
+		req, err := loghttp.ParsePatternsQuery(httpReq)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return &QueryPatternsRequest{
+			QueryPatternsRequest: *req,
+			path:                 httpReq.URL.Path,
 		}, ctx, nil
 	default:
 		return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path in HTTP gRPC decode: %s", r.Url))
@@ -878,6 +897,26 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 
 		return req.WithContext(ctx), nil
+	case *QueryPatternsRequest:
+		params := url.Values{
+			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
+			"query": []string{request.GetQuery()},
+		}
+
+		u := &url.URL{
+			Path:     "/loki/api/experimental/patterns",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     header,
+		}
+
+		return req.WithContext(ctx), nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid request format, got (%T)", r))
 	}
@@ -905,6 +944,8 @@ func (c Codec) Path(r queryrangebase.Request) string {
 		return "/loki/api/v1/index/volume_range"
 	case *DetectedFieldsRequest:
 		return "/loki/api/experimental/detected_fields"
+	case *QueryPatternsRequest:
+		return "/loki/api/experimental/patterns"
 	}
 
 	return "other"
@@ -954,7 +995,6 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 }
 
 func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http.Header) (queryrangebase.Response, error) {
-
 	switch req := req.(type) {
 	case *LokiSeriesRequest:
 		var resp LokiSeriesResponse
@@ -1012,6 +1052,15 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 		return &DetectedFieldsResponse{
+			Response: &resp,
+			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+		}, nil
+	case *QueryPatternsRequest:
+		var resp logproto.QueryPatternsResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+		return &QueryPatternsResponse{
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
@@ -1231,6 +1280,10 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 		}
 	case *DetectedFieldsResponse:
 		if err := marshal.WriteDetectedFieldsResponseJSON(response.Response, w); err != nil {
+			return err
+		}
+	case *QueryPatternsResponse:
+		if err := marshal.WriteQueryPatternsResponseJSON(response.Response, w); err != nil {
 			return err
 		}
 	default:
@@ -1617,9 +1670,11 @@ func (p paramsRangeWrapper) End() time.Time {
 func (p paramsRangeWrapper) Step() time.Duration {
 	return time.Duration(p.GetStep() * 1e6)
 }
+
 func (p paramsRangeWrapper) Interval() time.Duration {
 	return time.Duration(p.GetInterval() * 1e6)
 }
+
 func (p paramsRangeWrapper) Direction() logproto.Direction {
 	return p.GetDirection()
 }
@@ -1927,3 +1982,63 @@ func (r *DetectedFieldsRequest) LogToSpan(sp opentracing.Span) {
 }
 
 func (*DetectedFieldsRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
+
+type QueryPatternsRequest struct {
+	logproto.QueryPatternsRequest
+	path string
+}
+
+func (r *QueryPatternsRequest) AsProto() *logproto.QueryPatternsRequest {
+	return &r.QueryPatternsRequest
+}
+
+func (r *QueryPatternsRequest) GetEnd() time.Time {
+	return r.End
+}
+
+func (r *QueryPatternsRequest) GetEndTs() time.Time {
+	return r.End
+}
+
+func (r *QueryPatternsRequest) GetStart() time.Time {
+	return r.Start
+}
+
+func (r *QueryPatternsRequest) GetStartTs() time.Time {
+	return r.Start
+}
+
+func (r *QueryPatternsRequest) GetStep() int64 {
+	return 0
+}
+
+func (r *QueryPatternsRequest) Path() string {
+	return r.path
+}
+
+func (r *QueryPatternsRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
+	clone := *r
+	clone.Start = s
+	clone.End = e
+	return &clone
+}
+
+// WithStartEndForCache implements resultscache.Request.
+func (r *QueryPatternsRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
+}
+
+func (r *QueryPatternsRequest) WithQuery(query string) queryrangebase.Request {
+	clone := *r
+	clone.Query = query
+	return &clone
+}
+
+func (r *QueryPatternsRequest) LogToSpan(sp opentracing.Span) {
+	sp.LogFields(
+		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+	)
+}
+
+func (*QueryPatternsRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }

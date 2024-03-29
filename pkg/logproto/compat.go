@@ -445,3 +445,33 @@ func (m *ShardsRequest) LogToSpan(sp opentracing.Span) {
 	}
 	sp.LogFields(fields...)
 }
+
+func (m *QueryPatternsRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
+
+func (m *QueryPatternsRequest) GetStep() int64 { return 0 }
+
+func (m *QueryPatternsRequest) WithStartEnd(start, end time.Time) definitions.Request {
+	clone := *m
+	clone.Start = start
+	clone.End = end
+	return &clone
+}
+
+func (m *QueryPatternsRequest) WithQuery(query string) definitions.Request {
+	clone := *m
+	clone.Query = query
+	return &clone
+}
+
+func (m *QueryPatternsRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	return m.WithStartEnd(start, end).(resultscache.Request)
+}
+
+func (m *QueryPatternsRequest) LogToSpan(sp opentracing.Span) {
+	fields := []otlog.Field{
+		otlog.String("start", m.Start.String()),
+		otlog.String("end", m.End.String()),
+		otlog.String("query", m.GetQuery()),
+	}
+	sp.LogFields(fields...)
+}

@@ -204,7 +204,6 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 	})
 
 	c.Server.DisableRequestSuccessLog = true
-	// c.Pattern.LifecyclerConfig.RingConfig.ReplicationFactor = 1
 }
 
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.

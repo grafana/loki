@@ -96,6 +96,7 @@ type Querier interface {
 	IndexShards(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error)
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
+	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
 }
 
 type Limits querier_limits.Limits
@@ -113,6 +114,7 @@ type SingleTenantQuerier struct {
 	store           Store
 	limits          Limits
 	ingesterQuerier *IngesterQuerier
+	patternQuerier  PatterQuerier
 	deleteGetter    deleteGetter
 	metrics         *Metrics
 	logger          log.Logger
@@ -909,4 +911,20 @@ func (q *SingleTenantQuerier) DetectedFields(_ context.Context, _ *logproto.Dete
 			},
 		},
 	}, nil
+}
+
+type PatterQuerier interface {
+	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
+}
+
+func (q *SingleTenantQuerier) WithPatternQuerier(pq PatterQuerier) {
+	q.patternQuerier = pq
+}
+
+func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	if q.patternQuerier == nil {
+		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
+	}
+	res, err := q.patternQuerier.Patterns(ctx, req)
+	return res, err
 }

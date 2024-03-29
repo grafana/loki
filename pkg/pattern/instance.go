@@ -73,13 +73,15 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 // Iterator returns an iterator of pattern samples matching the given query patterns request.
 func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequest) (iter.Iterator, error) {
-	matchers, err := syntax.ParseMatchers(req.Selector, true)
+	matchers, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
+	from, through := util.RoundToMilliseconds(req.Start, req.End)
+
 	var iters []iter.Iterator
 	err = i.forMatchingStreams(matchers, func(s *stream) error {
-		iter, err := s.Iterator(ctx, req.From, req.Through)
+		iter, err := s.Iterator(ctx, from, through)
 		if err != nil {
 			return err
 		}

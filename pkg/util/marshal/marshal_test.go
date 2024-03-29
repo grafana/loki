@@ -10,6 +10,7 @@ import (
 	"time"
 
 	json "github.com/json-iterator/go"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -1055,4 +1056,75 @@ func Test_WriteTailResponseJSON(t *testing.T) {
 			nil,
 		),
 	)
+}
+
+func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
+	for i, tc := range []struct {
+		input    *logproto.QueryPatternsResponse
+		expected string
+	}{
+		{
+			&logproto.QueryPatternsResponse{},
+			`{"status":"success","data":[]}`,
+		},
+		{
+			&logproto.QueryPatternsResponse{
+				Series: []*logproto.PatternSeries{
+					{
+						Pattern: "foo <*> bar",
+						Samples: []*logproto.PatternSample{
+							{Timestamp: model.TimeFromUnix(1), Value: 1},
+							{Timestamp: model.TimeFromUnix(2), Value: 2},
+						},
+					},
+				},
+			},
+			`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[[1,1],[2,2]]}]}`,
+		},
+		{
+			&logproto.QueryPatternsResponse{
+				Series: []*logproto.PatternSeries{
+					{
+						Pattern: "foo <*> bar",
+						Samples: []*logproto.PatternSample{
+							{Timestamp: model.TimeFromUnix(1), Value: 1},
+							{Timestamp: model.TimeFromUnix(2), Value: 2},
+						},
+					},
+					{
+						Pattern: "foo <*> buzz",
+						Samples: []*logproto.PatternSample{
+							{Timestamp: model.TimeFromUnix(3), Value: 1},
+							{Timestamp: model.TimeFromUnix(3), Value: 2},
+						},
+					},
+				},
+			},
+			`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[[1,1],[2,2]]},{"pattern":"foo <*> buzz","samples":[[3,1],[3,2]]}]}`,
+		},
+		{
+			&logproto.QueryPatternsResponse{
+				Series: []*logproto.PatternSeries{
+					{
+						Pattern: "foo <*> bar",
+						Samples: []*logproto.PatternSample{},
+					},
+					{
+						Pattern: "foo <*> buzz",
+						Samples: []*logproto.PatternSample{},
+					},
+				},
+			},
+			`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[]},{"pattern":"foo <*> buzz","samples":[]}]}`,
+		},
+	} {
+		tc := tc
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			var b bytes.Buffer
+			err := WriteQueryPatternsResponseJSON(tc.input, &b)
+			require.NoError(t, err)
+			got := b.String()
+			require.JSONEqf(t, tc.expected, got, "Patterns Test %d failed", i)
+		})
+	}
 }

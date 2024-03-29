@@ -120,6 +120,15 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		return &queryrange.DetectedFieldsResponse{
 			Response: result,
 		}, nil
+	case *queryrange.QueryPatternsRequest:
+		result, err := h.api.PatternsHandler(ctx, &concrete.QueryPatternsRequest)
+		if err != nil {
+			return nil, err
+		}
+
+		return &queryrange.QueryPatternsResponse{
+			Response: result,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported query type %T", req)
 	}

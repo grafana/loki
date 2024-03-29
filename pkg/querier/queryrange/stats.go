@@ -37,6 +37,7 @@ const (
 	queryTypeVolume         = "volume"
 	queryTypeShards         = "shards"
 	queryTypeDetectedFields = "detected_fields"
+	queryTypeQueryPatterns  = "patterns"
 )
 
 var (
@@ -171,6 +172,10 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &stats.Result{} // TODO: support stats in detected fields
 					totalEntries = 1
 					queryType = queryTypeDetectedFields
+				case *QueryPatternsResponse:
+					responseStats = &stats.Result{} // TODO: support stats in query patterns
+					totalEntries = len(r.Response.Series)
+					queryType = queryTypeQueryPatterns
 				default:
 					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
 				}

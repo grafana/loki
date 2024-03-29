@@ -245,7 +245,7 @@ func NewMiddleware(
 			instantRT        = instantMetricTripperware.Wrap(next)
 			statsRT          = indexStatsTripperware.Wrap(next)
 			seriesVolumeRT   = seriesVolumeTripperware.Wrap(next)
-			detectedFieldsRT = next //TODO(twhitney): add middlewares for detected fields
+			detectedFieldsRT = next // TODO(twhitney): add middlewares for detected fields
 		)
 
 		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, detectedFieldsRT, limits)
@@ -412,6 +412,7 @@ const (
 	VolumeRangeOp    = "volume_range"
 	IndexShardsOp    = "index_shards"
 	DetectedFieldsOp = "detected_fields"
+	PatternsQueryOp  = "patterns"
 )
 
 func getOperation(path string) string {
@@ -434,6 +435,8 @@ func getOperation(path string) string {
 		return IndexShardsOp
 	case path == "/loki/api/experimental/detected_fields":
 		return DetectedFieldsOp
+	case path == "/loki/api/experimental/patterns":
+		return PatternsQueryOp
 	default:
 		return ""
 	}
@@ -937,7 +940,6 @@ func NewVolumeTripperware(cfg Config, log log.Logger, limits Limits, schema conf
 		schema,
 		metricsNamespace,
 	)
-
 	if err != nil {
 		return nil, err
 	}

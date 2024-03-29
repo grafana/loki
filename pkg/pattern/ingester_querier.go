@@ -2,11 +2,17 @@ package pattern
 
 import (
 	"context"
+	"math"
+	"net/http"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/pattern/iter"
 )
 
 type IngesterQuerier struct {
@@ -33,8 +39,27 @@ func NewIngesterQuerier(
 	}, nil
 }
 
+func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	_, err := syntax.ParseMatchers(req.Query, true)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
+		return client.Query(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+	iterators := make([]iter.Iterator, len(resps))
+	for i := range resps {
+		iterators[i] = iter.NewQueryClientIterator(resps[i].response.(logproto.Pattern_QueryClient))
+	}
+
+	return iter.ReadBatch(iter.NewMerge(iterators...), math.MaxInt32)
+}
+
 // ForAllIngesters runs f, in parallel, for all ingesters
-func (q *IngesterQuerier) ForAllIngesters(ctx context.Context, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]ResponseFromIngesters, error) {
+func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Context, logproto.PatternClient) (interface{}, error)) ([]ResponseFromIngesters, error) {
 	replicationSet, err := q.ringClient.ring.GetReplicationSetForOperation(ring.Read)
 	if err != nil {
 		return nil, err
@@ -49,7 +74,7 @@ type ResponseFromIngesters struct {
 }
 
 // forGivenIngesters runs f, in parallel, for given ingesters
-func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]ResponseFromIngesters, error) {
+func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, logproto.PatternClient) (interface{}, error)) ([]ResponseFromIngesters, error) {
 	cfg := ring.DoUntilQuorumConfig{
 		// Nothing here
 	}
@@ -59,7 +84,7 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 			return ResponseFromIngesters{addr: ingester.Addr}, err
 		}
 
-		resp, err := f(ctx, client.(logproto.QuerierClient))
+		resp, err := f(ctx, client.(logproto.PatternClient))
 		if err != nil {
 			return ResponseFromIngesters{addr: ingester.Addr}, err
 		}

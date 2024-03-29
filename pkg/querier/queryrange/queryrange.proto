@@ -7,6 +7,7 @@ import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logproto/indexgateway.proto";
 import "pkg/logproto/logproto.proto";
+import "pkg/logproto/pattern.proto";
 import "pkg/logproto/sketch.proto";
 import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/push/push.proto";
@@ -183,6 +184,14 @@ message DetectedFieldsResponse {
   ];
 }
 
+message QueryPatternsResponse{
+  logproto.QueryPatternsResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.QueryPatternsResponse"];
+    repeated definitions.PrometheusResponseHeader Headers = 2 [
+      (gogoproto.jsontag) = "-",
+      (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+    ];
+}
+
 message QueryResponse {
   google.rpc.Status status = 1;
   oneof response {
@@ -196,6 +205,7 @@ message QueryResponse {
     QuantileSketchResponse quantileSketches = 9;
     ShardsResponse shardsResponse = 10;
     DetectedFieldsResponse detectedFields = 11;
+    QueryPatternsResponse patternsResponse = 12;
   }
 }
 
@@ -209,6 +219,7 @@ message QueryRequest {
     logproto.VolumeRequest volume = 6;
     indexgatewaypb.ShardsRequest shardsRequest = 8;
     logproto.DetectedFieldsRequest detectedFields = 9;
+    logproto.QueryPatternsRequest patternsRequest = 10;
   }
   map<string, string> metadata = 7 [(gogoproto.nullable) = false];
 }

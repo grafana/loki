@@ -387,18 +387,18 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	if t.Cfg.Pattern.Enabled {
-		_, err := pattern.NewIngesterQuerier(t.Cfg.Pattern, t.PatternRingClient, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
-		if err != nil {
-			return nil, err
-		}
-		// todo
-	}
+
 	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer, logger)
 	if err != nil {
 		return nil, err
 	}
-
+	if t.Cfg.Pattern.Enabled {
+		patternQuerier, err := pattern.NewIngesterQuerier(t.Cfg.Pattern, t.PatternRingClient, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
+		if err != nil {
+			return nil, err
+		}
+		q.WithPatternQuerier(patternQuerier)
+	}
 	if t.Cfg.Querier.MultiTenantQueriesEnabled {
 		t.Querier = querier.NewMultiTenantQuerier(q, util_log.Logger)
 	} else {
@@ -515,6 +515,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		router.Path("/loki/api/v1/index/shards").Methods("GET", "POST").Handler(indexShardsHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/volume").Methods("GET", "POST").Handler(volumeHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/volume_range").Methods("GET", "POST").Handler(volumeRangeHTTPMiddleware.Wrap(httpHandler))
+		router.Path("/loki/api/experimental/patterns").Methods("GET", "POST").Handler(httpHandler)
 
 		router.Path("/api/prom/query").Methods("GET", "POST").Handler(
 			middleware.Merge(
@@ -1108,6 +1109,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	if t.Cfg.Frontend.ExperimentalAPIsEnabled {
 		t.Server.HTTP.Path("/loki/api/experimental/detected_fields").Methods("GET", "POST").Handler(frontendHandler)
 	}
+	t.Server.HTTP.Path("/loki/api/experimental/patterns").Methods("GET", "POST").Handler(frontendHandler)
 
 	if t.frontend == nil {
 		return services.NewIdleService(nil, func(_ error) error {
