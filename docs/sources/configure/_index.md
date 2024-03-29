@@ -2824,8 +2824,9 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
 
-# List of labels to map to service_name label, if not present in the stream
-# labels during ingestion. Empty list disables setting the label.
+# If no service_name label exists, Loki maps a single label from the configured
+# list to service_name. If none of the configured labels exist in the stream,
+# label is set to unknown_service. Empty list disables setting the label.
 # CLI flag: -validation.discover-service-name
 [discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name component workload job]]
 

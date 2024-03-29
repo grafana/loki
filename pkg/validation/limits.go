@@ -253,7 +253,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"workload",
 		"job",
 	}
-	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "List of labels to map to service_name label, if not present in the stream labels during ingestion. Empty list disables setting the label.")
+	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
 
 	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
