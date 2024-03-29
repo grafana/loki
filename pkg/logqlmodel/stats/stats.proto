@@ -153,6 +153,9 @@ message Store {
 
   // Time spent being blocked on congestion control.
   int64 congestionControlLatency = 6 [(gogoproto.jsontag) = "congestionControlLatency"];
+
+  // Total number of lines filtered by pipeline wrapper.
+  int64 pipelineWrapperFilteredLines = 7 [(gogoproto.jsontag) = "pipelineWrapperFilteredLines"];
 }
 
 message Chunk {
