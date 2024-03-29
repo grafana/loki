@@ -1365,7 +1365,7 @@ func (i *Ingester) GetDetectedFields(_ context.Context, _ *logproto.DetectedFiel
 		Fields: []*logproto.DetectedField{
 			{
 				Label:       "foo",
-				Type:        logproto.DetectedFieldString,
+				Type:        logproto.DetectedFieldString.String(),
 				Cardinality: 1,
 			},
 		},

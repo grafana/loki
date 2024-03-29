@@ -905,7 +905,7 @@ func (q *SingleTenantQuerier) DetectedFields(_ context.Context, _ *logproto.Dete
 		Fields: []*logproto.DetectedField{
 			{
 				Label:       "foo",
-				Type:        logproto.DetectedFieldString,
+				Type:        logproto.DetectedFieldString.String(),
 				Cardinality: 1,
 			},
 		},
