@@ -441,8 +441,6 @@ message DetectedFieldsResponse {
 
 message DetectedField {
   string label = 1;
-  string type = 2 [
-    (gogoproto.casttype) = "DetectedFieldType"
-  ];
+  string type = 2 [(gogoproto.casttype) = "DetectedFieldType"];
   uint64 cardinality = 3;
 }
