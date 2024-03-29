@@ -62,6 +62,7 @@ limits_config:
   ingestion_burst_size_mb: 50
   reject_old_samples: false
   allow_structured_metadata: true
+  discover_service_name:
   otlp_config:
     resource_attributes:
       attributes_config:
