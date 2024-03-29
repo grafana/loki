@@ -130,7 +130,7 @@ func TestMultiIndex(t *testing.T) {
 			labels.MustNewMatcher(labels.MatchEqual, "foo", "foo"),
 		},
 		logql.NewPowerOfTwoShard(
-			index.ShardAnnotation{Shard: uint32(expShard), Of: uint32(factor)},
+			index.ShardAnnotation{Shard: expShard, Of: factor},
 		).Ptr(),
 	)
 
@@ -146,7 +146,7 @@ func TestMultiIndex(t *testing.T) {
 		[]*labels.Matcher{
 			labels.MustNewMatcher(labels.MatchEqual, "foo", "foo"),
 		},
-		logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: uint32(expShard), Of: uint32(factor)}).Ptr(),
+		logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: expShard, Of: factor}).Ptr(),
 	)
 
 	require.Nil(t, err)

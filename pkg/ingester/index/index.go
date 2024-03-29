@@ -82,7 +82,7 @@ func (ii *InvertedIndex) validateShard(shard *logql.Shard) (*index.ShardAnnotati
 		return nil, errors.New("inverted index only supports shard annotations with `PowerOfTwo`")
 	}
 
-	if ii.totalShards%s.Of != 0 || uint32(s.Of) > ii.totalShards {
+	if ii.totalShards%s.Of != 0 || s.Of > ii.totalShards {
 		return nil, fmt.Errorf("%w index_shard:%d query_shard:%v", ErrInvalidShardQuery, ii.totalShards, s)
 	}
 	return s, nil

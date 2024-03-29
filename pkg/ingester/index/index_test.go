@@ -112,7 +112,7 @@ func Test_hash_mapping(t *testing.T) {
 			ii := NewWithShards(shard)
 			ii.Add(logproto.FromLabelsToLabelAdapters(lbs), 1)
 
-			x := logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: uint32(labelsSeriesIDHash(lbs) % 16), Of: 16})
+			x := logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: labelsSeriesIDHash(lbs) % 16, Of: 16})
 			res, err := ii.Lookup([]*labels.Matcher{{Type: labels.MatchEqual, Name: "compose_project", Value: "loki-tsdb-storage-s3"}}, &x)
 			require.NoError(t, err)
 			require.Len(t, res, 1)
@@ -136,7 +136,7 @@ func Test_NoMatcherLookup(t *testing.T) {
 	// with shard param
 	ii = NewWithShards(16)
 	ii.Add(logproto.FromLabelsToLabelAdapters(lbs), 1)
-	x := logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: uint32(labelsSeriesIDHash(lbs) % 16), Of: 16})
+	x := logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: labelsSeriesIDHash(lbs) % 16, Of: 16})
 	ids, err = ii.Lookup(nil, &x)
 	require.Nil(t, err)
 	require.Equal(t, model.Fingerprint(1), ids[0])
