@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
@@ -133,7 +134,7 @@ func (s PowerOfTwoStrategy) Shards(expr syntax.Expr) (Shards, uint64, error) {
 
 	res := make(Shards, 0, factor)
 	for i := 0; i < factor; i++ {
-		res = append(res, NewPowerOfTwoShard(astmapper.ShardAnnotation{Of: factor, Shard: i}))
+		res = append(res, NewPowerOfTwoShard(index.ShardAnnotation{Of: uint32(factor), Shard: uint32(i)}))
 	}
 	return res, bytesPerShard, nil
 }
@@ -141,7 +142,7 @@ func (s PowerOfTwoStrategy) Shards(expr syntax.Expr) (Shards, uint64, error) {
 // Shard represents a shard annotation
 // It holds either a power of two shard (legacy) or a bounded shard
 type Shard struct {
-	PowerOfTwo *astmapper.ShardAnnotation
+	PowerOfTwo *index.ShardAnnotation
 	Bounded    *logproto.Shard
 }
 
@@ -159,7 +160,7 @@ func (s *Shard) Match(fp model.Fingerprint) bool {
 		return v1.BoundsFromProto(s.Bounded.Bounds).Match(fp)
 	}
 
-	return s.PowerOfTwo.TSDB().Match(fp)
+	return s.PowerOfTwo.Match(fp)
 }
 
 func (s *Shard) GetFromThrough() (model.Fingerprint, model.Fingerprint) {
@@ -167,7 +168,7 @@ func (s *Shard) GetFromThrough() (model.Fingerprint, model.Fingerprint) {
 		return v1.BoundsFromProto(s.Bounded.Bounds).GetFromThrough()
 	}
 
-	return s.PowerOfTwo.TSDB().GetFromThrough()
+	return s.PowerOfTwo.GetFromThrough()
 }
 
 // convenience method for unaddressability concerns using constructors in literals (tests)
@@ -179,7 +180,7 @@ func NewBoundedShard(shard logproto.Shard) Shard {
 	return Shard{Bounded: &shard}
 }
 
-func NewPowerOfTwoShard(shard astmapper.ShardAnnotation) Shard {
+func NewPowerOfTwoShard(shard index.ShardAnnotation) Shard {
 	return Shard{PowerOfTwo: &shard}
 }
 
@@ -236,8 +237,9 @@ func ParseShard(s string) (Shard, ShardVersion, error) {
 	}
 
 	old, v1Err := astmapper.ParseShard(s)
+	casted := old.TSDB()
 	if v1Err == nil {
-		return Shard{PowerOfTwo: &old}, PowerOfTwoVersion, nil
+		return Shard{PowerOfTwo: &casted}, PowerOfTwoVersion, nil
 	}
 
 	err := errors.Wrap(
