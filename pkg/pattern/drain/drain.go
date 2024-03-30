@@ -112,7 +112,7 @@ func DefaultConfig() *Config {
 		LogClusterDepth: 8,
 		SimTh:           0.3,
 		MaxChildren:     100,
-		ParamString:     "<*>",
+		ParamString:     "<_>",
 		MaxClusters:     0,
 	}
 }
