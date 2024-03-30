@@ -184,12 +184,12 @@ message DetectedFieldsResponse {
   ];
 }
 
-message QueryPatternsResponse{
+message QueryPatternsResponse {
   logproto.QueryPatternsResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.QueryPatternsResponse"];
-    repeated definitions.PrometheusResponseHeader Headers = 2 [
-      (gogoproto.jsontag) = "-",
-      (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
-    ];
+  repeated definitions.PrometheusResponseHeader Headers = 2 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+  ];
 }
 
 message QueryResponse {
