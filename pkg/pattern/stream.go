@@ -43,7 +43,7 @@ func newStream(
 }
 
 func (s *stream) Push(
-	ctx context.Context,
+	_ context.Context,
 	entries []logproto.Entry,
 ) error {
 	s.mtx.Lock()
@@ -56,7 +56,7 @@ func (s *stream) Push(
 	return nil
 }
 
-func (s *stream) Iterator(ctx context.Context, from, through model.Time) (iter.Iterator, error) {
+func (s *stream) Iterator(_ context.Context, from, through model.Time) (iter.Iterator, error) {
 	// todo we should improve locking.
 	s.mtx.Lock()
 	defer s.mtx.Unlock()

@@ -1,6 +1,4 @@
 package drain
 
-import "testing"
-
-func TestSampleIterator(t *testing.T) {
-}
+// func TestSampleIterator(t *testing.T) {
+// }

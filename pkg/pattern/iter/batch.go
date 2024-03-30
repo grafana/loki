@@ -4,8 +4,8 @@ import "github.com/grafana/loki/pkg/logproto"
 
 func ReadBatch(it Iterator, batchSize int) (*logproto.QueryPatternsResponse, error) {
 	var (
-		series       = map[string][]*logproto.PatternSample{}
-		respSize int = 0
+		series   = map[string][]*logproto.PatternSample{}
+		respSize int
 	)
 
 	for ; respSize < batchSize && it.Next(); respSize++ {
