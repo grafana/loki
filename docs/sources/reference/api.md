@@ -43,7 +43,7 @@ These HTTP endpoints are exposed by the `querier`, `query-frontend`, `read`, and
 - [`GET /loki/api/v1/index/stats`](#query-log-statistics)
 - [`GET /loki/api/v1/index/volume`](#query-log-volume)
 - [`GET /loki/api/v1/index/volume_range`](#query-log-volume)
-- [`GET /loki/api/v1/patterns`](#patterns)
+- [`GET /loki/api/v1/patterns`](#patterns-detection)
 - [`GET /loki/api/v1/tail`](#stream-logs)
 
 ### Status endpoints
