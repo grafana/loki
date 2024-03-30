@@ -439,17 +439,8 @@ message DetectedFieldsResponse {
   repeated DetectedField fields = 1;
 }
 
-enum DetectedFieldType {
-  STRING = 0;
-  INT = 1;
-  FLOAT = 2;
-  BOOL = 3;
-  DURATION = 4;
-  BYTES = 5;
-}
-
 message DetectedField {
   string label = 1;
-  DetectedFieldType type = 2;
+  string type = 2 [(gogoproto.casttype) = "DetectedFieldType"];
   uint64 cardinality = 3;
 }

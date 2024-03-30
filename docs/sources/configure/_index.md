@@ -817,10 +817,6 @@ The `frontend` block configures the Loki query-frontend.
 
 # The TLS configuration.
 [tail_tls_config: <tls_config>]
-
-# Whether to enable experimental APIs in the frontend.
-# CLI flag: -frontend.experimental-apis-enabled
-[experimental_apis_enabled: <boolean> | default = false]
 ```
 
 ### query_range

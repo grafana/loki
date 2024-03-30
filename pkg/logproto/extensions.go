@@ -142,13 +142,15 @@ func (m *Shard) SpaceFor(stats *IndexStatsResponse, targetShardBytes uint64) boo
 	return newDelta <= curDelta
 }
 
+type DetectedFieldType string
+
 const (
-	DetectedFieldString   DetectedFieldType = 0
-	DetectedFieldInt      DetectedFieldType = 1
-	DetectedFieldFloat    DetectedFieldType = 2
-	DetectedFieldBoolean  DetectedFieldType = 3
-	DetectedFieldDuration DetectedFieldType = 4
-	DetectedFieldBytes    DetectedFieldType = 5
+	DetectedFieldString   DetectedFieldType = "string"
+	DetectedFieldInt      DetectedFieldType = "int"
+	DetectedFieldFloat    DetectedFieldType = "float"
+	DetectedFieldBoolean  DetectedFieldType = "boolean"
+	DetectedFieldDuration DetectedFieldType = "duration"
+	DetectedFieldBytes    DetectedFieldType = "bytes"
 )
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
@@ -175,4 +177,8 @@ func (r *QueryPatternsResponse) UnmarshalJSON(data []byte) error {
 		r.Series = append(r.Series, &PatternSeries{Pattern: d.Pattern, Samples: samples})
 	}
 	return nil
+}
+
+func (d DetectedFieldType) String() string {
+	return string(d)
 }

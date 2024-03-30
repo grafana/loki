@@ -206,6 +206,7 @@ func (s *Store) Merge(m Store) {
 	s.TotalChunksRef += m.TotalChunksRef
 	s.TotalChunksDownloaded += m.TotalChunksDownloaded
 	s.CongestionControlLatency += m.CongestionControlLatency
+	s.PipelineWrapperFilteredLines += m.PipelineWrapperFilteredLines
 	s.ChunksDownloadTime += m.ChunksDownloadTime
 	s.ChunkRefsFetchTime += m.ChunkRefsFetchTime
 	s.Chunk.HeadChunkBytes += m.Chunk.HeadChunkBytes
@@ -312,6 +313,10 @@ func (r Result) CongestionControlLatency() time.Duration {
 	return time.Duration(r.Querier.Store.CongestionControlLatency)
 }
 
+func (r Result) PipelineWrapperFilteredLines() int64 {
+	return r.Querier.Store.PipelineWrapperFilteredLines + r.Ingester.Store.PipelineWrapperFilteredLines
+}
+
 func (r Result) TotalDuplicates() int64 {
 	return r.Querier.Store.Chunk.TotalDuplicates + r.Ingester.Store.Chunk.TotalDuplicates
 }
@@ -395,6 +400,10 @@ func (c *Context) AddChunkRefsFetchTime(i time.Duration) {
 
 func (c *Context) AddCongestionControlLatency(i time.Duration) {
 	atomic.AddInt64(&c.store.CongestionControlLatency, int64(i))
+}
+
+func (c *Context) AddPipelineWrapperFilterdLines(i int64) {
+	atomic.AddInt64(&c.store.PipelineWrapperFilteredLines, i)
 }
 
 func (c *Context) AddChunksDownloaded(i int64) {
