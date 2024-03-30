@@ -515,7 +515,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		router.Path("/loki/api/v1/index/shards").Methods("GET", "POST").Handler(indexShardsHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/volume").Methods("GET", "POST").Handler(volumeHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/volume_range").Methods("GET", "POST").Handler(volumeRangeHTTPMiddleware.Wrap(httpHandler))
-		router.Path("/loki/api/experimental/patterns").Methods("GET", "POST").Handler(httpHandler)
+		router.Path("/loki/api/v1/patterns").Methods("GET", "POST").Handler(httpHandler)
 
 		router.Path("/api/prom/query").Methods("GET", "POST").Handler(
 			middleware.Merge(
@@ -1108,7 +1108,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	if t.Cfg.Frontend.ExperimentalAPIsEnabled {
 		t.Server.HTTP.Path("/loki/api/experimental/detected_fields").Methods("GET", "POST").Handler(frontendHandler)
 	}
-	t.Server.HTTP.Path("/loki/api/experimental/patterns").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/patterns").Methods("GET", "POST").Handler(frontendHandler)
 
 	if t.frontend == nil {
 		return services.NewIdleService(nil, func(_ error) error {
