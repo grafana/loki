@@ -43,6 +43,7 @@ These HTTP endpoints are exposed by the `querier`, `query-frontend`, `read`, and
 - [`GET /loki/api/v1/index/stats`](#query-log-statistics)
 - [`GET /loki/api/v1/index/volume`](#query-log-volume)
 - [`GET /loki/api/v1/index/volume_range`](#query-log-volume)
+- [`GET /loki/api/v1/patterns`](#patterns)
 - [`GET /loki/api/v1/tail`](#stream-logs)
 
 ### Status endpoints
@@ -848,6 +849,105 @@ URL query parameters:
 - `aggregateBy`: Whether to aggregate into labels or label-value pairs. This parameter is optional, the default is label-value pairs.
 
 You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header. This is useful when specifying a large or dynamic number of stream selectors that may breach server-side URL character limits.
+
+## Patterns detection
+
+```bash
+GET /loki/api/v1/patterns
+```
+
+{{< admonition type="note" >}}
+You must configure
+
+```yaml
+pattern_ingester:
+  enabled: true
+```
+
+to enable this feature.
+{{< /admonition >}}
+
+The `/loki/api/v1/patterns` endpoint can be used to query loki for patterns detected in the logs. This helps understand the structure of the logs Loki has ingested.
+
+The `query` should be a valid LogQL stream selector, for example `{job="foo", env=~".+"}`. The result is aggregated by the `pattern` from all matching streams.
+
+For each pattern detected, the response includes the pattern itself and the number of samples for each pattern at each timestamp.
+
+For example, if you have the following logs:
+
+```log
+ts=2024-03-30T23:03:40 caller=grpc_logging.go:66 level=info method=/cortex.Ingester/Push duration=200ms msg=gRPC
+ts=2024-03-30T23:03:41 caller=grpc_logging.go:66 level=info method=/cortex.Ingester/Push duration=500ms msg=gRPC
+```
+
+The pattern detected would be:
+
+```log
+ts=<_> caller=grpc_logging.go:66 level=info method=/cortex.Ingester/Push duration=<_> msg=gRPC
+```
+
+URL query parameters:
+
+- `query`: The [LogQL]({{< relref "../query" >}}) matchers to check (that is, `{job="foo", env=~".+"}`). This parameter is required.
+- `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is required.
+- `end=<nanosecond Unix epoch>`: End timestamp. This parameter is required.
+
+### Examples
+
+This example cURL command
+
+```bash
+curl -s "http://localhost:3100/loki/api/v1/patterns" \
+  --data-urlencode 'query={app="loki"}' | jq
+```
+
+gave this response:
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "pattern": "<_> caller=grpc_logging.go:66 <_> level=error method=/cortex.Ingester/Push <_> msg=gRPC err=\"connection refused to object store\"",
+      "samples": [
+        [
+          1711839260,
+          1
+        ],
+        [
+          1711839270,
+          2
+        ],
+        [
+          1711839280,
+          1
+        ]
+      ]
+    },
+    {
+      "pattern": "<_> caller=grpc_logging.go:66 <_> level=info method=/cortex.Ingester/Push <_> msg=gRPC",
+      "samples": [
+        [
+          1711839260,
+          105
+        ],
+        [
+          1711839270,
+          222
+        ],
+        [
+          1711839280,
+          196
+        ]
+      ]
+    }
+  ]
+}
+```
+
+The result is a list of patterns detected in the logs, with the number of samples for each pattern at each timestamp.
+The pattern format is the same as the [LogQL]({{< relref "../query" >}}) pattern filter and parser and can be used in queries for filtering matching logs.
+Each sample is a tuple of timestamp (second) and count.
 
 ## Stream logs
 
