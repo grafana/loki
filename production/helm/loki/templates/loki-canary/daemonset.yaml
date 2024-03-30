@@ -51,6 +51,7 @@ spec:
             {{- else if $.Values.loki.auth_enabled }}
             - -user={{ $.Values.monitoring.selfMonitoring.tenant.name }}
             - -tenant-id={{ $.Values.monitoring.selfMonitoring.tenant.name }}
+            - -pass={{ $.Values.monitoring.selfMonitoring.tenant.password }}
             {{- end }}
             {{- with .extraArgs }}
             {{- toYaml . | nindent 12 }}
