@@ -143,9 +143,9 @@ func (m *Matcher) Test(in []byte) bool {
 		}
 		off += j + len(lit)
 	}
-	// If we ended up on a literal, we  only consider the test successful,
-	// if the remaining input is empty. Otherwise, we ended up on capture,
-	// therefore the reminder (the captured text) must not be empty.
+	// If we end up on a literal, we only consider the test successful if
+	// the remaining input is empty. Otherwise, if we end up on a capture,
+	// the remainder (the captured text) must not be empty.
 	//
 	// For example, "foo bar baz" does not match "<_> bar", but it matches
 	// "<_> baz" and "foo <_>".
