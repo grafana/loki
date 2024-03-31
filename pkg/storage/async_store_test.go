@@ -233,7 +233,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newStoreMock()
-			store.On("GetChunks", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tc.storeChunks, tc.storeFetcher, nil)
+			store.On("GetChunks", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tc.storeChunks, tc.storeFetcher, nil)
 			store.On("GetChunkFetcher", mock.Anything).Return(tc.ingesterFetcher)
 
 			ingesterQuerier := newIngesterQuerierMock()
@@ -293,7 +293,7 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 
 			store := newStoreMock()
-			store.On("GetChunks", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([][]chunk.Chunk{}, []*fetcher.Fetcher{}, nil)
+			store.On("GetChunks", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([][]chunk.Chunk{}, []*fetcher.Fetcher{}, nil)
 
 			ingesterQuerier := newIngesterQuerierMock()
 			ingesterQuerier.On("GetChunkIDs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)

@@ -433,6 +433,9 @@ func (s *LokiStore) lazyChunks(
 		filtered += len(chks[i])
 	}
 
+	if storeChunksOverride != nil {
+		s.chunkMetrics.refsBypassed.Add(float64(len(storeChunksOverride.Refs)))
+	}
 	s.chunkMetrics.refs.WithLabelValues(statusDiscarded).Add(float64(prefiltered - filtered))
 	s.chunkMetrics.refs.WithLabelValues(statusMatched).Add(float64(filtered))
 
