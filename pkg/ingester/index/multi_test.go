@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -129,7 +129,9 @@ func TestMultiIndex(t *testing.T) {
 		[]*labels.Matcher{
 			labels.MustNewMatcher(labels.MatchEqual, "foo", "foo"),
 		},
-		&astmapper.ShardAnnotation{Shard: int(expShard), Of: int(factor)},
+		logql.NewPowerOfTwoShard(
+			index.ShardAnnotation{Shard: expShard, Of: factor},
+		).Ptr(),
 	)
 
 	require.Nil(t, err)
@@ -144,7 +146,7 @@ func TestMultiIndex(t *testing.T) {
 		[]*labels.Matcher{
 			labels.MustNewMatcher(labels.MatchEqual, "foo", "foo"),
 		},
-		&astmapper.ShardAnnotation{Shard: int(expShard), Of: int(factor)},
+		logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: expShard, Of: factor}).Ptr(),
 	)
 
 	require.Nil(t, err)

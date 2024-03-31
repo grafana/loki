@@ -1003,6 +1003,7 @@ func TestPostQueries(t *testing.T) {
 		handler,
 		handler,
 		handler,
+		handler,
 		fakeLimits{},
 	).Do(ctx, lreq)
 	require.NoError(t, err)
@@ -1520,6 +1521,9 @@ func (f fakeLimits) VolumeEnabled(_ string) bool {
 
 func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 	return valid.DefaultTSDBMaxBytesPerShard
+}
+func (f fakeLimits) TSDBShardingStrategy(string) string {
+	return logql.PowerOfTwoVersion.String()
 }
 
 type ingesterQueryOpts struct {
