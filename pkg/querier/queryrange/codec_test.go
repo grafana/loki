@@ -1174,6 +1174,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 			[]queryrangebase.Response{
 				&LokiResponse{
 					Status:    loghttp.QueryStatusSuccess,
+					Warnings:  []string{"warning"},
 					Direction: logproto.BACKWARD,
 					Limit:     100,
 					Version:   1,
@@ -1226,6 +1227,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
+				Warnings:   []string{"warning"},
 				Direction:  logproto.BACKWARD,
 				Limit:      100,
 				Version:    1,

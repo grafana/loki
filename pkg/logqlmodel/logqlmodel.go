@@ -20,6 +20,7 @@ type Result struct {
 	Data       parser.Value
 	Statistics stats.Result
 	Headers    []*definitions.PrometheusResponseHeader
+	Warnings   []string
 }
 
 // Streams is promql.Value

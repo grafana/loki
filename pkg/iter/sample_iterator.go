@@ -3,6 +3,7 @@ package iter
 import (
 	"container/heap"
 	"context"
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"io"
 	"sync"
 
@@ -490,6 +491,8 @@ func (i *sampleQueryClientIterator) Next() bool {
 			return false
 		}
 		stats.JoinIngesters(ctx, batch.Stats)
+		_ = metadata.AddWarnings(ctx, batch.Warnings...)
+
 		i.curr = NewSampleQueryResponseIterator(batch)
 	}
 	return true

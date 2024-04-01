@@ -252,6 +252,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, err
 	}
 
+	// TODO(tpatterson): add warnings to response
 	switch res.Data.Type() {
 	case parser.ValueTypeMatrix:
 		return &LokiPromResponse{
@@ -261,7 +262,8 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 					ResultType: loghttp.ResultTypeMatrix,
 					Result:     toProtoMatrix(value.(loghttp.Matrix)),
 				},
-				Headers: res.Headers,
+				Headers:  res.Headers,
+				Warnings: res.Warnings,
 			},
 			Statistics: res.Statistics,
 		}, nil
@@ -281,7 +283,8 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 				ResultType: loghttp.ResultTypeStream,
 				Result:     value.(loghttp.Streams).ToProto(),
 			},
-			Headers: respHeaders,
+			Headers:  respHeaders,
+			Warnings: res.Warnings,
 		}, nil
 	case parser.ValueTypeVector:
 		return &LokiPromResponse{
@@ -292,7 +295,8 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 					ResultType: loghttp.ResultTypeVector,
 					Result:     toProtoVector(value.(loghttp.Vector)),
 				},
-				Headers: res.Headers,
+				Headers:  res.Headers,
+				Warnings: res.Warnings,
 			},
 		}, nil
 	default:

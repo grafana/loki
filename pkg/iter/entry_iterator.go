@@ -2,6 +2,7 @@ package iter
 
 import (
 	"context"
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"io"
 	"math"
 	"sync"
@@ -379,6 +380,7 @@ func (i *queryClientIterator) Next() bool {
 			return false
 		}
 		stats.JoinIngesters(ctx, batch.Stats)
+		_ = metadata.AddWarnings(ctx, batch.Warnings...)
 		i.curr = NewQueryResponseIterator(batch, i.direction)
 	}
 

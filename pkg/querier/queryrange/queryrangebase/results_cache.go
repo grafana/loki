@@ -74,7 +74,8 @@ type PrometheusResponseExtractor struct{}
 func (PrometheusResponseExtractor) Extract(start, end int64, res resultscache.Response, _, _ int64) resultscache.Response {
 	promRes := res.(*PrometheusResponse)
 	return &PrometheusResponse{
-		Status: StatusSuccess,
+		Status:   StatusSuccess,
+		Warnings: promRes.Warnings,
 		Data: PrometheusData{
 			ResultType: promRes.Data.ResultType,
 			Result:     extractMatrix(start, end, promRes.Data.Result),
@@ -88,7 +89,8 @@ func (PrometheusResponseExtractor) Extract(start, end int64, res resultscache.Re
 func (PrometheusResponseExtractor) ResponseWithoutHeaders(resp Response) Response {
 	promRes := resp.(*PrometheusResponse)
 	return &PrometheusResponse{
-		Status: StatusSuccess,
+		Status:   StatusSuccess,
+		Warnings: promRes.Warnings,
 		Data: PrometheusData{
 			ResultType: promRes.Data.ResultType,
 			Result:     promRes.Data.Result,

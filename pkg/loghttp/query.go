@@ -42,8 +42,9 @@ const (
 
 // QueryResponse represents the http json response to a Loki range and instant query
 type QueryResponse struct {
-	Status string            `json:"status"`
-	Data   QueryResponseData `json:"data"`
+	Status   string            `json:"status"`
+	Warnings []string          `json:"warnings,omitempty"`
+	Data     QueryResponseData `json:"data"`
 }
 
 func (q *QueryResponse) UnmarshalJSON(data []byte) error {
@@ -51,6 +52,15 @@ func (q *QueryResponse) UnmarshalJSON(data []byte) error {
 		switch string(key) {
 		case "status":
 			q.Status = string(value)
+		case "warnings":
+			var warnings []string
+			if _, err := jsonparser.ArrayEach(value, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
+				warnings = append(warnings, string(value))
+			}); err != nil {
+				return err
+			}
+
+			q.Warnings = warnings
 		case "data":
 			var responseData QueryResponseData
 			if err := responseData.UnmarshalJSON(value); err != nil {
