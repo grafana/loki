@@ -980,6 +980,9 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 	//TODO(twhitney): converting from a step to a duration should be abstracted and reused,
 	// doing this in a few places now.
 	streams, err := streamsForFieldDetection(finalIters, req.LineLimit, time.Duration(req.Step*1e6))
+	if err != nil {
+		return nil, err
+	}
 	detectedFields := parseDetectedFields(req.FieldLimit, streams)
 
 	fields := make([]*logproto.DetectedField, len(detectedFields))
@@ -1102,7 +1105,7 @@ func parseLine(line string) map[string][]string {
 		if values, ok := parsedLabels[lbl.Name]; ok {
 			values[lbl.Value] = struct{}{}
 		} else {
-			parsedLabels[lbl.Name] = map[string]struct{}{lbl.Value: struct{}{}}
+			parsedLabels[lbl.Name] = map[string]struct{}{lbl.Value: {}}
 		}
 	}
 
@@ -1158,7 +1161,3 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32, interval time.D
 	sort.Sort(result)
 	return result, i.Error()
 }
-<<<<<<< HEAD
-=======
-
->>>>>>> c160405a3 (chore: clean up)
