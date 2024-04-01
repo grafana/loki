@@ -258,6 +258,28 @@ func (q *MultiTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeReq
 	return merged, nil
 }
 
+func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+	// TODO(shantanu)
+	tenantIDs, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tenantIDs) == 1 {
+		return q.Querier.DetectedLabels(ctx, req)
+	}
+
+	//resp := make([]*logproto.DetectedLabels, len(tenantIDs))
+
+	return &logproto.DetectedLabelsResponse{
+		DetectedLabels: []*logproto.DetectedLabel{
+			{Label: "cluster"},
+			{Label: "namespace"},
+			{Label: "instance"},
+		},
+	}, nil
+}
+
 // removeTenantSelector filters the given tenant IDs based on any tenant ID filter the in passed selector.
 func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (map[string]struct{}, syntax.Expr, error) {
 	expr, err := params.Expr()
