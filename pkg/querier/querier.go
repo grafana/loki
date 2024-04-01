@@ -1158,3 +1158,7 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32, interval time.D
 	sort.Sort(result)
 	return result, i.Error()
 }
+<<<<<<< HEAD
+=======
+
+>>>>>>> c160405a3 (chore: clean up)
