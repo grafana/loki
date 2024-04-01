@@ -1565,7 +1565,8 @@ var (
 				"totalChunksRef": 0,
 				"totalChunksDownloaded": 0,
 				"chunkRefsFetchTime": 0,
-				"queryReferencedStructuredMetadata": false
+				"queryReferencedStructuredMetadata": false,
+				"pipelineWrapperFilteredLines": 2
 			},
 			"totalBatches": 6,
 			"totalChunksMatched": 7,
@@ -1590,7 +1591,8 @@ var (
 				"totalChunksRef": 17,
 				"totalChunksDownloaded": 18,
 				"chunkRefsFetchTime": 19,
-				"queryReferencedStructuredMetadata": true
+				"queryReferencedStructuredMetadata": true,
+				"pipelineWrapperFilteredLines": 4
 			}
 		},
 		"index": {
@@ -2023,17 +2025,19 @@ var (
 					PostFilterLines:   0,
 					TotalDuplicates:   19,
 				},
-				ChunksDownloadTime:        16,
-				CongestionControlLatency:  0,
-				TotalChunksRef:            17,
-				TotalChunksDownloaded:     18,
-				ChunkRefsFetchTime:        19,
-				QueryReferencedStructured: true,
+				ChunksDownloadTime:           16,
+				CongestionControlLatency:     0,
+				TotalChunksRef:               17,
+				TotalChunksDownloaded:        18,
+				ChunkRefsFetchTime:           19,
+				QueryReferencedStructured:    true,
+				PipelineWrapperFilteredLines: 4,
 			},
 		},
 
 		Ingester: stats.Ingester{
 			Store: stats.Store{
+				PipelineWrapperFilteredLines: 2,
 				Chunk: stats.Chunk{
 					CompressedBytes:   1,
 					DecompressedBytes: 2,

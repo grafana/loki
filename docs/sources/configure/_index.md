@@ -817,10 +817,6 @@ The `frontend` block configures the Loki query-frontend.
 
 # The TLS configuration.
 [tail_tls_config: <tls_config>]
-
-# Whether to enable experimental APIs in the frontend.
-# CLI flag: -frontend.experimental-apis-enabled
-[experimental_apis_enabled: <boolean> | default = false]
 ```
 
 ### query_range
@@ -2408,12 +2404,21 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # The CLI flags prefix for this block configuration is: store.chunks-cache
 [chunk_cache_config: <cache_config>]
 
+# The cache block configures the cache backend.
+# The CLI flags prefix for this block configuration is: store.chunks-cache-l2
+[chunk_cache_config_l2: <cache_config>]
+
 # Write dedupe cache is deprecated along with legacy index types (aws,
 # aws-dynamo, bigtable, bigtable-hashed, cassandra, gcp, gcp-columnkey,
 # grpc-store).
 # Consider using TSDB index which does not require a write dedupe cache.
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
+
+# Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
+# cache.
+# CLI flag: -store.chunks-cache-l2.handoff
+[l2_chunk_cache_handoff: <duration> | default = 0s]
 
 # Cache index entries older than this period. 0 to disable.
 # CLI flag: -store.cache-lookups-older-than
@@ -2823,6 +2828,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # incremented.
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
+
+# If no service_name label exists, Loki maps a single label from the configured
+# list to service_name. If none of the configured labels exist in the stream,
+# label is set to unknown_service. Empty list disables setting the label.
+# CLI flag: -validation.discover-service-name
+[discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name component workload job]]
 
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
@@ -4486,6 +4497,7 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `store.chunks-cache`
+- `store.chunks-cache-l2`
 - `store.index-cache-read`
 - `store.index-cache-write`
 
@@ -4532,9 +4544,8 @@ memcached_client:
   # CLI flag: -<prefix>.memcached.service
   [service: <string> | default = "memcached"]
 
-  # EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery
-  # format:
-  # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+  # Comma separated addresses list in DNS Service Discovery format:
+  # https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes
   # CLI flag: -<prefix>.memcached.addresses
   [addresses: <string> | default = ""]
 

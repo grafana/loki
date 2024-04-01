@@ -141,11 +141,17 @@ func (m *Shard) SpaceFor(stats *IndexStatsResponse, targetShardBytes uint64) boo
 	return newDelta <= curDelta
 }
 
+type DetectedFieldType string
+
 const (
-	DetectedFieldString   DetectedFieldType = 0
-	DetectedFieldInt      DetectedFieldType = 1
-	DetectedFieldFloat    DetectedFieldType = 2
-	DetectedFieldBoolean  DetectedFieldType = 3
-	DetectedFieldDuration DetectedFieldType = 4
-	DetectedFieldBytes    DetectedFieldType = 5
+	DetectedFieldString   DetectedFieldType = "string"
+	DetectedFieldInt      DetectedFieldType = "int"
+	DetectedFieldFloat    DetectedFieldType = "float"
+	DetectedFieldBoolean  DetectedFieldType = "boolean"
+	DetectedFieldDuration DetectedFieldType = "duration"
+	DetectedFieldBytes    DetectedFieldType = "bytes"
 )
+
+func (d DetectedFieldType) String() string {
+	return string(d)
+}

@@ -43,6 +43,7 @@ type validationContext struct {
 	maxLabelValueLength    int
 
 	incrementDuplicateTimestamps bool
+	discoverServiceName          []string
 
 	allowStructuredMetadata    bool
 	maxStructuredMetadataSize  int
@@ -63,6 +64,7 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		maxLabelNameLength:           v.MaxLabelNameLength(userID),
 		maxLabelValueLength:          v.MaxLabelValueLength(userID),
 		incrementDuplicateTimestamps: v.IncrementDuplicateTimestamps(userID),
+		discoverServiceName:          v.DiscoverServiceName(userID),
 		allowStructuredMetadata:      v.AllowStructuredMetadata(userID),
 		maxStructuredMetadataSize:    v.MaxStructuredMetadataSize(userID),
 		maxStructuredMetadataCount:   v.MaxStructuredMetadataCount(userID),
