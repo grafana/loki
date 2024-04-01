@@ -262,9 +262,6 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data)
 	}
 
-	warnings := metadataCtx.Warnings()
-	_ = warnings
-
 	return logqlmodel.Result{
 		Data:       data,
 		Statistics: statResult,
