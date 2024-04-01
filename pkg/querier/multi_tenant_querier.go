@@ -199,6 +199,44 @@ func (q *MultiTenantQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQ
 	return &merged, nil
 }
 
+func (q *MultiTenantQuerier) IndexShards(
+	ctx context.Context,
+	req *loghttp.RangeQuery,
+	targetBytesPerShard uint64,
+) (*logproto.ShardsResponse, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tenantIDs) == 1 {
+		return q.Querier.IndexShards(ctx, req, targetBytesPerShard)
+	}
+
+	responses := make([]*logproto.ShardsResponse, len(tenantIDs))
+	for i, id := range tenantIDs {
+		singleContext := user.InjectOrgID(ctx, id)
+		resp, err := q.Querier.IndexShards(singleContext, req, targetBytesPerShard)
+		if err != nil {
+			return nil, err
+		}
+
+		responses[i] = resp
+	}
+
+	// TODO(owen-d): better merging
+	var highestIdx int
+	var highestVal int
+	for i, resp := range responses {
+		if len(resp.Shards) > highestVal {
+			highestIdx = i
+			highestVal = len(resp.Shards)
+		}
+	}
+
+	return responses[highestIdx], nil
+}
+
 func (q *MultiTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
@@ -218,6 +256,28 @@ func (q *MultiTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeReq
 
 	merged := seriesvolume.Merge(responses, req.Limit)
 	return merged, nil
+}
+
+func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+	// TODO(shantanu)
+	tenantIDs, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tenantIDs) == 1 {
+		return q.Querier.DetectedLabels(ctx, req)
+	}
+
+	//resp := make([]*logproto.DetectedLabels, len(tenantIDs))
+
+	return &logproto.DetectedLabelsResponse{
+		DetectedLabels: []*logproto.DetectedLabel{
+			{Label: "cluster"},
+			{Label: "namespace"},
+			{Label: "instance"},
+		},
+	}, nil
 }
 
 // removeTenantSelector filters the given tenant IDs based on any tenant ID filter the in passed selector.

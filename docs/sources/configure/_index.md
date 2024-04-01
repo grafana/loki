@@ -1915,11 +1915,6 @@ client:
   # bloom-gateway-client.grpc
   [grpc_client_config: <grpc_client>]
 
-  # Flag to control whether requests sent to the gateway should be logged or
-  # not.
-  # CLI flag: -bloom-gateway-client.log-gateway-requests
-  [log_gateway_requests: <boolean> | default = false]
-
   results_cache:
     # The cache block configures the cache backend.
     # The CLI flags prefix for this block configuration is:
@@ -2358,14 +2353,20 @@ tsdb_shipper:
 
 # Configures Bloom Shipper.
 bloom_shipper:
-  # Working directory to store downloaded Bloom Blocks.
+  # Working directory to store downloaded bloom blocks. Supports multiple
+  # directories, separated by comma.
   # CLI flag: -bloom.shipper.working-directory
-  [working_directory: <string> | default = "bloom-shipper"]
+  [working_directory: <string> | default = "/data/blooms"]
+
+  # Maximum size of bloom pages that should be queried. Larger pages than this
+  # limit are skipped when querying blooms to limit memory usage.
+  # CLI flag: -bloom.max-query-page-size
+  [max_query_page_size: <int> | default = 64MiB]
 
   blocks_downloading_queue:
     # The count of parallel workers that download Bloom Blocks.
     # CLI flag: -bloom.shipper.blocks-downloading-queue.workers-count
-    [workers_count: <int> | default = 100]
+    [workers_count: <int> | default = 16]
 
     # Maximum number of task in queue per tenant per bloom-gateway. Enqueuing
     # the tasks above this limit will fail an error.
@@ -2403,12 +2404,21 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # The CLI flags prefix for this block configuration is: store.chunks-cache
 [chunk_cache_config: <cache_config>]
 
+# The cache block configures the cache backend.
+# The CLI flags prefix for this block configuration is: store.chunks-cache-l2
+[chunk_cache_config_l2: <cache_config>]
+
 # Write dedupe cache is deprecated along with legacy index types (aws,
 # aws-dynamo, bigtable, bigtable-hashed, cassandra, gcp, gcp-columnkey,
 # grpc-store).
 # Consider using TSDB index which does not require a write dedupe cache.
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
+
+# Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
+# cache.
+# CLI flag: -store.chunks-cache-l2.handoff
+[l2_chunk_cache_handoff: <duration> | default = 0s]
 
 # Cache index entries older than this period. 0 to disable.
 # CLI flag: -store.cache-lookups-older-than
@@ -2477,9 +2487,9 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
-# Constrain the size of any single delete request. When a delete request >
-# delete_max_interval is input, the request is sharded into smaller requests of
-# no more than delete_max_interval
+# Constrain the size of any single delete request with line filters. When a
+# delete request > delete_max_interval is input, the request is sharded into
+# smaller requests of no more than delete_max_interval
 # CLI flag: -compactor.delete-max-interval
 [delete_max_interval: <duration> | default = 24h]
 
@@ -2695,18 +2705,18 @@ ring:
 # CLI flag: -bloom-compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
-# How many index periods (days) to wait before building bloom filters for a
-# table. This can be used to lower cost by not re-writing data to object storage
-# too frequently since recent data changes more often.
-# CLI flag: -bloom-compactor.min-table-compaction-period
-[min_table_compaction_period: <int> | default = 1]
+# Newest day-table offset (from today, inclusive) to compact. Increase to lower
+# cost by not re-writing data to object storage too frequently since recent data
+# changes more often at the cost of not having blooms available as quickly.
+# CLI flag: -bloom-compactor.min-table-offset
+[min_table_offset: <int> | default = 1]
 
-# The maximum number of index periods (days) to build bloom filters for a table.
-# This can be used to lower cost by not trying to compact older data which
-# doesn't change. This can be optimized by aligning it with the maximum
-# `reject_old_samples_max_age` setting of any tenant.
-# CLI flag: -bloom-compactor.max-table-compaction-period
-[max_table_compaction_period: <int> | default = 7]
+# Oldest day-table offset (from today, inclusive) to compact. This can be used
+# to lower cost by not trying to compact older data which doesn't change. This
+# can be optimized by aligning it with the maximum `reject_old_samples_max_age`
+# setting of any tenant.
+# CLI flag: -bloom-compactor.max-table-offset
+[max_table_offset: <int> | default = 2]
 
 # Number of workers to run in parallel for compaction.
 # CLI flag: -bloom-compactor.worker-parallelism
@@ -2729,6 +2739,15 @@ ring:
 # and compact as many tables.
 # CLI flag: -bloom-compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
+
+retention:
+  # Enable bloom retention.
+  # CLI flag: -bloom-compactor.retention.enabled
+  [enabled: <boolean> | default = false]
+
+  # Max lookback days for retention.
+  # CLI flag: -bloom-compactor.retention.max-lookback-days
+  [max_lookback_days: <int> | default = 365]
 ```
 
 ### limits_config
@@ -2810,6 +2829,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
 
+# If no service_name label exists, Loki maps a single label from the configured
+# list to service_name. If none of the configured labels exist in the stream,
+# label is set to unknown_service. Empty list disables setting the label.
+# CLI flag: -validation.discover-service-name
+[discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name component workload job]]
+
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
 [max_streams_per_user: <int> | default = 0]
@@ -2871,10 +2896,17 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.tsdb-max-query-parallelism
 [tsdb_max_query_parallelism: <int> | default = 128]
 
-# Maximum number of bytes assigned to a single sharded query. Also expressible
-# in human readable forms (1GB, etc).
+# Target maximum number of bytes assigned to a single sharded query. Also
+# expressible in human readable forms (1GB, etc). Note: This is a _target_ and
+# not an absolute limit. The actual limit can be higher, but the query planner
+# will try to build shards up to this limit.
 # CLI flag: -querier.tsdb-max-bytes-per-shard
 [tsdb_max_bytes_per_shard: <int> | default = 600MB]
+
+# sharding strategy to use in query planning. Suggested to use bounded once all
+# nodes can recognize it.
+# CLI flag: -limits.tsdb-sharding-strategy
+[tsdb_sharding_strategy: <string> | default = "power_of_two"]
 
 # Cardinality limit for index queries.
 # CLI flag: -store.cardinality-limit
@@ -4465,6 +4497,7 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `store.chunks-cache`
+- `store.chunks-cache-l2`
 - `store.index-cache-read`
 - `store.index-cache-write`
 
@@ -4511,9 +4544,8 @@ memcached_client:
   # CLI flag: -<prefix>.memcached.service
   [service: <string> | default = "memcached"]
 
-  # EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery
-  # format:
-  # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+  # Comma separated addresses list in DNS Service Discovery format:
+  # https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes
   # CLI flag: -<prefix>.memcached.addresses
   [addresses: <string> | default = ""]
 
@@ -4551,6 +4583,72 @@ memcached_client:
   # Reset circuit-breaker counts after this long (if zero then never reset).
   # CLI flag: -<prefix>.memcached.circuit-breaker-interval
   [circuit_breaker_interval: <duration> | default = 10s]
+
+  # Enable connecting to Memcached with TLS.
+  # CLI flag: -<prefix>.memcached.tls-enabled
+  [tls_enabled: <boolean> | default = false]
+
+  # Path to the client certificate, which will be used for authenticating with
+  # the server. Also requires the key path to be configured.
+  # CLI flag: -<prefix>.memcached.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to the key for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -<prefix>.memcached.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # Path to the CA certificates to validate server certificate against. If not
+  # set, the host's root CA certificates are used.
+  # CLI flag: -<prefix>.memcached.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
+  # Override the expected name on the server certificate.
+  # CLI flag: -<prefix>.memcached.tls-server-name
+  [tls_server_name: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -<prefix>.memcached.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # Override the default cipher suite list (separated by commas). Allowed
+  # values:
+  # 
+  # Secure Ciphers:
+  # - TLS_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_RSA_WITH_AES_256_GCM_SHA384
+  # - TLS_AES_128_GCM_SHA256
+  # - TLS_AES_256_GCM_SHA384
+  # - TLS_CHACHA20_POLY1305_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
+  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+  # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+  # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+  # 
+  # Insecure Ciphers:
+  # - TLS_RSA_WITH_RC4_128_SHA
+  # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_CBC_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
+  # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
+  # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+  # CLI flag: -<prefix>.memcached.tls-cipher-suites
+  [tls_cipher_suites: <string> | default = ""]
+
+  # Override the default minimum TLS version. Allowed values: VersionTLS10,
+  # VersionTLS11, VersionTLS12, VersionTLS13
+  # CLI flag: -<prefix>.memcached.tls-min-version
+  [tls_min_version: <string> | default = ""]
 
 redis:
   # Redis Server or Cluster configuration endpoint to use for caching. A

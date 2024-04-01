@@ -83,7 +83,7 @@ false
 			<td>int</td>
 			<td>Minimum autoscaling replicas for the backend.</td>
 			<td><pre lang="json">
-2
+3
 </pre>
 </td>
 		</tr>
@@ -2850,6 +2850,15 @@ null
 			<td>Additional LogsInstance labels</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.podLogs.additionalPipelineStages</td>
+			<td>list</td>
+			<td>Additional pipeline stages to process logs after scraping https://grafana.com/docs/agent/latest/operator/api/#pipelinestagespec-a-namemonitoringgrafanacomv1alpha1pipelinestagespeca</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>

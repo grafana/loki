@@ -29,12 +29,15 @@ type ctxKeyType string
 const ctxKey ctxKeyType = "stats"
 
 const (
-	queryTypeLog    = "log"
-	queryTypeMetric = "metric"
-	queryTypeSeries = "series"
-	queryTypeLabel  = "label"
-	queryTypeStats  = "stats"
-	queryTypeVolume = "volume"
+	queryTypeLog            = "log"
+	queryTypeMetric         = "metric"
+	queryTypeSeries         = "series"
+	queryTypeLabel          = "label"
+	queryTypeStats          = "stats"
+	queryTypeVolume         = "volume"
+	queryTypeShards         = "shards"
+	queryTypeDetectedFields = "detected_fields"
+	queryTypeDetectedLabels = "detected_labels"
 )
 
 var (
@@ -60,6 +63,10 @@ func recordQueryMetrics(data *queryData) {
 		logql.RecordStatsQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.QueryString(), data.status, *data.statistics)
 	case queryTypeVolume:
 		logql.RecordVolumeQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.QueryString(), data.params.Limit(), data.params.Step(), data.status, *data.statistics)
+	case queryTypeDetectedFields:
+		logql.RecordDetectedFieldsQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.QueryString(), data.status, *data.statistics)
+	case queryTypeDetectedLabels:
+		logql.RecordDetectedLabelsQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.QueryString(), data.status, *data.statistics)
 	default:
 		level.Error(logger).Log("msg", "failed to record query metrics", "err", fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got %s", data.queryType))
 	}
@@ -160,6 +167,13 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &stats.Result{} // TODO: support stats in proto
 					totalEntries = 1
 					queryType = queryTypeStats
+				case *ShardsResponse:
+					responseStats = &r.Response.Statistics
+					queryType = queryTypeShards
+				case *DetectedFieldsResponse:
+					responseStats = &stats.Result{} // TODO: support stats in detected fields
+					totalEntries = 1
+					queryType = queryTypeDetectedFields
 				default:
 					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
 				}

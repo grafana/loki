@@ -56,6 +56,10 @@ var queryTests = []struct {
 				}
 			],
 			"stats" : {
+				"index": {
+					"postFilterChunks": 0,
+					"totalChunks": 0
+				},
 				"ingester" : {
 					"store": {
 						"chunksDownloadTime": 0,
@@ -64,6 +68,7 @@ var queryTests = []struct {
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
 						"queryReferencedStructuredMetadata": false,
+				 		"pipelineWrapperFilteredLines": 0,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
@@ -89,6 +94,7 @@ var queryTests = []struct {
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
 						"queryReferencedStructuredMetadata": false,
+				                "pipelineWrapperFilteredLines": 0,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,

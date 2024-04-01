@@ -309,6 +309,39 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 	return resp, err
 }
 
+func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error) {
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeShards))
+	defer timer.ObserveDuration()
+
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
+
+	resp, err := q.querier.IndexShards(ctx, req, targetBytesPerShard)
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+
+	resLength := 0
+	if resp != nil {
+		resLength = len(resp.Shards)
+		stats.JoinResults(ctx, resp.Statistics)
+	}
+
+	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
+
+	log := spanlogger.FromContext(ctx)
+	statResult.Log(level.Debug(log))
+
+	status := 200
+	if err != nil {
+		status, _ = serverutil.ClientHTTPStatusAndError(err)
+	}
+
+	logql.RecordShardsQueryMetrics(
+		ctx, log, req.Start, req.End, req.Query, targetBytesPerShard, strconv.Itoa(status), resLength, statResult,
+	)
+
+	return resp, err
+}
+
 // TODO(trevorwhitney): add test for the handler split
 
 // VolumeHandler queries the index label volumes related to the passed matchers and given time range.
@@ -343,6 +376,19 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 	return resp, nil
 }
 
+func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	resp, err := q.querier.DetectedFields(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil { // Some stores don't implement this
+		return &logproto.DetectedFieldsResponse{
+			Fields: []*logproto.DetectedField{},
+		}, nil
+	}
+	return resp, nil
+}
+
 func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.Expr, limit uint32) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
@@ -361,6 +407,16 @@ func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.E
 			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", limit, maxEntriesLimit)
 	}
 	return nil
+}
+
+// DetectedLabelsHandler returns a response for detected labels
+func (q *QuerierAPI) DetectedLabelsHandler(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+	resp, err := q.querier.DetectedLabels(ctx, req)
+
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 // WrapQuerySpanAndTimeout applies a context deadline and a span logger to a query call.

@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
@@ -92,7 +93,10 @@ type Querier interface {
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
 	Tail(ctx context.Context, req *logproto.TailRequest, categorizedLabels bool) (*Tailer, error)
 	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
+	IndexShards(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error)
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
+	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
+	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
 }
 
 type Limits querier_limits.Limits
@@ -772,6 +776,45 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 	)
 }
 
+func (q *SingleTenantQuerier) IndexShards(
+	ctx context.Context,
+	req *loghttp.RangeQuery,
+	targetBytesPerShard uint64,
+) (*logproto.ShardsResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	start, end, err := validateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End)
+	if err != nil {
+		return nil, err
+	}
+
+	// Enforce the query timeout while querying backends
+	queryTimeout := q.limits.QueryTimeout(ctx, userID)
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+	defer cancel()
+
+	p, err := indexgateway.ExtractShardRequestMatchersAndAST(req.Query)
+	if err != nil {
+		return nil, err
+	}
+
+	shards, err := q.store.GetShards(
+		ctx,
+		userID,
+		model.TimeFromUnixNano(start.UnixNano()),
+		model.TimeFromUnixNano(end.UnixNano()),
+		targetBytesPerShard,
+		p,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return shards, nil
+}
+
 func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "Querier.Volume")
 	defer sp.Finish()
@@ -855,4 +898,26 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 	}
 
 	return seriesvolume.Merge(responses, req.Limit), nil
+}
+
+func (q *SingleTenantQuerier) DetectedFields(_ context.Context, _ *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	return &logproto.DetectedFieldsResponse{
+		Fields: []*logproto.DetectedField{
+			{
+				Label:       "foo",
+				Type:        logproto.DetectedFieldString,
+				Cardinality: 1,
+			},
+		},
+	}, nil
+}
+
+func (q *SingleTenantQuerier) DetectedLabels(_ context.Context, _ *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+	return &logproto.DetectedLabelsResponse{
+		DetectedLabels: []*logproto.DetectedLabel{
+			{Label: "namespace"},
+			{Label: "cluster"},
+			{Label: "instance"},
+		},
+	}, nil
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -371,6 +372,14 @@ func (s *storeMock) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 	return nil, nil
 }
 
+func (s *storeMock) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {
+	return nil, nil
+}
+
+func (s *storeMock) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
+	return nil, false
+}
+
 func (s *storeMock) Volume(ctx context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, _ string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := s.Called(ctx, userID, from, through, targetLabels, matchers)
 	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
@@ -547,6 +556,18 @@ func (q *querierMock) IndexStats(_ context.Context, _ *loghttp.RangeQuery) (*sta
 	return nil, nil
 }
 
+func (q *querierMock) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) ([]logproto.Shard, error) {
+	return nil, nil
+}
+
+func (q *querierMock) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
+	return nil, false
+}
+
+func (q *querierMock) IndexShards(_ context.Context, _ *loghttp.RangeQuery, _ uint64) (*logproto.ShardsResponse, error) {
+	return nil, errors.New("unimplemented")
+}
+
 func (q *querierMock) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	args := q.MethodCalled("Volume", ctx, req)
 
@@ -557,6 +578,30 @@ func (q *querierMock) Volume(ctx context.Context, req *logproto.VolumeRequest) (
 	}
 
 	return resp.(*logproto.VolumeResponse), err
+}
+
+func (q *querierMock) DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	args := q.MethodCalled("DetectedFields", ctx, req)
+
+	resp := args.Get(0)
+	err := args.Error(1)
+	if resp == nil {
+		return nil, err
+	}
+
+	return resp.(*logproto.DetectedFieldsResponse), err
+}
+
+func (q *querierMock) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+	args := q.MethodCalled("DetectedFields", ctx, req)
+
+	resp := args.Get(0)
+	err := args.Error(1)
+	if resp == nil {
+		return nil, err
+	}
+
+	return resp.(*logproto.DetectedLabelsResponse), err
 }
 
 type engineMock struct {

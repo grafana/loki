@@ -12,6 +12,7 @@ import (
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/util"
 )
 
 type CloseableBlockQuerier struct {
@@ -34,10 +35,14 @@ func (c *CloseableBlockQuerier) SeriesIter() (v1.PeekingIterator[*v1.SeriesWithB
 	return v1.NewPeekingIter[*v1.SeriesWithBloom](c.BlockQuerier), nil
 }
 
-func LoadBlocksDirIntoCache(path string, c Cache, logger log.Logger) error {
-	level.Debug(logger).Log("msg", "load bloomshipper working directory into cache", "path", path)
-	keys, values := loadBlockDirectories(path, logger)
-	return c.PutMany(context.Background(), keys, values)
+func LoadBlocksDirIntoCache(paths []string, c Cache, logger log.Logger) error {
+	var err util.MultiError
+	for _, path := range paths {
+		level.Debug(logger).Log("msg", "load bloomshipper working directory into cache", "path", path)
+		keys, values := loadBlockDirectories(path, logger)
+		err.Add(c.PutMany(context.Background(), keys, values))
+	}
+	return err.Err()
 }
 
 func loadBlockDirectories(root string, logger log.Logger) (keys []string, values []BlockDirectory) {
@@ -95,8 +100,8 @@ type BlockDirectory struct {
 	size int64
 }
 
-func (b BlockDirectory) Block() *v1.Block {
-	return v1.NewBlock(v1.NewDirectoryBlockReader(b.Path))
+func (b BlockDirectory) Block(metrics *v1.Metrics) *v1.Block {
+	return v1.NewBlock(v1.NewDirectoryBlockReader(b.Path), metrics)
 }
 
 func (b BlockDirectory) Size() int64 {
@@ -120,9 +125,15 @@ func (b *BlockDirectory) resolveSize() error {
 
 // BlockQuerier returns a new block querier from the directory.
 // The passed function `close` is called when the the returned querier is closed.
-func (b BlockDirectory) BlockQuerier(close func() error) *CloseableBlockQuerier {
+
+func (b BlockDirectory) BlockQuerier(
+	usePool bool,
+	close func() error,
+	maxPageSize int,
+	metrics *v1.Metrics,
+) *CloseableBlockQuerier {
 	return &CloseableBlockQuerier{
-		BlockQuerier: v1.NewBlockQuerier(b.Block()),
+		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), usePool, maxPageSize),
 		BlockRef:     b.BlockRef,
 		close:        close,
 	}
