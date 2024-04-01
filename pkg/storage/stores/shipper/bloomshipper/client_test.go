@@ -349,7 +349,7 @@ type mockListClient struct {
 	counter int
 }
 
-func (c *mockListClient) List(_ context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+func (c *mockListClient) List(_ context.Context, prefix string, _ string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	c.counter++
 	objects := []client.StorageObject{
 		{Key: path.Join(path.Base(prefix), "object")},
