@@ -458,10 +458,9 @@ message DetectedLabelsRequest {
 }
 
 message DetectedLabelsResponse {
-  repeated DetectedLabels detectedLabels = 1;
+  repeated DetectedLabel detectedLabels = 1;
 }
 
-message DetectedLabels {
+message DetectedLabel {
   string label = 1;
-  // TODO(shantanu) check if need to add unwrapfunc here
 }

@@ -438,7 +438,7 @@ func getOperation(path string) string {
 		return IndexShardsOp
 	case path == "/loki/api/v1/detected_fields":
 		return DetectedFieldsOp
-	case path == "/loki/api/experimental/detected_labels":
+	case path == "/loki/api/v1/detected_labels":
 		return DetectedLabelsOp
 	default:
 		return ""

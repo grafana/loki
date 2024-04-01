@@ -914,7 +914,7 @@ func (q *SingleTenantQuerier) DetectedFields(_ context.Context, _ *logproto.Dete
 
 func (q *SingleTenantQuerier) DetectedLabels(_ context.Context, _ *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
 	return &logproto.DetectedLabelsResponse{
-		DetectedLabels: []*logproto.DetectedLabels{
+		DetectedLabels: []*logproto.DetectedLabel{
 			{Label: "namespace"},
 			{Label: "cluster"},
 			{Label: "instance"},
