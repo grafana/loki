@@ -84,8 +84,8 @@ func (r *LokiRequest) WithShards(shards logql.Shards) *LokiRequest {
 func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", r.GetQuery()),
-		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
 		otlog.Int64("step (ms)", r.GetStep()),
 		otlog.Int64("interval (ms)", r.GetInterval()),
 		otlog.Int64("limit", int64(r.GetLimit())),
@@ -179,8 +179,8 @@ func (r *LokiSeriesRequest) GetStep() int64 {
 func (r *LokiSeriesRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("matchers", strings.Join(r.GetMatch(), ",")),
-		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
 		otlog.String("shards", strings.Join(r.GetShards(), ",")),
 	)
 }
@@ -250,8 +250,8 @@ func (r *LabelRequest) WithQuery(query string) queryrangebase.Request {
 
 func (r *LabelRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
-		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
 	)
 }
 

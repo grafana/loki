@@ -7,8 +7,11 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
+	"time"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/opentracing/opentracing-go/mocktracer"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -266,6 +269,29 @@ func TestMergeAPIResponses(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, output)
 		})
+	}
+}
+
+func TestPrometheusRequestSpanLogging(t *testing.T) {
+	now := time.Now()
+	end := now.Add(1000 * time.Second)
+	req := PrometheusRequest{
+		Start: now,
+		End:   end,
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "start" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+			if field.Key == "end" {
+				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
+			}
+		}
 	}
 }
 
