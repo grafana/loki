@@ -384,8 +384,8 @@ func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.De
 	if resp == nil { // Some stores don't implement this
 		level.Debug(spanlogger.FromContext(ctx)).Log(
 			"detected_fields", "true",
-			"msg", "no response from querier.DetectedFields"
-    )
+			"msg", "no response from querier.DetectedFields",
+		)
 		return &logproto.DetectedFieldsResponse{
 			Fields: []*logproto.DetectedField{
 				{
