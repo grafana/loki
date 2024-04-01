@@ -3,6 +3,7 @@ package deletion
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -13,7 +14,7 @@ func TestTenantDeleteRequestsClient(t *testing.T) {
 			RequestID: "test-request",
 		}},
 	}
-	perTenantClient := NewPerTenantDeleteRequestsClient(fakeClient, limits)
+	perTenantClient := NewPerTenantDeleteRequestsClient(fakeClient, defaultLimits)
 
 	t.Run("tenant enabled", func(t *testing.T) {
 		reqs, err := perTenantClient.GetAllDeleteRequestsForUser(context.Background(), "1")
@@ -39,10 +40,11 @@ func (c *fakeRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, _ st
 }
 
 var (
-	limits = &fakeLimits{
-		limits: map[string]string{
-			"1": "filter-only",
-			"2": "disabled",
+	defaultLimits = &fakeLimits{
+		tenantLimits: map[string]limit{
+			"1": {deletionMode: "filter-only"},
+			"2": {deletionMode: "disabled"},
+			"3": {retentionPeriod: time.Hour},
 		},
 	}
 )

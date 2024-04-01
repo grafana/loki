@@ -2487,9 +2487,9 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
-# Constrain the size of any single delete request. When a delete request >
-# delete_max_interval is input, the request is sharded into smaller requests of
-# no more than delete_max_interval
+# Constrain the size of any single delete request with line filters. When a
+# delete request > delete_max_interval is input, the request is sharded into
+# smaller requests of no more than delete_max_interval
 # CLI flag: -compactor.delete-max-interval
 [delete_max_interval: <duration> | default = 24h]
 
