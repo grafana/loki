@@ -426,13 +426,16 @@ message Volume {
 message DetectedFieldsRequest {
   google.protobuf.Timestamp start = 1 [
     (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = true
+    (gogoproto.nullable) = false
   ];
   google.protobuf.Timestamp end = 2 [
     (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = true
+    (gogoproto.nullable) = false
   ];
   string query = 3; // Naming this query instead of match because this should be with queryrangebase.Request interface
+  uint32 lineLimit = 4;
+  uint32 fieldLimit = 5;
+  int64 step = 6;
 }
 
 message DetectedFieldsResponse {

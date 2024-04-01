@@ -374,7 +374,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"msg", "executing query",
 			"type", "detected fields",
 			"query", op.Query,
-			"length", op.End.Sub(*op.Start),
+			"length", op.End.Sub(op.Start),
 			"start", op.Start,
 			"end", op.End,
 		)
