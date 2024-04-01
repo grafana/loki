@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/c2h5oh/datasize"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -21,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 var (
@@ -620,6 +622,14 @@ func ParseVolumeRangeQuery(r *http.Request) (*VolumeRangeQuery, error) {
 func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest, error) {
 	var err error
 	result := &logproto.DetectedFieldsRequest{}
+
+	level.Debug(spanlogger.FromContext(r.Context())).Log(
+		"detected_fields", "true",
+		"msg", "parsing detected fields query",
+		"form", r.Form,
+		"line_limit", r.Form.Get("line_limit"),
+		"field_limit", r.Form.Get("field_limit"),
+	)
 
 	result.Query = query(r)
 	result.Start, result.End, err = bounds(r)

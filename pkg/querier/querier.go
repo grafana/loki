@@ -980,6 +980,10 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 
 	finalIters := iter.NewMergeEntryIterator(ctx, iters, logproto.FORWARD)
 
+	level.Debug(spanlogger.FromContext(ctx)).Log(
+		"detected_fields", "true",
+		"have_iterators", finalIters.IsEmpty())
+
 	//TODO(twhitney): converting from a step to a duration should be abstracted and reused,
 	// doing this in a few places now.
 	streams, err := streamsForFieldDetection(finalIters, req.LineLimit, time.Duration(req.Step*1e6))
