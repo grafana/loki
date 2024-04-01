@@ -240,7 +240,7 @@ func Test_MaxQueryParallelism(t *testing.T) {
 		defer count.Dec()
 		// simulate some work
 		time.Sleep(20 * time.Millisecond)
-		return base.NewEmptyPrometheusResponse(), nil
+		return base.NewEmptyPrometheusResponse(model.ValMatrix), nil
 	})
 	ctx := user.InjectOrgID(context.Background(), "foo")
 
@@ -271,7 +271,7 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 	h := base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 		// simulate some work
 		time.Sleep(20 * time.Millisecond)
-		return base.NewEmptyPrometheusResponse(), nil
+		return base.NewEmptyPrometheusResponse(model.ValMatrix), nil
 	})
 	ctx := user.InjectOrgID(context.Background(), "foo")
 
@@ -298,7 +298,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 	h := base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 		// simulate some work
 		time.Sleep(20 * time.Millisecond)
-		return base.NewEmptyPrometheusResponse(), nil
+		return base.NewEmptyPrometheusResponse(model.ValMatrix), nil
 	})
 	ctx := user.InjectOrgID(context.Background(), "foo")
 

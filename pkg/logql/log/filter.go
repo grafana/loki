@@ -9,9 +9,36 @@ import (
 	"github.com/grafana/regexp"
 	"github.com/grafana/regexp/syntax"
 
-	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/util"
 )
+
+// LineMatchType is an enum for line matching types.
+type LineMatchType int
+
+// Possible LineMatchTypes.
+const (
+	LineMatchEqual LineMatchType = iota
+	LineMatchNotEqual
+	LineMatchRegexp
+	LineMatchNotRegexp
+)
+
+func (t LineMatchType) String() string {
+	switch t {
+	case LineMatchEqual:
+		return "|="
+	case LineMatchNotEqual:
+		return "!="
+	case LineMatchRegexp:
+		return "|~"
+	case LineMatchNotRegexp:
+		return "!~"
+	default:
+		return ""
+	}
+}
 
 // Checker is an interface that matches against the input line or regexp.
 type Checker interface {
@@ -516,15 +543,15 @@ func (f containsAllFilter) Matches(test Checker) bool {
 }
 
 // NewFilter creates a new line filter from a match string and type.
-func NewFilter(match string, mt labels.MatchType) (Filterer, error) {
+func NewFilter(match string, mt LineMatchType) (Filterer, error) {
 	switch mt {
-	case labels.MatchRegexp:
+	case LineMatchRegexp:
 		return parseRegexpFilter(match, true, false)
-	case labels.MatchNotRegexp:
+	case LineMatchNotRegexp:
 		return parseRegexpFilter(match, false, false)
-	case labels.MatchEqual:
+	case LineMatchEqual:
 		return newContainsFilter([]byte(match), false), nil
-	case labels.MatchNotEqual:
+	case LineMatchNotEqual:
 		return NewNotFilter(newContainsFilter([]byte(match), false)), nil
 	default:
 		return nil, fmt.Errorf("unknown matcher: %v", match)

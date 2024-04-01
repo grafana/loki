@@ -312,7 +312,7 @@ type Loki struct {
 	querierAPI                *querier.QuerierAPI
 	ingesterQuerier           *querier.IngesterQuerier
 	Store                     storage.Store
-	BloomStore                bloomshipper.Store
+	BloomStore                bloomshipper.StoreWithMetrics
 	tableManager              *index.TableManager
 	frontend                  Frontend
 	ruler                     *base_ruler.Ruler
@@ -604,9 +604,10 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
-	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Querier, t.initQuerier)
+	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
+	mm.RegisterModule(IngesterGRPCInterceptors, t.initIngesterGRPCInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendMiddleware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
@@ -664,10 +665,7 @@ func (t *Loki) setupModuleManager() error {
 		Write:   {Ingester, Distributor},
 		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
 
-		// TODO(salvacorts): We added the BloomCompactor component to the `all` target to ease testing.
-		//                   We should remove it before releasing the feature since we don’t think any user running
-		//                   the single binary will benefit from the blooms given their scale in terms of ingested data
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor, BloomCompactor},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
@@ -709,6 +707,11 @@ func (t *Loki) setupModuleManager() error {
 	// first to initialize the ring that will also be used by the query frontend
 	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
+	}
+
+	// Initialise query tags interceptors on targets running ingester
+	if t.Cfg.isModuleEnabled(Ingester) || t.Cfg.isModuleEnabled(Write) || t.Cfg.isModuleEnabled(All) {
+		deps[Server] = append(deps[Server], IngesterGRPCInterceptors)
 	}
 
 	// Add bloom gateway ring in client mode to IndexGateway service dependencies if bloom filtering is enabled.

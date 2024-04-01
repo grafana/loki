@@ -691,6 +691,9 @@ monitoring:
       # -- PodLogs relabel configs to apply to samples before scraping
       # https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#relabelconfig
       relabelings: []
+      # -- Additional pipeline stages to process logs after scraping
+      # https://grafana.com/docs/agent/latest/operator/api/#pipelinestagespec-a-namemonitoringgrafanacomv1alpha1pipelinestagespeca
+      additionalPipelineStages: []
     # LogsInstance configuration
     logsInstance:
       # -- LogsInstance annotations
@@ -1049,7 +1052,7 @@ backend:
     # -- Enable autoscaling for the backend.
     enabled: false
     # -- Minimum autoscaling replicas for the backend.
-    minReplicas: 2
+    minReplicas: 3
     # -- Maximum autoscaling replicas for the backend.
     maxReplicas: 6
     # -- Target CPU utilization percentage for the backend.

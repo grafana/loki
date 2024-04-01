@@ -19,12 +19,15 @@ import (
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/loghttp/push"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler_config "github.com/grafana/loki/pkg/ruler/config"
 	"github.com/grafana/loki/pkg/ruler/util"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -48,8 +51,8 @@ const (
 
 	bytesInMB = 1048576
 
-	defaultPerStreamRateLimit   = 3 << 20   // 3MB
-	DefaultTSDBMaxBytesPerShard = 600 << 20 // 600MB
+	defaultPerStreamRateLimit   = 3 << 20 // 3MB
+	DefaultTSDBMaxBytesPerShard = sharding.DefaultTSDBMaxBytesPerShard
 	defaultPerStreamBurstLimit  = 5 * defaultPerStreamRateLimit
 
 	DefaultPerTenantQueryTimeout = "1m"
@@ -77,6 +80,7 @@ type Limits struct {
 	MaxLineSize                 flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
 	MaxLineSizeTruncate         bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
+	DiscoverServiceName         []string         `yaml:"discover_service_name" json:"discover_service_name"`
 
 	// Ingester enforced limits.
 	MaxLocalStreamsPerUser  int              `yaml:"max_streams_per_user" json:"max_streams_per_user"`
@@ -94,6 +98,7 @@ type Limits struct {
 	MaxQueryParallelism        int              `yaml:"max_query_parallelism" json:"max_query_parallelism"`
 	TSDBMaxQueryParallelism    int              `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
 	TSDBMaxBytesPerShard       flagext.ByteSize `yaml:"tsdb_max_bytes_per_shard" json:"tsdb_max_bytes_per_shard"`
+	TSDBShardingStrategy       string           `yaml:"tsdb_sharding_strategy" json:"tsdb_sharding_strategy"`
 	CardinalityLimit           int              `yaml:"cardinality_limit" json:"cardinality_limit"`
 	MaxStreamsMatchersPerQuery int              `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
 	MaxConcurrentTailRequests  int              `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
@@ -196,6 +201,7 @@ type Limits struct {
 	BloomNGramLength                         int              `yaml:"bloom_ngram_length" json:"bloom_ngram_length"`
 	BloomNGramSkip                           int              `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip"`
 	BloomFalsePositiveRate                   float64          `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate"`
+	BloomBlockEncoding                       string           `yaml:"bloom_block_encoding" json:"bloom_block_encoding"`
 	BloomGatewayBlocksDownloadingParallelism int              `yaml:"bloom_gateway_blocks_downloading_parallelism" json:"bloom_gateway_blocks_downloading_parallelism"`
 	BloomGatewayCacheKeyInterval             time.Duration    `yaml:"bloom_gateway_cache_key_interval" json:"bloom_gateway_cache_key_interval"`
 	BloomCompactorMaxBlockSize               flagext.ByteSize `yaml:"bloom_compactor_max_block_size" json:"bloom_compactor_max_block_size"`
@@ -235,6 +241,19 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 15, "Maximum number of label names per series.")
 	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", true, "Whether or not old samples will be rejected.")
 	f.BoolVar(&l.IncrementDuplicateTimestamp, "validation.increment-duplicate-timestamps", false, "Alter the log line timestamp during ingestion when the timestamp is the same as the previous entry for the same stream. When enabled, if a log line in a push request has the same timestamp as the previous line for the same stream, one nanosecond is added to the log line. This will preserve the received order of log lines with the exact same timestamp when they are queried, by slightly altering their stored timestamp. NOTE: This is imperfect, because Loki accepts out of order writes, and another push request for the same stream could contain duplicate timestamps to existing entries and they will not be incremented.")
+	l.DiscoverServiceName = []string{
+		"service",
+		"app",
+		"application",
+		"name",
+		"app_kubernetes_io_name",
+		"container",
+		"container_name",
+		"component",
+		"workload",
+		"job",
+	}
+	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
 
 	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
@@ -268,7 +287,16 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 32, "Maximum number of queries that will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.TSDBMaxQueryParallelism, "querier.tsdb-max-query-parallelism", 128, "Maximum number of queries will be scheduled in parallel by the frontend for TSDB schemas.")
 	_ = l.TSDBMaxBytesPerShard.Set(strconv.Itoa(DefaultTSDBMaxBytesPerShard))
-	f.Var(&l.TSDBMaxBytesPerShard, "querier.tsdb-max-bytes-per-shard", "Maximum number of bytes assigned to a single sharded query. Also expressible in human readable forms (1GB, etc).")
+	f.Var(&l.TSDBMaxBytesPerShard, "querier.tsdb-max-bytes-per-shard", "Target maximum number of bytes assigned to a single sharded query. Also expressible in human readable forms (1GB, etc). Note: This is a _target_ and not an absolute limit. The actual limit can be higher, but the query planner will try to build shards up to this limit.")
+	f.StringVar(
+		&l.TSDBShardingStrategy,
+		"limits.tsdb-sharding-strategy",
+		logql.PowerOfTwoVersion.String(),
+		fmt.Sprintf(
+			"sharding strategy to use in query planning. Suggested to use %s once all nodes can recognize it.",
+			logql.BoundedVersion.String(),
+		),
+	)
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Maximum number of stream matchers per query.")
 	f.IntVar(&l.MaxConcurrentTailRequests, "querier.max-concurrent-tail-requests", 10, "Maximum number of concurrent tail requests.")
@@ -336,6 +364,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.BloomNGramLength, "bloom-compactor.ngram-length", 4, "Length of the n-grams created when computing blooms from log lines.")
 	f.IntVar(&l.BloomNGramSkip, "bloom-compactor.ngram-skip", 1, "Skip factor for the n-grams created when computing blooms from log lines.")
 	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-compactor.false-positive-rate", 0.01, "Scalable Bloom Filter desired false-positive rate.")
+	f.StringVar(&l.BloomBlockEncoding, "bloom-compactor.block-encoding", "none", "Compression algorithm for bloom block pages.")
 	f.IntVar(&l.BloomGatewayBlocksDownloadingParallelism, "bloom-gateway.blocks-downloading-parallelism", 50, "Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.")
 	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Interval for computing the cache key in the Bloom Gateway.")
 	_ = l.BloomCompactorMaxBlockSize.Set(defaultBloomCompactorMaxBlockSize)
@@ -426,6 +455,14 @@ func (l *Limits) Validate() error {
 	}
 
 	if err := l.OTLPConfig.Validate(); err != nil {
+		return err
+	}
+
+	if _, err := logql.ParseShardVersion(l.TSDBShardingStrategy); err != nil {
+		return errors.Wrap(err, "invalid tsdb sharding strategy")
+	}
+
+	if _, err := chunkenc.ParseEncoding(l.BloomBlockEncoding); err != nil {
 		return err
 	}
 
@@ -552,7 +589,7 @@ func (o *Overrides) MaxQueryLength(_ context.Context, userID string) time.Durati
 // so nooping in Loki until then.
 func (o *Overrides) MaxChunksPerQueryFromStore(_ string) int { return 0 }
 
-// MaxQueryLength returns the limit of the series of metric queries.
+// MaxQuerySeries returns the limit of the series of metric queries.
 func (o *Overrides) MaxQuerySeries(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
 }
@@ -586,6 +623,11 @@ func (o *Overrides) TSDBMaxQueryParallelism(_ context.Context, userID string) in
 // TSDBMaxBytesPerShard returns the maximum number of bytes assigned to a specific shard in a tsdb query
 func (o *Overrides) TSDBMaxBytesPerShard(userID string) int {
 	return o.getOverridesForUser(userID).TSDBMaxBytesPerShard.Val()
+}
+
+// TSDBShardingStrategy returns the sharding strategy to use in query planning.
+func (o *Overrides) TSDBShardingStrategy(userID string) string {
+	return o.getOverridesForUser(userID).TSDBShardingStrategy
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the
@@ -660,7 +702,7 @@ func (o *Overrides) MaxLineSize(userID string) int {
 	return o.getOverridesForUser(userID).MaxLineSize.Val()
 }
 
-// MaxLineSizeShouldTruncate returns whether lines longer than max should be truncated.
+// MaxLineSizeTruncate returns whether lines longer than max should be truncated.
 func (o *Overrides) MaxLineSizeTruncate(userID string) bool {
 	return o.getOverridesForUser(userID).MaxLineSizeTruncate
 }
@@ -869,6 +911,10 @@ func (o *Overrides) IncrementDuplicateTimestamps(userID string) bool {
 	return o.getOverridesForUser(userID).IncrementDuplicateTimestamp
 }
 
+func (o *Overrides) DiscoverServiceName(userID string) []string {
+	return o.getOverridesForUser(userID).DiscoverServiceName
+}
+
 // VolumeEnabled returns whether volume endpoints are enabled for a user.
 func (o *Overrides) VolumeEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).VolumeEnabled
@@ -920,6 +966,10 @@ func (o *Overrides) BloomCompactorMaxBlockSize(userID string) int {
 
 func (o *Overrides) BloomFalsePositiveRate(userID string) float64 {
 	return o.getOverridesForUser(userID).BloomFalsePositiveRate
+}
+
+func (o *Overrides) BloomBlockEncoding(userID string) string {
+	return o.getOverridesForUser(userID).BloomBlockEncoding
 }
 
 func (o *Overrides) AllowStructuredMetadata(userID string) bool {

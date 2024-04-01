@@ -6,6 +6,8 @@ import (
 	"math"
 	"time"
 
+	"github.com/grafana/loki/pkg/util/httpreq"
+
 	lokilog "github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/go-kit/log"
@@ -362,9 +364,11 @@ func decodeReq(req logql.QueryParams) ([]*labels.Matcher, model.Time, model.Time
 	return matchers, from, through, nil
 }
 
+// TODO(owen-d): refactor this. Injecting shard labels via matchers is a big hack and we shouldn't continue
+// doing it, _but_ it requires adding `fingerprintfilter` support to much of our storage interfaces
 func injectShardLabel(shards []string, matchers []*labels.Matcher) ([]*labels.Matcher, error) {
 	if shards != nil {
-		parsed, err := logql.ParseShards(shards)
+		parsed, _, err := logql.ParseShards(shards)
 		if err != nil {
 			return nil, err
 		}
@@ -507,13 +511,13 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 		return nil, err
 	}
 
-	if s.pipelineWrapper != nil {
+	if s.pipelineWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		pipeline = s.pipelineWrapper.Wrap(ctx, pipeline, expr.String(), userID)
+		pipeline = s.pipelineWrapper.Wrap(ctx, pipeline, req.Plan.String(), userID)
 	}
 
 	var chunkFilterer chunk.Filterer
@@ -554,13 +558,13 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		return nil, err
 	}
 
-	if s.extractorWrapper != nil {
+	if s.extractorWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		extractor = s.extractorWrapper.Wrap(ctx, extractor, expr.String(), userID)
+		extractor = s.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
 	}
 
 	var chunkFilterer chunk.Filterer

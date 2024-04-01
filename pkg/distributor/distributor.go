@@ -54,6 +54,9 @@ const (
 	ringKey = "distributor"
 
 	ringAutoForgetUnhealthyPeriods = 2
+
+	labelServiceName = "service_name"
+	serviceUnknown   = "unknown_service"
 )
 
 var (
@@ -348,7 +351,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			d.truncateLines(validationContext, &stream)
 
 			var lbs labels.Labels
-			lbs, stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
+			lbs, stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, stream)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -365,7 +368,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(validationContext, lbs, entry); err != nil {
+				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue
@@ -425,7 +428,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 		if d.usageTracker != nil {
 			for _, stream := range req.Streams {
-				lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, &stream)
+				lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
 				if err != nil {
 					continue
 				}
@@ -436,7 +439,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				if d.usageTracker != nil {
-					d.usageTracker.DiscardedBytesAdd(tenantID, validation.RateLimited, lbs, float64(discardedStreamBytes))
+					d.usageTracker.DiscardedBytesAdd(ctx, tenantID, validation.RateLimited, lbs, float64(discardedStreamBytes))
 				}
 			}
 		}
@@ -717,7 +720,7 @@ type labelData struct {
 	hash uint64
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (labels.Labels, string, uint64, error) {
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		labelVal := val.(labelData)
 		return labelVal.ls, labelVal.ls.String(), labelVal.hash, nil
@@ -728,8 +731,22 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 		return nil, "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {
+	if err := d.validator.ValidateLabels(vContext, ls, stream); err != nil {
 		return nil, "", 0, err
+	}
+
+	// We do not want to count service_name added by us in the stream limit so adding it after validating original labels.
+	if !ls.Has(labelServiceName) && len(vContext.discoverServiceName) > 0 {
+		serviceName := serviceUnknown
+		for _, labelName := range vContext.discoverServiceName {
+			if labelVal := ls.Get(labelName); labelVal != "" {
+				serviceName = labelVal
+				break
+			}
+		}
+
+		ls = labels.NewBuilder(ls).Set(labelServiceName, serviceName).Labels()
+		stream.Labels = ls.String()
 	}
 
 	lsHash := ls.Hash()

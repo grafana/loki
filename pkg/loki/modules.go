@@ -30,8 +30,8 @@ import (
 	gerrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/version"
 
 	"github.com/grafana/loki/pkg/bloomcompactor"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -77,7 +77,6 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/querylimits"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
-	util_ring "github.com/grafana/loki/pkg/util/ring"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -94,10 +93,11 @@ const (
 	Server                   string = "server"
 	InternalServer           string = "internal-server"
 	Distributor              string = "distributor"
-	Ingester                 string = "ingester"
 	Querier                  string = "querier"
 	CacheGenerationLoader    string = "cache-generation-loader"
+	Ingester                 string = "ingester"
 	IngesterQuerier          string = "ingester-querier"
+	IngesterGRPCInterceptors string = "ingester-query-tags-interceptors"
 	QueryFrontend            string = "query-frontend"
 	QueryFrontendTripperware string = "query-frontend-tripperware"
 	QueryLimiter             string = "query-limiter"
@@ -306,7 +306,7 @@ func (t *Loki) initOverridesExporter() (services.Service, error) {
 }
 
 func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
-	t.tenantConfigs, err = runtime.NewTenantConfigs(tenantConfigFromRuntimeConfig(t.runtimeConfig))
+	t.tenantConfigs, err = runtime.NewTenantConfigs(newTenantConfigProvider(t.runtimeConfig))
 	// tenantConfigs are not a service, since they don't have any operational state.
 	return nil, err
 }
@@ -403,7 +403,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader),
+		httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
@@ -413,6 +413,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
+	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
 	volumeHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.VolumeInstant", t.Overrides)
 	volumeRangeHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.VolumeRange", t.Overrides)
 	seriesHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.Series", t.Overrides)
@@ -464,6 +465,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if querierWorkerServiceConfig.QuerierRunningStandalone() {
 		labelsHTTPMiddleware = middleware.Merge(httpMiddleware, labelsHTTPMiddleware)
 		indexStatsHTTPMiddleware = middleware.Merge(httpMiddleware, indexStatsHTTPMiddleware)
+		indexShardsHTTPMiddleware = middleware.Merge(httpMiddleware, indexShardsHTTPMiddleware)
 		volumeHTTPMiddleware = middleware.Merge(httpMiddleware, volumeHTTPMiddleware)
 		volumeRangeHTTPMiddleware = middleware.Merge(httpMiddleware, volumeRangeHTTPMiddleware)
 		seriesHTTPMiddleware = middleware.Merge(httpMiddleware, seriesHTTPMiddleware)
@@ -494,6 +496,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 		router.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(seriesHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(indexStatsHTTPMiddleware.Wrap(httpHandler))
+		router.Path("/loki/api/v1/index/shards").Methods("GET", "POST").Handler(indexShardsHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/volume").Methods("GET", "POST").Handler(volumeHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/volume_range").Methods("GET", "POST").Handler(volumeRangeHTTPMiddleware.Wrap(httpHandler))
 
@@ -678,15 +681,9 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 		level.Info(logger).Log("msg", "no metas cache configured")
 	}
 
-	var blocksCache cache.TypedCache[string, bloomshipper.BlockDirectory]
-	if bsCfg.BlocksCache.IsEnabled() {
-		blocksCache = bloomshipper.NewBlocksCache(bsCfg.BlocksCache, reg, logger)
-		err = bloomshipper.LoadBlocksDirIntoCache(t.Cfg.StorageConfig.BloomShipperConfig.WorkingDirectory, blocksCache, logger)
-		if err != nil {
-			level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
-		}
-	} else {
-		level.Info(logger).Log("msg", "no blocks cache configured")
+	blocksCache := bloomshipper.NewFsBlocksCache(bsCfg.BlocksCache, reg, logger)
+	if err = bloomshipper.LoadBlocksDirIntoCache(bsCfg.WorkingDirectory, blocksCache, logger); err != nil {
+		level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
 	}
 
 	t.BloomStore, err = bloomshipper.NewBloomStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, metasCache, blocksCache, reg, logger)
@@ -988,7 +985,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader),
+		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
@@ -1042,7 +1039,9 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/loki/api/v1/labels").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/detected_fields").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/index/shards").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/volume").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/volume_range").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/query").Methods("GET", "POST").Handler(frontendHandler)
@@ -1480,15 +1479,14 @@ func (t *Loki) initBloomCompactor() (services.Service, error) {
 	}
 	logger := log.With(util_log.Logger, "component", "bloom-compactor")
 
-	shuffleSharding := util_ring.NewTenantShuffleSharding(t.bloomCompactorRingManager.Ring, t.bloomCompactorRingManager.RingLifecycler, t.Overrides.BloomCompactorShardSize)
-
 	return bloomcompactor.New(
 		t.Cfg.BloomCompactor,
 		t.Cfg.SchemaConfig,
 		t.Cfg.StorageConfig,
 		t.ClientMetrics,
 		t.Store,
-		shuffleSharding,
+		t.bloomCompactorRingManager.Ring,
+		t.bloomCompactorRingManager.RingLifecycler,
 		t.Overrides,
 		t.BloomStore,
 		logger,
@@ -1574,6 +1572,23 @@ func (t *Loki) initQueryLimitsInterceptors() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing query limits interceptors")
 	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, querylimits.ServerQueryLimitsInterceptor)
 	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, querylimits.StreamServerQueryLimitsInterceptor)
+
+	return nil, nil
+}
+
+func (t *Loki) initIngesterGRPCInterceptors() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing ingester query tags interceptors")
+	t.Cfg.Server.GRPCStreamMiddleware = append(
+		t.Cfg.Server.GRPCStreamMiddleware,
+		serverutil.StreamServerQueryTagsInterceptor,
+		serverutil.StreamServerHTTPHeadersInterceptor,
+	)
+
+	t.Cfg.Server.GRPCMiddleware = append(
+		t.Cfg.Server.GRPCMiddleware,
+		serverutil.UnaryServerQueryTagsInterceptor,
+		serverutil.UnaryServerHTTPHeadersnIterceptor,
+	)
 
 	return nil, nil
 }

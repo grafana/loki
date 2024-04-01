@@ -78,7 +78,7 @@ func partitionTasks(tasks []Task, blocks []bloomshipper.BlockRef) []blockWithTas
 			})
 
 			// All fingerprints fall outside of the consumer's range
-			if min == len(refs) || max == 0 {
+			if min == len(refs) || max == 0 || min == max {
 				continue
 			}
 

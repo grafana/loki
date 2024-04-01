@@ -409,8 +409,11 @@ func applyPathPrefixDefaults(r, defaults *ConfigWrapper) {
 		if r.CompactorConfig.WorkingDirectory == defaults.CompactorConfig.WorkingDirectory {
 			r.CompactorConfig.WorkingDirectory = fmt.Sprintf("%s/compactor", prefix)
 		}
-		if r.StorageConfig.BloomShipperConfig.WorkingDirectory == defaults.StorageConfig.BloomShipperConfig.WorkingDirectory {
-			r.StorageConfig.BloomShipperConfig.WorkingDirectory = fmt.Sprintf("%s/blooms", prefix)
+		if len(r.StorageConfig.BloomShipperConfig.WorkingDirectory) == 1 &&
+			len(r.StorageConfig.BloomShipperConfig.WorkingDirectory) == len(defaults.StorageConfig.BloomShipperConfig.WorkingDirectory) &&
+
+			r.StorageConfig.BloomShipperConfig.WorkingDirectory[0] == defaults.StorageConfig.BloomShipperConfig.WorkingDirectory[0] {
+			_ = r.StorageConfig.BloomShipperConfig.WorkingDirectory.Set(fmt.Sprintf("%s/blooms", prefix))
 		}
 	}
 }

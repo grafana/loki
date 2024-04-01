@@ -13,6 +13,23 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.47.2
+
+- [ENHANCEMENT] Allow for additional pipeline stages to be configured on the `selfMonitoring` `Podlogs` resource.
+
+## 5.47.1
+
+- [BUGFIX] Increase default value of backend minReplicas to 3
+
+## 5.47.0
+
+- [CHANGE] Changed version of Loki to 2.9.6
+
+
+## 5.46.0
+
+- [CHANGE] Changed version of Loki to 2.9.5
+
 ## 5.45.0
 
 - [CHANGE] Add extraContainers parameter for the read pod

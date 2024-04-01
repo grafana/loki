@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/bloomutils"
+	"github.com/grafana/loki/pkg/chunkenc"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -148,6 +149,14 @@ type mockLimits struct {
 	shardSize int
 }
 
+func (m mockLimits) RetentionPeriod(_ string) time.Duration {
+	panic("implement me")
+}
+
+func (m mockLimits) StreamRetention(_ string) []validation.StreamRetention {
+	panic("implement me")
+}
+
 func (m mockLimits) AllByUserID() map[string]*validation.Limits {
 	panic("implement me")
 }
@@ -178,6 +187,10 @@ func (m mockLimits) BloomNGramSkip(_ string) int {
 
 func (m mockLimits) BloomFalsePositiveRate(_ string) float64 {
 	panic("implement me")
+}
+
+func (m mockLimits) BloomBlockEncoding(_ string) string {
+	return chunkenc.EncNone.String()
 }
 
 func (m mockLimits) BloomCompactorMaxBlockSize(_ string) int {

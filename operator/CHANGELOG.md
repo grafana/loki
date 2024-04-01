@@ -1,5 +1,9 @@
 ## Main
 
+- [12333](https://github.com/grafana/loki/pull/12333) **periklis**: Bump max OpenShift version to next release
+
+## 0.6.0 (2024-03-19)
+
 - [12228](https://github.com/grafana/loki/pull/12228) **xperimental**: Restructure LokiStack metrics
 - [12164](https://github.com/grafana/loki/pull/12164) **periklis**: Use safe bearer token authentication to scrape operator metrics
 - [12216](https://github.com/grafana/loki/pull/12216) **xperimental**: Fix duplicate operator metrics due to ServiceMonitor selector

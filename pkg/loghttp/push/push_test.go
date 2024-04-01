@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"log"
 	"net/http/httptest"
@@ -225,6 +226,7 @@ func TestParseRequest(t *testing.T) {
 				assert.NotNil(t, data, "Should give data for %d", index)
 				require.Equal(t, test.expectedStructuredMetadataBytes, structuredMetadataBytesReceived)
 				require.Equal(t, test.expectedBytes, bytesReceived)
+				require.Equalf(t, tracker.Total(), float64(bytesReceived), "tracked usage bytes must equal bytes received metric")
 				require.Equal(t, test.expectedLines, linesReceived)
 				require.Equal(t, float64(test.expectedStructuredMetadataBytes), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedBytes), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "")))
@@ -256,12 +258,20 @@ func NewMockTracker() *MockCustomTracker {
 	}
 }
 
+func (t *MockCustomTracker) Total() float64 {
+	total := float64(0)
+	for _, v := range t.receivedBytes {
+		total += v
+	}
+	return total
+}
+
 // DiscardedBytesAdd implements CustomTracker.
-func (t *MockCustomTracker) DiscardedBytesAdd(_, _ string, labels labels.Labels, value float64) {
+func (t *MockCustomTracker) DiscardedBytesAdd(_ context.Context, _, _ string, labels labels.Labels, value float64) {
 	t.discardedBytes[labels.String()] += value
 }
 
 // ReceivedBytesAdd implements CustomTracker.
-func (t *MockCustomTracker) ReceivedBytesAdd(_ string, _ time.Duration, labels labels.Labels, value float64) {
+func (t *MockCustomTracker) ReceivedBytesAdd(_ context.Context, _ string, _ time.Duration, labels labels.Labels, value float64) {
 	t.receivedBytes[labels.String()] += value
 }
