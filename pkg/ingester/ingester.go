@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"math/rand"
 	"net/http"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 
 	lokilog "github.com/grafana/loki/pkg/logql/log"
 

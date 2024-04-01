@@ -3,9 +3,10 @@ package iter
 import (
 	"container/heap"
 	"context"
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"io"
 	"sync"
+
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"

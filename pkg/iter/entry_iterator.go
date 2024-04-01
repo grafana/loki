@@ -2,11 +2,12 @@ package iter
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"io"
 	"math"
 	"sync"
 	"time"
+
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"

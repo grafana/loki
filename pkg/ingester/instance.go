@@ -3,13 +3,14 @@ package ingester
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"math"
 	"net/http"
 	"os"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 
 	"github.com/grafana/loki/pkg/util/httpreq"
 
