@@ -272,7 +272,7 @@ func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.D
 	//resp := make([]*logproto.DetectedLabels, len(tenantIDs))
 
 	return &logproto.DetectedLabelsResponse{
-		DetectedLabels: []*logproto.DetectedLabels{
+		DetectedLabels: []*logproto.DetectedLabel{
 			{Label: "cluster"},
 			{Label: "namespace"},
 			{Label: "instance"},
