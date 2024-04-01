@@ -444,3 +444,23 @@ message DetectedField {
   string type = 2 [(gogoproto.casttype) = "DetectedFieldType"];
   uint64 cardinality = 3;
 }
+
+message DetectedLabelsRequest {
+  google.protobuf.Timestamp start = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = true
+  ];
+  google.protobuf.Timestamp end = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = true
+  ];
+  string query = 3;
+}
+
+message DetectedLabelsResponse {
+  repeated DetectedLabel detectedLabels = 1;
+}
+
+message DetectedLabel {
+  string label = 1;
+}

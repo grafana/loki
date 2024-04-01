@@ -6,12 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	io "io"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
 	"sort"
-	strings "strings"
+	"strings"
 	"time"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
@@ -22,6 +22,7 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -260,6 +261,80 @@ func (r *LabelRequest) Path() string {
 
 func (*LabelRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
+type DetectedLabelsRequest struct {
+	path string
+	logproto.DetectedLabelsRequest
+}
+
+// NewDetectedLabelsRequest creates a new request for detected labels
+func NewDetectedLabelsRequest(start, end time.Time, query, path string) *DetectedLabelsRequest {
+	return &DetectedLabelsRequest{
+		DetectedLabelsRequest: logproto.DetectedLabelsRequest{
+			Start: &start,
+			End:   &end,
+			Query: query,
+		},
+		path: path,
+	}
+}
+
+func (r *DetectedLabelsRequest) AsProto() *logproto.DetectedLabelsRequest {
+	return &r.DetectedLabelsRequest
+}
+
+func (r *DetectedLabelsRequest) GetEnd() time.Time {
+	return *r.End
+}
+
+func (r *DetectedLabelsRequest) GetEndTs() time.Time {
+	return *r.End
+}
+
+func (r *DetectedLabelsRequest) GetStart() time.Time {
+	return *r.Start
+}
+
+func (r *DetectedLabelsRequest) GetStartTs() time.Time {
+	return *r.Start
+}
+
+func (r *DetectedLabelsRequest) GetStep() int64 {
+	return 0
+}
+
+func (r *DetectedLabelsRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
+	clone := *r
+	clone.Start = &s
+	clone.End = &e
+	return &clone
+}
+
+// WithStartEndForCache implements resultscache.Request.
+func (r *DetectedLabelsRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
+}
+
+func (r *DetectedLabelsRequest) WithQuery(query string) queryrangebase.Request {
+	clone := *r
+	clone.Query = query
+	return &clone
+}
+
+func (r *DetectedLabelsRequest) LogToSpan(sp opentracing.Span) {
+	sp.LogFields(
+		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+	)
+}
+
+func (r *DetectedLabelsRequest) Path() string {
+	return r.path
+}
+
+func (*DetectedLabelsRequest) GetCachingOptions() (res queryrangebase.CachingOptions) {
+	return
+}
+
 func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (queryrangebase.Request, error) {
 	if err := r.ParseForm(); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -396,6 +471,16 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 
 		return &DetectedFieldsRequest{
 			DetectedFieldsRequest: *req,
+			path:                  r.URL.Path,
+		}, nil
+	case DetectedLabelsOp:
+		req, err := loghttp.ParseDetectedLabelsQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		return &DetectedLabelsRequest{
+			DetectedLabelsRequest: *req,
 			path:                  r.URL.Path,
 		}, nil
 	default:
@@ -601,6 +686,15 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 			DetectedFieldsRequest: *req,
 			path:                  httpReq.URL.Path,
 		}, ctx, nil
+	case DetectedLabelsOp:
+		req, err := loghttp.ParseDetectedLabelsQuery(httpReq)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return &DetectedLabelsRequest{
+			DetectedLabelsRequest: *req,
+			path:                  httpReq.URL.Path,
+		}, ctx, err
 	default:
 		return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path in HTTP gRPC decode: %s", r.Url))
 	}
@@ -878,6 +972,26 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 
 		return req.WithContext(ctx), nil
+	case *DetectedLabelsRequest:
+		params := url.Values{
+			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
+			"query": []string{request.GetQuery()},
+		}
+
+		u := &url.URL{
+			Path:     "/loki/api/v1/detected_labels",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     header,
+		}
+
+		return req.WithContext(ctx), nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid request format, got (%T)", r))
 	}
@@ -905,6 +1019,8 @@ func (c Codec) Path(r queryrangebase.Request) string {
 		return "/loki/api/v1/index/volume_range"
 	case *DetectedFieldsRequest:
 		return "/loki/api/v1/detected_fields"
+	case *DetectedLabelsRequest:
+		return "/loki/api/v1/detected_labels"
 	}
 
 	return "other"
@@ -1233,6 +1349,10 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 		if err := marshal.WriteDetectedFieldsResponseJSON(response.Response, w); err != nil {
 			return err
 		}
+	case *DetectedLabelsResponse:
+		if err := marshal.WriteDetectedLabelsResponseJSON(response.Response, w); err != nil {
+			return err
+		}
 	default:
 		return httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response format, got (%T)", res))
 	}
@@ -1271,15 +1391,22 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		return nil, errors.New("merging responses requires at least one response")
 	}
 	var mergedStats stats.Result
-	switch responses[0].(type) {
+	switch res := responses[0].(type) {
+	// LokiPromResponse type is used for both instant and range queries.
+	// Meaning, values that are merged can be either vector or matrix types.
 	case *LokiPromResponse:
+
+		codec := queryrangebase.PrometheusCodecForRangeQueries
+		if res.Response.Data.ResultType == model.ValVector.String() {
+			codec = queryrangebase.PrometheusCodecForInstantQueries
+		}
 
 		promResponses := make([]queryrangebase.Response, 0, len(responses))
 		for _, res := range responses {
 			mergedStats.MergeSplit(res.(*LokiPromResponse).Statistics)
 			promResponses = append(promResponses, res.(*LokiPromResponse).Response)
 		}
-		promRes, err := queryrangebase.PrometheusCodec.MergeResponse(promResponses...)
+		promRes, err := codec.MergeResponse(promResponses...)
 		if err != nil {
 			return nil, err
 		}
@@ -1800,7 +1927,7 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 		}
 		if _, ok := expr.(syntax.SampleExpr); ok {
 			return &LokiPromResponse{
-				Response: queryrangebase.NewEmptyPrometheusResponse(),
+				Response: queryrangebase.NewEmptyPrometheusResponse(model.ValMatrix), // range metric query
 			}, nil
 		}
 		return &LokiResponse{
