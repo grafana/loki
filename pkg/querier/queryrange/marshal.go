@@ -214,6 +214,8 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.QuantileSketches, nil
 	case *QueryResponse_DetectedLabels:
 		return concrete.DetectedLabels, nil
+	case *QueryResponse_DetectedFields:
+		return concrete.DetectedFields, nil
 	default:
 		return nil, fmt.Errorf("unsupported QueryResponse response type, got (%T)", res.Response)
 	}
