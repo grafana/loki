@@ -295,7 +295,9 @@ func NewBloomStore(
 			return nil, errors.Wrapf(err, "creating object client for period %s", periodicConfig.From)
 		}
 
-		objectClient = newCachedListOpObjectClient(objectClient, 5*time.Minute, 10*time.Second)
+		if storageConfig.BloomShipperConfig.CacheListOps {
+			objectClient = newCachedListOpObjectClient(objectClient, 5*time.Minute, 10*time.Second)
+		}
 		bloomClient, err := NewBloomClient(cfg, objectClient, logger)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating bloom client for period %s", periodicConfig.From)
