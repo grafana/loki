@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -941,7 +942,8 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		}
 
 		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"msg", "querying ingester",
+			"detected_fields", "true",
+			"msg", "querying ingester for detected fields",
 			"params", params)
 		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, params)
 		if err != nil {
@@ -965,6 +967,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 			},
 		}
 		level.Debug(spanlogger.FromContext(ctx)).Log(
+			"detected_fields", "true",
 			"msg", "querying store for detected fields",
 			"params", params)
 		storeIter, err := q.store.SelectLogs(ctx, params)
@@ -983,7 +986,11 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 	if err != nil {
 		return nil, err
 	}
-	detectedFields := parseDetectedFields(req.FieldLimit, streams)
+
+	level.Debug(spanlogger.FromContext(ctx)).Log(
+		"detected_fields", "true",
+		"msg", fmt.Sprintf("found %d streams to detect fields for", len(streams)))
+	detectedFields := parseDetectedFields(ctx, req.FieldLimit, streams)
 
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
@@ -1053,11 +1060,16 @@ func determineType(value string) logproto.DetectedFieldType {
 	return logproto.DetectedFieldString
 }
 
-func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
+func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
 	detectedFields := make(map[string]*parsedFields, limit)
 	fieldCount := uint32(0)
 
 	for _, stream := range streams {
+
+		level.Debug(spanlogger.FromContext(ctx)).Log(
+			"detected_fields", "true",
+			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
+
 		for _, entry := range stream.Entries {
 			detected := parseLine(entry.Line)
 			for k, vals := range detected {
@@ -1077,6 +1089,10 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 
 					parsedFields.Insert(v)
 				}
+
+				level.Debug(spanlogger.FromContext(ctx)).Log(
+					"detected_fields", "true",
+					"msg", fmt.Sprintf("detected field %s with %d values", k, len(vals)))
 
 				fieldCount++
 			}

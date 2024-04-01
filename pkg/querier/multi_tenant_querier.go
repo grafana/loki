@@ -258,6 +258,27 @@ func (q *MultiTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeReq
 	return merged, nil
 }
 
+func (q *MultiTenantQuerier) DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tenantIDs) == 1 {
+		return q.Querier.DetectedFields(ctx, req)
+	}
+
+	return &logproto.DetectedFieldsResponse{
+		Fields: []*logproto.DetectedField{
+			{
+				Label:       "multi_tenant_not_supported",
+				Type:        logproto.DetectedFieldString,
+				Cardinality: 0,
+			},
+		},
+	}, nil
+}
+
 func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
 	// TODO(shantanu)
 	tenantIDs, err := tenant.TenantID(ctx)
@@ -308,7 +329,7 @@ func replaceMatchers(expr syntax.Expr, matchers []*labels.Matcher) syntax.Expr {
 }
 
 // See https://github.com/grafana/mimir/blob/114ab88b50638a2047e2ca2a60640f6ca6fe8c17/pkg/querier/tenantfederation/tenant_federation.go#L29-L69
-// filterValuesByMatchers applies matchers to inputed `idLabelName` and
+// filterValuesByMatchers applies matchers to inputted `idLabelName` and
 // `ids`. A set of matched IDs is returned and also all label matchers not
 // targeting the `idLabelName` label.
 //
