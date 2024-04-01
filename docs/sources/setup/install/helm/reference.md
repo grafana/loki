@@ -2920,6 +2920,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.selfMonitoring.tenant.password</td>
+			<td>string</td>
+			<td>Password of the gateway for Basic auth</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.selfMonitoring.tenant.secretNamespace</td>
 			<td>string</td>
 			<td>Namespace to create additional tenant token secret in. Useful if your Grafana instance is in a separate namespace. Token will still be created in the canary namespace.</td>
