@@ -659,51 +659,6 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 	return result, nil
 }
 
-// type DetectedFieldsQuery struct {
-// 	Start        time.Time
-// 	End          time.Time
-// 	Step         time.Duration
-// 	Query        string
-// 	Limit        uint32
-// }
-
-// func ParseDetectedFieldsQuery(r *http.Request) (*DetectedFieldsQuery, error) {
-// 	var result DetectedFieldsQuery
-// 	var err error
-
-// 	result.Query = query(r)
-// 	result.Start, result.End, err = bounds(r)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	if result.End.Before(result.Start) {
-// 		return nil, errEndBeforeStart
-// 	}
-
-// 	result.Limit, err = limit(r)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	result.Step, err = step(r, result.Start, result.End)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	if result.Step <= 0 {
-// 		return nil, errZeroOrNegativeStep
-// 	}
-
-// 	// For safety, limit the number of returned points per timeseries.
-// 	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
-// 	if (result.End.Sub(result.Start) / result.Step) > 11000 {
-// 		return nil, errStepTooSmall
-// 	}
-
-// 	return &result, nil
-// }
-
 func targetLabels(r *http.Request) []string {
 	lbls := strings.Split(r.Form.Get("targetLabels"), ",")
 	if (len(lbls) == 1 && lbls[0] == "") || len(lbls) == 0 {
