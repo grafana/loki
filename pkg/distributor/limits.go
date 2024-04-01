@@ -22,6 +22,7 @@ type Limits interface {
 	RejectOldSamplesMaxAge(userID string) time.Duration
 
 	IncrementDuplicateTimestamps(userID string) bool
+	DiscoverServiceName(userID string) []string
 
 	ShardStreams(userID string) *shardstreams.Config
 	IngestionRateStrategy() string

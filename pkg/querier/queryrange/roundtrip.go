@@ -436,7 +436,7 @@ func getOperation(path string) string {
 		return VolumeRangeOp
 	case path == "/loki/api/v1/index/shards":
 		return IndexShardsOp
-	case path == "/loki/api/experimental/detected_fields":
+	case path == "/loki/api/v1/detected_fields":
 		return DetectedFieldsOp
 	case path == "/loki/api/experimental/detected_labels":
 		return DetectedLabelsOp

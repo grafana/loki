@@ -50,7 +50,7 @@ type SamplesComparator struct {
 	sampleTypesComparator map[string]SamplesComparatorFunc
 }
 
-// RegisterSamplesComparator helps with registering custom sample types
+// RegisterSamplesType helps with registering custom sample types
 func (s *SamplesComparator) RegisterSamplesType(samplesType string, comparator SamplesComparatorFunc) {
 	s.sampleTypesComparator[samplesType] = comparator
 }

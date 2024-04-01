@@ -162,6 +162,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"splits", stats.Summary.Splits,
 		"shards", stats.Summary.Shards,
 		"query_referenced_structured_metadata", stats.QueryReferencedStructuredMetadata(),
+		"pipeline_wrapper_filtered_lines", stats.PipelineWrapperFilteredLines(),
 		"chunk_refs_fetch_time", stats.ChunkRefsFetchTime(),
 		"cache_chunk_req", stats.Caches.Chunk.EntriesRequested,
 		"cache_chunk_hit", stats.Caches.Chunk.EntriesFound,

@@ -86,6 +86,21 @@ var (
 				},
 			},
 		},
+		CacheInstantMetricResults:    true,
+		InstantMetricQuerySplitAlign: true,
+		InstantMetricCacheConfig: InstantMetricCacheConfig{
+			ResultsCacheConfig: base.ResultsCacheConfig{
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						EmbeddedCache: cache.EmbeddedCacheConfig{
+							Enabled:   true,
+							MaxSizeMB: 1024,
+							TTL:       24 * time.Hour,
+						},
+					},
+				},
+			},
+		},
 	}
 	testEngineOpts = logql.EngineOpts{
 		MaxLookBackPeriod: 30 * time.Second,
@@ -334,6 +349,127 @@ func TestLogFilterTripperware(t *testing.T) {
 	require.Equal(t, 0, *queryCount)
 }
 
+func TestInstantQueryTripperwareResultCaching(t *testing.T) {
+	// Goal is to make sure the instant query tripperware returns same results with and without cache middleware.
+	// 1. Get result without cache middleware.
+	// 2. Get result with middelware (with splitting). Result should be same.
+	// 3. Make same query with middleware (this time hitting the cache). Result should be same.
+
+	testLocal := testConfig
+	testLocal.ShardedQueries = true
+	testLocal.CacheResults = false
+	testLocal.CacheIndexStatsResults = false
+	testLocal.CacheInstantMetricResults = false
+	var l = fakeLimits{
+		maxQueryParallelism:     1,
+		tsdbMaxQueryParallelism: 1,
+		maxQueryBytesRead:       1000,
+		maxQuerierBytesRead:     100,
+		queryTimeout:            1 * time.Minute,
+		maxSeries:               1,
+	}
+	tpw, stopper, err := NewMiddleware(testLocal, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+
+	q := `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`
+	lreq := &LokiInstantRequest{
+		Query:     q,
+		Limit:     1000,
+		TimeTs:    testTime.Add(-4 * time.Hour),
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(q),
+		},
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	// Test MaxQueryBytesRead limit
+	statsCount, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 2000})
+	queryCount, queryHandler := counter()
+	h := getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
+	require.Error(t, err)
+	require.Equal(t, 1, *statsCount)
+	require.Equal(t, 0, *queryCount)
+
+	// Test MaxQuerierBytesRead limit
+	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 200})
+	queryCount, queryHandler = counter()
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
+	require.Error(t, err)
+	require.Equal(t, 2, *statsCount)
+	require.Equal(t, 0, *queryCount)
+
+	// 1. Without cache middleware.
+	count, queryHandler := promqlResult(vector)
+	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	h = tpw.Wrap(h)
+	lokiResponse, err := h.Do(ctx, lreq)
+	require.Equal(t, 1, *count)
+	require.NoError(t, err)
+
+	exp, err := ResultToResponse(logqlmodel.Result{
+		Data: vector,
+	}, nil)
+	require.NoError(t, err)
+	expected := exp.(*LokiPromResponse)
+
+	require.IsType(t, &LokiPromResponse{}, lokiResponse)
+	concrete := lokiResponse.(*LokiPromResponse)
+	require.Equal(t, loghttp.ResultTypeVector, concrete.Response.Data.ResultType)
+	assertInstantSampleValues(t, expected, concrete) // assert actual sample values
+
+	// 2. First time with caching enabled (no cache hit).
+	testLocal.CacheInstantMetricResults = true
+	l.instantMetricSplitDuration = map[string]time.Duration{
+		// so making request [15] range, will have 2 subqueries aligned with [5m] giving total of [10m]. And 2 more subqueries for remaining [5m] aligning depending on exec time of the query.
+		"1": 5 * time.Minute,
+	}
+	tpw, stopper, err = NewMiddleware(testLocal, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+
+	count, queryHandler = promqlResult(vector)
+	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	lokiResponse, err = tpw.Wrap(h).Do(ctx, lreq)
+	require.Equal(t, 4, *count) // split into 4 subqueries. like explained in `instantMetricSplitDuration` limits config.
+	require.NoError(t, err)
+
+	exp, err = ResultToResponse(logqlmodel.Result{
+		Data: instantQueryResultWithCache(*count, 15*time.Minute, vector[0]),
+	}, nil)
+	require.NoError(t, err)
+	expected = exp.(*LokiPromResponse)
+
+	require.IsType(t, &LokiPromResponse{}, lokiResponse)
+	concrete = lokiResponse.(*LokiPromResponse)
+	require.Equal(t, loghttp.ResultTypeVector, concrete.Response.Data.ResultType)
+	assertInstantSampleValues(t, expected, concrete) // assert actual sample values
+
+	// 3. Second time with caching enabled (cache hit).
+	count, queryHandler = promqlResult(vector)
+	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	lokiResponse, err = tpw.Wrap(h).Do(ctx, lreq)
+	require.Equal(t, 0, *count) // no queries hit base handler, because all queries hit from cache.
+	require.NoError(t, err)
+
+	require.IsType(t, &LokiPromResponse{}, lokiResponse)
+	concrete = lokiResponse.(*LokiPromResponse)
+	require.Equal(t, loghttp.ResultTypeVector, concrete.Response.Data.ResultType)
+	assertInstantSampleValues(t, expected, concrete) // assert actual sample values
+}
+
 func TestInstantQueryTripperware(t *testing.T) {
 	testShardingConfigNoCache := testConfig
 	testShardingConfigNoCache.ShardedQueries = true
@@ -357,7 +493,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 	lreq := &LokiInstantRequest{
 		Query:     q,
 		Limit:     1000,
-		TimeTs:    testTime,
+		TimeTs:    testTime.Add(-4 * time.Hour), // because vector data we return from mock handler has that time.
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query",
 		Plan: &plan.QueryPlan{
@@ -393,6 +529,8 @@ func TestInstantQueryTripperware(t *testing.T) {
 	require.NoError(t, err)
 
 	require.IsType(t, &LokiPromResponse{}, lokiResponse)
+	concrete := lokiResponse.(*LokiPromResponse)
+	require.Equal(t, loghttp.ResultTypeVector, concrete.Response.Data.ResultType)
 }
 
 func TestSeriesTripperware(t *testing.T) {
@@ -1166,8 +1304,11 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[2h]))`),
 				},
 			},
-			expectedSplitStats: 2, // [2h] interval split by 1h configured split interval
-			expectedShardStats: 8, // 2 time splits * 4 row shards
+			// [2h] interval split by 1h configured split interval.
+			// Also since we split align(testConfig.InstantQuerySplitAlign=true) with split interval (1h).
+			// 1 subquery will be exactly [1h] and 2 more subqueries to align with `testTime` used in query's TimeTs.
+			expectedSplitStats: 3,
+			expectedShardStats: 12, // 3 time splits * 4 row shards
 		},
 		{
 			name: "instant query split not split",
@@ -1406,7 +1547,7 @@ func counter() (*int, base.Handler) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
-		return base.NewEmptyPrometheusResponse(), nil
+		return base.NewEmptyPrometheusResponse(model.ValMatrix), nil
 	})
 }
 
@@ -1472,6 +1613,37 @@ func seriesVolumeResult(v logproto.VolumeResponse) (*int, base.Handler) {
 		count++
 		return &VolumeResponse{Response: &v}, nil
 	})
+}
+
+// instantQueryResultWithCache used when instant query tripperware is created with split align and cache middleware.
+// Assuming each subquery handler returns `val` sample, then this function returns overal result by combining all the subqueries sample values.
+func instantQueryResultWithCache(split int, ts time.Duration, val promql.Sample) promql.Vector {
+	v := (val.F * float64(split)) / ts.Seconds()
+	return promql.Vector{
+		promql.Sample{
+			T:      val.T,
+			F:      v,
+			H:      val.H,
+			Metric: val.Metric,
+		},
+	}
+}
+
+func assertInstantSampleValues(t *testing.T, exp *LokiPromResponse, got *LokiPromResponse) {
+	expR := exp.Response.Data.Result
+	gotR := got.Response.Data.Result
+
+	expSamples := make([]logproto.LegacySample, 0)
+	for _, v := range expR {
+		expSamples = append(expSamples, v.Samples...)
+	}
+
+	gotSamples := make([]logproto.LegacySample, 0)
+	for _, v := range gotR {
+		gotSamples = append(gotSamples, v.Samples...)
+	}
+
+	require.Equal(t, expSamples, gotSamples)
 }
 
 type fakeHandler struct {

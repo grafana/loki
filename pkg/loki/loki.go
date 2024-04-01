@@ -663,7 +663,7 @@ func (t *Loki) setupModuleManager() error {
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor},
-		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway},
+		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 	}

@@ -19,8 +19,8 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/stores/series"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 const DefaultIndexShards = 32
@@ -56,15 +56,15 @@ func NewWithShards(totalShards uint32) *InvertedIndex {
 	}
 }
 
-func (ii *InvertedIndex) getShards(shard *astmapper.ShardAnnotation) []*indexShard {
+func (ii *InvertedIndex) getShards(shard *index.ShardAnnotation) []*indexShard {
 	if shard == nil {
 		return ii.shards
 	}
 
-	totalRequested := int(ii.totalShards) / shard.Of
+	totalRequested := ii.totalShards / shard.Of
 	result := make([]*indexShard, totalRequested)
 	var j int
-	for i := 0; i < totalRequested; i++ {
+	for i := uint32(0); i < totalRequested; i++ {
 		subShard := ((shard.Shard) + (i * shard.Of))
 		result[j] = ii.shards[subShard]
 		j++
@@ -72,7 +72,7 @@ func (ii *InvertedIndex) getShards(shard *astmapper.ShardAnnotation) []*indexSha
 	return result
 }
 
-func (ii *InvertedIndex) validateShard(shard *logql.Shard) (*astmapper.ShardAnnotation, error) {
+func (ii *InvertedIndex) validateShard(shard *logql.Shard) (*index.ShardAnnotation, error) {
 	if shard == nil {
 		return nil, nil
 	}
@@ -82,7 +82,7 @@ func (ii *InvertedIndex) validateShard(shard *logql.Shard) (*astmapper.ShardAnno
 		return nil, errors.New("inverted index only supports shard annotations with `PowerOfTwo`")
 	}
 
-	if int(ii.totalShards)%s.Of != 0 || uint32(s.Of) > ii.totalShards {
+	if ii.totalShards%s.Of != 0 || s.Of > ii.totalShards {
 		return nil, fmt.Errorf("%w index_shard:%d query_shard:%v", ErrInvalidShardQuery, ii.totalShards, s)
 	}
 	return s, nil
