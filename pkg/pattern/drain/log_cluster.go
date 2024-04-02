@@ -79,14 +79,6 @@ func (x *Volume) ForRange(start, end model.Time) *Volume {
 	}
 }
 
-func (x *Volume) Matches() int64 {
-	var m int64
-	for i := range x.Values {
-		m += x.Values[i].Value
-	}
-	return m
-}
-
 func (x *Volume) Add(ts model.Time) {
 	t := truncateTimestamp(ts)
 	first := x.Values[0].Timestamp // can't be empty

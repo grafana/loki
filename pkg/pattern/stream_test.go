@@ -39,3 +39,22 @@ func TestAddStream(t *testing.T) {
 	require.Equal(t, 1, len(res.Series))
 	require.Equal(t, int64(2), res.Series[0].Samples[0].Value)
 }
+
+func TestMinClusterSize(t *testing.T) {
+	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
+	stream, err := newStream(model.Fingerprint(lbs.Hash()), lbs)
+	require.NoError(t, err)
+
+	err = stream.Push(context.Background(), []push.Entry{
+		{
+			Timestamp: time.Unix(20, 0),
+			Line:      "ts=1 msg=hello",
+		},
+	})
+	require.NoError(t, err)
+	it, err := stream.Iterator(context.Background(), model.Earliest, model.Latest)
+	require.NoError(t, err)
+	res, err := iter.ReadAll(it)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(res.Series))
+}

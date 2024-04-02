@@ -12,6 +12,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
+const minClusterSize = 30
+
 var drainConfig = &drain.Config{
 	LogClusterDepth: 8,
 	SimTh:           0.3,
@@ -67,10 +69,13 @@ func (s *stream) Iterator(_ context.Context, from, through model.Time) (iter.Ite
 	defer s.mtx.Unlock()
 
 	clusters := s.patterns.Clusters()
-	iters := make([]iter.Iterator, len(clusters))
+	iters := make([]iter.Iterator, 0, len(clusters))
 
-	for i, cluster := range clusters {
-		iters[i] = cluster.Iterator(from, through)
+	for _, cluster := range clusters {
+		if cluster.Size < minClusterSize {
+			continue
+		}
+		iters = append(iters, cluster.Iterator(from, through))
 	}
 	return iter.NewMerge(iters...), nil
 }
