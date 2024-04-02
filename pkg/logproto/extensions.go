@@ -140,3 +140,18 @@ func (m *Shard) SpaceFor(stats *IndexStatsResponse, targetShardBytes uint64) boo
 	newDelta := max(updated, targetShardBytes) - min(updated, targetShardBytes)
 	return newDelta <= curDelta
 }
+
+type DetectedFieldType string
+
+const (
+	DetectedFieldString   DetectedFieldType = "string"
+	DetectedFieldInt      DetectedFieldType = "int"
+	DetectedFieldFloat    DetectedFieldType = "float"
+	DetectedFieldBoolean  DetectedFieldType = "boolean"
+	DetectedFieldDuration DetectedFieldType = "duration"
+	DetectedFieldBytes    DetectedFieldType = "bytes"
+)
+
+func (d DetectedFieldType) String() string {
+	return string(d)
+}

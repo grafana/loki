@@ -91,12 +91,16 @@ func NewFetcher(
 	logger log.Logger,
 	bloomMetrics *v1.Metrics,
 ) (*Fetcher, error) {
+	localFSResolver, err := NewShardedPrefixedResolver(cfg.workingDirs, defaultKeyResolver{})
+	if err != nil {
+		return nil, errors.Wrap(err, "creating fs resolver")
+	}
 	fetcher := &Fetcher{
 		cfg:             cfg,
 		client:          client,
 		metasCache:      metasCache,
 		blocksCache:     blocksCache,
-		localFSResolver: NewPrefixedResolver(cfg.workingDir, defaultKeyResolver{}),
+		localFSResolver: localFSResolver,
 		metrics:         newFetcherMetrics(reg, constants.Loki, "bloom_store"),
 		bloomMetrics:    bloomMetrics,
 		logger:          logger,

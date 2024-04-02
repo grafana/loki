@@ -16,8 +16,10 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/user"
+	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
@@ -421,6 +423,96 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tt.want, got)
 		})
+	}
+}
+
+func TestLokiRequestSpanLogging(t *testing.T) {
+	now := time.Now()
+	end := now.Add(1000 * time.Second)
+	req := LokiRequest{
+		StartTs: now,
+		EndTs:   end,
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "start" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+			if field.Key == "end" {
+				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
+			}
+		}
+	}
+}
+
+func TestLokiInstantRequestSpanLogging(t *testing.T) {
+	now := time.Now()
+	req := LokiInstantRequest{
+		TimeTs: now,
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "ts" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+		}
+	}
+}
+
+func TestLokiSeriesRequestSpanLogging(t *testing.T) {
+	now := time.Now()
+	end := now.Add(1000 * time.Second)
+	req := LokiSeriesRequest{
+		StartTs: now,
+		EndTs:   end,
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "start" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+			if field.Key == "end" {
+				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
+
+			}
+		}
+	}
+}
+
+func TestLabelRequestSpanLogging(t *testing.T) {
+	now := time.Now()
+	end := now.Add(1000 * time.Second)
+	req := LabelRequest{
+		LabelRequest: logproto.LabelRequest{
+			Start: &now,
+			End:   &end,
+		},
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "start" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+			if field.Key == "end" {
+				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
+			}
+		}
 	}
 }
 
@@ -1565,7 +1657,8 @@ var (
 				"totalChunksRef": 0,
 				"totalChunksDownloaded": 0,
 				"chunkRefsFetchTime": 0,
-				"queryReferencedStructuredMetadata": false
+				"queryReferencedStructuredMetadata": false,
+				"pipelineWrapperFilteredLines": 2
 			},
 			"totalBatches": 6,
 			"totalChunksMatched": 7,
@@ -1590,7 +1683,8 @@ var (
 				"totalChunksRef": 17,
 				"totalChunksDownloaded": 18,
 				"chunkRefsFetchTime": 19,
-				"queryReferencedStructuredMetadata": true
+				"queryReferencedStructuredMetadata": true,
+				"pipelineWrapperFilteredLines": 4
 			}
 		},
 		"index": {
@@ -2023,17 +2117,19 @@ var (
 					PostFilterLines:   0,
 					TotalDuplicates:   19,
 				},
-				ChunksDownloadTime:        16,
-				CongestionControlLatency:  0,
-				TotalChunksRef:            17,
-				TotalChunksDownloaded:     18,
-				ChunkRefsFetchTime:        19,
-				QueryReferencedStructured: true,
+				ChunksDownloadTime:           16,
+				CongestionControlLatency:     0,
+				TotalChunksRef:               17,
+				TotalChunksDownloaded:        18,
+				ChunkRefsFetchTime:           19,
+				QueryReferencedStructured:    true,
+				PipelineWrapperFilteredLines: 4,
 			},
 		},
 
 		Ingester: stats.Ingester{
 			Store: stats.Store{
+				PipelineWrapperFilteredLines: 2,
 				Chunk: stats.Chunk{
 					CompressedBytes:   1,
 					DecompressedBytes: 2,

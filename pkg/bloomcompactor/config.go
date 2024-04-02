@@ -7,7 +7,6 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/util/ring"
 )
 
@@ -32,6 +31,8 @@ type Config struct {
 	CompactionRetries  int           `yaml:"compaction_retries"`
 
 	MaxCompactionParallelism int `yaml:"max_compaction_parallelism"`
+
+	RetentionConfig RetentionConfig `yaml:"retention"`
 }
 
 // RegisterFlags registers flags for the Bloom-Compactor configuration.
@@ -52,6 +53,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RetryMaxBackoff, "bloom-compactor.compaction-retries-max-backoff", time.Minute, "Maximum backoff time between retries.")
 	f.IntVar(&cfg.CompactionRetries, "bloom-compactor.compaction-retries", 3, "Number of retries to perform when compaction fails.")
 	f.IntVar(&cfg.MaxCompactionParallelism, "bloom-compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
+	cfg.RetentionConfig.RegisterFlags(f)
 
 	// Ring
 	skipFlags := []string{
@@ -66,6 +68,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
+	if err := cfg.RetentionConfig.Validate(); err != nil {
+		return err
+	}
+
 	if cfg.MinTableOffset > cfg.MaxTableOffset {
 		return fmt.Errorf("min-table-offset (%d) must be less than or equal to max-table-offset (%d)", cfg.MinTableOffset, cfg.MaxTableOffset)
 	}
@@ -76,7 +82,7 @@ func (cfg *Config) Validate() error {
 }
 
 type Limits interface {
-	downloads.Limits
+	RetentionLimits
 	BloomCompactorShardSize(tenantID string) int
 	BloomCompactorEnabled(tenantID string) bool
 	BloomNGramLength(tenantID string) int

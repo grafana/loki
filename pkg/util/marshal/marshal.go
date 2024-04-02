@@ -174,3 +174,23 @@ func WriteVolumeResponseJSON(r *logproto.VolumeResponse, w io.Writer) error {
 	s.WriteRaw("\n")
 	return s.Flush()
 }
+
+// WriteDetectedFieldsResponseJSON marshals a logproto.DetectedFieldsResponse to JSON and then
+// writes it to the provided io.Writer.
+func WriteDetectedFieldsResponseJSON(r *logproto.DetectedFieldsResponse, w io.Writer) error {
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	s.WriteVal(r)
+	s.WriteRaw("\n")
+	return s.Flush()
+}
+
+// WriteDetectedLabelsResponseJSON marshals a logproto.DetectedLabelsResponse to JSON and then
+// writes it to the provided io.Writer.
+func WriteDetectedLabelsResponseJSON(r *logproto.DetectedLabelsResponse, w io.Writer) error {
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	s.WriteVal(r)
+	s.WriteRaw("\n")
+	return s.Flush()
+}

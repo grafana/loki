@@ -11,9 +11,9 @@ import (
 	"github.com/c2h5oh/datasize"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
@@ -193,7 +193,7 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		newExpr, err := syntax.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
+		newExpr, err := syntax.AddFilterExpr(expr, log.LineMatchRegexp, "", regexp)
 		if err != nil {
 			return "", err
 		}

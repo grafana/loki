@@ -62,6 +62,7 @@ limits_config:
   ingestion_burst_size_mb: 50
   reject_old_samples: false
   allow_structured_metadata: true
+  discover_service_name:
   otlp_config:
     resource_attributes:
       attributes_config:
@@ -81,8 +82,6 @@ storage_config:
     cache_location: {{.dataPath}}/tsdb-cache
   bloom_shipper:
     working_directory: {{.dataPath}}/bloom-shipper
-    blocks_downloading_queue:
-      workers_count: 1
 
 bloom_gateway:
   enabled: false

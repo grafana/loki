@@ -88,7 +88,7 @@ func Test_LoadBlocksDirIntoCache(t *testing.T) {
 	}
 	c := NewFsBlocksCache(cfg, nil, log.NewNopLogger())
 
-	err := LoadBlocksDirIntoCache(wd, c, logger)
+	err := LoadBlocksDirIntoCache([]string{wd, t.TempDir()}, c, logger)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, len(c.entries))

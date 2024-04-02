@@ -2351,26 +2351,22 @@ tsdb_shipper:
 
   [ingesterdbretainperiod: <duration>]
 
-# Configures Bloom Shipper.
+# Configures the bloom shipper component, which contains the store abstraction
+# to fetch bloom filters from and put them to object storage.
 bloom_shipper:
-  # Working directory to store downloaded Bloom Blocks.
+  # Working directory to store downloaded bloom blocks. Supports multiple
+  # directories, separated by comma.
   # CLI flag: -bloom.shipper.working-directory
-  [working_directory: <string> | default = "bloom-shipper"]
+  [working_directory: <string> | default = "/data/blooms"]
 
   # Maximum size of bloom pages that should be queried. Larger pages than this
   # limit are skipped when querying blooms to limit memory usage.
   # CLI flag: -bloom.max-query-page-size
   [max_query_page_size: <int> | default = 64MiB]
 
-  blocks_downloading_queue:
-    # The count of parallel workers that download Bloom Blocks.
-    # CLI flag: -bloom.shipper.blocks-downloading-queue.workers-count
-    [workers_count: <int> | default = 16]
-
-    # Maximum number of task in queue per tenant per bloom-gateway. Enqueuing
-    # the tasks above this limit will fail an error.
-    # CLI flag: -bloom.shipper.blocks-downloading-queue.max_tasks_enqueued_per_tenant
-    [max_tasks_enqueued_per_tenant: <int> | default = 10000]
+  # The amount of maximum concurrent bloom blocks downloads.
+  # CLI flag: -bloom.download-parallelism
+  [download_parallelism: <int> | default = 16]
 
   blocks_cache:
     # Cache for bloom blocks. Soft limit of the cache in bytes. Exceeding this
@@ -2403,12 +2399,21 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # The CLI flags prefix for this block configuration is: store.chunks-cache
 [chunk_cache_config: <cache_config>]
 
+# The cache block configures the cache backend.
+# The CLI flags prefix for this block configuration is: store.chunks-cache-l2
+[chunk_cache_config_l2: <cache_config>]
+
 # Write dedupe cache is deprecated along with legacy index types (aws,
 # aws-dynamo, bigtable, bigtable-hashed, cassandra, gcp, gcp-columnkey,
 # grpc-store).
 # Consider using TSDB index which does not require a write dedupe cache.
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
+
+# Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
+# cache.
+# CLI flag: -store.chunks-cache-l2.handoff
+[l2_chunk_cache_handoff: <duration> | default = 0s]
 
 # Cache index entries older than this period. 0 to disable.
 # CLI flag: -store.cache-lookups-older-than
@@ -2477,9 +2482,9 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
-# Constrain the size of any single delete request. When a delete request >
-# delete_max_interval is input, the request is sharded into smaller requests of
-# no more than delete_max_interval
+# Constrain the size of any single delete request with line filters. When a
+# delete request > delete_max_interval is input, the request is sharded into
+# smaller requests of no more than delete_max_interval
 # CLI flag: -compactor.delete-max-interval
 [delete_max_interval: <duration> | default = 24h]
 
@@ -2729,6 +2734,15 @@ ring:
 # and compact as many tables.
 # CLI flag: -bloom-compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
+
+retention:
+  # Enable bloom retention.
+  # CLI flag: -bloom-compactor.retention.enabled
+  [enabled: <boolean> | default = false]
+
+  # Max lookback days for retention.
+  # CLI flag: -bloom-compactor.retention.max-lookback-days
+  [max_lookback_days: <int> | default = 365]
 ```
 
 ### limits_config
@@ -2809,6 +2823,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # incremented.
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
+
+# If no service_name label exists, Loki maps a single label from the configured
+# list to service_name. If none of the configured labels exist in the stream,
+# label is set to unknown_service. Empty list disables setting the label.
+# CLI flag: -validation.discover-service-name
+[discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name component workload job]]
 
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
@@ -4472,6 +4492,7 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `store.chunks-cache`
+- `store.chunks-cache-l2`
 - `store.index-cache-read`
 - `store.index-cache-write`
 
@@ -4518,9 +4539,8 @@ memcached_client:
   # CLI flag: -<prefix>.memcached.service
   [service: <string> | default = "memcached"]
 
-  # EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery
-  # format:
-  # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+  # Comma separated addresses list in DNS Service Discovery format:
+  # https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes
   # CLI flag: -<prefix>.memcached.addresses
   [addresses: <string> | default = ""]
 

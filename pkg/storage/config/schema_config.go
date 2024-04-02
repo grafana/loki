@@ -201,7 +201,8 @@ func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRa
 }
 
 func NewDayTime(d model.Time) DayTime {
-	return DayTime{d}
+	beginningOfDay := model.TimeFromUnix(d.Time().Truncate(24 * time.Hour).Unix())
+	return DayTime{beginningOfDay}
 }
 
 // DayTime is a model.Time what holds day-aligned values, and marshals to/from

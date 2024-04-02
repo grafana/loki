@@ -127,7 +127,7 @@ This storage type for indexes is deprecated and may be removed in future major v
 ## Schema Config
 
 Loki aims to be backwards compatible and over the course of its development has had many internal changes that facilitate better and more efficient storage/querying. Loki allows incrementally upgrading to these new storage _schemas_ and can query across them transparently. This makes upgrading a breeze.
-For instance, this is what it looks like when migrating from BoltDB with v11 schema to TSDB with v12 schema starting 2023-07-01:
+For instance, this is what it looks like when migrating from BoltDB with v11 schema to TSDB with v13 schema starting 2023-07-01:
 
 ```yaml
 schema_config:
@@ -142,13 +142,13 @@ schema_config:
     - from: 2023-07-01
       store: tsdb
       object_store: filesystem
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h
 ```
 
-For all data ingested before 2023-07-01, Loki used BoltDB with the v11 schema, and then switched after that point to the more effective TSDB with the v12 schema. This dramatically simplifies upgrading, ensuring it's simple to take advantage of new storage optimizations. These configs should be immutable for as long as you care about retention.
+For all data ingested before 2023-07-01, Loki used BoltDB with the v11 schema, and then switched after that point to the more effective TSDB with the v13 schema. This dramatically simplifies upgrading, ensuring it's simple to take advantage of new storage optimizations. These configs should be immutable for as long as you care about retention.
 
 ## Table Manager (deprecated)
 
@@ -190,7 +190,7 @@ When a new schema is released and you want to gain the advantages it provides, y
 
 First, you'll want to create a new [period_config]({{< relref "../configure#period_config" >}}) entry in your [schema_config]({{< relref "../configure#schema_config" >}}). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This allows the table manager to create the required table in advance of writes and ensures that existing data isn't queried as if it adheres to the new schema.
 
-As an example, let's say it's 2023-07-14 and we want to start using the `v12` schema on the 20th:
+As an example, let's say it's 2023-07-14 and we want to start using the `v13` schema on the 20th:
 ```yaml
 schema_config:
   configs:
@@ -204,7 +204,7 @@ schema_config:
     - from: 2023-07-20
       store: tsdb
       object_store: filesystem
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h
@@ -243,7 +243,7 @@ schema_config:
     - from: 2020-07-01
       store: tsdb
       object_store: gcs
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h
@@ -266,7 +266,7 @@ schema_config:
     - from: 2020-07-01
       store: tsdb
       object_store: aws
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h
@@ -352,7 +352,7 @@ schema_config:
       period: 24h
       prefix: index_
     object_store: azure
-    schema: v12
+    schema: v13
     store: tsdb
 storage_config:
   azure:
@@ -388,7 +388,7 @@ schema_config:
       period: 24h
       prefix: index_
     object_store: azure
-    schema: v12
+    schema: v13
     store: tsdb
 storage_config:
   azure:
@@ -420,7 +420,7 @@ schema_config:
         period: 24h
         prefix: loki_index_
       object_store: cos
-      schema: v12
+      schema: v13
       store: tsdb
 
 storage_config:
@@ -489,7 +489,7 @@ schema_config:
     - from: 2020-07-01
       store: tsdb
       object_store: s3
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h

@@ -6,12 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	io "io"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
 	"sort"
-	strings "strings"
+	"strings"
 	"time"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
@@ -22,6 +22,7 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -83,8 +84,8 @@ func (r *LokiRequest) WithShards(shards logql.Shards) *LokiRequest {
 func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", r.GetQuery()),
-		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
 		otlog.Int64("step (ms)", r.GetStep()),
 		otlog.Int64("interval (ms)", r.GetInterval()),
 		otlog.Int64("limit", int64(r.GetLimit())),
@@ -178,8 +179,8 @@ func (r *LokiSeriesRequest) GetStep() int64 {
 func (r *LokiSeriesRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("matchers", strings.Join(r.GetMatch(), ",")),
-		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
 		otlog.String("shards", strings.Join(r.GetShards(), ",")),
 	)
 }
@@ -249,8 +250,8 @@ func (r *LabelRequest) WithQuery(query string) queryrangebase.Request {
 
 func (r *LabelRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
-		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
 	)
 }
 
@@ -259,6 +260,80 @@ func (r *LabelRequest) Path() string {
 }
 
 func (*LabelRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
+
+type DetectedLabelsRequest struct {
+	path string
+	logproto.DetectedLabelsRequest
+}
+
+// NewDetectedLabelsRequest creates a new request for detected labels
+func NewDetectedLabelsRequest(start, end time.Time, query, path string) *DetectedLabelsRequest {
+	return &DetectedLabelsRequest{
+		DetectedLabelsRequest: logproto.DetectedLabelsRequest{
+			Start: &start,
+			End:   &end,
+			Query: query,
+		},
+		path: path,
+	}
+}
+
+func (r *DetectedLabelsRequest) AsProto() *logproto.DetectedLabelsRequest {
+	return &r.DetectedLabelsRequest
+}
+
+func (r *DetectedLabelsRequest) GetEnd() time.Time {
+	return *r.End
+}
+
+func (r *DetectedLabelsRequest) GetEndTs() time.Time {
+	return *r.End
+}
+
+func (r *DetectedLabelsRequest) GetStart() time.Time {
+	return *r.Start
+}
+
+func (r *DetectedLabelsRequest) GetStartTs() time.Time {
+	return *r.Start
+}
+
+func (r *DetectedLabelsRequest) GetStep() int64 {
+	return 0
+}
+
+func (r *DetectedLabelsRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
+	clone := *r
+	clone.Start = &s
+	clone.End = &e
+	return &clone
+}
+
+// WithStartEndForCache implements resultscache.Request.
+func (r *DetectedLabelsRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
+}
+
+func (r *DetectedLabelsRequest) WithQuery(query string) queryrangebase.Request {
+	clone := *r
+	clone.Query = query
+	return &clone
+}
+
+func (r *DetectedLabelsRequest) LogToSpan(sp opentracing.Span) {
+	sp.LogFields(
+		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+	)
+}
+
+func (r *DetectedLabelsRequest) Path() string {
+	return r.path
+}
+
+func (*DetectedLabelsRequest) GetCachingOptions() (res queryrangebase.CachingOptions) {
+	return
+}
 
 func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (queryrangebase.Request, error) {
 	if err := r.ParseForm(); err != nil {
@@ -388,6 +463,26 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			TargetLabels: req.TargetLabels,
 			AggregateBy:  req.AggregateBy,
 		}, err
+	case DetectedFieldsOp:
+		req, err := loghttp.ParseDetectedFieldsQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		return &DetectedFieldsRequest{
+			DetectedFieldsRequest: *req,
+			path:                  r.URL.Path,
+		}, nil
+	case DetectedLabelsOp:
+		req, err := loghttp.ParseDetectedLabelsQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		return &DetectedLabelsRequest{
+			DetectedLabelsRequest: *req,
+			path:                  r.URL.Path,
+		}, nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusNotFound, fmt.Sprintf("unknown request path: %s", r.URL.Path))
 	}
@@ -580,6 +675,25 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 			Step:         req.Step.Milliseconds(),
 			TargetLabels: req.TargetLabels,
 			AggregateBy:  req.AggregateBy,
+		}, ctx, err
+	case DetectedFieldsOp:
+		req, err := loghttp.ParseDetectedFieldsQuery(httpReq)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		return &DetectedFieldsRequest{
+			DetectedFieldsRequest: *req,
+			path:                  httpReq.URL.Path,
+		}, ctx, nil
+	case DetectedLabelsOp:
+		req, err := loghttp.ParseDetectedLabelsQuery(httpReq)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return &DetectedLabelsRequest{
+			DetectedLabelsRequest: *req,
+			path:                  httpReq.URL.Path,
 		}, ctx, err
 	default:
 		return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path in HTTP gRPC decode: %s", r.Url))
@@ -838,6 +952,46 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			Header:     header,
 		}
 		return req.WithContext(ctx), nil
+	case *DetectedFieldsRequest:
+		params := url.Values{
+			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
+			"query": []string{request.GetQuery()},
+		}
+
+		u := &url.URL{
+			Path:     "/loki/api/v1/detected_fields",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     header,
+		}
+
+		return req.WithContext(ctx), nil
+	case *DetectedLabelsRequest:
+		params := url.Values{
+			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
+			"query": []string{request.GetQuery()},
+		}
+
+		u := &url.URL{
+			Path:     "/loki/api/v1/detected_labels",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     header,
+		}
+
+		return req.WithContext(ctx), nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid request format, got (%T)", r))
 	}
@@ -863,6 +1017,10 @@ func (c Codec) Path(r queryrangebase.Request) string {
 		return "/loki/api/v1/index/stats"
 	case *logproto.VolumeRequest:
 		return "/loki/api/v1/index/volume_range"
+	case *DetectedFieldsRequest:
+		return "/loki/api/v1/detected_fields"
+	case *DetectedLabelsRequest:
+		return "/loki/api/v1/detected_labels"
 	}
 
 	return "other"
@@ -961,6 +1119,15 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 		return &VolumeResponse{
+			Response: &resp,
+			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+		}, nil
+	case *DetectedFieldsRequest:
+		var resp logproto.DetectedFieldsResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+		return &DetectedFieldsResponse{
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
@@ -1178,6 +1345,14 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 		if err := marshal.WriteVolumeResponseJSON(response.Response, w); err != nil {
 			return err
 		}
+	case *DetectedFieldsResponse:
+		if err := marshal.WriteDetectedFieldsResponseJSON(response.Response, w); err != nil {
+			return err
+		}
+	case *DetectedLabelsResponse:
+		if err := marshal.WriteDetectedLabelsResponseJSON(response.Response, w); err != nil {
+			return err
+		}
 	default:
 		return httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response format, got (%T)", res))
 	}
@@ -1216,15 +1391,22 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		return nil, errors.New("merging responses requires at least one response")
 	}
 	var mergedStats stats.Result
-	switch responses[0].(type) {
+	switch res := responses[0].(type) {
+	// LokiPromResponse type is used for both instant and range queries.
+	// Meaning, values that are merged can be either vector or matrix types.
 	case *LokiPromResponse:
+
+		codec := queryrangebase.PrometheusCodecForRangeQueries
+		if res.Response.Data.ResultType == model.ValVector.String() {
+			codec = queryrangebase.PrometheusCodecForInstantQueries
+		}
 
 		promResponses := make([]queryrangebase.Response, 0, len(responses))
 		for _, res := range responses {
 			mergedStats.MergeSplit(res.(*LokiPromResponse).Statistics)
 			promResponses = append(promResponses, res.(*LokiPromResponse).Response)
 		}
-		promRes, err := queryrangebase.PrometheusCodec.MergeResponse(promResponses...)
+		promRes, err := codec.MergeResponse(promResponses...)
 		if err != nil {
 			return nil, err
 		}
@@ -1745,7 +1927,7 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 		}
 		if _, ok := expr.(syntax.SampleExpr); ok {
 			return &LokiPromResponse{
-				Response: queryrangebase.NewEmptyPrometheusResponse(),
+				Response: queryrangebase.NewEmptyPrometheusResponse(model.ValMatrix), // range metric query
 			}, nil
 		}
 		return &LokiResponse{
@@ -1800,3 +1982,75 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 		},
 	}
 }
+
+// In some other world LabelRequest could implement queryrangebase.Request.
+type DetectedFieldsRequest struct {
+	logproto.DetectedFieldsRequest
+	path string
+}
+
+func NewDetectedFieldsRequest(start, end time.Time, query, path string) *DetectedFieldsRequest {
+	return &DetectedFieldsRequest{
+		DetectedFieldsRequest: logproto.DetectedFieldsRequest{
+			Start: &start,
+			End:   &end,
+			Query: query,
+		},
+		path: path,
+	}
+}
+
+func (r *DetectedFieldsRequest) AsProto() *logproto.DetectedFieldsRequest {
+	return &r.DetectedFieldsRequest
+}
+
+func (r *DetectedFieldsRequest) GetEnd() time.Time {
+	return *r.End
+}
+
+func (r *DetectedFieldsRequest) GetEndTs() time.Time {
+	return *r.End
+}
+
+func (r *DetectedFieldsRequest) GetStart() time.Time {
+	return *r.Start
+}
+
+func (r *DetectedFieldsRequest) GetStartTs() time.Time {
+	return *r.Start
+}
+
+func (r *DetectedFieldsRequest) GetStep() int64 {
+	return 0
+}
+
+func (r *DetectedFieldsRequest) Path() string {
+	return r.path
+}
+
+func (r *DetectedFieldsRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
+	clone := *r
+	clone.Start = &s
+	clone.End = &e
+	return &clone
+}
+
+// WithStartEndForCache implements resultscache.Request.
+func (r *DetectedFieldsRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
+}
+
+func (r *DetectedFieldsRequest) WithQuery(query string) queryrangebase.Request {
+	clone := *r
+	clone.Query = query
+	return &clone
+}
+
+func (r *DetectedFieldsRequest) LogToSpan(sp opentracing.Span) {
+	sp.LogFields(
+		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+	)
+}
+
+func (*DetectedFieldsRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }

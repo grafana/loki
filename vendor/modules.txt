@@ -1225,6 +1225,7 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
+github.com/opentracing/opentracing-go/mocktracer
 # github.com/oschwald/geoip2-golang v1.9.0
 ## explicit; go 1.19
 github.com/oschwald/geoip2-golang
