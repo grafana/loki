@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
 )
 
 func keysToBloomTest(keys [][]byte) BloomTest {

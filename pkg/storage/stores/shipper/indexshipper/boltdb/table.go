@@ -15,11 +15,11 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	shipper_util "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (

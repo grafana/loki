@@ -8,7 +8,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
 )
 
 type TarEntry struct {
