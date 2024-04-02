@@ -17,7 +17,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     target: 'pattern-ingester',
   },
 
-  pattern_ingester_ports: $.util.defaultPorts,
+  pattern_ingester_ports:: $.util.defaultPorts,
 
 
   pattern_ingester_container::
