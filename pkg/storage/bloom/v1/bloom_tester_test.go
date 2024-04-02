@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 )
 
 func TestFiltersToBloomTests(t *testing.T) {
@@ -164,6 +164,42 @@ func TestFiltersToBloomTests(t *testing.T) {
 			name:        "line filter after line format",
 			query:       `{app="fake"} |= "foo" | line_format "thisNewTextShouldMatch" |= "thisNewTextShouldMatch"`,
 			bloom:       fakeBloom{"foo"},
+			expectMatch: true,
+		},
+		{
+			name:        "pattern match exists",
+			query:       `{app="fake"} |> "<_>foo<bar>"`,
+			bloom:       fakeBloom{"foo", "bar"},
+			expectMatch: true,
+		},
+		{
+			name:        "pattern match does not exist",
+			query:       `{app="fake"} |> "<_>foo<bar>"`,
+			bloom:       fakeBloom{"bar", "baz"},
+			expectMatch: false,
+		},
+		{
+			name:        "pattern not match exists",
+			query:       `{app="fake"} !> "<_>foo<bar>"`,
+			bloom:       fakeBloom{"foo", "bar"},
+			expectMatch: true,
+		},
+		{
+			name:        "pattern not match does not exist",
+			query:       `{app="fake"} !> "<_>foo<bar>"`,
+			bloom:       fakeBloom{"bar", "baz"},
+			expectMatch: true,
+		},
+		{
+			name:        "pattern all",
+			query:       `{app="fake"} |> "<_>"`,
+			bloom:       fakeBloom{"bar", "baz"},
+			expectMatch: true,
+		},
+		{
+			name:        "pattern empty",
+			query:       `{app="fake"} |> ""`,
+			bloom:       fakeBloom{"bar", "baz"},
 			expectMatch: true,
 		},
 	} {

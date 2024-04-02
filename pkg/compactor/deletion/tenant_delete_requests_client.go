@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const deletionNotAvailableMsg = "deletion is not available for this tenant"

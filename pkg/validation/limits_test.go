@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/compactor/deletionmode"
-	"github.com/grafana/loki/pkg/loghttp/push"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logql"
 )
 
 func TestLimitsTagsYamlMatchJson(t *testing.T) {

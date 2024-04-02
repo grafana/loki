@@ -28,15 +28,15 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
-	"github.com/grafana/loki/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	querier_worker "github.com/grafana/loki/pkg/querier/worker"
-	"github.com/grafana/loki/pkg/queue"
-	"github.com/grafana/loki/pkg/scheduler/limits"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	querier_worker "github.com/grafana/loki/v3/pkg/querier/worker"
+	"github.com/grafana/loki/v3/pkg/queue"
+	"github.com/grafana/loki/v3/pkg/scheduler/limits"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (

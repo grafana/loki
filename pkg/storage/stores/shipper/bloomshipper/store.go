@@ -13,13 +13,13 @@ import (
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
 
-	"github.com/grafana/loki/pkg/storage"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/storage"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 var (
@@ -278,7 +278,7 @@ func NewBloomStore(
 	// TODO(chaudum): Remove wrapper
 	cfg := bloomStoreConfig{
 		workingDirs:      storageConfig.BloomShipperConfig.WorkingDirectory,
-		numWorkers:       storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
+		numWorkers:       storageConfig.BloomShipperConfig.DownloadParallelism,
 		maxBloomPageSize: int(storageConfig.BloomShipperConfig.MaxQueryPageSize),
 	}
 

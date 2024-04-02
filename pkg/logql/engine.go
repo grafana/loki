@@ -13,7 +13,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -26,18 +26,18 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	logutil "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/server"
-	"github.com/grafana/loki/pkg/util/spanlogger"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	logutil "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 const (

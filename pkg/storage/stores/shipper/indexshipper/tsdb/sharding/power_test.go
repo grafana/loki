@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 )
 
 func TestGuessShardFactor(t *testing.T) {

@@ -10,9 +10,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/util"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 type CloseableBlockQuerier struct {

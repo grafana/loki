@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 const (
@@ -128,7 +128,7 @@ type CriConfig struct {
 	MaxPartialLineSizeTruncate bool             `mapstructure:"max_partial_line_size_truncate"`
 }
 
-// validateDropConfig validates the DropConfig for the dropStage
+// validateCriConfig validates the CriConfig for the cri stage
 func validateCriConfig(cfg *CriConfig) error {
 	if cfg.MaxPartialLines == 0 {
 		cfg.MaxPartialLines = MaxPartialLinesSize

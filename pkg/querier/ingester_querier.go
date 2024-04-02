@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
@@ -18,15 +18,15 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/codes"
 
-	"github.com/grafana/loki/pkg/distributor/clientpool"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type responseFromIngesters struct {
