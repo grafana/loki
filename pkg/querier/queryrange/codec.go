@@ -469,6 +469,11 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
+		_, err = syntax.ParseExpr(req.Query)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
 		return &DetectedFieldsRequest{
 			DetectedFieldsRequest: *req,
 			path:                  r.URL.Path,
@@ -520,7 +525,7 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		ctx = httpreq.InjectQueryTags(ctx, queryTags)
 	}
 
-	// Add disable pipleine wrappers
+	// Add disable pipeline wrappers
 	if disableWrappers := httpReq.Header.Get(httpreq.LokiDisablePipelineWrappersHeader); disableWrappers != "" {
 		httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, disableWrappers)
 	}
@@ -1992,8 +1997,8 @@ type DetectedFieldsRequest struct {
 func NewDetectedFieldsRequest(start, end time.Time, query, path string) *DetectedFieldsRequest {
 	return &DetectedFieldsRequest{
 		DetectedFieldsRequest: logproto.DetectedFieldsRequest{
-			Start: &start,
-			End:   &end,
+			Start: start,
+			End:   end,
 			Query: query,
 		},
 		path: path,
@@ -2005,19 +2010,19 @@ func (r *DetectedFieldsRequest) AsProto() *logproto.DetectedFieldsRequest {
 }
 
 func (r *DetectedFieldsRequest) GetEnd() time.Time {
-	return *r.End
+	return r.End
 }
 
 func (r *DetectedFieldsRequest) GetEndTs() time.Time {
-	return *r.End
+	return r.End
 }
 
 func (r *DetectedFieldsRequest) GetStart() time.Time {
-	return *r.Start
+	return r.Start
 }
 
 func (r *DetectedFieldsRequest) GetStartTs() time.Time {
-	return *r.Start
+	return r.Start
 }
 
 func (r *DetectedFieldsRequest) GetStep() int64 {
@@ -2030,8 +2035,8 @@ func (r *DetectedFieldsRequest) Path() string {
 
 func (r *DetectedFieldsRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
 	clone := *r
-	clone.Start = &s
-	clone.End = &e
+	clone.Start = s
+	clone.End = e
 	return &clone
 }
 

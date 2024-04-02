@@ -617,6 +617,48 @@ func ParseVolumeRangeQuery(r *http.Request) (*VolumeRangeQuery, error) {
 	}, nil
 }
 
+func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest, error) {
+	var err error
+	result := &logproto.DetectedFieldsRequest{}
+
+	result.Query = query(r)
+	result.Start, result.End, err = bounds(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if result.End.Before(result.Start) {
+		return nil, errEndBeforeStart
+	}
+
+	result.LineLimit, err = lineLimit(r)
+	if err != nil {
+		return nil, err
+	}
+
+	result.FieldLimit, err = fieldLimit(r)
+	if err != nil {
+		return nil, err
+	}
+
+	step, err := step(r, result.Start, result.End)
+	result.Step = step.Milliseconds()
+	if err != nil {
+		return nil, err
+	}
+
+	if result.Step <= 0 {
+		return nil, errZeroOrNegativeStep
+	}
+
+	// For safety, limit the number of returned points per timeseries.
+	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
+	if (result.End.Sub(result.Start) / step) > 11000 {
+		return nil, errStepTooSmall
+	}
+	return result, nil
+}
+
 func targetLabels(r *http.Request) []string {
 	lbls := strings.Split(r.Form.Get("targetLabels"), ",")
 	if (len(lbls) == 1 && lbls[0] == "") || len(lbls) == 0 {
