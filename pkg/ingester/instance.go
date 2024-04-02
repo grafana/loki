@@ -598,7 +598,9 @@ func (i *instance) LabelsWithValues(ctx context.Context, startTime time.Time, ma
 			if !exists {
 				v = make(map[string]struct{})
 			}
-			v[label.Value] = struct{}{}
+			if label.Value != "" {
+				v[label.Value] = struct{}{}
+			}
 			labelMap[label.Name] = v
 		}
 		return nil
