@@ -14,11 +14,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
@@ -414,7 +414,7 @@ func TestResultsCache(t *testing.T) {
 		c,
 		resultscache.ConstSplitter(day),
 		mockLimits{},
-		PrometheusCodec,
+		PrometheusCodecForRangeQueries,
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
@@ -461,7 +461,7 @@ func TestResultsCacheRecent(t *testing.T) {
 		c,
 		resultscache.ConstSplitter(day),
 		mockLimits{maxCacheFreshness: 10 * time.Minute},
-		PrometheusCodec,
+		PrometheusCodecForRangeQueries,
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
@@ -572,7 +572,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				c,
 				resultscache.ConstSplitter(day),
 				mockLimits{maxCacheFreshness: 10 * time.Minute},
-				PrometheusCodec,
+				PrometheusCodecForRangeQueries,
 				PrometheusResponseExtractor{},
 				nil,
 				tc.shouldCache,

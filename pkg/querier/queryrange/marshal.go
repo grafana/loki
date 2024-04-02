@@ -17,17 +17,17 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"google.golang.org/grpc/codes"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/sketch"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	"github.com/grafana/loki/pkg/util/querylimits"
-	"github.com/grafana/loki/pkg/util/server"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/sketch"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/util/querylimits"
+	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
 const (
@@ -200,6 +200,8 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.Labels, nil
 	case *QueryResponse_Stats:
 		return concrete.Stats, nil
+	case *QueryResponse_ShardsResponse:
+		return concrete.ShardsResponse, nil
 	case *QueryResponse_Prom:
 		return concrete.Prom, nil
 	case *QueryResponse_Streams:
@@ -210,6 +212,10 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.TopkSketches, nil
 	case *QueryResponse_QuantileSketches:
 		return concrete.QuantileSketches, nil
+	case *QueryResponse_DetectedLabels:
+		return concrete.DetectedLabels, nil
+	case *QueryResponse_DetectedFields:
+		return concrete.DetectedFields, nil
 	default:
 		return nil, fmt.Errorf("unsupported QueryResponse response type, got (%T)", res.Response)
 	}
@@ -243,6 +249,12 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_TopkSketches{response}
 	case *QuantileSketchResponse:
 		p.Response = &QueryResponse_QuantileSketches{response}
+	case *ShardsResponse:
+		p.Response = &QueryResponse_ShardsResponse{response}
+	case *DetectedLabelsResponse:
+		p.Response = &QueryResponse_DetectedLabels{response}
+	case *DetectedFieldsResponse:
+		p.Response = &QueryResponse_DetectedFields{response}
 	default:
 		return nil, fmt.Errorf("invalid response format, got (%T)", res)
 	}
@@ -311,6 +323,8 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		return concrete.Instant, ctx, nil
 	case *QueryRequest_Stats:
 		return concrete.Stats, ctx, nil
+	case *QueryRequest_ShardsRequest:
+		return concrete.ShardsRequest, ctx, nil
 	case *QueryRequest_Volume:
 		return concrete.Volume, ctx, nil
 	case *QueryRequest_Streams:
@@ -329,8 +343,16 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		return &LabelRequest{
 			LabelRequest: *concrete.Labels,
 		}, ctx, nil
+	case *QueryRequest_DetectedLabels:
+		return &DetectedLabelsRequest{
+			DetectedLabelsRequest: *concrete.DetectedLabels,
+		}, ctx, nil
+	case *QueryRequest_DetectedFields:
+		return &DetectedFieldsRequest{
+			DetectedFieldsRequest: *concrete.DetectedFields,
+		}, ctx, nil
 	default:
-		return nil, ctx, fmt.Errorf("unsupported request type, got (%T)", req.Request)
+		return nil, ctx, fmt.Errorf("unsupported request type while unwrapping, got (%T)", req.Request)
 	}
 }
 
@@ -353,8 +375,14 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 		result.Request = &QueryRequest_Instant{Instant: req}
 	case *LokiRequest:
 		result.Request = &QueryRequest_Streams{Streams: req}
+	case *logproto.ShardsRequest:
+		result.Request = &QueryRequest_ShardsRequest{ShardsRequest: req}
+	case *DetectedLabelsRequest:
+		result.Request = &QueryRequest_DetectedLabels{DetectedLabels: &req.DetectedLabelsRequest}
+	case *DetectedFieldsRequest:
+		result.Request = &QueryRequest_DetectedFields{DetectedFields: &req.DetectedFieldsRequest}
 	default:
-		return nil, fmt.Errorf("unsupported request type, got (%T)", r)
+		return nil, fmt.Errorf("unsupported request type while wrapping, got (%T)", r)
 	}
 
 	// Add query tags

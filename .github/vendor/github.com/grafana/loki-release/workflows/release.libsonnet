@@ -40,12 +40,12 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
           --manifest-file .release-please-manifest.json \
           --pull-request-footer "%s" \
           --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --release-as "${{ needs.dist.outputs.version }}" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
           --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token "${{ steps.github_app_token.outputs.token }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
           --dry-run ${{ fromJSON(env.DRY_RUN) }}
 
       ||| % pullRequestFooter),

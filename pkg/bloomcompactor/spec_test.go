@@ -10,9 +10,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 func blocksFromSchema(t *testing.T, n int, options v1.BlockOptions) (res []*v1.Block, data []v1.SeriesWithBloom, refs []bloomshipper.BlockRef) {
@@ -50,7 +50,7 @@ func blocksFromSchemaWithRange(t *testing.T, n int, options v1.BlockOptions, fro
 		_, err = builder.BuildFrom(itr)
 		require.Nil(t, err)
 
-		res = append(res, v1.NewBlock(reader))
+		res = append(res, v1.NewBlock(reader, v1.NewMetrics(nil)))
 		ref := genBlockRef(data[minIdx].Series.Fingerprint, data[maxIdx-1].Series.Fingerprint)
 		t.Log("create block", ref)
 		refs = append(refs, ref)
@@ -74,7 +74,7 @@ func dummyBloomGen(t *testing.T, opts v1.BlockOptions, store v1.Iterator[*v1.Ser
 	for i, b := range blocks {
 		bqs = append(bqs, &bloomshipper.CloseableBlockQuerier{
 			BlockRef:     refs[i],
-			BlockQuerier: v1.NewBlockQuerier(b),
+			BlockQuerier: v1.NewBlockQuerier(b, false, v1.DefaultMaxPageSize),
 		})
 	}
 
@@ -152,7 +152,7 @@ func TestSimpleBloomGenerator(t *testing.T) {
 				expectedRefs := v1.PointerSlice(data)
 				outputRefs := make([]*v1.SeriesWithBloom, 0, len(data))
 				for _, block := range outputBlocks {
-					bq := block.Querier()
+					bq := v1.NewBlockQuerier(block, false, v1.DefaultMaxPageSize)
 					for bq.Next() {
 						outputRefs = append(outputRefs, bq.At())
 					}

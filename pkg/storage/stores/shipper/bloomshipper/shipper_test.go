@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 )
 
 func TestBloomShipper_findBlocks(t *testing.T) {

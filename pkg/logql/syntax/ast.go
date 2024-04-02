@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -17,8 +17,8 @@ import (
 
 	"github.com/grafana/regexp/syntax"
 
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
@@ -329,7 +329,7 @@ func (e *PipelineExpr) HasFilter() bool {
 }
 
 type LineFilter struct {
-	Ty    labels.MatchType
+	Ty    log.LineMatchType
 	Match string
 	Op    string
 }
@@ -342,7 +342,7 @@ type LineFilterExpr struct {
 	implicit
 }
 
-func newLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
+func newLineFilterExpr(ty log.LineMatchType, op, match string) *LineFilterExpr {
 	return &LineFilterExpr{
 		LineFilter: LineFilter{
 			Ty:    ty,
@@ -355,7 +355,7 @@ func newLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
 func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 	right.Ty = left.Ty
 
-	if left.Ty == labels.MatchEqual || left.Ty == labels.MatchRegexp {
+	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp || left.Ty == log.LineMatchPattern {
 		left.Or = right
 		right.IsOrChild = true
 		return left
@@ -389,7 +389,7 @@ func (e *LineFilterExpr) Accept(v RootVisitor) {
 }
 
 // AddFilterExpr adds a filter expression to a logselector expression.
-func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, op, match string) (LogSelectorExpr, error) {
+func AddFilterExpr(expr LogSelectorExpr, ty log.LineMatchType, op, match string) (LogSelectorExpr, error) {
 	filter := newLineFilterExpr(ty, op, match)
 	switch e := expr.(type) {
 	case *MatchersExpr:
@@ -412,16 +412,7 @@ func (e *LineFilterExpr) String() string {
 	}
 
 	if !e.IsOrChild { // Only write the type when we're not chaining "or" filters
-		switch e.Ty {
-		case labels.MatchRegexp:
-			sb.WriteString("|~")
-		case labels.MatchNotRegexp:
-			sb.WriteString("!~")
-		case labels.MatchEqual:
-			sb.WriteString("|=")
-		case labels.MatchNotEqual:
-			sb.WriteString("!=")
-		}
+		sb.WriteString(e.Ty.String())
 		sb.WriteString(" ")
 	}
 

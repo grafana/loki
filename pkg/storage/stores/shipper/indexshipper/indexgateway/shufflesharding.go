@@ -4,7 +4,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/pkg/errors"
 
-	lokiring "github.com/grafana/loki/pkg/util/ring"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 var (
@@ -21,6 +21,7 @@ var (
 
 type Limits interface {
 	IndexGatewayShardSize(tenantID string) int
+	TSDBMaxBytesPerShard(string) int
 }
 
 type ShardingStrategy interface {

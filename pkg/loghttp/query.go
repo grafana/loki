@@ -8,18 +8,19 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/grafana/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/dskit/httpgrpc"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 var (
@@ -503,6 +504,17 @@ func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
 	return ParseRangeQuery(r)
 }
 
+func ParseIndexShardsQuery(r *http.Request) (*RangeQuery, datasize.ByteSize, error) {
+	// TODO(owen-d): use a specific type/validation instead
+	// of using range query parameters (superset)
+	parsed, err := ParseRangeQuery(r)
+	if err != nil {
+		return nil, 0, err
+	}
+	targetBytes, err := parseBytes(r, "targetBytesPerShard", true)
+	return parsed, targetBytes, err
+}
+
 func NewVolumeRangeQueryWithDefaults(matchers string) *logproto.VolumeRequest {
 	start, end, _ := determineBounds(time.Now(), "", "", "")
 	step := (time.Duration(defaultQueryRangeStep(start, end)) * time.Second).Milliseconds()
@@ -603,6 +615,48 @@ func ParseVolumeRangeQuery(r *http.Request) (*VolumeRangeQuery, error) {
 		TargetLabels: targetLabels(r),
 		AggregateBy:  aggregateBy,
 	}, nil
+}
+
+func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest, error) {
+	var err error
+	result := &logproto.DetectedFieldsRequest{}
+
+	result.Query = query(r)
+	result.Start, result.End, err = bounds(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if result.End.Before(result.Start) {
+		return nil, errEndBeforeStart
+	}
+
+	result.LineLimit, err = lineLimit(r)
+	if err != nil {
+		return nil, err
+	}
+
+	result.FieldLimit, err = fieldLimit(r)
+	if err != nil {
+		return nil, err
+	}
+
+	step, err := step(r, result.Start, result.End)
+	result.Step = step.Milliseconds()
+	if err != nil {
+		return nil, err
+	}
+
+	if result.Step <= 0 {
+		return nil, errZeroOrNegativeStep
+	}
+
+	// For safety, limit the number of returned points per timeseries.
+	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
+	if (result.End.Sub(result.Start) / step) > 11000 {
+		return nil, errStepTooSmall
+	}
+	return result, nil
 }
 
 func targetLabels(r *http.Request) []string {

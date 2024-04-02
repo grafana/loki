@@ -30,7 +30,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: filesystem
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
@@ -71,7 +71,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: s3
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
@@ -127,7 +127,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: gcs
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
@@ -154,7 +154,7 @@ schema_config:
     - from: 2020-05-15
       store: tsdb
       object_store: bos
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h
@@ -203,12 +203,12 @@ schema_config:
         period: 24h
         prefix: index_
 
-  # Starting from 2023-6-15 Loki should store indexes on TSDB with the v12 schema
+  # Starting from 2023-6-15 Loki should store indexes on TSDB with the v13 schema
   # using daily periodic tables and chunks on AWS S3.
   - from: "2023-06-15"
     store: tsdb
     object_store: s3
-    schema: v12
+    schema: v13
     index:
         period: 24h
         prefix: index_
@@ -227,7 +227,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: alibabacloud
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
@@ -297,7 +297,7 @@ schema_config:
     - from: 2020-10-01
       store: tsdb
       object_store: cos
-      schema: v12
+      schema: v13
       index:
         period: 24h
         prefix: index_
@@ -327,7 +327,7 @@ schema_config:
     - from: 2020-10-01
       store: tsdb
       object_store: cos
-      schema: v12
+      schema: v13
       index:
         period: 24h
         prefix: index_
@@ -364,7 +364,7 @@ schema_config:
     - from: 2020-10-01
       store: tsdb
       object_store: cos
-      schema: v12
+      schema: v13
       index:
         period: 24h
         prefix: index_

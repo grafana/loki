@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
@@ -26,29 +26,28 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester/index"
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/loghttp/push"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/deletion"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	mathutil "github.com/grafana/loki/pkg/util/math"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/index"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/deletion"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	mathutil "github.com/grafana/loki/v3/pkg/util/math"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -504,16 +503,9 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	stats := stats.FromContext(ctx)
 	var iters []iter.SampleIterator
 
-	var shard *astmapper.ShardAnnotation
-	shards, err := logql.ParseShards(req.Shards)
+	shard, err := parseShardFromRequest(req.Shards)
 	if err != nil {
 		return nil, err
-	}
-	if len(shards) > 1 {
-		return nil, errors.New("only one shard per ingester query is supported")
-	}
-	if len(shards) == 1 {
-		shard = &shards[0]
 	}
 	selector, err := expr.Selector()
 	if err != nil {
@@ -823,11 +815,11 @@ func (i *instance) forMatchingStreams(
 	// and is used to select the correct inverted index
 	ts time.Time,
 	matchers []*labels.Matcher,
-	shards *astmapper.ShardAnnotation,
+	shard *logql.Shard,
 	fn func(*stream) error,
 ) error {
 	filters, matchers := util.SplitFiltersAndMatchers(matchers)
-	ids, err := i.index.Lookup(ts, matchers, shards)
+	ids, err := i.index.Lookup(ts, matchers, shard)
 	if err != nil {
 		return err
 	}
@@ -934,9 +926,9 @@ func (i *instance) openTailersCount() uint32 {
 	return uint32(len(i.tailers))
 }
 
-func parseShardFromRequest(reqShards []string) (*astmapper.ShardAnnotation, error) {
-	var shard *astmapper.ShardAnnotation
-	shards, err := logql.ParseShards(reqShards)
+func parseShardFromRequest(reqShards []string) (*logql.Shard, error) {
+	var shard *logql.Shard
+	shards, _, err := logql.ParseShards(reqShards)
 	if err != nil {
 		return nil, err
 	}

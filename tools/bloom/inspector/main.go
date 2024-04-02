@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 )
 
 func main() {
@@ -17,8 +17,8 @@ func main() {
 	fmt.Printf("Block directory: %s\n", path)
 
 	r := v1.NewDirectoryBlockReader(path)
-	b := v1.NewBlock(r)
-	q := v1.NewBlockQuerier(b)
+	b := v1.NewBlock(r, v1.NewMetrics(nil))
+	q := v1.NewBlockQuerier(b, true, v1.DefaultMaxPageSize)
 
 	md, err := q.Metadata()
 	if err != nil {

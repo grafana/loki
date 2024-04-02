@@ -39,7 +39,7 @@ schema_config:
     - from: 2023-10-20 ①
       store: tsdb ②
       object_store: filesystem ③
-      schema: v12 ④
+      schema: v13 ④
       index:
         prefix: index_
         period: 24h
@@ -51,7 +51,7 @@ schema_config:
 
 ③  This sample configuration uses filesystem as the storage in both the periods. If you want to use a different storage for the TSDB index and chunks, you can specify a different `object_store` in the new period.
 
-④  Update the schema to v12 which is the recommended version at the time of writing. Please refer to the [configure page]({{< relref "../../../configure#period_config" >}}) for the current recommend version.
+④  Update the schema to v13 which is the recommended version at the time of writing. Please refer to the [configure page]({{< relref "../../../configure#period_config" >}}) for the current recommend version.
 
 ### Configure TSDB shipper
 

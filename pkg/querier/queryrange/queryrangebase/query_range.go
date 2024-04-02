@@ -19,9 +19,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 // StatusSuccess Prometheus success result.
@@ -38,14 +38,26 @@ var (
 	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
 	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per time series. Try increasing the value of the step parameter")
 
-	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
-	PrometheusCodec = &prometheusCodec{}
+	// PrometheusCodecForRangeQueries is a codec to encode and decode Loki range metric query requests and responses.
+	PrometheusCodecForRangeQueries = &prometheusCodec{
+		resultType: model.ValMatrix,
+	}
+
+	// PrometheusCodecForInstantQueries is a codec to encode and decode Loki range metric query requests and responses.
+	PrometheusCodecForInstantQueries = &prometheusCodec{
+		resultType: model.ValVector,
+	}
 
 	// Name of the cache control header.
 	cacheControlHeader = "Cache-Control"
 )
 
-type prometheusCodec struct{}
+type prometheusCodec struct {
+	// prometheusCodec is used to merge multiple response of either range (matrix) or instant queries(vector).
+	// when creating empty responses during merge, it need to be aware what kind of valueType it should create with.
+	// helps other middlewares to filter the correct result type.
+	resultType model.ValueType
+}
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
 func (q *PrometheusRequest) WithStartEnd(start, end time.Time) Request {
@@ -125,19 +137,19 @@ func (resp *PrometheusResponse) SetHeader(name, value string) {
 }
 
 // NewEmptyPrometheusResponse returns an empty successful Prometheus query range response.
-func NewEmptyPrometheusResponse() *PrometheusResponse {
+func NewEmptyPrometheusResponse(v model.ValueType) *PrometheusResponse {
 	return &PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
-			ResultType: model.ValMatrix.String(),
+			ResultType: v.String(),
 			Result:     []SampleStream{},
 		},
 	}
 }
 
-func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
+func (p prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	if len(responses) == 0 {
-		return NewEmptyPrometheusResponse(), nil
+		return NewEmptyPrometheusResponse(p.resultType), nil
 	}
 
 	promResponses := make([]*PrometheusResponse, 0, len(responses))
@@ -155,7 +167,7 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	response := PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
-			ResultType: model.ValMatrix.String(),
+			ResultType: p.resultType.String(),
 			Result:     matrixMerge(promResponses),
 		},
 	}

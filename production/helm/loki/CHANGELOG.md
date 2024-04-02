@@ -17,6 +17,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [ENHANCEMENT] Allow the definition of PVC annotations for all volume claim templates in statefulsets
 
+## 5.47.2
+
+- [ENHANCEMENT] Allow for additional pipeline stages to be configured on the `selfMonitoring` `Podlogs` resource.
+
 ## 5.47.1
 
 - [BUGFIX] Increase default value of backend minReplicas to 3

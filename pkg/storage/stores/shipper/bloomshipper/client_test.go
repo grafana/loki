@@ -13,9 +13,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/config"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 func parseTime(s string) model.Time {
@@ -41,8 +41,8 @@ func newMockBloomClient(t *testing.T) (*BloomClient, string) {
 	dir := t.TempDir()
 	logger := log.NewLogfmtLogger(os.Stderr)
 	cfg := bloomStoreConfig{
-		workingDir: dir,
-		numWorkers: 3,
+		workingDirs: []string{dir},
+		numWorkers:  3,
 	}
 	client, err := NewBloomClient(cfg, oc, logger)
 	require.NoError(t, err)

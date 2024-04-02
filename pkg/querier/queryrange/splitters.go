@@ -5,10 +5,10 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 type splitter interface {
@@ -73,6 +73,15 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 				From:     model.TimeFromUnix(start.Unix()),
 				Through:  model.TimeFromUnix(end.Unix()),
 				Matchers: r.GetMatchers(),
+			})
+		}
+	case *logproto.ShardsRequest:
+		factory = func(start, end time.Time) {
+			reqs = append(reqs, &logproto.ShardsRequest{
+				From:                model.TimeFromUnix(start.Unix()),
+				Through:             model.TimeFromUnix(end.Unix()),
+				Query:               r.Query,
+				TargetBytesPerShard: r.TargetBytesPerShard,
 			})
 		}
 	case *logproto.VolumeRequest:

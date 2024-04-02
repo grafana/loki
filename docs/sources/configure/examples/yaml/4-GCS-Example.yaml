@@ -19,7 +19,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: gcs
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
