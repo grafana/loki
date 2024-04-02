@@ -166,6 +166,42 @@ func TestFiltersToBloomTests(t *testing.T) {
 			bloom:       fakeBloom{"foo"},
 			expectMatch: true,
 		},
+		{
+			name:        "pattern match exists",
+			query:       `{app="fake"} |> "<_>foo<bar>"`,
+			bloom:       fakeBloom{"foo", "bar"},
+			expectMatch: true,
+		},
+		{
+			name:        "pattern match does not exist",
+			query:       `{app="fake"} |> "<_>foo<bar>"`,
+			bloom:       fakeBloom{"bar", "baz"},
+			expectMatch: false,
+		},
+		{
+			name:        "pattern not match exists",
+			query:       `{app="fake"} !> "<_>foo<bar>"`,
+			bloom:       fakeBloom{"foo", "bar"},
+			expectMatch: true,
+		},
+		{
+			name:        "pattern not match does not exist",
+			query:       `{app="fake"} !> "<_>foo<bar>"`,
+			bloom:       fakeBloom{"bar", "baz"},
+			expectMatch: true,
+		},
+		{
+			name:        "pattern all",
+			query:       `{app="fake"} |> "<_>"`,
+			bloom:       fakeBloom{"bar", "baz"},
+			expectMatch: true,
+		},
+		{
+			name:        "pattern empty",
+			query:       `{app="fake"} |> ""`,
+			bloom:       fakeBloom{"bar", "baz"},
+			expectMatch: true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)

@@ -97,6 +97,7 @@ type Querier interface {
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
+	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
 }
 
 type Limits querier_limits.Limits
@@ -927,4 +928,15 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 	}
 	res, err := q.patternQuerier.Patterns(ctx, req)
 	return res, err
+}
+
+func (q *SingleTenantQuerier) DetectedLabels(_ context.Context, _ *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+	return &logproto.DetectedLabelsResponse{
+		DetectedLabels: []*logproto.DetectedLabel{
+			{Label: "namespace"},
+			{Label: "cluster"},
+			{Label: "instance"},
+			{Label: "pod"},
+		},
+	}, nil
 }

@@ -604,6 +604,18 @@ func (q *querierMock) Patterns(ctx context.Context, req *logproto.QueryPatternsR
 	return resp.(*logproto.QueryPatternsResponse), err
 }
 
+func (q *querierMock) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+	args := q.MethodCalled("DetectedFields", ctx, req)
+
+	resp := args.Get(0)
+	err := args.Error(1)
+	if resp == nil {
+		return nil, err
+	}
+
+	return resp.(*logproto.DetectedLabelsResponse), err
+}
+
 type engineMock struct {
 	util.ExtendedMock
 }
