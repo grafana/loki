@@ -90,7 +90,7 @@ type ObjectStorageSecretSpec struct {
 }
 ```
 
-The purpose of the `CredentialMode` is to override the detected credentials type from object storage secrets or the operator environment variables. Latter is only supported on AWS-STS/Azure-WIF managed OpenShift clusters, where the operator is using CredetialMode `token-cco` by default. However, the user might want to use `static` to store logs for example to Minio on the same cluster instead to AWS S3.
+The purpose of the `CredentialMode` is to override the detected credentials type from object storage secrets or the operator environment variables. Latter is only supported on AWS-STS/Azure-WIF managed OpenShift clusters, where the operator is using CredentialMode `token-cco` by default. However, the user might want to use `static` to store logs for example to Minio on the same cluster instead to AWS S3.
 
 ### Implementation Details/Notes/Constraints
 
