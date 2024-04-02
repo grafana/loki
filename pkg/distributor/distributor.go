@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/dskit/httpgrpc"
@@ -57,6 +58,13 @@ const (
 
 	labelServiceName = "service_name"
 	serviceUnknown   = "unknown_service"
+	labelLevel       = "level"
+	logLevelDebug    = "debug"
+	logLevelInfo     = "info"
+	logLevelWarn     = "warn"
+	logLevelError    = "error"
+	logLevelFatal    = "fatal"
+	logLevelCritical = "critical"
 )
 
 var (
@@ -367,6 +375,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			n := 0
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
+			addLogLevel := validationContext.allowStructuredMetadata && validationContext.discoverLogLevels && !lbs.Has(labelLevel)
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
@@ -374,6 +383,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					continue
 				}
 
+				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+				if addLogLevel && !structuredMetadata.Has(labelLevel) {
+					logLevel := detectLogLevelFromLogEntry(entry, structuredMetadata)
+					entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
+						Name:  labelLevel,
+						Value: logLevel,
+					})
+				}
 				stream.Entries[n] = entry
 
 				// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
@@ -837,4 +854,57 @@ func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger l
 // distributor. $EFFECTIVE_RATE_LIMIT = $GLOBAL_RATE_LIMIT / $NUM_INSTANCES.
 func (d *Distributor) HealthyInstancesCount() int {
 	return int(d.healthyInstancesCount.Load())
+}
+
+func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
+	// otlp logs have a severity number, using which we are defining the log levels.
+	// Significance of severity number is explained in otel docs here https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber
+	if otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber); otlpSeverityNumberTxt != "" {
+		otlpSeverityNumber, err := strconv.Atoi(otlpSeverityNumberTxt)
+		if err != nil {
+			return logLevelInfo
+		}
+		if otlpSeverityNumber <= int(plog.SeverityNumberDebug4) {
+			return logLevelDebug
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberInfo4) {
+			return logLevelInfo
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberWarn4) {
+			return logLevelWarn
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberError4) {
+			return logLevelError
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberFatal4) {
+			return logLevelFatal
+		}
+		return logLevelInfo
+	}
+
+	return extractLogLevelFromLogLine(entry.Line)
+}
+
+func extractLogLevelFromLogLine(log string) string {
+	if strings.Contains(log, `:"err"`) || strings.Contains(log, `:"ERR"`) ||
+		strings.Contains(log, "=err") || strings.Contains(log, "=ERR") ||
+		strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
+		strings.Contains(log, "error") || strings.Contains(log, "ERROR") {
+		return logLevelError
+	}
+	if strings.Contains(log, `:"warn"`) || strings.Contains(log, `:"WARN"`) ||
+		strings.Contains(log, "=warn") || strings.Contains(log, "=WARN") ||
+		strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
+		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
+		return logLevelWarn
+	}
+	if strings.Contains(log, `:"critical"`) || strings.Contains(log, `:"CRITICAL"`) ||
+		strings.Contains(log, "=critical") || strings.Contains(log, "=CRITICAL") ||
+		strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") {
+		return logLevelCritical
+	}
+	if strings.Contains(log, `:"debug"`) || strings.Contains(log, `:"DEBUG"`) ||
+		strings.Contains(log, "=debug") || strings.Contains(log, "=DEBUG") ||
+		strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
+		return logLevelDebug
+	}
+
+	// Default to info if no specific level is found
+	return logLevelInfo
 }

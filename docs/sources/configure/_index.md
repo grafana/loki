@@ -2830,6 +2830,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -validation.discover-service-name
 [discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name component workload job]]
 
+# Discover and add log levels during ingestion, if not present already. Levels
+# would be added to Structured Metadata with name 'level' and one of the values
+# from 'debug', 'info', 'warn', 'error', 'critical', 'fatal'.
+# CLI flag: -validation.discover-log-levels
+[discover_log_levels: <boolean> | default = false]
+
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
 [max_streams_per_user: <int> | default = 0]
