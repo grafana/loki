@@ -99,17 +99,3 @@ func ParseDetectedLabelsQuery(r *http.Request) (*logproto.DetectedLabelsRequest,
 		Query: query(r),
 	}, nil
 }
-
-func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest, error) {
-	req := &logproto.DetectedFieldsRequest{}
-
-	start, end, err := bounds(r)
-	if err != nil {
-		return nil, err
-	}
-	req.Start = &start
-	req.End = &end
-
-	req.Query = query(r)
-	return req, nil
-}

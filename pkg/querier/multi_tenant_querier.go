@@ -3,11 +3,13 @@ package querier
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -29,12 +31,14 @@ const (
 // MultiTenantQuerier is able to query across different tenants.
 type MultiTenantQuerier struct {
 	Querier
+	logger log.Logger
 }
 
 // NewMultiTenantQuerier returns a new querier able to query across different tenants.
-func NewMultiTenantQuerier(querier Querier, _ log.Logger) *MultiTenantQuerier {
+func NewMultiTenantQuerier(querier Querier, logger log.Logger) *MultiTenantQuerier {
 	return &MultiTenantQuerier{
 		Querier: querier,
+		logger:  logger,
 	}
 }
 
@@ -258,6 +262,26 @@ func (q *MultiTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeReq
 	return merged, nil
 }
 
+func (q *MultiTenantQuerier) DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tenantIDs) == 1 {
+		return q.Querier.DetectedFields(ctx, req)
+	}
+
+	level.Debug(q.logger).Log(
+		"msg", "detected fields requested for multiple tenants, but not yet supported",
+		"tenantIDs", strings.Join(tenantIDs, ","),
+	)
+
+	return &logproto.DetectedFieldsResponse{
+		Fields: []*logproto.DetectedField{},
+	}, nil
+}
+
 func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
 	// TODO(shantanu)
 	tenantIDs, err := tenant.TenantID(ctx)
@@ -308,7 +332,7 @@ func replaceMatchers(expr syntax.Expr, matchers []*labels.Matcher) syntax.Expr {
 }
 
 // See https://github.com/grafana/mimir/blob/114ab88b50638a2047e2ca2a60640f6ca6fe8c17/pkg/querier/tenantfederation/tenant_federation.go#L29-L69
-// filterValuesByMatchers applies matchers to inputed `idLabelName` and
+// filterValuesByMatchers applies matchers to inputted `idLabelName` and
 // `ids`. A set of matched IDs is returned and also all label matchers not
 // targeting the `idLabelName` label.
 //
