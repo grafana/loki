@@ -1394,6 +1394,9 @@ func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.Detected
 
 	labelMap, err := instance.LabelsWithValues(ctx, *req.Start, matchers...)
 
+	if err != nil {
+		return nil, err
+	}
 	result := make(map[string]*logproto.UniqueLabelValues)
 	for label, values := range labelMap {
 		uniqueValues := make([]string, len(values))
