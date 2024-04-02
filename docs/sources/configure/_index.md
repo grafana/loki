@@ -2839,7 +2839,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # would be added to Structured Metadata with name 'level' and one of the values
 # from 'debug', 'info', 'warn', 'error', 'critical', 'fatal'.
 # CLI flag: -validation.discover-log-levels
-[discoverloglevels: <boolean> | default = false]
+[discover_log_levels: <boolean> | default = false]
 
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
