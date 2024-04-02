@@ -177,7 +177,7 @@ func (c *Client) pushLogLine(line string, timestamp time.Time, structuredMetadat
 	return fmt.Errorf("request failed with status code %v: %s", res.StatusCode, buf)
 }
 
-// pushLogLine creates a new logline
+// pushOTLPLogLine creates a new logline
 func (c *Client) pushOTLPLogLine(line string, timestamp time.Time, logAttributes map[string]any) error {
 	apiEndpoint := fmt.Sprintf("%s/otlp/v1/logs", c.baseURL)
 

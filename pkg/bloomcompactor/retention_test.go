@@ -730,7 +730,7 @@ func putMetasForLastNDays(t *testing.T, schemaCfg storageconfig.SchemaConfig, bl
 	}
 }
 
-// getMetasForLastNDays returns groups of continuous metas for the last N days.
+// getGroupedMetasForLastNDays returns groups of continuous metas for the last N days.
 func getGroupedMetasForLastNDays(t *testing.T, bloomStore *bloomshipper.BloomStore, tenant string, start model.Time, days int) [][][]bloomshipper.Meta {
 	metasGrouped := make([][][]bloomshipper.Meta, 0)
 	currentGroup := make([][]bloomshipper.Meta, 0)

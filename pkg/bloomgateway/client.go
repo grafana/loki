@@ -229,7 +229,7 @@ func shuffleAddrs(addrs []string) []string {
 	return addrs
 }
 
-// FilterChunkRefs implements Client
+// FilterChunks implements Client
 func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
 	if !c.limits.BloomGatewayEnabled(tenant) {
 		return groups, nil
