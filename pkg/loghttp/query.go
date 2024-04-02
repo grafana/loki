@@ -9,7 +9,6 @@ import (
 	"unsafe"
 
 	"github.com/c2h5oh/datasize"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -22,7 +21,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 var (
