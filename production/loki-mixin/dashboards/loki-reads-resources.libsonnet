@@ -67,7 +67,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.goHeapInUsePanel('Memory (go heap inuse)', 'querier'),
           )
           .addPanel(
-            $.panel('Disk Writes') +
+            $.timeseriesPanel('Disk Writes') +
             $.queryPanel(
               'sum by(%s, %s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDiskContainer('querier')],
               '{{%s}} - {{device}}' % $._config.per_instance_label
@@ -76,7 +76,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             { yaxes: $.yaxes('Bps') },
           )
           .addPanel(
-            $.panel('Disk Reads') +
+            $.timeseriesPanel('Disk Reads') +
             $.queryPanel(
               'sum by(%s, %s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDiskContainer('querier')],
               '{{%s}} - {{device}}' % $._config.per_instance_label
@@ -100,7 +100,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.goHeapInUsePanel('Memory (go heap inuse)', index_gateway_job_matcher),
           )
           .addPanel(
-            $.panel('Disk Writes') +
+            $.timeseriesPanel('Disk Writes') +
             $.queryPanel(
               'sum by(%s, %s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(index_gateway_pod_matcher)],
               '{{%s}} - {{device}}' % $._config.per_instance_label
@@ -109,7 +109,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             { yaxes: $.yaxes('Bps') },
           )
           .addPanel(
-            $.panel('Disk Reads') +
+            $.timeseriesPanel('Disk Reads') +
             $.queryPanel(
               'sum by(%s, %s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(index_gateway_pod_matcher)],
               '{{%s}} - {{device}}' % $._config.per_instance_label
@@ -137,7 +137,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           !$._config.ssd.enabled,
           grafana.row.new('Ruler')
           .addPanel(
-            $.panel('Rules') +
+            $.timeseriesPanel('Rules') +
             $.queryPanel(
               'sum by(%(label)s) (loki_prometheus_rule_group_rules{%(matcher)s}) or sum by(%(label)s) (cortex_prometheus_rule_group_rules{%(matcher)s})' % { label: $._config.per_instance_label, matcher: $.jobMatcher('ruler') },
               '{{%s}}' % $._config.per_instance_label

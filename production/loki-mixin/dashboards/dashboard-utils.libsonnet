@@ -151,7 +151,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       datasource: '$datasource',
     },
   CPUUsagePanel(title, matcher)::
-    $.panel(title) +
+    $.timeseriesPanel(title) +
     $.queryPanel([
       'sum by(pod) (rate(container_cpu_usage_seconds_total{%s, %s}[$__rate_interval]))' % [$.namespaceMatcher(), matcher],
       'min(kube_pod_container_resource_requests{%s, %s, resource="cpu"} > 0)' % [$.namespaceMatcher(), matcher],
@@ -176,7 +176,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     self.CPUUsagePanel(title, 'container=~"%s"' % containerName),
 
   memoryWorkingSetPanel(title, matcher)::
-    $.panel(title) +
+    $.timeseriesPanel(title) +
     $.queryPanel([
       // We use "max" instead of "sum" otherwise during a rolling update of a statefulset we will end up
       // summing the memory of the old pod (whose metric will be stale for 5m) to the new pod.
@@ -204,7 +204,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     self.memoryWorkingSetPanel(title, 'container=~"%s"' % containerName),
 
   goHeapInUsePanel(title, jobName)::
-    $.panel(title) +
+    $.timeseriesPanel(title) +
     $.queryPanel(
       'sum by(%s) (go_memstats_heap_inuse_bytes{%s})' % [$._config.per_instance_label, $.jobMatcher(jobName)],
       '{{%s}}' % $._config.per_instance_label
@@ -247,7 +247,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     },
 
   containerDiskSpaceUtilizationPanel(title, containerName)::
-    $.panel(title) +
+    $.timeseriesPanel(title) +
     $.queryPanel('max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{%s} / kubelet_volume_stats_capacity_bytes{%s}) and count by(persistentvolumeclaim) (kube_persistentvolumeclaim_labels{%s,%s})' % [$.namespaceMatcher(), $.namespaceMatcher(), $.namespaceMatcher(), $.containerLabelMatcher(containerName)], '{{persistentvolumeclaim}}') +
     { yaxes: $.yaxes('percentunit') },
 }
