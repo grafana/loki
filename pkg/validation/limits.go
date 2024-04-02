@@ -81,7 +81,7 @@ type Limits struct {
 	MaxLineSizeTruncate         bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 	DiscoverServiceName         []string         `yaml:"discover_service_name" json:"discover_service_name"`
-	DiscoverLogLevels           bool             `json:"discover_log_levels" json:"discover_log_levels"`
+	DiscoverLogLevels           bool             `yaml:"discover_log_levels" json:"discover_log_levels"`
 
 	// Ingester enforced limits.
 	MaxLocalStreamsPerUser  int              `yaml:"max_streams_per_user" json:"max_streams_per_user"`
