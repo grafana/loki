@@ -201,7 +201,7 @@ func calculateHTTPTimeouts(queryTimeout time.Duration) TimeoutConfig {
 
 func ValidatePerTenantConfig(s *lokiv1.LimitsSpec) error {
 	if s != nil && s.Tenants != nil {
-		for _, config := range s.Tenants {
+		for key, config := range s.Tenants {
 			c := lokiv1.PerTenantLimitsTemplateSpec{}
 			if config == c {
 				return ErrInvalidPerTenantConfig
