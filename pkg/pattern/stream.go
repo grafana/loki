@@ -27,6 +27,8 @@ type stream struct {
 	labelHash    uint64
 	patterns     *drain.Drain
 	mtx          sync.Mutex
+
+	lastTs int64
 }
 
 func newStream(
@@ -50,7 +52,10 @@ func (s *stream) Push(
 	defer s.mtx.Unlock()
 
 	for _, entry := range entries {
-		// todo skip out of order entries.
+		if entry.Timestamp.UnixNano() < s.lastTs {
+			continue
+		}
+		s.lastTs = entry.Timestamp.UnixNano()
 		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
 	}
 	return nil

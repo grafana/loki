@@ -1,6 +1,10 @@
 package iter
 
-import "github.com/grafana/loki/pkg/logproto"
+import (
+	"math"
+
+	"github.com/grafana/loki/pkg/logproto"
+)
 
 func ReadBatch(it Iterator, batchSize int) (*logproto.QueryPatternsResponse, error) {
 	var (
@@ -23,4 +27,8 @@ func ReadBatch(it Iterator, batchSize int) (*logproto.QueryPatternsResponse, err
 		})
 	}
 	return &result, it.Error()
+}
+
+func ReadAll(it Iterator) (*logproto.QueryPatternsResponse, error) {
+	return ReadBatch(it, math.MaxInt32)
 }
