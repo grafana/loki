@@ -24,7 +24,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar"}`, false},
 		{`{foo="bar", bar!="baz"}`, false},
 		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop"`, true},
-		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap"`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" |> "qux" !> "waldo" != "flip" !~ "flap"`, true},
 		{`{foo="bar", bar!="baz"} |= ""`, false},
 		{`{foo="bar", bar!="baz"} |= "" |= ip("::1")`, true},
 		{`{foo="bar", bar!="baz"} |= "" != ip("127.0.0.1")`, true},
@@ -32,7 +32,10 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar", bar!="baz"} |~ ".*"`, false},
 		{`{foo="bar", bar!="baz"} |= "" |= ""`, false},
 		{`{foo="bar", bar!="baz"} |~ "" |= "" |~ ".*"`, false},
-		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop" | json`, true},
+		{`{foo="bar", bar!="baz"} |> ""`, true},
+		{`{foo="bar", bar!="baz"} |> "<_>"`, true},
+		{`{foo="bar", bar!="baz"} |> "<_>" !> "<_> <_>"`, true},
+		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop" |> "<_> bop <_>" | json`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict --keep-empty`, true},
@@ -275,6 +278,7 @@ func Test_NilFilterDoesntPanic(t *testing.T) {
 		`{namespace="dev", container_name="cart"} |= "bleep" |= "" |= "bloop"`,
 		`{namespace="dev", container_name="cart"} |= "bleep" |= "" |= "bloop"`,
 		`{namespace="dev", container_name="cart"} |= "bleep" |= "bloop" |= ""`,
+		`{namespace="dev", container_name="cart"} !> ""`,
 	} {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseLogSelector(tc, true)
@@ -356,6 +360,20 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", true}, {"bar", false}, {"foobar", true}},
 		},
 		{
+			`{app="foo"} |> "foo <_>"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo bar", true}, {"foo", false}},
+		},
+		{
+			`{app="foo"} !> "foo <_>"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo bar", false}, {"foo", true}},
+		},
+		{
 			`{app="foo"} |~ "foo\\.bar\\.baz"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
@@ -425,6 +443,20 @@ func Test_FilterMatcher(t *testing.T) {
 			},
 			[]linecheck{{"foo", false}, {"bar", true}, {"127.0.0.2", true}, {"127.0.0.1", false}},
 		},
+		{
+			`{app="foo"} |> "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} !> "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
+		},
 	} {
 		tt := tt
 		t.Run(tt.q, func(t *testing.T) {
@@ -449,16 +481,18 @@ func Test_FilterMatcher(t *testing.T) {
 
 func TestOrLineFilterTypes(t *testing.T) {
 	for _, tt := range []struct {
-		ty labels.MatchType
+		ty log.LineMatchType
 	}{
-		{labels.MatchEqual},
-		{labels.MatchNotEqual},
-		{labels.MatchRegexp},
-		{labels.MatchNotRegexp},
+		{log.LineMatchEqual},
+		{log.LineMatchNotEqual},
+		{log.LineMatchRegexp},
+		{log.LineMatchNotRegexp},
+		{log.LineMatchPattern},
+		{log.LineMatchNotPattern},
 	} {
 		t.Run("right inherits left's type", func(t *testing.T) {
 			left := &LineFilterExpr{LineFilter: LineFilter{Ty: tt.ty, Match: "something"}}
-			right := &LineFilterExpr{LineFilter: LineFilter{Ty: labels.MatchEqual, Match: "something"}}
+			right := &LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "something"}}
 
 			_ = newOrLineFilter(left, right)
 			require.Equal(t, tt.ty, right.Ty)
@@ -523,6 +557,14 @@ func TestStringer(t *testing.T) {
 			in:  `{app="foo"} |~ ip("127.0.0.1") or "foo"`,
 			out: `{app="foo"} |~ ip("127.0.0.1") or "foo"`,
 		},
+		{
+			in:  `{app="foo"} |> "foo <_> baz" or "foo <_>"`,
+			out: `{app="foo"} |> "foo <_> baz" or "foo <_>"`,
+		},
+		{
+			in:  `{app="foo"} |> "foo <_> baz" or "foo <_>" |> "foo <_> baz"`,
+			out: `{app="foo"} |> "foo <_> baz" or "foo <_>" |> "foo <_> baz"`,
+		},
 		{ // !(A || B) == !A && !B
 			in:  `{app="foo"} != "foo" or "bar"`,
 			out: `{app="foo"} != "foo" != "bar"`,
@@ -538,6 +580,10 @@ func TestStringer(t *testing.T) {
 		{
 			in:  `{app="foo"} !~ ip("127.0.0.1") or "foo"`,
 			out: `{app="foo"} !~ ip("127.0.0.1") !~ "foo"`,
+		},
+		{
+			in:  `{app="foo"} !> "<_> foo <_>" or "foo <_>" !> "foo <_> baz"`,
+			out: `{app="foo"} !> "<_> foo <_>" !> "foo <_>" !> "foo <_> baz"`,
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
@@ -563,19 +609,19 @@ func BenchmarkContainsFilter(b *testing.B) {
 	}{
 		{
 			"AllMatches",
-			`{app="foo"} |= "foo" |= "hello" |= "world" |= "bar"`,
+			`{app="foo"} |= "foo" |= "hello" |= "world" |= "bar" |> "<_> world <_>"`,
 		},
 		{
 			"OneMatches",
-			`{app="foo"} |= "foo" |= "not" |= "in" |= "there"`,
+			`{app="foo"} |= "foo" |= "not" |= "in" |= "there" |> "yet"`,
 		},
 		{
 			"MixedFiltersTrue",
-			`{app="foo"} |= "foo" != "not" |~ "hello.*bar" != "there" |= "world"`,
+			`{app="foo"} |= "foo" != "not" |~ "hello.*bar" != "there" |= "world" |> "<_> more than one <_>"`,
 		},
 		{
 			"MixedFiltersFalse",
-			`{app="foo"} |= "baz" != "not" |~ "hello.*bar" != "there" |= "world"`,
+			`{app="foo"} |= "baz" != "not" |~ "hello.*bar" != "there" |= "world" !> "<_> more than one"`,
 		},
 		{
 			"GreedyRegex",

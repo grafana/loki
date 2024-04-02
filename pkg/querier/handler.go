@@ -111,6 +111,22 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 			return nil, err
 		}
 		return &queryrange.VolumeResponse{Response: result}, nil
+	case *queryrange.DetectedFieldsRequest:
+		result, err := h.api.DetectedFieldsHandler(ctx, &concrete.DetectedFieldsRequest)
+		if err != nil {
+			return nil, err
+		}
+
+		return &queryrange.DetectedFieldsResponse{
+			Response: result,
+		}, nil
+	case *queryrange.DetectedLabelsRequest:
+		result, err := h.api.DetectedLabelsHandler(ctx, &concrete.DetectedLabelsRequest)
+		if err != nil {
+			return nil, err
+		}
+
+		return &queryrange.DetectedLabelsResponse{Response: result}, nil
 	default:
 		return nil, fmt.Errorf("unsupported query type %T", req)
 	}

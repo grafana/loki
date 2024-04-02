@@ -43,6 +43,13 @@ type Metrics struct {
 
 	progress      prometheus.Gauge
 	timePerTenant *prometheus.CounterVec
+
+	// Retention metrics
+	retentionRunning                  prometheus.Gauge
+	retentionTime                     *prometheus.HistogramVec
+	retentionDaysPerIteration         *prometheus.HistogramVec
+	retentionTenantsPerIteration      *prometheus.HistogramVec
+	retentionTenantsExceedingLookback prometheus.Gauge
 }
 
 func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
@@ -175,6 +182,47 @@ func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 			Name:      "tenant_compaction_seconds_total",
 			Help:      "Time spent processing a tenant.",
 		}, []string{tenantLabel}),
+
+		// Retention
+		retentionRunning: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "retention_running",
+			Help:      "1 if retention is running in this compactor.",
+		}),
+
+		retentionTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "retention_time_seconds",
+			Help:      "Time this retention process took to complete.",
+			Buckets:   prometheus.DefBuckets,
+		}, []string{"status"}),
+
+		retentionDaysPerIteration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "retention_days_processed",
+			Help:      "Number of days iterated over during the retention process.",
+			// 1day -> 5 years, 10 buckets
+			Buckets: prometheus.ExponentialBucketsRange(1, 365*5, 10),
+		}, []string{"status"}),
+
+		retentionTenantsPerIteration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "retention_tenants_processed",
+			Help:      "Number of tenants on which retention was applied during the retention process.",
+			// 1 tenant -> 10k tenants, 10 buckets
+			Buckets: prometheus.ExponentialBucketsRange(1, 10000, 10),
+		}, []string{"status"}),
+
+		retentionTenantsExceedingLookback: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "retention_tenants_exceeding_lookback",
+			Help:      "Number of tenants with a retention exceeding the configured retention lookback.",
+		}),
 	}
 
 	return &m

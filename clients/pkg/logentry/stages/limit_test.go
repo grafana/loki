@@ -60,7 +60,7 @@ var testNonAppLogLine = `
 
 var plName = "testPipeline"
 
-// TestLimitPipeline is used to verify we properly parse the yaml config and create a working pipeline
+// TestLimitWaitPipeline is used to verify we properly parse the yaml config and create a working pipeline
 func TestLimitWaitPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	pl, err := NewPipeline(util_log.Logger, loadConfig(testLimitWaitYaml), &plName, registry)
@@ -78,7 +78,7 @@ func TestLimitWaitPipeline(t *testing.T) {
 	assert.Equal(t, out[0].Line, testMatchLogLineApp1)
 }
 
-// TestLimitPipeline is used to verify we properly parse the yaml config and create a working pipeline
+// TestLimitDropPipeline is used to verify we properly parse the yaml config and create a working pipeline
 func TestLimitDropPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	pl, err := NewPipeline(util_log.Logger, loadConfig(testLimitDropYaml), &plName, registry)

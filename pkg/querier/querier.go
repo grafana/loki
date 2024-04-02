@@ -95,6 +95,8 @@ type Querier interface {
 	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
 	IndexShards(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error)
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
+	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
+	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
 }
 
 type Limits querier_limits.Limits
@@ -896,4 +898,27 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 	}
 
 	return seriesvolume.Merge(responses, req.Limit), nil
+}
+
+func (q *SingleTenantQuerier) DetectedFields(_ context.Context, _ *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	return &logproto.DetectedFieldsResponse{
+		Fields: []*logproto.DetectedField{
+			{
+				Label:       "foo",
+				Type:        logproto.DetectedFieldString,
+				Cardinality: 1,
+			},
+		},
+	}, nil
+}
+
+func (q *SingleTenantQuerier) DetectedLabels(_ context.Context, _ *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+	return &logproto.DetectedLabelsResponse{
+		DetectedLabels: []*logproto.DetectedLabel{
+			{Label: "namespace"},
+			{Label: "cluster"},
+			{Label: "instance"},
+			{Label: "pod"},
+		},
+	}, nil
 }

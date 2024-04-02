@@ -3,9 +3,9 @@ package v1
 import (
 	"github.com/grafana/regexp"
 	regexpsyntax "github.com/grafana/regexp/syntax"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/log/pattern"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 )
@@ -90,16 +90,16 @@ func FiltersToBloomTest(b NGramBuilder, filters ...syntax.LineFilterExpr) BloomT
 
 func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest {
 	switch filter.Ty {
-	case labels.MatchNotEqual, labels.MatchNotRegexp:
+	case log.LineMatchNotEqual, log.LineMatchNotRegexp, log.LineMatchNotPattern:
 		// We cannot test _negated_ filters with a bloom filter since blooms are probabilistic
 		// filters that can only tell us if a string _might_ exist.
 		// For example, for `!= "foo"`, the bloom filter might tell us that the string "foo" might exist
 		// but because we are not sure, we cannot discard that chunk because it might actually not be there.
 		// Therefore, we return a test that always returns true.
 		return MatchAll
-	case labels.MatchEqual:
+	case log.LineMatchEqual:
 		return newStringTest(b, filter.Match)
-	case labels.MatchRegexp:
+	case log.LineMatchRegexp:
 		reg, err := regexpsyntax.Parse(filter.Match, regexpsyntax.Perl)
 		if err != nil {
 			// TODO: log error
@@ -115,6 +115,8 @@ func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest
 		}
 
 		return matcherFilterWrapper{filter: matcher}
+	case log.LineMatchPattern:
+		return newPatternTest(b, filter.Match)
 	default:
 		return MatchAll
 	}
@@ -275,4 +277,21 @@ func (o orTest) Matches(bloom filter.Checker) bool {
 
 func (o orTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
 	return o.left.MatchesWithPrefixBuf(bloom, buf, prefixLen) || o.right.MatchesWithPrefixBuf(bloom, buf, prefixLen)
+}
+
+func newPatternTest(b NGramBuilder, match string) BloomTest {
+	lit, err := pattern.ParseLiterals(match)
+	if err != nil {
+		return MatchAll
+	}
+	var test stringTest
+	for _, l := range lit {
+		it := b.Tokens(string(l))
+		for it.Next() {
+			ngram := make([]byte, len(it.At()))
+			copy(ngram, it.At())
+			test.ngrams = append(test.ngrams, ngram)
+		}
+	}
+	return test
 }

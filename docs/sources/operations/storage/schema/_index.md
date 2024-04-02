@@ -23,7 +23,7 @@ Here are items to consider when changing the schema; if schema changes are not d
 
   Be aware of your relation to UTC when using the current date. Make sure that UTC 00:00:00 has not already passed for your current date.
   
-  As an example, assume that the current date is 2022-04-10, and you want to update to the v12 schema, so you restart Loki with 2022-04-11 as the `from` date for the new schema. If you forget to take into account that your timezone is UTC -5:00 and it’s currently 20:00 hours in your local timezone,  that is actually 2022-04-11T01:00:00 UTC. When Loki starts it will see the new schema and begin to write and store objects following that new schema. If you then try to query data that was written between 00:00:00 and 01:00:00 UTC, Loki will use the new schema and the data will be unreadable, because it was created with the previous schema.
+  As an example, assume that the current date is 2022-04-10, and you want to update to the v13 schema, so you restart Loki with 2022-04-11 as the `from` date for the new schema. If you forget to take into account that your timezone is UTC -5:00 and it’s currently 20:00 hours in your local timezone,  that is actually 2022-04-11T01:00:00 UTC. When Loki starts it will see the new schema and begin to write and store objects following that new schema. If you then try to query data that was written between 00:00:00 and 01:00:00 UTC, Loki will use the new schema and the data will be unreadable, because it was created with the previous schema.
 
 - You cannot undo or roll back a schema change.
 
@@ -46,6 +46,6 @@ schema_config:
             period: 24h
             prefix: loki_ops_index_
           object_store: gcs
-          schema: v12
+          schema: v13
           store: tsdb
 ```

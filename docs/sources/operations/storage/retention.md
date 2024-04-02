@@ -72,7 +72,7 @@ schema_config:
             period: 24h
             prefix: index_
         object_store: gcs
-        schema: v12
+        schema: v13
         store: tsdb
 storage_config:
     tsdb_shipper:
@@ -238,7 +238,7 @@ schema_config:
   - from: 2018-04-15
     store: tsdb
     object_store: gcs
-    schema: v12
+    schema: v13
     index:
       prefix: loki_index_
       period: 24h

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 func TestShardString(t *testing.T) {
@@ -17,7 +17,7 @@ func TestShardString(t *testing.T) {
 	}{
 		{
 			shard: Shard{
-				PowerOfTwo: &astmapper.ShardAnnotation{
+				PowerOfTwo: &index.ShardAnnotation{
 					Shard: 1,
 					Of:    2,
 				},
@@ -62,7 +62,7 @@ func TestShardString(t *testing.T) {
 						Max: 2,
 					},
 				},
-				PowerOfTwo: &astmapper.ShardAnnotation{
+				PowerOfTwo: &index.ShardAnnotation{
 					Shard: 1,
 					Of:    2,
 				},
@@ -86,7 +86,7 @@ func TestParseShard(t *testing.T) {
 			str:     "1_of_2",
 			version: PowerOfTwoVersion,
 			exp: Shard{
-				PowerOfTwo: &astmapper.ShardAnnotation{
+				PowerOfTwo: &index.ShardAnnotation{
 					Shard: 1,
 					Of:    2,
 				},
@@ -140,11 +140,11 @@ func TestParseShards(t *testing.T) {
 			strs:    []string{"1_of_2", "1_of_2"},
 			version: PowerOfTwoVersion,
 			exp: Shards{
-				NewPowerOfTwoShard(astmapper.ShardAnnotation{
+				NewPowerOfTwoShard(index.ShardAnnotation{
 					Shard: 1,
 					Of:    2,
 				}),
-				NewPowerOfTwoShard(astmapper.ShardAnnotation{
+				NewPowerOfTwoShard(index.ShardAnnotation{
 					Shard: 1,
 					Of:    2,
 				}),
