@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"regexp"
 	"time"
 
 	"github.com/axiomhq/hyperloglog"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/opentracing/opentracing-go"
+	"golang.org/x/exp/slices"
 
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -910,6 +912,9 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
 	var ingesterLabels *logproto.LabelToValuesResponse
 	var detectedLabels []*logproto.DetectedLabel
+
+	staticLabels := []string{"pod", "namespace", "cluster", "instance"}
+
 	g, ctx := errgroup.WithContext(ctx)
 	ingesterQueryInterval, _ := q.buildQueryIntervals(*req.Start, *req.End)
 	if !q.cfg.QueryStoreOnly {
@@ -932,7 +937,9 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	for label, values := range ingesterLabels.Labels {
 		cardinality := len(values.Values)
 		// TODO(shantanu) make these values configurable
-		if cardinality < 5 || cardinality > 50 {
+		if !slices.Contains(staticLabels, label) &&
+			(cardinality < 1 || cardinality > 50) ||
+			containsAllIDTypes(values.Values) {
 			continue
 		}
 		detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(cardinality)})
@@ -941,6 +948,21 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	return &logproto.DetectedLabelsResponse{
 		DetectedLabels: detectedLabels,
 	}, nil
+}
+
+// containsAllIDTypes filters out all UUID, GUID and numeric types. Returns false if even one value is not of the type
+func containsAllIDTypes(values []string) bool {
+	pattern := `^(?:(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})|(?:(?:\{)?[0-9a-fA-F]{8}(?:-?[0-9a-fA-F]{4}){3}-?[0-9a-fA-F]{12}(?:\})?)|(\d+))$`
+
+	re := regexp.MustCompile(pattern)
+
+	for _, v := range values {
+		if !re.MatchString(v) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
