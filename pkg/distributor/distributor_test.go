@@ -38,12 +38,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/push"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	fe "github.com/grafana/loki/v3/pkg/util/flagext"
+	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	loki_net "github.com/grafana/loki/v3/pkg/util/net"
 	"github.com/grafana/loki/v3/pkg/util/test"
 	"github.com/grafana/loki/v3/pkg/validation"
-	fe "github.com/grafana/loki/v3/v3/pkg/util/flagext"
-	loki_flagext "github.com/grafana/loki/v3/v3/pkg/util/flagext"
 )
 
 var (

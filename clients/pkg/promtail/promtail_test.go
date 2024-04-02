@@ -35,10 +35,10 @@ import (
 	"github.com/grafana/loki/v3/clients/pkg/promtail/config"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/server"
+	pserver "github.com/grafana/loki/v3/clients/pkg/promtail/server"
 	file2 "github.com/grafana/loki/v3/clients/pkg/promtail/targets/file"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/testutils"
-	"github.com/grafana/loki/v3/v3/clients/pkg/promtail/server"
-	pserver "github.com/grafana/loki/v3/v3/clients/pkg/promtail/server"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"

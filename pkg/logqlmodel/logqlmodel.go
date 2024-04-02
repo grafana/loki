@@ -5,8 +5,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/push"
+
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // ValueTypeStreams promql.ValueType for log streams

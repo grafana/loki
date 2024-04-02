@@ -19,9 +19,9 @@ import (
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	util_ring "github.com/grafana/loki/v3/pkg/util/ring"
 	"github.com/grafana/loki/v3/pkg/validation"
-	lokiring "github.com/grafana/loki/v3/v3/pkg/util/ring"
-	util_ring "github.com/grafana/loki/v3/v3/pkg/util/ring"
 )
 
 func TestCompactor_ownsTenant(t *testing.T) {
