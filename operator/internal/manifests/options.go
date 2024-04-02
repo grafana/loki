@@ -204,7 +204,7 @@ func ValidatePerTenantConfig(s *lokiv1.LimitsSpec) error {
 		for key, config := range s.Tenants {
 			c := lokiv1.PerTenantLimitsTemplateSpec{}
 			if config == c {
-				return ErrInvalidPerTenantConfig
+				return fmt.Errorf("%w: %s", ErrPerTenantConfigInvalid, key)
 			}
 		}
 	}
