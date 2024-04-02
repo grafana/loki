@@ -141,7 +141,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 	// debug.SetGCPercent(10)
 	stop := make(chan struct{})
 	go func() {
-		_ = http.ListenAndServe(":6060", http.DefaultServeMux)
+		_ = http.ListenAndServe("localhost:6060", http.DefaultServeMux)
 	}()
 	go func() {
 		ticker := time.NewTicker(time.Millisecond)

@@ -907,14 +907,38 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 	return seriesvolume.Merge(responses, req.Limit), nil
 }
 
-func (q *SingleTenantQuerier) DetectedLabels(_ context.Context, _ *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+	var ingesterLabels *logproto.LabelToValuesResponse
+	var detectedLabels []*logproto.DetectedLabel
+	g, ctx := errgroup.WithContext(ctx)
+	ingesterQueryInterval, _ := q.buildQueryIntervals(*req.Start, *req.End)
+	if !q.cfg.QueryStoreOnly {
+		g.Go(func() error {
+			var err error
+			splitReq := *req
+			splitReq.Start = &ingesterQueryInterval.start
+			splitReq.End = &ingesterQueryInterval.end
+
+			ingesterLabels, err = q.ingesterQuerier.DetectedLabel(ctx, &splitReq)
+			level.Info(q.logger).Log("msg", ingesterLabels)
+			return err
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	for label, values := range ingesterLabels.Labels {
+		cardinality := len(values.Values)
+		// TODO(shantanu) make these values configurable
+		if cardinality < 5 || cardinality > 50 {
+			continue
+		}
+		detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(cardinality)})
+	}
 	return &logproto.DetectedLabelsResponse{
-		DetectedLabels: []*logproto.DetectedLabel{
-			{Label: "namespace"},
-			{Label: "cluster"},
-			{Label: "instance"},
-			{Label: "pod"},
-		},
+		DetectedLabels: detectedLabels,
 	}, nil
 }
 
