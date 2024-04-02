@@ -8,7 +8,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/push"
+	"github.com/grafana/loki/pkg/push"
+
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 

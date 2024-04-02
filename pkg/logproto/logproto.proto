@@ -98,7 +98,7 @@ message Delete {
 
 message QueryResponse {
   repeated StreamAdapter streams = 1 [
-    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/push.Stream",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/push.Stream",
     (gogoproto.nullable) = true
   ];
   stats.Ingester stats = 2 [(gogoproto.nullable) = false];
@@ -169,7 +169,7 @@ message TailRequest {
 }
 
 message TailResponse {
-  StreamAdapter stream = 1 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/push.Stream"];
+  StreamAdapter stream = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/push.Stream"];
   repeated DroppedStream droppedStreams = 2;
 }
 
