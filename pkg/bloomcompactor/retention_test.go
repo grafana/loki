@@ -802,10 +802,8 @@ func NewMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*bloomshipper.B
 			Directory: workDir,
 		},
 		BloomShipperConfig: config.Config{
-			WorkingDirectory: []string{workDir},
-			BlocksDownloadingQueue: config.DownloadingQueueConfig{
-				WorkersCount: 1,
-			},
+			WorkingDirectory:    []string{workDir},
+			DownloadParallelism: 1,
 			BlocksCache: config.BlocksCacheConfig{
 				SoftLimit:     1 << 20,
 				HardLimit:     2 << 20,
