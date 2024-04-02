@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/exp/slices"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
@@ -358,32 +359,35 @@ func (q *IngesterQuerier) Volume(ctx context.Context, _ string, from, through mo
 }
 
 func (q *IngesterQuerier) DetectedLabel(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
-	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
+	ingesterResponses, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
 		return client.GetDetectedLabels(ctx, req)
 	})
 
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(util_log.Logger).Log("msg", resps)
 
-	// TODO(shantanu) merge all the responses here
-	//mergedResult := make(map[string]*logproto.UniqueLabelValues)
-	//for _, resp := range resps {
-	//	casted := resp.response.(*logproto.LabelToValuesResponse)
-	//	for label, values := range casted.Labels {
-	//		uniqueValues := make([]string, len(values.Values))
-	//		// label - str
-	//		// values - UniqueLabelValues
-	//	}
-	//}
-	////results := make([][]DetectedLabels, 0, len(responses))
-	////
-	////for _, r := range responses {
-	////	results = append(results, r.response.(*logproto.DetectedLabelsResponse).DetectedLabels)
-	////}
+	labelMap := make(map[string][]string)
+	for _, resp := range ingesterResponses {
+		thisIngester := resp.response.(*logproto.LabelToValuesResponse)
+		for label, values := range thisIngester.Labels {
+			uniqueValues := make([]string, len(values.Values))
+			allValues := thisIngester.Labels[label]
+			uniqueValues = append(uniqueValues, allValues.Values...)
 
-	return resps[0].response.(*logproto.LabelToValuesResponse), nil
+			labelMap[label] = uniqueValues
+		}
+	}
+	mergedResult := make(map[string]*logproto.UniqueLabelValues)
+	for label, val := range labelMap {
+		uniqueValues := slices.CompactFunc(val, strings.EqualFold)
+
+		mergedResult[label] = &logproto.UniqueLabelValues{
+			Values: uniqueValues,
+		}
+	}
+
+	return &logproto.LabelToValuesResponse{Labels: mergedResult}, nil
 }
 
 func convertMatchersToString(matchers []*labels.Matcher) string {

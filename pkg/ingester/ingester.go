@@ -1374,7 +1374,6 @@ func (i *Ingester) GetDetectedFields(_ context.Context, _ *logproto.DetectedFiel
 
 // GetDetectedLabels returns map of detected labels and unique values from this ingester
 func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
-	// TODO(shantanu) Return map of labels to values here too. Filter it out on the querier layer. this means all the ingesters have returned their labels
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1394,7 +1393,6 @@ func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.Detected
 	}
 
 	labelMap, err := instance.LabelsWithValues(ctx, *req.Start, matchers...)
-	level.Info(i.logger).Log("msg", labelMap)
 
 	result := make(map[string]*logproto.UniqueLabelValues)
 	for label, values := range labelMap {

@@ -587,7 +587,7 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 
 type UniqueValues map[string]struct{}
 
-// LabelWithValues returns the 	label names with all the values depending on the request
+// LabelsWithValues returns the label names with all the unique values depending on the request
 func (i *instance) LabelsWithValues(ctx context.Context, startTime time.Time, matchers ...*labels.Matcher) (map[string]UniqueValues, error) {
 	// TODO (shantanu): Figure out how to get the label names from index directly when no matchers are given.
 
