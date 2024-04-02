@@ -3,11 +3,13 @@ package querier
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -29,12 +31,14 @@ const (
 // MultiTenantQuerier is able to query across different tenants.
 type MultiTenantQuerier struct {
 	Querier
+	logger log.Logger
 }
 
 // NewMultiTenantQuerier returns a new querier able to query across different tenants.
-func NewMultiTenantQuerier(querier Querier, _ log.Logger) *MultiTenantQuerier {
+func NewMultiTenantQuerier(querier Querier, logger log.Logger) *MultiTenantQuerier {
 	return &MultiTenantQuerier{
 		Querier: querier,
+		logger:  logger,
 	}
 }
 
@@ -268,14 +272,13 @@ func (q *MultiTenantQuerier) DetectedFields(ctx context.Context, req *logproto.D
 		return q.Querier.DetectedFields(ctx, req)
 	}
 
+	level.Debug(q.logger).Log(
+		"msg", "detected fields requested for multiple tenants, but not yet supported",
+		"tenantIDs", strings.Join(tenantIDs, ","),
+	)
+
 	return &logproto.DetectedFieldsResponse{
-		Fields: []*logproto.DetectedField{
-			{
-				Label:       "multi_tenant_not_supported",
-				Type:        logproto.DetectedFieldString,
-				Cardinality: 0,
-			},
-		},
+		Fields: []*logproto.DetectedField{},
 	}, nil
 }
 

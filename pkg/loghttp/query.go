@@ -623,14 +623,6 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 	var err error
 	result := &logproto.DetectedFieldsRequest{}
 
-	level.Debug(spanlogger.FromContext(r.Context())).Log(
-		"detected_fields", "true",
-		"msg", "parsing detected fields query",
-		"form", r.Form,
-		"line_limit", r.Form.Get("line_limit"),
-		"field_limit", r.Form.Get("field_limit"),
-	)
-
 	result.Query = query(r)
 	result.Start, result.End, err = bounds(r)
 	if err != nil {

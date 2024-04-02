@@ -919,81 +919,32 @@ func (q *SingleTenantQuerier) DetectedLabels(_ context.Context, _ *logproto.Dete
 }
 
 func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
-	iters := []iter.EntryIterator{}
-	parsed, err := syntax.ParseLogSelector(req.Query, true)
+	expr, err := syntax.ParseLogSelector(req.Query, true)
+	params := logql.SelectLogParams{
+		QueryRequest: &logproto.QueryRequest{
+			Start:     req.Start,
+			End:       req.End,
+			Limit:     req.LineLimit,
+			Direction: logproto.BACKWARD,
+			Selector:  expr.String(),
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
+		},
+	}
+
+	iters, err := q.SelectLogs(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-
-	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.Start, req.End)
-
-	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
-		params := logql.SelectLogParams{
-			QueryRequest: &logproto.QueryRequest{
-				Selector:  req.Query,
-				Limit:     req.LineLimit,
-				Start:     ingesterQueryInterval.start,
-				End:       ingesterQueryInterval.end,
-				Direction: logproto.FORWARD,
-				Plan: &plan.QueryPlan{
-					AST: parsed,
-				},
-			},
-		}
-
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"detected_fields", "true",
-			"msg", "querying ingester for detected fields",
-			"params", params)
-		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, params)
-		if err != nil {
-			return nil, err
-		}
-
-		iters = append(iters, ingesterIters...)
-	}
-
-	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
-		params := logql.SelectLogParams{
-			QueryRequest: &logproto.QueryRequest{
-				Selector:  req.Query,
-				Limit:     req.LineLimit,
-				Start:     storeQueryInterval.start,
-				End:       storeQueryInterval.end,
-				Direction: logproto.FORWARD,
-				Plan: &plan.QueryPlan{
-					AST: parsed,
-				},
-			},
-		}
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"detected_fields", "true",
-			"msg", "querying store for detected fields",
-			"params", params)
-		storeIter, err := q.store.SelectLogs(ctx, params)
-		if err != nil {
-			return nil, err
-		}
-
-		iters = append(iters, storeIter)
-	}
-
-	finalIters := iter.NewMergeEntryIterator(ctx, iters, logproto.FORWARD)
-
-	level.Debug(spanlogger.FromContext(ctx)).Log(
-		"detected_fields", "true",
-		"have_iterators", finalIters.IsEmpty())
 
 	//TODO(twhitney): converting from a step to a duration should be abstracted and reused,
 	// doing this in a few places now.
-	streams, err := streamsForFieldDetection(finalIters, req.LineLimit, time.Duration(req.Step*1e6))
+	streams, err := streamsForFieldDetection(iters, req.LineLimit, time.Duration(req.Step*1e6))
 	if err != nil {
 		return nil, err
 	}
 
-	level.Debug(spanlogger.FromContext(ctx)).Log(
-		"detected_fields", "true",
-		"msg", fmt.Sprintf("found %d streams to detect fields for", len(streams)))
 	detectedFields := parseDetectedFields(ctx, req.FieldLimit, streams)
 
 	fields := make([]*logproto.DetectedField, len(detectedFields))
@@ -1154,13 +1105,14 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32, interval time.D
 	for respSize < size && i.Next() {
 		streamLabels, entry := i.Labels(), i.Entry()
 
-		forwardShouldOutput := entry.Timestamp.Equal(lastEntry.Add(interval)) ||
-			entry.Timestamp.After(lastEntry.Add(interval))
+		// Always going backward
+		shouldOutput := entry.Timestamp.Equal(lastEntry.Add(-interval)) ||
+			entry.Timestamp.Before(lastEntry.Add(-interval))
 
 		// If step == 0 output every line.
 		// If lastEntry.Unix < 0 this is the first pass through the loop and we should output the line.
 		// Then check to see if the entry is equal to, or past a forward step
-		if interval == 0 || lastEntry.Unix() < 0 || forwardShouldOutput {
+		if interval == 0 || lastEntry.Unix() < 0 || shouldOutput {
 			stream, ok := streams[streamLabels]
 			if !ok {
 				stream = &logproto.Stream{
