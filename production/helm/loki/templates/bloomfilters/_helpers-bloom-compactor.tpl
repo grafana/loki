@@ -2,7 +2,7 @@
 bloom compactor fullname
 */}}
 {{- define "loki.bloomCompactorFullname" -}}
-{{ include "loki.name" . }}-bloom-compactor
+{{ include "loki.fullname" . }}-bloom-compactor
 {{- end }}
 
 {{/*

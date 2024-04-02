@@ -4,6 +4,7 @@ loki:
     replication_factor: 1
   image:
     tag: "k195-51c54ad"
+  useBloomFilters: true
 deploymentMode: Distributed
 backend:
   replicas: 0
@@ -25,5 +26,19 @@ compactor:
   replicas: 1
 indexGateway:
   replicas: 1
+bloomCompactor:
+  replicas: 1
+  persistence:
+    enabled: true
+bloomGateway:
+  replicas: 1
+  persistence:
+    enabled: true
 minio:
   enabled: true
+
+lokiCanary:
+  enabled: false
+
+test:
+  enabled: false

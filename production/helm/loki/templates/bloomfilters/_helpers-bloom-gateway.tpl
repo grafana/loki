@@ -2,7 +2,7 @@
 bloom gateway fullname
 */}}
 {{- define "loki.bloomGatewayFullname" -}}
-{{ include "loki.name" . }}-bloom-gateway
+{{ include "loki.fullname" . }}-bloom-gateway
 {{- end }}
 
 {{/*
