@@ -417,8 +417,6 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		SSE:     sseCfg,
 	}
 
-	err = validateS3Endpoint(string(endpoint), string(region))
-
 	switch credentialMode {
 	case lokiv1.CredentialModeTokenCCO:
 		cfg.STS = true
@@ -431,8 +429,6 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
-		} else if len(endpoint) != 0 && err != nil {
-			return nil, err
 		}
 		return cfg, nil
 	case lokiv1.CredentialModeStatic:
@@ -440,8 +436,11 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 
 		if len(endpoint) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSEndpoint)
-		} else if len(region) != 0 && err != nil {
-			return nil, err
+		} else if len(region) != 0 {
+			err = validateS3Endpoint(string(endpoint), string(region))
+			if err != nil {
+				return nil, err
+			}
 		}
 		if len(id) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSAccessKeyID)
@@ -458,8 +457,6 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
-		} else if len(endpoint) != 0 && err != nil {
-			return nil, err
 		}
 		return cfg, nil
 	default:
