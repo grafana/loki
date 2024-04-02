@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"gopkg.in/yaml.v3"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 type GroupLoader struct{}
