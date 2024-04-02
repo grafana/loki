@@ -127,7 +127,7 @@ type TLSProfileSpec struct {
 	MinTLSVersion string
 }
 
-var ErrInvalidPerTenantConfig error = errors.New("invalid per-tenant config")
+var ErrPerTenantConfigInvalid error = errors.New("per-tenant config cannot contain empty keys")
 
 // TLSCipherSuites transforms TLSProfileSpec.Ciphers from a slice
 // to a string of elements joined with a comma.
