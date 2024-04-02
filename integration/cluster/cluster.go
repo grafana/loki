@@ -82,8 +82,6 @@ storage_config:
     cache_location: {{.dataPath}}/tsdb-cache
   bloom_shipper:
     working_directory: {{.dataPath}}/bloom-shipper
-    blocks_downloading_queue:
-      workers_count: 1
 
 bloom_gateway:
   enabled: false
