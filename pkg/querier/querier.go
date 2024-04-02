@@ -920,6 +920,9 @@ func (q *SingleTenantQuerier) DetectedLabels(_ context.Context, _ *logproto.Dete
 
 func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
 	expr, err := syntax.ParseLogSelector(req.Query, true)
+	if err != nil {
+		return nil, err
+	}
 	params := logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Start:     req.Start,
