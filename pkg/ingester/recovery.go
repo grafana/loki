@@ -13,8 +13,8 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	"golang.org/x/net/context"
 
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type WALReader interface {

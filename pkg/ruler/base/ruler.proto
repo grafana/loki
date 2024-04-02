@@ -69,11 +69,11 @@ message AlertStateDesc {
   string state = 1;
   repeated logproto.LegacyLabelPair labels = 2 [
     (gogoproto.nullable) = false,
-    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.LabelAdapter"
   ];
   repeated logproto.LegacyLabelPair annotations = 3 [
     (gogoproto.nullable) = false,
-    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.LabelAdapter"
   ];
   double value = 4;
   google.protobuf.Timestamp active_at = 5 [

@@ -13,10 +13,10 @@ import (
 	"github.com/grafana/dskit/runutil"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/ruler/rulestore/local"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // FSConfig is the config for a FSObjectClient.

@@ -23,14 +23,14 @@ import (
 	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/integration/util"
+	"github.com/grafana/loki/v3/integration/util"
 
-	"github.com/grafana/loki/pkg/loki"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/cfg"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/cfg"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
@@ -82,8 +82,6 @@ storage_config:
     cache_location: {{.dataPath}}/tsdb-cache
   bloom_shipper:
     working_directory: {{.dataPath}}/bloom-shipper
-    blocks_downloading_queue:
-      workers_count: 1
 
 bloom_gateway:
   enabled: false

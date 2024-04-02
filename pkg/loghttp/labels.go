@@ -9,7 +9,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/grafana/jsonparser"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // LabelResponse represents the http json response to a label query
@@ -98,18 +98,4 @@ func ParseDetectedLabelsQuery(r *http.Request) (*logproto.DetectedLabelsRequest,
 		End:   &end,
 		Query: query(r),
 	}, nil
-}
-
-func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest, error) {
-	req := &logproto.DetectedFieldsRequest{}
-
-	start, end, err := bounds(r)
-	if err != nil {
-		return nil, err
-	}
-	req.Start = &start
-	req.End = &end
-
-	req.Query = query(r)
-	return req, nil
 }

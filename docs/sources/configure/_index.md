@@ -2351,7 +2351,8 @@ tsdb_shipper:
 
   [ingesterdbretainperiod: <duration>]
 
-# Configures Bloom Shipper.
+# Configures the bloom shipper component, which contains the store abstraction
+# to fetch bloom filters from and put them to object storage.
 bloom_shipper:
   # Working directory to store downloaded bloom blocks. Supports multiple
   # directories, separated by comma.
@@ -2363,15 +2364,9 @@ bloom_shipper:
   # CLI flag: -bloom.max-query-page-size
   [max_query_page_size: <int> | default = 64MiB]
 
-  blocks_downloading_queue:
-    # The count of parallel workers that download Bloom Blocks.
-    # CLI flag: -bloom.shipper.blocks-downloading-queue.workers-count
-    [workers_count: <int> | default = 16]
-
-    # Maximum number of task in queue per tenant per bloom-gateway. Enqueuing
-    # the tasks above this limit will fail an error.
-    # CLI flag: -bloom.shipper.blocks-downloading-queue.max_tasks_enqueued_per_tenant
-    [max_tasks_enqueued_per_tenant: <int> | default = 10000]
+  # The amount of maximum concurrent bloom blocks downloads.
+  # CLI flag: -bloom.download-parallelism
+  [download_parallelism: <int> | default = 16]
 
   blocks_cache:
     # Cache for bloom blocks. Soft limit of the cache in bytes. Exceeding this
@@ -2834,6 +2829,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # label is set to unknown_service. Empty list disables setting the label.
 # CLI flag: -validation.discover-service-name
 [discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name component workload job]]
+
+# Discover and add log levels during ingestion, if not present already. Levels
+# would be added to Structured Metadata with name 'level' and one of the values
+# from 'debug', 'info', 'warn', 'error', 'critical', 'fatal'.
+# CLI flag: -validation.discover-log-levels
+[discover_log_levels: <boolean> | default = false]
 
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user

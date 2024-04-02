@@ -15,13 +15,13 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	storageconfig "github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/grafana/loki/v3/pkg/storage"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 func newMockBloomStore(t *testing.T) (*BloomStore, string, error) {
@@ -58,10 +58,8 @@ func newMockBloomStoreWithWorkDir(t *testing.T, workDir, storeDir string) (*Bloo
 			Directory: storeDir,
 		},
 		BloomShipperConfig: config.Config{
-			WorkingDirectory: []string{workDir},
-			BlocksDownloadingQueue: config.DownloadingQueueConfig{
-				WorkersCount: 1,
-			},
+			WorkingDirectory:    []string{workDir},
+			DownloadParallelism: 1,
 			BlocksCache: config.BlocksCacheConfig{
 				SoftLimit:     1 << 20,
 				HardLimit:     2 << 20,
