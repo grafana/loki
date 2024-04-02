@@ -27,6 +27,8 @@ const (
 	pbContentType       = "application/x-protobuf"
 	gzipContentEncoding = "gzip"
 	attrServiceName     = "service.name"
+
+	OTLPSeverityNumber = "severity_number"
 )
 
 func newPushStats() *Stats {
@@ -287,7 +289,7 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig) push.Entry {
 
 	if severityNum := log.SeverityNumber(); severityNum != plog.SeverityNumberUnspecified {
 		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  "severity_number",
+			Name:  OTLPSeverityNumber,
 			Value: fmt.Sprintf("%d", severityNum),
 		})
 	}
