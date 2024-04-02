@@ -1619,14 +1619,14 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 		{
 			name: "json log line with an error",
 			entry: logproto.Entry{
-				Line: `{"foo":"bar","level":"error"}`,
+				Line: `{"foo":"bar",msg:"message with keyword error but it should not get picked up",level":"critical"}`,
 			},
-			expectedLogLevel: logLevelError,
+			expectedLogLevel: logLevelCritical,
 		},
 		{
 			name: "logfmt log line with a warn",
 			entry: logproto.Entry{
-				Line: `foo=bar level=warn`,
+				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=warn`,
 			},
 			expectedLogLevel: logLevelWarn,
 		},
