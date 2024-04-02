@@ -2905,6 +2905,7 @@ null
 			<td><pre lang="json">
 {
   "name": "self-monitoring",
+  "password": null,
   "secretNamespace": "{{ .Release.Namespace }}"
 }
 </pre>

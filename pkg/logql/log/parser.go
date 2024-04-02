@@ -373,7 +373,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
 
 type PatternParser struct {
-	matcher pattern.Matcher
+	matcher *pattern.Matcher
 	names   []string
 }
 
