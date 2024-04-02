@@ -937,6 +937,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		}
 		detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(cardinality)})
 	}
+
 	return &logproto.DetectedLabelsResponse{
 		DetectedLabels: detectedLabels,
 	}, nil

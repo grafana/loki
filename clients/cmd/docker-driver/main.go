@@ -40,7 +40,7 @@ func main() {
 	pprofPort := os.Getenv("PPROF_PORT")
 	if pprofPort != "" {
 		go func() {
-			err := http.ListenAndServe(fmt.Sprintf("localhost:%s", pprofPort), nil)
+			err := http.ListenAndServe(fmt.Sprintf(":%s", pprofPort), nil)
 			logger.Log("msg", "http server stopped", "err", err)
 		}()
 	}
