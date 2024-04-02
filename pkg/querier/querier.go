@@ -918,6 +918,7 @@ func (q *SingleTenantQuerier) DetectedLabels(_ context.Context, _ *logproto.Dete
 			{Label: "namespace"},
 			{Label: "cluster"},
 			{Label: "instance"},
+			{Label: "pod"},
 		},
 	}, nil
 }
