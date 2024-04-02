@@ -12,7 +12,7 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/v3/pkg/push"
+	"github.com/grafana/loki/pkg/push"
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"

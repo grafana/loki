@@ -5,7 +5,7 @@ package logproto;
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/grafana/loki/v3/pkg/push";
+option go_package = "github.com/grafana/loki/pkg/push";
 
 service Pusher {
   rpc Push(PushRequest) returns (PushResponse) {}
