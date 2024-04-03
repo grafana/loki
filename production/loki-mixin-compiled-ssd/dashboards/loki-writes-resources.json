@@ -32,7 +32,7 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
+                           "fillOpacity": 10,
                            "lineWidth": 1,
                            "pointSize": 5,
                            "showPoints": "never",
@@ -46,7 +46,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "short"
                      },
                      "overrides": [ ]
                   },
@@ -82,7 +82,7 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
+                           "fillOpacity": 10,
                            "lineWidth": 1,
                            "pointSize": 5,
                            "showPoints": "never",
@@ -96,7 +96,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "short"
                      },
                      "overrides": [ ]
                   },
@@ -156,7 +156,7 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
+                           "fillOpacity": 10,
                            "lineWidth": 1,
                            "pointSize": 5,
                            "showPoints": "never",
@@ -170,7 +170,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "bytes"
                      },
                      "overrides": [ ]
                   },
@@ -222,25 +222,7 @@
                   "tooltip": {
                      "sort": 2
                   },
-                  "type": "timeseries",
-                  "yaxes": [
-                     {
-                        "format": "bytes",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
                   "datasource": "$datasource",
@@ -248,7 +230,7 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
+                           "fillOpacity": 10,
                            "lineWidth": 1,
                            "pointSize": 5,
                            "showPoints": "never",
@@ -262,7 +244,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "bytes"
                      },
                      "overrides": [ ]
                   },
@@ -290,25 +272,7 @@
                   "tooltip": {
                      "sort": 2
                   },
-                  "type": "timeseries",
-                  "yaxes": [
-                     {
-                        "format": "bytes",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
                   "datasource": "$datasource",
@@ -316,28 +280,26 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
-                           "lineWidth": 1,
+                           "fillOpacity": 100,
+                           "lineWidth": 0,
                            "pointSize": 5,
                            "showPoints": "never",
                            "spanNulls": false,
                            "stacking": {
                               "group": "A",
-                              "mode": "none"
+                              "mode": "normal"
                            }
                         },
                         "thresholds": {
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "Bps"
                      },
                      "overrides": [ ]
                   },
-                  "fill": 10,
                   "gridPos": { },
                   "id": 5,
-                  "linewidth": 0,
                   "links": [ ],
                   "options": {
                      "legend": {
@@ -348,7 +310,6 @@
                         "sort": "none"
                      }
                   },
-                  "stack": true,
                   "targets": [
                      {
                         "expr": "sum by(instance, pod, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki|enterprise-logs)-write.*\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
@@ -358,25 +319,7 @@
                      }
                   ],
                   "title": "Disk Writes",
-                  "type": "timeseries",
-                  "yaxes": [
-                     {
-                        "format": "Bps",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
                   "datasource": "$datasource",
@@ -384,28 +327,26 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
-                           "lineWidth": 1,
+                           "fillOpacity": 100,
+                           "lineWidth": 0,
                            "pointSize": 5,
                            "showPoints": "never",
                            "spanNulls": false,
                            "stacking": {
                               "group": "A",
-                              "mode": "none"
+                              "mode": "normal"
                            }
                         },
                         "thresholds": {
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "Bps"
                      },
                      "overrides": [ ]
                   },
-                  "fill": 10,
                   "gridPos": { },
                   "id": 6,
-                  "linewidth": 0,
                   "links": [ ],
                   "options": {
                      "legend": {
@@ -416,7 +357,6 @@
                         "sort": "none"
                      }
                   },
-                  "stack": true,
                   "targets": [
                      {
                         "expr": "sum by(instance, pod, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki|enterprise-logs)-write.*\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
@@ -426,25 +366,7 @@
                      }
                   ],
                   "title": "Disk Reads",
-                  "type": "timeseries",
-                  "yaxes": [
-                     {
-                        "format": "Bps",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
                   "datasource": "$datasource",
@@ -452,7 +374,7 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
+                           "fillOpacity": 10,
                            "lineWidth": 1,
                            "pointSize": 5,
                            "showPoints": "never",
@@ -466,7 +388,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "percentunit"
                      },
                      "overrides": [ ]
                   },
@@ -491,25 +413,7 @@
                      }
                   ],
                   "title": "Disk Space Utilization",
-                  "type": "timeseries",
-                  "yaxes": [
-                     {
-                        "format": "percentunit",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
+                  "type": "timeseries"
                }
             ],
             "repeat": null,

@@ -194,7 +194,7 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
+                           "fillOpacity": 10,
                            "lineWidth": 1,
                            "pointSize": 5,
                            "showPoints": "never",
@@ -208,7 +208,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "short"
                      },
                      "overrides": [ ]
                   },
@@ -241,7 +241,7 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
+                           "fillOpacity": 10,
                            "lineWidth": 1,
                            "pointSize": 5,
                            "showPoints": "never",
@@ -255,7 +255,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "short"
                      },
                      "overrides": [ ]
                   },
@@ -288,7 +288,7 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
+                           "fillOpacity": 10,
                            "lineWidth": 1,
                            "pointSize": 5,
                            "showPoints": "never",
@@ -302,7 +302,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "short"
                      },
                      "overrides": [ ]
                   },
@@ -347,7 +347,7 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
+                           "fillOpacity": 10,
                            "lineWidth": 1,
                            "pointSize": 5,
                            "showPoints": "never",
@@ -361,7 +361,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "short"
                      },
                      "overrides": [ ]
                   },
@@ -394,7 +394,7 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
+                           "fillOpacity": 10,
                            "lineWidth": 1,
                            "pointSize": 5,
                            "showPoints": "never",
@@ -408,7 +408,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "short"
                      },
                      "overrides": [ ]
                   },
@@ -441,7 +441,7 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
+                           "fillOpacity": 10,
                            "lineWidth": 1,
                            "pointSize": 5,
                            "showPoints": "never",
@@ -455,7 +455,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "short"
                      },
                      "overrides": [ ]
                   },
@@ -500,7 +500,7 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
+                           "fillOpacity": 10,
                            "lineWidth": 1,
                            "pointSize": 5,
                            "showPoints": "never",
@@ -514,7 +514,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "short"
                      },
                      "overrides": [ ]
                   },
@@ -547,7 +547,7 @@
                      "defaults": {
                         "custom": {
                            "drawStyle": "line",
-                           "fillOpacity": 1,
+                           "fillOpacity": 10,
                            "lineWidth": 1,
                            "pointSize": 5,
                            "showPoints": "never",
@@ -561,7 +561,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "s"
+                        "unit": "short"
                      },
                      "overrides": [ ]
                   },
