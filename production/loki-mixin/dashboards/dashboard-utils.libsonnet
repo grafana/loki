@@ -158,19 +158,28 @@ local utils = import 'mixin-utils/utils.libsonnet';
       'min(container_spec_cpu_quota{%s, %s} / container_spec_cpu_period{%s, %s})' % [$.namespaceMatcher(), matcher, $.namespaceMatcher(), matcher],
     ], ['{{pod}}', 'request', 'limit']) +
     {
-      seriesOverrides: [
-        {
-          alias: 'request',
-          color: '#FFC000',
-          fill: 0,
-        },
-        {
-          alias: 'limit',
-          color: '#E02F44',
-          fill: 0,
-        },
-      ],
       tooltip: { sort: 2 },  // Sort descending.
+    } + {
+      fieldConfig+: {
+        overrides+: [
+          $.colorOverride('request', '#FFC000') + {
+            properties+: [
+              {
+                id: 'custom.fillOpacity',
+                value: 0,
+              },
+            ],
+          },
+          $.colorOverride('limit', '#E02F44') + {
+            properties+: [
+              {
+                id: 'custom.fillOpacity',
+                value: 0,
+              },
+            ],
+          },
+        ],
+      },
     },
   containerCPUUsagePanel(title, containerName)::
     self.CPUUsagePanel(title, 'container=~"%s"' % containerName),
@@ -185,19 +194,28 @@ local utils = import 'mixin-utils/utils.libsonnet';
       'min(container_spec_memory_limit_bytes{%s, %s} > 0)' % [$.namespaceMatcher(), matcher],
     ], ['{{pod}}', 'request', 'limit']) +
     {
-      seriesOverrides: [
-        {
-          alias: 'request',
-          color: '#FFC000',
-          fill: 0,
-        },
-        {
-          alias: 'limit',
-          color: '#E02F44',
-          fill: 0,
-        },
-      ],
       tooltip: { sort: 2 },  // Sort descending.
+    } + {
+      fieldConfig+: {
+          overrides+: [
+            $.colorOverride('request', '#FFC000') + {
+              properties+: [
+                {
+                  id: 'custom.fillOpacity',
+                  value: 0,
+                },
+              ],
+            },
+            $.colorOverride('limit', '#E02F44') + {
+              properties+: [
+                {
+                  id: 'custom.fillOpacity',
+                  value: 0,
+                },
+              ],
+            },
+          ],
+      },
     },
   containerMemoryWorkingSetPanel(title, containerName)::
     self.memoryWorkingSetPanel(title, 'container=~"%s"' % containerName),

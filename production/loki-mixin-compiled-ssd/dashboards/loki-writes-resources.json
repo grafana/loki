@@ -98,7 +98,46 @@
                         },
                         "unit": "short"
                      },
-                     "overrides": [ ]
+                     "overrides": [
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "request"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#FFC000",
+                                    "mode": "fixed"
+                                 }
+                              },
+                              {
+                                 "id": "custom.fillOpacity",
+                                 "value": 0
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "limit"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#E02F44",
+                                    "mode": "fixed"
+                                 }
+                              },
+                              {
+                                 "id": "custom.fillOpacity",
+                                 "value": 0
+                              }
+                           ]
+                        }
+                     ]
                   },
                   "gridPos": { },
                   "id": 2,
@@ -112,18 +151,6 @@
                         "sort": "none"
                      }
                   },
-                  "seriesOverrides": [
-                     {
-                        "alias": "request",
-                        "color": "#FFC000",
-                        "fill": 0
-                     },
-                     {
-                        "alias": "limit",
-                        "color": "#E02F44",
-                        "fill": 0
-                     }
-                  ],
                   "targets": [
                      {
                         "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki|enterprise-logs)-write.*\"}[$__rate_interval]))",
@@ -172,7 +199,46 @@
                         },
                         "unit": "bytes"
                      },
-                     "overrides": [ ]
+                     "overrides": [
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "request"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#FFC000",
+                                    "mode": "fixed"
+                                 }
+                              },
+                              {
+                                 "id": "custom.fillOpacity",
+                                 "value": 0
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "limit"
+                           },
+                           "properties": [
+                              {
+                                 "id": "color",
+                                 "value": {
+                                    "fixedColor": "#E02F44",
+                                    "mode": "fixed"
+                                 }
+                              },
+                              {
+                                 "id": "custom.fillOpacity",
+                                 "value": 0
+                              }
+                           ]
+                        }
+                     ]
                   },
                   "gridPos": { },
                   "id": 3,
@@ -186,18 +252,6 @@
                         "sort": "none"
                      }
                   },
-                  "seriesOverrides": [
-                     {
-                        "alias": "request",
-                        "color": "#FFC000",
-                        "fill": 0
-                     },
-                     {
-                        "alias": "limit",
-                        "color": "#E02F44",
-                        "fill": 0
-                     }
-                  ],
                   "targets": [
                      {
                         "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki|enterprise-logs)-write.*\"})",
