@@ -1,6 +1,8 @@
 package runtime
 
-import "flag"
+import (
+	"flag"
+)
 
 type Config struct {
 	LogStreamCreation     bool `yaml:"log_stream_creation"`
@@ -44,13 +46,26 @@ type TenantConfigs struct {
 }
 
 // DefaultTenantConfigs creates and returns a new TenantConfigs with the defaults populated.
+// Only useful for testing, the provider will ignore any tenants passed in.
 func DefaultTenantConfigs() *TenantConfigs {
 	return &TenantConfigs{
-		TenantConfigProvider: nil,
+		TenantConfigProvider: &defaultsOnlyConfigProvider{},
 	}
 }
 
-// NewTenantConfig makes a new TenantConfigs
+type defaultsOnlyConfigProvider struct {
+}
+
+// TenantConfig implementation for defaultsOnlyConfigProvider, ignores the tenant input and only returns a default config
+func (t *defaultsOnlyConfigProvider) TenantConfig(_ string) *Config {
+	if defaultConfig == nil {
+		defaultConfig = &Config{}
+		defaultConfig.RegisterFlags(flag.NewFlagSet("", flag.PanicOnError))
+	}
+	return defaultConfig
+}
+
+// NewTenantConfigs makes a new TenantConfigs
 func NewTenantConfigs(configProvider TenantConfigProvider) (*TenantConfigs, error) {
 	return &TenantConfigs{
 		TenantConfigProvider: configProvider,
