@@ -7,6 +7,7 @@ package metadata
 import (
 	"context"
 	"errors"
+	"golang.org/x/exp/maps"
 	"sort"
 	"sync"
 
@@ -79,11 +80,7 @@ func (c *Context) Warnings() []string {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	warnings := make([]string, 0, len(c.warnings))
-	for warning := range c.warnings {
-		warnings = append(warnings, warning)
-	}
-
+	warnings := maps.Keys(c.warnings)
 	sort.Strings(warnings)
 
 	return warnings
@@ -121,6 +118,10 @@ func ExtendHeaders(dst map[string][]string, src []*definitions.PrometheusRespons
 }
 
 func AddWarnings(ctx context.Context, warnings ...string) error {
+	if len(warnings) == 0 {
+		return nil
+	}
+
 	context, ok := ctx.Value(metadataKey).(*Context)
 	if !ok {
 		return ErrNoCtxData

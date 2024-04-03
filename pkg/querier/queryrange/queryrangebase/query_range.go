@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"golang.org/x/exp/maps"
 	"io"
 	"math"
 	"net/http"
@@ -171,10 +172,7 @@ func (p prometheusCodec) MergeResponse(responses ...Response) (Response, error) 
 		}
 	}
 
-	warnings := make([]string, 0, len(uniqueWarnings))
-	for w := range uniqueWarnings {
-		warnings = append(warnings, w)
-	}
+	warnings := maps.Keys(uniqueWarnings)
 	sort.Strings(warnings)
 
 	if len(warnings) == 0 {

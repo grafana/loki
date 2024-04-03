@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"context"
 	"fmt"
+	"golang.org/x/exp/maps"
 	"sort"
 	"time"
 
@@ -355,10 +356,7 @@ func (acc *AccumulatedStreams) Result() []logqlmodel.Result {
 		)
 	}
 
-	warnings := make([]string, 0, len(acc.warnings))
-	for w := range acc.warnings {
-		warnings = append(warnings, w)
-	}
+	warnings := maps.Keys(acc.warnings)
 	sort.Strings(warnings)
 
 	res.Warnings = warnings

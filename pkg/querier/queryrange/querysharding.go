@@ -252,7 +252,6 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, err
 	}
 
-	// TODO(tpatterson): add warnings to response
 	switch res.Data.Type() {
 	case parser.ValueTypeMatrix:
 		return &LokiPromResponse{

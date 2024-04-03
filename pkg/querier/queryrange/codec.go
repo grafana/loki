@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/exp/maps"
 	"io"
 	"net/http"
 	"net/url"
@@ -1992,10 +1993,7 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 		}
 	}
 
-	warnings := make([]string, 0, len(uniqueWarnings))
-	for w := range uniqueWarnings {
-		warnings = append(warnings, w)
-	}
+	warnings := maps.Keys(uniqueWarnings)
 	sort.Strings(warnings)
 
 	if len(warnings) == 0 {
