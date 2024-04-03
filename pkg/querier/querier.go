@@ -918,7 +918,15 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	}
 	var detectedLabels []*logproto.DetectedLabel
 
+	// Enforce the query timeout while querying backends
+	queryTimeout := q.limits.QueryTimeout(ctx, userID)
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
+
+	if *req.Start, *req.End, err = validateQueryTimeRangeLimits(ctx, userID, q.limits, *req.Start, *req.End); err != nil {
+		return nil, err
+	}
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(*req.Start, *req.End)
 
 	var ingesterLabels *logproto.LabelToValuesResponse
@@ -930,7 +938,6 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 			splitReq.End = &ingesterQueryInterval.end
 
 			ingesterLabels, err = q.ingesterQuerier.DetectedLabel(ctx, &splitReq)
-			level.Info(q.logger).Log("msg", ingesterLabels)
 			return err
 		})
 	}
