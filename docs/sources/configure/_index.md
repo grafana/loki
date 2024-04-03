@@ -212,7 +212,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 
 # These are values which allow you to control aspects of Loki's operation, most
 # commonly used for controlling types of higher verbosity logging, the values
-# here can be overridden in the `configs` section of the runtime_config file.
+# here can be overridden in the `configs` section of the `runtime_config` file.
 [operational_config: <operational_config>]
 
 # Configuration for tracing.
