@@ -210,26 +210,10 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # configuration file.
 [runtime_config: <runtime_config>]
 
-operational_config:
-  # Log every new stream created by a push request (very verbose, recommend to
-  # enable via runtime config only).
-  # CLI flag: -operation-config.log-stream-creation
-  [log_stream_creation: <boolean> | default = false]
-
-  # Log every push request (very verbose, recommend to enable via runtime config
-  # only).
-  # CLI flag: -operation-config.log-push-request
-  [log_push_request: <boolean> | default = false]
-
-  # Log every stream in a push request (very verbose, recommend to enable via
-  # runtime config only).
-  # CLI flag: -operation-config.log-push-request-streams
-  [log_push_request_streams: <boolean> | default = false]
-
-  # Log push errors with a rate limited logger, will show client push errors
-  # without overly spamming logs.
-  # CLI flag: -operation-config.limited-log-push-errors
-  [limited_log_push_errors: <boolean> | default = true]
+# These are values which allow you to control aspects of Loki's operation, most
+# commonly used for controlling types of higher verbosity logging, the values
+# here can be overridden in the `configs` section of the runtime_config file.
+[operational_config: <operational_config>]
 
 # Configuration for tracing.
 [tracing: <tracing>]
@@ -3696,6 +3680,32 @@ Configuration for 'runtime config' module, responsible for reloading runtime con
 # at runtime. Runtime config files will be merged from left to right.
 # CLI flag: -runtime-config.file
 [file: <string> | default = ""]
+```
+
+### operational_config
+
+These are values which allow you to control aspects of Loki's operation, most commonly used for controlling types of higher verbosity logging, the values here can be overridden in the `configs` section of the runtime_config file.
+
+```yaml
+# Log every new stream created by a push request (very verbose, recommend to
+# enable via runtime config only).
+# CLI flag: -operation-config.log-stream-creation
+[log_stream_creation: <boolean> | default = false]
+
+# Log every push request (very verbose, recommend to enable via runtime config
+# only).
+# CLI flag: -operation-config.log-push-request
+[log_push_request: <boolean> | default = false]
+
+# Log every stream in a push request (very verbose, recommend to enable via
+# runtime config only).
+# CLI flag: -operation-config.log-push-request-streams
+[log_push_request_streams: <boolean> | default = false]
+
+# Log push errors with a rate limited logger, will show client push errors
+# without overly spamming logs.
+# CLI flag: -operation-config.limited-log-push-errors
+[limited_log_push_errors: <boolean> | default = true]
 ```
 
 ### tracing

@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	querier_worker "github.com/grafana/loki/v3/pkg/querier/worker"
 	"github.com/grafana/loki/v3/pkg/ruler"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -153,7 +154,7 @@ var (
 		},
 		{
 			Name:       "operational_config",
-			StructType: []reflect.Type{reflect.TypeOf(runtimeconfig.Config{})},
+			StructType: []reflect.Type{reflect.TypeOf(runtime.Config{})},
 			Desc:       "These are values which allow you to control aspects of Loki's operation, most commonly used for controlling types of higher verbosity logging, the values here can be overridden in the `configs` section of the runtime_config file.",
 		},
 		{
