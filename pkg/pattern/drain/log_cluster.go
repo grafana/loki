@@ -27,11 +27,27 @@ func (c *LogCluster) String() string {
 }
 
 func (c *LogCluster) append(ts model.Time) {
+	c.Size++
 	c.Volume.Add(ts)
+}
+
+func (c *LogCluster) merge(samples []*logproto.PatternSample) {
+	c.Size += int(sumSize(samples))
+	c.Volume.merge(samples)
 }
 
 func (c *LogCluster) Iterator(from, through model.Time) iter.Iterator {
 	return iter.NewSlice(c.String(), c.Volume.ForRange(from, through).Values)
+}
+
+func (c *LogCluster) Samples() []*logproto.PatternSample {
+	// TODO: []*logproto.PatternSample -> []logproto.PatternSample
+	//   Or consider AoS to SoA conversion.
+	s := make([]*logproto.PatternSample, len(c.Volume.Values))
+	for i := range c.Volume.Values {
+		s[i] = &c.Volume.Values[i]
+	}
+	return s
 }
 
 func truncateTimestamp(ts model.Time) model.Time { return ts - ts%timeResolution }
@@ -106,4 +122,42 @@ func (x *Volume) Add(ts model.Time) {
 			x.Values = slices.Insert(x.Values, index, logproto.PatternSample{Timestamp: t, Value: 1})
 		}
 	}
+}
+
+func sumSize(samples []*logproto.PatternSample) int64 {
+	var x int64
+	for i := range samples {
+		x += samples[i].Value
+	}
+	return x
+}
+
+func (x *Volume) merge(samples []*logproto.PatternSample) []logproto.PatternSample {
+	// TODO: Avoid allocating a new slice, if possible.
+	result := make([]logproto.PatternSample, 0, len(x.Values)+len(samples))
+	var i, j int
+	for i < len(x.Values) && j < len(samples) {
+		if x.Values[i].Timestamp < samples[j].Timestamp {
+			result = append(result, x.Values[i])
+			i++
+		} else if x.Values[i].Timestamp > samples[j].Timestamp {
+			result = append(result, *samples[j])
+			j++
+		} else {
+			result = append(result, logproto.PatternSample{
+				Value:     x.Values[i].Value + samples[j].Value,
+				Timestamp: x.Values[i].Timestamp,
+			})
+			i++
+			j++
+		}
+	}
+	for ; i < len(x.Values); i++ {
+		result = append(result, x.Values[i])
+	}
+	for ; j < len(samples); j++ {
+		result = append(result, *samples[j])
+	}
+	x.Values = result
+	return result
 }

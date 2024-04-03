@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/pattern/drain"
 	"github.com/grafana/loki/pkg/pattern/iter"
 )
 
@@ -54,8 +55,30 @@ func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatte
 	for i := range resps {
 		iterators[i] = iter.NewQueryClientIterator(resps[i].response.(logproto.Pattern_QueryClient))
 	}
+	// TODO: Incorporate with pruning
+	resp, err := iter.ReadBatch(iter.NewMerge(iterators...), math.MaxInt32)
+	if err != nil {
+		return nil, err
+	}
+	return prunePatterns(resp), nil
+}
 
-	return iter.ReadBatch(iter.NewMerge(iterators...), math.MaxInt32)
+func prunePatterns(resp *logproto.QueryPatternsResponse) *logproto.QueryPatternsResponse {
+	c := drainConfig
+	c.SimTh = 0.01
+	c.MaxClusters = 10
+	d := drain.New(c)
+	for _, p := range resp.Series {
+		d.TrainPattern(p.Pattern, p.Samples)
+	}
+	resp.Series = resp.Series[:0]
+	for _, cluster := range d.Clusters() {
+		resp.Series = append(resp.Series, &logproto.PatternSeries{
+			Pattern: d.PatternString(cluster),
+			Samples: cluster.Samples(),
+		})
+	}
+	return resp
 }
 
 // ForAllIngesters runs f, in parallel, for all ingesters
