@@ -259,14 +259,6 @@ func (c *GatewayClient) Stop() {
 	services.StopAndAwaitTerminated(c.ctx, c.pool)
 }
 
-func JoinFunc[S ~[]E, E any](elems S, sep string, f func(e E) string) string {
-	res := make([]string, len(elems))
-	for i := range elems {
-		res[i] = f(elems[i])
-	}
-	return strings.Join(res, sep)
-}
-
 func shuffleAddrs(addrs []string) []string {
 	rand.Shuffle(len(addrs), func(i, j int) {
 		addrs[i], addrs[j] = addrs[j], addrs[i]
@@ -316,7 +308,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 		level.Info(c.logger).Log(
 			"msg", "do FilterChunkRefs for addresses",
 			"progress", fmt.Sprintf("%d/%d", i+1, len(servers)),
-			"bounds", JoinFunc(rs.ranges, ",", func(e v1.FingerprintBounds) string { return e.String() }),
+			"bounds", len(rs.ranges),
 			"addrs", strings.Join(addrs, ","),
 			"from", from.Time(),
 			"through", through.Time(),
