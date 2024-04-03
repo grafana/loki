@@ -562,6 +562,8 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	}
 
 	labels := util.NewUniqueStrings(0)
+	// (shantanu) can create a map here to store label names::values and count the unique values
+	// just return a string to int map
 	err := i.forMatchingStreams(ctx, *req.Start, matchers, nil, func(s *stream) error {
 		for _, label := range s.labels {
 			if req.Values && label.Name == req.Name {
@@ -581,6 +583,32 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	return &logproto.LabelResponse{
 		Values: labels.Strings(),
 	}, nil
+}
+
+type UniqueValues map[string]struct{}
+
+// LabelsWithValues returns the label names with all the unique values depending on the request
+func (i *instance) LabelsWithValues(ctx context.Context, startTime time.Time, matchers ...*labels.Matcher) (map[string]UniqueValues, error) {
+	// TODO (shantanu): Figure out how to get the label names from index directly when no matchers are given.
+
+	labelMap := make(map[string]UniqueValues)
+	err := i.forMatchingStreams(ctx, startTime, matchers, nil, func(s *stream) error {
+		for _, label := range s.labels {
+			v, exists := labelMap[label.Name]
+			if !exists {
+				v = make(map[string]struct{})
+			}
+			if label.Value != "" {
+				v[label.Value] = struct{}{}
+			}
+			labelMap[label.Name] = v
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return labelMap, nil
 }
 
 func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {

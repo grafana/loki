@@ -32,6 +32,16 @@ service Querier {
   rpc GetVolume(VolumeRequest) returns (VolumeResponse) {}
 
   rpc GetDetectedFields(DetectedFieldsRequest) returns (DetectedFieldsResponse) {}
+
+  rpc GetDetectedLabels(DetectedLabelsRequest) returns (LabelToValuesResponse) {}
+}
+
+message LabelToValuesResponse {
+  map<string, UniqueLabelValues> labels = 1;
+}
+
+message UniqueLabelValues {
+  repeated string values = 1;
 }
 
 service StreamData {
@@ -466,4 +476,5 @@ message DetectedLabelsResponse {
 
 message DetectedLabel {
   string label = 1;
+  uint64 cardinality = 2;
 }
