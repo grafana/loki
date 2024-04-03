@@ -12,19 +12,42 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 const (
 	defaultQueryLimit = 100
+	defaultFieldLimit = 1000
 	defaultSince      = 1 * time.Hour
 	defaultDirection  = logproto.BACKWARD
 )
 
 func limit(r *http.Request) (uint32, error) {
 	l, err := parseInt(r.Form.Get("limit"), defaultQueryLimit)
+	if err != nil {
+		return 0, err
+	}
+	if l <= 0 {
+		return 0, errors.New("limit must be a positive value")
+	}
+	return uint32(l), nil
+}
+
+func lineLimit(r *http.Request) (uint32, error) {
+	l, err := parseInt(r.Form.Get("line_limit"), defaultQueryLimit)
+	if err != nil {
+		return 0, err
+	}
+	if l <= 0 {
+		return 0, errors.New("limit must be a positive value")
+	}
+	return uint32(l), nil
+}
+
+func fieldLimit(r *http.Request) (uint32, error) {
+	l, err := parseInt(r.Form.Get("field_limit"), defaultFieldLimit)
 	if err != nil {
 		return 0, err
 	}

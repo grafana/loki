@@ -14,7 +14,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/api/option"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 func Test_Hedging(t *testing.T) {

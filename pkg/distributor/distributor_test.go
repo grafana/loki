@@ -26,21 +26,25 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/util/constants"
-	fe "github.com/grafana/loki/pkg/util/flagext"
-	loki_flagext "github.com/grafana/loki/pkg/util/flagext"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	loki_net "github.com/grafana/loki/pkg/util/net"
-	"github.com/grafana/loki/pkg/util/test"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/pkg/push"
+
+	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	fe "github.com/grafana/loki/v3/pkg/util/flagext"
+	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	loki_net "github.com/grafana/loki/v3/pkg/util/net"
+	"github.com/grafana/loki/v3/pkg/util/test"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
@@ -532,18 +536,33 @@ func TestDistributorPushErrors(t *testing.T) {
 }
 
 func Test_SortLabelsOnPush(t *testing.T) {
-	limits := &validation.Limits{}
-	flagext.DefaultValues(limits)
-	limits.DiscoverServiceName = nil
-	ingester := &mockIngester{}
-	distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+	t.Run("with service_name already present in labels", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		ingester := &mockIngester{}
+		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 
-	request := makeWriteRequest(10, 10)
-	request.Streams[0].Labels = `{buzz="f", a="b"}`
-	_, err := distributors[0].Push(ctx, request)
-	require.NoError(t, err)
-	topVal := ingester.Peek()
-	require.Equal(t, `{a="b", buzz="f"}`, topVal.Streams[0].Labels)
+		request := makeWriteRequest(10, 10)
+		request.Streams[0].Labels = `{buzz="f", service_name="foo", a="b"}`
+		_, err := distributors[0].Push(ctx, request)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{a="b", buzz="f", service_name="foo"}`, topVal.Streams[0].Labels)
+	})
+
+	t.Run("with service_name added during ingestion", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		ingester := &mockIngester{}
+		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		request := makeWriteRequest(10, 10)
+		request.Streams[0].Labels = `{buzz="f", x="y", a="b"}`
+		_, err := distributors[0].Push(ctx, request)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{a="b", buzz="f", service_name="unknown_service", x="y"}`, topVal.Streams[0].Labels)
+	})
 }
 
 func Test_TruncateLogLines(t *testing.T) {
@@ -1489,5 +1508,167 @@ func TestDistributorTee(t *testing.T) {
 		}
 
 		require.Equal(t, "test", tee.tenant)
+	}
+}
+
+func Test_DetectLogLevels(t *testing.T) {
+	setup := func(discoverLogLevels bool) (*validation.Limits, *mockIngester) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+
+		limits.DiscoverLogLevels = discoverLogLevels
+		limits.DiscoverServiceName = nil
+		limits.AllowStructuredMetadata = true
+		return limits, &mockIngester{}
+	}
+
+	t.Run("log level detection disabled", func(t *testing.T) {
+		limits, ingester := setup(false)
+		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`})
+		_, err := distributors[0].Push(ctx, writeReq)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
+		require.Len(t, topVal.Streams[0].Entries[0].StructuredMetadata, 0)
+	})
+
+	t.Run("log level detection enabled", func(t *testing.T) {
+		limits, ingester := setup(true)
+		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`})
+		_, err := distributors[0].Push(ctx, writeReq)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
+		require.Equal(t, push.LabelsAdapter{
+			{
+				Name:  labelLevel,
+				Value: logLevelInfo,
+			},
+		}, topVal.Streams[0].Entries[0].StructuredMetadata)
+	})
+
+	t.Run("log level detection enabled but log level already present in stream", func(t *testing.T) {
+		limits, ingester := setup(true)
+		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar", level="debug"}`})
+		_, err := distributors[0].Push(ctx, writeReq)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{foo="bar", level="debug"}`, topVal.Streams[0].Labels)
+		require.Len(t, topVal.Streams[0].Entries[0].StructuredMetadata, 0)
+	})
+
+	t.Run("log level detection enabled but log level already present as structured metadata", func(t *testing.T) {
+		limits, ingester := setup(true)
+		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`})
+		writeReq.Streams[0].Entries[0].StructuredMetadata = push.LabelsAdapter{
+			{
+				Name:  labelLevel,
+				Value: logLevelWarn,
+			},
+		}
+		_, err := distributors[0].Push(ctx, writeReq)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
+		require.Equal(t, push.LabelsAdapter{
+			{
+				Name:  labelLevel,
+				Value: logLevelWarn,
+			},
+		}, topVal.Streams[0].Entries[0].StructuredMetadata)
+	})
+}
+
+func Test_detectLogLevelFromLogEntry(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		entry            logproto.Entry
+		expectedLogLevel string
+	}{
+		{
+			name: "use severity number from otlp logs",
+			entry: logproto.Entry{
+				Line: "error",
+				StructuredMetadata: push.LabelsAdapter{
+					{
+						Name:  loghttp_push.OTLPSeverityNumber,
+						Value: fmt.Sprintf("%d", plog.SeverityNumberDebug3),
+					},
+				},
+			},
+			expectedLogLevel: logLevelDebug,
+		},
+		{
+			name: "invalid severity number should not cause any issues",
+			entry: logproto.Entry{
+				StructuredMetadata: push.LabelsAdapter{
+					{
+						Name:  loghttp_push.OTLPSeverityNumber,
+						Value: "foo",
+					},
+				},
+			},
+			expectedLogLevel: logLevelInfo,
+		},
+		{
+			name: "non otlp without any of the log level keywords in log line",
+			entry: logproto.Entry{
+				Line: "foo",
+			},
+			expectedLogLevel: logLevelInfo,
+		},
+		{
+			name: "non otlp with log level keywords in log line",
+			entry: logproto.Entry{
+				Line: "this is a warning log",
+			},
+			expectedLogLevel: logLevelWarn,
+		},
+		{
+			name: "json log line with an error",
+			entry: logproto.Entry{
+				Line: `{"foo":"bar",msg:"message with keyword error but it should not get picked up",level":"critical"}`,
+			},
+			expectedLogLevel: logLevelCritical,
+		},
+		{
+			name: "logfmt log line with a warn",
+			entry: logproto.Entry{
+				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=warn`,
+			},
+			expectedLogLevel: logLevelWarn,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			detectedLogLevel := detectLogLevelFromLogEntry(tc.entry, logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata))
+			require.Equal(t, tc.expectedLogLevel, detectedLogLevel)
+		})
+	}
+}
+
+func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
+	// looks scary, but it is some random text of about 1000 chars from charset a-zA-Z0-9
+	logLine := "dGzJ6rKk Zj U04SWEqEK4Uwho8 DpNyLz0 Nfs61HJ fz5iKVigg 44 kabOz7ghviGmVONriAdz4lA 7Kis1OTvZGT3 " +
+		"ZB6ioK4fgJLbzm AuIcbnDZKx3rZ aeZJQzRb3zhrn vok8Efav6cbyzbRUQ PYsEdQxCpdCDcGNsKG FVwe61 nhF06t9hXSNySEWa " +
+		"gBAXP1J8oEL grep1LfeKjA23ntszKA A772vNyxjQF SjWfJypwI7scxk oLlqRzrDl ostO4CCwx01wDB7Utk0 64A7p5eQDITE6zc3 " +
+		"rGL DrPnD K2oj Vro2JEvI2YScstnMx SVu H o GUl8fxZJJ1HY0 C  QOA HNJr5XtsCNRrLi 0w C0Pd8XWbVZyQkSlsRm zFw1lW  " +
+		"c8j6JFQuQnnB EyL20z0 2Duo0dvynnAGD 45ut2Z Jrz8Nd7Pmg 5oQ09r9vnmy U2 mKHO5uBfndPnbjbr  mzOvQs9bM1 9e " +
+		"yvNSfcbPyhuWvB VKJt2kp8IoTVc XCe Uva5mp9NrGh3TEbjQu1 C  Zvdk uPr7St2m kwwMRcS9eC aS6ZuL48eoQUiKo VBPd4m49ymr " +
+		"eQZ0fbjWpj6qA A6rYs4E 58dqh9ntu8baziDJ4c 1q6aVEig YrMXTF hahrlt 6hKVHfZLFZ V 9hEVN0WKgcpu6L zLxo6YC57 XQyfAGpFM " +
+		"Wm3 S7if5qCXPzvuMZ2 gNHdst Z39s9uNc58QBDeYRW umyIF BDqEdqhE tAs2gidkqee3aux8b NLDb7 ZZLekc0cQZ GUKQuBg2pL2y1S " +
+		"RJtBuW ABOqQHLSlNuUw ZlM2nGS2 jwA7cXEOJhY 3oPv4gGAz  Uqdre16MF92C06jOH dayqTCK8XmIilT uvgywFSfNadYvRDQa " +
+		"iUbswJNcwqcr6huw LAGrZS8NGlqqzcD2wFU rm Uqcrh3TKLUCkfkwLm  5CIQbxMCUz boBrEHxvCBrUo YJoF2iyif4xq3q yk "
+
+	for i := 0; i < b.N; i++ {
+		level := extractLogLevelFromLogLine(logLine)
+		require.Equal(b, logLevelInfo, level)
 	}
 }

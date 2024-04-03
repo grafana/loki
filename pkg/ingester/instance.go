@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
@@ -26,28 +26,28 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester/index"
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/loghttp/push"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/deletion"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	mathutil "github.com/grafana/loki/pkg/util/math"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/index"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/deletion"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	mathutil "github.com/grafana/loki/v3/pkg/util/math"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -562,6 +562,8 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	}
 
 	labels := util.NewUniqueStrings(0)
+	// (shantanu) can create a map here to store label names::values and count the unique values
+	// just return a string to int map
 	err := i.forMatchingStreams(ctx, *req.Start, matchers, nil, func(s *stream) error {
 		for _, label := range s.labels {
 			if req.Values && label.Name == req.Name {
@@ -581,6 +583,32 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	return &logproto.LabelResponse{
 		Values: labels.Strings(),
 	}, nil
+}
+
+type UniqueValues map[string]struct{}
+
+// LabelsWithValues returns the label names with all the unique values depending on the request
+func (i *instance) LabelsWithValues(ctx context.Context, startTime time.Time, matchers ...*labels.Matcher) (map[string]UniqueValues, error) {
+	// TODO (shantanu): Figure out how to get the label names from index directly when no matchers are given.
+
+	labelMap := make(map[string]UniqueValues)
+	err := i.forMatchingStreams(ctx, startTime, matchers, nil, func(s *stream) error {
+		for _, label := range s.labels {
+			v, exists := labelMap[label.Name]
+			if !exists {
+				v = make(map[string]struct{})
+			}
+			if label.Value != "" {
+				v[label.Value] = struct{}{}
+			}
+			labelMap[label.Name] = v
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return labelMap, nil
 }
 
 func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {

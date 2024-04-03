@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 func TestInjectHTTPHeaderIntoGRPCRequest(t *testing.T) {

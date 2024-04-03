@@ -8,7 +8,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 type Config struct {
@@ -17,6 +17,10 @@ type Config struct {
 	DownloadParallelism int                    `yaml:"download_parallelism"`
 	BlocksCache         BlocksCacheConfig      `yaml:"blocks_cache"`
 	MetasCache          cache.Config           `yaml:"metas_cache"`
+
+	// This will always be set to true when flags are registered.
+	// In tests, where config is created as literal, it can be set manually.
+	CacheListOps bool `yaml:"-"`
 }
 
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -27,6 +31,9 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&c.DownloadParallelism, prefix+"download-parallelism", 16, "The amount of maximum concurrent bloom blocks downloads.")
 	c.BlocksCache.RegisterFlagsWithPrefixAndDefaults(prefix+"blocks-cache.", "Cache for bloom blocks. ", f, 24*time.Hour)
 	c.MetasCache.RegisterFlagsWithPrefix(prefix+"metas-cache.", "Cache for bloom metas. ", f)
+
+	// always cache LIST operations
+	c.CacheListOps = true
 }
 
 func (c *Config) Validate() error {

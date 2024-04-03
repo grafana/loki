@@ -10,11 +10,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/dskit/httpgrpc"
@@ -32,22 +34,22 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/compactor/retention"
-	"github.com/grafana/loki/pkg/distributor/clientpool"
-	"github.com/grafana/loki/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/loghttp/push"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -57,6 +59,13 @@ const (
 
 	labelServiceName = "service_name"
 	serviceUnknown   = "unknown_service"
+	labelLevel       = "level"
+	logLevelDebug    = "debug"
+	logLevelInfo     = "info"
+	logLevelWarn     = "warn"
+	logLevelError    = "error"
+	logLevelFatal    = "fatal"
+	logLevelCritical = "critical"
 )
 
 var (
@@ -367,6 +376,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			n := 0
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
+			addLogLevel := validationContext.allowStructuredMetadata && validationContext.discoverLogLevels && !lbs.Has(labelLevel)
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
@@ -374,6 +384,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					continue
 				}
 
+				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+				if addLogLevel && !structuredMetadata.Has(labelLevel) {
+					logLevel := detectLogLevelFromLogEntry(entry, structuredMetadata)
+					entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
+						Name:  labelLevel,
+						Value: logLevel,
+					})
+				}
 				stream.Entries[n] = entry
 
 				// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
@@ -837,4 +855,110 @@ func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger l
 // distributor. $EFFECTIVE_RATE_LIMIT = $GLOBAL_RATE_LIMIT / $NUM_INSTANCES.
 func (d *Distributor) HealthyInstancesCount() int {
 	return int(d.healthyInstancesCount.Load())
+}
+
+func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
+	// otlp logs have a severity number, using which we are defining the log levels.
+	// Significance of severity number is explained in otel docs here https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber
+	if otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber); otlpSeverityNumberTxt != "" {
+		otlpSeverityNumber, err := strconv.Atoi(otlpSeverityNumberTxt)
+		if err != nil {
+			return logLevelInfo
+		}
+		if otlpSeverityNumber <= int(plog.SeverityNumberDebug4) {
+			return logLevelDebug
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberInfo4) {
+			return logLevelInfo
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberWarn4) {
+			return logLevelWarn
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberError4) {
+			return logLevelError
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberFatal4) {
+			return logLevelFatal
+		}
+		return logLevelInfo
+	}
+
+	return extractLogLevelFromLogLine(entry.Line)
+}
+
+func extractLogLevelFromLogLine(log string) string {
+	// check for log levels in known log formats to avoid any false detection
+
+	// json logs:
+	var firstNonSpaceChar rune
+	for _, char := range log {
+		if !unicode.IsSpace(char) {
+			firstNonSpaceChar = char
+			break
+		}
+	}
+
+	var lastNonSpaceChar rune
+	for i := len(log) - 1; i >= 0; i-- {
+		char := rune(log[i])
+		if !unicode.IsSpace(char) {
+			lastNonSpaceChar = char
+			break
+		}
+	}
+
+	if firstNonSpaceChar == '{' && lastNonSpaceChar == '}' {
+		if strings.Contains(log, `:"err"`) || strings.Contains(log, `:"ERR"`) ||
+			strings.Contains(log, `:"error"`) || strings.Contains(log, `:"ERROR"`) {
+			return logLevelError
+		}
+		if strings.Contains(log, `:"warn"`) || strings.Contains(log, `:"WARN"`) ||
+			strings.Contains(log, `:"warning"`) || strings.Contains(log, `:"WARNING"`) {
+			return logLevelWarn
+		}
+		if strings.Contains(log, `:"critical"`) || strings.Contains(log, `:"CRITICAL"`) {
+			return logLevelCritical
+		}
+		if strings.Contains(log, `:"debug"`) || strings.Contains(log, `:"DEBUG"`) {
+			return logLevelDebug
+		}
+		if strings.Contains(log, `:"info"`) || strings.Contains(log, `:"INFO"`) {
+			return logLevelDebug
+		}
+	}
+
+	// logfmt logs:
+	if strings.Contains(log, "=") {
+		if strings.Contains(log, "=err") || strings.Contains(log, "=ERR") ||
+			strings.Contains(log, "=error") || strings.Contains(log, "=ERROR") {
+			return logLevelError
+		}
+		if strings.Contains(log, "=warn") || strings.Contains(log, "=WARN") ||
+			strings.Contains(log, "=warning") || strings.Contains(log, "=WARNING") {
+			return logLevelWarn
+		}
+		if strings.Contains(log, "=critical") || strings.Contains(log, "=CRITICAL") {
+			return logLevelCritical
+		}
+		if strings.Contains(log, "=debug") || strings.Contains(log, "=DEBUG") {
+			return logLevelDebug
+		}
+		if strings.Contains(log, "=info") || strings.Contains(log, "=INFO") {
+			return logLevelDebug
+		}
+	}
+
+	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
+		strings.Contains(log, "error") || strings.Contains(log, "ERROR") {
+		return logLevelError
+	}
+	if strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
+		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
+		return logLevelWarn
+	}
+	if strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") {
+		return logLevelCritical
+	}
+	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
+		return logLevelDebug
+	}
+
+	// Default to info if no specific level is found
+	return logLevelInfo
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/gomemcache/memcache"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // MemcachedJumpHashSelector implements the memcache.ServerSelector
