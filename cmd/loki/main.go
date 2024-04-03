@@ -50,7 +50,7 @@ func main() {
 	// call it atleast once, the defaults are set to an empty struct.
 	// We call it with the flag values so that the config file unmarshalling only overrides the values set in the config.
 	validation.SetDefaultLimitsForYAMLUnmarshalling(config.LimitsConfig)
-	loki_runtime.SetDefaultLimitsForYAMLUnmarshalling(config.OperationConfig)
+	loki_runtime.SetDefaultLimitsForYAMLUnmarshalling(config.OperationalConfig)
 
 	// Init the logger which will honor the log level set in config.Server
 	if reflect.DeepEqual(&config.Server.LogLevel, &log.Level{}) {
