@@ -176,10 +176,24 @@ func NewMetric(l labels.Labels) model.Metric {
 	return ret
 }
 
-func EncodeResult(data parser.Value, statistics stats.Result, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
+func EncodeResult(data parser.Value, warnings []string, statistics stats.Result, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
 	s.WriteObjectStart()
 	s.WriteObjectField("status")
 	s.WriteString("success")
+
+	if len(warnings) > 0 {
+		s.WriteMore()
+
+		s.WriteObjectField("warnings")
+		s.WriteArrayStart()
+		for i, w := range warnings {
+			s.WriteString(w)
+			if i < len(warnings)-1 {
+				s.WriteMore()
+			}
+		}
+		s.WriteArrayEnd()
+	}
 
 	s.WriteMore()
 	s.WriteObjectField("data")

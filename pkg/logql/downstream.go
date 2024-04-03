@@ -353,6 +353,10 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 	}
 
 	for _, res := range results {
+		if err := metadata.AddWarnings(ctx, res.Warnings...); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
+		}
+
 		if err := metadata.JoinHeaders(ctx, res.Headers); err != nil {
 			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
 			break
