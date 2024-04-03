@@ -5,9 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
-	"regexp"
 	"time"
 
 	"github.com/axiomhq/hyperloglog"
