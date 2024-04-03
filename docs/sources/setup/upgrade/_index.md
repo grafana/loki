@@ -40,7 +40,7 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 #### Removed the `default` section of the runtime overrides config file.
 
-This was introduced in 2.9 and likely not widely used.  This only affects you if you run Loki with a runtime config file AND you had populated the new `default` block added in 2.9
+This was introduced in 2.9 and likely not widely used.  This only affects you if you run Loki with a runtime config file AND you had populated the new `default` block added in 2.9.
 
 The `default` block was removed and instead a top level config now exists in the standard loki config called `operational_config`, you can set default values here for runtime configs.
 
