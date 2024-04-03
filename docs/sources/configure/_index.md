@@ -186,7 +186,9 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # shards for performance.
 [compactor: <compactor>]
 
-# The limits_config block configures global and per-tenant limits in Loki.
+# The limits_config block configures global and per-tenant limits in Loki. The
+# values here can be overridden in the `overrides` section of the runtime_config
+# file
 [limits_config: <limits_config>]
 
 # The frontend_worker configures the worker - running within the Loki querier -
@@ -2768,7 +2770,7 @@ retention:
 
 ### limits_config
 
-The `limits_config` block configures global and per-tenant limits in Loki.
+The `limits_config` block configures global and per-tenant limits in Loki. The values here can be overridden in the `overrides` section of the runtime_config file
 
 ```yaml
 # Whether the ingestion rate limit should be applied individually to each
