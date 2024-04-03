@@ -1075,7 +1075,6 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 }
 
 func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http.Header) (queryrangebase.Response, error) {
-
 	switch req := req.(type) {
 	case *LokiSeriesRequest:
 		var resp LokiSeriesResponse
@@ -1133,6 +1132,15 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 		return &DetectedFieldsResponse{
+			Response: &resp,
+			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+		}, nil
+	case *DetectedLabelsRequest:
+		var resp logproto.DetectedLabelsResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+		return &DetectedLabelsResponse{
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
@@ -1749,9 +1757,11 @@ func (p paramsRangeWrapper) End() time.Time {
 func (p paramsRangeWrapper) Step() time.Duration {
 	return time.Duration(p.GetStep() * 1e6)
 }
+
 func (p paramsRangeWrapper) Interval() time.Duration {
 	return time.Duration(p.GetInterval() * 1e6)
 }
+
 func (p paramsRangeWrapper) Direction() logproto.Direction {
 	return p.GetDirection()
 }
