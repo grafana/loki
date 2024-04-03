@@ -436,11 +436,12 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 
 		if len(endpoint) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSEndpoint)
-		} else if len(region) != 0 {
-			err = validateS3Endpoint(string(endpoint), string(region))
-			if err != nil {
-				return nil, err
-			}
+		} 
+		if len(region) != 0 {
+		   if err := validateS3Endpoint(string(endpoint), string(region)); err != nil {
+		      return nil, err
+		   }
+	        }
 		}
 		if len(id) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSAccessKeyID)
