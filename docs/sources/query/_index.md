@@ -137,6 +137,31 @@ Same as above, but vectors have their values set to `1` if they pass the compari
 sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))
 ```
 
+### Pattern match filter operators
+
+{{% admonition type="warning" %}}
+The pattern match filters are an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available. Documentation is either limited or not provided outside of code comments. No SLA is provided.
+{{% /admonition %}}
+
+- `|>` (line match pattern)
+- `!>` (line match not pattern)
+
+Despite the fact that filtering by patterns is a subset of the regex filter scope, these operators extend the syntax explicitly.
+
+The filter presumes that placeholders mask arbitrary non-empty literals. Thus, the `"<_>"` pattern matches any non-empty line, and the `""`a pattern only matches empty lines. The semantics are identical to the pattern parse stage, with an exception that named captures are not allowed: fields are never extracted at filtering.
+
+Line match pattern example:
+
+```logql
+{service_name=`ingester`} |>  `<_> caller=http.go:194 level=debug <_> msg="POST /grpc.health.v1.Health/Check (200) <_>`
+```
+
+Line match not pattern example:
+
+```logql
+{service_name=`ingester`} !>  `<_> caller=http.go:194 level=debug <_> msg="POST /grpc.health.v1.Health/Check (200) <_>`
+```
+
 ### Order of operations
 
 When chaining or combining operators, you have to consider operator precedence:
