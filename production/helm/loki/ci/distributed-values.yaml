@@ -27,18 +27,8 @@ compactor:
 indexGateway:
   replicas: 1
 bloomCompactor:
-  replicas: 1
-  persistence:
-    enabled: true
+  replicas: 0
 bloomGateway:
-  replicas: 1
-  persistence:
-    enabled: true
+  replicas: 0
 minio:
   enabled: true
-
-lokiCanary:
-  enabled: false
-
-test:
-  enabled: false
