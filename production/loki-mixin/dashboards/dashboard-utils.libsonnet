@@ -197,24 +197,24 @@ local utils = import 'mixin-utils/utils.libsonnet';
       tooltip: { sort: 2 },  // Sort descending.
     } + {
       fieldConfig+: {
-          overrides+: [
-            $.colorOverride('request', '#FFC000') + {
-              properties+: [
-                {
-                  id: 'custom.fillOpacity',
-                  value: 0,
-                },
-              ],
-            },
-            $.colorOverride('limit', '#E02F44') + {
-              properties+: [
-                {
-                  id: 'custom.fillOpacity',
-                  value: 0,
-                },
-              ],
-            },
-          ],
+        overrides+: [
+          $.colorOverride('request', '#FFC000') + {
+            properties+: [
+              {
+                id: 'custom.fillOpacity',
+                value: 0,
+              },
+            ],
+          },
+          $.colorOverride('limit', '#E02F44') + {
+            properties+: [
+              {
+                id: 'custom.fillOpacity',
+                value: 0,
+              },
+            ],
+          },
+        ],
       },
     },
   containerMemoryWorkingSetPanel(title, containerName)::
