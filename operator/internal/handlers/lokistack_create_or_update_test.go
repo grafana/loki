@@ -752,7 +752,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidPerTenantLimits_SetDegraded(t *testi
 	}
 
 	degradedErr := &status.DegradedError{
-		Message: "Invalid per-tenant limits config: invalid per-tenant config",
+		Message: "Invalid per-tenant limits config: per-tenant config cannot contain empty keys: invalid",
 		Reason:  lokiv1.ReasonInvalidPerTenantLimitsConfig,
 		Requeue: false,
 	}

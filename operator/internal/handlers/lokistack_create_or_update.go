@@ -85,7 +85,7 @@ func CreateOrUpdateLokiStack(
 
 	err = manifests.ValidatePerTenantConfig(stack.Spec.Limits)
 	if err != nil {
-		if errors.Is(err, manifests.ErrInvalidPerTenantConfig) {
+		if errors.Is(err, manifests.ErrPerTenantConfigInvalid) {
 			ll.Error(err, "invalid per-tenant config")
 			return "", &status.DegradedError{
 				Message: fmt.Sprintf("Invalid per-tenant limits config: %s", err),
