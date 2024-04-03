@@ -238,8 +238,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
           fillOpacity: 100,
           lineWidth: 0,
           stacking: {
-            mode: "normal",
-            group: "A",
+            mode: 'normal',
+            group: 'A',
           },
         },
       },
@@ -258,8 +258,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
           mode: 'fixed',
           fixedColor: color,
         },
-      }
-    ]
+      },
+    ],
   },
 
   newQpsPanel(selector, statusLabelName='status_code')::
