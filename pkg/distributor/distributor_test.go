@@ -536,18 +536,33 @@ func TestDistributorPushErrors(t *testing.T) {
 }
 
 func Test_SortLabelsOnPush(t *testing.T) {
-	limits := &validation.Limits{}
-	flagext.DefaultValues(limits)
-	limits.DiscoverServiceName = nil
-	ingester := &mockIngester{}
-	distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+	t.Run("with service_name already present in labels", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		ingester := &mockIngester{}
+		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 
-	request := makeWriteRequest(10, 10)
-	request.Streams[0].Labels = `{buzz="f", a="b"}`
-	_, err := distributors[0].Push(ctx, request)
-	require.NoError(t, err)
-	topVal := ingester.Peek()
-	require.Equal(t, `{a="b", buzz="f"}`, topVal.Streams[0].Labels)
+		request := makeWriteRequest(10, 10)
+		request.Streams[0].Labels = `{buzz="f", service_name="foo", a="b"}`
+		_, err := distributors[0].Push(ctx, request)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{a="b", buzz="f", service_name="foo"}`, topVal.Streams[0].Labels)
+	})
+
+	t.Run("with service_name added during ingestion", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		ingester := &mockIngester{}
+		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		request := makeWriteRequest(10, 10)
+		request.Streams[0].Labels = `{buzz="f", x="y", a="b"}`
+		_, err := distributors[0].Push(ctx, request)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{a="b", buzz="f", service_name="unknown_service", x="y"}`, topVal.Streams[0].Labels)
+	})
 }
 
 func Test_TruncateLogLines(t *testing.T) {
@@ -1620,14 +1635,14 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 		{
 			name: "json log line with an error",
 			entry: logproto.Entry{
-				Line: `{"foo":"bar","level":"error"}`,
+				Line: `{"foo":"bar",msg:"message with keyword error but it should not get picked up",level":"critical"}`,
 			},
-			expectedLogLevel: logLevelError,
+			expectedLogLevel: logLevelCritical,
 		},
 		{
 			name: "logfmt log line with a warn",
 			entry: logproto.Entry{
-				Line: `foo=bar level=warn`,
+				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=warn`,
 			},
 			expectedLogLevel: logLevelWarn,
 		},
@@ -1636,5 +1651,24 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 			detectedLogLevel := detectLogLevelFromLogEntry(tc.entry, logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata))
 			require.Equal(t, tc.expectedLogLevel, detectedLogLevel)
 		})
+	}
+}
+
+func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
+	// looks scary, but it is some random text of about 1000 chars from charset a-zA-Z0-9
+	logLine := "dGzJ6rKk Zj U04SWEqEK4Uwho8 DpNyLz0 Nfs61HJ fz5iKVigg 44 kabOz7ghviGmVONriAdz4lA 7Kis1OTvZGT3 " +
+		"ZB6ioK4fgJLbzm AuIcbnDZKx3rZ aeZJQzRb3zhrn vok8Efav6cbyzbRUQ PYsEdQxCpdCDcGNsKG FVwe61 nhF06t9hXSNySEWa " +
+		"gBAXP1J8oEL grep1LfeKjA23ntszKA A772vNyxjQF SjWfJypwI7scxk oLlqRzrDl ostO4CCwx01wDB7Utk0 64A7p5eQDITE6zc3 " +
+		"rGL DrPnD K2oj Vro2JEvI2YScstnMx SVu H o GUl8fxZJJ1HY0 C  QOA HNJr5XtsCNRrLi 0w C0Pd8XWbVZyQkSlsRm zFw1lW  " +
+		"c8j6JFQuQnnB EyL20z0 2Duo0dvynnAGD 45ut2Z Jrz8Nd7Pmg 5oQ09r9vnmy U2 mKHO5uBfndPnbjbr  mzOvQs9bM1 9e " +
+		"yvNSfcbPyhuWvB VKJt2kp8IoTVc XCe Uva5mp9NrGh3TEbjQu1 C  Zvdk uPr7St2m kwwMRcS9eC aS6ZuL48eoQUiKo VBPd4m49ymr " +
+		"eQZ0fbjWpj6qA A6rYs4E 58dqh9ntu8baziDJ4c 1q6aVEig YrMXTF hahrlt 6hKVHfZLFZ V 9hEVN0WKgcpu6L zLxo6YC57 XQyfAGpFM " +
+		"Wm3 S7if5qCXPzvuMZ2 gNHdst Z39s9uNc58QBDeYRW umyIF BDqEdqhE tAs2gidkqee3aux8b NLDb7 ZZLekc0cQZ GUKQuBg2pL2y1S " +
+		"RJtBuW ABOqQHLSlNuUw ZlM2nGS2 jwA7cXEOJhY 3oPv4gGAz  Uqdre16MF92C06jOH dayqTCK8XmIilT uvgywFSfNadYvRDQa " +
+		"iUbswJNcwqcr6huw LAGrZS8NGlqqzcD2wFU rm Uqcrh3TKLUCkfkwLm  5CIQbxMCUz boBrEHxvCBrUo YJoF2iyif4xq3q yk "
+
+	for i := 0; i < b.N; i++ {
+		level := extractLogLevelFromLogLine(logLine)
+		require.Equal(b, logLevelInfo, level)
 	}
 }
