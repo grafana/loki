@@ -121,3 +121,74 @@ func TestForRange(t *testing.T) {
 		})
 	}
 }
+
+func TestMerge(t *testing.T) {
+	tests := []struct {
+		x        Volume
+		samples  []*logproto.PatternSample
+		expected []logproto.PatternSample
+	}{
+		{
+			x: Volume{
+				Values: []logproto.PatternSample{
+					{Value: 10, Timestamp: 1},
+					{Value: 20, Timestamp: 2},
+					{Value: 30, Timestamp: 4},
+				},
+			},
+			samples: []*logproto.PatternSample{
+				{Value: 5, Timestamp: 1},
+				{Value: 15, Timestamp: 3},
+				{Value: 25, Timestamp: 4},
+			},
+			expected: []logproto.PatternSample{
+				{Value: 15, Timestamp: 1},
+				{Value: 20, Timestamp: 2},
+				{Value: 15, Timestamp: 3},
+				{Value: 55, Timestamp: 4},
+			},
+		},
+		{
+			x: Volume{
+				Values: []logproto.PatternSample{
+					{Value: 5, Timestamp: 1},
+					{Value: 15, Timestamp: 3},
+					{Value: 25, Timestamp: 4},
+				},
+			},
+			samples: []*logproto.PatternSample{
+				{Value: 10, Timestamp: 1},
+				{Value: 20, Timestamp: 2},
+				{Value: 30, Timestamp: 4},
+			},
+			expected: []logproto.PatternSample{
+				{Value: 15, Timestamp: 1},
+				{Value: 20, Timestamp: 2},
+				{Value: 15, Timestamp: 3},
+				{Value: 55, Timestamp: 4},
+			},
+		},
+		{
+			x: Volume{
+				Values: []logproto.PatternSample{
+					{Value: 10, Timestamp: 1},
+					{Value: 20, Timestamp: 2},
+					{Value: 30, Timestamp: 4},
+				},
+			},
+			samples: []*logproto.PatternSample{},
+			expected: []logproto.PatternSample{
+				{Value: 10, Timestamp: 1},
+				{Value: 20, Timestamp: 2},
+				{Value: 30, Timestamp: 4},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		result := test.x.merge(test.samples)
+		if !reflect.DeepEqual(result, test.expected) {
+			t.Errorf("Expected: %v, Got: %v", test.expected, result)
+		}
+	}
+}

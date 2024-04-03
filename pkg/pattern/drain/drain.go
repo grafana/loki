@@ -31,6 +31,8 @@ import (
 
 	"github.com/hashicorp/golang-lru/v2/simplelru"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 const (
@@ -172,12 +174,58 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 	} else {
 		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
 		matchCluster.Tokens = newTemplateTokens
-		matchCluster.Size++
 		matchCluster.append(model.TimeFromUnixNano(ts))
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
 	}
 	return matchCluster
+}
+
+func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
+	tokens := tokenizePattern(content, d.config.ParamString)
+	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
+	// Match no existing log cluster
+	if matchCluster == nil {
+		d.clustersCounter++
+		clusterID := d.clustersCounter
+		matchCluster = &LogCluster{
+			Tokens: tokens,
+			id:     clusterID,
+		}
+		d.idToCluster.Set(clusterID, matchCluster)
+		d.addSeqToPrefixTree(d.rootNode, matchCluster)
+	} else {
+		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
+		matchCluster.Tokens = newTemplateTokens
+		// Touch cluster to update its state in the cache.
+		d.idToCluster.Get(matchCluster.id)
+	}
+	matchCluster.merge(samples)
+	return matchCluster
+}
+
+func tokenizePattern(content, param string) []string {
+	return deduplicatePlaceholders(strings.Split(content, " "), param)
+}
+
+func deduplicatePlaceholders(tokens []string, param string) []string {
+	if len(tokens) < 2 {
+		return tokens
+	}
+	i := 1
+	for k := 1; k < len(tokens); k++ {
+		if tokens[k] != param || tokens[k] != tokens[k-1] {
+			if i != k {
+				tokens[i] = tokens[k]
+			}
+			i++
+		}
+	}
+	return tokens[:i]
+}
+
+func (d *Drain) PatternString(c *LogCluster) string {
+	return strings.Join(deduplicatePlaceholders(c.Tokens, d.config.ParamString), " ")
 }
 
 // Match against an already existing cluster. Match shall be perfect (sim_th=1.0). New cluster will not be created as a result of this call, nor any cluster modifications.
