@@ -260,7 +260,7 @@ func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time,
 		panic(err)
 	}
 
-	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 10, 100, 0)
+	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 0)
 	if err != nil {
 		panic(err)
 	}
