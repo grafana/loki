@@ -1,0 +1,22 @@
+name: operator-release-please
+
+on:
+  push:
+    paths:
+      - 'operator/**'
+    branches:
+      - master
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/release-please-action@v4
+        with:
+          path: operator
+          config-file: operator/release-please-config.json
+          token: ${{ secrets.GH_TOKEN }}
