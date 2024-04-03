@@ -402,6 +402,13 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
 		},
 		{
+			`{app="foo"} |= "test" |= "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test foo", true}, {"foo bar", true}, {"none", false}},
+		},
+		{
 			`{app="foo"} |= "foo" or "bar" |= "buzz" or "fizz"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
@@ -414,6 +421,13 @@ func Test_FilterMatcher(t *testing.T) {
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
 			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} != "test" != "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test", false}, {"foo", false}, {"bar", false}, {"none", true}},
 		},
 		{
 			`{app="foo"} |~ "foo" or "bar"`,
@@ -569,6 +583,11 @@ func TestStringer(t *testing.T) {
 			in:  `{app="foo"} != "foo" or "bar"`,
 			out: `{app="foo"} != "foo" != "bar"`,
 		},
+		{ // !A && !(B || C) == !A && !B & !C
+			in:  `{app="foo"} != "test" != "foo" or "bar"`,
+			out: `{app="foo"} != "test" != "foo" != "bar"`,
+		},
+
 		{
 			in:  `{app="foo"} !~ "foo" or "bar"`,
 			out: `{app="foo"} !~ "foo" !~ "bar"`,

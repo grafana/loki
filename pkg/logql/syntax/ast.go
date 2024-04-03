@@ -366,6 +366,39 @@ func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 }
 
 func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
+	// Before supporting `or` in linefilter, `right` will always be a leaf node (right.next == nil)
+	// After supporting `or` in linefilter, `right` may not be a leaf node (e.g: |= "a" or "b). Here "b".Left = "a")
+	// We shift the tree to make `right` leaf node.
+	// Consider the following expression. {app="loki"} != "test" != "foo" or "bar"
+	// Creates following tree and transformed into the one on the right.
+	//                                                                              ┌────────────┐
+	//               ┌────────────┐                                                 │   root     │
+	//               │   root     │                                                 └──────┬─────┘
+	//               └──────┬─────┘                                                        │
+	//                      │                                                              │
+	//                      │                                                              │
+	//                      │                       ─────────►            ┌────────────────┴─────────────┐
+	//     ┌────────────────┴─────────────┐                               │                              │
+	//     │                              │                           ┌───┴────┐                         │
+	//     │                              │                           │ foo    │                      ┌──┴────┐
+	//     │                            ┌─┴────┐                      └───┬────┘                      │  bar  │
+	// ┌───┴────┐                       │ bar  │                          │                           └───────┘
+	// │  test  │                       └──┬───┘                          │
+	// └────────┘                          │                              │
+	//                                     │                     ┌────────┘
+	//                                     │                     │
+	//                           ┌─────────┘                     │
+	//                           │                               │
+	//                           │                           ┌───┴───┐
+	//                           │                           │  test │
+	//                         ┌─┴────┐                      └───────┘
+	//                         │ foo  │
+	//                         └──────┘
+	if right.Left != nil && !right.IsOrChild {
+		right.Left.Left = left
+		left = right.Left
+		right.Left = nil
+	}
 	return &LineFilterExpr{
 		Left:       left,
 		LineFilter: right.LineFilter,
