@@ -15,7 +15,6 @@ Loki uses the defined schemas to determine which format to use when storing and 
 Use of a schema allows Loki to iterate over the storage layer without requiring migration of existing data.
 
 ## New Loki installs
-``
 For a new Loki install with no previous data, here is an example schema configuration with recommended values
 
 ```
