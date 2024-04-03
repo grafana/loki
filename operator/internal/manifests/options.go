@@ -1,8 +1,6 @@
 package manifests
 
 import (
-	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -128,8 +126,6 @@ type TLSProfileSpec struct {
 	MinTLSVersion string
 }
 
-var ErrPerTenantConfigInvalid error = errors.New("per-tenant config cannot contain empty keys")
-
 // TLSCipherSuites transforms TLSProfileSpec.Ciphers from a slice
 // to a string of elements joined with a comma.
 func (o Options) TLSCipherSuites() string {
@@ -198,16 +194,4 @@ func calculateHTTPTimeouts(queryTimeout time.Duration) TimeoutConfig {
 			UpstreamWriteTimeout: writeTimeout,
 		},
 	}
-}
-
-func ValidatePerTenantConfig(s *lokiv1.LimitsSpec) error {
-	if s != nil && s.Tenants != nil {
-		for key, config := range s.Tenants {
-			c := lokiv1.PerTenantLimitsTemplateSpec{}
-			if config == c {
-				return fmt.Errorf("%w: %s", ErrPerTenantConfigInvalid, key)
-			}
-		}
-	}
-	return nil
 }

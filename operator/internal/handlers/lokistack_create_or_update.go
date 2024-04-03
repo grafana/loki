@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
@@ -83,16 +82,9 @@ func CreateOrUpdateLokiStack(
 		certRotationRequiredAt = stack.Annotations[manifests.AnnotationCertRotationRequiredAt]
 	}
 
-	err = manifests.ValidatePerTenantConfig(stack.Spec.Limits)
+	err = validatePerTenantConfig(stack.Spec.Limits)
 	if err != nil {
-		if errors.Is(err, manifests.ErrPerTenantConfigInvalid) {
-			ll.Error(err, "invalid per-tenant config")
-			return "", &status.DegradedError{
-				Message: fmt.Sprintf("Invalid per-tenant limits config: %s", err),
-				Reason:  lokiv1.ReasonInvalidPerTenantLimitsConfig,
-				Requeue: false,
-			}
-		}
+		return "", err
 	}
 
 	timeoutConfig, err := manifests.NewTimeoutConfig(stack.Spec.Limits)
@@ -249,4 +241,19 @@ func isNamespacedResource(obj client.Object) bool {
 	default:
 		return true
 	}
+}
+
+func validatePerTenantConfig(s *lokiv1.LimitsSpec) error {
+	if s != nil && s.Tenants != nil {
+		for key, config := range s.Tenants {
+			if config.IngestionLimits == nil && config.QueryLimits == nil && config.Retention == nil {
+				return &status.DegradedError{
+					Message: fmt.Sprintf("Per-tenant limit configuration can not be empty: %s", key),
+					Reason:  lokiv1.ReasonInvalidPerTenantLimitsConfig,
+					Requeue: false,
+				}
+			}
+		}
+	}
+	return nil
 }
