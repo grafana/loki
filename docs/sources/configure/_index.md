@@ -3684,7 +3684,7 @@ Configuration for 'runtime config' module, responsible for reloading runtime con
 
 ### operational_config
 
-These are values which allow you to control aspects of Loki's operation, most commonly used for controlling types of higher verbosity logging, the values here can be overridden in the `configs` section of the runtime_config file.
+These are values which allow you to control aspects of Loki's operation, most commonly used for controlling types of higher verbosity logging, the values here can be overridden in the `configs` section of the `runtime_config` file.
 
 ```yaml
 # Log every new stream created by a push request (very verbose, recommend to
