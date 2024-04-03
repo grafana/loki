@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
 	ringclient "github.com/grafana/dskit/ring/client"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -26,7 +27,6 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/bloomutils"
-	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/discovery"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -98,8 +99,7 @@ func NewBloomGatewayGRPCPool(address string, opts []grpc.DialOption) (*GRPCPool,
 type ClientConfig struct {
 	// PoolConfig defines the behavior of the gRPC connection pool used to communicate
 	// with the Bloom Gateway.
-	// It is defined at the distributors YAML section and reused here.
-	PoolConfig clientpool.PoolConfig `yaml:"pool_config,omitempty" doc:"description=Configures the behavior of the connection pool."`
+	PoolConfig PoolConfig `yaml:"pool_config,omitempty" doc:"description=Configures the behavior of the connection pool."`
 
 	// GRPCClientConfig configures the gRPC connection between the Bloom Gateway client and the server.
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
@@ -111,6 +111,9 @@ type ClientConfig struct {
 	// Cache configures the cache used to store the results of the Bloom Gateway server.
 	Cache        CacheConfig `yaml:"results_cache,omitempty"`
 	CacheResults bool        `yaml:"cache_results"`
+
+	// Client sharding using DNS disvovery and jumphash
+	Addresses string `yaml:"addresses,omitempty"`
 }
 
 // RegisterFlags registers flags for the Bloom Gateway client configuration.
@@ -122,12 +125,18 @@ func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
 func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+"grpc", f)
 	i.Cache.RegisterFlagsWithPrefix(prefix+"cache.", f)
+	i.PoolConfig.RegisterFlagsWithPrefix(prefix+"pool.", f)
 	f.BoolVar(&i.CacheResults, prefix+"cache_results", false, "Flag to control whether to cache bloom gateway client requests/responses.")
+	f.StringVar(&i.Addresses, prefix+"addresses", "", "Comma separated addresses list in DNS Service Discovery format: https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes")
 }
 
 func (i *ClientConfig) Validate() error {
 	if err := i.GRPCClientConfig.Validate(); err != nil {
 		return errors.Wrap(err, "grpc client config")
+	}
+
+	if err := i.PoolConfig.Validate(); err != nil {
+		return errors.Wrap(err, "pool config")
 	}
 
 	if i.CacheResults {
@@ -144,17 +153,18 @@ type Client interface {
 }
 
 type GatewayClient struct {
-	cfg     ClientConfig
-	limits  Limits
-	logger  log.Logger
-	metrics *clientMetrics
-	pool    *ringclient.Pool
-	ring    ring.ReadRing
+	cfg         ClientConfig
+	ctx         context.Context
+	limits      Limits
+	logger      log.Logger
+	metrics     *clientMetrics
+	pool        *ringclient.Pool
+	dnsProvider *discovery.DNS
+	ring        ring.ReadRing
 }
 
 func NewClient(
 	cfg ClientConfig,
-	readRing ring.ReadRing,
 	limits Limits,
 	registerer prometheus.Registerer,
 	logger log.Logger,
@@ -162,13 +172,21 @@ func NewClient(
 	cacheGen resultscache.CacheGenNumberLoader,
 	retentionEnabled bool,
 ) (*GatewayClient, error) {
+
 	latency := promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: constants.Loki,
+		Namespace: metricsNamespace,
 		Subsystem: "bloom_gateway",
 		Name:      "request_duration_seconds",
 		Help:      "Time (in seconds) spent serving requests when using the bloom gateway",
 		Buckets:   instrument.DefBuckets,
 	}, []string{"operation", "status_code"})
+
+	clients := promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+		Namespace: metricsNamespace,
+		Subsystem: "bloom_gateway",
+		Name:      "clients",
+		Help:      "The current number of bloom gateway clients.",
+	})
 
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(latency))
 	if err != nil {
@@ -206,14 +224,39 @@ func NewClient(
 		return pool, nil
 	}
 
+	dnsProvider := discovery.NewDNS(logger, cfg.PoolConfig.CheckInterval, cfg.Addresses, nil)
+	// Make an attempt to do one DNS lookup so we can start with addresses
+	dnsProvider.RunOnce()
+	discovery := func() ([]string, error) {
+		return dnsProvider.Addresses(), nil
+	}
+
+	pool := ringclient.NewPool(
+		"bloom-gateway",
+		ringclient.PoolConfig(cfg.PoolConfig),
+		discovery,
+		ringclient.PoolAddrFunc(poolFactory),
+		clients,
+		logger,
+	)
+
+	ctx := context.Background()
+	services.StartAndAwaitRunning(ctx, pool)
+
 	return &GatewayClient{
-		cfg:     cfg,
-		logger:  logger,
-		limits:  limits,
-		metrics: newClientMetrics(registerer),
-		pool:    clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger, metricsNamespace),
-		ring:    readRing,
+		cfg:         cfg,
+		ctx:         ctx,
+		logger:      logger,
+		limits:      limits,
+		metrics:     newClientMetrics(registerer),
+		pool:        pool,
+		dnsProvider: dnsProvider,
 	}, nil
+}
+
+func (c *GatewayClient) Stop() {
+	c.dnsProvider.Stop()
+	services.StopAndAwaitTerminated(c.ctx, c.pool)
 }
 
 func JoinFunc[S ~[]E, E any](elems S, sep string, f func(e E) string) string {

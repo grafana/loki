@@ -2089,11 +2089,18 @@ ring:
 client:
   # Configures the behavior of the connection pool.
   pool_config:
-    [client_cleanup_period: <duration>]
+    # How frequently to clean up clients for servers that have gone away or are
+    # unhealthy.
+    # CLI flag: -bloom-gateway-client.pool.check-interval
+    [check_interval: <duration> | default = 10s]
 
-    [health_check_ingesters: <boolean>]
+    # Run a health check on each server during periodic cleanup.
+    # CLI flag: -bloom-gateway-client.pool.enable-health-check
+    [enable_health_check: <boolean> | default = true]
 
-    [remote_timeout: <duration>]
+    # Timeout for the health check if health check is enabled.
+    # CLI flag: -bloom-gateway-client.pool.health-check-timeout
+    [health_check_timeout: <duration> | default = 1s]
 
   # The grpc_client block configures the gRPC client used to communicate between
   # two Loki components.
@@ -2115,6 +2122,11 @@ client:
   # Flag to control whether to cache bloom gateway client requests/responses.
   # CLI flag: -bloom-gateway-client.cache_results
   [cache_results: <boolean> | default = false]
+
+  # Comma separated addresses list in DNS Service Discovery format:
+  # https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes
+  # CLI flag: -bloom-gateway-client.addresses
+  [addresses: <string> | default = ""]
 
 # Number of workers to use for filtering chunks concurrently.
 # CLI flag: -bloom-gateway.worker-concurrency
