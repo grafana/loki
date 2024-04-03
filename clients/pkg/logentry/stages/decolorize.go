@@ -1,7 +1,7 @@
 package stages
 
 import (
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 type decolorizeStage struct{}

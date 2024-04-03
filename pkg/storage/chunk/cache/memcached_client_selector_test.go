@@ -9,7 +9,7 @@ import (
 	"github.com/grafana/gomemcache/memcache"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 func TestNatSort(t *testing.T) {

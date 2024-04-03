@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	lokilog "github.com/grafana/loki/pkg/logql/log"
+	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -29,28 +29,28 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/ingester/index"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores"
-	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/wal"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/ingester/index"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores"
+	indexstore "github.com/grafana/loki/v3/pkg/storage/stores/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/wal"
 )
 
 const (
@@ -1370,4 +1370,41 @@ func (i *Ingester) GetDetectedFields(_ context.Context, _ *logproto.DetectedFiel
 			},
 		},
 	}, nil
+}
+
+// GetDetectedLabels returns map of detected labels and unique values from this ingester
+func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	instance, err := i.GetOrCreateInstance(userID)
+	if err != nil {
+		return nil, err
+	}
+	var matchers []*labels.Matcher
+	if req.Query != "" {
+		matchers, err := syntax.ParseMatchers(req.Query, true)
+		if err != nil {
+			return nil, err
+		}
+		level.Info(i.logger).Log("msg", matchers)
+	}
+
+	labelMap, err := instance.LabelsWithValues(ctx, *req.Start, matchers...)
+
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]*logproto.UniqueLabelValues)
+	for label, values := range labelMap {
+		uniqueValues := make([]string, len(values))
+		for v := range values {
+			uniqueValues = append(uniqueValues, v)
+		}
+
+		result[label] = &logproto.UniqueLabelValues{Values: uniqueValues}
+	}
+	return &logproto.LabelToValuesResponse{Labels: result}, nil
 }

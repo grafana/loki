@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 type Config struct {

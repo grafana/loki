@@ -14,14 +14,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/gatewayclient"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/uploads"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/gatewayclient"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/uploads"
 )
 
 type Mode string

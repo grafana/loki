@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"gopkg.in/yaml.v3"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // An ID is the ID of a single users's Cortex configuration. When a

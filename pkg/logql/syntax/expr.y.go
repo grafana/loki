@@ -5,7 +5,7 @@ package syntax
 import __yyfmt__ "fmt"
 
 import (
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"time"
 )

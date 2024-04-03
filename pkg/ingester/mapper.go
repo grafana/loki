@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const maxMappedFP = 1 << 20 // About 1M fingerprints reserved for mapping.

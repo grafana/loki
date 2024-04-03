@@ -11,12 +11,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/ingester/index"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/pattern/iter"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/ingester/index"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/pattern/iter"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const indexShards = 32

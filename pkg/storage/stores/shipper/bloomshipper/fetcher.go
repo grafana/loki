@@ -16,9 +16,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/utils/keymutex"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/util/constants"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 var downloadQueueCapacity = 10000

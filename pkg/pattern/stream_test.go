@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/pattern/iter"
-	"github.com/grafana/loki/pkg/push"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/push"
+	"github.com/grafana/loki/v3/pkg/pattern/iter"
 )
 
 func TestAddStream(t *testing.T) {

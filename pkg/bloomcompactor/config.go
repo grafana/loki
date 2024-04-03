@@ -7,7 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 const (

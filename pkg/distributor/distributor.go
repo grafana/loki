@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -33,22 +34,22 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/compactor/retention"
-	"github.com/grafana/loki/pkg/distributor/clientpool"
-	"github.com/grafana/loki/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/loghttp/push"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -882,26 +883,79 @@ func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.
 }
 
 func extractLogLevelFromLogLine(log string) string {
-	if strings.Contains(log, `:"err"`) || strings.Contains(log, `:"ERR"`) ||
-		strings.Contains(log, "=err") || strings.Contains(log, "=ERR") ||
-		strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
+	// check for log levels in known log formats to avoid any false detection
+
+	// json logs:
+	var firstNonSpaceChar rune
+	for _, char := range log {
+		if !unicode.IsSpace(char) {
+			firstNonSpaceChar = char
+			break
+		}
+	}
+
+	var lastNonSpaceChar rune
+	for i := len(log) - 1; i >= 0; i-- {
+		char := rune(log[i])
+		if !unicode.IsSpace(char) {
+			lastNonSpaceChar = char
+			break
+		}
+	}
+
+	if firstNonSpaceChar == '{' && lastNonSpaceChar == '}' {
+		if strings.Contains(log, `:"err"`) || strings.Contains(log, `:"ERR"`) ||
+			strings.Contains(log, `:"error"`) || strings.Contains(log, `:"ERROR"`) {
+			return logLevelError
+		}
+		if strings.Contains(log, `:"warn"`) || strings.Contains(log, `:"WARN"`) ||
+			strings.Contains(log, `:"warning"`) || strings.Contains(log, `:"WARNING"`) {
+			return logLevelWarn
+		}
+		if strings.Contains(log, `:"critical"`) || strings.Contains(log, `:"CRITICAL"`) {
+			return logLevelCritical
+		}
+		if strings.Contains(log, `:"debug"`) || strings.Contains(log, `:"DEBUG"`) {
+			return logLevelDebug
+		}
+		if strings.Contains(log, `:"info"`) || strings.Contains(log, `:"INFO"`) {
+			return logLevelDebug
+		}
+	}
+
+	// logfmt logs:
+	if strings.Contains(log, "=") {
+		if strings.Contains(log, "=err") || strings.Contains(log, "=ERR") ||
+			strings.Contains(log, "=error") || strings.Contains(log, "=ERROR") {
+			return logLevelError
+		}
+		if strings.Contains(log, "=warn") || strings.Contains(log, "=WARN") ||
+			strings.Contains(log, "=warning") || strings.Contains(log, "=WARNING") {
+			return logLevelWarn
+		}
+		if strings.Contains(log, "=critical") || strings.Contains(log, "=CRITICAL") {
+			return logLevelCritical
+		}
+		if strings.Contains(log, "=debug") || strings.Contains(log, "=DEBUG") {
+			return logLevelDebug
+		}
+		if strings.Contains(log, "=info") || strings.Contains(log, "=INFO") {
+			return logLevelDebug
+		}
+	}
+
+	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
 		strings.Contains(log, "error") || strings.Contains(log, "ERROR") {
 		return logLevelError
 	}
-	if strings.Contains(log, `:"warn"`) || strings.Contains(log, `:"WARN"`) ||
-		strings.Contains(log, "=warn") || strings.Contains(log, "=WARN") ||
-		strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
+	if strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
 		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
 		return logLevelWarn
 	}
-	if strings.Contains(log, `:"critical"`) || strings.Contains(log, `:"CRITICAL"`) ||
-		strings.Contains(log, "=critical") || strings.Contains(log, "=CRITICAL") ||
-		strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") {
+	if strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") {
 		return logLevelCritical
 	}
-	if strings.Contains(log, `:"debug"`) || strings.Contains(log, `:"DEBUG"`) ||
-		strings.Contains(log, "=debug") || strings.Contains(log, "=DEBUG") ||
-		strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
+	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
 		return logLevelDebug
 	}
 

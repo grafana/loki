@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/pattern/clientpool"
+	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
 )
 
 type RingClient struct {

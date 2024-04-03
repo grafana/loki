@@ -3,7 +3,7 @@ package iter
 import (
 	"math"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func ReadBatch(it Iterator, batchSize int) (*logproto.QueryPatternsResponse, error) {
