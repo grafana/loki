@@ -1,5 +1,7 @@
 package runtime
 
+import "flag"
+
 type Config struct {
 	LogStreamCreation     bool `yaml:"log_stream_creation"`
 	LogPushRequest        bool `yaml:"log_push_request"`
@@ -9,7 +11,26 @@ type Config struct {
 	LimitedLogPushErrors bool `yaml:"limited_log_push_errors"`
 }
 
-var EmptyConfig = &Config{}
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.LogStreamCreation, "operation-config.log-stream-creation", false, "Log every new stream created by a push request (very verbose, recommend to enable via runtime config only).")
+	f.BoolVar(&cfg.LogPushRequest, "operation-config.log-push-request", false, "Log every push request (very verbose, recommend to enable via runtime config only).")
+	f.BoolVar(&cfg.LogPushRequestStreams, "operation-config.log-push-request-streams", false, "Log every stream in a pus request (very verbose, recommend to enable via runtime config only).")
+	f.BoolVar(&cfg.LimitedLogPushErrors, "operation-config.limited-log-push-errors", true, "Log push errors with a rate limited logger, will show client push errors without overly spamming logs.")
+}
+
+// When we load YAML from disk, we want the various per-customer limits
+// to default to any values specified on the command line, not default
+// command line values.  This global contains those values.  I (Tom) cannot
+// find a nicer way I'm afraid.
+var defaultConfig *Config
+
+// SetDefaultLimitsForYAMLUnmarshalling sets global default limits, used when loading
+// Limits from YAML files. This is used to ensure per-tenant limits are defaulted to
+// those values.
+func SetDefaultLimitsForYAMLUnmarshalling(defaults Config) {
+	defaultConfig = &defaults
+}
 
 // TenantConfigProvider serves a tenant or default config.
 type TenantConfigProvider interface {
@@ -43,7 +64,7 @@ func (o *TenantConfigs) getOverridesForUser(userID string) *Config {
 			return l
 		}
 	}
-	return EmptyConfig
+	return defaultConfig
 }
 
 func (o *TenantConfigs) LogStreamCreation(userID string) bool {
