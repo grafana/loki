@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"sort"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -294,6 +295,9 @@ func NewBloomStore(
 			return nil, errors.Wrapf(err, "creating object client for period %s", periodicConfig.From)
 		}
 
+		if storageConfig.BloomShipperConfig.CacheListOps {
+			objectClient = newCachedListOpObjectClient(objectClient, 5*time.Minute, 10*time.Second)
+		}
 		bloomClient, err := NewBloomClient(cfg, objectClient, logger)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating bloom client for period %s", periodicConfig.From)
