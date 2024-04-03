@@ -35,7 +35,6 @@ local k = import 'ksonnet-util/kausal.libsonnet';
         {
           overrides: $._config.overrides,
           configs: $._config.runtimeConfigs,
-          default: $._config.defaultRuntimeConfigs,
         }
         + (if std.length($._config.multi_kv_config) > 0 then { multi_kv_config: $._config.multi_kv_config } else {}),
       ),
