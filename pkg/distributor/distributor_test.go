@@ -535,18 +535,33 @@ func TestDistributorPushErrors(t *testing.T) {
 }
 
 func Test_SortLabelsOnPush(t *testing.T) {
-	limits := &validation.Limits{}
-	flagext.DefaultValues(limits)
-	limits.DiscoverServiceName = nil
-	ingester := &mockIngester{}
-	distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+	t.Run("with service_name already present in labels", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		ingester := &mockIngester{}
+		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 
-	request := makeWriteRequest(10, 10)
-	request.Streams[0].Labels = `{buzz="f", a="b"}`
-	_, err := distributors[0].Push(ctx, request)
-	require.NoError(t, err)
-	topVal := ingester.Peek()
-	require.Equal(t, `{a="b", buzz="f"}`, topVal.Streams[0].Labels)
+		request := makeWriteRequest(10, 10)
+		request.Streams[0].Labels = `{buzz="f", service_name="foo", a="b"}`
+		_, err := distributors[0].Push(ctx, request)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{a="b", buzz="f", service_name="foo"}`, topVal.Streams[0].Labels)
+	})
+
+	t.Run("with service_name added during ingestion", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		ingester := &mockIngester{}
+		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		request := makeWriteRequest(10, 10)
+		request.Streams[0].Labels = `{buzz="f", x="y", a="b"}`
+		_, err := distributors[0].Push(ctx, request)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{a="b", buzz="f", service_name="unknown_service", x="y"}`, topVal.Streams[0].Labels)
+	})
 }
 
 func Test_TruncateLogLines(t *testing.T) {
