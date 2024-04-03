@@ -7,9 +7,10 @@ package metadata
 import (
 	"context"
 	"errors"
-	"golang.org/x/exp/maps"
 	"sort"
 	"sync"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 )

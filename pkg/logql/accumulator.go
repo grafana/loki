@@ -4,9 +4,10 @@ import (
 	"container/heap"
 	"context"
 	"fmt"
-	"golang.org/x/exp/maps"
 	"sort"
 	"time"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"

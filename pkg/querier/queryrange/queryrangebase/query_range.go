@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"golang.org/x/exp/maps"
 	"io"
 	"math"
 	"net/http"
 	"sort"
 	"strconv"
 	"time"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
