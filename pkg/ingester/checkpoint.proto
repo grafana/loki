@@ -42,7 +42,7 @@ message Series {
   uint64 fingerprint = 2;
   repeated logproto.LegacyLabelPair labels = 3 [
     (gogoproto.nullable) = false,
-    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.LabelAdapter"
   ];
   repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
   // most recently pushed timestamp.

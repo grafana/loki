@@ -4,7 +4,7 @@ package syntax
 import (
   "time"
   "github.com/prometheus/prometheus/model/labels"
-  "github.com/grafana/loki/pkg/logql/log"
+  "github.com/grafana/loki/v3/pkg/logql/log"
 
 )
 %}
