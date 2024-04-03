@@ -1368,3 +1368,49 @@ func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userI
 	d.user = userID
 	return d.results, nil
 }
+
+func TestQuerier_isLabelRelevant(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		label    string
+		values   *logproto.UniqueLabelValues
+		expected bool
+	}{
+		{
+			label:    "uuidv4 values are not relevant",
+			values:   &logproto.UniqueLabelValues{Values: []string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef", "6b7e2663-8ecb-42e1-8bdc-0c5de70185b3", "2e1e67ff-be4f-47b8-aee1-5d67ff1ddabf", "c95b2d62-74ed-4ed7-a8a1-eb72fc67946e"}},
+			expected: false,
+		},
+		{
+			label:    "guid values are not relevant",
+			values:   &logproto.UniqueLabelValues{Values: []string{"57808f62-f117-4a22-84a0-bc3282c7f106", "5076e837-cd8d-4dd7-95ff-fecb087dccf6", "2e2a6554-1744-4399-b89a-88ae79c27096", "d3c31248-ec0c-4bc4-b11c-8fb1cfb42e62"}},
+			expected: false,
+		},
+		{
+			label:    "integer values are not relevant",
+			values:   &logproto.UniqueLabelValues{Values: []string{"1", "2", "3", "4"}},
+			expected: false,
+		},
+		{
+			label:    "string values are relevant",
+			values:   &logproto.UniqueLabelValues{Values: []string{"ingester", "querier", "query-frontend", "index-gateway"}},
+			expected: true,
+		},
+		{
+			label:    "guid with braces are not relevant",
+			values:   &logproto.UniqueLabelValues{Values: []string{"{E9550CF7-58D9-48B9-8845-D9800C651AAC}", "{1617921B-1749-4FF0-A058-31AFB5D98149}", "{C119D92E-A4B9-48A3-A92C-6CA8AA8A6CCC}", "{228AAF1D-2DE7-4909-A4E9-246A7FA9D988}"}},
+			expected: false,
+		},
+		{
+			label:    "float values are not relevant",
+			values:   &logproto.UniqueLabelValues{Values: []string{"1.2", "2.5", "3.3", "4.1"}},
+			expected: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			querier := &SingleTenantQuerier{cfg: mockQuerierConfig()}
+			assert.Equal(t, tc.expected, querier.isLabelRelevant(tc.label, tc.values))
+		})
+
+	}
+}

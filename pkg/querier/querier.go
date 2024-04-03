@@ -913,8 +913,6 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	var ingesterLabels *logproto.LabelToValuesResponse
 	var detectedLabels []*logproto.DetectedLabel
 
-	staticLabels := []string{"pod", "namespace", "cluster", "instance"}
-
 	g, ctx := errgroup.WithContext(ctx)
 	ingesterQueryInterval, _ := q.buildQueryIntervals(*req.Start, *req.End)
 	if !q.cfg.QueryStoreOnly {
@@ -935,14 +933,9 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	}
 
 	for label, values := range ingesterLabels.Labels {
-		cardinality := len(values.Values)
-		// TODO(shantanu) make these values configurable
-		if !slices.Contains(staticLabels, label) &&
-			(cardinality < 1 || cardinality > 50) ||
-			containsAllIDTypes(values.Values) {
-			continue
+		if q.isLabelRelevant(label, values) {
+			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(values.Values))})
 		}
-		detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(cardinality)})
 	}
 
 	return &logproto.DetectedLabelsResponse{
@@ -950,9 +943,22 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	}, nil
 }
 
+func (q *SingleTenantQuerier) isLabelRelevant(label string, values *logproto.UniqueLabelValues) bool {
+	staticLabels := []string{"pod", "namespace", "cluster", "instance"}
+	cardinality := len(values.Values)
+	// TODO(shantanu) make these values configurable
+	if !slices.Contains(staticLabels, label) &&
+		(cardinality < 1 || cardinality > 50) ||
+		containsAllIDTypes(values.Values) {
+		return false
+	}
+
+	return true
+}
+
 // containsAllIDTypes filters out all UUID, GUID and numeric types. Returns false if even one value is not of the type
 func containsAllIDTypes(values []string) bool {
-	pattern := `^(?:(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})|(?:(?:\{)?[0-9a-fA-F]{8}(?:-?[0-9a-fA-F]{4}){3}-?[0-9a-fA-F]{12}(?:\})?)|(\d+))$`
+	pattern := `^(?:(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})|(?:(?:\{)?[0-9a-fA-F]{8}(?:-?[0-9a-fA-F]{4}){3}-?[0-9a-fA-F]{12}(?:\})?)|(\d+(?:\.\d+)?))$`
 
 	re := regexp.MustCompile(pattern)
 
