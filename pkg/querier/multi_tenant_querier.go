@@ -284,7 +284,7 @@ func (q *MultiTenantQuerier) DetectedFields(ctx context.Context, req *logproto.D
 
 func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
 	// TODO(shantanu)
-	tenantIDs, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -297,9 +297,7 @@ func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.D
 
 	return &logproto.DetectedLabelsResponse{
 		DetectedLabels: []*logproto.DetectedLabel{
-			{Label: "cluster"},
-			{Label: "namespace"},
-			{Label: "instance"},
+			{Label: "multi_tenant_querier_not_implemented"},
 		},
 	}, nil
 }
