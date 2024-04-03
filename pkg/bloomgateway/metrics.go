@@ -3,6 +3,7 @@ package bloomgateway
 import (
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -10,6 +11,22 @@ import (
 type metrics struct {
 	*workerMetrics
 	*serverMetrics
+}
+
+type clientMetrics struct {
+	cacheLocalityScore prometheus.Histogram
+}
+
+func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
+	return &clientMetrics{
+		cacheLocalityScore: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Subsystem: "bloom_gateway_client",
+			Name:      "cache_locality_score",
+			Help:      "Cache locality score of the bloom filter, as measured by % of keyspace touched / % of bloom_gws required",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 100, 8),
+		}),
+	}
 }
 
 type serverMetrics struct {

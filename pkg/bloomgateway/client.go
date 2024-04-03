@@ -144,11 +144,12 @@ type Client interface {
 }
 
 type GatewayClient struct {
-	cfg    ClientConfig
-	limits Limits
-	logger log.Logger
-	pool   *ringclient.Pool
-	ring   ring.ReadRing
+	cfg     ClientConfig
+	limits  Limits
+	logger  log.Logger
+	metrics *clientMetrics
+	pool    *ringclient.Pool
+	ring    ring.ReadRing
 }
 
 func NewClient(
@@ -206,11 +207,12 @@ func NewClient(
 	}
 
 	return &GatewayClient{
-		cfg:    cfg,
-		logger: logger,
-		limits: limits,
-		pool:   clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger, metricsNamespace),
-		ring:   readRing,
+		cfg:     cfg,
+		logger:  logger,
+		limits:  limits,
+		metrics: newClientMetrics(registerer),
+		pool:    clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger, metricsNamespace),
+		ring:    readRing,
 	}, nil
 }
 
@@ -231,7 +233,7 @@ func shuffleAddrs(addrs []string) []string {
 
 // FilterChunkRefs implements Client
 func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
-	if !c.limits.BloomGatewayEnabled(tenant) {
+	if !c.limits.BloomGatewayEnabled(tenant) || len(groups) == 0 {
 		return groups, nil
 	}
 
@@ -247,6 +249,15 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 		return nil, errors.Wrap(err, "bloom gateway get replication sets")
 	}
 	servers = partitionByReplicationSet(groups, servers)
+
+	// `% instances / % kesypace `. Ideally converges to 1,
+	// with theoretical max of `1 + 2/n_replicas` since the left and right keyspace bounds
+	// may lightly touch neighboring replicas.
+	firstFp, lastFp := groups[0].Fingerprint, groups[len(groups)-1].Fingerprint
+	pctKeyspace := float64(lastFp-firstFp) / float64(math.MaxUint64)
+	pctInstances := float64(len(servers)) / float64(len(rs.Instances))
+	cacheLocalityScore := pctInstances / pctKeyspace
+	c.metrics.cacheLocalityScore.Observe(cacheLocalityScore)
 
 	results := make([][]*logproto.GroupedChunkRefs, len(servers))
 	count := 0
