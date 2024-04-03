@@ -68,6 +68,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
+type CustomRuntime struct {
+	RuntimeConfig runtimeconfig.Config `yaml:",inline"`
+	Defaults      runtime.Config       `yaml:"defaults,omitempty"`
+}
+
+func (c *CustomRuntime) RegisterFlags(f *flag.FlagSet) {
+	c.RuntimeConfig.RegisterFlags(f)
+	f.BoolVar(&c.Defaults.LimitedLogPushErrors, "runtime-config.default.limited-log-push-errors", true, "Whether failed pushes are logged by default or not.")
+}
+
 // Config is the root config for Loki.
 type Config struct {
 	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
@@ -99,9 +109,9 @@ type Config struct {
 	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 
-	RuntimeConfig runtimeconfig.Config `yaml:"runtime_config,omitempty"`
-	Tracing       tracing.Config       `yaml:"tracing"`
-	Analytics     analytics.Config     `yaml:"analytics"`
+	RuntimeConfig CustomRuntime    `yaml:"runtime_config,omitempty"`
+	Tracing       tracing.Config   `yaml:"tracing"`
+	Analytics     analytics.Config `yaml:"analytics"`
 
 	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden|deprecated"`
 

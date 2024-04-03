@@ -14,6 +14,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
+var defaultRuntimeCfg *runtime.Config
+
 // runtimeConfigValues are values that can be reloaded from configuration file while Loki is running.
 // Reloading is done by runtimeconfig.Manager, which also keeps the currently loaded config.
 // These values are then pushed to the components that are interested in them.
@@ -25,6 +27,10 @@ type runtimeConfigValues struct {
 	DefaultConfig *runtime.Config `yaml:"default"`
 
 	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
+}
+
+func SetDefaultRuntimeForYAMLUnmarshalling(cfg runtime.Config) {
+	defaultRuntimeCfg = &cfg
 }
 
 func (r runtimeConfigValues) validate() error {
