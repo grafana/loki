@@ -42,7 +42,11 @@ func (r runtimeConfigValues) validate() error {
 }
 
 func loadRuntimeConfig(r io.Reader) (interface{}, error) {
-	overrides := &runtimeConfigValues{}
+	overrides := &runtimeConfigValues{
+		DefaultConfig: &runtime.Config{
+			LimitedLogPushErrors: true,
+		},
+	}
 
 	decoder := yaml.NewDecoder(r)
 	decoder.SetStrict(true)

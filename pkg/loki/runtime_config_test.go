@@ -84,6 +84,29 @@ overrides:
 	require.Equal(t, "invalid override for tenant 29: retention period must be >= 24h was 5h", err.Error())
 }
 
+func Test_DefaultValuesWithoutDefaultSectionHelp(t *testing.T) {
+	runtimeGetter := newTestRuntimeconfig(t,
+		`
+configs:
+    "1":
+        log_push_request: false
+        limited_log_push_errors: false
+    "2":
+        log_push_request: true
+`)
+
+	user1 := runtimeGetter.TenantConfig("1")
+	user2 := runtimeGetter.TenantConfig("2")
+	user3 := runtimeGetter.TenantConfig("3")
+
+	require.Equal(t, false, user1.LogPushRequest)
+	require.Equal(t, false, user1.LimitedLogPushErrors)
+	require.Equal(t, false, user2.LimitedLogPushErrors)
+	require.Equal(t, true, user2.LogPushRequest)
+	require.Equal(t, true, user3.LimitedLogPushErrors)
+	require.Equal(t, false, user3.LogPushRequest)
+}
+
 func Test_DefaultConfig(t *testing.T) {
 	runtimeGetter := newTestRuntimeconfig(t,
 		`
