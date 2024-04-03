@@ -273,6 +273,16 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Schema version 13 is required to use structured metadata
+	p := config.ActivePeriodConfig(c.SchemaConfig.Configs)
+	version, err := c.SchemaConfig.Configs[p].VersionAsInt()
+	if err != nil {
+		return err
+	}
+	if c.LimitsConfig.AllowStructuredMetadata && version < 13 {
+		return fmt.Errorf("schema v13 is required to store Structured Metadata and use native OTLP ingestion, your schema version is %s. set `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false` and restart Loki. Then proceed to update to schema v13 or newer before re-enabling this config, search for 'Storage Schema' in the docs for the schema update procedure", c.SchemaConfig.Configs[p].Schema)
+	}
+
 	return nil
 }
 

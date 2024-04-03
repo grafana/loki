@@ -3265,7 +3265,7 @@ shard_streams:
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
-[allow_structured_metadata: <boolean> | default = false]
+[allow_structured_metadata: <boolean> | default = true]
 
 # Maximum size accepted for structured metadata per log line.
 # CLI flag: -limits.max-structured-metadata-size
@@ -4792,7 +4792,7 @@ The `period_config` block configures what index schemas should be used for from 
 # gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc.
 [object_store: <string> | default = ""]
 
-# The schema version to use, current recommended schema is v12.
+# The schema version to use, current recommended schema is v13.
 [schema: <string> | default = ""]
 
 # Configures how the index is updated and stored.
