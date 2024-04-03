@@ -9,8 +9,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 func TestAddStream(t *testing.T) {
