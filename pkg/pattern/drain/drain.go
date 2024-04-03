@@ -255,7 +255,7 @@ func (d *Drain) treeSearch(rootNode *Node, tokens []string, simTh float64, inclu
 	}
 
 	// handle case of empty log string - return the single cluster in that group
-	if tokenCount == 0 {
+	if tokenCount < 2 {
 		return d.idToCluster.Get(curNode.clusterIDs[0])
 	}
 

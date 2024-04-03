@@ -154,3 +154,10 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 	}
 	return s.labels
 }
+
+// removeStream removes a stream from the instance.
+func (i *instance) removeStream(s *stream) {
+	if i.streams.Delete(s) {
+		i.index.Delete(s.labels, s.fp)
+	}
+}

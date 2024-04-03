@@ -5,10 +5,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
@@ -27,9 +30,11 @@ import (
 const readBatchSize = 1024
 
 type Config struct {
-	Enabled          bool                  `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester is enabled."`
-	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the pattern ingester will operate and where it will register for discovery."`
-	ClientConfig     clientpool.Config     `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
+	Enabled           bool                  `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester is enabled."`
+	LifecyclerConfig  ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the pattern ingester will operate and where it will register for discovery."`
+	ClientConfig      clientpool.Config     `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
+	ConcurrentFlushes int                   `yaml:"concurrent_flushes"`
+	FlushCheckPeriod  time.Duration         `yaml:"flush_check_period"`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -40,6 +45,8 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("pattern-ingester.", fs, util_log.Logger)
 	cfg.ClientConfig.RegisterFlags(fs)
 	fs.BoolVar(&cfg.Enabled, "pattern-ingester.enabled", false, "Flag to enable or disable the usage of the pattern-ingester component.")
+	fs.IntVar(&cfg.ConcurrentFlushes, "pattern-ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
+	fs.DurationVar(&cfg.FlushCheckPeriod, "pattern-ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
 }
 
 func (cfg *Config) Validate() error {
@@ -61,6 +68,15 @@ type Ingester struct {
 
 	instancesMtx sync.RWMutex
 	instances    map[string]*instance
+
+	// One queue per flush thread.  Fingerprint is used to
+	// pick a queue.
+	flushQueues     []*util.PriorityQueue
+	flushQueuesDone sync.WaitGroup
+	loopDone        sync.WaitGroup
+	loopQuit        chan struct{}
+
+	metrics *ingesterMetrics
 }
 
 func New(
@@ -69,13 +85,17 @@ func New(
 	registerer prometheus.Registerer,
 	logger log.Logger,
 ) (*Ingester, error) {
+	metrics := newIngesterMetrics(registerer, metricsNamespace)
 	registerer = prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer)
 
 	i := &Ingester{
-		cfg:        cfg,
-		logger:     log.With(logger, "component", "pattern-ingester"),
-		registerer: registerer,
-		instances:  make(map[string]*instance),
+		cfg:         cfg,
+		logger:      log.With(logger, "component", "pattern-ingester"),
+		registerer:  registerer,
+		metrics:     metrics,
+		instances:   make(map[string]*instance),
+		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		loopQuit:    make(chan struct{}),
 	}
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 	var err error
@@ -106,18 +126,74 @@ func (i *Ingester) starting(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// todo: start flush queue.
+	i.initFlushQueues()
+	// start our loop
+	i.loopDone.Add(1)
+	go i.loop()
 	return nil
 }
 
 func (i *Ingester) running(ctx context.Context) error {
-	<-ctx.Done()
-	return nil
+	var serviceError error
+	select {
+	// wait until service is asked to stop
+	case <-ctx.Done():
+	// stop
+	case err := <-i.lifecyclerWatcher.Chan():
+		serviceError = fmt.Errorf("lifecycler failed: %w", err)
+	}
+
+	close(i.loopQuit)
+	i.loopDone.Wait()
+	return serviceError
 }
 
 func (i *Ingester) stopping(_ error) error {
-	// todo: stop flush queue
-	return nil
+	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+	for _, flushQueue := range i.flushQueues {
+		flushQueue.Close()
+	}
+	i.flushQueuesDone.Wait()
+	return err
+}
+
+func (i *Ingester) loop() {
+	defer i.loopDone.Done()
+
+	// Delay the first flush operation by up to 0.8x the flush time period.
+	// This will ensure that multiple ingesters started at the same time do not
+	// flush at the same time. Flushing at the same time can cause concurrently
+	// writing the same chunk to object storage, which in AWS S3 leads to being
+	// rate limited.
+	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8)))
+	initialDelay := time.NewTimer(jitter)
+	defer initialDelay.Stop()
+
+	level.Info(i.logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
+
+	select {
+	case <-initialDelay.C:
+		// do nothing and continue with flush loop
+	case <-i.loopQuit:
+		// ingester stopped while waiting for initial delay
+		return
+	}
+
+	// Add +/- 20% of flush interval as jitter.
+	// The default flush check period is 30s so max jitter will be 6s.
+	j := i.cfg.FlushCheckPeriod / 5
+	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
+	defer flushTicker.Stop()
+
+	for {
+		select {
+		case <-flushTicker.C:
+			i.sweepUsers(false, true)
+
+		case <-i.loopQuit:
+			return
+		}
+	}
 }
 
 // Watch implements grpc_health_v1.HealthCheck.
@@ -133,10 +209,6 @@ func (i *Ingester) CheckReady(ctx context.Context) error {
 		return fmt.Errorf("ingester not ready: %v", s)
 	}
 	return i.lifecycler.CheckReady(ctx)
-}
-
-func (i *Ingester) Flush() {
-	// todo flush or use transfer out
 }
 
 func (i *Ingester) TransferOut(_ context.Context) error {
@@ -216,4 +288,15 @@ func (i *Ingester) getInstanceByID(id string) (*instance, bool) {
 
 	inst, ok := i.instances[id]
 	return inst, ok
+}
+
+func (i *Ingester) getInstances() []*instance {
+	i.instancesMtx.RLock()
+	defer i.instancesMtx.RUnlock()
+
+	instances := make([]*instance, 0, len(i.instances))
+	for _, instance := range i.instances {
+		instances = append(instances, instance)
+	}
+	return instances
 }

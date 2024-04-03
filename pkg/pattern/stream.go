@@ -72,10 +72,19 @@ func (s *stream) Iterator(_ context.Context, from, through model.Time) (iter.Ite
 	iters := make([]iter.Iterator, 0, len(clusters))
 
 	for _, cluster := range clusters {
-		if cluster.Size < minClusterSize {
+		if cluster.Size < minClusterSize || cluster.String() == "" {
 			continue
 		}
 		iters = append(iters, cluster.Iterator(from, through))
 	}
 	return iter.NewMerge(iters...), nil
+}
+
+func (s *stream) prune() bool {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	// todo first prune all Volume Chunks.
+	// todo then prune all clusters.
+
+	return false
 }
