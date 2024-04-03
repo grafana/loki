@@ -283,8 +283,7 @@ func (q *MultiTenantQuerier) DetectedFields(ctx context.Context, req *logproto.D
 }
 
 func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
-	// TODO(shantanu)
-	tenantIDs, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -293,6 +292,10 @@ func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.D
 		return q.Querier.DetectedLabels(ctx, req)
 	}
 
+	level.Debug(q.logger).Log(
+		"msg", "detected labels requested for multiple tenants, but not yet supported. returning static labels",
+		"tenantIDs", strings.Join(tenantIDs, ","),
+	)
 	//resp := make([]*logproto.DetectedLabels, len(tenantIDs))
 
 	return &logproto.DetectedLabelsResponse{

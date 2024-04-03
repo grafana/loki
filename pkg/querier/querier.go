@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/axiomhq/hyperloglog"
@@ -910,12 +911,17 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 }
 
 func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
-	var ingesterLabels *logproto.LabelToValuesResponse
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var detectedLabels []*logproto.DetectedLabel
 
 	g, ctx := errgroup.WithContext(ctx)
-	ingesterQueryInterval, _ := q.buildQueryIntervals(*req.Start, *req.End)
-	if !q.cfg.QueryStoreOnly {
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(*req.Start, *req.End)
+
+	var ingesterLabels *logproto.LabelToValuesResponse
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		g.Go(func() error {
 			var err error
 			splitReq := *req
@@ -928,12 +934,39 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		})
 	}
 
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+		var matchers []*labels.Matcher
+		if req.Query != "" {
+			matchers, err = syntax.ParseMatchers(req.Query, true)
+			if err != nil {
+				return nil, err
+			}
+		}
+		g.Go(func() error {
+			var err error
+			start := model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
+			end := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
+			storeLabels, err := q.store.LabelNamesForMetricName(ctx, userID, start, end, "logs")
+			for _, label := range storeLabels {
+				values, err := q.store.LabelValuesForMetricName(ctx, userID, start, end, "logs", label, matchers...)
+				if err != nil {
+					return err
+				}
+				uniqValues := slices.CompactFunc(values, strings.EqualFold)
+				if q.isLabelRelevant(label, uniqValues) {
+					detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqValues))})
+				}
+			}
+			return err
+		})
+	}
+
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
 
 	for label, values := range ingesterLabels.Labels {
-		if q.isLabelRelevant(label, values) {
+		if q.isLabelRelevant(label, values.Values) {
 			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(values.Values))})
 		}
 	}
@@ -943,13 +976,13 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	}, nil
 }
 
-func (q *SingleTenantQuerier) isLabelRelevant(label string, values *logproto.UniqueLabelValues) bool {
+func (q *SingleTenantQuerier) isLabelRelevant(label string, values []string) bool {
 	staticLabels := []string{"pod", "namespace", "cluster", "instance"}
-	cardinality := len(values.Values)
+	cardinality := len(values)
 	// TODO(shantanu) make these values configurable
 	if !slices.Contains(staticLabels, label) &&
 		(cardinality < 1 || cardinality > 50) ||
-		containsAllIDTypes(values.Values) {
+		containsAllIDTypes(values) {
 		return false
 	}
 
