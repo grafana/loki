@@ -168,6 +168,10 @@ This new metric will provide a more clear signal that there is an issue with ing
 | `legacy-read-mode`                                     | false       | true        | Deprecated. It will be removed in the next minor release. |
 {{% /responsive-table %}}
 
+#### Automatic stream sharding is enabled by default
+
+Automatic stream sharding helps keep write load from high volume streams balanced across ingesters and helps to avoid hot-spotting. Check out the [operations page](https://grafana.com/docs/loki/latest/operations/automatic-stream-sharding/) for more information
+
 #### Write dedupe cache is deprecated
 Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB]({{< relref "../../operations/storage/tsdb" >}}) and [boltdb-shipper]({{< relref "../../operations/storage/boltdb-shipper" >}})).
 If you using a [legacy index type]({{< relref "../../storage#index-storage" >}}), consider migrating to TSDB (recommended).
