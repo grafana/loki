@@ -910,6 +910,7 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 	return seriesvolume.Merge(responses, req.Limit), nil
 }
 
+// DetectedLabels fetches labels and values from store and ingesters and filters them by relevance criteria as per logs app.
 func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -934,6 +935,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		})
 	}
 
+	storeLabelsMap := make(map[string][]string)
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		var matchers []*labels.Matcher
 		if req.Query != "" {
@@ -952,9 +954,8 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 				if err != nil {
 					return err
 				}
-				uniqValues := slices.CompactFunc(values, strings.EqualFold)
-				if q.isLabelRelevant(label, uniqValues) {
-					detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqValues))})
+				if q.isLabelRelevant(label, values) {
+					storeLabelsMap[label] = values
 				}
 			}
 			return err
@@ -973,7 +974,14 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 
 	for label, values := range ingesterLabels.Labels {
 		if q.isLabelRelevant(label, values.Values) {
-			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(values.Values))})
+			combinedValues := values.Values
+			storeValues, storeHasLabel := storeLabelsMap[label]
+			if storeHasLabel {
+				combinedValues = append(combinedValues, storeValues...)
+			}
+			uniqValues := slices.CompactFunc(combinedValues, strings.EqualFold)
+			// TODO(shantanu): There's a bug here. Unique values can go above 50. Will need a bit of refactoring
+			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqValues))})
 		}
 	}
 
@@ -982,6 +990,8 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	}, nil
 }
 
+// isLabelRelevant returns if the label is relevant for logs app. A label is relevant if it is not of any numeric, UUID or GUID type
+// It is also not relevant to return if the values are less than 1 or beyond 50.
 func (q *SingleTenantQuerier) isLabelRelevant(label string, values []string) bool {
 	staticLabels := []string{"pod", "namespace", "cluster", "instance"}
 	cardinality := len(values)
