@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"golang.org/x/exp/slices"
+
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
