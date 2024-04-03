@@ -36,7 +36,7 @@ schema_config:
 | object_store | s3, azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (see [StorageConfig]({{< relref "../../../configure#storage_config" >}})). |
 | store        | `tsdb` is the current and only recommended value for store.                                                                                            |
 | schema       | `v13` is the most recent schema and recommended value.                                                                                                 |
-| prefix:      | any value with out spaces is acceptable.                                                                                                               |
+| prefix:      | any value without spaces is acceptable.                                                                                                               |
 | period:      | must be `24h`.                                                                                                                                         |
 
 
