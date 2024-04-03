@@ -934,6 +934,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		})
 	}
 
+	storeLabelsMap := make(map[string][]string)
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		var matchers []*labels.Matcher
 		if req.Query != "" {
@@ -952,9 +953,8 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 				if err != nil {
 					return err
 				}
-				uniqValues := slices.CompactFunc(values, strings.EqualFold)
-				if q.isLabelRelevant(label, uniqValues) {
-					detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqValues))})
+				if q.isLabelRelevant(label, values) {
+					storeLabelsMap[label] = values
 				}
 			}
 			return err
@@ -967,7 +967,14 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 
 	for label, values := range ingesterLabels.Labels {
 		if q.isLabelRelevant(label, values.Values) {
-			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(values.Values))})
+			combinedValues := values.Values
+			storeValues, storeHasLabel := storeLabelsMap[label]
+			if storeHasLabel {
+				combinedValues = append(combinedValues, storeValues...)
+			}
+			uniqValues := slices.CompactFunc(combinedValues, strings.EqualFold)
+			// TODO(shantanu): There's a bug here. Unique values can go above 50. Will need a bit of refactoring
+			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqValues))})
 		}
 	}
 
