@@ -325,6 +325,16 @@ pattern_ingester:
     # pattern-ingester.client
     [grpc_client_config: <grpc_client>]
 
+  # How many flushes can happen concurrently from each stream.
+  # CLI flag: -pattern-ingester.concurrent-flushes
+  [concurrent_flushes: <int> | default = 32]
+
+  # How often should the ingester see if there are any blocks to flush. The
+  # first flush check is delayed by a random time up to 0.8x the flush check
+  # period. Additionally, there is +/- 1% jitter added to the interval.
+  # CLI flag: -pattern-ingester.flush-check-period
+  [flush_check_period: <duration> | default = 30s]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -1035,7 +1045,7 @@ results_cache:
 
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results
-[cache_index_stats_results: <boolean> | default = false]
+[cache_index_stats_results: <boolean> | default = true]
 
 # If a cache config is not specified and cache_index_stats_results is true, the
 # config for the results cache is used.
@@ -1052,7 +1062,7 @@ index_stats_results_cache:
 
 # Cache volume query results.
 # CLI flag: -querier.cache-volume-results
-[cache_volume_results: <boolean> | default = false]
+[cache_volume_results: <boolean> | default = true]
 
 # If a cache config is not specified and cache_volume_results is true, the
 # config for the results cache is used.
@@ -1091,7 +1101,7 @@ instant_metric_results_cache:
 
 # Cache series query results.
 # CLI flag: -querier.cache-series-results
-[cache_series_results: <boolean> | default = false]
+[cache_series_results: <boolean> | default = true]
 
 # If series_results_cache is not configured and cache_series_results is true,
 # the config for the results cache is used.
@@ -1108,7 +1118,7 @@ series_results_cache:
 
 # Cache label query results.
 # CLI flag: -querier.cache-label-results
-[cache_label_results: <boolean> | default = false]
+[cache_label_results: <boolean> | default = true]
 
 # If label_results_cache is not configured and cache_label_results is true, the
 # config for the results cache is used.
@@ -1257,6 +1267,10 @@ alertmanager_client:
   # values:
   # 
   # Secure Ciphers:
+  # - TLS_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_RSA_WITH_AES_256_GCM_SHA384
   # - TLS_AES_128_GCM_SHA256
   # - TLS_AES_256_GCM_SHA384
   # - TLS_CHACHA20_POLY1305_SHA256
@@ -1274,11 +1288,7 @@ alertmanager_client:
   # Insecure Ciphers:
   # - TLS_RSA_WITH_RC4_128_SHA
   # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_RSA_WITH_AES_256_CBC_SHA
   # - TLS_RSA_WITH_AES_128_CBC_SHA256
-  # - TLS_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_RSA_WITH_AES_256_GCM_SHA384
   # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
   # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
   # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -1533,6 +1543,10 @@ evaluation:
     # values:
     # 
     # Secure Ciphers:
+    # - TLS_RSA_WITH_AES_128_CBC_SHA
+    # - TLS_RSA_WITH_AES_256_CBC_SHA
+    # - TLS_RSA_WITH_AES_128_GCM_SHA256
+    # - TLS_RSA_WITH_AES_256_GCM_SHA384
     # - TLS_AES_128_GCM_SHA256
     # - TLS_AES_256_GCM_SHA384
     # - TLS_CHACHA20_POLY1305_SHA256
@@ -1550,11 +1564,7 @@ evaluation:
     # Insecure Ciphers:
     # - TLS_RSA_WITH_RC4_128_SHA
     # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-    # - TLS_RSA_WITH_AES_128_CBC_SHA
-    # - TLS_RSA_WITH_AES_256_CBC_SHA
     # - TLS_RSA_WITH_AES_128_CBC_SHA256
-    # - TLS_RSA_WITH_AES_128_GCM_SHA256
-    # - TLS_RSA_WITH_AES_256_GCM_SHA384
     # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
     # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
     # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -3434,7 +3444,7 @@ shard_streams:
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
-[allow_structured_metadata: <boolean> | default = false]
+[allow_structured_metadata: <boolean> | default = true]
 
 # Maximum size accepted for structured metadata per log line.
 # CLI flag: -limits.max-structured-metadata-size
@@ -4228,6 +4238,10 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 # Override the default cipher suite list (separated by commas). Allowed values:
 # 
 # Secure Ciphers:
+# - TLS_RSA_WITH_AES_128_CBC_SHA
+# - TLS_RSA_WITH_AES_256_CBC_SHA
+# - TLS_RSA_WITH_AES_128_GCM_SHA256
+# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_AES_128_GCM_SHA256
 # - TLS_AES_256_GCM_SHA384
 # - TLS_CHACHA20_POLY1305_SHA256
@@ -4245,11 +4259,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 # Insecure Ciphers:
 # - TLS_RSA_WITH_RC4_128_SHA
 # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA
-# - TLS_RSA_WITH_AES_256_CBC_SHA
 # - TLS_RSA_WITH_AES_128_CBC_SHA256
-# - TLS_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -4436,6 +4446,10 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # Override the default cipher suite list (separated by commas). Allowed values:
 # 
 # Secure Ciphers:
+# - TLS_RSA_WITH_AES_128_CBC_SHA
+# - TLS_RSA_WITH_AES_256_CBC_SHA
+# - TLS_RSA_WITH_AES_128_GCM_SHA256
+# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_AES_128_GCM_SHA256
 # - TLS_AES_256_GCM_SHA384
 # - TLS_CHACHA20_POLY1305_SHA256
@@ -4453,11 +4467,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # Insecure Ciphers:
 # - TLS_RSA_WITH_RC4_128_SHA
 # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA
-# - TLS_RSA_WITH_AES_256_CBC_SHA
 # - TLS_RSA_WITH_AES_128_CBC_SHA256
-# - TLS_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -4572,6 +4582,10 @@ backoff_config:
 # Override the default cipher suite list (separated by commas). Allowed values:
 # 
 # Secure Ciphers:
+# - TLS_RSA_WITH_AES_128_CBC_SHA
+# - TLS_RSA_WITH_AES_256_CBC_SHA
+# - TLS_RSA_WITH_AES_128_GCM_SHA256
+# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_AES_128_GCM_SHA256
 # - TLS_AES_256_GCM_SHA384
 # - TLS_CHACHA20_POLY1305_SHA256
@@ -4589,11 +4603,7 @@ backoff_config:
 # Insecure Ciphers:
 # - TLS_RSA_WITH_RC4_128_SHA
 # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA
-# - TLS_RSA_WITH_AES_256_CBC_SHA
 # - TLS_RSA_WITH_AES_128_CBC_SHA256
-# - TLS_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -4654,6 +4664,10 @@ The TLS configuration.
 # Override the default cipher suite list (separated by commas). Allowed values:
 # 
 # Secure Ciphers:
+# - TLS_RSA_WITH_AES_128_CBC_SHA
+# - TLS_RSA_WITH_AES_256_CBC_SHA
+# - TLS_RSA_WITH_AES_128_GCM_SHA256
+# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_AES_128_GCM_SHA256
 # - TLS_AES_256_GCM_SHA384
 # - TLS_CHACHA20_POLY1305_SHA256
@@ -4671,11 +4685,7 @@ The TLS configuration.
 # Insecure Ciphers:
 # - TLS_RSA_WITH_RC4_128_SHA
 # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA
-# - TLS_RSA_WITH_AES_256_CBC_SHA
 # - TLS_RSA_WITH_AES_128_CBC_SHA256
-# - TLS_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -4821,6 +4831,10 @@ memcached_client:
   # values:
   # 
   # Secure Ciphers:
+  # - TLS_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_RSA_WITH_AES_256_GCM_SHA384
   # - TLS_AES_128_GCM_SHA256
   # - TLS_AES_256_GCM_SHA384
   # - TLS_CHACHA20_POLY1305_SHA256
@@ -4838,11 +4852,7 @@ memcached_client:
   # Insecure Ciphers:
   # - TLS_RSA_WITH_RC4_128_SHA
   # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_RSA_WITH_AES_256_CBC_SHA
   # - TLS_RSA_WITH_AES_128_CBC_SHA256
-  # - TLS_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_RSA_WITH_AES_256_GCM_SHA384
   # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
   # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
   # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -4964,7 +4974,7 @@ The `period_config` block configures what index schemas should be used for from 
 # gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc.
 [object_store: <string> | default = ""]
 
-# The schema version to use, current recommended schema is v12.
+# The schema version to use, current recommended schema is v13.
 [schema: <string> | default = ""]
 
 # Configures how the index is updated and stored.

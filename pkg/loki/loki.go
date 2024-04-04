@@ -3,6 +3,7 @@ package loki
 import (
 	"bytes"
 	"context"
+	stdlib_errors "errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -54,6 +55,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	internalserver "github.com/grafana/loki/v3/pkg/server"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -281,6 +283,40 @@ func (c *Config) Validate() error {
 		if c.isModuleEnabled(Backend) {
 			return fmt.Errorf("invalid target, cannot run backend target with legacy read mode")
 		}
+	}
+
+	var errs []error
+
+	p := config.ActivePeriodConfig(c.SchemaConfig.Configs)
+
+	// If the active index type is not TSDB (which does not use an index cache)
+	// and the index queries cache is configured
+	// and the chunk retain period is less than the validity period of the index cache
+	// throw an error.
+	if c.SchemaConfig.Configs[p].IndexType != config.TSDBType &&
+		cache.IsCacheConfigured(c.StorageConfig.IndexQueriesCacheConfig) &&
+		c.Ingester.RetainPeriod < c.StorageConfig.IndexCacheValidity {
+		errs = append(errs, fmt.Errorf("CONFIG ERROR: the active index is %s which is configured to use an `index_cache_validty` (TTL) of %s, however the chunk_retain_period is %s which is LESS than the `index_cache_validity`. This can lead to query gaps, please configure the `chunk_retain_period` to be greater than the `index_cache_validity`", c.SchemaConfig.Configs[p].IndexType, c.StorageConfig.IndexCacheValidity, c.Ingester.RetainPeriod))
+	}
+
+	// Schema version 13 is required to use structured metadata
+	version, err := c.SchemaConfig.Configs[p].VersionAsInt()
+	if err != nil {
+		return err
+	}
+	if c.LimitsConfig.AllowStructuredMetadata && version < 13 {
+		errs = append(errs, fmt.Errorf("CONFIG ERROR: schema v13 is required to store Structured Metadata and use native OTLP ingestion, your schema version is %s. Set `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false` and restart Loki. Then proceed to update to schema v13 or newer before re-enabling this config, search for 'Storage Schema' in the docs for the schema update procedure", c.SchemaConfig.Configs[p].Schema))
+	}
+	// TSDB index is required to use structured metadata
+	if c.LimitsConfig.AllowStructuredMetadata && c.SchemaConfig.Configs[p].IndexType != config.TSDBType {
+		errs = append(errs, fmt.Errorf("CONFIG ERROR: `tsdb` index type is required to store Structured Metadata and use native OTLP ingestion, your index type is `%s` (defined in the `store` parameter of the schema_config). Set `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false` and restart Loki. Then proceed to update the schema to use index type `tsdb` before re-enabling this config, search for 'Storage Schema' in the docs for the schema update procedure", c.SchemaConfig.Configs[p].IndexType))
+	}
+
+	if len(errs) > 1 {
+		errs = append([]error{fmt.Errorf("MULTIPLE CONFIG ERRORS FOUND, PLEASE READ CAREFULLY")}, errs...)
+		return stdlib_errors.Join(errs...)
+	} else if len(errs) == 1 {
+		return errs[0]
 	}
 
 	return nil

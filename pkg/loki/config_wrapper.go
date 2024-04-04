@@ -433,7 +433,6 @@ func applyPathPrefixDefaults(r, defaults *ConfigWrapper) {
 		}
 		if len(r.StorageConfig.BloomShipperConfig.WorkingDirectory) == 1 &&
 			len(r.StorageConfig.BloomShipperConfig.WorkingDirectory) == len(defaults.StorageConfig.BloomShipperConfig.WorkingDirectory) &&
-
 			r.StorageConfig.BloomShipperConfig.WorkingDirectory[0] == defaults.StorageConfig.BloomShipperConfig.WorkingDirectory[0] {
 			_ = r.StorageConfig.BloomShipperConfig.WorkingDirectory.Set(fmt.Sprintf("%s/blooms", prefix))
 		}
@@ -702,8 +701,12 @@ func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
 // for at least as long as the TTL on the index queries cache.
 func applyChunkRetain(cfg, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(cfg.StorageConfig.IndexQueriesCacheConfig, defaults.StorageConfig.IndexQueriesCacheConfig) {
-		// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
-		// buffer to make sure the chunks are there until the index entries expire.
-		cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
+		// Only apply this change if the active index period is for boltdb-shipper
+		p := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
+		if cfg.SchemaConfig.Configs[p].IndexType == config.BoltDBShipperType {
+			// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
+			// buffer to make sure the chunks are there until the index entries expire.
+			cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
+		}
 	}
 }

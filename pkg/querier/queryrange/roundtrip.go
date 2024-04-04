@@ -62,16 +62,16 @@ type Config struct {
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
-	f.BoolVar(&cfg.CacheIndexStatsResults, "querier.cache-index-stats-results", false, "Cache index stats query results.")
+	f.BoolVar(&cfg.CacheIndexStatsResults, "querier.cache-index-stats-results", true, "Cache index stats query results.")
 	cfg.StatsCacheConfig.RegisterFlags(f)
-	f.BoolVar(&cfg.CacheVolumeResults, "querier.cache-volume-results", false, "Cache volume query results.")
+	f.BoolVar(&cfg.CacheVolumeResults, "querier.cache-volume-results", true, "Cache volume query results.")
 	cfg.VolumeCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.CacheInstantMetricResults, "querier.cache-instant-metric-results", false, "Cache instant metric query results.")
 	cfg.InstantMetricCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.InstantMetricQuerySplitAlign, "querier.instant-metric-query-split-align", false, "Align the instant metric splits with splityByInterval and query's exec time.")
-	f.BoolVar(&cfg.CacheSeriesResults, "querier.cache-series-results", false, "Cache series query results.")
+	f.BoolVar(&cfg.CacheSeriesResults, "querier.cache-series-results", true, "Cache series query results.")
 	cfg.SeriesCacheConfig.RegisterFlags(f)
-	f.BoolVar(&cfg.CacheLabelResults, "querier.cache-label-results", false, "Cache label query results.")
+	f.BoolVar(&cfg.CacheLabelResults, "querier.cache-label-results", true, "Cache label query results.")
 	cfg.LabelsCacheConfig.RegisterFlags(f)
 }
 
