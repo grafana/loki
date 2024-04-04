@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -21,25 +23,26 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	lokilog "github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/push"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/marshal"
-	"github.com/grafana/loki/pkg/validation"
+
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
@@ -932,6 +935,37 @@ func Test_PipelineWrapper(t *testing.T) {
 	require.Equal(t, 28, wrapper.pipeline.sp.called) // we've passed every log line through the wrapper
 }
 
+func Test_PipelineWrapper_disabled(t *testing.T) {
+	s := &LokiStore{
+		Store: storeFixture,
+		cfg: Config{
+			MaxChunkBatchSize: 10,
+		},
+		chunkMetrics: NilMetrics,
+	}
+	wrapper := &testPipelineWrapper{
+		pipeline: newMockPipeline(),
+	}
+
+	s.SetPipelineWrapper(wrapper)
+	ctx = user.InjectOrgID(context.Background(), "test-user")
+	ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, "true")
+	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), []astmapper.ShardAnnotation{{Shard: 1, Of: 5}}, nil)})
+
+	if err != nil {
+		t.Errorf("store.SelectLogs() error = %v", err)
+		return
+	}
+	defer logit.Close()
+	for logit.Next() {
+		require.NoError(t, logit.Error()) // consume the iterator
+	}
+
+	require.Equal(t, "", wrapper.tenant)
+	require.Equal(t, "", wrapper.query)
+	require.Equal(t, 0, wrapper.pipeline.sp.called) // we've passed every log line through the wrapper
+}
+
 type testPipelineWrapper struct {
 	query    string
 	pipeline *mockPipeline
@@ -1015,6 +1049,36 @@ func Test_SampleWrapper(t *testing.T) {
 	require.Equal(t, "test-user", wrapper.tenant)
 	require.Equal(t, "count_over_time({foo=~\"ba.*\"}[1s])", wrapper.query)
 	require.Equal(t, 28, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
+}
+
+func Test_SampleWrapper_disabled(t *testing.T) {
+	s := &LokiStore{
+		Store: storeFixture,
+		cfg: Config{
+			MaxChunkBatchSize: 10,
+		},
+		chunkMetrics: NilMetrics,
+	}
+	wrapper := &testExtractorWrapper{
+		extractor: newMockExtractor(),
+	}
+	s.SetExtractorWrapper(wrapper)
+
+	ctx = user.InjectOrgID(context.Background(), "test-user")
+	ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, "true")
+	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), []astmapper.ShardAnnotation{{Shard: 1, Of: 3}}, nil)})
+	if err != nil {
+		t.Errorf("store.SelectSamples() error = %v", err)
+		return
+	}
+	defer it.Close()
+	for it.Next() {
+		require.NoError(t, it.Error()) // consume the iterator
+	}
+
+	require.Equal(t, "", wrapper.tenant)
+	require.Equal(t, "", wrapper.query)
+	require.Equal(t, 0, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
 }
 
 type testExtractorWrapper struct {

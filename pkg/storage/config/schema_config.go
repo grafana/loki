@@ -17,10 +17,10 @@ import (
 	"github.com/prometheus/common/model"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -201,7 +201,8 @@ func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRa
 }
 
 func NewDayTime(d model.Time) DayTime {
-	return DayTime{d}
+	beginningOfDay := model.TimeFromUnix(d.Time().Truncate(24 * time.Hour).Unix())
+	return DayTime{beginningOfDay}
 }
 
 // DayTime is a model.Time what holds day-aligned values, and marshals to/from

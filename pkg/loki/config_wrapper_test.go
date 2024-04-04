@@ -9,25 +9,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/distributor"
-	"github.com/grafana/loki/pkg/loki/common"
-	"github.com/grafana/loki/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
-	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
-	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
-	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
-	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
-	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
-	"github.com/grafana/loki/pkg/util/cfg"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	loki_net "github.com/grafana/loki/pkg/util/net"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/loki/common"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/azure"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/baidubce"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/ibmcloud"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
+	"github.com/grafana/loki/v3/pkg/util/cfg"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	loki_net "github.com/grafana/loki/v3/pkg/util/net"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 // Can't use a totally empty yaml file or it causes weird behavior in the unmarshalling.
@@ -100,7 +101,7 @@ common:
 			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
-			assert.EqualValues(t, "/opt/loki/blooms", config.StorageConfig.BloomShipperConfig.WorkingDirectory)
+			assert.EqualValues(t, flagext.StringSliceCSV{"/opt/loki/blooms"}, config.StorageConfig.BloomShipperConfig.WorkingDirectory)
 		})
 
 		t.Run("accepts paths both with and without trailing slash", func(t *testing.T) {
@@ -112,7 +113,7 @@ common:
 			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
-			assert.EqualValues(t, "/opt/loki/blooms", config.StorageConfig.BloomShipperConfig.WorkingDirectory)
+			assert.EqualValues(t, flagext.StringSliceCSV{"/opt/loki/blooms"}, config.StorageConfig.BloomShipperConfig.WorkingDirectory)
 		})
 
 		t.Run("does not rewrite custom (non-default) paths passed via config file", func(t *testing.T) {

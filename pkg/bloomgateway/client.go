@@ -25,16 +25,17 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/bloomutils"
-	"github.com/grafana/loki/pkg/distributor/clientpool"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/queue"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/bloomutils"
+	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/queue"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -55,9 +56,6 @@ var (
 			}
 		},
 	}
-
-	// NB(chaudum): Should probably be configurable, but I don't want yet another user setting.
-	maxQueryParallelism = 10
 )
 
 type ringGetBuffers struct {
@@ -106,10 +104,6 @@ type ClientConfig struct {
 	// GRPCClientConfig configures the gRPC connection between the Bloom Gateway client and the server.
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 
-	// LogGatewayRequests configures if requests sent to the gateway should be logged or not.
-	// The log messages are of type debug and contain the address of the gateway and the relevant tenant.
-	LogGatewayRequests bool `yaml:"log_gateway_requests"`
-
 	// Ring is the Bloom Gateway ring used to find the appropriate Bloom Gateway instance
 	// this client should talk to.
 	Ring ring.ReadRing `yaml:"-"`
@@ -129,7 +123,6 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+"grpc", f)
 	i.Cache.RegisterFlagsWithPrefix(prefix+"cache.", f)
 	f.BoolVar(&i.CacheResults, prefix+"cache_results", false, "Flag to control whether to cache bloom gateway client requests/responses.")
-	f.BoolVar(&i.LogGatewayRequests, prefix+"log-gateway-requests", false, "Flag to control whether requests sent to the gateway should be logged or not.")
 }
 
 func (i *ClientConfig) Validate() error {
@@ -151,11 +144,12 @@ type Client interface {
 }
 
 type GatewayClient struct {
-	cfg    ClientConfig
-	limits Limits
-	logger log.Logger
-	pool   *ringclient.Pool
-	ring   ring.ReadRing
+	cfg     ClientConfig
+	limits  Limits
+	logger  log.Logger
+	metrics *clientMetrics
+	pool    *ringclient.Pool
+	ring    ring.ReadRing
 }
 
 func NewClient(
@@ -213,11 +207,12 @@ func NewClient(
 	}
 
 	return &GatewayClient{
-		cfg:    cfg,
-		logger: logger,
-		limits: limits,
-		pool:   clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger, metricsNamespace),
-		ring:   readRing,
+		cfg:     cfg,
+		logger:  logger,
+		limits:  limits,
+		metrics: newClientMetrics(registerer),
+		pool:    clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger, metricsNamespace),
+		ring:    readRing,
 	}, nil
 }
 
@@ -238,7 +233,7 @@ func shuffleAddrs(addrs []string) []string {
 
 // FilterChunkRefs implements Client
 func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
-	if !c.limits.BloomGatewayEnabled(tenant) {
+	if !c.limits.BloomGatewayEnabled(tenant) || len(groups) == 0 {
 		return groups, nil
 	}
 
@@ -253,11 +248,24 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 	if err != nil {
 		return nil, errors.Wrap(err, "bloom gateway get replication sets")
 	}
+
 	servers = partitionByReplicationSet(groups, servers)
+	if len(servers) > 0 {
+		// cache locality score (higher is better):
+		// `% keyspace / % instances`. Ideally converges to 1 (querying x% of keyspace requires x% of instances),
+		// but can be less if the keyspace is not evenly distributed across instances. Ideal operation will see the range of
+		// `1-2/num_instances` -> `1`, where the former represents slight
+		// overlap on instances to the left and right of the range.
+		firstFp, lastFp := groups[0].Fingerprint, groups[len(groups)-1].Fingerprint
+		pctKeyspace := float64(lastFp-firstFp) / float64(math.MaxUint64)
+		pctInstances := float64(len(servers)) / float64(len(rs.Instances))
+		cacheLocalityScore := pctKeyspace / pctInstances
+		c.metrics.cacheLocalityScore.Observe(cacheLocalityScore)
+	}
 
 	results := make([][]*logproto.GroupedChunkRefs, len(servers))
 	count := 0
-	err = concurrency.ForEachJob(ctx, len(servers), maxQueryParallelism, func(ctx context.Context, i int) error {
+	err = concurrency.ForEachJob(ctx, len(servers), len(servers), func(ctx context.Context, i int) error {
 		rs := servers[i]
 
 		// randomize order of addresses so we don't hotspot the first server in the list
@@ -270,9 +278,6 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 			"from", from.Time(),
 			"through", through.Time(),
 			"num_refs", len(rs.groups),
-			"refs", JoinFunc(rs.groups, ",", func(e *logproto.GroupedChunkRefs) string {
-				return model.Fingerprint(e.Fingerprint).String()
-			}),
 			"plan", plan.String(),
 			"plan_hash", plan.Hash(),
 		)
@@ -355,6 +360,16 @@ func replicationSetsWithBounds(subRing ring.ReadRing, instances []ring.InstanceD
 		tr, err := bloomutils.TokenRangesForInstance(inst.Id, instances)
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
+		}
+
+		if len(tr) == 0 {
+			level.Warn(util_log.Logger).Log(
+				"subroutine", "replicationSetsWithBounds",
+				"msg", "instance has no token ranges - should not be possible",
+				"instance", inst.Id,
+				"n_instances", len(instances),
+			)
+			continue
 		}
 
 		// NB(owen-d): this will send requests to the wrong nodes if RF>1 since it only checks the

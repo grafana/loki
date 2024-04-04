@@ -1,4 +1,5 @@
 //go:build integration
+
 package integration
 
 import (
@@ -20,12 +21,12 @@ import (
 	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/grafana/loki/integration/client"
-	"github.com/grafana/loki/integration/cluster"
+	"github.com/grafana/loki/v3/integration/client"
+	"github.com/grafana/loki/v3/integration/cluster"
 
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	"github.com/grafana/loki/pkg/util/querylimits"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/util/querylimits"
 )
 
 func TestMicroServicesIngestQuery(t *testing.T) {

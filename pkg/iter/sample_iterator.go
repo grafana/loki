@@ -6,9 +6,11 @@ import (
 	"io"
 	"sync"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // SampleIterator iterates over samples in time-order.
@@ -490,6 +492,8 @@ func (i *sampleQueryClientIterator) Next() bool {
 			return false
 		}
 		stats.JoinIngesters(ctx, batch.Stats)
+		_ = metadata.AddWarnings(ctx, batch.Warnings...)
+
 		i.curr = NewSampleQueryResponseIterator(batch)
 	}
 	return true

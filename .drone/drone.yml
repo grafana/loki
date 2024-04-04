@@ -17,7 +17,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.33.0-amd64
+    - 0.33.1-amd64
     username:
       from_secret: docker_username
   when:
@@ -54,7 +54,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.33.0-arm64
+    - 0.33.1-arm64
     username:
       from_secret: docker_username
   when:
@@ -86,7 +86,7 @@ steps:
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest-build-image.tmpl
-    target: loki-build-image:0.33.0
+    target: loki-build-image:0.33.1
     username:
       from_secret: docker_username
   when:
@@ -146,7 +146,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.33.0
+  image: grafana/loki-build-image:0.33.1
   name: loki-mixin-check
   when:
     event:
@@ -171,7 +171,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.33.0
+  image: grafana/loki-build-image:0.33.1
   name: documentation-helm-reference-check
 trigger:
   ref:
@@ -1139,7 +1139,7 @@ steps:
       from_secret: docker_password
     DOCKER_USERNAME:
       from_secret: docker_username
-  image: grafana/loki-build-image:0.33.0
+  image: grafana/loki-build-image:0.33.1
   name: build and push
   privileged: true
   volumes:
@@ -1362,6 +1362,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 32b44aecaad0258ed9494225595e1016a56bea960bcd0b15b2db3449bed957e0
+hmac: 452ccacf982174ae96c64fc2d0868859d26dbf6944e49d9170d780ff40a81eb8
 
 ...

@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 // This is the separator define in the Prometheus Labels.Hash function.
@@ -132,4 +132,26 @@ func (m *IndexStatsResponse) LoggingKeyValues() []interface{} {
 		"streams", m.Streams,
 		"entries", m.Entries,
 	}
+}
+
+func (m *Shard) SpaceFor(stats *IndexStatsResponse, targetShardBytes uint64) bool {
+	curDelta := max(m.Stats.Bytes, targetShardBytes) - min(m.Stats.Bytes, targetShardBytes)
+	updated := m.Stats.Bytes + stats.Bytes
+	newDelta := max(updated, targetShardBytes) - min(updated, targetShardBytes)
+	return newDelta <= curDelta
+}
+
+type DetectedFieldType string
+
+const (
+	DetectedFieldString   DetectedFieldType = "string"
+	DetectedFieldInt      DetectedFieldType = "int"
+	DetectedFieldFloat    DetectedFieldType = "float"
+	DetectedFieldBoolean  DetectedFieldType = "boolean"
+	DetectedFieldDuration DetectedFieldType = "duration"
+	DetectedFieldBytes    DetectedFieldType = "bytes"
+)
+
+func (d DetectedFieldType) String() string {
+	return string(d)
 }

@@ -14,12 +14,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/bloomutils"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/plan"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/bloomutils"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func rs(id int, tokens ...uint32) ring.ReplicationSet {
@@ -48,7 +48,7 @@ func TestBloomGatewayClient(t *testing.T) {
 		require.NoError(t, err)
 		res, err := c.FilterChunks(context.Background(), "tenant", model.Now(), model.Now(), nil, plan.QueryPlan{AST: expr})
 		require.NoError(t, err)
-		require.Equal(t, []*logproto.GroupedChunkRefs{}, res)
+		require.Equal(t, 0, len(res))
 	})
 }
 

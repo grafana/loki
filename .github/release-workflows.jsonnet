@@ -42,7 +42,9 @@ local imagePrefix = 'grafana';
       skipValidation=false,
       useGitHubAppToken=true,
       versioningStrategy='always-bump-patch',
-    ), false, false
+    ) + {
+      name: 'Prepare Patch Release PR',
+    }, false, false
   ),
   'minor-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
@@ -59,11 +61,32 @@ local imagePrefix = 'grafana';
       skipValidation=false,
       useGitHubAppToken=true,
       versioningStrategy='always-bump-minor',
-    ), false, false
+    ) + {
+      name: 'Prepare Minor Release PR from Weekly',
+    }, false, false
+  ),
+  'three-zero-release.yml': std.manifestYamlDoc(
+    lokiRelease.releasePRWorkflow(
+      branches=['main'],
+      buildImage=buildImage,
+      checkTemplate=checkTemplate,
+      golangCiLintVersion=golangCiLintVersion,
+      imageBuildTimeoutMin=imageBuildTimeoutMin,
+      imageJobs=imageJobs,
+      imagePrefix=imagePrefix,
+      releaseLibRef=releaseLibRef,
+      releaseRepo='grafana/loki',
+      skipArm=false,
+      skipValidation=false,
+      useGitHubAppToken=true,
+      releaseAs='3.0.0-rc.1',
+    ) + {
+      name: 'Prepare Loki 3.0 release',
+    }, false, false
   ),
   'release.yml': std.manifestYamlDoc(
     lokiRelease.releaseWorkflow(
-      branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+'],
+      branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+', 'main'],
       getDockerCredsFromVault=true,
       imagePrefix='grafana',
       releaseLibRef=releaseLibRef,

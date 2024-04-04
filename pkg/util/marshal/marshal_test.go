@@ -15,15 +15,19 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 const emptyStats = `{
+	"index": {
+		"postFilterChunks": 0,
+		"totalChunks": 0
+	},
 	"ingester" : {
 		"store": {
 			"chunksDownloadTime": 0,
@@ -32,6 +36,7 @@ const emptyStats = `{
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
+			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
@@ -57,6 +62,7 @@ const emptyStats = `{
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
+			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
@@ -207,6 +213,7 @@ var queryTestWithEncodingFlags = []struct {
 		encodingFlags: httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels),
 		expected: fmt.Sprintf(`{
 			"status": "success",
+			"warnings": ["this is a warning"],
 			"data": {
 				"resultType": "streams",
 				"encodingFlags": ["%s"],
@@ -268,6 +275,7 @@ var queryTests = []struct {
 		},
 		fmt.Sprintf(`{
 			"status": "success",
+			"warnings": ["this is a warning"],
 			"data": {
 				"resultType": "streams",
 				"result": [
@@ -344,7 +352,8 @@ var queryTests = []struct {
 			  ],
 			  "stats" : %s
             },
-			"status": "success"
+			"status": "success",
+			"warnings": ["this is a warning"]
 		  }`, emptyStats),
 	},
 	// matrix test
@@ -426,7 +435,8 @@ var queryTests = []struct {
 			  ],
 			  "stats" : %s
 			},
-			"status": "success"
+			"status": "success",
+			"warnings": ["this is a warning"]
 		  }`, emptyStats),
 	},
 }
@@ -592,14 +602,14 @@ var tailTestWithEncodingFlags = []struct {
 func Test_WriteQueryResponseJSON(t *testing.T) {
 	for i, queryTest := range queryTests {
 		var b bytes.Buffer
-		err := WriteQueryResponseJSON(queryTest.actual, stats.Result{}, &b, nil)
+		err := WriteQueryResponseJSON(queryTest.actual, []string{"this is a warning"}, stats.Result{}, &b, nil)
 		require.NoError(t, err)
 
 		require.JSONEqf(t, queryTest.expected, b.String(), "Query Test %d failed", i)
 	}
 	for i, queryTest := range queryTestWithEncodingFlags {
 		var b bytes.Buffer
-		err := WriteQueryResponseJSON(queryTest.actual, stats.Result{}, &b, queryTest.encodingFlags)
+		err := WriteQueryResponseJSON(queryTest.actual, []string{"this is a warning"}, stats.Result{}, &b, queryTest.encodingFlags)
 		require.NoError(t, err)
 
 		require.JSONEqf(t, queryTest.expected, b.String(), "Query Test %d failed", i)
@@ -631,7 +641,7 @@ func Test_WriteQueryResponseJSONWithError(t *testing.T) {
 		},
 	}
 	var b bytes.Buffer
-	err := WriteQueryResponseJSON(broken.Data, stats.Result{}, &b, nil)
+	err := WriteQueryResponseJSON(broken.Data, nil, stats.Result{}, &b, nil)
 	require.Error(t, err)
 }
 
@@ -890,7 +900,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var b bytes.Buffer
-			err := WriteQueryResponseJSON(inputStream, stats.Result{}, &b, tc.encodeFlags)
+			err := WriteQueryResponseJSON(inputStream, nil, stats.Result{}, &b, tc.encodeFlags)
 			require.NoError(t, err)
 			require.JSONEq(t, tc.expected, b.String())
 		})
@@ -1024,7 +1034,7 @@ func Benchmark_Encode(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		for _, queryTest := range queryTests {
-			require.NoError(b, WriteQueryResponseJSON(queryTest.actual, stats.Result{}, buf, nil))
+			require.NoError(b, WriteQueryResponseJSON(queryTest.actual, nil, stats.Result{}, buf, nil))
 			buf.Reset()
 		}
 	}

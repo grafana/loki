@@ -3,29 +3,35 @@ package indexgateway
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/plan"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores"
-	"github.com/grafana/loki/pkg/storage/stores/index"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	seriesindex "github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	seriesindex "github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -59,6 +65,7 @@ type Gateway struct {
 	indexQuerier IndexQuerier
 	indexClients []IndexClientWithRange
 	bloomQuerier BloomQuerier
+	metrics      *Metrics
 
 	cfg Config
 	log log.Logger
@@ -68,13 +75,14 @@ type Gateway struct {
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, _ prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier) (*Gateway, error) {
+func NewIndexGateway(cfg Config, log log.Logger, r prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		bloomQuerier: bloomQuerier,
 		cfg:          cfg,
 		log:          log,
 		indexClients: indexClients,
+		metrics:      NewMetrics(r),
 	}
 
 	// query newer periods first
@@ -195,7 +203,7 @@ func buildResponses(query seriesindex.Query, batch seriesindex.ReadBatchResult, 
 	return nil
 }
 
-func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
+func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (result *logproto.GetChunkRefResponse, err error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -211,7 +219,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return nil, err
 	}
 
-	result := &logproto.GetChunkRefResponse{
+	result = &logproto.GetChunkRefResponse{
 		Refs: make([]*logproto.ChunkRef, 0, len(chunks)),
 	}
 	for _, cs := range chunks {
@@ -221,6 +229,12 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	}
 
 	initialChunkCount := len(result.Refs)
+	defer func() {
+		if err == nil {
+			g.metrics.preFilterChunks.WithLabelValues(routeChunkRefs).Observe(float64(initialChunkCount))
+			g.metrics.postFilterChunks.WithLabelValues(routeChunkRefs).Observe(float64(len(result.Refs)))
+		}
+	}()
 
 	// Return unfiltered results if there is no bloom querier (Bloom Gateway disabled)
 	if g.bloomQuerier == nil {
@@ -338,6 +352,288 @@ func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*
 	}
 
 	return g.indexQuerier.Volume(ctx, instanceID, req.From, req.Through, req.GetLimit(), req.TargetLabels, req.AggregateBy, matchers...)
+}
+
+func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.IndexGateway_GetShardsServer) error {
+	ctx := server.Context()
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "indexgateway.GetShards")
+	defer sp.Finish()
+
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return err
+	}
+
+	p, err := ExtractShardRequestMatchersAndAST(request.Query)
+	if err != nil {
+		return err
+	}
+
+	// Shards were requested, but blooms are not enabled or cannot be used due to lack of filters.
+	// That's ok; we can still return shard ranges without filtering
+	// which will be more effective than guessing power-of-2 shard ranges.
+	forSeries, ok := g.indexQuerier.HasForSeries(request.From, request.Through)
+	if g.bloomQuerier == nil || len(syntax.ExtractLineFilters(p.Plan().AST)) == 0 || !ok {
+		shards, err := g.indexQuerier.GetShards(
+			ctx,
+			instanceID,
+			request.From, request.Through,
+			request.TargetBytesPerShard,
+			p,
+		)
+
+		if err != nil {
+			return err
+		}
+
+		return server.Send(shards)
+	}
+
+	return g.getShardsWithBlooms(ctx, request, server, instanceID, p, forSeries)
+}
+
+// getShardsWithBlooms is a helper function to get shards with blooms enabled.
+func (g *Gateway) getShardsWithBlooms(
+	ctx context.Context,
+	req *logproto.ShardsRequest,
+	server logproto.IndexGateway_GetShardsServer,
+	instanceID string,
+	p chunk.Predicate,
+	forSeries sharding.ForSeries,
+) error {
+	// TODO(owen-d): instead of using GetChunks which buffers _all_ the chunks
+	// (expensive when looking at the full fingerprint space), we should
+	// use the `ForSeries` implementation to accumulate batches of chunks to dedupe,
+	// but I'm leaving this as a future improvement. This may be difficult considering
+	// fingerprints aren't necessarily iterated in order because multiple underlying TSDBs
+	// can be queried independently. This could also result in the same chunks being present in
+	// multiple batches. However, this is all OK because we can dedupe them post-blooms and in
+	// many cases the majority of chunks will only be present in a single post-compacted TSDB,
+	// making this more of an edge case than a common occurrence (make sure to check this assumption
+	// as getting it _very_ wrong could harm some cache locality benefits on the bloom-gws by
+	// sending multiple requests to the entire keyspace).
+
+	logger := log.With(g.log, "tenant", instanceID)
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "indexgateway.getShardsWithBlooms")
+	defer sp.Finish()
+
+	// 1) for all bounds, get chunk refs
+	grps, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, p)
+	if err != nil {
+		return err
+	}
+
+	var ct int
+	for _, g := range grps {
+		ct += len(g)
+	}
+	// TODO(owen-d): pool
+	refs := make([]*logproto.ChunkRef, 0, ct)
+
+	for _, cs := range grps {
+		for j := range cs {
+			refs = append(refs, &cs[j].ChunkRef)
+		}
+	}
+
+	// 2) filter via blooms
+	filtered, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
+	if err != nil {
+		return err
+	}
+	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
+	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(len(filtered)))
+
+	statistics := stats.Result{
+		Index: stats.Index{
+			TotalChunks:      int64(ct),
+			PostFilterChunks: int64(len(filtered)),
+		},
+	}
+
+	resp := &logproto.ShardsResponse{
+		Statistics: statistics,
+	}
+
+	// Edge case: if there are no chunks after filtering, we still need to return a single shard
+	if len(filtered) == 0 {
+		resp.Shards = []logproto.Shard{
+			{
+				Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64},
+				Stats:  &logproto.IndexStatsResponse{},
+			},
+		}
+	} else {
+		shards, err := accumulateChunksToShards(ctx, instanceID, forSeries, req, p, filtered)
+		if err != nil {
+			return err
+		}
+		resp.Shards = shards
+	}
+
+	sp.LogKV("msg", "send shards response", "shards", len(resp.Shards))
+
+	level.Debug(logger).Log(
+		"msg", "send shards response",
+		"total_chunks", statistics.Index.TotalChunks,
+		"post_filter_chunks", statistics.Index.PostFilterChunks,
+		"shards", len(resp.Shards),
+		"query", req.Query,
+		"target_bytes_per_shard", datasize.ByteSize(req.TargetBytesPerShard).HumanReadable(),
+	)
+
+	// 3) build shards
+	return server.Send(resp)
+}
+
+// ExtractShardRequestMatchersAndAST extracts the matchers and AST from a query string.
+// It errors if there is more than one matcher group in the AST as this is supposed to be
+// split out during query planning before reaching this point.
+func ExtractShardRequestMatchersAndAST(query string) (chunk.Predicate, error) {
+	expr, err := syntax.ParseExpr(query)
+	if err != nil {
+		return chunk.Predicate{}, err
+	}
+
+	ms, err := syntax.MatcherGroups(expr)
+	if err != nil {
+		return chunk.Predicate{}, err
+	}
+
+	var matchers []*labels.Matcher
+	switch len(ms) {
+	case 0:
+		// nothing to do
+	case 1:
+		matchers = ms[0].Matchers
+	default:
+		return chunk.Predicate{}, fmt.Errorf(
+			"multiple matcher groups are not supported in GetShards. This is likely an internal bug as binary operations should be dispatched separately in planning",
+		)
+	}
+
+	return chunk.NewPredicate(matchers, &plan.QueryPlan{
+		AST: expr,
+	}), nil
+}
+
+// TODO(owen-d): consider extending index impl to support returning chunkrefs _with_ sizing info
+// TODO(owen-d): perf, this is expensive :(
+func accumulateChunksToShards(
+	ctx context.Context,
+	user string,
+	forSeries sharding.ForSeries,
+	req *logproto.ShardsRequest,
+	p chunk.Predicate,
+	filtered []*logproto.ChunkRef,
+) ([]logproto.Shard, error) {
+	// map for looking up post-filtered chunks in O(n) while iterating the index again for sizing info
+	filteredM := make(map[model.Fingerprint][]refWithSizingInfo, 1024)
+	for _, ref := range filtered {
+		x := refWithSizingInfo{ref: ref}
+		filteredM[model.Fingerprint(ref.Fingerprint)] = append(filteredM[model.Fingerprint(ref.Fingerprint)], x)
+	}
+
+	var mtx sync.Mutex
+
+	if err := forSeries.ForSeries(
+		ctx,
+		user,
+		v1.NewBounds(filtered[0].FingerprintModel(), filtered[len(filtered)-1].FingerprintModel()),
+		req.From, req.Through,
+		func(l labels.Labels, fp model.Fingerprint, chks []tsdb_index.ChunkMeta) (stop bool) {
+			// check if this is a fingerprint we need
+			if _, ok := filteredM[fp]; !ok {
+				return false
+			}
+			mtx.Lock()
+			defer mtx.Unlock()
+
+			filteredChks := filteredM[fp]
+			var j int
+
+		outer:
+			for i := range filteredChks {
+				for j < len(chks) {
+					switch filteredChks[i].Cmp(chks[j]) {
+					case v1.Less:
+						// this chunk is not in the queried index, continue checking other chunks
+						continue outer
+					case v1.Greater:
+						// next chunk in index but didn't pass filter; continue
+						j++
+						continue
+					case v1.Eq:
+						// a match; set the sizing info
+						filteredChks[i].KB = chks[j].KB
+						filteredChks[i].Entries = chks[j].Entries
+						j++
+						continue outer
+					}
+				}
+
+				// we've finished this index's chunks; no need to keep checking filtered chunks
+				break
+			}
+
+			return false
+		},
+		p.Matchers...,
+	); err != nil {
+		return nil, err
+	}
+
+	collectedSeries := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(filteredM)))
+	defer sharding.SizedFPsPool.Put(collectedSeries)
+
+	for fp, chks := range filteredM {
+		x := sharding.SizedFP{Fp: fp}
+		x.Stats.Chunks = uint64(len(chks))
+
+		for _, chk := range chks {
+			x.Stats.Entries += uint64(chk.Entries)
+			x.Stats.Bytes += uint64(chk.KB << 10)
+		}
+		collectedSeries = append(collectedSeries, x)
+	}
+	sort.Sort(collectedSeries)
+
+	return collectedSeries.ShardsFor(req.TargetBytesPerShard), nil
+}
+
+type refWithSizingInfo struct {
+	ref     *logproto.ChunkRef
+	KB      uint32
+	Entries uint32
+}
+
+// careful: only checks from,through,checksum
+func (r refWithSizingInfo) Cmp(chk tsdb_index.ChunkMeta) v1.Ord {
+	ref := *r.ref
+	chkFrom := model.Time(chk.MinTime)
+	if ref.From != chkFrom {
+		if ref.From < chkFrom {
+			return v1.Less
+		}
+		return v1.Greater
+	}
+
+	chkThrough := model.Time(chk.MaxTime)
+	if ref.Through != chkThrough {
+		if ref.Through < chkThrough {
+			return v1.Less
+		}
+		return v1.Greater
+	}
+
+	if ref.Checksum != chk.Checksum {
+		if ref.Checksum < chk.Checksum {
+			return v1.Less
+		}
+		return v1.Greater
+	}
+
+	return v1.Eq
 }
 
 type failingIndexClient struct{}

@@ -3,7 +3,7 @@ package bloomgateway
 import (
 	"flag"
 
-	"github.com/grafana/loki/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 // Config configures the Bloom Gateway component.

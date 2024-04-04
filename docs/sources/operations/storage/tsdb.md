@@ -29,7 +29,7 @@ schema_config:
         period: 24h
         prefix: index_
       object_store: gcs
-      schema: v12
+      schema: v13
       store: tsdb
 
 storage_config:

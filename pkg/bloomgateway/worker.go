@@ -11,9 +11,9 @@ import (
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/queue"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/queue"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 const (
@@ -103,6 +103,7 @@ func (w *worker) running(_ context.Context) error {
 			level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
 			_ = w.pending.Dec()
 			w.metrics.queueDuration.WithLabelValues(w.id).Observe(time.Since(task.enqueueTime).Seconds())
+			FromContext(task.ctx).AddQueueTime(time.Since(task.enqueueTime))
 			tasks = append(tasks, task)
 
 			first, last := getFirstLast(task.series)

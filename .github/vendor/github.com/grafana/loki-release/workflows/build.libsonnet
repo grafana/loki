@@ -60,7 +60,7 @@ local releaseLibStep = common.releaseLibStep;
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
-        destination: 'loki-build-artifacts/${{ github.sha }}/images',  //TODO: make bucket configurable
+        destination: '${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images',  //TODO: make bucket configurable
         process_gcloudignore: false,
       }),
     ]),
@@ -119,19 +119,36 @@ local releaseLibStep = common.releaseLibStep;
       + step.withId('version')
       + step.withRun(|||
         npm install
-        npm exec -- release-please release-pr \
-          --consider-all-branches \
-          --dry-run \
-          --dry-run-output release.json \
-          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
-          --manifest-file .release-please-manifest.json \
-          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
-          --release-type simple \
-          --repo-url "${{ env.RELEASE_REPO }}" \
-          --separate-pull-requests false \
-          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token "${{ steps.github_app_token.outputs.token }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+
+        if [[ -z "${{ env.RELEASE_AS }}" ]]; then
+          npm exec -- release-please release-pr \
+            --consider-all-branches \
+            --dry-run \
+            --dry-run-output release.json \
+            --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --manifest-file .release-please-manifest.json \
+            --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --release-type simple \
+            --repo-url "${{ env.RELEASE_REPO }}" \
+            --separate-pull-requests false \
+            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+            --token "${{ steps.github_app_token.outputs.token }}" \
+            --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        else
+          npm exec -- release-please release-pr \
+            --consider-all-branches \
+            --dry-run \
+            --dry-run-output release.json \
+            --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --manifest-file .release-please-manifest.json \
+            --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --release-type simple \
+            --repo-url "${{ env.RELEASE_REPO }}" \
+            --separate-pull-requests false \
+            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+            --token "${{ steps.github_app_token.outputs.token }}" \
+            --release-as "${{ env.RELEASE_AS }}"
+        fi
 
         cat release.json
 
@@ -211,8 +228,11 @@ local releaseLibStep = common.releaseLibStep;
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/dist',
-        destination: 'loki-build-artifacts/${{ github.sha }}',  //TODO: make bucket configurable
+        destination: '${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}',  //TODO: make bucket configurable
         process_gcloudignore: false,
       }),
-    ]),
+    ])
+    + job.withOutputs({
+      version: '${{ needs.version.outputs.version }}',
+    }),
 }

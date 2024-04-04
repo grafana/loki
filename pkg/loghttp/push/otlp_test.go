@@ -13,8 +13,9 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/push"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestOTLPToLokiPushRequest(t *testing.T) {
@@ -26,7 +27,6 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		expectedPushRequest logproto.PushRequest
 		expectedStats       Stats
 		otlpConfig          OTLPConfig
-		tracker             UsageTracker
 	}{
 		{
 			name: "no logs",
@@ -129,7 +129,6 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		{
 			name:       "service.name not defined in resource attributes",
 			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
-			tracker:    NewMockTracker(),
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("service.namespace", "foo")
@@ -164,32 +163,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StreamLabelsSize:         47,
 				MostRecentEntryTimestamp: now,
-				/*
-					logLinesBytesCustomTrackers: []customTrackerPair{
-						{
-							Labels: []labels.Label{
-								{Name: "service_namespace", Value: "foo"},
-								{Name: "tracker", Value: "foo"},
-							},
-							Bytes: map[time.Duration]int64{
-								time.Hour: 9,
-							},
-						},
-					},
-					structuredMetadataBytesCustomTrackers: []customTrackerPair{
-						{
-							Labels: []labels.Label{
-								{Name: "service_namespace", Value: "foo"},
-								{Name: "tracker", Value: "foo"},
-							},
-							Bytes: map[time.Duration]int64{
-								time.Hour: 0,
-							},
-						},
-					},
-				*/
 			},
-			//expectedTrackedUsaged:
 		},
 		{
 			name:       "resource attributes and scope attributes stored as structured metadata",
@@ -518,9 +492,19 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stats := newPushStats()
-			pushReq := otlpToLokiPushRequest(context.Background(), tc.generateLogs(), "foo", fakeRetention{}, tc.otlpConfig, tc.tracker, stats)
+			tracker := NewMockTracker()
+			pushReq := otlpToLokiPushRequest(context.Background(), tc.generateLogs(), "foo", fakeRetention{}, tc.otlpConfig, tracker, stats)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
+
+			totalBytes := 0.0
+			for _, b := range stats.LogLinesBytes {
+				totalBytes += float64(b)
+			}
+			for _, b := range stats.StructuredMetadataBytes {
+				totalBytes += float64(b)
+			}
+			require.Equal(t, totalBytes, tracker.Total(), "Total tracked bytes must equal total bytes of the stats.")
 		})
 	}
 }

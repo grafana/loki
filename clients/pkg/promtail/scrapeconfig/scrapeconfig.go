@@ -27,8 +27,8 @@ import (
 	"github.com/prometheus/prometheus/discovery/zookeeper"
 	"github.com/prometheus/prometheus/model/relabel"
 
-	"github.com/grafana/loki/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/clients/pkg/promtail/discovery/consulagent"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/discovery/consulagent"
 )
 
 // Config describes a job to scrape.
