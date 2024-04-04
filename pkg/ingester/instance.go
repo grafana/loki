@@ -564,8 +564,6 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	}
 
 	labels := util.NewUniqueStrings(0)
-	// (shantanu) can create a map here to store label names::values and count the unique values
-	// just return a string to int map
 	err := i.forMatchingStreams(ctx, *req.Start, matchers, nil, func(s *stream) error {
 		for _, label := range s.labels {
 			if req.Values && label.Name == req.Name {
