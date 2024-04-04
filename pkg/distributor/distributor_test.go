@@ -142,16 +142,19 @@ func Test_IncrementTimestamp(t *testing.T) {
 	flagext.DefaultValues(incrementingDisabled)
 	incrementingDisabled.DiscoverServiceName = nil
 	incrementingDisabled.RejectOldSamples = false
+	incrementingDisabled.DiscoverLogLevels = false
 
 	incrementingEnabled := &validation.Limits{}
 	flagext.DefaultValues(incrementingEnabled)
 	incrementingEnabled.DiscoverServiceName = nil
 	incrementingEnabled.RejectOldSamples = false
 	incrementingEnabled.IncrementDuplicateTimestamp = true
+	incrementingEnabled.DiscoverLogLevels = false
 
 	defaultLimits := &validation.Limits{}
 	flagext.DefaultValues(defaultLimits)
 	now := time.Now()
+	defaultLimits.DiscoverLogLevels = false
 
 	tests := map[string]struct {
 		limits       *validation.Limits
@@ -810,7 +813,6 @@ func BenchmarkShardStream(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
 			d.shardStream(stream, 0, "fake") //nolint:errcheck
-
 		}
 	})
 
