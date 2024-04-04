@@ -3,6 +3,7 @@ package pattern
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
@@ -113,11 +114,17 @@ func (s *stream) Iterator(_ context.Context, from, through model.Time) (iter.Ite
 	return iter.NewMerge(iters...), nil
 }
 
-func (s *stream) prune() bool {
+func (s *stream) prune(olderThan time.Duration) bool {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	// todo first prune all Volume Chunks.
-	// todo then prune all clusters.
 
-	return false
+	clusters := s.patterns.Clusters()
+	for _, cluster := range clusters {
+		cluster.Prune(olderThan)
+		if cluster.Size == 0 {
+			s.patterns.Delete(cluster)
+		}
+	}
+
+	return len(s.patterns.Clusters()) == 0
 }

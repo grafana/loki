@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestAdd(t *testing.T) {
@@ -233,4 +234,63 @@ func TestMerge(t *testing.T) {
 			t.Errorf("Expected: %v, Got: %v", test.expected, result)
 		}
 	}
+}
+
+func TestPrune(t *testing.T) {
+	olderThan := time.Hour * 3
+
+	t.Run("Empty Chunks", func(t *testing.T) {
+		cks := Chunks{}
+		cks.prune(olderThan)
+		require.Empty(t, cks)
+	})
+
+	t.Run("No Pruning", func(t *testing.T) {
+		cks := Chunks{
+			Chunk{
+				Samples: []logproto.PatternSample{
+					{Timestamp: model.TimeFromUnixNano(time.Now().UnixNano() - (olderThan.Nanoseconds()) + (1 * time.Minute).Nanoseconds())},
+					{Timestamp: model.TimeFromUnixNano(time.Now().UnixNano() - (olderThan.Nanoseconds()) + (2 * time.Minute).Nanoseconds())},
+				},
+			},
+		}
+		cks.prune(olderThan)
+		require.Len(t, cks, 1)
+	})
+
+	now := time.Now()
+	t.Run("Pruning", func(t *testing.T) {
+		cks := Chunks{
+			Chunk{
+				Samples: []logproto.PatternSample{
+					{Timestamp: model.TimeFromUnixNano(now.UnixNano() - (olderThan.Nanoseconds()) - (1 * time.Minute).Nanoseconds())},
+					{Timestamp: model.TimeFromUnixNano(now.UnixNano() - (olderThan.Nanoseconds()) - (2 * time.Minute).Nanoseconds())},
+				},
+			},
+			Chunk{
+				Samples: []logproto.PatternSample{
+					{Timestamp: model.TimeFromUnixNano(now.UnixNano() - (olderThan.Nanoseconds()) - (1 * time.Minute).Nanoseconds())},
+					{Timestamp: model.TimeFromUnixNano(now.UnixNano() - (olderThan.Nanoseconds()) - (2 * time.Minute).Nanoseconds())},
+				},
+			},
+			Chunk{
+				Samples: []logproto.PatternSample{
+					{Timestamp: model.TimeFromUnixNano(now.UnixNano() - (olderThan.Nanoseconds()) + (1 * time.Minute).Nanoseconds())},
+					{Timestamp: model.TimeFromUnixNano(now.UnixNano() - (olderThan.Nanoseconds()) + (2 * time.Minute).Nanoseconds())},
+				},
+			},
+			Chunk{
+				Samples: []logproto.PatternSample{
+					{Timestamp: model.TimeFromUnixNano(now.UnixNano() - (olderThan.Nanoseconds()) - (1 * time.Minute).Nanoseconds())},
+					{Timestamp: model.TimeFromUnixNano(now.UnixNano() - (olderThan.Nanoseconds()) - (2 * time.Minute).Nanoseconds())},
+				},
+			},
+		}
+		cks.prune(olderThan)
+		require.Len(t, cks, 1)
+		require.Equal(t, []logproto.PatternSample{
+			{Timestamp: model.TimeFromUnixNano(now.UnixNano() - (olderThan.Nanoseconds()) + (1 * time.Minute).Nanoseconds())},
+			{Timestamp: model.TimeFromUnixNano(now.UnixNano() - (olderThan.Nanoseconds()) + (2 * time.Minute).Nanoseconds())},
+		}, cks[0].Samples)
+	})
 }

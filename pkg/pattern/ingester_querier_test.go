@@ -23,7 +23,7 @@ func Test_prunePatterns(t *testing.T) {
 		})
 	}
 	require.NoError(t, scanner.Err())
-	prunePatterns(resp)
+	prunePatterns(resp, 0)
 
 	expectedPatterns := []string{
 		`<_> caller=wrapper.go:48 level=info component=distributor msg="sample remote write" eventType=bi <_>`,

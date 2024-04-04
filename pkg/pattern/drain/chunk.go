@@ -4,9 +4,10 @@ import (
 	"sort"
 	"time"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
-	"github.com/prometheus/common/model"
 )
 
 const (
@@ -147,6 +148,29 @@ func (c *Chunks) merge(samples []*logproto.PatternSample) []logproto.PatternSamp
 	}
 	*c = Chunks{Chunk{Samples: result}}
 	return result
+}
+
+func (c *Chunks) prune(olderThan time.Duration) {
+	if len(*c) == 0 {
+		return
+	}
+	// go for every chunks, check the last timestamp is after duration from now and remove the chunk
+	for i := 0; i < len(*c); i++ {
+		if time.Since((*c)[i].Samples[len((*c)[i].Samples)-1].Timestamp.Time()) > olderThan {
+			*c = append((*c)[:i], (*c)[i+1:]...)
+			i--
+		}
+	}
+}
+
+func (c *Chunks) size() int {
+	size := 0
+	for _, chunk := range *c {
+		for _, sample := range chunk.Samples {
+			size += int(sample.Value)
+		}
+	}
+	return size
 }
 
 func truncateTimestamp(ts model.Time) model.Time { return ts - ts%timeResolution }

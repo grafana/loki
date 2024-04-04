@@ -2,6 +2,7 @@ package drain
 
 import (
 	"strings"
+	"time"
 
 	"github.com/prometheus/common/model"
 
@@ -40,6 +41,11 @@ func (c *LogCluster) Iterator(from, through model.Time) iter.Iterator {
 
 func (c *LogCluster) Samples() []*logproto.PatternSample {
 	return c.Chunks.samples()
+}
+
+func (c *LogCluster) Prune(olderThan time.Duration) {
+	c.Chunks.prune(olderThan)
+	c.Size = c.Chunks.size()
 }
 
 func sumSize(samples []*logproto.PatternSample) int64 {

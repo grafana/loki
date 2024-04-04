@@ -158,6 +158,7 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 			Stringer: stringer,
 			Chunks:   Chunks{},
 		}
+		matchCluster.append(model.TimeFromUnixNano(ts))
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
 	} else {
@@ -219,6 +220,10 @@ func (d *Drain) PatternString(c *LogCluster) string {
 		return ""
 	}
 	return s
+}
+
+func (d *Drain) Delete(cluster *LogCluster) {
+	d.idToCluster.cache.Remove(cluster.id)
 }
 
 // Match against an already existing cluster. Match shall be perfect (sim_th=1.0). New cluster will not be created as a result of this call, nor any cluster modifications.

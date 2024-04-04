@@ -2,14 +2,18 @@ package pattern
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
+const retainSampleFor = 3 * time.Hour
+
 func (i *Ingester) initFlushQueues() {
-	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
+	// i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
 		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)
 		// for now we don't flush only prune old samples.
@@ -61,7 +65,7 @@ func (i *Ingester) sweepInstance(instance *instance, _, mayRemoveStreams bool) {
 	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
 		if mayRemoveStreams {
 			instance.streams.WithLock(func() {
-				if s.prune() {
+				if s.prune(retainSampleFor) {
 					instance.removeStream(s)
 				}
 			})

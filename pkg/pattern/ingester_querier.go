@@ -16,6 +16,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 )
 
+// TODO(kolesnikovae): parametrise QueryPatternsRequest
+const minClusterSize = 30
+
 type IngesterQuerier struct {
 	cfg    Config
 	logger log.Logger
@@ -60,16 +63,15 @@ func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatte
 	if err != nil {
 		return nil, err
 	}
-	return prunePatterns(resp), nil
+	return prunePatterns(resp, minClusterSize), nil
 }
 
-func prunePatterns(resp *logproto.QueryPatternsResponse) *logproto.QueryPatternsResponse {
+func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int) *logproto.QueryPatternsResponse {
 	d := drain.New(drainConfig)
 	for _, p := range resp.Series {
 		d.TrainPattern(p.Pattern, p.Samples)
 	}
-	// TODO(kolesnikovae): parametrise QueryPatternsRequest
-	const minClusterSize = 30
+
 	resp.Series = resp.Series[:0]
 	for _, cluster := range d.Clusters() {
 		if cluster.Size < minClusterSize {
