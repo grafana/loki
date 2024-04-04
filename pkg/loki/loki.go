@@ -99,9 +99,10 @@ type Config struct {
 	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 
-	RuntimeConfig runtimeconfig.Config `yaml:"runtime_config,omitempty"`
-	Tracing       tracing.Config       `yaml:"tracing"`
-	Analytics     analytics.Config     `yaml:"analytics"`
+	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
+	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`
+	Tracing           tracing.Config       `yaml:"tracing"`
+	Analytics         analytics.Config     `yaml:"analytics"`
 
 	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden|deprecated"`
 
@@ -171,6 +172,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.BloomCompactor.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 	c.Analytics.RegisterFlags(f)
+	c.OperationalConfig.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
