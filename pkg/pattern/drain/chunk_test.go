@@ -13,12 +13,12 @@ import (
 
 func TestAdd(t *testing.T) {
 	cks := Chunks{}
-	cks.Add(model.Time(timeResolution + 1))
-	cks.Add(model.Time(timeResolution + 2))
-	cks.Add(model.Time(2*timeResolution + 1))
+	cks.Add(timeResolution + 1)
+	cks.Add(timeResolution + 2)
+	cks.Add(2*timeResolution + 1)
 	require.Equal(t, 1, len(cks))
 	require.Equal(t, 2, len(cks[0].Samples))
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + model.Time(timeResolution+1))
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + timeResolution + 1)
 	require.Equal(t, 2, len(cks))
 	require.Equal(t, 1, len(cks[1].Samples))
 }
@@ -27,8 +27,8 @@ func TestIterator(t *testing.T) {
 	cks := Chunks{}
 	cks.Add(timeResolution + 1)
 	cks.Add(timeResolution + 2)
-	cks.Add(model.Time(2*timeResolution + 1))
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + model.Time(timeResolution+1))
+	cks.Add(2*timeResolution + 1)
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + timeResolution + 1)
 
 	it := cks.Iterator("test", model.Time(0), model.Time(time.Hour.Nanoseconds()))
 	require.NotNil(t, it)
