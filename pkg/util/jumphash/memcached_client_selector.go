@@ -139,6 +139,10 @@ func jumpHash(key uint64, numBuckets int) int32 {
 // PickServer returns the server address that a given item
 // should be shared onto.
 func (s *Selector) PickServer(key string) (net.Addr, error) {
+	return s.FromString(key)
+}
+
+func (s *Selector) FromString(key string) (net.Addr, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if len(s.addrs) == 0 {
@@ -149,10 +153,6 @@ func (s *Selector) PickServer(key string) (net.Addr, error) {
 	cs := xxhash.Sum64String(key)
 	idx := jumpHash(cs, len(s.addrs))
 	return s.addrs[idx], nil
-}
-
-func (s *Selector) FromString(key string) (net.Addr, error) {
-	return s.PickServer(key)
 }
 
 func (s *Selector) FromUInt64(key uint64) (net.Addr, error) {
