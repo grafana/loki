@@ -67,6 +67,8 @@ func TestCrossComponentValidation(t *testing.T) {
 		},
 	} {
 		tc.base.RegisterFlags(flag.NewFlagSet(tc.desc, 0))
+		// This test predates the newer schema required for structured metadata
+		tc.base.LimitsConfig.AllowStructuredMetadata = false
 		err := tc.base.Validate()
 		if tc.err {
 			require.NotNil(t, err)
