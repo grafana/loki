@@ -15,7 +15,7 @@ const (
 
 	defaultVolumeSize = 500
 
-	maxChunkTime = time.Duration(1 * time.Hour)
+	maxChunkTime = 1 * time.Hour
 )
 
 type Chunks []Chunk

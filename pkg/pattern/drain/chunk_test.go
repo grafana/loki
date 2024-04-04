@@ -25,8 +25,8 @@ func TestAdd(t *testing.T) {
 
 func TestIterator(t *testing.T) {
 	cks := Chunks{}
-	cks.Add(model.Time(timeResolution + 1))
-	cks.Add(model.Time(timeResolution + 2))
+	cks.Add(timeResolution + 1)
+	cks.Add(timeResolution + 2)
 	cks.Add(model.Time(2*timeResolution + 1))
 	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + model.Time(timeResolution+1))
 

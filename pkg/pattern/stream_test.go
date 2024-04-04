@@ -66,6 +66,7 @@ func TestPruneStream(t *testing.T) {
 			Line:      "ts=1 msg=hello",
 		},
 	})
+	require.NoError(t, err)
 	require.Equal(t, false, stream.prune(time.Hour))
 	it, err := stream.Iterator(context.Background(), model.Earliest, model.Latest)
 	require.NoError(t, err)

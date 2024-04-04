@@ -16,9 +16,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 func TestSweepInstance(t *testing.T) {
@@ -46,7 +47,7 @@ func TestSweepInstance(t *testing.T) {
 				Entries: []push.Entry{
 					{
 						Timestamp: time.Now(),
-						Line:      "ts=1 msg=hello",
+						Line:      "ts=1 msg=foo",
 					},
 				},
 			},
@@ -65,6 +66,16 @@ func TestSweepInstance(t *testing.T) {
 	res, err := iter.ReadAll(it)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(res.Series))
+	ing.sweepUsers(true, true)
+	it, err = inst.Iterator(ctx, &logproto.QueryPatternsRequest{
+		Query: `{test="test"}`,
+		Start: time.Unix(0, 0),
+		End:   time.Unix(0, math.MaxInt64),
+	})
+	require.NoError(t, err)
+	res, err = iter.ReadAll(it)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(res.Series))
 }
 
 func defaultIngesterTestConfig(t testing.TB) Config {
