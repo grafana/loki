@@ -231,7 +231,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 		// overlap on instances to the left and right of the range.
 		firstFp, lastFp := groups[0].Fingerprint, groups[len(groups)-1].Fingerprint
 		pctKeyspace := float64(lastFp-firstFp) / float64(math.MaxUint64)
-		pctInstances := float64(len(servers)) / float64(len(c.pool.Addrs()))
+		pctInstances := float64(len(servers)) / float64(max(1,len(c.pool.Addrs())))
 		cacheLocalityScore := pctKeyspace / pctInstances
 		c.metrics.cacheLocalityScore.Observe(cacheLocalityScore)
 	}
