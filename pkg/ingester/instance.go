@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	"github.com/go-kit/log/level"
@@ -562,8 +564,6 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	}
 
 	labels := util.NewUniqueStrings(0)
-	// (shantanu) can create a map here to store label names::values and count the unique values
-	// just return a string to int map
 	err := i.forMatchingStreams(ctx, *req.Start, matchers, nil, func(s *stream) error {
 		for _, label := range s.labels {
 			if req.Values && label.Name == req.Name {
@@ -981,6 +981,7 @@ type QuerierQueryServer interface {
 
 func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) error {
 	stats := stats.FromContext(ctx)
+	metadata := metadata.FromContext(ctx)
 
 	// send until the limit is reached.
 	for limit != 0 && !isDone(ctx) {
@@ -999,6 +1000,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
+		batch.Warnings = metadata.Warnings()
 
 		if isDone(ctx) {
 			break
@@ -1013,6 +1015,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		}
 
 		stats.Reset()
+		metadata.Reset()
 	}
 	return nil
 }
@@ -1021,6 +1024,7 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 	sp := opentracing.SpanFromContext(ctx)
 
 	stats := stats.FromContext(ctx)
+	metadata := metadata.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
 		if err != nil {
@@ -1029,6 +1033,8 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
+		batch.Warnings = metadata.Warnings()
+
 		if isDone(ctx) {
 			break
 		}
@@ -1042,6 +1048,8 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		}
 
 		stats.Reset()
+		metadata.Reset()
+
 		if sp != nil {
 			sp.LogKV("event", "sent batch", "size", size)
 		}
