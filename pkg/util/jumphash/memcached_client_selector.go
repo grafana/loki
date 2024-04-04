@@ -1,4 +1,4 @@
-package cache
+package jumphash
 
 import (
 	"net"
@@ -13,16 +13,16 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
-// MemcachedJumpHashSelector implements the memcache.ServerSelector
-// interface. MemcachedJumpHashSelector utilizes a jump hash to
+// Selector implements the memcache.ServerSelector
+// interface. Selector utilizes a jump hash to
 // distribute keys to servers.
 //
 // While adding or removing servers only requires 1/N keys to move,
 // servers are treated as a stack and can only be pushed/popped.
-// Therefore, MemcachedJumpHashSelector works best for servers
+// Therefore, Selector works best for servers
 // with consistent DNS names where the naturally sorted order
 // is predictable.
-type MemcachedJumpHashSelector struct {
+type Selector struct {
 	mu              sync.RWMutex
 	addrs           []net.Addr
 	resolveUnixAddr UnixResolver
@@ -33,15 +33,15 @@ type UnixResolver func(network, address string) (*net.UnixAddr, error)
 
 type TCPResolver func(network, address string) (*net.TCPAddr, error)
 
-func NewMemcachedJumpHashSelector(resolveUnixAddr UnixResolver, resolveTCPAddr TCPResolver) *MemcachedJumpHashSelector {
-	return &MemcachedJumpHashSelector{
+func NewSelector(resolveUnixAddr UnixResolver, resolveTCPAddr TCPResolver) *Selector {
+	return &Selector{
 		resolveUnixAddr: resolveUnixAddr,
 		resolveTCPAddr:  resolveTCPAddr,
 	}
 }
 
-func DefaultMemcachedJumpHashSelector() *MemcachedJumpHashSelector {
-	return &MemcachedJumpHashSelector{
+func DefaultSelector() *Selector {
+	return &Selector{
 		resolveUnixAddr: net.ResolveUnixAddr,
 		resolveTCPAddr:  net.ResolveTCPAddr,
 	}
@@ -78,7 +78,7 @@ func (a *staticAddr) String() string  { return a.str }
 // To minimize the number of rehashes for keys when scaling the
 // number of servers in subsequent calls to SetServers, servers
 // are stored in natural sort order.
-func (s *MemcachedJumpHashSelector) SetServers(servers ...string) error {
+func (s *Selector) SetServers(servers ...string) error {
 	sortedServers := make([]string, len(servers))
 	copy(sortedServers, servers)
 	natsort.Sort(sortedServers)
@@ -138,7 +138,7 @@ func jumpHash(key uint64, numBuckets int) int32 {
 
 // PickServer returns the server address that a given item
 // should be shared onto.
-func (s *MemcachedJumpHashSelector) PickServer(key string) (net.Addr, error) {
+func (s *Selector) PickServer(key string) (net.Addr, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if len(s.addrs) == 0 {
@@ -151,10 +151,26 @@ func (s *MemcachedJumpHashSelector) PickServer(key string) (net.Addr, error) {
 	return s.addrs[idx], nil
 }
 
+func (s *Selector) FromString(key string) (net.Addr, error) {
+	return s.PickServer(key)
+}
+
+func (s *Selector) FromUInt64(key uint64) (net.Addr, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.addrs) == 0 {
+		return nil, memcache.ErrNoServers
+	} else if len(s.addrs) == 1 {
+		return s.addrs[0], nil
+	}
+	idx := jumpHash(key, len(s.addrs))
+	return s.addrs[idx], nil
+}
+
 // Each iterates over each server and calls the given function.
 // If f returns a non-nil error, iteration will stop and that
 // error will be returned.
-func (s *MemcachedJumpHashSelector) Each(f func(net.Addr) error) error {
+func (s *Selector) Each(f func(net.Addr) error) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, def := range s.addrs {
@@ -163,4 +179,10 @@ func (s *MemcachedJumpHashSelector) Each(f func(net.Addr) error) error {
 		}
 	}
 	return nil
+}
+
+func (s *Selector) Addrs() []net.Addr {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.addrs
 }
