@@ -25,7 +25,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
@@ -282,7 +282,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
@@ -707,7 +707,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
@@ -1065,7 +1065,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
@@ -1424,7 +1424,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
@@ -1813,7 +1813,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
@@ -2151,7 +2151,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
@@ -2570,12 +2570,12 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://s3.us-east.amazonaws.com
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
       secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-      s3forcepathstyle: true
+      s3forcepathstyle: false
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
     kvstore:
@@ -2879,7 +2879,7 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Endpoint: "http://s3.us-east.amazonaws.com",
 				Region:   "us-east",
 				Buckets:  "loki",
 			},
@@ -2916,7 +2916,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
@@ -3412,7 +3412,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
@@ -3672,7 +3672,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
@@ -3934,7 +3934,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
@@ -4194,7 +4194,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
@@ -4496,7 +4496,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
@@ -4795,7 +4795,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}
@@ -5284,7 +5284,7 @@ chunk_store_config:
 common:
   storage:
     s3:
-      s3: http://test.default.svc.cluster.local.:9000
+      endpoint: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
       access_key_id: ${AWS_ACCESS_KEY_ID}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"io"
+	"strings"
 	"text/template"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -25,7 +26,12 @@ var (
 	//go:embed loki-runtime-config.yaml
 	lokiRuntimeConfigYAMLTmplFile embed.FS
 
-	lokiConfigYAMLTmpl = template.Must(template.ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml"))
+	/* lokiConfigYAMLTmpl = template.Must(template.ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml")).Funcs(template.FuncMap{
+		"isEndpointAWS": isEndpointAWS,
+	}) */
+	lokiConfigYAMLTmpl = template.Must(template.New("loki-config.yaml").Funcs(template.FuncMap{
+		"isEndpointAWS": isEndpointAWS,
+	}).ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml"))
 
 	lokiRuntimeConfigYAMLTmpl = template.Must(template.New("loki-runtime-config.yaml").ParseFS(lokiRuntimeConfigYAMLTmplFile, "loki-runtime-config.yaml"))
 )
@@ -53,4 +59,13 @@ func Build(opts Options) ([]byte, []byte, error) {
 		return nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 	}
 	return cfg, rcfg, nil
+}
+
+func isEndpointAWS(endpoint string) bool {
+	awsEndpointSuffix := ".amazonaws.com"
+	if strings.HasSuffix(endpoint, awsEndpointSuffix) {
+		return true
+	} else {
+		return false
+	}
 }

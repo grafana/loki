@@ -33,12 +33,16 @@ common:
       region: {{.Region}}
       s3forcepathstyle: false
       {{- else }}
-      s3: {{ .Endpoint }}
+      endpoint: {{ .Endpoint }}
       bucketnames: {{ .Buckets }}
       region: {{ .Region }}
       access_key_id: ${AWS_ACCESS_KEY_ID}
       secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+      {{- if isEndpointAWS .Endpoint }}
+      s3forcepathstyle: false
+      {{- else }}
       s3forcepathstyle: true
+      {{- end }}
       {{- end }}
       {{- with .SSE }}
       {{- if .Type }}
