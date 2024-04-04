@@ -842,7 +842,7 @@ type LimitsTemplateSpec struct {
 	Retention *RetentionLimitSpec `json:"retention,omitempty"`
 }
 
-// LimitsTemplateSpec defines the limits  applied at ingestion or query path.
+// PerTenantLimitsTemplateSpec defines the limits  applied at ingestion or query path.
 type PerTenantLimitsTemplateSpec struct {
 	// IngestionLimits defines the limits applied on ingested log streams.
 	//

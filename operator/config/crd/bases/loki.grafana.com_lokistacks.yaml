@@ -219,7 +219,7 @@ spec:
                     type: object
                   tenants:
                     additionalProperties:
-                      description: LimitsTemplateSpec defines the limits  applied
+                      description: PerTenantLimitsTemplateSpec defines the limits  applied
                         at ingestion or query path.
                       properties:
                         ingestion:
