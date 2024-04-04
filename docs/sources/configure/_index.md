@@ -4727,15 +4727,16 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 background:
   # At what concurrency to write back to cache.
   # CLI flag: -<prefix>.background.write-back-concurrency
-  [writeback_goroutines: <int> | default = 10]
+  [writeback_goroutines: <int> | default = 1]
 
-  # How many key batches to buffer for background write-back.
+  # How many key batches to buffer for background write-back. Default is large
+  # to prefer size based limiting.
   # CLI flag: -<prefix>.background.write-back-buffer
-  [writeback_buffer: <int> | default = 10000]
+  [writeback_buffer: <int> | default = 500000]
 
   # Size limit in bytes for background write-back.
   # CLI flag: -<prefix>.background.write-back-size-limit
-  [writeback_size_limit: <int> | default = 1GB]
+  [writeback_size_limit: <int> | default = 500MB]
 
 memcached:
   # How long keys stay in the memcache.
@@ -4744,11 +4745,11 @@ memcached:
 
   # How many keys to fetch in each batch.
   # CLI flag: -<prefix>.memcached.batchsize
-  [batch_size: <int> | default = 256]
+  [batch_size: <int> | default = 4]
 
   # Maximum active requests to memcache.
   # CLI flag: -<prefix>.memcached.parallelism
-  [parallelism: <int> | default = 10]
+  [parallelism: <int> | default = 5]
 
 memcached_client:
   # Hostname for memcached service to use. If empty and if addresses is unset,
