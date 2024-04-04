@@ -145,7 +145,7 @@ func (c *Chunks) merge(samples []*logproto.PatternSample) []logproto.PatternSamp
 	for ; j < len(samples); j++ {
 		result = append(result, *samples[j])
 	}
-	c = &Chunks{Chunk{Samples: result}}
+	*c = Chunks{Chunk{Samples: result}}
 	return result
 }
 
