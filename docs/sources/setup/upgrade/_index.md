@@ -107,6 +107,15 @@ Going forward compactor will run compaction and retention on all the object stor
 `-compactor.delete-request-store` or its YAML setting should be explicitly configured when retention is enabled, this is required for storing delete requests.
 The path prefix under which the delete requests are stored is decided by `-compactor.delete-request-store.key-prefix`, it defaults to `index/`.
 
+#### Configuration `async_cache_write_back_concurrency` and `async_cache_write_back_buffer_size` have been removed
+
+These configurations were redundant with the `Background` configuration in the [cache-config]({{< relref "../../configure#cache_config" >}}).
+
+`async_cache_write_back_concurrency` can be set with `writeback_goroutines`
+`async_cache_write_back_buffer_size` can be set with `writeback_buffer`
+
+additionally the `Background` configuration also lest you set `writeback_size_limit` which can be used to set a maximum amount of memory to use for writeback objects vs a count of objects.
+
 #### Configuration `use_boltdb_shipper_as_backup` is removed
 
 The setting `use_boltdb_shipper_as_backup` (`-tsdb.shipper.use-boltdb-shipper-as-backup`) was a remnant from the development of the TSDB storage.

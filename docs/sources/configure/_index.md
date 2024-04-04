@@ -4942,14 +4942,6 @@ embedded_cache:
   # The time to live for items in the cache before they get purged.
   # CLI flag: -<prefix>.embedded-cache.ttl
   [ttl: <duration> | default = 1h]
-
-# The maximum number of concurrent asynchronous writeback cache can occur.
-# CLI flag: -<prefix>.max-async-cache-write-back-concurrency
-[async_cache_write_back_concurrency: <int> | default = 16]
-
-# The maximum number of enqueued asynchronous writeback cache allowed.
-# CLI flag: -<prefix>.max-async-cache-write-back-buffer-size
-[async_cache_write_back_buffer_size: <int> | default = 500]
 ```
 
 ### period_config
