@@ -874,6 +874,15 @@ chunk_store_config:
 	t.Run("for the index queries cache config", func(t *testing.T) {
 		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
 storage_config:
   index_queries_cache_config:
     redis:
@@ -886,6 +895,15 @@ storage_config:
 
 		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
 storage_config:
   index_queries_cache_config:
     memcached_client:
