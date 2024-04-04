@@ -26,9 +26,6 @@ var (
 	//go:embed loki-runtime-config.yaml
 	lokiRuntimeConfigYAMLTmplFile embed.FS
 
-	/* lokiConfigYAMLTmpl = template.Must(template.ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml")).Funcs(template.FuncMap{
-		"isEndpointAWS": isEndpointAWS,
-	}) */
 	lokiConfigYAMLTmpl = template.Must(template.New("loki-config.yaml").Funcs(template.FuncMap{
 		"isEndpointAWS": isEndpointAWS,
 	}).ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml"))
