@@ -85,7 +85,7 @@ period_config:
 ```
 
 {{% admonition type="note" %}}
-`path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on [legacy indexes]({{< relref "../../storage#index-storage" >}}).
+`path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on [legacy indexes](https://grafana.com/docs/loki/latest/configure/storage/#index-storage).
 {{% /admonition %}}
 
 `path_prefix` defaults to `index/` which is same as the default value of the removed configurations.
@@ -196,7 +196,7 @@ All of these are cached to the `results_cache` which is configured in the `query
 
 #### Write dedupe cache is deprecated
 Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB]({{< relref "../../operations/storage/tsdb" >}}) and [boltdb-shipper]({{< relref "../../operations/storage/boltdb-shipper" >}})).
-If you using a [legacy index type]({{< relref "../../storage#index-storage" >}}), consider migrating to TSDB (recommended).
+If you using a [legacy index type](https://grafana.com/docs/loki/latest/configure/storage/#index-storage), consider migrating to TSDB (recommended).
 
 #### Embedded cache metric changes
 
@@ -1238,7 +1238,7 @@ schema_config:
 ④ Make sure this matches your existing config (e.g. maybe you were using gcs for your object_store)
 ⑤ 24h is required for boltdb-shipper
 
-There are more examples on the [Storage description page]({{< relref "../../storage/_index.md#examples" >}}) including the information you need to setup the `storage` section for boltdb-shipper.
+There are more examples on the [Storage description page](https://grafana.com/docs/loki/latest/configure/storage/#examples) including the information you need to setup the `storage` section for boltdb-shipper.
 
 
 ## 1.6.0
