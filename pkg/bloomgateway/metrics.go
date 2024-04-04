@@ -3,10 +3,10 @@ package bloomgateway
 import (
 	"time"
 
+	"github.com/grafana/dskit/instrument"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type metrics struct {
@@ -16,6 +16,8 @@ type metrics struct {
 
 type clientMetrics struct {
 	cacheLocalityScore prometheus.Histogram
+	requestLatency     *prometheus.HistogramVec
+	clients            prometheus.Gauge
 }
 
 func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
@@ -26,6 +28,19 @@ func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
 			Name:      "cache_locality_score",
 			Help:      "Cache locality score of the bloom filter, as measured by % of keyspace touched / % of bloom_gws required",
 			Buckets:   prometheus.LinearBuckets(0.01, 0.2, 5),
+		}),
+		requestLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Subsystem: "bloom_gateway_client",
+			Name:      "request_duration_seconds",
+			Help:      "Time (in seconds) spent serving requests when using the bloom gateway",
+			Buckets:   instrument.DefBuckets,
+		}, []string{"operation", "status_code"}),
+		clients: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Subsystem: "bloom_gateway",
+			Name:      "clients",
+			Help:      "The current number of bloom gateway clients.",
 		}),
 	}
 }

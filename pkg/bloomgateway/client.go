@@ -11,11 +11,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/grpcclient"
-	"github.com/grafana/dskit/instrument"
 	ringclient "github.com/grafana/dskit/ring/client"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -130,27 +128,12 @@ func NewClient(
 	limits Limits,
 	registerer prometheus.Registerer,
 	logger log.Logger,
-	metricsNamespace string,
 	cacheGen resultscache.CacheGenNumberLoader,
 	retentionEnabled bool,
 ) (*GatewayClient, error) {
+	metrics := newClientMetrics(registerer)
 
-	latency := promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: metricsNamespace,
-		Subsystem: "bloom_gateway",
-		Name:      "request_duration_seconds",
-		Help:      "Time (in seconds) spent serving requests when using the bloom gateway",
-		Buckets:   instrument.DefBuckets,
-	}, []string{"operation", "status_code"})
-
-	clients := promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-		Namespace: metricsNamespace,
-		Subsystem: "bloom_gateway",
-		Name:      "clients",
-		Help:      "The current number of bloom gateway clients.",
-	})
-
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(latency))
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(metrics.requestLatency))
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +178,7 @@ func NewClient(
 		ringclient.PoolConfig(cfg.PoolConfig),
 		func() ([]string, error) { return dnsProvider.Addresses(), nil },
 		ringclient.PoolAddrFunc(poolFactory),
-		clients,
+		metrics.clients,
 		logger,
 	)
 
@@ -206,7 +189,7 @@ func NewClient(
 		cfg:         cfg,
 		logger:      logger,
 		limits:      limits,
-		metrics:     newClientMetrics(registerer),
+		metrics:     metrics,
 		pool:        pool,
 		dnsProvider: dnsProvider, // keep reference so we can stop it when the client is closed
 	}, nil

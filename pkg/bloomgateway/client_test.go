@@ -26,7 +26,7 @@ func TestBloomGatewayClient(t *testing.T) {
 	flagext.DefaultValues(&cfg)
 
 	t.Run("FilterChunks returns response", func(t *testing.T) {
-		c, err := NewClient(cfg, l, reg, logger, "loki", nil, false)
+		c, err := NewClient(cfg, l, reg, logger, nil, false)
 		require.NoError(t, err)
 		expr, err := syntax.ParseExpr(`{foo="bar"}`)
 		require.NoError(t, err)

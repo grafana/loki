@@ -1454,7 +1454,6 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 			t.Overrides,
 			prometheus.DefaultRegisterer,
 			logger,
-			t.Cfg.MetricsNamespace,
 			t.cacheGenerationLoader,
 			t.Cfg.CompactorConfig.RetentionEnabled,
 		)
