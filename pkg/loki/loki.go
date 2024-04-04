@@ -112,7 +112,7 @@ type Config struct {
 
 	Common common.Config `yaml:"common,omitempty"`
 
-	ShutdownDelay time.Duration `yaml:"shutdown_delay" category:"experimental"`
+	ShutdownDelay time.Duration `yaml:"shutdown_delay"`
 
 	MetricsNamespace string `yaml:"metrics_namespace"`
 }
