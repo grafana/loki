@@ -176,10 +176,10 @@ This new metric will provide a more clear signal that there is an issue with ing
 
 #### Structured Metadata, Open Telemetry, Schemas and Indexes
 
-A flagship feature of Loki 3.0 is native support for the Open Telemetry Protocol (OTLP). This is made possible by a new feature in Loki called [Structured Metadata]({{ < relref "../../../get-started/labels/structured-metadata" >}}), a place for metadata which doesn't belong in labels or log lines. OTel resources and attributes are often a great example of data which doesn't belong in the index nor in the log line.
+A flagship feature of Loki 3.0 is native support for the Open Telemetry Protocol (OTLP). This is made possible by a new feature in Loki called [Structured Metadata]({{ < relref "../../get-started/labels/structured-metadata" >}}), a place for metadata which doesn't belong in labels or log lines. OTel resources and attributes are often a great example of data which doesn't belong in the index nor in the log line.
 
 Structured Metadata is enabled by default in Loki 3.0, however, it requires your active schema be using both the `TSDB` index type AND the `v13` storage schema.  If you are not using both of these you have two options:
-  * Upgrade your index version and schema version before updating to 3.0, see [schema config upgrade]({{< relref "../../../operations/storage/schema#changing-the-schema" >}}). 
+  * Upgrade your index version and schema version before updating to 3.0, see [schema config upgrade]({{< relref "../../operations/storage/schema#changing-the-schema" >}}). 
   * Disable Structured Metadata (and therefor OTLP support) and upgrade to 3.0 and perform the schema migration after. This can be done by setting `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false`.
 
 #### Automatic stream sharding is enabled by default
