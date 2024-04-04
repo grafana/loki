@@ -144,10 +144,6 @@ func (d *Drain) Clusters() []*LogCluster {
 	return d.idToCluster.Values()
 }
 
-// func (d *Drain) Iterate(fn func(*LogCluster) bool) {
-// 	d.idToCluster.Iterate(fn)
-// }
-
 func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts int64) *LogCluster {
 	return d.train(tokens, stringer, ts)
 }
