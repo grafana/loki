@@ -400,7 +400,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ],
 };
 
-local build_image_tag = '0.33.1';
+local build_image_tag = '0.33.1-golanci.1.51.2';
 [
   pipeline('loki-build-image-' + arch) {
     workspace: {

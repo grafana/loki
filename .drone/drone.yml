@@ -17,7 +17,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.33.1-amd64
+    - 0.33.1-golanci.1.51.2-amd64
     username:
       from_secret: docker_username
   when:
@@ -54,7 +54,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.33.1-arm64
+    - 0.33.1-golanci.1.51.2-arm64
     username:
       from_secret: docker_username
   when:
@@ -86,7 +86,7 @@ steps:
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest-build-image.tmpl
-    target: loki-build-image:0.33.1
+    target: loki-build-image:0.33.1-golanci.1.51.2
     username:
       from_secret: docker_username
   when:
@@ -1362,6 +1362,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 452ccacf982174ae96c64fc2d0868859d26dbf6944e49d9170d780ff40a81eb8
+hmac: e7e2cd35fe048a8654c26282019a72e363ea604fddcade620472f9557e2a377e
 
 ...
