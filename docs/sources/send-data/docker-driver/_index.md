@@ -71,6 +71,6 @@ docker plugin rm loki
 
 The driver keeps all logs in memory and will drop log entries if Loki is not reachable and if the quantity of `max_retries` has been exceeded. To avoid the dropping of log entries, setting `max_retries` to zero allows unlimited retries; the driver will continue trying forever until Loki is again reachable. Trying forever may have undesired consequences, because the Docker daemon will wait for the Loki driver to process all logs of a container, until the container is removed. Thus, the Docker daemon might wait forever if the container is stuck.
 
-The wait time can be lowered by setting `loki-retries=2`, `loki-max-backoff_800ms`, `loki-timeout=1s` and `keep-file=true`. This way the daemon will be locked only for a short time and the logs will be persisted locally when the Loki client is unable to re-connect.
+The wait time can be lowered by setting `loki-retries=2`, `loki-max-backoff=800ms`, `loki-timeout=1s` and `keep-file=true`. This way the daemon will be locked only for a short time and the logs will be persisted locally when the Loki client is unable to re-connect.
 
-To avoid this issue, use the Promtail [Docker target]({{< relref "../../send-data/promtail/configuration#docker" >}}) or [Docker service discovery]({{< relref "../../send-data/promtail/configuration#docker_sd_config" >}}).
+To avoid this issue, use the Promtail [Docker target]({{< relref "../../send-data/promtail/configuration#docker" >}}) or [Docker service discovery]({{< relref "../../send-data/promtail/configuration#docker_sd_configs" >}}).

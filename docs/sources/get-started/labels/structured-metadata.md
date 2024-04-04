@@ -21,8 +21,8 @@ Structured metadata can also be used to query commonly needed metadata from log 
 
 You should only use structured metadata in the following situations:
 
-    • If you are ingesting data in OpenTelemetry format, using the Grafana Agent or an OpenTelemetry Collector. Structured metadata was designed to support native ingestion of OpenTelemetry data.
-    • If you have high cardinality metadata that should not be used as a label and does not exist in the log line.  Some examples might include `process_id` or `thread_id` or Kubernetes pod names.
+- If you are ingesting data in OpenTelemetry format, using the Grafana Agent or an OpenTelemetry Collector. Structured metadata was designed to support native ingestion of OpenTelemetry data.
+- If you have high cardinality metadata that should not be used as a label and does not exist in the log line.  Some examples might include `process_id` or `thread_id` or Kubernetes pod names.
  
 It is an antipattern to extract information that already exists in your log lines and put it into structured metadata.
 
