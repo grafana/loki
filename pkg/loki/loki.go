@@ -54,6 +54,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	internalserver "github.com/grafana/loki/v3/pkg/server"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -276,8 +277,19 @@ func (c *Config) Validate() error {
 
 	var errs []error
 
-	// Schema version 13 is required to use structured metadata
 	p := config.ActivePeriodConfig(c.SchemaConfig.Configs)
+
+	// If the active index type is not TSDB (which does not use an index cache)
+	// and the index queries cache is configured
+	// and the chunk retain period is less than the validity period of the index cache
+	// throw an error.
+	if c.SchemaConfig.Configs[p].IndexType != config.TSDBType &&
+		cache.IsCacheConfigured(c.StorageConfig.IndexQueriesCacheConfig) &&
+		c.Ingester.RetainPeriod < c.StorageConfig.IndexCacheValidity {
+		errs = append(errs, fmt.Errorf("CONFIG ERROR: the active index is %s which is configured to use an `index_cache_validty` (TTL) of %s, however the chunk_retain_period is %s which is LESS than the `index_cache_validity`. This can lead to query gaps, please configure the `chunk_retain_period` to be greater than the `index_cache_validity`", c.SchemaConfig.Configs[p].IndexType, c.StorageConfig.IndexCacheValidity, c.Ingester.RetainPeriod))
+	}
+
+	// Schema version 13 is required to use structured metadata
 	version, err := c.SchemaConfig.Configs[p].VersionAsInt()
 	if err != nil {
 		return err
