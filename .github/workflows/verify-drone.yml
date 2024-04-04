@@ -1,0 +1,48 @@
+name: Verify drone updates
+on: [pull_request]
+jobs:
+  check-drone-changes:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Get changed files
+      id: changed-files
+      run: |
+            echo "changed_files=$(git diff --name-only .drone/ | xargs)" >> $GITHUB_OUTPUT
+            git diff | grep +hmac
+            echo "sha_updated=$?" >> $GITHUB_OUTPUT
+    - name: Check that drone was updated properly
+      if: always()
+      run: |
+          jsonnetChanged=false
+          yamlChanged=false
+          echo "test ${{ steps.changed-files.outputs.sha_updated }}"
+          for file in ${{ steps.changed-files.outputs.changed_files }}; do
+              echo "$file was changed"
+            if [ "$file" == ".drone/drone.jsonnet" ]; then
+              echo "$file was changed"
+              jsonnetChanged=true
+            fi
+            if [ "$file" == ".drone/drone.yml" ]; then
+              echo "$file was changed"
+              yamlChanged=true
+            fi
+          done
+
+          if { [ "$yamlChanged" = false ] && [ "$jsonnetChanged" = false ]; } then
+            echo "neither file was changed"
+            exit 0
+          fi
+          if { [ "$yamlChanged" = true ] && [ "$jsonnetChanged" = true ]; } then
+            echo "sha_updated value ${{ steps.changed-files.outputs.sha_updated }}"
+            # annoyingly, the return value is a string
+            if [ "${{ steps.changed-files.outputs.sha_updated }}" = "0" ]; then
+              echo "both files were changed and sha was updated"
+              exit 0
+            fi
+            echo "sha was not updated"
+            exit 1
+          fi
+          # some combo of files was not updated correctly
+          echo "both files were not updated"
+          exit 1
