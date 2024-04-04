@@ -38,9 +38,7 @@ common:
       region: {{ .Region }}
       access_key_id: ${AWS_ACCESS_KEY_ID}
       secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-      {{- if isEndpointAWS .Endpoint }}
-      s3forcepathstyle: false
-      {{- else }}
+      {{- if not (isEndpointAWS .Endpoint) }}
       s3forcepathstyle: true
       {{- end }}
       {{- end }}
