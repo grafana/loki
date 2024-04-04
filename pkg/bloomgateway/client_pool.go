@@ -58,6 +58,14 @@ func NewJumpHashClientPool(pool *client.Pool, dnsProvider *discovery.DNS, update
 	return p
 }
 
+func (p *JumpHashClientPool) AddrForFingerprint(fp uint64) (string, error) {
+	addr, err := p.FromUInt64(fp)
+	if err != nil {
+		return "", err
+	}
+	return addr.String(), nil
+}
+
 func (p *JumpHashClientPool) Start() {
 	ctx := context.Background()
 	services.StartAndAwaitRunning(ctx, p.Pool)
@@ -89,7 +97,7 @@ func (p *JumpHashClientPool) discoveryLoop(provider *discovery.DNS, updateInterv
 			sort.Strings(servers)
 			err := p.SetServers(servers...)
 			if err != nil {
-				level.Warn(p.logger).Log("msg", "error updating memcache servers", "err", err)
+				level.Warn(p.logger).Log("msg", "error updating servers", "err", err)
 			}
 		}
 	}

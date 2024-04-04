@@ -55,13 +55,13 @@ func TestBloomGatewayClient(t *testing.T) {
 func TestBloomGatewayClient_ReplicationSetsWithBounds(t *testing.T) {
 	testCases := map[string]struct {
 		instances []ring.InstanceDesc
-		expected  []rsWithRanges
+		expected  []addrWithGroups
 	}{
 		"single instance covers full range": {
 			instances: []ring.InstanceDesc{
 				{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{(1 << 31)}}, // 0x80000000
 			},
-			expected: []rsWithRanges{
+			expected: []addrWithGroups{
 				{rs: rs(1, (1 << 31)), ranges: []v1.FingerprintBounds{
 					v1.NewBounds(0, math.MaxUint64),
 				}},
@@ -73,7 +73,7 @@ func TestBloomGatewayClient_ReplicationSetsWithBounds(t *testing.T) {
 				{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{(1 << 30) * 2}}, // 0x80000000
 				{Id: "instance-3", Addr: "10.0.0.3", Tokens: []uint32{(1 << 30) * 3}}, // 0xc0000000
 			},
-			expected: []rsWithRanges{
+			expected: []addrWithGroups{
 				{rs: rs(1, (1<<30)*1), ranges: []v1.FingerprintBounds{
 					v1.NewBounds(0, 4611686018427387903),
 					v1.NewBounds(13835058055282163712, 18446744073709551615),
@@ -91,7 +91,7 @@ func TestBloomGatewayClient_ReplicationSetsWithBounds(t *testing.T) {
 				{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{0}},
 				{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{math.MaxUint32}},
 			},
-			expected: []rsWithRanges{
+			expected: []addrWithGroups{
 				{rs: rs(1, 0), ranges: []v1.FingerprintBounds{
 					v1.NewBounds(math.MaxUint64-math.MaxUint32, math.MaxUint64),
 				}},
@@ -123,7 +123,7 @@ func TestBloomGatewayClient_PartitionByReplicationSet(t *testing.T) {
 	// instance token ranges do not overlap
 	t.Run("non-overlapping", func(t *testing.T) {
 
-		servers := []rsWithRanges{
+		servers := []addrWithGroups{
 			{rs: rs(1), ranges: []v1.FingerprintBounds{v1.NewBounds(0, 4)}},
 			{rs: rs(2), ranges: []v1.FingerprintBounds{v1.NewBounds(5, 9), v1.NewBounds(15, 19)}},
 			{rs: rs(3), ranges: []v1.FingerprintBounds{v1.NewBounds(10, 14)}},
@@ -158,7 +158,7 @@ func TestBloomGatewayClient_PartitionByReplicationSet(t *testing.T) {
 
 	// instance token ranges overlap -- this should not happen in a real ring, though
 	t.Run("overlapping", func(t *testing.T) {
-		servers := []rsWithRanges{
+		servers := []addrWithGroups{
 			{rs: rs(1), ranges: []v1.FingerprintBounds{v1.NewBounds(0, 9)}},
 			{rs: rs(2), ranges: []v1.FingerprintBounds{v1.NewBounds(5, 14)}},
 			{rs: rs(3), ranges: []v1.FingerprintBounds{v1.NewBounds(10, 19)}},
@@ -208,9 +208,9 @@ func BenchmarkPartitionFingerprintsByAddresses(b *testing.B) {
 
 	numServers := 100
 	tokenStep := math.MaxUint32 / uint32(numServers)
-	servers := make([]rsWithRanges, 0, numServers)
+	servers := make([]addrWithGroups, 0, numServers)
 	for i := uint32(0); i < math.MaxUint32-tokenStep; i += tokenStep {
-		servers = append(servers, rsWithRanges{
+		servers = append(servers, addrWithGroups{
 			rs: rs(int(i)),
 			ranges: []v1.FingerprintBounds{
 				v1.NewBounds(model.Fingerprint(i)<<32, model.Fingerprint(i+tokenStep)<<32),
