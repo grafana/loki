@@ -69,14 +69,18 @@ func prunePatterns(resp *logproto.QueryPatternsResponse) *logproto.QueryPatterns
 		d.TrainPattern(p.Pattern, p.Samples)
 	}
 	// TODO(kolesnikovae): parametrise QueryPatternsRequest
-	const minClusterSize = 10
+	const minClusterSize = 30
 	resp.Series = resp.Series[:0]
 	for _, cluster := range d.Clusters() {
 		if cluster.Size < minClusterSize {
 			continue
 		}
+		pattern := d.PatternString(cluster)
+		if pattern == "" {
+			continue
+		}
 		resp.Series = append(resp.Series, &logproto.PatternSeries{
-			Pattern: d.PatternString(cluster),
+			Pattern: pattern,
 			Samples: cluster.Samples(),
 		})
 	}

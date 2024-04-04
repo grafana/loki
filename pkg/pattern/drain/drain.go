@@ -26,19 +26,12 @@ import (
 	"math"
 	"strconv"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/hashicorp/golang-lru/v2/simplelru"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-)
-
-const (
-	timeResolution = model.Time(int64(time.Second*10) / 1e6)
-
-	defaultVolumeSize = 500
 )
 
 type Config struct {
@@ -163,7 +156,7 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 			id:       clusterID,
 			Size:     1,
 			Stringer: stringer,
-			Volume:   initVolume(model.TimeFromUnixNano(ts)),
+			Chunks:   Chunks{},
 		}
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
@@ -221,7 +214,11 @@ func deduplicatePlaceholders(tokens []string, param string) []string {
 }
 
 func (d *Drain) PatternString(c *LogCluster) string {
-	return strings.Join(deduplicatePlaceholders(c.Tokens, d.config.ParamString), " ")
+	s := strings.Join(deduplicatePlaceholders(c.Tokens, d.config.ParamString), " ")
+	if s == d.config.ParamString {
+		return ""
+	}
+	return s
 }
 
 // Match against an already existing cluster. Match shall be perfect (sim_th=1.0). New cluster will not be created as a result of this call, nor any cluster modifications.
