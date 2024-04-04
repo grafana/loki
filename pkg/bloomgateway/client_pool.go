@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 
-	"github.com/grafana/loki/v3/pkg/util/discovery"
 	"github.com/grafana/loki/v3/pkg/util/jumphash"
 )
 
@@ -43,9 +42,16 @@ type JumpHashClientPool struct {
 	logger log.Logger
 }
 
-func NewJumpHashClientPool(pool *client.Pool, dnsProvider *discovery.DNS, updateInterval time.Duration, logger log.Logger) *JumpHashClientPool {
+type AddressProvider interface {
+	Addresses() []string
+}
+
+func NewJumpHashClientPool(pool *client.Pool, dnsProvider AddressProvider, updateInterval time.Duration, logger log.Logger) *JumpHashClientPool {
 	selector := jumphash.DefaultSelector()
-	selector.SetServers(dnsProvider.Addresses()...)
+	err := selector.SetServers(dnsProvider.Addresses()...)
+	if err != nil {
+		level.Warn(logger).Log("msg", "error updating servers", "err", err)
+	}
 
 	p := &JumpHashClientPool{
 		Pool:     pool,
@@ -53,7 +59,7 @@ func NewJumpHashClientPool(pool *client.Pool, dnsProvider *discovery.DNS, update
 		done:     make(chan struct{}),
 		logger:   logger,
 	}
-	go p.discoveryLoop(dnsProvider, updateInterval)
+	go p.updateLoop(dnsProvider, updateInterval)
 
 	return p
 }
@@ -77,11 +83,7 @@ func (p *JumpHashClientPool) Stop() {
 	close(p.done)
 }
 
-func (p *JumpHashClientPool) discoveryLoop(provider *discovery.DNS, updateInterval time.Duration) {
-	if provider == nil {
-		return
-	}
-
+func (p *JumpHashClientPool) updateLoop(provider AddressProvider, updateInterval time.Duration) {
 	ticker := time.NewTicker(updateInterval)
 	defer ticker.Stop()
 
