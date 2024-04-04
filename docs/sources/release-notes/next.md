@@ -16,3 +16,4 @@ Grafana Labs is excited to announce the release of Loki ?.?.? Here's a summary o
 ## Bug fixes
 
 -  **Parse JSON String arrays properly so string elements can be retrieved**: [PR #11921](https://github.com/grafana/loki/pull/11921)]
+-  **feat: add log patterns ingestion and query API.**: :warning: ADD DESCRIPTION HERE :warning:. [PR #12403](https://github.com/grafana/loki/pull/12403)]
