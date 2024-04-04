@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
-	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -17,7 +15,6 @@ import (
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
 	ringclient "github.com/grafana/dskit/ring/client"
-	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -158,7 +155,7 @@ type GatewayClient struct {
 	limits      Limits
 	logger      log.Logger
 	metrics     *clientMetrics
-	pool        *ringclient.Pool
+	pool        *JumpHashClientPool
 	dnsProvider *discovery.DNS
 	ring        ring.ReadRing
 }
@@ -227,43 +224,32 @@ func NewClient(
 	dnsProvider := discovery.NewDNS(logger, cfg.PoolConfig.CheckInterval, cfg.Addresses, nil)
 	// Make an attempt to do one DNS lookup so we can start with addresses
 	dnsProvider.RunOnce()
-	discovery := func() ([]string, error) {
-		return dnsProvider.Addresses(), nil
-	}
 
-	pool := ringclient.NewPool(
+	clientPool := ringclient.NewPool(
 		"bloom-gateway",
 		ringclient.PoolConfig(cfg.PoolConfig),
-		discovery,
+		func() ([]string, error) { return dnsProvider.Addresses(), nil },
 		ringclient.PoolAddrFunc(poolFactory),
 		clients,
 		logger,
 	)
 
-	ctx := context.Background()
-	services.StartAndAwaitRunning(ctx, pool)
+	pool := NewJumpHashClientPool(clientPool, dnsProvider, cfg.PoolConfig.CheckInterval, logger)
+	pool.Start()
 
 	return &GatewayClient{
 		cfg:         cfg,
-		ctx:         ctx,
 		logger:      logger,
 		limits:      limits,
 		metrics:     newClientMetrics(registerer),
 		pool:        pool,
-		dnsProvider: dnsProvider,
+		dnsProvider: dnsProvider, // keep reference so we can stop it when the client is closed
 	}, nil
 }
 
-func (c *GatewayClient) Stop() {
+func (c *GatewayClient) Close() {
+	c.pool.Stop()
 	c.dnsProvider.Stop()
-	services.StopAndAwaitTerminated(c.ctx, c.pool)
-}
-
-func shuffleAddrs(addrs []string) []string {
-	rand.Shuffle(len(addrs), func(i, j int) {
-		addrs[i], addrs[j] = addrs[j], addrs[i]
-	})
-	return addrs
 }
 
 // FilterChunkRefs implements Client
@@ -272,19 +258,24 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 		return groups, nil
 	}
 
-	subRing := GetShuffleShardingSubring(c.ring, tenant, c.limits)
-	rs, err := subRing.GetAllHealthy(BlocksOwnerRead)
-	if err != nil {
-		return nil, errors.Wrap(err, "bloom gateway get healthy instances")
+	clients := make(map[string][]*logproto.GroupedChunkRefs)
+	for _, g := range groups {
+		addr, err := c.pool.FromUInt64(g.Fingerprint)
+		if err != nil {
+			return nil, errors.Wrap(err, "server address for fingerprint")
+		}
+		a := addr.String()
+		clients[a] = append(clients[a], g)
 	}
 
-	servers, err := replicationSetsWithBounds(subRing, rs.Instances)
-
-	if err != nil {
-		return nil, errors.Wrap(err, "bloom gateway get replication sets")
+	servers := make([]rsWithRanges, 0, len(clients))
+	for k, v := range clients {
+		servers = append(servers, rsWithRanges{
+			groups: v,
+			addr:   k,
+		})
 	}
 
-	servers = partitionByReplicationSet(groups, servers)
 	if len(servers) > 0 {
 		// cache locality score (higher is better):
 		// `% keyspace / % instances`. Ideally converges to 1 (querying x% of keyspace requires x% of instances),
@@ -293,23 +284,21 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 		// overlap on instances to the left and right of the range.
 		firstFp, lastFp := groups[0].Fingerprint, groups[len(groups)-1].Fingerprint
 		pctKeyspace := float64(lastFp-firstFp) / float64(math.MaxUint64)
-		pctInstances := float64(len(servers)) / float64(len(rs.Instances))
+		pctInstances := float64(len(servers)) / float64(len(c.pool.Addrs()))
 		cacheLocalityScore := pctKeyspace / pctInstances
 		c.metrics.cacheLocalityScore.Observe(cacheLocalityScore)
 	}
 
 	results := make([][]*logproto.GroupedChunkRefs, len(servers))
 	count := 0
-	err = concurrency.ForEachJob(ctx, len(servers), len(servers), func(ctx context.Context, i int) error {
+	err := concurrency.ForEachJob(ctx, len(servers), len(servers), func(ctx context.Context, i int) error {
 		rs := servers[i]
 
-		// randomize order of addresses so we don't hotspot the first server in the list
-		addrs := shuffleAddrs(rs.rs.GetAddresses())
 		level.Info(c.logger).Log(
 			"msg", "do FilterChunkRefs for addresses",
 			"progress", fmt.Sprintf("%d/%d", i+1, len(servers)),
 			"bounds", len(rs.ranges),
-			"addrs", strings.Join(addrs, ","),
+			"addr", rs.addr,
 			"from", from.Time(),
 			"through", through.Time(),
 			"num_refs", len(rs.groups),
@@ -317,7 +306,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 			"plan_hash", plan.Hash(),
 		)
 
-		return c.doForAddrs(addrs, func(client logproto.BloomGatewayClient) error {
+		return c.doForAddrs([]string{rs.addr}, func(client logproto.BloomGatewayClient) error {
 			req := &logproto.FilterChunkRefRequest{
 				From:    from,
 				Through: through,
@@ -351,7 +340,6 @@ func flatten(input [][]*logproto.GroupedChunkRefs, n int) []*logproto.GroupedChu
 // doForAddrs sequetially calls the provided callback function fn for each
 // address in given slice addrs until the callback function does not return an
 // error.
-// TODO(owen-d): parallelism
 func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGatewayClient) error) error {
 	var err error
 	var poolClient ringclient.PoolClient
@@ -383,6 +371,7 @@ func mapTokenRangeToFingerprintRange(r bloomutils.Range[uint32]) v1.FingerprintB
 
 type rsWithRanges struct {
 	rs     ring.ReplicationSet
+	addr   string
 	ranges []v1.FingerprintBounds
 	groups []*logproto.GroupedChunkRefs
 }
