@@ -866,7 +866,7 @@ results_cache:
 
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results
-[cache_index_stats_results: <boolean> | default = false]
+[cache_index_stats_results: <boolean> | default = true]
 
 # If a cache config is not specified and cache_index_stats_results is true, the
 # config for the results cache is used.
@@ -883,7 +883,7 @@ index_stats_results_cache:
 
 # Cache volume query results.
 # CLI flag: -querier.cache-volume-results
-[cache_volume_results: <boolean> | default = false]
+[cache_volume_results: <boolean> | default = true]
 
 # If a cache config is not specified and cache_volume_results is true, the
 # config for the results cache is used.
@@ -922,7 +922,7 @@ instant_metric_results_cache:
 
 # Cache series query results.
 # CLI flag: -querier.cache-series-results
-[cache_series_results: <boolean> | default = false]
+[cache_series_results: <boolean> | default = true]
 
 # If series_results_cache is not configured and cache_series_results is true,
 # the config for the results cache is used.
@@ -939,7 +939,7 @@ series_results_cache:
 
 # Cache label query results.
 # CLI flag: -querier.cache-label-results
-[cache_label_results: <boolean> | default = false]
+[cache_label_results: <boolean> | default = true]
 
 # If label_results_cache is not configured and cache_label_results is true, the
 # config for the results cache is used.
