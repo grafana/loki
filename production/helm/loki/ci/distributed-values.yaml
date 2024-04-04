@@ -4,7 +4,7 @@ loki:
     replication_factor: 1
   image:
     tag: "k195-51c54ad"
-  useBloomFilters: true
+  useBloomFilters: false
 deploymentMode: Distributed
 backend:
   replicas: 0
