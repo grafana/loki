@@ -403,3 +403,4 @@ memberlist:
     - loki-gossip-ring.loki.svc.cluster.local:7946 # :7946 is the default memberlist port.
 
 ```
+
