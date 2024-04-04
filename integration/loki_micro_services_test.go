@@ -30,7 +30,9 @@ import (
 )
 
 func TestMicroServicesIngestQuery(t *testing.T) {
-	clu := cluster.New(nil)
+	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
+		c.SetSchemaVer("v13")
+	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()
@@ -227,10 +229,12 @@ func TestMicroServicesIngestQueryWithSchemaChange(t *testing.T) {
 			"compactor",
 			"-target=compactor",
 			"-compactor.compaction-interval=1s",
+			"-validation.allow-structured-metadata=false",
 		)
 		tDistributor = clu.AddComponent(
 			"distributor",
 			"-target=distributor",
+			"-validation.allow-structured-metadata=false",
 		)
 	)
 	require.NoError(t, clu.Run())
@@ -241,11 +245,13 @@ func TestMicroServicesIngestQueryWithSchemaChange(t *testing.T) {
 			"ingester",
 			"-target=ingester",
 			"-ingester.flush-on-shutdown=true",
+			"-validation.allow-structured-metadata=false",
 		)
 		tQueryScheduler = clu.AddComponent(
 			"query-scheduler",
 			"-target=query-scheduler",
 			"-query-scheduler.use-scheduler-ring=false",
+			"-validation.allow-structured-metadata=false",
 		)
 	)
 	require.NoError(t, clu.Run())
@@ -258,12 +264,14 @@ func TestMicroServicesIngestQueryWithSchemaChange(t *testing.T) {
 			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
 			"-frontend.default-validity=0s",
 			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-validation.allow-structured-metadata=false",
 		)
 		tQuerier = clu.AddComponent(
 			"querier",
 			"-target=querier",
 			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
 			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-validation.allow-structured-metadata=false",
 		)
 	)
 	require.NoError(t, clu.Run())
@@ -420,10 +428,12 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 					"compactor",
 					"-target=compactor",
 					"-compactor.compaction-interval=1s",
+					"-validation.allow-structured-metadata=false",
 				)
 				tDistributor = clu.AddComponent(
 					"distributor",
 					"-target=distributor",
+					"-validation.allow-structured-metadata=false",
 				)
 			)
 			require.NoError(t, clu.Run())
@@ -434,11 +444,13 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 					"ingester",
 					"-target=ingester",
 					"-ingester.flush-on-shutdown=true",
+					"-validation.allow-structured-metadata=false",
 				)
 				tQueryScheduler = clu.AddComponent(
 					"query-scheduler",
 					"-target=query-scheduler",
 					"-query-scheduler.use-scheduler-ring=false",
+					"-validation.allow-structured-metadata=false",
 				)
 			)
 			require.NoError(t, clu.Run())
@@ -451,12 +463,14 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 					"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
 					"-frontend.default-validity=0s",
 					"-common.compactor-address="+tCompactor.HTTPURL(),
+					"-validation.allow-structured-metadata=false",
 				)
 				tQuerier = clu.AddComponent(
 					"querier",
 					"-target=querier",
 					"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
 					"-common.compactor-address="+tCompactor.HTTPURL(),
+					"-validation.allow-structured-metadata=false",
 				)
 			)
 			require.NoError(t, clu.Run())
@@ -472,12 +486,12 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 			cliQueryFrontend.Now = now
 
 			t.Run("ingest-logs", func(t *testing.T) {
-				require.NoError(t, cliDistributor.PushLogLine("lineA", time.Now().Add(-48*time.Hour), map[string]string{"traceID": "123"}, map[string]string{"job": "fake"}))
-				require.NoError(t, cliDistributor.PushLogLine("lineB", time.Now().Add(-36*time.Hour), map[string]string{"traceID": "456"}, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineA", time.Now().Add(-48*time.Hour), nil, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineB", time.Now().Add(-36*time.Hour), nil, map[string]string{"job": "fake"}))
 
 				// ingest logs to the current period
-				require.NoError(t, cliDistributor.PushLogLine("lineC", now, map[string]string{"traceID": "789"}, map[string]string{"job": "fake"}))
-				require.NoError(t, cliDistributor.PushLogLine("lineD", now, map[string]string{"traceID": "123"}, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineC", now, nil, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineD", now, nil, map[string]string{"job": "fake"}))
 
 			})
 
@@ -527,7 +541,9 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 }
 
 func TestSchedulerRing(t *testing.T) {
-	clu := cluster.New(nil)
+	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
+		c.SetSchemaVer("v13")
+	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()
@@ -645,7 +661,7 @@ func TestSchedulerRing(t *testing.T) {
 }
 
 func TestOTLPLogsIngestQuery(t *testing.T) {
-	clu := cluster.New(nil, func(c *cluster.Cluster) {
+	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
 	defer func() {
