@@ -161,7 +161,7 @@ type PeriodConfig struct {
 	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used. Which index to use. Either tsdb or boltdb-shipper. Following stores are deprecated: aws, aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
 	// type of object client to use.
 	ObjectType  string                   `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config). Following stores are deprecated: aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
-	Schema      string                   `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v12."`
+	Schema      string                   `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v13."`
 	IndexTables IndexPeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
 	ChunkTables PeriodicTableConfig      `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
 	RowShards   uint32                   `yaml:"row_shards" doc:"default=16|description=How many shards will be created. Only used if schema is v10 or greater."`

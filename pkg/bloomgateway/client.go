@@ -144,11 +144,12 @@ type Client interface {
 }
 
 type GatewayClient struct {
-	cfg    ClientConfig
-	limits Limits
-	logger log.Logger
-	pool   *ringclient.Pool
-	ring   ring.ReadRing
+	cfg     ClientConfig
+	limits  Limits
+	logger  log.Logger
+	metrics *clientMetrics
+	pool    *ringclient.Pool
+	ring    ring.ReadRing
 }
 
 func NewClient(
@@ -206,11 +207,12 @@ func NewClient(
 	}
 
 	return &GatewayClient{
-		cfg:    cfg,
-		logger: logger,
-		limits: limits,
-		pool:   clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger, metricsNamespace),
-		ring:   readRing,
+		cfg:     cfg,
+		logger:  logger,
+		limits:  limits,
+		metrics: newClientMetrics(registerer),
+		pool:    clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger, metricsNamespace),
+		ring:    readRing,
 	}, nil
 }
 
@@ -231,7 +233,7 @@ func shuffleAddrs(addrs []string) []string {
 
 // FilterChunkRefs implements Client
 func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
-	if !c.limits.BloomGatewayEnabled(tenant) {
+	if !c.limits.BloomGatewayEnabled(tenant) || len(groups) == 0 {
 		return groups, nil
 	}
 
@@ -246,7 +248,20 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 	if err != nil {
 		return nil, errors.Wrap(err, "bloom gateway get replication sets")
 	}
+
 	servers = partitionByReplicationSet(groups, servers)
+	if len(servers) > 0 {
+		// cache locality score (higher is better):
+		// `% keyspace / % instances`. Ideally converges to 1 (querying x% of keyspace requires x% of instances),
+		// but can be less if the keyspace is not evenly distributed across instances. Ideal operation will see the range of
+		// `1-2/num_instances` -> `1`, where the former represents slight
+		// overlap on instances to the left and right of the range.
+		firstFp, lastFp := groups[0].Fingerprint, groups[len(groups)-1].Fingerprint
+		pctKeyspace := float64(lastFp-firstFp) / float64(math.MaxUint64)
+		pctInstances := float64(len(servers)) / float64(len(rs.Instances))
+		cacheLocalityScore := pctKeyspace / pctInstances
+		c.metrics.cacheLocalityScore.Observe(cacheLocalityScore)
+	}
 
 	results := make([][]*logproto.GroupedChunkRefs, len(servers))
 	count := 0
