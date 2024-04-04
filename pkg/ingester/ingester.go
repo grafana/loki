@@ -1389,7 +1389,7 @@ func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.Detected
 	}
 	var matchers []*labels.Matcher
 	if req.Query != "" {
-		matchers, err := syntax.ParseMatchers(req.Query, true)
+		matchers, err = syntax.ParseMatchers(req.Query, true)
 		if err != nil {
 			return nil, err
 		}
@@ -1403,7 +1403,7 @@ func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.Detected
 	}
 	result := make(map[string]*logproto.UniqueLabelValues)
 	for label, values := range labelMap {
-		uniqueValues := make([]string, len(values))
+		var uniqueValues []string
 		for v := range values {
 			uniqueValues = append(uniqueValues, v)
 		}

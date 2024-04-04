@@ -370,17 +370,24 @@ func (q *IngesterQuerier) DetectedLabel(ctx context.Context, req *logproto.Detec
 	labelMap := make(map[string][]string)
 	for _, resp := range ingesterResponses {
 		thisIngester := resp.response.(*logproto.LabelToValuesResponse)
-		for label, values := range thisIngester.Labels {
-			uniqueValues := make([]string, len(values.Values))
-			allValues := thisIngester.Labels[label]
-			uniqueValues = append(uniqueValues, allValues.Values...)
 
-			labelMap[label] = uniqueValues
+		for label, thisIngesterValues := range thisIngester.Labels {
+			var combinedValues []string
+			allIngesterValues, isLabelPresent := labelMap[label]
+			if isLabelPresent {
+				combinedValues = append(allIngesterValues, thisIngesterValues.Values...)
+			} else {
+				combinedValues = thisIngesterValues.Values
+			}
+			labelMap[label] = combinedValues
 		}
 	}
+
+	// Dedupe all ingester values
 	mergedResult := make(map[string]*logproto.UniqueLabelValues)
 	for label, val := range labelMap {
-		uniqueValues := slices.CompactFunc(val, strings.EqualFold)
+		slices.Sort(val)
+		uniqueValues := slices.Compact(val)
 
 		mergedResult[label] = &logproto.UniqueLabelValues{
 			Values: uniqueValues,
