@@ -353,7 +353,18 @@ func newLineFilterExpr(ty log.LineMatchType, op, match string) *LineFilterExpr {
 }
 
 func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
+	// consider, we have chain of "or", != "foo" or "bar" or "baz"
+	// we parse from right to left, so first time left="bar", right="baz", and we don't know the actual `Ty` (equal: |=, notequal: !=, regex: |~, etc). So
+	// it will have default (0, LineMatchEqual).
+	// we only know real `Ty` in next stage, where left="foo", right="bar or baz", at this time, `Ty` is LineMatchNotEqual(!=).
+	// Now we need to update not just `right.Ty = left.Ty`, we also have to update accordingly to `right.Or` recursively untill `right.Or` is nil.
 	right.Ty = left.Ty
+
+	tmp := right
+	for tmp.Or != nil {
+		tmp.Or.Ty = left.Ty
+		tmp = tmp.Or
+	}
 
 	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp || left.Ty == log.LineMatchPattern {
 		left.Or = right
