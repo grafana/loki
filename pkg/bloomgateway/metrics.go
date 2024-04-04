@@ -25,7 +25,7 @@ func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
 			Subsystem: "bloom_gateway_client",
 			Name:      "cache_locality_score",
 			Help:      "Cache locality score of the bloom filter, as measured by % of keyspace touched / % of bloom_gws required",
-			Buckets:   prometheus.ExponentialBucketsRange(1, 100, 8),
+			Buckets:   prometheus.LinearBuckets(0.01, 0.2, 5),
 		}),
 	}
 }
