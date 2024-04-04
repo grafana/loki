@@ -19,8 +19,12 @@ func init() {
 }
 
 func parseExpr(input string) (expr, error) {
+	return parseExprBytes([]byte(input))
+}
+
+func parseExprBytes(input []byte) (expr, error) {
 	l := newLexer()
-	l.setData([]byte(input))
+	l.setData(input)
 	e := exprNewParser().Parse(l)
 	if e != 0 || len(l.errs) > 0 {
 		return nil, l.errs[0]

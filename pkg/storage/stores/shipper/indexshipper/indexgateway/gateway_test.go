@@ -14,12 +14,16 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	util_test "github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	util_math "github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	util_test "github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	util_math "github.com/grafana/loki/v3/pkg/util/math"
 )
 
 const (
@@ -283,4 +287,306 @@ func (i *indexQuerierMock) Volume(_ context.Context, userID string, from, throug
 	}
 
 	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
+}
+
+// Tests for various cases of the `refWithSizingInfo.Cmp` function
+func TestRefWithSizingInfo(t *testing.T) {
+	for _, tc := range []struct {
+		desc string
+		a    refWithSizingInfo
+		b    tsdb_index.ChunkMeta
+		exp  v1.Ord
+	}{
+		{
+			desc: "less by from",
+			a: refWithSizingInfo{
+				ref: &logproto.ChunkRef{
+					From: 1,
+				},
+			},
+			b: tsdb_index.ChunkMeta{
+				MinTime: 2,
+			},
+			exp: v1.Less,
+		},
+		{
+			desc: "eq by from",
+			a: refWithSizingInfo{
+				ref: &logproto.ChunkRef{
+					From: 1,
+				},
+			},
+			b: tsdb_index.ChunkMeta{
+				MinTime: 1,
+			},
+			exp: v1.Eq,
+		},
+		{
+			desc: "gt by from",
+			a: refWithSizingInfo{
+				ref: &logproto.ChunkRef{
+					From: 2,
+				},
+			},
+			b: tsdb_index.ChunkMeta{
+				MinTime: 1,
+			},
+			exp: v1.Greater,
+		},
+		{
+			desc: "less by through",
+			a: refWithSizingInfo{
+				ref: &logproto.ChunkRef{
+					Through: 1,
+				},
+			},
+			b: tsdb_index.ChunkMeta{
+				MaxTime: 2,
+			},
+			exp: v1.Less,
+		},
+		{
+			desc: "eq by through",
+			a: refWithSizingInfo{
+				ref: &logproto.ChunkRef{
+					Through: 2,
+				},
+			},
+			b: tsdb_index.ChunkMeta{
+				MaxTime: 2,
+			},
+			exp: v1.Eq,
+		},
+		{
+			desc: "gt by through",
+			a: refWithSizingInfo{
+				ref: &logproto.ChunkRef{
+					Through: 2,
+				},
+			},
+			b: tsdb_index.ChunkMeta{
+				MaxTime: 1,
+			},
+			exp: v1.Greater,
+		},
+		{
+			desc: "less by checksum",
+			a: refWithSizingInfo{
+				ref: &logproto.ChunkRef{
+					Checksum: 1,
+				},
+			},
+			b: tsdb_index.ChunkMeta{
+				Checksum: 2,
+			},
+			exp: v1.Less,
+		},
+		{
+			desc: "eq by checksum",
+			a: refWithSizingInfo{
+				ref: &logproto.ChunkRef{
+					Checksum: 2,
+				},
+			},
+			b: tsdb_index.ChunkMeta{
+				Checksum: 2,
+			},
+			exp: v1.Eq,
+		},
+		{
+			desc: "gt by checksum",
+			a: refWithSizingInfo{
+				ref: &logproto.ChunkRef{
+					Checksum: 2,
+				},
+			},
+			b: tsdb_index.ChunkMeta{
+				Checksum: 1,
+			},
+			exp: v1.Greater,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.exp, tc.a.Cmp(tc.b))
+		})
+	}
+}
+
+// TODO(owen-d): more testing for specific cases
+func TestAccumulateChunksToShards(t *testing.T) {
+	// only check eq by checksum for convenience -- we're not testing the comparison function here
+	mkRef := func(fp model.Fingerprint, checksum uint32) *logproto.ChunkRef {
+		return &logproto.ChunkRef{
+			Fingerprint: uint64(fp),
+			Checksum:    checksum,
+		}
+	}
+
+	sized := func(ref *logproto.ChunkRef, kb, entries uint32) refWithSizingInfo {
+		return refWithSizingInfo{
+			ref:     ref,
+			KB:      kb,
+			Entries: entries,
+		}
+
+	}
+
+	fsImpl := func(series [][]refWithSizingInfo) sharding.ForSeriesFunc {
+		return sharding.ForSeriesFunc(
+			func(
+				ctx context.Context,
+				_ string,
+				_ tsdb_index.FingerprintFilter,
+				_, _ model.Time,
+				fn func(
+					_ labels.Labels,
+					fp model.Fingerprint,
+					chks []tsdb_index.ChunkMeta,
+				) (stop bool), matchers ...*labels.Matcher) error {
+
+				for _, s := range series {
+					chks := []tsdb_index.ChunkMeta{}
+					for _, r := range s {
+						chks = append(chks, tsdb_index.ChunkMeta{
+							Checksum: r.ref.Checksum,
+							KB:       r.KB,
+							Entries:  r.Entries,
+						})
+					}
+
+					if stop := fn(nil, s[0].ref.FingerprintModel(), chks); stop {
+						return nil
+					}
+				}
+				return nil
+			},
+		)
+	}
+
+	filtered := []*logproto.ChunkRef{
+		// shard 0
+		mkRef(1, 0),
+		mkRef(1, 1),
+		mkRef(1, 2),
+
+		// shard 1
+		mkRef(2, 10),
+		mkRef(2, 20),
+		mkRef(2, 30),
+
+		// shard 2 split across multiple series
+		mkRef(3, 10),
+		mkRef(4, 10),
+		mkRef(4, 20),
+
+		// last shard contains leftovers + skip a few fps in between
+		mkRef(7, 10),
+	}
+
+	series := [][]refWithSizingInfo{
+		{
+			// first series creates one shard since a shard can't contain partial series.
+			// no chunks were filtered out
+			sized(mkRef(1, 0), 100, 1),
+			sized(mkRef(1, 1), 100, 1),
+			sized(mkRef(1, 2), 100, 1),
+		},
+		{
+			// second shard also contains one series, but this series has chunks filtered out.
+			sized(mkRef(2, 0), 100, 1),  // filtered out
+			sized(mkRef(2, 10), 100, 1), // included
+			sized(mkRef(2, 11), 100, 1), // filtered out
+			sized(mkRef(2, 20), 100, 1), // included
+			sized(mkRef(2, 21), 100, 1), // filtered out
+			sized(mkRef(2, 30), 100, 1), // included
+			sized(mkRef(2, 31), 100, 1), // filtered out
+		},
+
+		// third shard contains multiple series.
+		// combined they have 110kb, which is above the target of 100kb
+		// but closer than leaving the second series out which would create
+		// a shard with 50kb
+		{
+			// first series, 50kb
+			sized(mkRef(3, 10), 50, 1), // 50kb
+			sized(mkRef(3, 11), 50, 1), // 50kb, not included
+		},
+		{
+			// second series
+			sized(mkRef(4, 10), 30, 1), // 30kb
+			sized(mkRef(4, 11), 30, 1), // 30kb, not included
+			sized(mkRef(4, 20), 30, 1), // 30kb
+		},
+
+		// Fourth shard contains a single series with 25kb,
+		// but iterates over non-included fp(s) before it
+		{
+			// register a series in the index which is not included in the filtered list
+			sized(mkRef(6, 10), 100, 1), // not included
+			sized(mkRef(6, 11), 100, 1), // not included
+		},
+		{
+			// last shard contains leftovers
+			sized(mkRef(7, 10), 25, 1),
+			sized(mkRef(7, 11), 100, 1), // not included
+		},
+	}
+
+	shards, err := accumulateChunksToShards(
+		context.Background(),
+		"",
+		fsImpl(series),
+		&logproto.ShardsRequest{
+			TargetBytesPerShard: 100 << 10,
+		},
+		chunk.NewPredicate(nil, nil), // we're not checking matcher injection here
+		filtered,
+	)
+
+	exp := []logproto.Shard{
+		{
+			Bounds: logproto.FPBounds{Min: 0, Max: 1},
+			Stats: &logproto.IndexStatsResponse{
+				Streams: 1,
+				Chunks:  3,
+				Entries: 3,
+				Bytes:   300 << 10,
+			},
+		},
+		{
+			Bounds: logproto.FPBounds{Min: 2, Max: 2},
+			Stats: &logproto.IndexStatsResponse{
+				Streams: 1,
+				Chunks:  3,
+				Entries: 3,
+				Bytes:   300 << 10,
+			},
+		},
+		{
+			Bounds: logproto.FPBounds{Min: 3, Max: 6},
+			Stats: &logproto.IndexStatsResponse{
+				Streams: 2,
+				Chunks:  3,
+				Entries: 3,
+				Bytes:   110 << 10,
+			},
+		},
+		{
+			Bounds: logproto.FPBounds{Min: 7, Max: math.MaxUint64},
+			Stats: &logproto.IndexStatsResponse{
+				Streams: 1,
+				Chunks:  1,
+				Entries: 1,
+				Bytes:   25 << 10,
+			},
+		},
+	}
+
+	require.NoError(t, err)
+
+	for i := range shards {
+		require.Equal(t, exp[i], shards[i], "invalid shard at index %d", i)
+	}
+	require.Equal(t, len(exp), len(shards))
+
 }

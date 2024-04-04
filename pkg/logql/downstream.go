@@ -10,15 +10,14 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 /*
@@ -75,7 +74,7 @@ func (ng *DownstreamEngine) Query(ctx context.Context, p Params) Query {
 
 // DownstreamSampleExpr is a SampleExpr which signals downstream computation
 type DownstreamSampleExpr struct {
-	shard *astmapper.ShardAnnotation
+	shard *Shard
 	syntax.SampleExpr
 }
 
@@ -108,7 +107,7 @@ func (d DownstreamSampleExpr) Pretty(level int) string {
 
 // DownstreamLogSelectorExpr is a LogSelectorExpr which signals downstream computation
 type DownstreamLogSelectorExpr struct {
-	shard *astmapper.ShardAnnotation
+	shard *Shard
 	syntax.LogSelectorExpr
 }
 
@@ -302,50 +301,6 @@ func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
 	}
 }
 
-type Shards []astmapper.ShardAnnotation
-
-func (xs Shards) Encode() (encoded []string) {
-	for _, shard := range xs {
-		encoded = append(encoded, shard.String())
-	}
-
-	return encoded
-}
-
-// ParseShards parses a list of string encoded shards
-func ParseShards(strs []string) (Shards, error) {
-	if len(strs) == 0 {
-		return nil, nil
-	}
-	shards := make([]astmapper.ShardAnnotation, 0, len(strs))
-
-	for _, str := range strs {
-		shard, err := astmapper.ParseShard(str)
-		if err != nil {
-			return nil, err
-		}
-		shards = append(shards, shard)
-	}
-	return shards, nil
-}
-
-func ParseShardCount(strs []string) int {
-	if len(strs) == 0 {
-		return 0
-	}
-
-	for _, str := range strs {
-		shard, err := astmapper.ParseShard(str)
-		if err != nil {
-			continue
-		}
-
-		return shard.Of
-	}
-
-	return 0
-}
-
 type Downstreamable interface {
 	Downstreamer(context.Context) Downstreamer
 }
@@ -398,6 +353,10 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 	}
 
 	for _, res := range results {
+		if err := metadata.AddWarnings(ctx, res.Warnings...); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
+		}
+
 		if err := metadata.JoinHeaders(ctx, res.Headers); err != nil {
 			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
 			break
@@ -435,7 +394,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 
 	case DownstreamSampleExpr:
 		// downstream to a querier
-		var shards []astmapper.ShardAnnotation
+		var shards Shards
 		if e.shard != nil {
 			shards = append(shards, *e.shard)
 		}
@@ -443,7 +402,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
 			Params: ParamsWithShardsOverride{
 				Params:         ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.SampleExpr},
-				ShardsOverride: Shards(shards).Encode(),
+				ShardsOverride: shards.Encode(),
 			},
 		}}, acc)
 		if err != nil {

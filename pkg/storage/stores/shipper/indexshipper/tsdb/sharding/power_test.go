@@ -1,4 +1,4 @@
-package queryrange
+package sharding
 
 import (
 	"fmt"
@@ -6,8 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 )
 
 func TestGuessShardFactor(t *testing.T) {
@@ -23,52 +22,52 @@ func TestGuessShardFactor(t *testing.T) {
 		{
 			exp: 4,
 			stats: stats.Stats{
-				Bytes: validation.DefaultTSDBMaxBytesPerShard * 4,
+				Bytes: DefaultTSDBMaxBytesPerShard * 4,
 			},
 		},
 		{
 			// round up shard factor
 			exp: 16,
 			stats: stats.Stats{
-				Bytes: validation.DefaultTSDBMaxBytesPerShard * 15,
+				Bytes: DefaultTSDBMaxBytesPerShard * 15,
 			},
 		},
 		{
 			exp: 2,
 			stats: stats.Stats{
-				Bytes: validation.DefaultTSDBMaxBytesPerShard + 1,
+				Bytes: DefaultTSDBMaxBytesPerShard + 1,
 			},
 		},
 		{
 			exp: 0,
 			stats: stats.Stats{
-				Bytes: validation.DefaultTSDBMaxBytesPerShard,
+				Bytes: DefaultTSDBMaxBytesPerShard,
 			},
 		},
 		{
 			maxShards: 8,
 			exp:       4,
 			stats: stats.Stats{
-				Bytes: validation.DefaultTSDBMaxBytesPerShard * 4,
+				Bytes: DefaultTSDBMaxBytesPerShard * 4,
 			},
 		},
 		{
 			maxShards: 2,
 			exp:       2,
 			stats: stats.Stats{
-				Bytes: validation.DefaultTSDBMaxBytesPerShard * 4,
+				Bytes: DefaultTSDBMaxBytesPerShard * 4,
 			},
 		},
 		{
 			maxShards: 1,
 			exp:       0,
 			stats: stats.Stats{
-				Bytes: validation.DefaultTSDBMaxBytesPerShard * 4,
+				Bytes: DefaultTSDBMaxBytesPerShard * 4,
 			},
 		},
 	} {
 		t.Run(fmt.Sprintf("%+v", tc.stats), func(t *testing.T) {
-			require.Equal(t, tc.exp, guessShardFactor(tc.stats, validation.DefaultTSDBMaxBytesPerShard, tc.maxShards))
+			require.Equal(t, tc.exp, GuessShardFactor(tc.stats.Bytes, uint64(DefaultTSDBMaxBytesPerShard), tc.maxShards))
 		})
 	}
 }

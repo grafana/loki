@@ -15,18 +15,18 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/marshal"
-	"github.com/grafana/loki/pkg/util/spanlogger"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 var errInvalidShardingRange = errors.New("Query does not fit in a single sharding configuration")
@@ -189,13 +189,27 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		ast.maxShards,
 		r,
 		ast.statsHandler,
+		ast.next,
 		ast.limits,
 	)
 	if !ok {
 		return ast.next.Do(ctx, r)
 	}
 
-	mapper := logql.NewShardMapper(resolver, ast.metrics, ast.shardAggregation)
+	v := ast.limits.TSDBShardingStrategy(tenants[0])
+	version, err := logql.ParseShardVersion(v)
+	if err != nil {
+		level.Warn(logger).Log(
+			"msg", "failed to parse shard version",
+			"fallback", version.String(),
+			"err", err.Error(),
+			"user", tenants[0],
+			"query", r.GetQuery(),
+		)
+	}
+	strategy := version.Strategy(resolver, uint64(ast.limits.TSDBMaxBytesPerShard(tenants[0])))
+
+	mapper := logql.NewShardMapper(strategy, ast.metrics, ast.shardAggregation)
 
 	noop, bytesPerShard, parsed, err := mapper.Parse(params.GetExpression())
 	if err != nil {
@@ -232,9 +246,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	// Merge index and volume stats result cache stats from shard resolver into the query stats.
-	res.Statistics.Caches.StatsResult.Merge(resolverStats.Caches().StatsResult)
-	res.Statistics.Caches.VolumeResult.Merge(resolverStats.Caches().VolumeResult)
-
+	res.Statistics.Merge(resolverStats.Result(0, 0, 0))
 	value, err := marshal.NewResultValue(res.Data)
 	if err != nil {
 		return nil, err
@@ -249,7 +261,8 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 					ResultType: loghttp.ResultTypeMatrix,
 					Result:     toProtoMatrix(value.(loghttp.Matrix)),
 				},
-				Headers: res.Headers,
+				Headers:  res.Headers,
+				Warnings: res.Warnings,
 			},
 			Statistics: res.Statistics,
 		}, nil
@@ -269,7 +282,8 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 				ResultType: loghttp.ResultTypeStream,
 				Result:     value.(loghttp.Streams).ToProto(),
 			},
-			Headers: respHeaders,
+			Headers:  respHeaders,
+			Warnings: res.Warnings,
 		}, nil
 	case parser.ValueTypeVector:
 		return &LokiPromResponse{
@@ -280,7 +294,8 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 					ResultType: loghttp.ResultTypeVector,
 					Result:     toProtoVector(value.(loghttp.Vector)),
 				},
-				Headers: res.Headers,
+				Headers:  res.Headers,
+				Warnings: res.Warnings,
 			},
 		}, nil
 	default:

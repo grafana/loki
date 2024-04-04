@@ -13,13 +13,13 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	bloomshipperconfig "github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/indexgateway"
 )
 
 func Test_calculateMaxLookBack(t *testing.T) {
@@ -367,10 +367,8 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.StorageConfig = storage.Config{
 		FSConfig: local.FSConfig{Directory: dir},
 		BloomShipperConfig: bloomshipperconfig.Config{
-			WorkingDirectory: filepath.Join(dir, "blooms"),
-			BlocksDownloadingQueue: bloomshipperconfig.DownloadingQueueConfig{
-				WorkersCount: 1,
-			},
+			WorkingDirectory:    []string{filepath.Join(dir, "blooms")},
+			DownloadParallelism: 1,
 		},
 		BoltDBShipperConfig: boltdb.IndexCfg{
 			Config: indexshipper.Config{
@@ -381,6 +379,12 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 			},
 		},
 	}
+
+	// Disable some caches otherwise we'll get errors if we don't configure them
+	cfg.QueryRange.CacheLabelResults = false
+	cfg.QueryRange.CacheSeriesResults = false
+	cfg.QueryRange.CacheIndexStatsResults = false
+	cfg.QueryRange.CacheVolumeResults = false
 
 	cfg.SchemaConfig = config.SchemaConfig{
 		Configs: []config.PeriodConfig{

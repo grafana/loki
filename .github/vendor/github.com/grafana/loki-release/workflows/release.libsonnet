@@ -9,7 +9,7 @@ local releaseLibStep = common.releaseLibStep;
 // sha to release and pull aritfacts from. If you need to change this, make sure
 // to change it in both places.
 //TODO: make bucket configurable
-local pullRequestFooter = 'Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/loki-build-artifacts/${SHA}) of ${SHA}';
+local pullRequestFooter = 'Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/${BUILD_ARTIFACTS_BUCKET}/${SHA}) of ${SHA}';
 
 {
   createReleasePR:
@@ -40,12 +40,13 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
           --manifest-file .release-please-manifest.json \
           --pull-request-footer "%s" \
           --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --release-as "${{ needs.dist.outputs.version }}" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
           --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token "${{ steps.github_app_token.outputs.token }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+          --dry-run ${{ fromJSON(env.DRY_RUN) }}
 
       ||| % pullRequestFooter),
     ]),
@@ -89,7 +90,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    releaseStep('download binaries')
                    + step.withRun(|||
                      echo "downloading binaries to $(pwd)/dist"
-                     gsutil cp -r gs://loki-build-artifacts/${{ needs.shouldRelease.outputs.sha }}/dist .
+                     gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.shouldRelease.outputs.sha }}/dist .
                    |||),
 
                    releaseStep('check if release exists')

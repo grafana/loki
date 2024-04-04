@@ -8,8 +8,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 func TestCrossComponentValidation(t *testing.T) {
@@ -67,6 +67,13 @@ func TestCrossComponentValidation(t *testing.T) {
 		},
 	} {
 		tc.base.RegisterFlags(flag.NewFlagSet(tc.desc, 0))
+		// This test predates the newer schema required for structured metadata
+		tc.base.LimitsConfig.AllowStructuredMetadata = false
+		// Several caches will error if not configured, disabled them for this test
+		tc.base.QueryRange.CacheIndexStatsResults = false
+		tc.base.QueryRange.CacheSeriesResults = false
+		tc.base.QueryRange.CacheLabelResults = false
+		tc.base.QueryRange.CacheVolumeResults = false
 		err := tc.base.Validate()
 		if tc.err {
 			require.NotNil(t, err)

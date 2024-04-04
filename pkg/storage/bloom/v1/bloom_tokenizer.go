@@ -10,10 +10,10 @@ import (
 
 	"github.com/grafana/dskit/multierror"
 
-	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/iter"
 
-	"github.com/grafana/loki/pkg/util/encoding"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/encoding"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 /*

@@ -30,7 +30,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: filesystem
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
@@ -71,7 +71,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: s3
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
@@ -127,7 +127,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: gcs
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
@@ -154,7 +154,7 @@ schema_config:
     - from: 2020-05-15
       store: tsdb
       object_store: bos
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h
@@ -203,12 +203,12 @@ schema_config:
         period: 24h
         prefix: index_
 
-  # Starting from 2023-6-15 Loki should store indexes on TSDB with the v12 schema
+  # Starting from 2023-6-15 Loki should store indexes on TSDB with the v13 schema
   # using daily periodic tables and chunks on AWS S3.
   - from: "2023-06-15"
     store: tsdb
     object_store: s3
-    schema: v12
+    schema: v13
     index:
         period: 24h
         prefix: index_
@@ -227,7 +227,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: alibabacloud
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
@@ -297,7 +297,7 @@ schema_config:
     - from: 2020-10-01
       store: tsdb
       object_store: cos
-      schema: v12
+      schema: v13
       index:
         period: 24h
         prefix: index_
@@ -327,7 +327,7 @@ schema_config:
     - from: 2020-10-01
       store: tsdb
       object_store: cos
-      schema: v12
+      schema: v13
       index:
         period: 24h
         prefix: index_
@@ -364,7 +364,7 @@ schema_config:
     - from: 2020-10-01
       store: tsdb
       object_store: cos
-      schema: v12
+      schema: v13
       index:
         period: 24h
         prefix: index_
@@ -401,64 +401,6 @@ memberlist:
   join_members:
     # You can use a headless k8s service for all distributor, ingester and querier components.
     - loki-gossip-ring.loki.svc.cluster.local:7946 # :7946 is the default memberlist port.
-
-```
-
-
-## 16-(Deprecated)-Cassandra-Snippet.yaml
-
-```yaml
-
-# This is a partial config that uses the local filesystem for chunk storage and Cassandra for index storage
-# WARNING - DEPRECATED: The Cassandra index store is deprecated and will be removed in a future release.
-
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: cassandra
-    object_store: filesystem
-    schema: v12
-    index:
-      prefix: cassandra_table
-      period: 168h
-
-storage_config:
-  cassandra:
-    username: cassandra
-    password: cassandra
-    addresses: 127.0.0.1
-    auth: true
-    keyspace: lokiindex
-
-  filesystem:
-    directory: /tmp/loki/chunks
-    
-
-```
-
-
-## 17-(Deprecated)-S3-And-DynamoDB-Snippet.yaml
-
-```yaml
-
-# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage
-# WARNING - DEPRECATED: The DynamoDB index store is deprecated and will be removed in a future release.
-
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: aws
-    object_store: s3
-    schema: v12
-    index:
-      prefix: loki_
-
-storage_config:
-  aws:
-    s3: s3://access_key:secret_access_key@region/bucket_name
-    dynamodb:
-      dynamodb_url: dynamodb://access_key:secret_access_key@region
-      
 
 ```
 

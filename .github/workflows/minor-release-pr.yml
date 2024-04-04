@@ -1,9 +1,11 @@
 concurrency:
   group: "create-release-pr-${{ github.sha }}"
 env:
+  BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
   BUILD_TIMEOUT: 40
   CHANGELOG_PATH: "CHANGELOG.md"
   DOCKER_USERNAME: "grafana"
+  DRY_RUN: false
   IMAGE_PREFIX: "grafana"
   RELEASE_LIB_REF: "main"
   RELEASE_REPO: "grafana/loki"
@@ -14,7 +16,7 @@ jobs:
   check:
     uses: "grafana/loki-release/.github/workflows/check.yml@main"
     with:
-      build_image: "grafana/loki-build-image:0.33.0"
+      build_image: "grafana/loki-build-image:0.33.1"
       golang_ci_lint_version: "v1.55.1"
       release_lib_ref: "main"
       skip_validation: false
@@ -81,19 +83,22 @@ jobs:
           --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
           --label "backport main,autorelease: pending,product-approved" \
           --manifest-file .release-please-manifest.json \
-          --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/loki-build-artifacts/${SHA}) of ${SHA}" \
+          --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/${BUILD_ARTIFACTS_BUCKET}/${SHA}) of ${SHA}" \
           --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --release-as "${{ needs.dist.outputs.version }}" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
           --separate-pull-requests false \
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token "${{ steps.github_app_token.outputs.token }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+          --dry-run ${{ fromJSON(env.DRY_RUN) }}
         
       working-directory: "lib"
   dist:
     needs:
     - "version"
+    outputs:
+      version: "${{ needs.version.outputs.version }}"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"
@@ -136,7 +141,7 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "grafana/loki-build-image:0.33.0"
+          --entrypoint /bin/sh "grafana/loki-build-image:0.33.1"
           git config --global --add safe.directory /src/loki
           echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
           make dist packages
@@ -146,7 +151,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}"
         path: "release/dist"
         process_gcloudignore: false
   fluent-bit:
@@ -203,7 +208,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -265,7 +270,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -327,7 +332,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/logcli-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -391,7 +396,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -453,7 +458,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -517,7 +522,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -581,7 +586,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -645,7 +650,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/promtail-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -709,7 +714,7 @@ jobs:
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
@@ -765,19 +770,36 @@ jobs:
       name: "get release version"
       run: |
         npm install
-        npm exec -- release-please release-pr \
-          --consider-all-branches \
-          --dry-run \
-          --dry-run-output release.json \
-          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
-          --manifest-file .release-please-manifest.json \
-          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
-          --release-type simple \
-          --repo-url "${{ env.RELEASE_REPO }}" \
-          --separate-pull-requests false \
-          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token "${{ steps.github_app_token.outputs.token }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        if [[ -z "${{ env.RELEASE_AS }}" ]]; then
+          npm exec -- release-please release-pr \
+            --consider-all-branches \
+            --dry-run \
+            --dry-run-output release.json \
+            --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --manifest-file .release-please-manifest.json \
+            --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --release-type simple \
+            --repo-url "${{ env.RELEASE_REPO }}" \
+            --separate-pull-requests false \
+            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+            --token "${{ steps.github_app_token.outputs.token }}" \
+            --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        else
+          npm exec -- release-please release-pr \
+            --consider-all-branches \
+            --dry-run \
+            --dry-run-output release.json \
+            --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --manifest-file .release-please-manifest.json \
+            --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --release-type simple \
+            --repo-url "${{ env.RELEASE_REPO }}" \
+            --separate-pull-requests false \
+            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+            --token "${{ steps.github_app_token.outputs.token }}" \
+            --release-as "${{ env.RELEASE_AS }}"
+        fi
         
         cat release.json
         
@@ -796,7 +818,7 @@ jobs:
           echo "pr_created=true" >> $GITHUB_OUTPUT
         fi
       working-directory: "lib"
-name: "create release PR"
+name: "Prepare Minor Release PR from Weekly"
 "on":
   push:
     branches:

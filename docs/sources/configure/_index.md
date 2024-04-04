@@ -186,7 +186,9 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # shards for performance.
 [compactor: <compactor>]
 
-# The limits_config block configures global and per-tenant limits in Loki.
+# The limits_config block configures global and per-tenant limits in Loki. The
+# values here can be overridden in the `overrides` section of the runtime_config
+# file
 [limits_config: <limits_config>]
 
 # The frontend_worker configures the worker - running within the Loki querier -
@@ -207,6 +209,11 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
 [runtime_config: <runtime_config>]
+
+# These are values which allow you to control aspects of Loki's operation, most
+# commonly used for controlling types of higher verbosity logging, the values
+# here can be overridden in the `configs` section of the `runtime_config` file.
+[operational_config: <operational_config>]
 
 # Configuration for tracing.
 [tracing: <tracing>]
@@ -859,7 +866,7 @@ results_cache:
 
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results
-[cache_index_stats_results: <boolean> | default = false]
+[cache_index_stats_results: <boolean> | default = true]
 
 # If a cache config is not specified and cache_index_stats_results is true, the
 # config for the results cache is used.
@@ -876,7 +883,7 @@ index_stats_results_cache:
 
 # Cache volume query results.
 # CLI flag: -querier.cache-volume-results
-[cache_volume_results: <boolean> | default = false]
+[cache_volume_results: <boolean> | default = true]
 
 # If a cache config is not specified and cache_volume_results is true, the
 # config for the results cache is used.
@@ -915,7 +922,7 @@ instant_metric_results_cache:
 
 # Cache series query results.
 # CLI flag: -querier.cache-series-results
-[cache_series_results: <boolean> | default = false]
+[cache_series_results: <boolean> | default = true]
 
 # If series_results_cache is not configured and cache_series_results is true,
 # the config for the results cache is used.
@@ -932,7 +939,7 @@ series_results_cache:
 
 # Cache label query results.
 # CLI flag: -querier.cache-label-results
-[cache_label_results: <boolean> | default = false]
+[cache_label_results: <boolean> | default = true]
 
 # If label_results_cache is not configured and cache_label_results is true, the
 # config for the results cache is used.
@@ -1915,11 +1922,6 @@ client:
   # bloom-gateway-client.grpc
   [grpc_client_config: <grpc_client>]
 
-  # Flag to control whether requests sent to the gateway should be logged or
-  # not.
-  # CLI flag: -bloom-gateway-client.log-gateway-requests
-  [log_gateway_requests: <boolean> | default = false]
-
   results_cache:
     # The cache block configures the cache backend.
     # The CLI flags prefix for this block configuration is:
@@ -2356,21 +2358,22 @@ tsdb_shipper:
 
   [ingesterdbretainperiod: <duration>]
 
-# Configures Bloom Shipper.
+# Configures the bloom shipper component, which contains the store abstraction
+# to fetch bloom filters from and put them to object storage.
 bloom_shipper:
-  # Working directory to store downloaded Bloom Blocks.
+  # Working directory to store downloaded bloom blocks. Supports multiple
+  # directories, separated by comma.
   # CLI flag: -bloom.shipper.working-directory
-  [working_directory: <string> | default = "bloom-shipper"]
+  [working_directory: <string> | default = "/data/blooms"]
 
-  blocks_downloading_queue:
-    # The count of parallel workers that download Bloom Blocks.
-    # CLI flag: -bloom.shipper.blocks-downloading-queue.workers-count
-    [workers_count: <int> | default = 100]
+  # Maximum size of bloom pages that should be queried. Larger pages than this
+  # limit are skipped when querying blooms to limit memory usage.
+  # CLI flag: -bloom.max-query-page-size
+  [max_query_page_size: <int> | default = 64MiB]
 
-    # Maximum number of task in queue per tenant per bloom-gateway. Enqueuing
-    # the tasks above this limit will fail an error.
-    # CLI flag: -bloom.shipper.blocks-downloading-queue.max_tasks_enqueued_per_tenant
-    [max_tasks_enqueued_per_tenant: <int> | default = 10000]
+  # The amount of maximum concurrent bloom blocks downloads.
+  # CLI flag: -bloom.download-parallelism
+  [download_parallelism: <int> | default = 16]
 
   blocks_cache:
     # Cache for bloom blocks. Soft limit of the cache in bytes. Exceeding this
@@ -2403,12 +2406,21 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # The CLI flags prefix for this block configuration is: store.chunks-cache
 [chunk_cache_config: <cache_config>]
 
+# The cache block configures the cache backend.
+# The CLI flags prefix for this block configuration is: store.chunks-cache-l2
+[chunk_cache_config_l2: <cache_config>]
+
 # Write dedupe cache is deprecated along with legacy index types (aws,
 # aws-dynamo, bigtable, bigtable-hashed, cassandra, gcp, gcp-columnkey,
 # grpc-store).
 # Consider using TSDB index which does not require a write dedupe cache.
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
+
+# Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
+# cache.
+# CLI flag: -store.chunks-cache-l2.handoff
+[l2_chunk_cache_handoff: <duration> | default = 0s]
 
 # Cache index entries older than this period. 0 to disable.
 # CLI flag: -store.cache-lookups-older-than
@@ -2477,9 +2489,9 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
-# Constrain the size of any single delete request. When a delete request >
-# delete_max_interval is input, the request is sharded into smaller requests of
-# no more than delete_max_interval
+# Constrain the size of any single delete request with line filters. When a
+# delete request > delete_max_interval is input, the request is sharded into
+# smaller requests of no more than delete_max_interval
 # CLI flag: -compactor.delete-max-interval
 [delete_max_interval: <duration> | default = 24h]
 
@@ -2695,18 +2707,18 @@ ring:
 # CLI flag: -bloom-compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
-# How many index periods (days) to wait before building bloom filters for a
-# table. This can be used to lower cost by not re-writing data to object storage
-# too frequently since recent data changes more often.
-# CLI flag: -bloom-compactor.min-table-compaction-period
-[min_table_compaction_period: <int> | default = 1]
+# Newest day-table offset (from today, inclusive) to compact. Increase to lower
+# cost by not re-writing data to object storage too frequently since recent data
+# changes more often at the cost of not having blooms available as quickly.
+# CLI flag: -bloom-compactor.min-table-offset
+[min_table_offset: <int> | default = 1]
 
-# The maximum number of index periods (days) to build bloom filters for a table.
-# This can be used to lower cost by not trying to compact older data which
-# doesn't change. This can be optimized by aligning it with the maximum
-# `reject_old_samples_max_age` setting of any tenant.
-# CLI flag: -bloom-compactor.max-table-compaction-period
-[max_table_compaction_period: <int> | default = 7]
+# Oldest day-table offset (from today, inclusive) to compact. This can be used
+# to lower cost by not trying to compact older data which doesn't change. This
+# can be optimized by aligning it with the maximum `reject_old_samples_max_age`
+# setting of any tenant.
+# CLI flag: -bloom-compactor.max-table-offset
+[max_table_offset: <int> | default = 2]
 
 # Number of workers to run in parallel for compaction.
 # CLI flag: -bloom-compactor.worker-parallelism
@@ -2729,11 +2741,20 @@ ring:
 # and compact as many tables.
 # CLI flag: -bloom-compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
+
+retention:
+  # Enable bloom retention.
+  # CLI flag: -bloom-compactor.retention.enabled
+  [enabled: <boolean> | default = false]
+
+  # Max lookback days for retention.
+  # CLI flag: -bloom-compactor.retention.max-lookback-days
+  [max_lookback_days: <int> | default = 365]
 ```
 
 ### limits_config
 
-The `limits_config` block configures global and per-tenant limits in Loki.
+The `limits_config` block configures global and per-tenant limits in Loki. The values here can be overridden in the `overrides` section of the runtime_config file
 
 ```yaml
 # Whether the ingestion rate limit should be applied individually to each
@@ -2810,6 +2831,18 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
 
+# If no service_name label exists, Loki maps a single label from the configured
+# list to service_name. If none of the configured labels exist in the stream,
+# label is set to unknown_service. Empty list disables setting the label.
+# CLI flag: -validation.discover-service-name
+[discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name component workload job]]
+
+# Discover and add log levels during ingestion, if not present already. Levels
+# would be added to Structured Metadata with name 'level' and one of the values
+# from 'debug', 'info', 'warn', 'error', 'critical', 'fatal'.
+# CLI flag: -validation.discover-log-levels
+[discover_log_levels: <boolean> | default = false]
+
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
 [max_streams_per_user: <int> | default = 0]
@@ -2871,10 +2904,17 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.tsdb-max-query-parallelism
 [tsdb_max_query_parallelism: <int> | default = 128]
 
-# Maximum number of bytes assigned to a single sharded query. Also expressible
-# in human readable forms (1GB, etc).
+# Target maximum number of bytes assigned to a single sharded query. Also
+# expressible in human readable forms (1GB, etc). Note: This is a _target_ and
+# not an absolute limit. The actual limit can be higher, but the query planner
+# will try to build shards up to this limit.
 # CLI flag: -querier.tsdb-max-bytes-per-shard
 [tsdb_max_bytes_per_shard: <int> | default = 600MB]
+
+# sharding strategy to use in query planning. Suggested to use bounded once all
+# nodes can recognize it.
+# CLI flag: -limits.tsdb-sharding-strategy
+[tsdb_sharding_strategy: <string> | default = "power_of_two"]
 
 # Cardinality limit for index queries.
 # CLI flag: -store.cardinality-limit
@@ -3225,7 +3265,7 @@ shard_streams:
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
-[allow_structured_metadata: <boolean> | default = false]
+[allow_structured_metadata: <boolean> | default = true]
 
 # Maximum size accepted for structured metadata per log line.
 # CLI flag: -limits.max-structured-metadata-size
@@ -3640,6 +3680,32 @@ Configuration for 'runtime config' module, responsible for reloading runtime con
 # at runtime. Runtime config files will be merged from left to right.
 # CLI flag: -runtime-config.file
 [file: <string> | default = ""]
+```
+
+### operational_config
+
+These are values which allow you to control aspects of Loki's operation, most commonly used for controlling types of higher verbosity logging, the values here can be overridden in the `configs` section of the `runtime_config` file.
+
+```yaml
+# Log every new stream created by a push request (very verbose, recommend to
+# enable via runtime config only).
+# CLI flag: -operation-config.log-stream-creation
+[log_stream_creation: <boolean> | default = false]
+
+# Log every push request (very verbose, recommend to enable via runtime config
+# only).
+# CLI flag: -operation-config.log-push-request
+[log_push_request: <boolean> | default = false]
+
+# Log every stream in a push request (very verbose, recommend to enable via
+# runtime config only).
+# CLI flag: -operation-config.log-push-request-streams
+[log_push_request_streams: <boolean> | default = false]
+
+# Log push errors with a rate limited logger, will show client push errors
+# without overly spamming logs.
+# CLI flag: -operation-config.limited-log-push-errors
+[limited_log_push_errors: <boolean> | default = true]
 ```
 
 ### tracing
@@ -4465,6 +4531,7 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `store.chunks-cache`
+- `store.chunks-cache-l2`
 - `store.index-cache-read`
 - `store.index-cache-write`
 
@@ -4511,9 +4578,8 @@ memcached_client:
   # CLI flag: -<prefix>.memcached.service
   [service: <string> | default = "memcached"]
 
-  # EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery
-  # format:
-  # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+  # Comma separated addresses list in DNS Service Discovery format:
+  # https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes
   # CLI flag: -<prefix>.memcached.addresses
   [addresses: <string> | default = ""]
 
@@ -4726,7 +4792,7 @@ The `period_config` block configures what index schemas should be used for from 
 # gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc.
 [object_store: <string> | default = ""]
 
-# The schema version to use, current recommended schema is v12.
+# The schema version to use, current recommended schema is v13.
 [schema: <string> | default = ""]
 
 # Configures how the index is updated and stored.
