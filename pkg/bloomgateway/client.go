@@ -118,7 +118,6 @@ type Client interface {
 
 type GatewayClient struct {
 	cfg         ClientConfig
-	ctx         context.Context
 	limits      Limits
 	logger      log.Logger
 	metrics     *clientMetrics
