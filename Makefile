@@ -803,6 +803,8 @@ check-format: format
 doc: ## Generates the config file documentation
 	go run ./tools/doc-generator $(DOC_FLAGS_TEMPLATE) > $(DOC_FLAGS)
 
+docs: doc
+
 check-doc: ## Check the documentation files are up to date
 check-doc: doc
 	@find . -name "*.md" | xargs git diff --exit-code -- \

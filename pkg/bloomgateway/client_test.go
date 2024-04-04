@@ -48,7 +48,7 @@ func TestBloomGatewayClient(t *testing.T) {
 		require.NoError(t, err)
 		res, err := c.FilterChunks(context.Background(), "tenant", model.Now(), model.Now(), nil, plan.QueryPlan{AST: expr})
 		require.NoError(t, err)
-		require.Equal(t, []*logproto.GroupedChunkRefs{}, res)
+		require.Equal(t, 0, len(res))
 	})
 }
 
