@@ -156,6 +156,185 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # itself to a key value store.
 [ingester: <ingester>]
 
+pattern_ingester:
+  # Whether the pattern ingester is enabled.
+  # CLI flag: -pattern-ingester.enabled
+  [enabled: <boolean> | default = false]
+
+  # Configures how the lifecycle of the pattern ingester will operate and where
+  # it will register for discovery.
+  lifecycler:
+    ring:
+      kvstore:
+        # Backend storage to use for the ring. Supported values are: consul,
+        # etcd, inmemory, memberlist, multi.
+        # CLI flag: -pattern-ingester.store
+        [store: <string> | default = "consul"]
+
+        # The prefix for the keys in the store. Should end with a /.
+        # CLI flag: -pattern-ingester.prefix
+        [prefix: <string> | default = "collectors/"]
+
+        # Configuration for a Consul client. Only applies if the selected
+        # kvstore is consul.
+        # The CLI flags prefix for this block configuration is: pattern-ingester
+        [consul: <consul>]
+
+        # Configuration for an ETCD v3 client. Only applies if the selected
+        # kvstore is etcd.
+        # The CLI flags prefix for this block configuration is: pattern-ingester
+        [etcd: <etcd>]
+
+        multi:
+          # Primary backend storage used by multi-client.
+          # CLI flag: -pattern-ingester.multi.primary
+          [primary: <string> | default = ""]
+
+          # Secondary backend storage used by multi-client.
+          # CLI flag: -pattern-ingester.multi.secondary
+          [secondary: <string> | default = ""]
+
+          # Mirror writes to secondary store.
+          # CLI flag: -pattern-ingester.multi.mirror-enabled
+          [mirror_enabled: <boolean> | default = false]
+
+          # Timeout for storing value to secondary store.
+          # CLI flag: -pattern-ingester.multi.mirror-timeout
+          [mirror_timeout: <duration> | default = 2s]
+
+      # The heartbeat timeout after which ingesters are skipped for
+      # reads/writes. 0 = never (timeout disabled).
+      # CLI flag: -pattern-ingester.ring.heartbeat-timeout
+      [heartbeat_timeout: <duration> | default = 1m]
+
+      # The number of ingesters to write to and read from.
+      # CLI flag: -pattern-ingester.distributor.replication-factor
+      [replication_factor: <int> | default = 1]
+
+      # True to enable the zone-awareness and replicate ingested samples across
+      # different availability zones.
+      # CLI flag: -pattern-ingester.distributor.zone-awareness-enabled
+      [zone_awareness_enabled: <boolean> | default = false]
+
+      # Comma-separated list of zones to exclude from the ring. Instances in
+      # excluded zones will be filtered out from the ring.
+      # CLI flag: -pattern-ingester.distributor.excluded-zones
+      [excluded_zones: <string> | default = ""]
+
+    # Number of tokens for each ingester.
+    # CLI flag: -pattern-ingester.num-tokens
+    [num_tokens: <int> | default = 128]
+
+    # Period at which to heartbeat to consul. 0 = disabled.
+    # CLI flag: -pattern-ingester.heartbeat-period
+    [heartbeat_period: <duration> | default = 5s]
+
+    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
+    # disabled.
+    # CLI flag: -pattern-ingester.heartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+
+    # Observe tokens after generating to resolve collisions. Useful when using
+    # gossiping ring.
+    # CLI flag: -pattern-ingester.observe-period
+    [observe_period: <duration> | default = 0s]
+
+    # Period to wait for a claim from another member; will join automatically
+    # after this.
+    # CLI flag: -pattern-ingester.join-after
+    [join_after: <duration> | default = 0s]
+
+    # Minimum duration to wait after the internal readiness checks have passed
+    # but before succeeding the readiness endpoint. This is used to slowdown
+    # deployment controllers (eg. Kubernetes) after an instance is ready and
+    # before they proceed with a rolling update, to give the rest of the cluster
+    # instances enough time to receive ring updates.
+    # CLI flag: -pattern-ingester.min-ready-duration
+    [min_ready_duration: <duration> | default = 15s]
+
+    # Name of network interface to read address from.
+    # CLI flag: -pattern-ingester.lifecycler.interface
+    [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+    # Enable IPv6 support. Required to make use of IP addresses from IPv6
+    # interfaces.
+    # CLI flag: -pattern-ingester.enable-inet6
+    [enable_inet6: <boolean> | default = false]
+
+    # Duration to sleep for before exiting, to ensure metrics are scraped.
+    # CLI flag: -pattern-ingester.final-sleep
+    [final_sleep: <duration> | default = 0s]
+
+    # File path where tokens are stored. If empty, tokens are not stored at
+    # shutdown and restored at startup.
+    # CLI flag: -pattern-ingester.tokens-file-path
+    [tokens_file_path: <string> | default = ""]
+
+    # The availability zone where this instance is running.
+    # CLI flag: -pattern-ingester.availability-zone
+    [availability_zone: <string> | default = ""]
+
+    # Unregister from the ring upon clean shutdown. It can be useful to disable
+    # for rolling restarts with consistent naming in conjunction with
+    # -distributor.extend-writes=false.
+    # CLI flag: -pattern-ingester.unregister-on-shutdown
+    [unregister_on_shutdown: <boolean> | default = true]
+
+    # When enabled the readiness probe succeeds only after all instances are
+    # ACTIVE and healthy in the ring, otherwise only the instance itself is
+    # checked. This option should be disabled if in your cluster multiple
+    # instances can be rolled out simultaneously, otherwise rolling updates may
+    # be slowed down.
+    # CLI flag: -pattern-ingester.readiness-check-ring-health
+    [readiness_check_ring_health: <boolean> | default = true]
+
+    # IP address to advertise in the ring.
+    # CLI flag: -pattern-ingester.lifecycler.addr
+    [address: <string> | default = ""]
+
+    # port to advertise in consul (defaults to server.grpc-listen-port).
+    # CLI flag: -pattern-ingester.lifecycler.port
+    [port: <int> | default = 0]
+
+    # ID to register in the ring.
+    # CLI flag: -pattern-ingester.lifecycler.ID
+    [id: <string> | default = "<hostname>"]
+
+  # Configures how the pattern ingester will connect to the ingesters.
+  client_config:
+    # Configures how connections are pooled.
+    pool_config:
+      # How frequently to clean up clients for ingesters that have gone away.
+      # CLI flag: -pattern-ingester.client-cleanup-period
+      [client_cleanup_period: <duration> | default = 15s]
+
+      # Run a health check on each ingester client during periodic cleanup.
+      # CLI flag: -pattern-ingester.health-check-ingesters
+      [health_check_ingesters: <boolean> | default = true]
+
+      # Timeout for the health check.
+      # CLI flag: -pattern-ingester.remote-timeout
+      [remote_timeout: <duration> | default = 1s]
+
+    # The remote request timeout on the client side.
+    # CLI flag: -pattern-ingester.client.timeout
+    [remote_timeout: <duration> | default = 5s]
+
+    # Configures how the gRPC connection to ingesters work as a client.
+    # The CLI flags prefix for this block configuration is:
+    # pattern-ingester.client
+    [grpc_client_config: <grpc_client>]
+
+  # How many flushes can happen concurrently from each stream.
+  # CLI flag: -pattern-ingester.concurrent-flushes
+  [concurrent_flushes: <int> | default = 32]
+
+  # How often should the ingester see if there are any blocks to flush. The
+  # first flush check is delayed by a random time up to 0.8x the flush check
+  # period. Additionally, there is +/- 1% jitter added to the interval.
+  # CLI flag: -pattern-ingester.flush-check-period
+  [flush_check_period: <duration> | default = 30s]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -3963,6 +4142,7 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 - `compactor.ring`
 - `distributor.ring`
 - `index-gateway.ring`
+- `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
 
@@ -4009,6 +4189,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 - `compactor.ring`
 - `distributor.ring`
 - `index-gateway.ring`
+- `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
 
@@ -4310,6 +4491,7 @@ The `grpc_client` block configures the gRPC client used to communicate between t
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`
 - `ingester.client`
+- `pattern-ingester.client`
 - `querier.frontend-client`
 - `query-scheduler.grpc-client-config`
 - `ruler.client`
