@@ -377,10 +377,17 @@ func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 }
 
 func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
+	if right.Or != nil && !(right.Ty == log.LineMatchEqual || right.Ty == log.LineMatchRegexp || right.Ty == log.LineMatchPattern) {
+		right.Or.IsOrChild = false
+		tmp := right.Or
+		right.Or = nil
+		right = newNestedLineFilterExpr(right, tmp)
+	}
+
 	// Before supporting `or` in linefilter, `right` will always be a leaf node (right.next == nil)
 	// After supporting `or` in linefilter, `right` may not be a leaf node (e.g: |= "a" or "b). Here "b".Left = "a")
 	// We traverse the tree recursively untile we make `right` leaf node.
-	// Consider the following expression. {app="loki"} != "test" != "foo" or "bar"
+	// Consider the following expression. {app="loki"} != "test" != "foo" or "bar or "car""
 	// First Creates following tree on the left and transformed into the one on the right.
 	//                                                                              ┌────────────┐
 	//               ┌────────────┐                                                 │   root     │
