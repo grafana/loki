@@ -1,4 +1,5 @@
 {
+    "bootstrap-sha": "d298093baa58fd31e1fe73544cea0408eb744710",
     "bump-minor-pre-major": true,
     "bump-patch-for-minor-pre-major": true,
     "include-component-in-tag": true,
