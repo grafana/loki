@@ -2903,7 +2903,7 @@ Setting this to an empty array disables admin groups.</p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsSpec">LimitsSpec</a>)
 </p>
 <div>
-<p>LimitsTemplateSpec defines the limits  applied at ingestion or query path.</p>
+<p>PerTenantLimitsTemplateSpec defines the limits  applied at ingestion or query path.</p>
 </div>
 <table>
 <thead>
