@@ -74,12 +74,12 @@ func (p *JumpHashClientPool) AddrForFingerprint(fp uint64) (string, error) {
 
 func (p *JumpHashClientPool) Start() {
 	ctx := context.Background()
-	services.StartAndAwaitRunning(ctx, p.Pool)
+	_ = services.StartAndAwaitRunning(ctx, p.Pool)
 }
 
 func (p *JumpHashClientPool) Stop() {
 	ctx := context.Background()
-	services.StopAndAwaitTerminated(ctx, p.Pool)
+	_ = services.StopAndAwaitTerminated(ctx, p.Pool)
 	close(p.done)
 }
 
