@@ -74,6 +74,7 @@ message LokiResponse {
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
+  repeated string warnings = 10 [(gogoproto.jsontag) = "warnings,omitempty"];
 }
 
 message LokiSeriesRequest {
@@ -158,6 +159,7 @@ message TopKSketchesResponse {
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
+  repeated string warnings = 3 [(gogoproto.jsontag) = "warnings,omitempty"];
 }
 
 message QuantileSketchResponse {
@@ -166,6 +168,7 @@ message QuantileSketchResponse {
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
+  repeated string warnings = 3 [(gogoproto.jsontag) = "warnings,omitempty"];
 }
 
 message ShardsResponse {

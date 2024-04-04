@@ -266,6 +266,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 		Data:       data,
 		Statistics: statResult,
 		Headers:    metadataCtx.Headers(),
+		Warnings:   metadataCtx.Warnings(),
 	}, err
 }
 

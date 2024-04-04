@@ -38,12 +38,16 @@ type QueryStatus string
 const (
 	QueryStatusSuccess = "success"
 	QueryStatusFail    = "fail"
+	// How much stack space to allocate for unescaping JSON strings; if a string longer
+	// than this needs to be escaped, it will result in a heap allocation
+	unescapeStackBufSize = 64
 )
 
 // QueryResponse represents the http json response to a Loki range and instant query
 type QueryResponse struct {
-	Status string            `json:"status"`
-	Data   QueryResponseData `json:"data"`
+	Status   string            `json:"status"`
+	Warnings []string          `json:"warnings,omitempty"`
+	Data     QueryResponseData `json:"data"`
 }
 
 func (q *QueryResponse) UnmarshalJSON(data []byte) error {
@@ -51,6 +55,17 @@ func (q *QueryResponse) UnmarshalJSON(data []byte) error {
 		switch string(key) {
 		case "status":
 			q.Status = string(value)
+		case "warnings":
+			var warnings []string
+			if _, err := jsonparser.ArrayEach(value, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
+				if dataType == jsonparser.String {
+					warnings = append(warnings, unescapeJSONString(value))
+				}
+			}); err != nil {
+				return err
+			}
+
+			q.Warnings = warnings
 		case "data":
 			var responseData QueryResponseData
 			if err := responseData.UnmarshalJSON(value); err != nil {
@@ -60,6 +75,16 @@ func (q *QueryResponse) UnmarshalJSON(data []byte) error {
 		}
 		return nil
 	})
+}
+
+func unescapeJSONString(b []byte) string {
+	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
+	bU, err := jsonparser.Unescape(b, stackbuf[:])
+	if err != nil {
+		return ""
+	}
+
+	return string(bU)
 }
 
 // PushRequest models a log stream push but is unmarshalled to proto push format.

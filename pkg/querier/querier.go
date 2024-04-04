@@ -917,7 +917,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 
 	g, ctx := errgroup.WithContext(ctx)
 	ingesterQueryInterval, _ := q.buildQueryIntervals(*req.Start, *req.End)
-	if !q.cfg.QueryStoreOnly {
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		g.Go(func() error {
 			var err error
 			splitReq := *req
@@ -932,6 +932,12 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 
 	if err := g.Wait(); err != nil {
 		return nil, err
+	}
+
+	if ingesterLabels == nil {
+		return &logproto.DetectedLabelsResponse{
+			DetectedLabels: []*logproto.DetectedLabel{},
+		}, nil
 	}
 
 	for label, values := range ingesterLabels.Labels {

@@ -355,7 +355,9 @@ pattern_ingester:
 # shards for performance.
 [compactor: <compactor>]
 
-# The limits_config block configures global and per-tenant limits in Loki.
+# The limits_config block configures global and per-tenant limits in Loki. The
+# values here can be overridden in the `overrides` section of the runtime_config
+# file
 [limits_config: <limits_config>]
 
 # The frontend_worker configures the worker - running within the Loki querier -
@@ -376,6 +378,11 @@ pattern_ingester:
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
 [runtime_config: <runtime_config>]
+
+# These are values which allow you to control aspects of Loki's operation, most
+# commonly used for controlling types of higher verbosity logging, the values
+# here can be overridden in the `configs` section of the `runtime_config` file.
+[operational_config: <operational_config>]
 
 # Configuration for tracing.
 [tracing: <tracing>]
@@ -2916,7 +2923,7 @@ retention:
 
 ### limits_config
 
-The `limits_config` block configures global and per-tenant limits in Loki.
+The `limits_config` block configures global and per-tenant limits in Loki. The values here can be overridden in the `overrides` section of the runtime_config file
 
 ```yaml
 # Whether the ingestion rate limit should be applied individually to each
@@ -3842,6 +3849,32 @@ Configuration for 'runtime config' module, responsible for reloading runtime con
 # at runtime. Runtime config files will be merged from left to right.
 # CLI flag: -runtime-config.file
 [file: <string> | default = ""]
+```
+
+### operational_config
+
+These are values which allow you to control aspects of Loki's operation, most commonly used for controlling types of higher verbosity logging, the values here can be overridden in the `configs` section of the `runtime_config` file.
+
+```yaml
+# Log every new stream created by a push request (very verbose, recommend to
+# enable via runtime config only).
+# CLI flag: -operation-config.log-stream-creation
+[log_stream_creation: <boolean> | default = false]
+
+# Log every push request (very verbose, recommend to enable via runtime config
+# only).
+# CLI flag: -operation-config.log-push-request
+[log_push_request: <boolean> | default = false]
+
+# Log every stream in a push request (very verbose, recommend to enable via
+# runtime config only).
+# CLI flag: -operation-config.log-push-request-streams
+[log_push_request_streams: <boolean> | default = false]
+
+# Log push errors with a rate limited logger, will show client push errors
+# without overly spamming logs.
+# CLI flag: -operation-config.limited-log-push-errors
+[limited_log_push_errors: <boolean> | default = true]
 ```
 
 ### tracing

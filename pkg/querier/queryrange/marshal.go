@@ -72,6 +72,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 					ResultType: loghttp.ResultTypeVector,
 					Result:     sampleStream,
 				},
+				Warnings: result.Warnings,
 			},
 			Statistics: result.Statistics,
 		}, nil
@@ -87,6 +88,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 					ResultType: loghttp.ResultTypeMatrix,
 					Result:     sampleStream,
 				},
+				Warnings: result.Warnings,
 			},
 			Statistics: result.Statistics,
 		}, nil
@@ -103,6 +105,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 					ResultType: loghttp.ResultTypeScalar,
 					Result:     sampleStream,
 				},
+				Warnings: result.Warnings,
 			},
 			Statistics: result.Statistics,
 		}, nil
@@ -115,15 +118,22 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 				Result:     data,
 			},
 			Status:     "success",
+			Warnings:   result.Warnings,
 			Statistics: result.Statistics,
 		}, nil
 	case sketch.TopKMatrix:
 		sk, err := data.ToProto()
-		return &TopKSketchesResponse{Response: sk}, err
+		return &TopKSketchesResponse{
+			Response: sk,
+			Warnings: result.Warnings,
+		}, err
 	case logql.ProbabilisticQuantileMatrix:
 		r := data.ToProto()
 		data.Release()
-		return &QuantileSketchResponse{Response: r}, nil
+		return &QuantileSketchResponse{
+			Response: r,
+			Warnings: result.Warnings,
+		}, nil
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %T", result.Data)
@@ -146,6 +156,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Statistics: r.Statistics,
 			Data:       streams,
 			Headers:    resp.GetHeaders(),
+			Warnings:   r.Warnings,
 		}, nil
 
 	case *LokiPromResponse:
@@ -157,12 +168,14 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 				Statistics: r.Statistics,
 				Data:       sampleStreamToVector(r.Response.Data.Result),
 				Headers:    resp.GetHeaders(),
+				Warnings:   r.Response.Warnings,
 			}, nil
 		}
 		return logqlmodel.Result{
 			Statistics: r.Statistics,
 			Data:       sampleStreamToMatrix(r.Response.Data.Result),
 			Headers:    resp.GetHeaders(),
+			Warnings:   r.Response.Warnings,
 		}, nil
 	case *TopKSketchesResponse:
 		matrix, err := sketch.TopKMatrixFromProto(r.Response)
@@ -171,8 +184,9 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 		}
 
 		return logqlmodel.Result{
-			Data:    matrix,
-			Headers: resp.GetHeaders(),
+			Data:     matrix,
+			Headers:  resp.GetHeaders(),
+			Warnings: r.Warnings,
 		}, nil
 	case *QuantileSketchResponse:
 		matrix, err := logql.ProbabilisticQuantileMatrixFromProto(r.Response)
@@ -180,8 +194,9 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			return logqlmodel.Result{}, fmt.Errorf("cannot decode quantile sketch: %w", err)
 		}
 		return logqlmodel.Result{
-			Data:    matrix,
-			Headers: resp.GetHeaders(),
+			Data:     matrix,
+			Headers:  resp.GetHeaders(),
+			Warnings: r.Warnings,
 		}, nil
 	default:
 		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)

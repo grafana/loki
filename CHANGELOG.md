@@ -90,6 +90,7 @@
 * [11121](https://github.com/grafana/loki/pull/11121) **periklis** Ensure all lifecycler cfgs ref a valid IPv6 addr and port combination
 * [10650](https://github.com/grafana/loki/pull/10650) **matthewpi** Ensure the frontend uses a valid IPv6 addr and port combination
 * [11665](https://github.com/grafana/loki/pull/11665) **salvacorts** Deprecate and flip `-legacy-read-mode` flag to `false` by default.
+* [12448](https://github.com/grafana/loki/pull/12448/files) **slim-bean** BREAKING CHANGE: refactor how we do defaults for runtime overrides
 
 #### Promtail
 
