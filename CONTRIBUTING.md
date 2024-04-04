@@ -20,9 +20,9 @@ LIDs must be created as a pull request using [this template](docs/sources/commun
    1. It uses a complete phrase or sentence. The PR title will appear in a changelog, so help other people understand what your change will be.
    1. It starts with an imperative verb. Example: Fix the latency between System A and System B.
    2. It uses Sentence case, not Title Case.
-   3. It has a clear description saying what it does and why. Your PR description will be present in the project' commit log, so be gentle to it.
-2. Your PR is well sync'ed with main
-3. Your PR documents upgrading steps under `docs/sources/setup/upgrade/_index.md` if it changes:
+2. It has a clear description saying what it does and why. Your PR description is a reviewers first impression of your changes.
+3. Your PR branch is sync'ed with main
+4. Your PR documents upgrading steps under `docs/sources/setup/upgrade/_index.md` if it changes:
    * Default configuration values
    * Metric names or label names
    * Changes existing log lines that may be used in dashboard or alerts. e.g: logs lines in any `metrics.go` files might be used in building dashboards or alerts.
