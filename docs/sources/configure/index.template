@@ -1,6 +1,6 @@
 ---
 title: Grafana Loki configuration parameters
-menuTitle: Configure
+menuTitle: Loki Configuration
 description: Configuration reference for the parameters used to configure Grafana Loki.
 aliases:
   - ./configuration # /docs/loki/<LOKI_VERSION>/configuration/
