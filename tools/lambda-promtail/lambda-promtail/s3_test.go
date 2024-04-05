@@ -60,6 +60,44 @@ func Test_getLabels(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "s3_pega",
+			args: args{
+				record: events.S3EventRecord{
+					AWSRegion: "eu-center-2",
+					S3: events.S3Entity{
+						Bucket: events.S3Bucket{
+							Name: "dvb-pegaplatformlogging",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
+						},
+						Object: events.S3Object{
+							Key: "logs/2023/12/05/12/pe-prod-ROOT-PEGACLOUD-VBANK-CR44859-dvb-eu-central-xXjRtMibLO5s-1-2023-12-05-12-28-22-f2eb7d31-67c5-482a-b88f-8cbc148d75e7",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				/* 				"account_id":    "123456789012",
+				   				"bucket":        "elb_logs_test",
+				   				"bucket_owner":  "test",
+				   				"bucket_region": "us-east-1",
+				   				"day":           "24",
+				   				"key":           "my-bucket/AWSLogs/123456789012/elasticloadbalancing/us-east-1/2022/01/24/123456789012_elasticloadbalancing_us-east-1_app.my-loadbalancer.b13ea9d19f16d015_20220124T0000Z_0.0.0.0_2et2e1mx.log.gz",
+				   				"month":         "01",
+				   				"region":        "us-east-1",
+				   				"lb_type":       LB_ALB_TYPE,
+				   				"src":           "my-loadbalancer", */
+				"bucket_region": "eu-center-2",
+				"bucket_owner":  "test",
+				"bucket":        "dvb-pegaplatformlogging",
+				"type":          PEGA_LOG_TYPE,
+				"key":           "logs/2023/12/05/12/pe-prod-ROOT-PEGACLOUD-VBANK-CR44859-dvb-eu-central-xXjRtMibLO5s-1-2023-12-05-12-28-22-f2eb7d31-67c5-482a-b88f-8cbc148d75e7",
+				//"year": "2022",
+			},
+			wantErr: false,
+		},
+		{
 			name: "s3_nlb",
 			args: args{
 				record: events.S3EventRecord{
