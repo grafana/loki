@@ -37,6 +37,7 @@ func (w *specWriter) writeConfigBlock(b *parse.ConfigBlock, indent int) {
 	}
 }
 
+// nolint:goconst
 func (w *specWriter) writeConfigEntry(e *parse.ConfigEntry, indent int) {
 	if e.Kind == parse.KindBlock {
 		// If the block is a root block it will have its dedicated section in the doc,

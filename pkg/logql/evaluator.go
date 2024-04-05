@@ -698,9 +698,8 @@ func matchingSignature(sample promql.Sample, opts *syntax.BinOpOptions) uint64 {
 		return sample.Metric.Hash()
 	} else if opts.VectorMatching.On {
 		return labels.NewBuilder(sample.Metric).Keep(opts.VectorMatching.MatchingLabels...).Labels().Hash()
-	} else {
-		return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels().Hash()
 	}
+	return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels().Hash()
 }
 
 func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) (promql.Vector, error) {
