@@ -967,8 +967,8 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.scheduler-worker-concurrency
 [scheduler_worker_concurrency: <int> | default = 5]
 
-# The grpc_client block configures the gRPC client used to communicate between
-# two Loki components.
+# The grpc_client block configures the gRPC client used to communicate between a
+# client and server component in Loki.
 # The CLI flags prefix for this block configuration is:
 # frontend.grpc-client-config
 [grpc_client_config: <grpc_client>]
@@ -1016,7 +1016,8 @@ The `query_range` block configures the query splitting and caching in the Loki q
 [align_queries_with_step: <boolean> | default = false]
 
 results_cache:
-  # The cache block configures the cache backend.
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
   # The CLI flags prefix for this block configuration is: frontend
   [cache: <cache_config>]
 
@@ -1051,7 +1052,8 @@ results_cache:
 # If a cache config is not specified and cache_index_stats_results is true, the
 # config for the results cache is used.
 index_stats_results_cache:
-  # The cache block configures the cache backend.
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
   # The CLI flags prefix for this block configuration is:
   # frontend.index-stats-results-cache
   [cache: <cache_config>]
@@ -1068,7 +1070,8 @@ index_stats_results_cache:
 # If a cache config is not specified and cache_volume_results is true, the
 # config for the results cache is used.
 volume_results_cache:
-  # The cache block configures the cache backend.
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
   # The CLI flags prefix for this block configuration is:
   # frontend.volume-results-cache
   [cache: <cache_config>]
@@ -1085,7 +1088,8 @@ volume_results_cache:
 # If a cache config is not specified and cache_instant_metric_results is true,
 # the config for the results cache is used.
 instant_metric_results_cache:
-  # The cache block configures the cache backend.
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
   # The CLI flags prefix for this block configuration is:
   # frontend.instant-metric-results-cache
   [cache: <cache_config>]
@@ -1107,7 +1111,8 @@ instant_metric_results_cache:
 # If series_results_cache is not configured and cache_series_results is true,
 # the config for the results cache is used.
 series_results_cache:
-  # The cache block configures the cache backend.
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
   # The CLI flags prefix for this block configuration is:
   # frontend.series-results-cache
   [cache: <cache_config>]
@@ -1124,7 +1129,8 @@ series_results_cache:
 # If label_results_cache is not configured and cache_label_results is true, the
 # config for the results cache is used.
 label_results_cache:
-  # The cache block configures the cache backend.
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
   # The CLI flags prefix for this block configuration is:
   # frontend.label-results-cache
   [cache: <cache_config>]
@@ -1151,8 +1157,8 @@ The `ruler` block configures the Loki ruler.
 # Labels to add to all alerts.
 [external_labels: <list of Labels>]
 
-# The grpc_client block configures the gRPC client used to communicate between
-# two Loki components.
+# The grpc_client block configures the gRPC client used to communicate between a
+# client and server component in Loki.
 # The CLI flags prefix for this block configuration is: ruler.client
 [ruler_client: <grpc_client>]
 
@@ -2018,7 +2024,7 @@ bigtable:
   [instance: <string> | default = ""]
 
   # The grpc_client block configures the gRPC client used to communicate between
-  # two Loki components.
+  # a client and server component in Loki.
   # The CLI flags prefix for this block configuration is: bigtable
   [grpc_client_config: <grpc_client>]
 
@@ -2263,7 +2269,8 @@ congestion_control:
 # CLI flag: -store.object-prefix
 [object_prefix: <string> | default = ""]
 
-# The cache block configures the cache backend.
+# The cache_config block configures the cache backend for a specific Loki
+# component.
 # The CLI flags prefix for this block configuration is: store.index-cache-read
 [index_queries_cache_config: <cache_config>]
 
@@ -2308,7 +2315,7 @@ boltdb_shipper:
 
   index_gateway_client:
     # The grpc_client block configures the gRPC client used to communicate
-    # between two Loki components.
+    # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
     # boltdb.shipper.index-gateway-client.grpc
     [grpc_client_config: <grpc_client>]
@@ -2363,7 +2370,7 @@ tsdb_shipper:
 
   index_gateway_client:
     # The grpc_client block configures the gRPC client used to communicate
-    # between two Loki components.
+    # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
     # tsdb.shipper.index-gateway-client.grpc
     [grpc_client_config: <grpc_client>]
@@ -2421,7 +2428,8 @@ bloom_shipper:
     # CLI flag: -bloom.blocks-cache.ttl
     [ttl: <duration> | default = 24h]
 
-  # The cache block configures the cache backend.
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
   # The CLI flags prefix for this block configuration is: bloom.metas-cache
   [metas_cache: <cache_config>]
 ```
@@ -2431,11 +2439,13 @@ bloom_shipper:
 The `chunk_store_config` block configures how chunks will be cached and how long to wait before saving them to the backing store.
 
 ```yaml
-# The cache block configures the cache backend.
+# The cache_config block configures the cache backend for a specific Loki
+# component.
 # The CLI flags prefix for this block configuration is: store.chunks-cache
 [chunk_cache_config: <cache_config>]
 
-# The cache block configures the cache backend.
+# The cache_config block configures the cache backend for a specific Loki
+# component.
 # The CLI flags prefix for this block configuration is: store.chunks-cache-l2
 [chunk_cache_config_l2: <cache_config>]
 
@@ -2807,13 +2817,14 @@ client:
     [health_check_timeout: <duration> | default = 1s]
 
   # The grpc_client block configures the gRPC client used to communicate between
-  # two Loki components.
+  # a client and server component in Loki.
   # The CLI flags prefix for this block configuration is:
   # bloom-gateway-client.grpc
   [grpc_client_config: <grpc_client>]
 
   results_cache:
-    # The cache block configures the cache backend.
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
     # The CLI flags prefix for this block configuration is:
     # bloom-gateway-client.cache
     [cache: <cache_config>]
@@ -3425,8 +3436,8 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 # CLI flag: -querier.id
 [id: <string> | default = ""]
 
-# The grpc_client block configures the gRPC client used to communicate between
-# two Loki components.
+# The grpc_client block configures the gRPC client used to communicate between a
+# client and server component in Loki.
 # The CLI flags prefix for this block configuration is: querier.frontend-client
 [grpc_client_config: <grpc_client>]
 ```
@@ -4402,7 +4413,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 
 ### grpc_client
 
-The `grpc_client` block configures the gRPC client used to communicate between two Loki components. The supported CLI flags `<prefix>` used to reference this configuration block are:
+The `grpc_client` block configures the gRPC client used to communicate between a client and server component in Loki. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
 - `bloom-gateway-client.grpc`
@@ -4620,7 +4631,7 @@ The TLS configuration.
 
 ### cache_config
 
-The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
+The `cache_config` block configures the cache backend for a specific Loki component. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bloom-gateway-client.cache`
 - `bloom.metas-cache`

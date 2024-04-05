@@ -197,7 +197,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 		{
 			Name:       "grpc_client",
 			StructType: []reflect.Type{reflect.TypeOf(grpcclient.Config{})},
-			Desc:       "The grpc_client block configures the gRPC client used to communicate between two Loki components.",
+			Desc:       "The grpc_client block configures the gRPC client used to communicate between a client and server component in Loki.",
 		},
 		// TLS config
 		{
@@ -209,7 +209,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 		{
 			Name:       "cache_config",
 			StructType: []reflect.Type{reflect.TypeOf(cache.Config{})},
-			Desc:       "The cache block configures the cache backend.",
+			Desc:       "The cache_config block configures the cache backend for a specific Loki component.",
 		},
 		// Schema periodic config
 		{
