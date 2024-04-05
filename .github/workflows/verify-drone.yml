@@ -10,18 +10,18 @@ jobs:
       continue-on-error: true
       id: changed-files
       run: |
-            echo "changed_files=$(git diff --name-only .drone/ | xargs)" >> $GITHUB_OUTPUT
-            git diff | grep +hmac
+            echo "changed_files=$(git diff --name-only main --  .drone/ | xargs)" >> $GITHUB_OUTPUT
+            git diff main .drone/ | grep "+hmac "
             echo "sha_updated=$?" >> $GITHUB_OUTPUT
     - name: Check that drone was updated properly
       if: always()
       run: |
           jsonnetChanged=false
           yamlChanged=false
+            echo "sha updated? ${{ steps.changed-files.outputs.sha_updated }}"
 
           # check whether the drone jsonnet and yaml files were updated
           for file in ${{ steps.changed-files.outputs.changed_files }}; do
-              echo "$file was changed"
             if [ "$file" == ".drone/drone.jsonnet" ]; then
               echo "$file was changed"
               jsonnetChanged=true
