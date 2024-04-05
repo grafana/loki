@@ -340,13 +340,14 @@ pattern_ingester:
 # object store.
 [index_gateway: <index_gateway>]
 
-# The bloom_compactor block configures the Loki bloom compactor server,
-# responsible for compacting stream indexes into bloom filters and merging them
-# as bloom blocks
+# Experimental: The bloom_compactor block configures the Loki bloom compactor
+# server, responsible for compacting stream indexes into bloom filters and
+# merging them as bloom blocks.
 [bloom_compactor: <bloom_compactor>]
 
-# The bloom_gateway block configures the Loki bloom gateway server, responsible
-# for serving queries for filtering chunks based on filter expressions.
+# Experimental: The bloom_gateway block configures the Loki bloom gateway
+# server, responsible for serving queries for filtering chunks based on filter
+# expressions.
 [bloom_gateway: <bloom_gateway>]
 
 # The storage_config block configures one of many possible stores for both the
@@ -1981,74 +1982,6 @@ ring:
   [instance_enable_ipv6: <boolean> | default = false]
 ```
 
-### bloom_gateway
-
-The `bloom_gateway` block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.
-
-```yaml
-# Flag to enable or disable the bloom gateway component globally.
-# CLI flag: -bloom-gateway.enabled
-[enabled: <boolean> | default = false]
-
-client:
-  # Configures the behavior of the connection pool.
-  pool_config:
-    # How frequently to clean up clients for servers that have gone away or are
-    # unhealthy.
-    # CLI flag: -bloom-gateway-client.pool.check-interval
-    [check_interval: <duration> | default = 10s]
-
-    # Run a health check on each server during periodic cleanup.
-    # CLI flag: -bloom-gateway-client.pool.enable-health-check
-    [enable_health_check: <boolean> | default = true]
-
-    # Timeout for the health check if health check is enabled.
-    # CLI flag: -bloom-gateway-client.pool.health-check-timeout
-    [health_check_timeout: <duration> | default = 1s]
-
-  # The grpc_client block configures the gRPC client used to communicate between
-  # two Loki components.
-  # The CLI flags prefix for this block configuration is:
-  # bloom-gateway-client.grpc
-  [grpc_client_config: <grpc_client>]
-
-  results_cache:
-    # The cache block configures the cache backend.
-    # The CLI flags prefix for this block configuration is:
-    # bloom-gateway-client.cache
-    [cache: <cache_config>]
-
-    # Use compression in cache. The default is an empty value '', which disables
-    # compression. Supported values are: 'snappy' and ''.
-    # CLI flag: -bloom-gateway-client.cache.compression
-    [compression: <string> | default = ""]
-
-  # Flag to control whether to cache bloom gateway client requests/responses.
-  # CLI flag: -bloom-gateway-client.cache_results
-  [cache_results: <boolean> | default = false]
-
-  # Comma separated addresses list in DNS Service Discovery format:
-  # https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes
-  # CLI flag: -bloom-gateway-client.addresses
-  [addresses: <string> | default = ""]
-
-# Number of workers to use for filtering chunks concurrently.
-# CLI flag: -bloom-gateway.worker-concurrency
-[worker_concurrency: <int> | default = 4]
-
-# Number of blocks processed concurrently on a single worker.
-# CLI flag: -bloom-gateway.block-query-concurrency
-[block_query_concurrency: <int> | default = 4]
-
-# Maximum number of outstanding tasks per tenant.
-# CLI flag: -bloom-gateway.max-outstanding-per-tenant
-[max_outstanding_per_tenant: <int> | default = 1024]
-
-# How many tasks are multiplexed at once.
-# CLI flag: -bloom-gateway.num-multiplex-tasks
-[num_multiplex_tasks: <int> | default = 512]
-```
-
 ### storage_config
 
 The `storage_config` block configures one of many possible stores for both the index and chunks. Which configuration to be picked should be defined in schema_config block.
@@ -2453,8 +2386,8 @@ tsdb_shipper:
 
   [ingesterdbretainperiod: <duration>]
 
-# Configures the bloom shipper component, which contains the store abstraction
-# to fetch bloom filters from and put them to object storage.
+# Experimental: Configures the bloom shipper component, which contains the store
+# abstraction to fetch bloom filters from and put them to object storage.
 bloom_shipper:
   # Working directory to store downloaded bloom blocks. Supports multiple
   # directories, separated by comma.
@@ -2701,7 +2634,7 @@ compactor_ring:
 
 ### bloom_compactor
 
-The `bloom_compactor` block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks
+Experimental: The `bloom_compactor` block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks.
 
 ```yaml
 # Defines the ring to be used by the bloom-compactor servers. In case this isn't
@@ -2845,6 +2778,74 @@ retention:
   # Max lookback days for retention.
   # CLI flag: -bloom-compactor.retention.max-lookback-days
   [max_lookback_days: <int> | default = 365]
+```
+
+### bloom_gateway
+
+Experimental: The `bloom_gateway` block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.
+
+```yaml
+# Flag to enable or disable the bloom gateway component globally.
+# CLI flag: -bloom-gateway.enabled
+[enabled: <boolean> | default = false]
+
+client:
+  # Configures the behavior of the connection pool.
+  pool_config:
+    # How frequently to clean up clients for servers that have gone away or are
+    # unhealthy.
+    # CLI flag: -bloom-gateway-client.pool.check-interval
+    [check_interval: <duration> | default = 10s]
+
+    # Run a health check on each server during periodic cleanup.
+    # CLI flag: -bloom-gateway-client.pool.enable-health-check
+    [enable_health_check: <boolean> | default = true]
+
+    # Timeout for the health check if health check is enabled.
+    # CLI flag: -bloom-gateway-client.pool.health-check-timeout
+    [health_check_timeout: <duration> | default = 1s]
+
+  # The grpc_client block configures the gRPC client used to communicate between
+  # two Loki components.
+  # The CLI flags prefix for this block configuration is:
+  # bloom-gateway-client.grpc
+  [grpc_client_config: <grpc_client>]
+
+  results_cache:
+    # The cache block configures the cache backend.
+    # The CLI flags prefix for this block configuration is:
+    # bloom-gateway-client.cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -bloom-gateway-client.cache.compression
+    [compression: <string> | default = ""]
+
+  # Flag to control whether to cache bloom gateway client requests/responses.
+  # CLI flag: -bloom-gateway-client.cache_results
+  [cache_results: <boolean> | default = false]
+
+  # Comma separated addresses list in DNS Service Discovery format:
+  # https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes
+  # CLI flag: -bloom-gateway-client.addresses
+  [addresses: <string> | default = ""]
+
+# Number of workers to use for filtering chunks concurrently.
+# CLI flag: -bloom-gateway.worker-concurrency
+[worker_concurrency: <int> | default = 4]
+
+# Number of blocks processed concurrently on a single worker.
+# CLI flag: -bloom-gateway.block-query-concurrency
+[block_query_concurrency: <int> | default = 4]
+
+# Maximum number of outstanding tasks per tenant.
+# CLI flag: -bloom-gateway.max-outstanding-per-tenant
+[max_outstanding_per_tenant: <int> | default = 1024]
+
+# How many tasks are multiplexed at once.
+# CLI flag: -bloom-gateway.num-multiplex-tasks
+[num_multiplex_tasks: <int> | default = 512]
 ```
 
 ### limits_config
