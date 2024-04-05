@@ -269,6 +269,9 @@ func (c *Config) Validate() error {
 	if err := c.BloomCompactor.Validate(); err != nil {
 		return errors.Wrap(err, "invalid bloom_compactor config")
 	}
+	if err := c.BloomGateway.Validate(); err != nil {
+		return errors.Wrap(err, "invalid bloom_gateway config")
+	}
 
 	if err := c.Pattern.Validate(); err != nil {
 		return errors.Wrap(err, "invalid pattern_ingester config")

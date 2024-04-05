@@ -34,6 +34,13 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Client.RegisterFlags(f)
 }
 
+func (cfg *Config) Validate() error {
+	if err := cfg.Client.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 type Limits interface {
 	CacheLimits
 	BloomGatewayShardSize(tenantID string) int
