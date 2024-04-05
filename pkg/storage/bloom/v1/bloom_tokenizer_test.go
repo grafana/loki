@@ -82,13 +82,13 @@ func TestSetLineTokenizer(t *testing.T) {
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 
 	// Validate defaults
-	require.Equal(t, bt.lineTokenizer.N, DefaultNGramLength)
-	require.Equal(t, bt.lineTokenizer.Skip, DefaultNGramSkip)
+	require.Equal(t, bt.lineTokenizer.N(), DefaultNGramLength)
+	require.Equal(t, bt.lineTokenizer.SkipFactor(), DefaultNGramSkip)
 
 	// Set new tokenizer, and validate against that
 	bt.lineTokenizer = NewNGramTokenizer(6, 7)
-	require.Equal(t, bt.lineTokenizer.N, 6)
-	require.Equal(t, bt.lineTokenizer.Skip, 7)
+	require.Equal(t, bt.lineTokenizer.N(), 6)
+	require.Equal(t, bt.lineTokenizer.SkipFactor(), 7)
 }
 
 func TestTokenizerPopulate(t *testing.T) {

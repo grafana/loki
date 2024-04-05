@@ -70,6 +70,7 @@ func ExtractTestableLineFilters(expr syntax.Expr) []syntax.LineFilterExpr {
 // Use ExtractTestableLineFilters to extract testable line filters from an expression.
 // TODO(owen-d): limits the number of bloom lookups run.
 // An arbitrarily high number can overconsume cpu and is a DoS vector.
+// TODO(owen-d): use for loop not recursion to protect callstack
 func FiltersToBloomTest(b NGramBuilder, filters ...syntax.LineFilterExpr) BloomTest {
 	tests := make(BloomTests, 0, len(filters))
 	for _, f := range filters {
