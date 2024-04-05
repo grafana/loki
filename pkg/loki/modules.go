@@ -1451,11 +1451,9 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 	if t.Cfg.BloomGateway.Enabled {
 		bloomGatewayClient, err := bloomgateway.NewClient(
 			t.Cfg.BloomGateway.Client,
-			t.bloomGatewayRingManager.Ring,
 			t.Overrides,
 			prometheus.DefaultRegisterer,
 			logger,
-			t.Cfg.MetricsNamespace,
 			t.cacheGenerationLoader,
 			t.Cfg.CompactorConfig.RetentionEnabled,
 		)
