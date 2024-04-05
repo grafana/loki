@@ -1,4 +1,4 @@
-package cache_test
+package jumphash
 
 import (
 	"fmt"
@@ -8,8 +8,6 @@ import (
 	"github.com/facette/natsort"
 	"github.com/grafana/gomemcache/memcache"
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 func TestNatSort(t *testing.T) {
@@ -58,7 +56,7 @@ var mockTCPResolver = func(network, address string) (*net.TCPAddr, error) {
 }
 
 func TestMemcachedJumpHashSelector_PickSever(t *testing.T) {
-	s := cache.NewMemcachedJumpHashSelector(
+	s := NewSelector(
 		mockUnixResolver,
 		mockTCPResolver,
 	)
@@ -85,7 +83,7 @@ func TestMemcachedJumpHashSelector_PickSever(t *testing.T) {
 }
 
 func TestMemcachedJumpHashSelector_PickSever_ErrNoServers(t *testing.T) {
-	s := cache.NewMemcachedJumpHashSelector(
+	s := NewSelector(
 		mockUnixResolver,
 		mockTCPResolver,
 	)

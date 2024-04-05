@@ -380,6 +380,12 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 		},
 	}
 
+	// Disable some caches otherwise we'll get errors if we don't configure them
+	cfg.QueryRange.CacheLabelResults = false
+	cfg.QueryRange.CacheSeriesResults = false
+	cfg.QueryRange.CacheIndexStatsResults = false
+	cfg.QueryRange.CacheVolumeResults = false
+
 	cfg.SchemaConfig = config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
@@ -404,7 +410,6 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.IndexGateway.Mode = indexgateway.SimpleMode
 	cfg.IndexGateway.Ring.InstanceAddr = localhost
 	cfg.BloomCompactor.Ring.InstanceAddr = localhost
-	cfg.BloomGateway.Ring.InstanceAddr = localhost
 	cfg.CompactorConfig.CompactorRing.InstanceAddr = localhost
 	cfg.CompactorConfig.WorkingDirectory = filepath.Join(dir, "compactor")
 

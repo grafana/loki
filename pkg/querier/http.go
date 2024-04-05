@@ -392,6 +392,19 @@ func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.De
 	return resp, nil
 }
 
+func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	resp, err := q.querier.Patterns(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil { // Some stores don't implement this
+		return &logproto.QueryPatternsResponse{
+			Series: []*logproto.PatternSeries{},
+		}, nil
+	}
+	return resp, nil
+}
+
 func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.Expr, limit uint32) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
