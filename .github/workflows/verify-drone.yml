@@ -6,6 +6,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Get changed files
+      # we need continue on error because the git diff | grep pipe can return a non-zero error code if no result is found
       continue-on-error: true
       id: changed-files
       run: |
@@ -17,7 +18,8 @@ jobs:
       run: |
           jsonnetChanged=false
           yamlChanged=false
-          echo "test ${{ steps.changed-files.outputs.sha_updated }}"
+
+          # check whether the drone jsonnet and yaml files were updated
           for file in ${{ steps.changed-files.outputs.changed_files }}; do
               echo "$file was changed"
             if [ "$file" == ".drone/drone.jsonnet" ]; then
@@ -30,20 +32,21 @@ jobs:
             fi
           done
 
+          # if niether file was changed we're okay
           if { [ "$yamlChanged" = false ] && [ "$jsonnetChanged" = false ]; } then
             echo "neither file was changed"
             exit 0
           fi
+          # if both files were changed then we should ensure that the sha in the yaml was also updated
           if { [ "$yamlChanged" = true ] && [ "$jsonnetChanged" = true ]; } then
-            echo "sha_updated value ${{ steps.changed-files.outputs.sha_updated }}"
             # annoyingly, the return value is a string
             if [ "${{ steps.changed-files.outputs.sha_updated }}" = "0" ]; then
               echo "both files were changed and sha was updated"
               exit 0
             fi
-            echo "sha was not updated"
+            echo "both drone yaml and jsonnet were updated but the sha in the yaml file was not updated"
             exit 1
           fi
-          # some combo of files was not updated correctly
-          echo "both files were not updated"
+          # only one of the two files was updated
+          echo "if one of the drone files (yaml or jsonnet) was changed then bothy files must be updated"
           exit 1
