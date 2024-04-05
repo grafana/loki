@@ -66,7 +66,7 @@ func Test_getLabels(t *testing.T) {
 					AWSRegion: "eu-center-2",
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
-							Name: "dvb-pegaplatformlogging",
+							Name: "pegaploggingg",
 							OwnerIdentity: events.S3UserIdentity{
 								PrincipalID: "test",
 							},
@@ -90,7 +90,7 @@ func Test_getLabels(t *testing.T) {
 				   				"src":           "my-loadbalancer", */
 				"bucket_region": "eu-center-2",
 				"bucket_owner":  "test",
-				"bucket":        "dvb-pegaplatformlogging",
+				"bucket":        "pegaplogging",
 				"type":          PEGA_LOG_TYPE,
 				"key":           "logs/2023/12/05/12/pe-prod-ROOT-PEGACLOUD-VBANK-CR44859-dvb-eu-central-xXjRtMibLO5s-1-2023-12-05-12-28-22-f2eb7d31-67c5-482a-b88f-8cbc148d75e7",
 				//"year": "2022",
