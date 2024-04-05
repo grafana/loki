@@ -2,12 +2,6 @@
 
 ## Versions
 
-### 0.33.1-golangci.1.51.2
-
-- Update to Go version 1.21.9 but restore golangci-lint to v1.51.2
-
-* This release should only be used for the release branches such as 2.9.x and 2.8.x. *
-
 ### 0.33.1
 
 - Update to Go 1.21.9
@@ -31,7 +25,7 @@
 
 * This release should only be used for the release branches such as 2.8.x and 2.7.x. *
 The current release of the build image uses golangci-lint to v1.53.2 which makes
-a lot of linter checks mandatory requiring a huge amount of fixes.
+a lot of linter checks mandatory causing a huge amount of fixes 
 See https://github.com/grafana/loki/pull/9601. To avoid the integration problems this
 build image will be used in those branches.
 
