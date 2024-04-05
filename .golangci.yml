@@ -88,5 +88,10 @@ issues:
     - Error return value of .*log\.Logger\)\.Log\x60 is not checked
     - Error return value of .*.Log.* is not checked
     - Error return value of `` is not checked
-
+  exclude-rules:
+    - path: pkg/scheduler/scheduler.go
+      text: 'SA1019: msg.GetHttpRequest is deprecated: Do not use'
+    - path: '(.+)_test\.go'
+      linters:
+        - goconst
   fix: true
