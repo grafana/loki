@@ -452,6 +452,7 @@ message DetectedFieldsRequest {
 
 message DetectedFieldsResponse {
   repeated DetectedField fields = 1;
+  uint32 limit = 2;
 }
 
 message DetectedField {

@@ -1013,7 +1013,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			},
 		},
 		{
-			"loki legacy", "/api/promt/query",
+			"loki legacy", "/api/prompt/query",
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
@@ -1620,6 +1620,104 @@ func Test_codec_MergeResponse(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
+	t.Run("merges the responses, taking the highest cardinality", func(t *testing.T) {
+		responses := []queryrangebase.Response{
+			&DetectedFieldsResponse{
+				Response: &logproto.DetectedFieldsResponse{
+					Fields: []*logproto.DetectedField{{
+						Label:       "foo",
+						Type:        logproto.DetectedFieldString,
+						Cardinality: 1,
+					}},
+					Limit: 2,
+				},
+			},
+			&DetectedFieldsResponse{
+				Response: &logproto.DetectedFieldsResponse{
+					Fields: []*logproto.DetectedField{{
+						Label:       "foo",
+						Type:        logproto.DetectedFieldString,
+						Cardinality: 3,
+					}},
+					Limit: 2,
+				},
+			},
+		}
+
+		got, err := DefaultCodec.MergeResponse(responses...)
+		require.Nil(t, err)
+		response := got.(*DetectedFieldsResponse).Response
+		require.Equal(t, 1, len(response.Fields))
+
+		foo := response.Fields[0]
+		require.Equal(t, foo.Label, "foo")
+		require.Equal(t, foo.Type, logproto.DetectedFieldString)
+		require.Equal(t, foo.Cardinality, uint64(3))
+	})
+
+	t.Run("merges the responses, enforcing the limit", func(t *testing.T) {
+		responses := []queryrangebase.Response{
+			&DetectedFieldsResponse{
+				Response: &logproto.DetectedFieldsResponse{
+					Fields: []*logproto.DetectedField{
+						{
+							Label:       "foo",
+							Type:        logproto.DetectedFieldString,
+							Cardinality: 1,
+						},
+						{
+							Label:       "bar",
+							Type:        logproto.DetectedFieldInt,
+							Cardinality: 42,
+						},
+					},
+					Limit: 2,
+				},
+			},
+			&DetectedFieldsResponse{
+				Response: &logproto.DetectedFieldsResponse{
+					Fields: []*logproto.DetectedField{
+						{
+							Label:       "foo",
+							Type:        logproto.DetectedFieldString,
+							Cardinality: 27,
+						}, {
+							Label:       "baz",
+							Type:        logproto.DetectedFieldBoolean,
+							Cardinality: 3,
+						},
+					},
+					Limit: 2,
+				},
+			},
+		}
+
+		got, err := DefaultCodec.MergeResponse(responses...)
+		require.Nil(t, err)
+		response := got.(*DetectedFieldsResponse).Response
+		require.Equal(t, 2, len(response.Fields))
+
+		var foo *logproto.DetectedField
+		var baz *logproto.DetectedField
+		for _, f := range response.Fields {
+			if f.Label == "foo" {
+				foo = f
+			}
+			if f.Label == "baz" {
+				baz = f
+			}
+		}
+
+		require.Equal(t, foo.Label, "foo")
+		require.Equal(t, foo.Type, logproto.DetectedFieldString)
+		require.Equal(t, 27, int(foo.Cardinality))
+
+		require.Nil(t, baz)
+	})
+
 }
 
 type badResponse struct{}

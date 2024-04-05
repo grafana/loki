@@ -17,6 +17,7 @@ import (
 	"golang.org/x/exp/maps"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/storage/detected"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/grafana/dskit/httpgrpc"
@@ -1541,6 +1542,22 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Response: seriesvolume.Merge(resps, resp0.Response.Limit),
 			Headers:  headers,
 		}, nil
+	case *DetectedFieldsResponse:
+		resp0 := responses[0].(*DetectedFieldsResponse)
+		headers := resp0.Headers
+		limit := resp0.Response.Limit
+
+		fields := []*logproto.DetectedField{}
+		for _, r := range responses {
+			fields = append(fields, r.(*DetectedFieldsResponse).Response.Fields...)
+		}
+
+		return &DetectedFieldsResponse{
+			Response: &logproto.DetectedFieldsResponse{
+				Fields: detected.MergeFields(fields, limit),
+			},
+			Headers: headers,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unknown response type (%T) in merging responses", responses[0])
 	}
@@ -1735,8 +1752,12 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 		return &paramsStatsWrapper{
 			IndexStatsRequest: r,
 		}, nil
+	case *DetectedFieldsRequest:
+		return &paramsDetectedFieldsWrapper{
+			DetectedFieldsRequest: r,
+		}, nil
 	default:
-		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got (%T)", r)
+		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, *DetectedFieldsRequest, got (%T)", r)
 	}
 }
 
@@ -1901,6 +1922,47 @@ func (p paramsStatsWrapper) Direction() logproto.Direction {
 }
 func (p paramsStatsWrapper) Limit() uint32 { return 0 }
 func (p paramsStatsWrapper) Shards() []string {
+	return make([]string, 0)
+}
+
+type paramsDetectedFieldsWrapper struct {
+	*DetectedFieldsRequest
+}
+
+func (p paramsDetectedFieldsWrapper) QueryString() string {
+	return p.GetQuery()
+}
+
+func (p paramsDetectedFieldsWrapper) GetExpression() syntax.Expr {
+	expr, err := syntax.ParseExpr(p.GetQuery())
+	if err != nil {
+		return nil
+	}
+
+	return expr
+}
+
+func (p paramsDetectedFieldsWrapper) Start() time.Time {
+	return p.GetStartTs()
+}
+
+func (p paramsDetectedFieldsWrapper) End() time.Time {
+	return p.GetEndTs()
+}
+
+func (p paramsDetectedFieldsWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+
+func (p paramsDetectedFieldsWrapper) Interval() time.Duration {
+	return 0
+}
+
+func (p paramsDetectedFieldsWrapper) Direction() logproto.Direction {
+	return logproto.BACKWARD
+}
+func (p paramsDetectedFieldsWrapper) Limit() uint32 { return p.DetectedFieldsRequest.LineLimit }
+func (p paramsDetectedFieldsWrapper) Shards() []string {
 	return make([]string, 0)
 }
 
