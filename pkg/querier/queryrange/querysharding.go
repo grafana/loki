@@ -333,8 +333,6 @@ func (confs ShardingConfigs) ValidRange(start, end int64) (config.PeriodConfig, 
 		} else if end < int64(confs[i+1].From.Time) {
 			// The request is entirely scoped into this shard config
 			return conf, nil
-		} else {
-			continue
 		}
 	}
 
