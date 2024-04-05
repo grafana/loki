@@ -37,7 +37,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION ?= 0.33.0
+BUILD_IMAGE_VERSION ?= 0.33.1
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -802,6 +802,8 @@ check-format: format
 
 doc: ## Generates the config file documentation
 	go run ./tools/doc-generator $(DOC_FLAGS_TEMPLATE) > $(DOC_FLAGS)
+
+docs: doc
 
 check-doc: ## Check the documentation files are up to date
 check-doc: doc

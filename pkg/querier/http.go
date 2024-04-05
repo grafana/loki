@@ -382,8 +382,24 @@ func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.De
 		return nil, err
 	}
 	if resp == nil { // Some stores don't implement this
+		level.Debug(spanlogger.FromContext(ctx)).Log(
+			"msg", "queried store for detected fields that does not support it, no response from querier.DetectedFields",
+		)
 		return &logproto.DetectedFieldsResponse{
 			Fields: []*logproto.DetectedField{},
+		}, nil
+	}
+	return resp, nil
+}
+
+func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	resp, err := q.querier.Patterns(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil { // Some stores don't implement this
+		return &logproto.QueryPatternsResponse{
+			Series: []*logproto.PatternSeries{},
 		}, nil
 	}
 	return resp, nil

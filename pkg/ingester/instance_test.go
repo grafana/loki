@@ -1082,8 +1082,8 @@ func TestStreamShardingUsage(t *testing.T) {
 	tenantShardStreamsCfg := limiter.limits.ShardStreams(customTenant1)
 
 	t.Run("test default configuration", func(t *testing.T) {
-		require.Equal(t, false, defaultShardStreamsCfg.Enabled)
-		require.Equal(t, "3MB", defaultShardStreamsCfg.DesiredRate.String())
+		require.Equal(t, true, defaultShardStreamsCfg.Enabled)
+		require.Equal(t, "1536KB", defaultShardStreamsCfg.DesiredRate.String())
 		require.Equal(t, false, defaultShardStreamsCfg.LoggingEnabled)
 	})
 

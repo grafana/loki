@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	"github.com/go-kit/log/level"
@@ -92,7 +94,7 @@ type instance struct {
 	streams *streamsMap
 
 	index  *index.Multi
-	mapper *fpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
+	mapper *FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
 
 	instanceID string
 
@@ -173,7 +175,7 @@ func newInstance(
 		writeFailures: writeFailures,
 		schemaconfig:  &c,
 	}
-	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
+	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
 	return i, err
 }
 
@@ -381,7 +383,6 @@ func (i *instance) chunkFormatAt(at model.Time) (byte, chunkenc.HeadBlockFmt, er
 	}
 
 	return chunkFormat, headblock, nil
-
 }
 
 // getOrCreateStream returns the stream or creates it.
@@ -409,7 +410,7 @@ func (i *instance) removeStream(s *stream) {
 func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
 	var fp uint64
 	fp, i.buf = ls.HashWithoutLabels(i.buf, []string(nil)...)
-	return i.mapper.mapFP(model.Fingerprint(fp), ls)
+	return i.mapper.MapFP(model.Fingerprint(fp), ls)
 }
 
 // Return labels associated with given fingerprint. Used by fingerprint mapper.
@@ -581,6 +582,32 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	return &logproto.LabelResponse{
 		Values: labels.Strings(),
 	}, nil
+}
+
+type UniqueValues map[string]struct{}
+
+// LabelsWithValues returns the label names with all the unique values depending on the request
+func (i *instance) LabelsWithValues(ctx context.Context, startTime time.Time, matchers ...*labels.Matcher) (map[string]UniqueValues, error) {
+	// TODO (shantanu): Figure out how to get the label names from index directly when no matchers are given.
+
+	labelMap := make(map[string]UniqueValues)
+	err := i.forMatchingStreams(ctx, startTime, matchers, nil, func(s *stream) error {
+		for _, label := range s.labels {
+			v, exists := labelMap[label.Name]
+			if !exists {
+				v = make(map[string]struct{})
+			}
+			if label.Value != "" {
+				v[label.Value] = struct{}{}
+			}
+			labelMap[label.Name] = v
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return labelMap, nil
 }
 
 func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
@@ -953,6 +980,7 @@ type QuerierQueryServer interface {
 
 func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) error {
 	stats := stats.FromContext(ctx)
+	metadata := metadata.FromContext(ctx)
 
 	// send until the limit is reached.
 	for limit != 0 && !isDone(ctx) {
@@ -971,6 +999,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
+		batch.Warnings = metadata.Warnings()
 
 		if isDone(ctx) {
 			break
@@ -985,6 +1014,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		}
 
 		stats.Reset()
+		metadata.Reset()
 	}
 	return nil
 }
@@ -993,6 +1023,7 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 	sp := opentracing.SpanFromContext(ctx)
 
 	stats := stats.FromContext(ctx)
+	metadata := metadata.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
 		if err != nil {
@@ -1001,6 +1032,8 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
+		batch.Warnings = metadata.Warnings()
+
 		if isDone(ctx) {
 			break
 		}
@@ -1014,6 +1047,8 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		}
 
 		stats.Reset()
+		metadata.Reset()
+
 		if sp != nil {
 			sp.LogKV("event", "sent batch", "size", size)
 		}

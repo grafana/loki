@@ -8,6 +8,8 @@ import (
 	"hash"
 	"io"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
@@ -416,4 +418,89 @@ func findPeriod(configs []config.PeriodConfig, ts model.Time) (config.DayTime, e
 		}
 	}
 	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", ts)
+}
+
+type listOpResult struct {
+	ts       time.Time
+	objects  []client.StorageObject
+	prefixes []client.StorageCommonPrefix
+}
+
+type listOpCache map[string]listOpResult
+
+type cachedListOpObjectClient struct {
+	client.ObjectClient
+	cache         listOpCache
+	mtx           sync.RWMutex
+	ttl, interval time.Duration
+	done          chan struct{}
+}
+
+func newCachedListOpObjectClient(oc client.ObjectClient, ttl, interval time.Duration) *cachedListOpObjectClient {
+	client := &cachedListOpObjectClient{
+		ObjectClient: oc,
+		cache:        make(listOpCache),
+		done:         make(chan struct{}),
+		ttl:          ttl,
+		interval:     interval,
+	}
+
+	go func(c *cachedListOpObjectClient) {
+		ticker := time.NewTicker(c.interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-c.done:
+				return
+			case <-ticker.C:
+				c.mtx.Lock()
+				for k := range c.cache {
+					if time.Since(c.cache[k].ts) > c.ttl {
+						delete(c.cache, k)
+					}
+				}
+				c.mtx.Unlock()
+			}
+		}
+	}(client)
+
+	return client
+}
+
+func (c *cachedListOpObjectClient) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+	if delimiter != "" {
+		return nil, nil, fmt.Errorf("does not support LIST calls with delimiter: %s", delimiter)
+	}
+	c.mtx.RLock()
+	cached, found := c.cache[prefix]
+	c.mtx.RUnlock()
+	if found {
+		return cached.objects, cached.prefixes, nil
+	}
+
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	objects, prefixes, err := c.ObjectClient.List(ctx, prefix, delimiter)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	c.cache[prefix] = listOpResult{
+		ts:       time.Now(),
+		objects:  objects,
+		prefixes: prefixes,
+	}
+
+	return objects, prefixes, err
+}
+
+func (c *cachedListOpObjectClient) Stop() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	close(c.done)
+	c.cache = nil
+	c.ObjectClient.Stop()
 }

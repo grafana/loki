@@ -120,6 +120,14 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		return &queryrange.DetectedFieldsResponse{
 			Response: result,
 		}, nil
+	case *logproto.QueryPatternsRequest:
+		result, err := h.api.PatternsHandler(ctx, concrete)
+		if err != nil {
+			return nil, err
+		}
+		return &queryrange.QueryPatternsResponse{
+			Response: result,
+		}, nil
 	case *queryrange.DetectedLabelsRequest:
 		result, err := h.api.DetectedLabelsHandler(ctx, &concrete.DetectedLabelsRequest)
 		if err != nil {

@@ -38,6 +38,12 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+#### Removed the `default` section of the runtime overrides config file.
+
+This was introduced in 2.9 and likely not widely used.  This only affects you if you run Loki with a runtime config file AND you had populated the new `default` block added in 2.9.
+
+The `default` block was removed and instead a top level config now exists in the standard Loki config called `operational_config`, you can set default values here for runtime configs.
+
 #### Removed `shared_store` and `shared_store_key_prefix` from shipper configuration
 
 The following CLI flags and the corresponding YAML settings to configure shared store for TSDB and BoltDB shippers are now removed:
@@ -100,6 +106,15 @@ Going forward compactor will run compaction and retention on all the object stor
 
 `-compactor.delete-request-store` or its YAML setting should be explicitly configured when retention is enabled, this is required for storing delete requests.
 The path prefix under which the delete requests are stored is decided by `-compactor.delete-request-store.key-prefix`, it defaults to `index/`.
+
+#### Configuration `async_cache_write_back_concurrency` and `async_cache_write_back_buffer_size` have been removed
+
+These configurations were redundant with the `Background` configuration in the [cache-config]({{< relref "../../configure#cache_config" >}}).
+
+`async_cache_write_back_concurrency` can be set with `writeback_goroutines`
+`async_cache_write_back_buffer_size` can be set with `writeback_buffer`
+
+additionally the `Background` configuration also lest you set `writeback_size_limit` which can be used to set a maximum amount of memory to use for writeback objects vs a count of objects.
 
 #### Configuration `use_boltdb_shipper_as_backup` is removed
 
@@ -167,6 +182,26 @@ This new metric will provide a more clear signal that there is an issue with ing
 | `validation.max-label-names-per-series`                | 15          | 30          | - |
 | `legacy-read-mode`                                     | false       | true        | Deprecated. It will be removed in the next minor release. |
 {{% /responsive-table %}}
+
+#### Structured Metadata, Open Telemetry, Schemas and Indexes
+
+A flagship feature of Loki 3.0 is native support for the Open Telemetry Protocol (OTLP). This is made possible by a new feature in Loki called [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}), a place for metadata which doesn't belong in labels or log lines. OTel resources and attributes are often a great example of data which doesn't belong in the index nor in the log line.
+
+Structured Metadata is enabled by default in Loki 3.0, however, it requires your active schema be using both the `TSDB` index type AND the `v13` storage schema.  If you are not using both of these you have two options:
+  * Upgrade your index version and schema version before updating to 3.0, see [schema config upgrade]({{< relref "../../operations/storage/schema#changing-the-schema" >}}). 
+  * Disable Structured Metadata (and therefor OTLP support) and upgrade to 3.0 and perform the schema migration after. This can be done by setting `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false`.
+
+#### Automatic stream sharding is enabled by default
+
+Automatic stream sharding helps keep the write load of high volume streams balanced across ingesters and helps to avoid hot-spotting. Check out the [operations page](https://grafana.com/docs/loki/latest/operations/automatic-stream-sharding/) for more information
+
+#### More results caching is enabled by default
+
+The TSDB index type has support for caching results for 'stats' and 'volume' queries which are now enabled by default.
+
+'label' and 'series' requests can be cached now too and this is enabled by default.
+
+All of these are cached to the `results_cache` which is configured in the `query_range` config section.  By default, an in memory cache is used.
 
 #### Write dedupe cache is deprecated
 Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB]({{< relref "../../operations/storage/tsdb" >}}) and [boltdb-shipper]({{< relref "../../operations/storage/boltdb-shipper" >}})).

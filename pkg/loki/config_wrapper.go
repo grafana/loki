@@ -243,6 +243,21 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Ingester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
 	}
 
+	if mergeWithExisting {
+		r.Pattern.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.Pattern.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.Pattern.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.Pattern.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.Pattern.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.Pattern.LifecyclerConfig.ID = rc.InstanceID
+		r.Pattern.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.Pattern.LifecyclerConfig.Port = rc.InstancePort
+		r.Pattern.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.Pattern.LifecyclerConfig.Zone = rc.InstanceZone
+		r.Pattern.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.Pattern.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+	}
+
 	// Distributor
 	if mergeWithExisting || reflect.DeepEqual(r.Distributor.DistributorRing, defaults.Distributor.DistributorRing) {
 		r.Distributor.DistributorRing.HeartbeatTimeout = rc.HeartbeatTimeout
@@ -376,6 +391,13 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	}
 	cfg.BloomGateway.Ring.TokensFilePath = f
 
+	// Pattern
+	f, err = tokensFile(cfg, "pattern.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.Pattern.LifecyclerConfig.TokensFilePath = f
+
 	return nil
 }
 
@@ -411,7 +433,6 @@ func applyPathPrefixDefaults(r, defaults *ConfigWrapper) {
 		}
 		if len(r.StorageConfig.BloomShipperConfig.WorkingDirectory) == 1 &&
 			len(r.StorageConfig.BloomShipperConfig.WorkingDirectory) == len(defaults.StorageConfig.BloomShipperConfig.WorkingDirectory) &&
-
 			r.StorageConfig.BloomShipperConfig.WorkingDirectory[0] == defaults.StorageConfig.BloomShipperConfig.WorkingDirectory[0] {
 			_ = r.StorageConfig.BloomShipperConfig.WorkingDirectory.Set(fmt.Sprintf("%s/blooms", prefix))
 		}
@@ -430,6 +451,9 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 
 	if reflect.DeepEqual(cfg.Ingester.LifecyclerConfig.InfNames, defaults.Ingester.LifecyclerConfig.InfNames) {
 		cfg.Ingester.LifecyclerConfig.InfNames = append(cfg.Ingester.LifecyclerConfig.InfNames, loopbackIface)
+	}
+	if reflect.DeepEqual(cfg.Pattern.LifecyclerConfig.InfNames, defaults.Pattern.LifecyclerConfig.InfNames) {
+		cfg.Pattern.LifecyclerConfig.InfNames = append(cfg.Pattern.LifecyclerConfig.InfNames, loopbackIface)
 	}
 
 	if reflect.DeepEqual(cfg.Frontend.FrontendV2.InfNames, defaults.Frontend.FrontendV2.InfNames) {
@@ -475,6 +499,7 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 // (for example, use consul for the distributor), it seems harmless to take a guess at better defaults here.
 func applyMemberlistConfig(r *ConfigWrapper) {
 	r.Ingester.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
+	r.Pattern.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
 	r.Distributor.DistributorRing.KVStore.Store = memberlistStr
 	r.Ruler.Ring.KVStore.Store = memberlistStr
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
@@ -676,8 +701,12 @@ func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
 // for at least as long as the TTL on the index queries cache.
 func applyChunkRetain(cfg, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(cfg.StorageConfig.IndexQueriesCacheConfig, defaults.StorageConfig.IndexQueriesCacheConfig) {
-		// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
-		// buffer to make sure the chunks are there until the index entries expire.
-		cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
+		// Only apply this change if the active index period is for boltdb-shipper
+		p := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
+		if cfg.SchemaConfig.Configs[p].IndexType == config.BoltDBShipperType {
+			// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
+			// buffer to make sure the chunks are there until the index entries expire.
+			cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
+		}
 	}
 }

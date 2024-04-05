@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/gogo/status"
@@ -354,6 +356,45 @@ func (q *IngesterQuerier) Volume(ctx context.Context, _ string, from, through mo
 
 	merged := seriesvolume.Merge(casted, limit)
 	return merged, nil
+}
+
+func (q *IngesterQuerier) DetectedLabel(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
+	ingesterResponses, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
+		return client.GetDetectedLabels(ctx, req)
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	labelMap := make(map[string][]string)
+	for _, resp := range ingesterResponses {
+		thisIngester := resp.response.(*logproto.LabelToValuesResponse)
+
+		for label, thisIngesterValues := range thisIngester.Labels {
+			var combinedValues []string
+			allIngesterValues, isLabelPresent := labelMap[label]
+			if isLabelPresent {
+				combinedValues = append(allIngesterValues, thisIngesterValues.Values...)
+			} else {
+				combinedValues = thisIngesterValues.Values
+			}
+			labelMap[label] = combinedValues
+		}
+	}
+
+	// Dedupe all ingester values
+	mergedResult := make(map[string]*logproto.UniqueLabelValues)
+	for label, val := range labelMap {
+		slices.Sort(val)
+		uniqueValues := slices.Compact(val)
+
+		mergedResult[label] = &logproto.UniqueLabelValues{
+			Values: uniqueValues,
+		}
+	}
+
+	return &logproto.LabelToValuesResponse{Labels: mergedResult}, nil
 }
 
 func convertMatchersToString(matchers []*labels.Matcher) string {

@@ -22,8 +22,9 @@ import (
 	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/utils"
 
+	"github.com/grafana/loki/pkg/push"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/push"
 	lokiflag "github.com/grafana/loki/v3/pkg/util/flagext"
 )
 

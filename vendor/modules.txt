@@ -935,9 +935,9 @@ github.com/grafana/gomemcache/memcache
 # github.com/grafana/jsonparser v0.0.0-20240209175146-098958973a2d
 ## explicit; go 1.13
 github.com/grafana/jsonparser
-# github.com/grafana/loki/v3/pkg/push v0.0.0-20231124142027-e52380921608 => ./pkg/push
+# github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608 => ./pkg/push
 ## explicit; go 1.19
-github.com/grafana/loki/v3/pkg/push
+github.com/grafana/loki/pkg/push
 # github.com/grafana/pyroscope-go/godeltaprof v0.1.6
 ## explicit; go 1.16
 github.com/grafana/pyroscope-go/godeltaprof
@@ -1004,6 +1004,10 @@ github.com/hashicorp/go-version
 ## explicit; go 1.12
 github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
+# github.com/hashicorp/golang-lru/v2 v2.0.7
+## explicit; go 1.18
+github.com/hashicorp/golang-lru/v2/internal
+github.com/hashicorp/golang-lru/v2/simplelru
 # github.com/hashicorp/memberlist v0.5.0 => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
 ## explicit; go 1.12
 github.com/hashicorp/memberlist
@@ -1633,6 +1637,7 @@ golang.org/x/crypto/sha3
 # golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8
 ## explicit; go 1.20
 golang.org/x/exp/constraints
+golang.org/x/exp/maps
 golang.org/x/exp/slices
 # golang.org/x/mod v0.16.0
 ## explicit; go 1.18
@@ -2266,4 +2271,4 @@ sigs.k8s.io/yaml
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
 # github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
-# github.com/grafana/loki/v3/pkg/push => ./pkg/push
+# github.com/grafana/loki/pkg/push => ./pkg/push

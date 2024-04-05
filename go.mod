@@ -125,7 +125,8 @@ require (
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gogo/googleapis v1.4.0
 	github.com/grafana/jsonparser v0.0.0-20240209175146-098958973a2d
-	github.com/grafana/loki/v3/pkg/push v0.0.0-20231124142027-e52380921608
+	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 	github.com/prometheus/alertmanager v0.27.0
@@ -358,4 +359,4 @@ replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-
 // Insist on the optimised version of grafana/regexp
 replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
 
-replace github.com/grafana/loki/v3/pkg/push => ./pkg/push
+replace github.com/grafana/loki/pkg/push => ./pkg/push

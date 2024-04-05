@@ -32,6 +32,16 @@ service Querier {
   rpc GetVolume(VolumeRequest) returns (VolumeResponse) {}
 
   rpc GetDetectedFields(DetectedFieldsRequest) returns (DetectedFieldsResponse) {}
+
+  rpc GetDetectedLabels(DetectedLabelsRequest) returns (LabelToValuesResponse) {}
+}
+
+message LabelToValuesResponse {
+  map<string, UniqueLabelValues> labels = 1;
+}
+
+message UniqueLabelValues {
+  repeated string values = 1;
 }
 
 service StreamData {
@@ -98,10 +108,11 @@ message Delete {
 
 message QueryResponse {
   repeated StreamAdapter streams = 1 [
-    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/push.Stream",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/push.Stream",
     (gogoproto.nullable) = true
   ];
   stats.Ingester stats = 2 [(gogoproto.nullable) = false];
+  repeated string warnings = 3;
 }
 
 message SampleQueryResponse {
@@ -110,6 +121,7 @@ message SampleQueryResponse {
     (gogoproto.nullable) = true
   ];
   stats.Ingester stats = 2 [(gogoproto.nullable) = false];
+  repeated string warnings = 3;
 }
 
 enum Direction {
@@ -169,7 +181,7 @@ message TailRequest {
 }
 
 message TailResponse {
-  StreamAdapter stream = 1 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/push.Stream"];
+  StreamAdapter stream = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/push.Stream"];
   repeated DroppedStream droppedStreams = 2;
 }
 
@@ -426,13 +438,16 @@ message Volume {
 message DetectedFieldsRequest {
   google.protobuf.Timestamp start = 1 [
     (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = true
+    (gogoproto.nullable) = false
   ];
   google.protobuf.Timestamp end = 2 [
     (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = true
+    (gogoproto.nullable) = false
   ];
   string query = 3; // Naming this query instead of match because this should be with queryrangebase.Request interface
+  uint32 lineLimit = 4;
+  uint32 fieldLimit = 5;
+  int64 step = 6;
 }
 
 message DetectedFieldsResponse {
@@ -463,4 +478,5 @@ message DetectedLabelsResponse {
 
 message DetectedLabel {
   string label = 1;
+  uint64 cardinality = 2;
 }
