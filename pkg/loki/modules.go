@@ -114,7 +114,6 @@ const (
 	MemberlistKV             string = "memberlist-kv"
 	Compactor                string = "compactor"
 	BloomGateway             string = "bloom-gateway"
-	BloomGatewayRing         string = "bloom-gateway-ring"
 	IndexGateway             string = "index-gateway"
 	IndexGatewayRing         string = "index-gateway-ring"
 	IndexGatewayInterceptors string = "index-gateway-interceptors"
@@ -278,7 +277,6 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	t.Cfg.BloomCompactor.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.IndexGateway.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
-	t.Cfg.BloomGateway.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ruler.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
@@ -1293,7 +1291,6 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.BloomGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.BloomCompactor.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Pattern.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
@@ -1384,35 +1381,6 @@ func (t *Loki) initBloomGateway() (services.Service, error) {
 	}
 	logproto.RegisterBloomGatewayServer(t.Server.GRPC, gateway)
 	return gateway, nil
-}
-
-func (t *Loki) initBloomGatewayRing() (services.Service, error) {
-	if !t.Cfg.BloomGateway.Enabled {
-		return nil, nil
-	}
-	// Inherit ring listen port from gRPC config
-	t.Cfg.BloomGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
-
-	// TODO(chaudum): Do we want to integration the bloom gateway component into the backend target?
-	mode := lokiring.ClientMode
-	legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
-	if t.Cfg.isModuleEnabled(BloomGateway) || t.Cfg.isModuleEnabled(Backend) || legacyReadMode {
-		mode = lokiring.ServerMode
-	}
-	manager, err := lokiring.NewRingManager(bloomGatewayRingKey, mode, t.Cfg.BloomGateway.Ring, t.Cfg.BloomGateway.Ring.ReplicationFactor, t.Cfg.BloomGateway.Ring.NumTokens, util_log.Logger, prometheus.DefaultRegisterer)
-	if err != nil {
-		return nil, gerrors.Wrap(err, "error initializing bloom gateway ring manager")
-	}
-
-	t.bloomGatewayRingManager = manager
-
-	t.Server.HTTP.Path("/bloomgateway/ring").Methods("GET", "POST").Handler(t.bloomGatewayRingManager)
-
-	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/bloomgateway/ring").Methods("GET", "POST").Handler(t.bloomGatewayRingManager)
-	}
-
-	return t.bloomGatewayRingManager, nil
 }
 
 func (t *Loki) initIndexGateway() (services.Service, error) {

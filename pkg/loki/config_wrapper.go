@@ -182,7 +182,6 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 func applyCommonReplicationFactor(r, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(r.Common.ReplicationFactor, defaults.Common.ReplicationFactor) {
 		r.IndexGateway.Ring.ReplicationFactor = r.Common.ReplicationFactor
-		r.BloomGateway.Ring.ReplicationFactor = r.Common.ReplicationFactor
 	}
 }
 
@@ -332,20 +331,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.BloomCompactor.Ring.KVStore = rc.KVStore
 		r.BloomCompactor.Ring.NumTokens = rc.NumTokens
 	}
-
-	// BloomGateway
-	if mergeWithExisting || reflect.DeepEqual(r.BloomGateway.Ring, defaults.BloomGateway.Ring) {
-		r.BloomGateway.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.BloomGateway.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.BloomGateway.Ring.InstancePort = rc.InstancePort
-		r.BloomGateway.Ring.InstanceAddr = rc.InstanceAddr
-		r.BloomGateway.Ring.InstanceID = rc.InstanceID
-		r.BloomGateway.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.BloomGateway.Ring.InstanceZone = rc.InstanceZone
-		r.BloomGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.BloomGateway.Ring.KVStore = rc.KVStore
-		r.BloomGateway.Ring.NumTokens = rc.NumTokens
-	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -383,13 +368,6 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.BloomCompactor.Ring.TokensFilePath = f
-
-	// Bloom-Gateway
-	f, err = tokensFile(cfg, "bloomgateway.tokens")
-	if err != nil {
-		return err
-	}
-	cfg.BloomGateway.Ring.TokensFilePath = f
 
 	// Pattern
 	f, err = tokensFile(cfg, "pattern.tokens")
@@ -487,10 +465,6 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.BloomCompactor.Ring.InstanceInterfaceNames, defaults.BloomCompactor.Ring.InstanceInterfaceNames) {
 		cfg.BloomCompactor.Ring.InstanceInterfaceNames = append(cfg.BloomCompactor.Ring.InstanceInterfaceNames, loopbackIface)
 	}
-
-	if reflect.DeepEqual(cfg.BloomGateway.Ring.InstanceInterfaceNames, defaults.BloomGateway.Ring.InstanceInterfaceNames) {
-		cfg.BloomGateway.Ring.InstanceInterfaceNames = append(cfg.BloomGateway.Ring.InstanceInterfaceNames, loopbackIface)
-	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -506,7 +480,6 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
 	r.BloomCompactor.Ring.KVStore.Store = memberlistStr
-	r.BloomGateway.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
