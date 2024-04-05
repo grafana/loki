@@ -3319,6 +3319,10 @@ shard_streams:
 # CLI flag: -bloom-gateway.enable-filtering
 [bloom_gateway_enable_filtering: <boolean> | default = false]
 
+# Interval for computing the cache key in the Bloom Gateway.
+# CLI flag: -bloom-gateway.cache-key-interval
+[bloom_gateway_cache_key_interval: <duration> | default = 15m]
+
 # The shard size defines how many bloom compactors should be used by a tenant
 # when computing blooms. If it's set to 0, shuffle sharding is disabled.
 # CLI flag: -bloom-compactor.shard-size
@@ -3327,6 +3331,12 @@ shard_streams:
 # Whether to compact chunks into bloom filters.
 # CLI flag: -bloom-compactor.enable-compaction
 [bloom_compactor_enable_compaction: <boolean> | default = false]
+
+# The maximum bloom block size. A value of 0 sets an unlimited size. Default is
+# 200MB. The actual block size might exceed this limit since blooms will be
+# added to blocks until the block exceeds the maximum block size.
+# CLI flag: -bloom-compactor.max-block-size
+[bloom_compactor_max_block_size: <int> | default = 200MB]
 
 # Length of the n-grams created when computing blooms from log lines.
 # CLI flag: -bloom-compactor.ngram-length
@@ -3343,20 +3353,6 @@ shard_streams:
 # Compression algorithm for bloom block pages.
 # CLI flag: -bloom-compactor.block-encoding
 [bloom_block_encoding: <string> | default = "none"]
-
-# Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.
-# CLI flag: -bloom-gateway.blocks-downloading-parallelism
-[bloom_gateway_blocks_downloading_parallelism: <int> | default = 50]
-
-# Interval for computing the cache key in the Bloom Gateway.
-# CLI flag: -bloom-gateway.cache-key-interval
-[bloom_gateway_cache_key_interval: <duration> | default = 15m]
-
-# The maximum bloom block size. A value of 0 sets an unlimited size. Default is
-# 200MB. The actual block size might exceed this limit since blooms will be
-# added to blocks until the block exceeds the maximum block size.
-# CLI flag: -bloom-compactor.max-block-size
-[bloom_compactor_max_block_size: <int> | default = 200MB]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata

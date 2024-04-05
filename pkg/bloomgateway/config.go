@@ -45,5 +45,4 @@ type Limits interface {
 	CacheLimits
 	BloomGatewayShardSize(tenantID string) int
 	BloomGatewayEnabled(tenantID string) bool
-	BloomGatewayBlocksDownloadingParallelism(tenantID string) int
 }
