@@ -245,22 +245,19 @@ func newStringFilterFunc(b NGramBuilder) log.NewMatcherFiltererFunc {
 	}
 }
 
-type notTest struct {
-	BloomTest
-}
-
-func newNotTest(test BloomTest) BloomTest {
-	return notTest{BloomTest: test}
-}
-
-func (b notTest) Matches(bloom filter.Checker) bool {
-	return !b.BloomTest.Matches(bloom)
-}
-
-func (b notTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
-	return !b.BloomTest.MatchesWithPrefixBuf(bloom, buf, prefixLen)
-}
-
+// orTest is particularly useful when testing skip-factors>0, which
+// can result in different "sequences" of ngrams for a particular line
+// and if either sequence matches the filter, the chunk is considered a match.
+// For instance, with n=3,skip=1, the line "foobar" generates ngrams:
+// ["foo", "oob", "oba", "bar"]
+// Now let's say we want to search for the same "foobar".
+// Note: we don't know which offset in the line this match may be,
+// so we check every possible offset. The filter will match the ngrams:
+// offset_0 creates ["foo", "oba"]
+// offset_1 creates ["oob", "bar"]
+// If either sequences are found in the bloom filter, the chunk is considered a match.
+// Expanded, this is
+// match == (("foo" && "oba") || ("oob" && "bar"))
 type orTest struct {
 	left, right BloomTest
 }
