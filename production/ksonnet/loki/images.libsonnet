@@ -8,6 +8,7 @@
 
     distributor:: self.loki,
     ingester:: self.loki,
+    pattern_ingester:: self.loki,
     querier:: self.loki,
     tableManager:: self.loki,
     query_frontend:: self.loki,
