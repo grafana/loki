@@ -345,7 +345,7 @@ type LineFilterExpr struct {
 	//
 	// Case 2: With NotMatchEqual operators (!= or !~, etc)
 	// example: `{app="loki"} != "test" != "foo" or "bar"`
-	// expection: match !"test" AND !"foo" AND !"bar", Basically exactly as if `{app="loki"} != "test" != "foo" != "bar".
+	// expectation: match !"test" AND !"foo" AND !"bar", Basically exactly as if `{app="loki"} != "test" != "foo" != "bar".
 
 	// See LineFilterExpr tests for more examples.
 	Or        *LineFilterExpr
