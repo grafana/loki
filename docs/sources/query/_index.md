@@ -139,27 +139,34 @@ sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (cou
 
 ### Pattern match filter operators
 
-{{% admonition type="warning" %}}
-The pattern match filters are an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available. Documentation is either limited or not provided outside of code comments. No SLA is provided.
-{{% /admonition %}}
-
 - `|>` (line match pattern)
 - `!>` (line match not pattern)
 
-Despite the fact that filtering by patterns is a subset of the regex filter scope, these operators extend the syntax explicitly.
+Pattern Filter not only enhances efficiency but also simplifies the process of writing LogQL queries. By eliminating the need for complex regex patterns, users can create queries using a more intuitive syntax, reducing the cognitive load and potential for errors.
 
-The filter presumes that placeholders mask arbitrary non-empty literals. Thus, the `"<_>"` pattern matches any non-empty line, and the `""`a pattern only matches empty lines. The semantics are identical to the pattern parse stage, with an exception that named captures are not allowed: fields are never extracted at filtering.
+Within the pattern syntax the `<_>` serves as a wildcard, representing any arbitrary text. This allows the query to match log line where the specified pattern occurs, such as log lines containing static content, with variable content in between.
 
 Line match pattern example:
 
 ```logql
-{service_name=`ingester`} |>  `<_> caller=http.go:194 level=debug <_> msg="POST /grpc.health.v1.Health/Check (200) <_>`
+{service_name=`distributor`} |> `<_> caller=http.go:194 level=debug <_> msg="POST /push.v1.PusherService/Push <_>`
 ```
 
 Line match not pattern example:
 
 ```logql
-{service_name=`ingester`} !>  `<_> caller=http.go:194 level=debug <_> msg="POST /grpc.health.v1.Health/Check (200) <_>`
+{service_name=`distributor`} !> `<_> caller=http.go:194 level=debug <_> msg="POST /push.v1.PusherService/Push <_>`
+```
+
+For example, the pattern above will respectively matches and not matches the following log line from the `distributor` service:
+
+```log
+ts=2024-04-05T08:40:13.585911094Z caller=http.go:194 level=debug traceID=23e54a271db607cc orgID=3648 msg="POST /push.v1.PusherService/Push (200) 12.684035ms"
+ts=2024-04-05T08:41:06.551403339Z caller=http.go:194 level=debug traceID=54325a1a15b42e2d orgID=1218 msg="POST /push.v1.PusherService/Push (200) 1.664285ms"
+ts=2024-04-05T08:41:06.506524777Z caller=http.go:194 level=debug traceID=69d4271da1595bcb orgID=1218 msg="POST /push.v1.PusherService/Push (200) 1.783818ms"
+ts=2024-04-05T08:41:06.473740396Z caller=http.go:194 level=debug traceID=3b8ec973e6397814 orgID=3648 msg="POST /push.v1.PusherService/Push (200) 1.893987ms"
+ts=2024-04-05T08:41:05.88999067Z caller=http.go:194 level=debug traceID=6892d7ef67b4d65c orgID=3648 msg="POST /push.v1.PusherService/Push (200) 2.314337ms"
+ts=2024-04-05T08:41:05.826266414Z caller=http.go:194 level=debug traceID=0bb76e910cfd008d orgID=3648 msg="POST /push.v1.PusherService/Push (200) 3.625744ms"
 ```
 
 ### Order of operations
