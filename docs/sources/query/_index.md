@@ -144,7 +144,7 @@ sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (cou
 
 Pattern Filter not only enhances efficiency but also simplifies the process of writing LogQL queries. By eliminating the need for complex regex patterns, users can create queries using a more intuitive syntax, reducing the cognitive load and potential for errors.
 
-Within the pattern syntax the `<_>` serves as a wildcard, representing any arbitrary text. This allows the query to match log line where the specified pattern occurs, such as log lines containing static content, with variable content in between.
+Within the pattern syntax the `<_>` serves as a wildcard, representing any arbitrary text. This allows the query to match log lines where the specified pattern occurs, such as log lines containing static content, with variable content in between.
 
 Line match pattern example:
 
