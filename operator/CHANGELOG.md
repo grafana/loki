@@ -1,6 +1,7 @@
 ## Main
 
 - [12199](https://github.com/grafana/loki/pull/12199) **btaani**: Add validation on empty per-tenant limits config
+- [12370](https://github.com/grafana/loki/pull/12370) **periklis**: Update Loki operand to v2.9.6
 - [12333](https://github.com/grafana/loki/pull/12333) **periklis**: Bump max OpenShift version to next release
 
 ## 0.6.0 (2024-03-19)

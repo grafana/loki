@@ -874,6 +874,15 @@ chunk_store_config:
 	t.Run("for the index queries cache config", func(t *testing.T) {
 		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
 storage_config:
   index_queries_cache_config:
     redis:
@@ -886,6 +895,15 @@ storage_config:
 
 		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
 storage_config:
   index_queries_cache_config:
     memcached_client:
@@ -1581,6 +1599,15 @@ func Test_applyChunkRetain(t *testing.T) {
 
 	t.Run("chunk retain is set to IndexCacheValidity + 1 minute", func(t *testing.T) {
 		yamlContent := `
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
 storage_config:
   index_cache_validity: 10m
   index_queries_cache_config:
@@ -1595,6 +1622,33 @@ storage_config:
 		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
 		assert.NoError(t, err)
 		assert.Equal(t, 11*time.Minute, config.Ingester.RetainPeriod)
+	})
+
+	t.Run("chunk retain is not changed for tsdb index type", func(t *testing.T) {
+		yamlContent := `
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
+storage_config:
+  index_cache_validity: 10m
+  index_queries_cache_config:
+    memcached:
+      batch_size: 256
+      parallelism: 10
+    memcached_client:
+      consistent_hash: true
+      host: memcached-index-queries.loki-bigtable.svc.cluster.local
+      service: memcached-client
+`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, time.Duration(0), config.Ingester.RetainPeriod)
 	})
 }
 
