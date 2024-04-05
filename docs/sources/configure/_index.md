@@ -2831,13 +2831,15 @@ client:
   # CLI flag: -bloom-gateway-client.addresses
   [addresses: <string> | default = ""]
 
-# Number of workers to use for filtering chunks concurrently.
+# Number of workers to use for filtering chunks concurrently. Usually set to 1x
+# number of CPU cores.
 # CLI flag: -bloom-gateway.worker-concurrency
 [worker_concurrency: <int> | default = 4]
 
-# Number of blocks processed concurrently on a single worker.
+# Number of blocks processed concurrently on a single worker. Usually set to 2x
+# number of CPU cores.
 # CLI flag: -bloom-gateway.block-query-concurrency
-[block_query_concurrency: <int> | default = 4]
+[block_query_concurrency: <int> | default = 8]
 
 # Maximum number of outstanding tasks per tenant.
 # CLI flag: -bloom-gateway.max-outstanding-per-tenant
