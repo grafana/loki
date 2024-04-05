@@ -10,9 +10,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/kv"
-	"github.com/grafana/dskit/kv/consul"
-	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
@@ -29,7 +26,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
-	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -99,20 +95,8 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 	reg := prometheus.NewRegistry()
 
 	t.Run("start and stop bloom gateway", func(t *testing.T) {
-		kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), logger, reg)
-		t.Cleanup(func() {
-			closer.Close()
-		})
-
 		cfg := Config{
-			Enabled: true,
-			Ring: lokiring.RingConfig{
-				KVStore: kv.Config{
-					Mock: kvStore,
-				},
-				ReplicationFactor: 1,
-				NumTokens:         16,
-			},
+			Enabled:                 true,
 			WorkerConcurrency:       4,
 			MaxOutstandingPerTenant: 1024,
 		}
@@ -137,22 +121,8 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	tenantID := "test"
 
 	logger := log.NewNopLogger()
-	reg := prometheus.NewRegistry()
-
-	kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), logger, reg)
-	t.Cleanup(func() {
-		closer.Close()
-	})
-
 	cfg := Config{
-		Enabled: true,
-		Ring: lokiring.RingConfig{
-			KVStore: kv.Config{
-				Mock: kvStore,
-			},
-			ReplicationFactor: 1,
-			NumTokens:         16,
-		},
+		Enabled:                 true,
 		WorkerConcurrency:       2,
 		BlockQueryConcurrency:   2,
 		MaxOutstandingPerTenant: 1024,
