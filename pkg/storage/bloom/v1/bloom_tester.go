@@ -4,7 +4,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/grafana/regexp"
-	regexpsyntax "github.com/grafana/regexp/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
@@ -103,22 +102,7 @@ func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest
 	case log.LineMatchEqual:
 		return newStringTest(b, filter.Match)
 	case log.LineMatchRegexp:
-		// return MatchAll
-		reg, err := regexpsyntax.Parse(filter.Match, regexpsyntax.Perl)
-		if err != nil {
-			// TODO: log error
-			return MatchAll
-		}
-		reg = reg.Simplify()
-
-		simplifier := log.NewRegexSimplifier(newStringFilterFunc(b), newStringFilterFunc(b))
-		matcher, ok := simplifier.Simplify(reg, false)
-		if !ok {
-			// If the regex simplifier fails, we default to MatchAll
-			return MatchAll
-		}
-
-		return matcherFilterWrapper{filter: matcher}
+		return MatchAll
 	case log.LineMatchPattern:
 		return newPatternTest(b, filter.Match)
 	default:

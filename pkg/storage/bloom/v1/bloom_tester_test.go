@@ -313,22 +313,10 @@ func TestIdk(t *testing.T) {
 			match: false,
 		},
 		{
-			desc:  "regexp simple",
+			desc:  "regexp disabled",
 			line:  "foobarbaz",
-			query: `{app="fake"} |~ "(foo|bar)bazz"`,
+			query: `{app="fake"} |~ "(aaaaa|bbbbb)bazz"`,
 			match: true,
-		},
-		{
-			desc:  "regexp simple",
-			line:  "foobarbaz",
-			query: `{app="fake"} |~ "(foo|bar)baz"`,
-			match: true,
-		},
-		{
-			desc:  "regexp nomatch",
-			line:  "foobarbaz",
-			query: `{app="fake"} |~ "(foo|bar)bazzz"`,
-			match: false,
 		},
 	} {
 
