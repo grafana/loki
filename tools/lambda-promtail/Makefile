@@ -3,7 +3,7 @@ all: clean test build
 GOTEST ?= go test
 
 build:
-	GOOS=linux CGO_ENABLED=0 go build -o ./main lambda-promtail/*.go
+	GOARCH=amd64 GOOS=linux CGO_ENABLED=0 go build -o ./bootstrap lambda-promtail/*.go
 
 test:
 	$(GOTEST) ./...
