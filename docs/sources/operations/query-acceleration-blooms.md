@@ -1,6 +1,6 @@
 ---
 title: Query Acceleration with Blooms (Experimental) 
-menuTitle: Query Acceleration with Blooms (Experimental) 
+menuTitle: Query Acceleration with Blooms 
 description: Describes how to enable and configure query acceleration with blooms. 
 weight: 
 keywords:
@@ -56,12 +56,12 @@ limits_config:
 
 For more configuration options refer to the [Bloom Gateways][gateway-cfg], [Bloom Compactor][compactor-cfg] and 
 [per tenant-limits][tenant-limits] configuration docs. 
-We strongly recommend reading the whole documentation hereafter for this experimental feature before using it.
+We strongly recommend reading the whole documentation for this experimental feature before using it.
 
 ## Bloom Compactor
 The Bloom Compactor component builds blooms from the chunks in the object store. 
-The resulting blooms are grouped in bloom blocks spanning multiple streams (aka series) and chunks from a given day. 
-To learn more about how blocks and metadata files are organized, check the 
+The resulting blooms are grouped in bloom blocks spanning multiple streams (also known as series) and chunks from a given day. 
+To learn more about how blocks and metadata files are organized, refer to the 
 [Building and querying blooms](#building-and-querying-blooms) section below.
 
 Bloom Compactors are horizontally scalable and use a [ring] for sharding tenants and stream fingerprints, 
@@ -72,10 +72,10 @@ falls within its owned key-space ranges.
 
 You can find all the configuration options for this component in the [Configure section for the Bloom Compactor][compactor-cfg].
 Refer to the [Enable Query Acceleration with Blooms](#enable-query-acceleration-with-blooms) section below for 
-a configuration snipped enabling this feature.
+a configuration snippet enabling this feature.
 
 ### Retention
-One Bloom Compactor from all the running will apply retention. Retention is disabled by default.
+One Bloom Compactor from all those running will apply retention. Retention is disabled by default.
 The instance owning the smallest token in the ring owns retention. 
 Retention is applied to all tenants. The retention for each tenant is the longest of its [configured][tenant-limits] 
 general retention (`retention_period`) and the streams retention (`retention_stream`).
@@ -153,7 +153,7 @@ Example, assuming 4 CPU cores:
 ```
 
 Here, the memory requirement for block processing is 2GiB.
-To get the minimum requirements for the Bloom Gateways, you need to double the value
+To get the minimum requirements for the Bloom Gateways, you need to double the value.
 
 ## Building and querying blooms
 Bloom filters are built per stream and aggregated together into block files. 
@@ -173,7 +173,7 @@ compactors will try to reuse blooms from existing blocks instead of building new
 For a given stream, the compactor owning that stream will iterate through all the log lines inside its new 
 chunks and build a bloom for the stream. For each log line, we compute its [n-grams](https://en.wikipedia.org/wiki/N-gram#:~:text=An%20n%2Dgram%20is%20a,pairs%20extracted%20from%20a%20genome.) 
 and append to the bloom both the hash for each n-gram and the hash for each n-gram plus the chunk identifier. 
-The former allows gateways to skip whole stream while the latter is for skipping individual chunks.
+The former allows gateways to skip whole streams while the latter is for skipping individual chunks.
 
 For example, given a log line `abcdef` in the chunk `c6dj8g`, we compute its n-grams: `abc`, `bcd`, `cde`, `def`. 
 And append to the stream bloom the following hashes: `hash("abc")`, `hash("abc" + "c6dj8g")` ... `hash("def")`, `hash("def" + "c6dj8g")`.
@@ -196,7 +196,7 @@ Loki will check blooms for any log filtering expression within a query that sati
     whereas `|~ "f.*oo"` would not be simplifiable.
 - The filtering expression is a match (`|=`) or regex match (`|~`) filter. We don’t use blooms for not equal (`!=`) or not regex (`!~`) expressions.
   - For example, `|= "level=error"` would use blooms but `!= "level=error"` would not.
-- The filtering expression is placed before a [line format expression]({{< relref "../query/log_queries#line-format-expression" >}}).
+- The filtering expression is placed before a [line format expression](https://grafana.com/docs/loki/latest/query/log_queries/#line-format-expression).
   - For example, with `|= "level=error" | logfmt | line_format "ERROR {{.err}}" |= "traceID=3ksn8d4jj3"`, 
     the first filter (`|= "level=error"`) will benefit from blooms but the second one (`|= "traceID=3ksn8d4jj3"`) will not.
 
@@ -213,9 +213,9 @@ Query acceleration introduces a new sharding strategy: `bounded`, which uses blo
 processed right away during the planning phase in the query frontend, 
 as well as evenly distributes the amount of chunks each sharded query will need to process.
 
-[ring]: {{< relref "../get-started/hash-rings" >}}
-[tenant-limits]: {{< relref "../configure/#limits_config" >}}
-[gateway-cfg]: {{< relref "../configure/#bloom_gateway" >}}
-[compactor-cfg]: {{< relref "../configure/#bloom_compactor" >}}
-[microservices]: {{< relref "../get-started/deployment-modes/#microservices-mode" >}}
-[ssd]: {{< relref "../get-started/deployment-modes/#simple-scalable" >}}
+[ring]: https://grafana.com/docs/loki/latest/get-started/hash-rings/
+[tenant-limits]: https://grafana.com/docs/loki/latest/configure/#limits_config
+[gateway-cfg]: https://grafana.com/docs/loki/latest/configure/#bloom_gateway
+[compactor-cfg]: https://grafana.com/docs/loki/latest/configure/#bloom_compactor
+[microservices]: https://grafana.com/docs/loki/latest/get-started/deployment-modes/#microservices-mode
+[ssd]: https://grafana.com/docs/loki/latest/get-started/deployment-modes/#simple-scalable
