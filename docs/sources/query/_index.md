@@ -158,7 +158,7 @@ Line match not pattern example:
 {service_name=`distributor`} !> `<_> caller=http.go:194 level=debug <_> msg="POST /push.v1.PusherService/Push <_>`
 ```
 
-For example, the pattern above will respectively matches and not matches the following log line from the `distributor` service:
+For example, the example queries above will respectively match and not match the following log line from the `distributor` service:
 
 ```log
 ts=2024-04-05T08:40:13.585911094Z caller=http.go:194 level=debug traceID=23e54a271db607cc orgID=3648 msg="POST /push.v1.PusherService/Push (200) 12.684035ms"
