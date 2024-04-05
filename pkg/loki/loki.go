@@ -43,6 +43,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	"github.com/grafana/loki/v3/pkg/lokifrontend"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
+	"github.com/grafana/loki/v3/pkg/pattern"
 	"github.com/grafana/loki/v3/pkg/querier"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -54,6 +55,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	internalserver "github.com/grafana/loki/v3/pkg/server"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -86,9 +88,10 @@ type Config struct {
 	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
+	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
-	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor"`
-	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway"`
+	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor,omitempty" category:"experimental"`
+	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
 	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
 	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
@@ -109,7 +112,7 @@ type Config struct {
 
 	Common common.Config `yaml:"common,omitempty"`
 
-	ShutdownDelay time.Duration `yaml:"shutdown_delay" category:"experimental"`
+	ShutdownDelay time.Duration `yaml:"shutdown_delay"`
 
 	MetricsNamespace string `yaml:"metrics_namespace"`
 }
@@ -183,6 +186,7 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
 	c.Server.RegisterFlags(throwaway)
 	c.InternalServer.RegisterFlags(throwaway)
+	c.Pattern.RegisterFlags(throwaway)
 
 	throwaway.VisitAll(func(f *flag.Flag) {
 		// Ignore errors when setting new values. We have a test to verify that it works.
@@ -195,6 +199,9 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 
 		case "server.http-listen-port":
 			_ = f.Value.Set("3100")
+
+		case "pattern-ingester.distributor.replication-factor":
+			_ = f.Value.Set("1")
 		}
 
 		fs.Var(f.Value, f.Name, f.Usage)
@@ -262,6 +269,13 @@ func (c *Config) Validate() error {
 	if err := c.BloomCompactor.Validate(); err != nil {
 		return errors.Wrap(err, "invalid bloom_compactor config")
 	}
+	if err := c.BloomGateway.Validate(); err != nil {
+		return errors.Wrap(err, "invalid bloom_gateway config")
+	}
+
+	if err := c.Pattern.Validate(); err != nil {
+		return errors.Wrap(err, "invalid pattern_ingester config")
+	}
 
 	if err := ValidateConfigCompatibility(*c); err != nil {
 		return err
@@ -276,8 +290,19 @@ func (c *Config) Validate() error {
 
 	var errs []error
 
-	// Schema version 13 is required to use structured metadata
 	p := config.ActivePeriodConfig(c.SchemaConfig.Configs)
+
+	// If the active index type is not TSDB (which does not use an index cache)
+	// and the index queries cache is configured
+	// and the chunk retain period is less than the validity period of the index cache
+	// throw an error.
+	if c.SchemaConfig.Configs[p].IndexType != config.TSDBType &&
+		cache.IsCacheConfigured(c.StorageConfig.IndexQueriesCacheConfig) &&
+		c.Ingester.RetainPeriod < c.StorageConfig.IndexCacheValidity {
+		errs = append(errs, fmt.Errorf("CONFIG ERROR: the active index is %s which is configured to use an `index_cache_validty` (TTL) of %s, however the chunk_retain_period is %s which is LESS than the `index_cache_validity`. This can lead to query gaps, please configure the `chunk_retain_period` to be greater than the `index_cache_validity`", c.SchemaConfig.Configs[p].IndexType, c.StorageConfig.IndexCacheValidity, c.Ingester.RetainPeriod))
+	}
+
+	// Schema version 13 is required to use structured metadata
 	version, err := c.SchemaConfig.Configs[p].VersionAsInt()
 	if err != nil {
 		return err
@@ -333,6 +358,8 @@ type Loki struct {
 	TenantLimits              validation.TenantLimits
 	distributor               *distributor.Distributor
 	Ingester                  ingester.Interface
+	PatternIngester           *pattern.Ingester
+	PatternRingClient         *pattern.RingClient
 	Querier                   querier.Querier
 	cacheGenerationLoader     queryrangebase.CacheGenNumberLoader
 	querierAPI                *querier.QuerierAPI
@@ -600,6 +627,15 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 			}
 		}
 
+		// Pattern Ingester has a special check that makes sure that it was able to register into the ring,
+		// and that all other ring entries are OK too.
+		if t.PatternIngester != nil {
+			if err := t.PatternIngester.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Pattern Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+		}
+
 		// Query Frontend has a special check that makes sure that a querier is attached before it signals
 		// itself as ready
 		if t.frontend != nil {
@@ -648,11 +684,12 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(BloomGateway, t.initBloomGateway)
-	mm.RegisterModule(BloomGatewayRing, t.initBloomGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics)
 	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
+	mm.RegisterModule(PatternIngester, t.initPatternIngester)
+	mm.RegisterModule(PatternRingClient, t.initPatternRingClient, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -666,10 +703,10 @@ func (t *Loki) setupModuleManager() error {
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs, Analytics},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, Analytics},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
@@ -678,12 +715,13 @@ func (t *Loki) setupModuleManager() error {
 		TableManager:             {Server, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
 		IndexGateway:             {Server, Store, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
-		BloomGateway:             {Server, BloomStore, BloomGatewayRing, Analytics},
+		BloomGateway:             {Server, BloomStore, Analytics},
 		BloomCompactor:           {Server, BloomStore, BloomCompactorRing, Analytics, Store},
+		PatternIngester:          {Server, MemberlistKV, Analytics},
+		PatternRingClient:        {Server, MemberlistKV, Analytics},
 		IngesterQuerier:          {Ring},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
-		BloomGatewayRing:         {Overrides, MemberlistKV},
 		BloomCompactorRing:       {Overrides, MemberlistKV},
 		MemberlistKV:             {Server},
 
@@ -691,7 +729,7 @@ func (t *Loki) setupModuleManager() error {
 		Write:   {Ingester, Distributor},
 		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
 
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
@@ -740,11 +778,6 @@ func (t *Loki) setupModuleManager() error {
 		deps[Server] = append(deps[Server], IngesterGRPCInterceptors)
 	}
 
-	// Add bloom gateway ring in client mode to IndexGateway service dependencies if bloom filtering is enabled.
-	if t.Cfg.BloomGateway.Enabled {
-		deps[IndexGateway] = append(deps[IndexGateway], BloomGatewayRing)
-	}
-
 	if t.Cfg.LegacyReadTarget {
 		deps[Read] = append(deps[Read], deps[Backend]...)
 	}
@@ -767,7 +800,6 @@ func (t *Loki) setupModuleManager() error {
 			a[idx] = InternalServer
 			deps[key] = a
 		}
-
 	}
 
 	for mod, targets := range deps {
