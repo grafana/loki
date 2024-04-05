@@ -362,10 +362,26 @@ func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 	}
 
 	// !(left or right) == (!left and !right).
+	tmp := right
+	for tmp.Or != nil {
+		tmp.Or.Ty = left.Ty
+		tmp = tmp.Or
+	}
 	return newNestedLineFilterExpr(left, right)
 }
 
 func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
+	if right.Or != nil && !(right.Ty == log.LineMatchEqual || right.Ty == log.LineMatchRegexp || right.Ty == log.LineMatchPattern) {
+		right.Or.IsOrChild = false
+		tmp := right.Or
+		right.Or = nil
+		right = newNestedLineFilterExpr(right, tmp)
+	}
+
+	if right.Left != nil {
+		left = newNestedLineFilterExpr(left, right.Left)
+	}
+
 	return &LineFilterExpr{
 		Left:       left,
 		LineFilter: right.LineFilter,
