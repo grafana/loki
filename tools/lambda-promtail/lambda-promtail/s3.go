@@ -50,6 +50,7 @@ const (
 	LB_NLB_TYPE                string = "net"
 	LB_ALB_TYPE                string = "app"
 	WAF_LOG_TYPE               string = "WAFLogs"
+	PEGA_LOG_TYPE              string = "PegaLogs"
 )
 
 var (
@@ -75,10 +76,12 @@ var (
 	// source: https://docs.aws.amazon.com/waf/latest/developerguide/logging-s3.html
 	// format: aws-waf-logs-suffix[/prefix]/AWSLogs/aws-account-id/WAFLogs/region/webacl-name/year/month/day/hour/minute/aws-account-id_waflogs_region_webacl-name_timestamp_hash.log.gz
 	// example: aws-waf-logs-test/AWSLogs/11111111111/WAFLogs/us-east-1/TEST-WEBACL/2021/10/28/19/50/11111111111_waflogs_us-east-1_TEST-WEBACL_20211028T1950Z_e0ca43b5.log.gz
-	defaultFilenameRegex     = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:elasticloadbalancing|vpcflowlogs)\_\w+-\w+-\d_(?:(?P<lb_type>app|net)\.*?)?(?P<src>[a-zA-Z0-9\-]+)`)
-	defaultTimestampRegex    = regexp.MustCompile(`(?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+(?:\.\d+Z)?)`)
-	cloudtrailFilenameRegex  = regexp.MustCompile(`AWSLogs\/(?P<organization_id>o-[a-z0-9]{10,32})?\/?(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:CloudTrail|CloudTrail-Digest)\_\w+-\w+-\d_(?:(?:app|nlb|net)\.*?)?.+_(?P<src>[a-zA-Z0-9\-]+)`)
-	cloudfrontFilenameRegex  = regexp.MustCompile(`(?P<prefix>.*)\/(?P<src>[A-Z0-9]+)\.(?P<year>\d+)-(?P<month>\d+)-(?P<day>\d+)-(.+)`)
+	defaultFilenameRegex    = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:elasticloadbalancing|vpcflowlogs)\_\w+-\w+-\d_(?:(?P<lb_type>app|net)\.*?)?(?P<src>[a-zA-Z0-9\-]+)`)
+	defaultTimestampRegex   = regexp.MustCompile(`(?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+(?:\.\d+Z)?)`)
+	cloudtrailFilenameRegex = regexp.MustCompile(`AWSLogs\/(?P<organization_id>o-[a-z0-9]{10,32})?\/?(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:CloudTrail|CloudTrail-Digest)\_\w+-\w+-\d_(?:(?:app|nlb|net)\.*?)?.+_(?P<src>[a-zA-Z0-9\-]+)`)
+	cloudfrontFilenameRegex = regexp.MustCompile(`(?P<prefix>.*)\/(?P<src>[A-Z0-9]+)\.(?P<year>\d+)-(?P<month>\d+)-(?P<day>\d+)-(.+)`)
+	pegaFilenameRegex       = regexp.MustCompile(`logs/2023*`)
+	//pegaFilenameRegex        = regexp.MustCompile(`vbank-dvb-dt2/*`)
 	cloudfrontTimestampRegex = regexp.MustCompile(`(?P<timestamp>\d+-\d+-\d+\s\d+:\d+:\d+)`)
 	wafFilenameRegex         = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>WAFLogs)\/(?P<region>[\w-]+)\/(?P<src>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/(?P<hour>\d+)\/(?P<minute>\d+)\/\d+\_waflogs\_[\w-]+_[\w-]+_\d+T\d+Z_\w+`)
 	wafTimestampRegex        = regexp.MustCompile(`"timestamp":\s*(?P<timestamp>\d+),`)
@@ -121,6 +124,15 @@ var (
 			ownerLabelKey:  "account_id",
 			timestampRegex: wafTimestampRegex,
 			timestampType:  "unix",
+		},
+		PEGA_LOG_TYPE: {
+			logTypeLabel:    "s3_pega",
+			filenameRegex:   pegaFilenameRegex,
+			ownerLabelKey:   "prefix",
+			timestampRegex:  cloudfrontTimestampRegex,
+			timestampFormat: "2006-01-02\x0915:04:05",
+			timestampType:   "string",
+			skipHeaderCount: 2,
 		},
 	}
 )
@@ -276,9 +288,8 @@ func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log
 		}
 		obj, err := s3Client.GetObject(ctx,
 			&s3.GetObjectInput{
-				Bucket:              aws.String(labels["bucket"]),
-				Key:                 aws.String(labels["key"]),
-				ExpectedBucketOwner: aws.String(labels["bucketOwner"]),
+				Bucket: aws.String(labels["bucket"]),
+				Key:    aws.String(labels["key"]),
 			})
 		if err != nil {
 			return fmt.Errorf("Failed to get object %s from bucket %s on account %s\n, %s", labels["key"], labels["bucket"], labels["bucketOwner"], err)
@@ -288,7 +299,7 @@ func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log
 			return err
 		}
 	}
-
+	level.Info(*log).Log("msg", fmt.Sprintf("before sending logs"))
 	err = pc.sendToPromtail(ctx, batch)
 	if err != nil {
 		return err
