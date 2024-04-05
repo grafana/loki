@@ -726,15 +726,13 @@ rate_store:
   # CLI flag: -distributor.rate-store.debug
   [debug: <boolean> | default = false]
 
-# Experimental. Customize the logging of write failures.
+# Customize the logging of write failures.
 write_failures_logging:
-  # Experimental and subject to change. Log volume allowed (per second).
-  # Default: 1KB.
+  # Log volume allowed (per second). Default: 1KB.
   # CLI flag: -distributor.write-failures-logging.rate
   [rate: <int> | default = 1KB]
 
-  # Experimental and subject to change. Whether a insight=true key should be
-  # logged or not. Default: false.
+  # Whether a insight=true key should be logged or not. Default: false.
   # CLI flag: -distributor.write-failures-logging.add-insights-label
   [add_insights_label: <boolean> | default = false]
 
@@ -2549,7 +2547,7 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.apply-retention-interval
 [apply_retention_interval: <duration> | default = 0s]
 
-# (Experimental) Activate custom (per-stream,per-tenant) retention.
+# Activate custom (per-stream,per-tenant) retention.
 # CLI flag: -compactor.retention-enabled
 [retention_enabled: <boolean> | default = false]
 
