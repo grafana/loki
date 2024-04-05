@@ -562,6 +562,18 @@ func TestStringer(t *testing.T) {
 			out: `{app="foo"} |= "foo" or "bar"`,
 		},
 		{
+			in:  `{app="foo"} |= "foo" or "bar" or "baz"`,
+			out: `{app="foo"} |= "foo" or "bar" or "baz"`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or "bar" or "baz" |= "car"`,
+			out: `{app="foo"} |= "foo" or "bar" or "baz" |= "car"`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or "bar" or "baz" |= "car" |= "a" or "b" or "c"`,
+			out: `{app="foo"} |= "foo" or "bar" or "baz" |= "car" |= "a" or "b" or "c"`,
+		},
+		{
 			in:  `{app="foo"} |~ "foo" or "bar" or "baz"`,
 			out: `{app="foo"} |~ "foo" or "bar" or "baz"`,
 		},
@@ -597,18 +609,51 @@ func TestStringer(t *testing.T) {
 			in:  `{app="foo"} != "foo" or "bar"`,
 			out: `{app="foo"} != "foo" != "bar"`,
 		},
-		{ // !A && !(B || C) == !A && !B & !C
+		{
 			in:  `{app="foo"} != "test" != "foo" or "bar"`,
 			out: `{app="foo"} != "test" != "foo" != "bar"`,
 		},
-		{ // !A && !(B || C) == !A && !B & !C
+		{
 			in:  `{app="foo"} != "test" != "foo" or "bar" or "baz"`,
 			out: `{app="foo"} != "test" != "foo" != "bar" != "baz"`,
 		},
-
+		{
+			in:  `{app="foo"} != "foo" or "bar" or "baz" != "car"`,
+			out: `{app="foo"} != "foo" != "bar" != "baz" != "car"`,
+		},
+		{
+			in:  `{app="foo"} != "foo" or "bar" or "baz" != "car" != "a" or "b" or "c"`,
+			out: `{app="foo"} != "foo" != "bar" != "baz" != "car" != "a" != "b" != "c"`,
+		},
+		{
+			// Mix of != and |=
+			in:  `{app="foo"} |= "foo" or "bar" or "baz" != "car" != "a" or "b" or "c"`,
+			out: `{app="foo"} |= "foo" or "bar" or "baz" != "car" != "a" != "b" != "c"`,
+		},
 		{
 			in:  `{app="foo"} !~ "foo" or "bar"`,
 			out: `{app="foo"} !~ "foo" !~ "bar"`,
+		},
+		{
+			in:  `{app="foo"} !~ "test" !~ "foo" or "bar"`,
+			out: `{app="foo"} !~ "test" !~ "foo" !~ "bar"`,
+		},
+		{
+			in:  `{app="foo"} !~ "test" !~ "foo" or "bar" or "baz"`,
+			out: `{app="foo"} !~ "test" !~ "foo" !~ "bar" !~ "baz"`,
+		},
+		{
+			in:  `{app="foo"} !~ "foo" or "bar" or "baz" !~ "car"`,
+			out: `{app="foo"} !~ "foo" !~ "bar" !~ "baz" !~ "car"`,
+		},
+		{
+			in:  `{app="foo"} !~ "foo" or "bar" or "baz" !~ "car" !~ "a" or "b" or "c"`,
+			out: `{app="foo"} !~ "foo" !~ "bar" !~ "baz" !~ "car" !~ "a" !~ "b" !~ "c"`,
+		},
+		{
+			// Mix of !~ and |~
+			in:  `{app="foo"} |~ "foo" or "bar" or "baz" !~ "car" !~ "a" or "b" or "c"`,
+			out: `{app="foo"} |~ "foo" or "bar" or "baz" !~ "car" !~ "a" !~ "b" !~ "c"`,
 		},
 		{
 			in:  `{app="foo"} != ip("127.0.0.1") or "foo"`,

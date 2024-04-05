@@ -336,7 +336,18 @@ type LineFilter struct {
 
 type LineFilterExpr struct {
 	LineFilter
-	Left      *LineFilterExpr
+	Left *LineFilterExpr
+	// Or in LineFilterExpr works as follows.
+	//
+	// Case 1: With MatchEqual operators(|= or |~, etc)
+	// example: `{app="loki"} |= "test" |= "foo" or "bar"`
+	// expectation: match "test" AND (either "foo" OR "bar")
+	//
+	// Case 2: With NotMatchEqual operators (!= or !~, etc)
+	// example: `{app="loki"} != "test" != "foo" or "bar"`
+	// expection: match !"test" AND !"foo" AND !"bar", Basically exactly as if `{app="loki"} != "test" != "foo" != "bar".
+
+	// See LineFilterExpr tests for more examples.
 	Or        *LineFilterExpr
 	IsOrChild bool
 	implicit
@@ -353,18 +364,7 @@ func newLineFilterExpr(ty log.LineMatchType, op, match string) *LineFilterExpr {
 }
 
 func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
-	// consider, we have chain of "or", != "foo" or "bar" or "baz"
-	// we parse from right to left, so first time left="bar", right="baz", and we don't know the actual `Ty` (equal: |=, notequal: !=, regex: |~, etc). So
-	// it will have default (0, LineMatchEqual).
-	// we only know real `Ty` in next stage, where left="foo", right="bar or baz", at this time, `Ty` is LineMatchNotEqual(!=).
-	// Now we need to update not just `right.Ty = left.Ty`, we also have to update accordingly to `right.Or` recursively untill `right.Or` is nil.
 	right.Ty = left.Ty
-
-	tmp := right
-	for tmp.Or != nil {
-		tmp.Or.Ty = left.Ty
-		tmp = tmp.Or
-	}
 
 	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp || left.Ty == log.LineMatchPattern {
 		left.Or = right
@@ -373,10 +373,24 @@ func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 	}
 
 	// !(left or right) == (!left and !right).
+
+	// NOTE: Consider, we have chain of "or", != "foo" or "bar" or "baz"
+	// we parse from right to left, so first time left="bar", right="baz", and we don't know the actual `Ty` (equal: |=, notequal: !=, regex: |~, etc). So
+	// it will have default (0, LineMatchEqual).
+	// we only know real `Ty` in next stage, where left="foo", right="bar or baz", at this time, `Ty` is LineMatchNotEqual(!=).
+	// Now we need to update not just `right.Ty = left.Ty`, we also have to update all the `right.Or`  until `right.Or` is nil.
+	tmp := right
+	for tmp.Or != nil {
+		tmp.Or.Ty = left.Ty
+		tmp = tmp.Or
+	}
+
 	return newNestedLineFilterExpr(left, right)
 }
 
 func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
+	// NOTE: When parsing "or" chains in linefilter, particularly variations of NOT filters (!= or !~), we need to transform
+	// say (!= "foo" or "bar "baz") => (!="foo" != "bar" != "baz")
 	if right.Or != nil && !(right.Ty == log.LineMatchEqual || right.Ty == log.LineMatchRegexp || right.Ty == log.LineMatchPattern) {
 		right.Or.IsOrChild = false
 		tmp := right.Or
@@ -384,11 +398,11 @@ func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineF
 		right = newNestedLineFilterExpr(right, tmp)
 	}
 
-	// Before supporting `or` in linefilter, `right` will always be a leaf node (right.next == nil)
+	// NOTE: Before supporting `or` in linefilter, `right` will always be a leaf node (right.next == nil)
 	// After supporting `or` in linefilter, `right` may not be a leaf node (e.g: |= "a" or "b). Here "b".Left = "a")
 	// We traverse the tree recursively untile we make `right` leaf node.
 	// Consider the following expression. {app="loki"} != "test" != "foo" or "bar or "car""
-	// First Creates following tree on the left and transformed into the one on the right.
+	// It first creates following tree on the left and transformed into the one on the right.
 	//                                                                              ┌────────────┐
 	//               ┌────────────┐                                                 │   root     │
 	//               │   root     │                                                 └──────┬─────┘
