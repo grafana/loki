@@ -2399,9 +2399,10 @@ bloom_shipper:
   # CLI flag: -bloom.max-query-page-size
   [max_query_page_size: <int> | default = 64MiB]
 
-  # The amount of maximum concurrent bloom blocks downloads.
+  # The amount of maximum concurrent bloom blocks downloads. Usually set to 2x
+  # number of CPU cores.
   # CLI flag: -bloom.download-parallelism
-  [download_parallelism: <int> | default = 16]
+  [download_parallelism: <int> | default = 8]
 
   blocks_cache:
     # Cache for bloom blocks. Soft limit of the cache in bytes. Exceeding this
