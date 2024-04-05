@@ -35,6 +35,9 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
+	if !cfg.Enabled {
+		return nil
+	}
 	if err := cfg.Client.Validate(); err != nil {
 		return err
 	}
