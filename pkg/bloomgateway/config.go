@@ -25,8 +25,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix registers flags for the Bloom Gateway configuration with a common prefix.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, prefix+"enabled", false, "Flag to enable or disable the bloom gateway component globally.")
-	f.IntVar(&cfg.WorkerConcurrency, prefix+"worker-concurrency", 4, "Number of workers to use for filtering chunks concurrently.")
-	f.IntVar(&cfg.BlockQueryConcurrency, prefix+"block-query-concurrency", 4, "Number of blocks processed concurrently on a single worker.")
+	f.IntVar(&cfg.WorkerConcurrency, prefix+"worker-concurrency", 4, "Number of workers to use for filtering chunks concurrently. Usually set to 1x number of CPU cores.")
+	f.IntVar(&cfg.BlockQueryConcurrency, prefix+"block-query-concurrency", 8, "Number of blocks processed concurrently on a single worker. Usually set to 2x number of CPU cores.")
 	f.IntVar(&cfg.MaxOutstandingPerTenant, prefix+"max-outstanding-per-tenant", 1024, "Maximum number of outstanding tasks per tenant.")
 	f.IntVar(&cfg.NumMultiplexItems, prefix+"num-multiplex-tasks", 512, "How many tasks are multiplexed at once.")
 	// TODO(chaudum): Figure out what the better place is for registering flags
@@ -34,9 +34,18 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Client.RegisterFlags(f)
 }
 
+func (cfg *Config) Validate() error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if err := cfg.Client.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 type Limits interface {
 	CacheLimits
 	BloomGatewayShardSize(tenantID string) int
 	BloomGatewayEnabled(tenantID string) bool
-	BloomGatewayBlocksDownloadingParallelism(tenantID string) int
 }

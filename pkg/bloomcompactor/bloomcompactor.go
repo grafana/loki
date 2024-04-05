@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	util_ring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
@@ -72,6 +73,7 @@ func New(
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Compactor, error) {
+	utillog.WarnExperimentalUse("Bloom Compactor", logger)
 	c := &Compactor{
 		cfg:        cfg,
 		schemaCfg:  schemaCfg,

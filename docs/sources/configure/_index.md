@@ -340,13 +340,14 @@ pattern_ingester:
 # object store.
 [index_gateway: <index_gateway>]
 
-# The bloom_compactor block configures the Loki bloom compactor server,
-# responsible for compacting stream indexes into bloom filters and merging them
-# as bloom blocks
+# Experimental: The bloom_compactor block configures the Loki bloom compactor
+# server, responsible for compacting stream indexes into bloom filters and
+# merging them as bloom blocks.
 [bloom_compactor: <bloom_compactor>]
 
-# The bloom_gateway block configures the Loki bloom gateway server, responsible
-# for serving queries for filtering chunks based on filter expressions.
+# Experimental: The bloom_gateway block configures the Loki bloom gateway
+# server, responsible for serving queries for filtering chunks based on filter
+# expressions.
 [bloom_gateway: <bloom_gateway>]
 
 # The storage_config block configures one of many possible stores for both the
@@ -964,8 +965,8 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.scheduler-worker-concurrency
 [scheduler_worker_concurrency: <int> | default = 5]
 
-# The grpc_client block configures the gRPC client used to communicate between
-# two Loki components.
+# The grpc_client block configures the gRPC client used to communicate between a
+# client and server component in Loki.
 # The CLI flags prefix for this block configuration is:
 # frontend.grpc-client-config
 [grpc_client_config: <grpc_client>]
@@ -1013,7 +1014,8 @@ The `query_range` block configures the query splitting and caching in the Loki q
 [align_queries_with_step: <boolean> | default = false]
 
 results_cache:
-  # The cache block configures the cache backend.
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
   # The CLI flags prefix for this block configuration is: frontend
   [cache: <cache_config>]
 
@@ -1048,7 +1050,8 @@ results_cache:
 # If a cache config is not specified and cache_index_stats_results is true, the
 # config for the results cache is used.
 index_stats_results_cache:
-  # The cache block configures the cache backend.
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
   # The CLI flags prefix for this block configuration is:
   # frontend.index-stats-results-cache
   [cache: <cache_config>]
@@ -1065,7 +1068,8 @@ index_stats_results_cache:
 # If a cache config is not specified and cache_volume_results is true, the
 # config for the results cache is used.
 volume_results_cache:
-  # The cache block configures the cache backend.
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
   # The CLI flags prefix for this block configuration is:
   # frontend.volume-results-cache
   [cache: <cache_config>]
@@ -1082,7 +1086,8 @@ volume_results_cache:
 # If a cache config is not specified and cache_instant_metric_results is true,
 # the config for the results cache is used.
 instant_metric_results_cache:
-  # The cache block configures the cache backend.
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
   # The CLI flags prefix for this block configuration is:
   # frontend.instant-metric-results-cache
   [cache: <cache_config>]
@@ -1104,7 +1109,8 @@ instant_metric_results_cache:
 # If series_results_cache is not configured and cache_series_results is true,
 # the config for the results cache is used.
 series_results_cache:
-  # The cache block configures the cache backend.
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
   # The CLI flags prefix for this block configuration is:
   # frontend.series-results-cache
   [cache: <cache_config>]
@@ -1121,7 +1127,8 @@ series_results_cache:
 # If label_results_cache is not configured and cache_label_results is true, the
 # config for the results cache is used.
 label_results_cache:
-  # The cache block configures the cache backend.
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
   # The CLI flags prefix for this block configuration is:
   # frontend.label-results-cache
   [cache: <cache_config>]
@@ -1148,8 +1155,8 @@ The `ruler` block configures the Loki ruler.
 # Labels to add to all alerts.
 [external_labels: <list of Labels>]
 
-# The grpc_client block configures the gRPC client used to communicate between
-# two Loki components.
+# The grpc_client block configures the gRPC client used to communicate between a
+# client and server component in Loki.
 # The CLI flags prefix for this block configuration is: ruler.client
 [ruler_client: <grpc_client>]
 
@@ -1979,74 +1986,6 @@ ring:
   [instance_enable_ipv6: <boolean> | default = false]
 ```
 
-### bloom_gateway
-
-The `bloom_gateway` block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.
-
-```yaml
-# Flag to enable or disable the bloom gateway component globally.
-# CLI flag: -bloom-gateway.enabled
-[enabled: <boolean> | default = false]
-
-client:
-  # Configures the behavior of the connection pool.
-  pool_config:
-    # How frequently to clean up clients for servers that have gone away or are
-    # unhealthy.
-    # CLI flag: -bloom-gateway-client.pool.check-interval
-    [check_interval: <duration> | default = 10s]
-
-    # Run a health check on each server during periodic cleanup.
-    # CLI flag: -bloom-gateway-client.pool.enable-health-check
-    [enable_health_check: <boolean> | default = true]
-
-    # Timeout for the health check if health check is enabled.
-    # CLI flag: -bloom-gateway-client.pool.health-check-timeout
-    [health_check_timeout: <duration> | default = 1s]
-
-  # The grpc_client block configures the gRPC client used to communicate between
-  # two Loki components.
-  # The CLI flags prefix for this block configuration is:
-  # bloom-gateway-client.grpc
-  [grpc_client_config: <grpc_client>]
-
-  results_cache:
-    # The cache block configures the cache backend.
-    # The CLI flags prefix for this block configuration is:
-    # bloom-gateway-client.cache
-    [cache: <cache_config>]
-
-    # Use compression in cache. The default is an empty value '', which disables
-    # compression. Supported values are: 'snappy' and ''.
-    # CLI flag: -bloom-gateway-client.cache.compression
-    [compression: <string> | default = ""]
-
-  # Flag to control whether to cache bloom gateway client requests/responses.
-  # CLI flag: -bloom-gateway-client.cache_results
-  [cache_results: <boolean> | default = false]
-
-  # Comma separated addresses list in DNS Service Discovery format:
-  # https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes
-  # CLI flag: -bloom-gateway-client.addresses
-  [addresses: <string> | default = ""]
-
-# Number of workers to use for filtering chunks concurrently.
-# CLI flag: -bloom-gateway.worker-concurrency
-[worker_concurrency: <int> | default = 4]
-
-# Number of blocks processed concurrently on a single worker.
-# CLI flag: -bloom-gateway.block-query-concurrency
-[block_query_concurrency: <int> | default = 4]
-
-# Maximum number of outstanding tasks per tenant.
-# CLI flag: -bloom-gateway.max-outstanding-per-tenant
-[max_outstanding_per_tenant: <int> | default = 1024]
-
-# How many tasks are multiplexed at once.
-# CLI flag: -bloom-gateway.num-multiplex-tasks
-[num_multiplex_tasks: <int> | default = 512]
-```
-
 ### storage_config
 
 The `storage_config` block configures one of many possible stores for both the index and chunks. Which configuration to be picked should be defined in schema_config block.
@@ -2083,7 +2022,7 @@ bigtable:
   [instance: <string> | default = ""]
 
   # The grpc_client block configures the gRPC client used to communicate between
-  # two Loki components.
+  # a client and server component in Loki.
   # The CLI flags prefix for this block configuration is: bigtable
   [grpc_client_config: <grpc_client>]
 
@@ -2328,7 +2267,8 @@ congestion_control:
 # CLI flag: -store.object-prefix
 [object_prefix: <string> | default = ""]
 
-# The cache block configures the cache backend.
+# The cache_config block configures the cache backend for a specific Loki
+# component.
 # The CLI flags prefix for this block configuration is: store.index-cache-read
 [index_queries_cache_config: <cache_config>]
 
@@ -2373,7 +2313,7 @@ boltdb_shipper:
 
   index_gateway_client:
     # The grpc_client block configures the gRPC client used to communicate
-    # between two Loki components.
+    # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
     # boltdb.shipper.index-gateway-client.grpc
     [grpc_client_config: <grpc_client>]
@@ -2428,7 +2368,7 @@ tsdb_shipper:
 
   index_gateway_client:
     # The grpc_client block configures the gRPC client used to communicate
-    # between two Loki components.
+    # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
     # tsdb.shipper.index-gateway-client.grpc
     [grpc_client_config: <grpc_client>]
@@ -2451,8 +2391,8 @@ tsdb_shipper:
 
   [ingesterdbretainperiod: <duration>]
 
-# Configures the bloom shipper component, which contains the store abstraction
-# to fetch bloom filters from and put them to object storage.
+# Experimental: Configures the bloom shipper component, which contains the store
+# abstraction to fetch bloom filters from and put them to object storage.
 bloom_shipper:
   # Working directory to store downloaded bloom blocks. Supports multiple
   # directories, separated by comma.
@@ -2464,9 +2404,10 @@ bloom_shipper:
   # CLI flag: -bloom.max-query-page-size
   [max_query_page_size: <int> | default = 64MiB]
 
-  # The amount of maximum concurrent bloom blocks downloads.
+  # The amount of maximum concurrent bloom blocks downloads. Usually set to 2x
+  # number of CPU cores.
   # CLI flag: -bloom.download-parallelism
-  [download_parallelism: <int> | default = 16]
+  [download_parallelism: <int> | default = 8]
 
   blocks_cache:
     # Cache for bloom blocks. Soft limit of the cache in bytes. Exceeding this
@@ -2485,7 +2426,8 @@ bloom_shipper:
     # CLI flag: -bloom.blocks-cache.ttl
     [ttl: <duration> | default = 24h]
 
-  # The cache block configures the cache backend.
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
   # The CLI flags prefix for this block configuration is: bloom.metas-cache
   [metas_cache: <cache_config>]
 ```
@@ -2495,11 +2437,13 @@ bloom_shipper:
 The `chunk_store_config` block configures how chunks will be cached and how long to wait before saving them to the backing store.
 
 ```yaml
-# The cache block configures the cache backend.
+# The cache_config block configures the cache backend for a specific Loki
+# component.
 # The CLI flags prefix for this block configuration is: store.chunks-cache
 [chunk_cache_config: <cache_config>]
 
-# The cache block configures the cache backend.
+# The cache_config block configures the cache backend for a specific Loki
+# component.
 # The CLI flags prefix for this block configuration is: store.chunks-cache-l2
 [chunk_cache_config_l2: <cache_config>]
 
@@ -2699,7 +2643,7 @@ compactor_ring:
 
 ### bloom_compactor
 
-The `bloom_compactor` block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks
+Experimental: The `bloom_compactor` block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks.
 
 ```yaml
 # Defines the ring to be used by the bloom-compactor servers. In case this isn't
@@ -2843,6 +2787,77 @@ retention:
   # Max lookback days for retention.
   # CLI flag: -bloom-compactor.retention.max-lookback-days
   [max_lookback_days: <int> | default = 365]
+```
+
+### bloom_gateway
+
+Experimental: The `bloom_gateway` block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.
+
+```yaml
+# Flag to enable or disable the bloom gateway component globally.
+# CLI flag: -bloom-gateway.enabled
+[enabled: <boolean> | default = false]
+
+client:
+  # Configures the behavior of the connection pool.
+  pool_config:
+    # How frequently to clean up clients for servers that have gone away or are
+    # unhealthy.
+    # CLI flag: -bloom-gateway-client.pool.check-interval
+    [check_interval: <duration> | default = 10s]
+
+    # Run a health check on each server during periodic cleanup.
+    # CLI flag: -bloom-gateway-client.pool.enable-health-check
+    [enable_health_check: <boolean> | default = true]
+
+    # Timeout for the health check if health check is enabled.
+    # CLI flag: -bloom-gateway-client.pool.health-check-timeout
+    [health_check_timeout: <duration> | default = 1s]
+
+  # The grpc_client block configures the gRPC client used to communicate between
+  # a client and server component in Loki.
+  # The CLI flags prefix for this block configuration is:
+  # bloom-gateway-client.grpc
+  [grpc_client_config: <grpc_client>]
+
+  results_cache:
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
+    # The CLI flags prefix for this block configuration is:
+    # bloom-gateway-client.cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -bloom-gateway-client.cache.compression
+    [compression: <string> | default = ""]
+
+  # Flag to control whether to cache bloom gateway client requests/responses.
+  # CLI flag: -bloom-gateway-client.cache_results
+  [cache_results: <boolean> | default = false]
+
+  # Comma separated addresses list in DNS Service Discovery format:
+  # https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes
+  # CLI flag: -bloom-gateway-client.addresses
+  [addresses: <string> | default = ""]
+
+# Number of workers to use for filtering chunks concurrently. Usually set to 1x
+# number of CPU cores.
+# CLI flag: -bloom-gateway.worker-concurrency
+[worker_concurrency: <int> | default = 4]
+
+# Number of blocks processed concurrently on a single worker. Usually set to 2x
+# number of CPU cores.
+# CLI flag: -bloom-gateway.block-query-concurrency
+[block_query_concurrency: <int> | default = 8]
+
+# Maximum number of outstanding tasks per tenant.
+# CLI flag: -bloom-gateway.max-outstanding-per-tenant
+[max_outstanding_per_tenant: <int> | default = 1024]
+
+# How many tasks are multiplexed at once.
+# CLI flag: -bloom-gateway.num-multiplex-tasks
+[num_multiplex_tasks: <int> | default = 512]
 ```
 
 ### limits_config
@@ -3308,53 +3323,53 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
-# The shard size defines how many bloom gateways should be used by a tenant for
-# querying.
+# Experimental. The shard size defines how many bloom gateways should be used by
+# a tenant for querying.
 # CLI flag: -bloom-gateway.shard-size
 [bloom_gateway_shard_size: <int> | default = 0]
 
-# Whether to use the bloom gateway component in the read path to filter chunks.
+# Experimental. Whether to use the bloom gateway component in the read path to
+# filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
 [bloom_gateway_enable_filtering: <boolean> | default = false]
 
-# The shard size defines how many bloom compactors should be used by a tenant
-# when computing blooms. If it's set to 0, shuffle sharding is disabled.
-# CLI flag: -bloom-compactor.shard-size
-[bloom_compactor_shard_size: <int> | default = 0]
-
-# Whether to compact chunks into bloom filters.
-# CLI flag: -bloom-compactor.enable-compaction
-[bloom_compactor_enable_compaction: <boolean> | default = false]
-
-# Length of the n-grams created when computing blooms from log lines.
-# CLI flag: -bloom-compactor.ngram-length
-[bloom_ngram_length: <int> | default = 4]
-
-# Skip factor for the n-grams created when computing blooms from log lines.
-# CLI flag: -bloom-compactor.ngram-skip
-[bloom_ngram_skip: <int> | default = 1]
-
-# Scalable Bloom Filter desired false-positive rate.
-# CLI flag: -bloom-compactor.false-positive-rate
-[bloom_false_positive_rate: <float> | default = 0.01]
-
-# Compression algorithm for bloom block pages.
-# CLI flag: -bloom-compactor.block-encoding
-[bloom_block_encoding: <string> | default = "none"]
-
-# Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.
-# CLI flag: -bloom-gateway.blocks-downloading-parallelism
-[bloom_gateway_blocks_downloading_parallelism: <int> | default = 50]
-
-# Interval for computing the cache key in the Bloom Gateway.
+# Experimental. Interval for computing the cache key in the Bloom Gateway.
 # CLI flag: -bloom-gateway.cache-key-interval
 [bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
-# The maximum bloom block size. A value of 0 sets an unlimited size. Default is
-# 200MB. The actual block size might exceed this limit since blooms will be
-# added to blocks until the block exceeds the maximum block size.
+# Experimental. The shard size defines how many bloom compactors should be used
+# by a tenant when computing blooms. If it's set to 0, shuffle sharding is
+# disabled.
+# CLI flag: -bloom-compactor.shard-size
+[bloom_compactor_shard_size: <int> | default = 0]
+
+# Experimental. Whether to compact chunks into bloom filters.
+# CLI flag: -bloom-compactor.enable-compaction
+[bloom_compactor_enable_compaction: <boolean> | default = false]
+
+# Experimental. The maximum bloom block size. A value of 0 sets an unlimited
+# size. Default is 200MB. The actual block size might exceed this limit since
+# blooms will be added to blocks until the block exceeds the maximum block size.
 # CLI flag: -bloom-compactor.max-block-size
 [bloom_compactor_max_block_size: <int> | default = 200MB]
+
+# Experimental. Length of the n-grams created when computing blooms from log
+# lines.
+# CLI flag: -bloom-compactor.ngram-length
+[bloom_ngram_length: <int> | default = 4]
+
+# Experimental. Skip factor for the n-grams created when computing blooms from
+# log lines.
+# CLI flag: -bloom-compactor.ngram-skip
+[bloom_ngram_skip: <int> | default = 1]
+
+# Experimental. Scalable Bloom Filter desired false-positive rate.
+# CLI flag: -bloom-compactor.false-positive-rate
+[bloom_false_positive_rate: <float> | default = 0.01]
+
+# Experimental. Compression algorithm for bloom block pages.
+# CLI flag: -bloom-compactor.block-encoding
+[bloom_block_encoding: <string> | default = "none"]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
@@ -3419,8 +3434,8 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 # CLI flag: -querier.id
 [id: <string> | default = ""]
 
-# The grpc_client block configures the gRPC client used to communicate between
-# two Loki components.
+# The grpc_client block configures the gRPC client used to communicate between a
+# client and server component in Loki.
 # The CLI flags prefix for this block configuration is: querier.frontend-client
 [grpc_client_config: <grpc_client>]
 ```
@@ -4396,7 +4411,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 
 ### grpc_client
 
-The `grpc_client` block configures the gRPC client used to communicate between two Loki components. The supported CLI flags `<prefix>` used to reference this configuration block are:
+The `grpc_client` block configures the gRPC client used to communicate between a client and server component in Loki. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
 - `bloom-gateway-client.grpc`
@@ -4614,7 +4629,7 @@ The TLS configuration.
 
 ### cache_config
 
-The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
+The `cache_config` block configures the cache backend for a specific Loki component. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bloom-gateway-client.cache`
 - `bloom.metas-cache`

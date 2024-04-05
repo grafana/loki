@@ -90,8 +90,8 @@ type Config struct {
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
-	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor"`
-	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway"`
+	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor,omitempty" category:"experimental"`
+	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
 	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
 	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
@@ -268,6 +268,9 @@ func (c *Config) Validate() error {
 	}
 	if err := c.BloomCompactor.Validate(); err != nil {
 		return errors.Wrap(err, "invalid bloom_compactor config")
+	}
+	if err := c.BloomGateway.Validate(); err != nil {
+		return errors.Wrap(err, "invalid bloom_gateway config")
 	}
 
 	if err := c.Pattern.Validate(); err != nil {
