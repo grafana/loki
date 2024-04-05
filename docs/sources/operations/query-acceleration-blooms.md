@@ -105,7 +105,7 @@ object store they are freed. Chunks and TSDB files are downloaded from the objec
 We estimate that compactors are able to process 4 MB worth of data per second per core.
 
 ## Bloom Gateway
-Bloom Gateways handle chunks filtering requests from the [index gateway]({{< relref "../get-started/components/#index-gateway" >}}). 
+Bloom Gateways handle chunks filtering requests from the [index gateway]({{< relref "../get-started/components#index-gateway" >}}). 
 The service takes a list of chunks and a filtering expression and matches them against the blooms, 
 filtering out those chunks not matching the given filter expression.
 
