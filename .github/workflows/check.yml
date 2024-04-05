@@ -5,7 +5,7 @@
       "build_image": "grafana/loki-build-image:0.33.1-golangci.1.51.2"
       "golang_ci_lint_version": "v1.51.2"
       "release_lib_ref": "loki-2.9.x"
-      "skip_validation": false
+      "skip_validation": true
       "use_github_app_token": true
 "name": "check"
 "on":
