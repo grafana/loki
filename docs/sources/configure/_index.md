@@ -3314,47 +3314,51 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
-# The shard size defines how many bloom gateways should be used by a tenant for
-# querying.
+# Experimental. The shard size defines how many bloom gateways should be used by
+# a tenant for querying.
 # CLI flag: -bloom-gateway.shard-size
 [bloom_gateway_shard_size: <int> | default = 0]
 
-# Whether to use the bloom gateway component in the read path to filter chunks.
+# Experimental. Whether to use the bloom gateway component in the read path to
+# filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
 [bloom_gateway_enable_filtering: <boolean> | default = false]
 
-# Interval for computing the cache key in the Bloom Gateway.
+# Experimental. Interval for computing the cache key in the Bloom Gateway.
 # CLI flag: -bloom-gateway.cache-key-interval
 [bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
-# The shard size defines how many bloom compactors should be used by a tenant
-# when computing blooms. If it's set to 0, shuffle sharding is disabled.
+# Experimental. The shard size defines how many bloom compactors should be used
+# by a tenant when computing blooms. If it's set to 0, shuffle sharding is
+# disabled.
 # CLI flag: -bloom-compactor.shard-size
 [bloom_compactor_shard_size: <int> | default = 0]
 
-# Whether to compact chunks into bloom filters.
+# Experimental. Whether to compact chunks into bloom filters.
 # CLI flag: -bloom-compactor.enable-compaction
 [bloom_compactor_enable_compaction: <boolean> | default = false]
 
-# The maximum bloom block size. A value of 0 sets an unlimited size. Default is
-# 200MB. The actual block size might exceed this limit since blooms will be
-# added to blocks until the block exceeds the maximum block size.
+# Experimental. The maximum bloom block size. A value of 0 sets an unlimited
+# size. Default is 200MB. The actual block size might exceed this limit since
+# blooms will be added to blocks until the block exceeds the maximum block size.
 # CLI flag: -bloom-compactor.max-block-size
 [bloom_compactor_max_block_size: <int> | default = 200MB]
 
-# Length of the n-grams created when computing blooms from log lines.
+# Experimental. Length of the n-grams created when computing blooms from log
+# lines.
 # CLI flag: -bloom-compactor.ngram-length
 [bloom_ngram_length: <int> | default = 4]
 
-# Skip factor for the n-grams created when computing blooms from log lines.
+# Experimental. Skip factor for the n-grams created when computing blooms from
+# log lines.
 # CLI flag: -bloom-compactor.ngram-skip
 [bloom_ngram_skip: <int> | default = 1]
 
-# Scalable Bloom Filter desired false-positive rate.
+# Experimental. Scalable Bloom Filter desired false-positive rate.
 # CLI flag: -bloom-compactor.false-positive-rate
 [bloom_false_positive_rate: <float> | default = 0.01]
 
-# Compression algorithm for bloom block pages.
+# Experimental. Compression algorithm for bloom block pages.
 # CLI flag: -bloom-compactor.block-encoding
 [bloom_block_encoding: <string> | default = "none"]
 
