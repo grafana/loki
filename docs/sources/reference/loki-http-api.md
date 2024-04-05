@@ -1,10 +1,9 @@
 ---
 title: Loki HTTP API
-menuTitle: HTTP API
 description: Provides a reference page for the Loki HTTP API endpoints for data ingestion, data retrieval, and cluster management.
 aliases:
 - ../api/
-weight: 100
+weight: 500
 ---
 
 # Loki HTTP API

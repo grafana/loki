@@ -45,7 +45,7 @@ Loki has several client options: [Promtail]({{< relref "../../send-data/promtail
 
 Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied.
 Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality.
-Series information can be queried through the [Series API]({{< relref "../../reference/api" >}}), or you can use [logcli]({{< relref "../../query" >}}).
+Series information can be queried through the [Series API](https://grafana.com/docs/loki/latest/reference/loki-http-api/), or you can use [logcli]({{< relref "../../query" >}}).
 
 In Loki 1.6.0 and newer the logcli series command added the `--analyze-labels` flag specifically for debugging high cardinality labels:
 

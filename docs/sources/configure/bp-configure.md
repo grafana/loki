@@ -1,6 +1,6 @@
 ---
 title: Configuration best practices
-menuTitle:  Best practices
+menuTitle:  Configure
 description: Describes configuration best practices for Grafana Loki.
 weight:  100
 ---
