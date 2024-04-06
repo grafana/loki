@@ -316,10 +316,9 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 					break
 				} else if tailer.stopped {
 					return
-				} else {
-					level.Error(logger).Log("msg", "Unexpected error from client", "err", err)
-					break
 				}
+				level.Error(logger).Log("msg", "Unexpected error from client", "err", err)
+				break
 			}
 		}
 		doneChan <- struct{}{}
