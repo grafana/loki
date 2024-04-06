@@ -1,6 +1,6 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
 {{- if $isDistributed }}
-{{- if (eq .Values.loki.useBloomFilters true) -}}
+{{- if (gt (int .Values.bloomCompactor.replicas) 0) -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
