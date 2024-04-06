@@ -724,19 +724,14 @@ http {
     }
 
     ########################################################
-    # simple-scalable mode hosts and urls definitions.
+    # Configure backend targets
+
     {{- $backendHost := include "loki.backendFullname" .}}
     {{- $readHost := include "loki.readFullname" .}}
     {{- $writeHost := include "loki.writeFullname" .}}
 
     {{- if .Values.read.legacyReadTarget }}
     {{- $backendHost = include "loki.readFullname" . }}
-    {{- end }}
-
-    {{- if gt (int .Values.singleBinary.replicas) 0 }}
-    {{- $backendHost = include "loki.singleBinaryFullname" . }}
-    {{- $readHost = include "loki.singleBinaryFullname" .}}
-    {{- $writeHost = include "loki.singleBinaryFullname" .}}
     {{- end }}
 
     {{- $httpSchema := .Values.gateway.nginxConfig.schema }}
@@ -755,26 +750,42 @@ http {
     {{- $backendUrl = .Values.gateway.nginxConfig.customBackendUrl }}
     {{- end }}
 
-    #########################################################
-    # distributed mode hosts and urls definitions.
+    {{- $singleBinaryHost := include "loki.singleBinaryFullname" . }}
+    {{- $singleBinaryUrl  := printf "%s://%s.%s.svc.%s:3100" $httpSchema $singleBinaryHost .Release.Namespace .Values.global.clusterDomain }}
+
     {{- $distributorHost := include "loki.distributorFullname" .}}
     {{- $ingesterHost := include "loki.ingesterFullname" .}}
     {{- $queryFrontendHost := include "loki.queryFrontendFullname" .}}
     {{- $indexGatewayHost := include "loki.indexGatewayFullname" .}}
     {{- $rulerHost := include "loki.rulerFullname" .}}
+    {{- $compactorHost := include "loki.compactorFullname" .}}
+    {{- $schedulerHost := include "loki.querySchedulerFullname" .}}
+
 
     {{- $distributorUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $distributorHost .Release.Namespace .Values.global.clusterDomain -}}
     {{- $ingesterUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $ingesterHost .Release.Namespace .Values.global.clusterDomain }}
     {{- $queryFrontendUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $queryFrontendHost .Release.Namespace .Values.global.clusterDomain }}
     {{- $indexGatewayUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $indexGatewayHost .Release.Namespace .Values.global.clusterDomain }}
     {{- $rulerUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $rulerHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $compactorUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $compactorHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $schedulerUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $schedulerHost .Release.Namespace .Values.global.clusterDomain }}
 
-    {{- if not "loki.deployment.isDistributed "}}
+    {{- if eq (include "loki.deployment.isSingleBinary" .) "true"}}
+    {{- $distributorUrl = $singleBinaryUrl }}
+    {{- $ingesterUrl = $singleBinaryUrl }}
+    {{- $queryFrontendUrl = $singleBinaryUrl }}
+    {{- $indexGatewayUrl = $singleBinaryUrl }}
+    {{- $rulerUrl = $singleBinaryUrl }}
+    {{- $compactorUrl = $singleBinaryUrl }}
+    {{- $schedulerUrl = $singleBinaryUrl }}
+    {{- else if eq (include "loki.deployment.isScalable" .) "true"}}
     {{- $distributorUrl = $writeUrl }}
     {{- $ingesterUrl = $writeUrl }}
     {{- $queryFrontendUrl = $readUrl }}
     {{- $indexGatewayUrl = $backendUrl }}
     {{- $rulerUrl = $backendUrl }}
+    {{- $compactorUrl = $backendUrl }}
+    {{- $schedulerUrl = $backendUrl }}
     {{- end -}}
 
     # Distributor
@@ -834,13 +845,13 @@ http {
 
     # Compactor
     location = /compactor/ring {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $compactorUrl }}$request_uri;
     }
     location = /loki/api/v1/delete {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $compactorUrl }}$request_uri;
     }
     location = /loki/api/v1/cache/generation_numbers {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $compactorUrl }}$request_uri;
     }
 
     # IndexGateway
@@ -850,7 +861,7 @@ http {
 
     # QueryScheduler
     location = /scheduler/ring {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $schedulerUrl }}$request_uri;
     }
 
     # Config

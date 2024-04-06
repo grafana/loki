@@ -192,16 +192,11 @@ loki:
     {{- if .Values.loki.schemaConfig }}
     schema_config:
     {{- toYaml .Values.loki.schemaConfig | nindent 2}}
-    {{- else }}
+    {{- end }}
+    
+    {{- if .Values.loki.useTestSchema }}
     schema_config:
-      configs:
-        - from: 2022-01-11
-          store: boltdb-shipper
-          object_store: {{ .Values.loki.storage.type }}
-          schema: v12
-          index:
-            prefix: loki_index_
-            period: 24h
+    {{- toYaml .Values.loki.testSchemaConfig | nindent 2}}
     {{- end }}
 
     {{ include "loki.rulerConfig" . }}
@@ -372,6 +367,18 @@ loki:
       default_validity: "12h"
   # -- Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas
   schemaConfig: {}
+  # -- a real Loki install requires a proper schemaConfig defined above this, however for testing or playing around
+  # you can enable useTestSchema
+  useTestSchema: false
+  testSchemaConfig:
+    configs:
+      - from: 2024-04-01
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
   # -- Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler
   rulerConfig: {}
   # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`

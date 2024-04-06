@@ -30,3 +30,12 @@
 {{- if and (gt $singleBinaryReplicas 0) $atLeastOneScalableReplica (ne .Values.deploymentMode "SingleBinary<->SimpleScalable") }}
 {{- fail "You have more than zero replicas configured for both the single binary and simple scalable targets. If this was intentional change the deploymentMode to the transitional 'SingleBinary<->SimpleScalable' mode"}}
 {{- end }}
+
+{{- if and (or (not (empty .Values.loki.schemaConfig)) (not (empty .Values.loki.structuredConfig.schema_config))) .Values.loki.useTestSchema }}
+{{- fail "loki.useTestSchema must be false if loki.schemaConfig or loki.structuredConfig.schema_config are defined."}}
+{{- end }}
+
+
+{{- if and (empty .Values.loki.schemaConfig) (empty .Values.loki.structuredConfig.schema_config) (not .Values.loki.useTestSchema) }}
+{{- fail "You must provide a schema_config for Loki, one is not provided as this will be individual for every Loki cluster. See https://grafana.com/docs/loki/latest/operations/storage/schema/ for schema information. For quick testing (with no persistence) add `--set loki.useTestSchema=true`"}}
+{{- end }}
