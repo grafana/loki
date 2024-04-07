@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
 const (
@@ -54,7 +55,7 @@ func GetPeriodConfigForTableNumber(table string, periodicConfigs []config.Period
 	}
 
 	for i, periodCfg := range periodicConfigs {
-		if periodCfg.IndexType != config.TSDBType {
+		if periodCfg.IndexType != types.TSDBType {
 			continue
 		}
 

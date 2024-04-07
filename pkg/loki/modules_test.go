@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
 func Test_calculateMaxLookBack(t *testing.T) {
@@ -266,7 +267,7 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 
 	t.Run("IndexGateway client is enabled when running querier target", func(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Querier)
-		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
+		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -287,7 +288,7 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Read, func(cfg *Config) {
 			cfg.LegacyReadTarget = true
 		})
-		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
+		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
@@ -309,7 +310,7 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Read, func(cfg *Config) {
 			cfg.LegacyReadTarget = false
 		})
-		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
+		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
@@ -331,7 +332,7 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Backend, func(cfg *Config) {
 			cfg.LegacyReadTarget = false
 		})
-		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
+		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
@@ -389,8 +390,8 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.SchemaConfig = config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				IndexType:  config.BoltDBShipperType,
-				ObjectType: config.StorageTypeFileSystem,
+				IndexType:  types.BoltDBShipperType,
+				ObjectType: types.StorageTypeFileSystem,
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Period: time.Hour * 24,
@@ -414,7 +415,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.CompactorConfig.WorkingDirectory = filepath.Join(dir, "compactor")
 
 	cfg.Ruler.Config.Ring.InstanceAddr = localhost
-	cfg.Ruler.Config.StoreConfig.Type = config.StorageTypeLocal
+	cfg.Ruler.Config.StoreConfig.Type = types.StorageTypeLocal
 	cfg.Ruler.Config.StoreConfig.Local.Directory = dir
 
 	cfg.Common.CompactorAddress = "http://localhost:0"
