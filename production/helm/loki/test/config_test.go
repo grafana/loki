@@ -3,7 +3,6 @@ package test
 import (
 	"os"
 	"os/exec"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -37,9 +36,6 @@ type values struct {
 	Loki loki `yaml:"loki"`
 }
 
-// This speeds up the tests, don't think this will cause problems but if you are reading this it probably did :)
-var helmDependencyBuild sync.Once
-
 func templateConfig(t *testing.T, vals values) error {
 	y, err := yaml.Marshal(&vals)
 	require.NoError(t, err)
@@ -51,21 +47,16 @@ func templateConfig(t *testing.T, vals values) error {
 	_, err = f.Write(y)
 	require.NoError(t, err)
 
-	var doOnceError error
-	helmDependencyBuild.Do(func() {
-		cmd := exec.Command("helm", "dependency", "build")
-		// Dependency build needs to be run from the parent directory where the chart is located.
-		cmd.Dir = "../"
-		var cmdOutput []byte
-		if cmdOutput, doOnceError = cmd.CombinedOutput(); err != nil {
-			t.Log("dependency build failed", "err", string(cmdOutput))
-		}
-	})
-	if doOnceError != nil {
-		return doOnceError
+	cmd := exec.Command("helm", "dependency", "build")
+	// Dependency build needs to be run from the parent directory where the chart is located.
+	cmd.Dir = "../"
+	var cmdOutput []byte
+	if cmdOutput, err = cmd.CombinedOutput(); err != nil {
+		t.Log("dependency build failed", "err", string(cmdOutput))
+		return err
 	}
 
-	cmd := exec.Command("helm", "template", "../", "--values", f.Name())
+	cmd = exec.Command("helm", "template", "../", "--values", f.Name())
 	if cmdOutput, err := cmd.CombinedOutput(); err != nil {
 		t.Log("template failed", "err", string(cmdOutput))
 		return err
