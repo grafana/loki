@@ -37,18 +37,18 @@ singleBinary:
   resources:
     limits:
       cpu: 3
-      memory: 6Gi
+      memory: 4Gi
     requests:
       cpu: 2
       memory: 2Gi
   extraEnv:
     # Keep a little bit lower than memory limits
     - name: GOMEMLIMIT
-      value: 5500MiB
+      value: 3750MiB
 
 chunksCache:
   # default is 500MB, with limited memory keep this smaller
-  writebackSizeLimit: 50MB
+  writebackSizeLimit: 10MB
 
 # Enable minio for storage
 minio:

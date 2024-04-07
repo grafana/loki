@@ -293,12 +293,15 @@ loki:
   server:
     http_listen_port: 3100
     grpc_listen_port: 9095
+    http_server_read_timeout: 600s
+    http_server_write_timeout: 600s
   # -- Limits config
   limits_config:
     reject_old_samples: true
     reject_old_samples_max_age: 168h
     max_cache_freshness_per_query: 10m
     split_queries_by_interval: 15m
+    query_timeout: 300s
   # -- Provides a reloadable runtime configuration file for some specific configuration
   runtimeConfig: {}
   # -- Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration
