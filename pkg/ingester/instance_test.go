@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	"github.com/grafana/dskit/tenant"
@@ -60,7 +61,7 @@ func MustParseDayTime(s string) config.DayTime {
 var defaultPeriodConfigs = []config.PeriodConfig{
 	{
 		From:      MustParseDayTime("1900-01-01"),
-		IndexType: config.StorageTypeBigTable,
+		IndexType: types.StorageTypeBigTable,
 		Schema:    "v13",
 	},
 }

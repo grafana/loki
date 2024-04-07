@@ -24,6 +24,7 @@ type Config struct {
 }
 
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	//FIXME E.Welch, the helm chart does not use the /data dir rather /var so we need to probably consider not defaulting this? not sure what's best to do here.
 	c.WorkingDirectory = []string{"/data/blooms"}
 	f.Var(&c.WorkingDirectory, prefix+"shipper.working-directory", "Working directory to store downloaded bloom blocks. Supports multiple directories, separated by comma.")
 	_ = c.MaxQueryPageSize.Set("64MiB") // default should match the one set in pkg/storage/bloom/v1/bloom.go
