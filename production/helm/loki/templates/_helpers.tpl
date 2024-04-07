@@ -754,7 +754,7 @@ http {
     {{- end }}
 
     {{- $singleBinaryHost := include "loki.singleBinaryFullname" . }}
-    {{- $singleBinaryUrl  := printf "%s://%s.%s.svc.%s:3100" $httpSchema $singleBinaryHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $singleBinaryUrl  := printf "%s://%s.%s.svc.%s:%s" $httpSchema $singleBinaryHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
 
     {{- $distributorHost := include "loki.distributorFullname" .}}
     {{- $ingesterHost := include "loki.ingesterFullname" .}}
@@ -765,13 +765,13 @@ http {
     {{- $schedulerHost := include "loki.querySchedulerFullname" .}}
 
 
-    {{- $distributorUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $distributorHost .Release.Namespace .Values.global.clusterDomain -}}
-    {{- $ingesterUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $ingesterHost .Release.Namespace .Values.global.clusterDomain }}
-    {{- $queryFrontendUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $queryFrontendHost .Release.Namespace .Values.global.clusterDomain }}
-    {{- $indexGatewayUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $indexGatewayHost .Release.Namespace .Values.global.clusterDomain }}
-    {{- $rulerUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $rulerHost .Release.Namespace .Values.global.clusterDomain }}
-    {{- $compactorUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $compactorHost .Release.Namespace .Values.global.clusterDomain }}
-    {{- $schedulerUrl := printf "%s://%s.%s.svc.%s:3100" $httpSchema $schedulerHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $distributorUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $distributorHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) -}}
+    {{- $ingesterUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $ingesterHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $queryFrontendUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $queryFrontendHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $indexGatewayUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $indexGatewayHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $rulerUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $rulerHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $compactorUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $compactorHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $schedulerUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $schedulerHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
 
     {{- if eq (include "loki.deployment.isSingleBinary" .) "true"}}
     {{- $distributorUrl = $singleBinaryUrl }}
