@@ -226,7 +226,7 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid schema config"))
 	}
 	if err := c.StorageConfig.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid storage config"))
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid storage_config config"))
 	}
 	if err := c.QueryRange.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_range config"))
