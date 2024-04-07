@@ -32,7 +32,7 @@ func validateSchemaRequirements(c *Config) []error {
 	if c.SchemaConfig.Configs[p].IndexType != types.TSDBType &&
 		cache.IsCacheConfigured(c.StorageConfig.IndexQueriesCacheConfig) &&
 		c.Ingester.RetainPeriod < c.StorageConfig.IndexCacheValidity {
-		errs = append(errs, fmt.Errorf("CONFIG ERROR: the active index is %s which is configured to use an `index_cache_validty` (TTL) of %s, however the chunk_retain_period is %s which is LESS than the `index_cache_validity`. This can lead to query gaps, please configure the `chunk_retain_period` to be greater than the `index_cache_validity`", c.SchemaConfig.Configs[p].IndexType, c.StorageConfig.IndexCacheValidity, c.Ingester.RetainPeriod))
+		errs = append(errs, fmt.Errorf("CONFIG ERROR: the active index is %s which is configured to use an `index_cache_validity` (TTL) of %s, however the chunk_retain_period is %s which is LESS than the `index_cache_validity`. This can lead to query gaps, please configure the `chunk_retain_period` to be greater than the `index_cache_validity`", c.SchemaConfig.Configs[p].IndexType, c.StorageConfig.IndexCacheValidity, c.Ingester.RetainPeriod))
 	}
 
 	// Schema version 13 is required to use structured metadata
