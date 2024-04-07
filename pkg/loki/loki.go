@@ -262,7 +262,7 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid compactor config"))
 	}
 	if err := c.ChunkStoreConfig.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid chunk store config"))
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid chunk_store_config config"))
 	}
 	if err := c.QueryRange.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_range config"))
