@@ -1,7 +1,5 @@
 ---
 loki:
-  image:
-    tag: "3.0.0-rc.1-amd64-45ca2fa51"
   schemaConfig:
     configs:
       - from: 2024-04-01
