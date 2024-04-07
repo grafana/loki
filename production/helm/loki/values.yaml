@@ -178,6 +178,10 @@ loki:
     chunk_store_config:
       chunk_cache_config:
         default_validity: {{ .defaultValidity }}
+        background:
+          writeback_goroutines: {{ .writebackParallelism }}
+          writeback_buffer: {{ .writebackBuffer }}
+          writeback_size_limit: {{ .writebackSizeLimit }}
         memcached:
           batch_size: {{ .batchSize }}
           parallelism: {{ .parallelism }}
@@ -209,12 +213,19 @@ loki:
 
     query_range:
       align_queries_with_step: true
+      {{- with .Values.loki.query_range }}
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+      {{- end }}
       {{- if .Values.resultsCache.enabled }}
       {{- with .Values.resultsCache }}
       cache_results: true
       results_cache:
         cache:
           default_validity: {{ .defaultValidity }}
+          background:
+            writeback_goroutines: {{ .writebackParallelism }}
+            writeback_buffer: {{ .writebackBuffer }}
+            writeback_size_limit: {{ .writebackSizeLimit }}
           memcached_client:
             consistent_hash: true
             addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-results-cache.{{ $.Release.Namespace }}.svc
@@ -395,6 +406,8 @@ loki:
   compactor: {}
   # --  Optional analytics configuration
   analytics: {}
+  # --  Optional querier configuration
+  query_range: {}
   # --  Optional querier configuration
   querier: {}
   # --  Optional ingester configuration
@@ -2868,6 +2881,12 @@ resultsCache:
   maxItemMemory: 5
   # -- Maximum number of connections allowed
   connectionLimit: 16384
+  # -- Max memory to use for cache write back
+  writebackSizeLimit: 500MB
+  # -- Max number of objects to use for cache write back
+  writebackBuffer: 500000
+  # -- Number of parallel threads for cache write back
+  writebackParallelism: 1
   # -- Extra init containers for results-cache pods
   initContainers: []
   # -- Annotations for the results-cache pods
@@ -2951,6 +2970,12 @@ chunksCache:
   maxItemMemory: 5
   # -- Maximum number of connections allowed
   connectionLimit: 16384
+  # -- Max memory to use for cache write back
+  writebackSizeLimit: 500MB
+  # -- Max number of objects to use for cache write back
+  writebackBuffer: 500000
+  # -- Number of parallel threads for cache write back
+  writebackParallelism: 1
   # -- Extra init containers for chunks-cache pods
   initContainers: []
   # -- Annotations for the chunks-cache pods
