@@ -277,6 +277,7 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid pattern_ingester config"))
 	}
 
+	errs = append(errs, validateSchemaValues(c)...)
 	errs = append(errs, ValidateConfigCompatibility(*c)...)
 	errs = append(errs, validateBackendAndLegacyReadMode(c)...)
 	errs = append(errs, validateSchemaRequirements(c)...)

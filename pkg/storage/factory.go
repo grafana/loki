@@ -265,6 +265,11 @@ func (ns *NamedStores) Validate() error {
 	return ns.populateStoreType()
 }
 
+func (ns *NamedStores) Exists(name string) bool {
+	_, ok := ns.storeType[name]
+	return ok
+}
+
 // Config chooses which storage client to use.
 type Config struct {
 	AlibabaStorageConfig   alibaba.OssConfig         `yaml:"alibabacloud"`

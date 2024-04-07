@@ -2,10 +2,12 @@ package loki
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 func validateBackendAndLegacyReadMode(c *Config) []error {
@@ -80,6 +82,26 @@ func validateDirectoriesExist(c *Config) []error {
 		if s.IndexType == types.TSDBType || s.IndexType == types.BoltDBShipperType {
 			if c.CompactorConfig.WorkingDirectory == "" {
 				errs = append(errs, fmt.Errorf("CONFIG ERROR: `compactor:` `working_directory:` is empty, please set a valid directory or set `path_prefix:` in the `common:` section"))
+			}
+		}
+	}
+	return errs
+}
+
+func validateSchemaValues(c *Config) []error {
+	var errs []error
+	for _, cfg := range c.SchemaConfig.Configs {
+		if !util.StringsContain(types.TestingStorageTypes, cfg.IndexType) &&
+			!util.StringsContain(types.SupportedIndexTypes, cfg.IndexType) &&
+			!util.StringsContain(types.DeprecatedIndexTypes, cfg.IndexType) {
+			errs = append(errs, fmt.Errorf("unrecognized `store` (index) type `%s`, choose one of: %s", cfg.IndexType, strings.Join(types.SupportedIndexTypes, ", ")))
+		}
+
+		if !util.StringsContain(types.TestingStorageTypes, cfg.ObjectType) &&
+			!util.StringsContain(types.SupportedStorageTypes, cfg.ObjectType) &&
+			!util.StringsContain(types.DeprecatedStorageTypes, cfg.ObjectType) {
+			if !c.StorageConfig.NamedStores.Exists(cfg.ObjectType) {
+				errs = append(errs, fmt.Errorf("unrecognized `object_store` type `%s`, which also does not match any named_stores. Choose one of: %s. Or choose a named_store", cfg.ObjectType, strings.Join(types.SupportedStorageTypes, ", ")))
 			}
 		}
 	}

@@ -21,7 +21,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/types"
-	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -450,18 +449,6 @@ func (cfg PeriodConfig) validate() error {
 	validateError := validateChunks(cfg)
 	if validateError != nil {
 		return validateError
-	}
-
-	if !util.StringsContain(types.TestingStorageTypes, cfg.IndexType) &&
-		!util.StringsContain(types.SupportedIndexTypes, cfg.IndexType) &&
-		!util.StringsContain(types.DeprecatedIndexTypes, cfg.IndexType) {
-		return fmt.Errorf("unrecognized `store` (index) type `%s`, choose one of: %s", cfg.IndexType, strings.Join(types.SupportedIndexTypes, ", "))
-	}
-
-	if !util.StringsContain(types.TestingStorageTypes, cfg.ObjectType) &&
-		!util.StringsContain(types.SupportedStorageTypes, cfg.ObjectType) &&
-		!util.StringsContain(types.DeprecatedStorageTypes, cfg.ObjectType) {
-		return fmt.Errorf("unrecognized `object_store` type `%s`, choose one of: %s", cfg.ObjectType, strings.Join(types.SupportedStorageTypes, ", "))
 	}
 
 	if cfg.IndexType == types.TSDBType && cfg.IndexTables.Period != ObjectStorageIndexRequiredPeriod {
