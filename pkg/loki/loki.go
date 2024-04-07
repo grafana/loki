@@ -229,7 +229,7 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid storage config"))
 	}
 	if err := c.QueryRange.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid queryrange config"))
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_range config"))
 	}
 	if err := c.Querier.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid querier config"))
