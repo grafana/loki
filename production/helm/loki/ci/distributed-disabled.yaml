@@ -11,7 +11,7 @@ read:
 write:
   replicas: 0
 ingester:
-  replicas: 3
+  replicas: 3 # Kind seems to be a single node for testing so the anti-affinity rules fail here with zone awareness
 querier:
   replicas: 1
 queryFrontend:
