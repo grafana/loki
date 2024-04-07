@@ -5361,10 +5361,20 @@ null
     "type": "s3"
   },
   "storage_config": {
+    "boltdb_shipper": {
+      "index_gateway_client": {
+        "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"
+      }
+    },
     "hedging": {
       "at": "250ms",
       "max_per_second": 20,
       "up_to": 3
+    },
+    "tsdb_shipper": {
+      "index_gateway_client": {
+        "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"
+      }
     }
   },
   "structuredConfig": {},
@@ -5834,10 +5844,20 @@ null
 			<td>Additional storage config</td>
 			<td><pre lang="json">
 {
+  "boltdb_shipper": {
+    "index_gateway_client": {
+      "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"
+    }
+  },
   "hedging": {
     "at": "250ms",
     "max_per_second": 20,
     "up_to": 3
+  },
+  "tsdb_shipper": {
+    "index_gateway_client": {
+      "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"
+    }
   }
 }
 </pre>
