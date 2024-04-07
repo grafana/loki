@@ -247,7 +247,7 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingester config"))
 	}
 	if err := c.LimitsConfig.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits config"))
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits_config config"))
 	}
 	if err := c.Worker.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid frontend-worker config"))
