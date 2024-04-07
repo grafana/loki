@@ -253,7 +253,7 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid frontend_worker config"))
 	}
 	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid boltdb-shipper config"))
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid boltdb_shipper config"))
 	}
 	if err := c.IndexGateway.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid index_gateway config"))
