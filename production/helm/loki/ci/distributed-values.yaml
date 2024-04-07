@@ -2,8 +2,6 @@
 loki:
   commonConfig:
     replication_factor: 1
-  image:
-    tag: "k195-51c54ad"
   useTestSchema: true
 deploymentMode: Distributed
 backend:
