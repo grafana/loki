@@ -238,7 +238,7 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_scheduler config"))
 	}
 	if err := c.TableManager.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid tablemanager config"))
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid table_manager config"))
 	}
 	if err := c.Ruler.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ruler config"))
