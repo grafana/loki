@@ -401,6 +401,12 @@ loki:
   query_scheduler: {}
   # -- Additional storage config
   storage_config:
+    boltdb_shipper:
+      index_gateway_client:
+        server_address: '{{ include "loki.indexGatewayAddress" . }}'
+    tsdb_shipper:
+      index_gateway_client:
+        server_address: '{{ include "loki.indexGatewayAddress" . }}'
     hedging:
       at: "250ms"
       max_per_second: 20
