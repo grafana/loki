@@ -1,10 +1,7 @@
 ---
 loki:
-  commonConfig:
-    replication_factor: 1
   image:
     tag: "3.0.0-rc.1-amd64-45ca2fa51"
-
   schemaConfig:
     configs:
       - from: 2024-04-01
@@ -20,7 +17,7 @@ loki:
     enabled: true
   querier:
     # Default is 4, if you have enough memory and CPU you can increase, reduce if OOMing
-    max_concurrent: 2
+    max_concurrent: 4
 
 #gateway:
 #  ingress:
@@ -31,24 +28,31 @@ loki:
 #          - path: /
 #            pathType: Prefix
 
-deploymentMode: SingleBinary
-singleBinary:
-  replicas: 1
-  resources:
-    limits:
-      cpu: 3
-      memory: 4Gi
-    requests:
-      cpu: 2
-      memory: 2Gi
-  extraEnv:
-    # Keep a little bit lower than memory limits
-    - name: GOMEMLIMIT
-      value: 3750MiB
+deploymentMode: Distributed
 
-chunksCache:
-  # default is 500MB, with limited memory keep this smaller
-  writebackSizeLimit: 10MB
+ingester:
+  replicas: 3
+querier:
+  replicas: 3
+  maxUnavailable: 2
+queryFrontend:
+  replicas: 2
+  maxUnavailable: 1
+queryScheduler:
+  replicas: 2
+distributor:
+  replicas: 3
+  maxUnavailable: 2
+compactor:
+  replicas: 1
+indexGateway:
+  replicas: 2
+  maxUnavailable: 1
+
+bloomCompactor:
+  replicas: 0
+bloomGateway:
+  replicas: 0
 
 # Enable minio for storage
 minio:
@@ -62,21 +66,7 @@ read:
 write:
   replicas: 0
 
-ingester:
+singleBinary:
   replicas: 0
-querier:
-  replicas: 0
-queryFrontend:
-  replicas: 0
-queryScheduler:
-  replicas: 0
-distributor:
-  replicas: 0
-compactor:
-  replicas: 0
-indexGateway:
-  replicas: 0
-bloomCompactor:
-  replicas: 0
-bloomGateway:
-  replicas: 0
+
+
