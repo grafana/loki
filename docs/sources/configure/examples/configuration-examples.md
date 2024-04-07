@@ -36,9 +36,6 @@ schema_config:
       period: 24h
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /tmp/loki/index
-    cache_location: /tmp/loki/index_cache
   filesystem:
     directory: /tmp/loki/chunks
 
