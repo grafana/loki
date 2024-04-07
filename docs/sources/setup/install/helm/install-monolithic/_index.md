@@ -60,10 +60,17 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
             ruler: loki-ruler
             admin: loki-admin
           type: 's3'
+          bucketNames:
+            chunks: loki-chunks
+            ruler: loki-ruler
+            admin: loki-admin
           s3:
             endpoint: foo.aws.com
+            region: <AWS region>
             secretAccessKey: supersecret
             accessKeyId: secret
+            s3ForcePathStyle: false
+            insecure: false
       singleBinary:
         replicas: 3
       ```

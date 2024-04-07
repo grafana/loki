@@ -2,7 +2,6 @@ package loki
 
 import (
 	"fmt"
-	"path"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,12 +13,13 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/indexgateway"
 )
 
 func Test_calculateMaxLookBack(t *testing.T) {
@@ -366,15 +366,25 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	// This would be overwritten by the default values setting.
 	cfg.StorageConfig = storage.Config{
 		FSConfig: local.FSConfig{Directory: dir},
+		BloomShipperConfig: bloomshipperconfig.Config{
+			WorkingDirectory:    []string{filepath.Join(dir, "blooms")},
+			DownloadParallelism: 1,
+		},
 		BoltDBShipperConfig: boltdb.IndexCfg{
 			Config: indexshipper.Config{
-				ActiveIndexDirectory: path.Join(dir, "index"),
-				CacheLocation:        path.Join(dir, "cache"),
+				ActiveIndexDirectory: filepath.Join(dir, "index"),
+				CacheLocation:        filepath.Join(dir, "cache"),
 				Mode:                 indexshipper.ModeWriteOnly,
 				ResyncInterval:       24 * time.Hour,
 			},
 		},
 	}
+
+	// Disable some caches otherwise we'll get errors if we don't configure them
+	cfg.QueryRange.CacheLabelResults = false
+	cfg.QueryRange.CacheSeriesResults = false
+	cfg.QueryRange.CacheIndexStatsResults = false
+	cfg.QueryRange.CacheVolumeResults = false
 
 	cfg.SchemaConfig = config.SchemaConfig{
 		Configs: []config.PeriodConfig{
@@ -400,9 +410,8 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.IndexGateway.Mode = indexgateway.SimpleMode
 	cfg.IndexGateway.Ring.InstanceAddr = localhost
 	cfg.BloomCompactor.Ring.InstanceAddr = localhost
-	cfg.BloomGateway.Ring.InstanceAddr = localhost
 	cfg.CompactorConfig.CompactorRing.InstanceAddr = localhost
-	cfg.CompactorConfig.WorkingDirectory = path.Join(dir, "compactor")
+	cfg.CompactorConfig.WorkingDirectory = filepath.Join(dir, "compactor")
 
 	cfg.Ruler.Config.Ring.InstanceAddr = localhost
 	cfg.Ruler.Config.StoreConfig.Type = config.StorageTypeLocal

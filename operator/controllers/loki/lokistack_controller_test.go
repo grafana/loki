@@ -161,7 +161,18 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		{
 			obj:           &routev1.Route{},
 			index:         10,
-			ownCallsCount: 11,
+			ownCallsCount: 12,
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled: true,
+				},
+			},
+			pred: updateOrDeleteOnlyPred,
+		},
+		{
+			obj:           &cloudcredentialv1.CredentialsRequest{},
+			index:         11,
+			ownCallsCount: 12,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					Enabled: true,
@@ -203,20 +214,9 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 	}
 	table := []test{
 		{
-			src:               &cloudcredentialv1.CredentialsRequest{},
+			src:               &openshiftconfigv1.APIServer{},
 			index:             3,
 			watchesCallsCount: 4,
-			featureGates: configv1.FeatureGates{
-				OpenShift: configv1.OpenShiftFeatureGates{
-					Enabled: true,
-				},
-			},
-			pred: updateOrDeleteOnlyPred,
-		},
-		{
-			src:               &openshiftconfigv1.APIServer{},
-			index:             4,
-			watchesCallsCount: 5,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					Enabled:          true,
@@ -227,8 +227,8 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 		},
 		{
 			src:               &openshiftconfigv1.Proxy{},
-			index:             4,
-			watchesCallsCount: 5,
+			index:             3,
+			watchesCallsCount: 4,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					Enabled:      true,

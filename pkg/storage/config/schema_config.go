@@ -17,10 +17,10 @@ import (
 	"github.com/prometheus/common/model"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -161,10 +161,10 @@ type PeriodConfig struct {
 	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used. Which index to use. Either tsdb or boltdb-shipper. Following stores are deprecated: aws, aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
 	// type of object client to use.
 	ObjectType  string                   `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config). Following stores are deprecated: aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
-	Schema      string                   `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v12."`
+	Schema      string                   `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v13."`
 	IndexTables IndexPeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
 	ChunkTables PeriodicTableConfig      `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
-	RowShards   uint32                   `yaml:"row_shards" doc:"description=How many shards will be created. Only used if schema is v10 or greater."`
+	RowShards   uint32                   `yaml:"row_shards" doc:"default=16|description=How many shards will be created. Only used if schema is v10 or greater."`
 
 	// Integer representation of schema used for hot path calculation. Populated on unmarshaling.
 	schemaInt *int `yaml:"-"`
@@ -200,6 +200,11 @@ func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRa
 	}
 }
 
+func NewDayTime(d model.Time) DayTime {
+	beginningOfDay := model.TimeFromUnix(d.Time().Truncate(24 * time.Hour).Unix())
+	return DayTime{beginningOfDay}
+}
+
 // DayTime is a model.Time what holds day-aligned values, and marshals to/from
 // YAML in YYYY-MM-DD format.
 type DayTime struct {
@@ -225,8 +230,56 @@ func (d *DayTime) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-func (d *DayTime) String() string {
+func (d DayTime) String() string {
 	return d.Time.Time().UTC().Format("2006-01-02")
+}
+
+func (d DayTime) Inc() DayTime {
+	return DayTime{d.Add(ObjectStorageIndexRequiredPeriod)}
+}
+
+func (d DayTime) Dec() DayTime {
+	return DayTime{d.Add(-ObjectStorageIndexRequiredPeriod)}
+}
+
+func (d DayTime) Before(other DayTime) bool {
+	return d.Time.Before(other.Time)
+}
+
+func (d DayTime) After(other DayTime) bool {
+	return d.Time.After(other.Time)
+}
+
+func (d DayTime) ModelTime() model.Time {
+	return d.Time
+}
+
+func (d DayTime) Bounds() (model.Time, model.Time) {
+	return d.Time, d.Inc().Time
+}
+
+type DayTable struct {
+	DayTime
+	Prefix string
+}
+
+func (d DayTable) String() string {
+	return d.Addr()
+}
+
+func NewDayTable(d DayTime, prefix string) DayTable {
+	return DayTable{
+		DayTime: d,
+		Prefix:  prefix,
+	}
+}
+
+// Addr returns the prefix (if any) and the unix day offset as a string, which is used
+// as the address for the index table in storage.
+func (d DayTable) Addr() string {
+	return fmt.Sprintf("%s%d",
+		d.Prefix,
+		d.ModelTime().Time().UnixNano()/int64(ObjectStorageIndexRequiredPeriod))
 }
 
 // SchemaConfig contains the config for our chunk index schemas

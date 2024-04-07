@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"embed"
 	"io"
-	"reflect"
-	"strings"
 	"text/template"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -29,9 +27,7 @@ var (
 
 	lokiConfigYAMLTmpl = template.Must(template.ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml"))
 
-	lokiRuntimeConfigYAMLTmpl = template.Must(template.New("loki-runtime-config.yaml").Funcs(template.FuncMap{
-		"yamlBlock": yamlBlock,
-	}).ParseFS(lokiRuntimeConfigYAMLTmplFile, "loki-runtime-config.yaml"))
+	lokiRuntimeConfigYAMLTmpl = template.Must(template.New("loki-runtime-config.yaml").ParseFS(lokiRuntimeConfigYAMLTmplFile, "loki-runtime-config.yaml"))
 )
 
 // Build builds a loki stack configuration files
@@ -57,10 +53,4 @@ func Build(opts Options) ([]byte, []byte, error) {
 		return nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 	}
 	return cfg, rcfg, nil
-}
-
-func yamlBlock(indent string, in reflect.Value) string {
-	inStr := in.String()
-	lines := strings.Split(strings.TrimRight(inStr, "\n"), "\n")
-	return strings.Join(lines, "\n"+indent)
 }

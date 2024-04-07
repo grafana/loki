@@ -22,18 +22,18 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"golang.org/x/sync/semaphore"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	queryrange_limits "github.com/grafana/loki/pkg/querier/queryrange/limits"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/spanlogger"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 const (
@@ -62,6 +62,15 @@ type limits struct {
 }
 
 func (l limits) QuerySplitDuration(user string) time.Duration {
+	if l.splitDuration == nil {
+		return l.Limits.QuerySplitDuration(user)
+	}
+	return *l.splitDuration
+}
+
+func (l limits) InstantMetricQuerySplitDuration(user string) time.Duration {
+	// NOTE: It returns `splitDuration` for both instant and range queries.
+	// no need to have separate limits for now.
 	if l.splitDuration == nil {
 		return l.Limits.QuerySplitDuration(user)
 	}
@@ -575,7 +584,7 @@ func WeightedParallelism(
 		// config because query is in future
 		// or
 		// there is overlap with current config
-		finalOrFuture := i == len(configs)-1 || configs[i].From.After(end)
+		finalOrFuture := i == len(configs)-1 || configs[i].From.Time.After(end)
 		if finalOrFuture {
 			return true
 		}
@@ -605,7 +614,7 @@ func WeightedParallelism(
 
 	var tsdbDur, otherDur time.Duration
 
-	for ; i < len(configs) && configs[i].From.Before(end); i++ {
+	for ; i < len(configs) && configs[i].From.Time.Before(end); i++ {
 		_, from := minMaxModelTime(start, configs[i].From.Time)
 		through := end
 		if i+1 < len(configs) {

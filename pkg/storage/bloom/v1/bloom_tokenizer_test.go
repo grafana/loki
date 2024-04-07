@@ -9,15 +9,16 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/push"
+
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -33,11 +34,12 @@ var (
 )
 
 func TestPrefixedKeyCreation(t *testing.T) {
+	t.Parallel()
 	var ones uint64 = 0xffffffffffffffff
 
 	ref := ChunkRef{
-		Start:    0,
-		End:      model.Time(int64(ones)),
+		From:     0,
+		Through:  model.Time(int64(ones)),
 		Checksum: 0xffffffff,
 	}
 	for _, tc := range []struct {
@@ -56,7 +58,7 @@ func TestPrefixedKeyCreation(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			token, prefixLn := prefixedToken(tc.ngram, ref)
+			token, prefixLn := prefixedToken(tc.ngram, ref, nil)
 			require.Equal(t, 20, prefixLn)
 			require.Equal(t, tc.expLen, len(token))
 			// first 8 bytes should be zeros from `from`
@@ -76,19 +78,21 @@ func TestPrefixedKeyCreation(t *testing.T) {
 }
 
 func TestSetLineTokenizer(t *testing.T) {
+	t.Parallel()
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 
 	// Validate defaults
-	require.Equal(t, bt.lineTokenizer.N, DefaultNGramLength)
-	require.Equal(t, bt.lineTokenizer.Skip, DefaultNGramSkip)
+	require.Equal(t, bt.lineTokenizer.N(), DefaultNGramLength)
+	require.Equal(t, bt.lineTokenizer.SkipFactor(), DefaultNGramSkip)
 
 	// Set new tokenizer, and validate against that
 	bt.lineTokenizer = NewNGramTokenizer(6, 7)
-	require.Equal(t, bt.lineTokenizer.N, 6)
-	require.Equal(t, bt.lineTokenizer.Skip, 7)
+	require.Equal(t, bt.lineTokenizer.N(), 6)
+	require.Equal(t, bt.lineTokenizer.SkipFactor(), 7)
 }
 
 func TestTokenizerPopulate(t *testing.T) {
+	t.Parallel()
 	var testLine = "this is a log line"
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 
@@ -121,7 +125,7 @@ func TestTokenizerPopulate(t *testing.T) {
 		Series: &series,
 	}
 
-	err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
+	_, err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
 	require.NoError(t, err)
 	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
 	toks := tokenizer.Tokens(testLine)
@@ -165,7 +169,7 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 			Series: &series,
 		}
 
-		err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
+		_, err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
 		require.NoError(b, err)
 	}
 }

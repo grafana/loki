@@ -10,15 +10,14 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 /*
@@ -75,7 +74,7 @@ func (ng *DownstreamEngine) Query(ctx context.Context, p Params) Query {
 
 // DownstreamSampleExpr is a SampleExpr which signals downstream computation
 type DownstreamSampleExpr struct {
-	shard *astmapper.ShardAnnotation
+	shard *Shard
 	syntax.SampleExpr
 }
 
@@ -83,14 +82,60 @@ func (d DownstreamSampleExpr) String() string {
 	return fmt.Sprintf("downstream<%s, shard=%s>", d.SampleExpr.String(), d.shard)
 }
 
+// The DownstreamSampleExpr is not part of LogQL. In the prettified version it's
+// represented as e.g. `downstream<count_over_time({foo="bar"} |= "error"), shard=1_of_3>`
+func (d DownstreamSampleExpr) Pretty(level int) string {
+	s := syntax.Indent(level)
+	if !syntax.NeedSplit(d) {
+		return s + d.String()
+	}
+
+	s += "downstream<\n"
+
+	s += d.SampleExpr.Pretty(level + 1)
+	s += ",\n"
+	s += syntax.Indent(level+1) + "shard="
+	if d.shard != nil {
+		s += d.shard.String() + "\n"
+	} else {
+		s += "nil\n"
+	}
+
+	s += syntax.Indent(level) + ">"
+	return s
+}
+
 // DownstreamLogSelectorExpr is a LogSelectorExpr which signals downstream computation
 type DownstreamLogSelectorExpr struct {
-	shard *astmapper.ShardAnnotation
+	shard *Shard
 	syntax.LogSelectorExpr
 }
 
 func (d DownstreamLogSelectorExpr) String() string {
 	return fmt.Sprintf("downstream<%s, shard=%s>", d.LogSelectorExpr.String(), d.shard)
+}
+
+// The DownstreamLogSelectorExpr is not part of LogQL. In the prettified version it's
+// represented as e.g. `downstream<{foo="bar"} |= "error", shard=1_of_3>`
+func (d DownstreamLogSelectorExpr) Pretty(level int) string {
+	s := syntax.Indent(level)
+	if !syntax.NeedSplit(d) {
+		return s + d.String()
+	}
+
+	s += "downstream<\n"
+
+	s += d.LogSelectorExpr.Pretty(level + 1)
+	s += ",\n"
+	s += syntax.Indent(level+1) + "shard="
+	if d.shard != nil {
+		s += d.shard.String() + "\n"
+	} else {
+		s += "nil\n"
+	}
+
+	s += syntax.Indent(level) + ">"
+	return s
 }
 
 func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) { f(d) }
@@ -105,7 +150,7 @@ type ConcatSampleExpr struct {
 	next *ConcatSampleExpr
 }
 
-func (c ConcatSampleExpr) String() string {
+func (c *ConcatSampleExpr) String() string {
 	if c.next == nil {
 		return c.DownstreamSampleExpr.String()
 	}
@@ -115,7 +160,7 @@ func (c ConcatSampleExpr) String() string {
 
 // in order to not display huge queries with thousands of shards,
 // we can limit the number of stringified subqueries.
-func (c ConcatSampleExpr) string(maxDepth int) string {
+func (c *ConcatSampleExpr) string(maxDepth int) string {
 	if c.next == nil {
 		return c.DownstreamSampleExpr.String()
 	}
@@ -125,9 +170,37 @@ func (c ConcatSampleExpr) string(maxDepth int) string {
 	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.string(maxDepth-1))
 }
 
-func (c ConcatSampleExpr) Walk(f syntax.WalkFn) {
+func (c *ConcatSampleExpr) Walk(f syntax.WalkFn) {
 	f(c)
 	f(c.next)
+}
+
+// ConcatSampleExpr has no LogQL repretenstation. It is expressed in in the
+// prettified version as e.g. `concat(downstream<count_over_time({foo="bar"}), shard=...> ++ )`
+func (c *ConcatSampleExpr) Pretty(level int) string {
+	s := syntax.Indent(level)
+	if !syntax.NeedSplit(c) {
+		return s + c.String()
+	}
+
+	s += "concat(\n"
+
+	head := c
+	for i := 0; i < defaultMaxDepth && head != nil; i++ {
+		if i > 0 {
+			s += syntax.Indent(level+1) + "++\n"
+		}
+		s += head.DownstreamSampleExpr.Pretty(level + 1)
+		s += "\n"
+		head = head.next
+	}
+	// There are more downstream samples...
+	if head != nil {
+		s += syntax.Indent(level+1) + "++ ...\n"
+	}
+	s += syntax.Indent(level) + ")"
+
+	return s
 }
 
 // ConcatLogSelectorExpr is an expr for concatenating multiple LogSelectorExpr
@@ -136,7 +209,7 @@ type ConcatLogSelectorExpr struct {
 	next *ConcatLogSelectorExpr
 }
 
-func (c ConcatLogSelectorExpr) String() string {
+func (c *ConcatLogSelectorExpr) String() string {
 	if c.next == nil {
 		return c.DownstreamLogSelectorExpr.String()
 	}
@@ -146,7 +219,7 @@ func (c ConcatLogSelectorExpr) String() string {
 
 // in order to not display huge queries with thousands of shards,
 // we can limit the number of stringified subqueries.
-func (c ConcatLogSelectorExpr) string(maxDepth int) string {
+func (c *ConcatLogSelectorExpr) string(maxDepth int) string {
 	if c.next == nil {
 		return c.DownstreamLogSelectorExpr.String()
 	}
@@ -154,6 +227,34 @@ func (c ConcatLogSelectorExpr) string(maxDepth int) string {
 		return fmt.Sprintf("%s ++ ...", c.DownstreamLogSelectorExpr.String())
 	}
 	return fmt.Sprintf("%s ++ %s", c.DownstreamLogSelectorExpr.String(), c.next.string(maxDepth-1))
+}
+
+// ConcatLogSelectorExpr has no representation in LogQL. Its prettified version
+// is e.g. `concat(downstream<{foo="bar"} |= "error", shard=1_of_3>)`
+func (c *ConcatLogSelectorExpr) Pretty(level int) string {
+	s := syntax.Indent(level)
+	if !syntax.NeedSplit(c) {
+		return s + c.String()
+	}
+
+	s += "concat(\n"
+
+	head := c
+	for i := 0; i < defaultMaxDepth && head != nil; i++ {
+		if i > 0 {
+			s += syntax.Indent(level+1) + "++\n"
+		}
+		s += head.DownstreamLogSelectorExpr.Pretty(level + 1)
+		s += "\n"
+		head = head.next
+	}
+	// There are more downstream samples...
+	if head != nil {
+		s += syntax.Indent(level+1) + "++ ...\n"
+	}
+	s += ")"
+
+	return s
 }
 
 // QuantileSketchEvalExpr evaluates a quantile sketch to the actual quantile.
@@ -200,33 +301,6 @@ func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
 	}
 }
 
-type Shards []astmapper.ShardAnnotation
-
-func (xs Shards) Encode() (encoded []string) {
-	for _, shard := range xs {
-		encoded = append(encoded, shard.String())
-	}
-
-	return encoded
-}
-
-// ParseShards parses a list of string encoded shards
-func ParseShards(strs []string) (Shards, error) {
-	if len(strs) == 0 {
-		return nil, nil
-	}
-	shards := make([]astmapper.ShardAnnotation, 0, len(strs))
-
-	for _, str := range strs {
-		shard, err := astmapper.ParseShard(str)
-		if err != nil {
-			return nil, err
-		}
-		shards = append(shards, shard)
-	}
-	return shards, nil
-}
-
 type Downstreamable interface {
 	Downstreamer(context.Context) Downstreamer
 }
@@ -244,7 +318,13 @@ type Resp struct {
 // Downstreamer is an interface for deferring responsibility for query execution.
 // It is decoupled from but consumed by a downStreamEvaluator to dispatch ASTs.
 type Downstreamer interface {
-	Downstream(context.Context, []DownstreamQuery) ([]logqlmodel.Result, error)
+	Downstream(context.Context, []DownstreamQuery, Accumulator) ([]logqlmodel.Result, error)
+}
+
+// Accumulator is an interface for accumulating query results.
+type Accumulator interface {
+	Accumulate(context.Context, logqlmodel.Result, int) error
+	Result() []logqlmodel.Result
 }
 
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
@@ -254,8 +334,8 @@ type DownstreamEvaluator struct {
 }
 
 // Downstream runs queries and collects stats from the embedded Downstreamer
-func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
-	results, err := ev.Downstreamer.Downstream(ctx, queries)
+func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery, acc Accumulator) ([]logqlmodel.Result, error) {
+	results, err := ev.Downstreamer.Downstream(ctx, queries, acc)
 	if err != nil {
 		return nil, err
 	}
@@ -273,6 +353,10 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 	}
 
 	for _, res := range results {
+		if err := metadata.AddWarnings(ctx, res.Warnings...); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
+		}
+
 		if err := metadata.JoinHeaders(ctx, res.Headers); err != nil {
 			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
 			break
@@ -310,16 +394,17 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 
 	case DownstreamSampleExpr:
 		// downstream to a querier
-		var shards []astmapper.ShardAnnotation
+		var shards Shards
 		if e.shard != nil {
 			shards = append(shards, *e.shard)
 		}
+		acc := NewBufferedAccumulator(1)
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
 			Params: ParamsWithShardsOverride{
 				Params:         ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.SampleExpr},
-				ShardsOverride: Shards(shards).Encode(),
+				ShardsOverride: shards.Encode(),
 			},
-		}})
+		}}, acc)
 		if err != nil {
 			return nil, err
 		}
@@ -339,7 +424,8 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			cur = cur.next
 		}
 
-		results, err := ev.Downstream(ctx, queries)
+		acc := NewBufferedAccumulator(len(queries))
+		results, err := ev.Downstream(ctx, queries, acc)
 		if err != nil {
 			return nil, err
 		}
@@ -379,7 +465,8 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			}
 		}
 
-		results, err := ev.Downstream(ctx, queries)
+		acc := newQuantileSketchAccumulator()
+		results, err := ev.Downstream(ctx, queries, acc)
 		if err != nil {
 			return nil, err
 		}
@@ -413,12 +500,13 @@ func (ev *DownstreamEvaluator) NewIterator(
 		if e.shard != nil {
 			shards = append(shards, *e.shard)
 		}
+		acc := NewStreamAccumulator(params)
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
 			Params: ParamsWithShardsOverride{
 				Params:         ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.LogSelectorExpr},
 				ShardsOverride: shards.Encode(),
 			},
-		}})
+		}}, acc)
 		if err != nil {
 			return nil, err
 		}
@@ -438,7 +526,8 @@ func (ev *DownstreamEvaluator) NewIterator(
 			cur = cur.next
 		}
 
-		results, err := ev.Downstream(ctx, queries)
+		acc := NewStreamAccumulator(params)
+		results, err := ev.Downstream(ctx, queries, acc)
 		if err != nil {
 			return nil, err
 		}
@@ -522,6 +611,10 @@ func NewResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator
 		end   = params.End()
 		step  = params.Step()
 	)
+
+	if res.Data == nil {
+		return nil, fmt.Errorf("data in the passed result is nil (res.Data), cannot be processed by stepevaluator")
+	}
 
 	switch data := res.Data.(type) {
 	case promql.Vector:

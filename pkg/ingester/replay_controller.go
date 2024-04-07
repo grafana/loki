@@ -7,7 +7,7 @@ import (
 	"github.com/go-kit/log/level"
 	"go.uber.org/atomic"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type replayFlusher struct {

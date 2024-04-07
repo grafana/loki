@@ -4,7 +4,7 @@ package stats;
 
 import "gogoproto/gogo.proto";
 
-option go_package = "github.com/grafana/loki/pkg/logqlmodel/stats";
+option go_package = "github.com/grafana/loki/v3/pkg/logqlmodel/stats";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
@@ -25,6 +25,10 @@ message Result {
   Caches caches = 4 [
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "cache"
+  ];
+  Index index = 5 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "index"
   ];
 }
 
@@ -56,6 +60,10 @@ message Caches {
   Cache labelResult = 7 [
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "labelResult"
+  ];
+  Cache instantMetricResult = 8 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "instantMetricResult"
   ];
 }
 
@@ -90,6 +98,16 @@ message Summary {
   int64 totalPostFilterLines = 11 [(gogoproto.jsontag) = "totalPostFilterLines"];
   // Total bytes processed of metadata.
   int64 totalStructuredMetadataBytesProcessed = 12 [(gogoproto.jsontag) = "totalStructuredMetadataBytesProcessed"];
+}
+
+// Statistics from Index queries
+// TODO(owen-d): include bytes.
+// Needs some index methods added to return _sized_ chunk refs to know
+message Index {
+  // Total chunks
+  int64 totalChunks = 1 [(gogoproto.jsontag) = "totalChunks"];
+  // Post-filtered chunks
+  int64 postFilterChunks = 2 [(gogoproto.jsontag) = "postFilterChunks"];
 }
 
 message Querier {
@@ -132,6 +150,12 @@ message Store {
 
   // Time spent fetching chunk refs from index.
   int64 chunkRefsFetchTime = 5 [(gogoproto.jsontag) = "chunkRefsFetchTime"];
+
+  // Time spent being blocked on congestion control.
+  int64 congestionControlLatency = 6 [(gogoproto.jsontag) = "congestionControlLatency"];
+
+  // Total number of lines filtered by pipeline wrapper.
+  int64 pipelineWrapperFilteredLines = 7 [(gogoproto.jsontag) = "pipelineWrapperFilteredLines"];
 }
 
 message Chunk {

@@ -369,6 +369,9 @@ s3:
   {{- end }}
   s3forcepathstyle: {{ .s3ForcePathStyle }}
   insecure: {{ .insecure }}
+  {{- with .http_config }}
+  http_config: {{ toYaml . | nindent 6 }}
+  {{- end }}
 {{- end -}}
 {{- else if eq .Values.loki.storage.type "gcs" -}}
 {{- with .Values.loki.storage.gcs }}
@@ -566,16 +569,16 @@ Params:
   pathType: Prefix
   {{- end }}
   backend:
-    {{- if $ingressApiIsStable }}
     {{- $serviceName := include "loki.ingress.serviceName" (dict "ctx" $.ctx "svcName" $.svcName) }}
+    {{- if $ingressApiIsStable }}
     service:
       name: {{ $serviceName }}
       port:
-        number: 3100
+        number: {{ $.ctx.Values.loki.server.http_listen_port }}
     {{- else }}
     serviceName: {{ $serviceName }}
-    servicePort: 3100
-{{- end -}}
+    servicePort: {{ $.ctx.Values.loki.server.http_listen_port }}
+    {{- end -}}
 {{- end -}}
 {{- end -}}
 
@@ -604,7 +607,7 @@ Create the service endpoint including port for MinIO.
 
 {{/* Determine if deployment is using object storage */}}
 {{- define "loki.isUsingObjectStorage" -}}
-{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") (eq .Values.loki.storage.type "swift") -}}
+{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") (eq .Values.loki.storage.type "swift") (eq .Values.loki.storage.type "alibabacloud") -}}
 {{- end -}}
 
 {{/* Configure the correct name for the memberlist service */}}
@@ -617,7 +620,7 @@ Create the service endpoint including port for MinIO.
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
 {{- $url := printf "%s.%s.svc.%s.:%s" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.gateway.service.port | toString)  }}
 {{- if and $isSingleBinary (not .Values.gateway.enabled)  }}
-  {{- $url = printf "%s.%s.svc.%s.:3100" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+  {{- $url = printf "%s.%s.svc.%s.:%s" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
 {{- end }}
 {{- printf "%s" $url -}}
 {{- end -}}
@@ -736,9 +739,9 @@ http {
 
     {{- $httpSchema := .Values.gateway.nginxConfig.schema }}
 
-    {{- $writeUrl    := printf "%s://%s.%s.svc.%s:3100" $httpSchema $writeHost   .Release.Namespace .Values.global.clusterDomain }}
-    {{- $readUrl     := printf "%s://%s.%s.svc.%s:3100" $httpSchema $readHost    .Release.Namespace .Values.global.clusterDomain }}
-    {{- $backendUrl  := printf "%s://%s.%s.svc.%s:3100" $httpSchema $backendHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $writeUrl    := printf "%s://%s.%s.svc.%s:%s" $httpSchema $writeHost   .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $readUrl     := printf "%s://%s.%s.svc.%s:%s" $httpSchema $readHost    .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $backendUrl  := printf "%s://%s.%s.svc.%s:%s" $httpSchema $backendHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
 
     {{- if .Values.gateway.nginxConfig.customWriteUrl }}
     {{- $writeUrl  = .Values.gateway.nginxConfig.customWriteUrl }}
@@ -933,7 +936,7 @@ enableServiceLinks: false
 {{/* single binary */}}
 {{- $compactorAddress = include "loki.singleBinaryFullname" . -}}
 {{- end -}}
-{{- printf "%s" $compactorAddress }}
+{{- printf "http://%s:%s" $compactorAddress (.Values.loki.server.http_listen_port | toString) }}
 {{- end }}
 
 {{/* Determine query-scheduler address */}}
@@ -941,7 +944,7 @@ enableServiceLinks: false
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- $schedulerAddress := ""}}
 {{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) -}}
-{{- $schedulerAddress = printf "query-scheduler-discovery.%s.svc.%s.:9095" .Release.Namespace .Values.global.clusterDomain -}}
+{{- $schedulerAddress = printf "query-scheduler-discovery.%s.svc.%s.:%s" .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
 {{- end -}}
 {{- printf "%s" $schedulerAddress }}
 {{- end }}

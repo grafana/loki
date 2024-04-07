@@ -43,6 +43,7 @@ type Context struct {
 	querier  Querier
 	ingester Ingester
 	caches   Caches
+	index    Index
 
 	// store is the store statistics collected across the query path
 	store Store
@@ -55,16 +56,18 @@ type Context struct {
 type CacheType string
 
 const (
-	ChunkCache        CacheType = "chunk" //nolint:staticcheck
-	IndexCache                  = "index"
-	ResultCache                 = "result"
-	StatsResultCache            = "stats-result"
-	VolumeResultCache           = "volume-result"
-	WriteDedupeCache            = "write-dedupe"
-	SeriesResultCache           = "series-result"
-	LabelResultCache            = "label-result"
-	BloomFilterCache            = "bloom-filter"
-	BloomBlocksCache            = "bloom-blocks"
+	ChunkCache                CacheType = "chunk"                 //nolint:staticcheck
+	IndexCache                CacheType = "index"                 //nolint:staticcheck
+	ResultCache               CacheType = "result"                //nolint:staticcheck
+	StatsResultCache          CacheType = "stats-result"          //nolint:staticcheck
+	VolumeResultCache         CacheType = "volume-result"         //nolint:staticcheck
+	InstantMetricResultsCache CacheType = "instant-metric-result" // nolint:staticcheck
+	WriteDedupeCache          CacheType = "write-dedupe"          //nolint:staticcheck
+	SeriesResultCache         CacheType = "series-result"         //nolint:staticcheck
+	LabelResultCache          CacheType = "label-result"          //nolint:staticcheck
+	BloomFilterCache          CacheType = "bloom-filter"          //nolint:staticcheck
+	BloomBlocksCache          CacheType = "bloom-blocks"          //nolint:staticcheck
+	BloomMetasCache           CacheType = "bloom-metas"           //nolint:staticcheck
 )
 
 // NewContext creates a new statistics context
@@ -94,17 +97,28 @@ func (c *Context) Ingester() Ingester {
 	}
 }
 
+// Store returns the store statistics accumulated so far.
+func (c *Context) Store() Store {
+	return c.store
+}
+
 // Caches returns the cache statistics accumulated so far.
 func (c *Context) Caches() Caches {
 	return Caches{
-		Chunk:        c.caches.Chunk,
-		Index:        c.caches.Index,
-		Result:       c.caches.Result,
-		StatsResult:  c.caches.StatsResult,
-		VolumeResult: c.caches.VolumeResult,
-		SeriesResult: c.caches.SeriesResult,
-		LabelResult:  c.caches.LabelResult,
+		Chunk:               c.caches.Chunk,
+		Index:               c.caches.Index,
+		Result:              c.caches.Result,
+		StatsResult:         c.caches.StatsResult,
+		VolumeResult:        c.caches.VolumeResult,
+		SeriesResult:        c.caches.SeriesResult,
+		LabelResult:         c.caches.LabelResult,
+		InstantMetricResult: c.caches.InstantMetricResult,
 	}
+}
+
+// Index returns the index statistics accumulated so far.
+func (c *Context) Index() Index {
+	return c.index
 }
 
 // Reset clears the statistics.
@@ -117,6 +131,7 @@ func (c *Context) Reset() {
 	c.ingester.Reset()
 	c.result.Reset()
 	c.caches.Reset()
+	c.index.Reset()
 }
 
 // Result calculates the summary based on store and ingester data.
@@ -129,6 +144,7 @@ func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalE
 		},
 		Ingester: c.ingester,
 		Caches:   c.caches,
+		Index:    c.index,
 	})
 
 	r.ComputeSummary(execTime, queueTime, totalEntriesReturned)
@@ -145,13 +161,22 @@ func JoinResults(ctx context.Context, res Result) {
 	stats.result.Merge(res)
 }
 
-// JoinIngesterResult joins the ingester result statistics in a concurrency-safe manner.
+// JoinIngesters joins the ingester result statistics in a concurrency-safe manner.
 func JoinIngesters(ctx context.Context, inc Ingester) {
 	stats := FromContext(ctx)
 	stats.mtx.Lock()
 	defer stats.mtx.Unlock()
 
 	stats.ingester.Merge(inc)
+}
+
+// JoinIndex joins the index statistics in a concurrency-safe manner.
+func JoinIndex(ctx context.Context, index Index) {
+	stats := FromContext(ctx)
+	stats.mtx.Lock()
+	defer stats.mtx.Unlock()
+
+	stats.index.Merge(index)
 }
 
 // ComputeSummary compute the summary of the statistics.
@@ -180,6 +205,8 @@ func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration,
 func (s *Store) Merge(m Store) {
 	s.TotalChunksRef += m.TotalChunksRef
 	s.TotalChunksDownloaded += m.TotalChunksDownloaded
+	s.CongestionControlLatency += m.CongestionControlLatency
+	s.PipelineWrapperFilteredLines += m.PipelineWrapperFilteredLines
 	s.ChunksDownloadTime += m.ChunksDownloadTime
 	s.ChunkRefsFetchTime += m.ChunkRefsFetchTime
 	s.Chunk.HeadChunkBytes += m.Chunk.HeadChunkBytes
@@ -194,6 +221,10 @@ func (s *Store) Merge(m Store) {
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
 	}
+}
+
+func (s *Store) ChunksDownloadDuration() time.Duration {
+	return time.Duration(s.GetChunksDownloadTime())
 }
 
 func (s *Summary) Merge(m Summary) {
@@ -213,6 +244,11 @@ func (i *Ingester) Merge(m Ingester) {
 	i.TotalReached += m.TotalReached
 }
 
+func (i *Index) Merge(m Index) {
+	i.TotalChunks += m.TotalChunks
+	i.PostFilterChunks += m.PostFilterChunks
+}
+
 func (c *Caches) Merge(m Caches) {
 	c.Chunk.Merge(m.Chunk)
 	c.Index.Merge(m.Index)
@@ -221,6 +257,7 @@ func (c *Caches) Merge(m Caches) {
 	c.VolumeResult.Merge(m.VolumeResult)
 	c.SeriesResult.Merge(m.SeriesResult)
 	c.LabelResult.Merge(m.LabelResult)
+	c.InstantMetricResult.Merge(m.InstantMetricResult)
 }
 
 func (c *Cache) Merge(m Cache) {
@@ -253,6 +290,7 @@ func (r *Result) Merge(m Result) {
 	r.Ingester.Merge(m.Ingester)
 	r.Caches.Merge(m.Caches)
 	r.Summary.Merge(m.Summary)
+	r.Index.Merge(m.Index)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
 		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime), int(r.Summary.TotalEntriesReturned))
 }
@@ -269,6 +307,14 @@ func (r Result) ChunksDownloadTime() time.Duration {
 
 func (r Result) ChunkRefsFetchTime() time.Duration {
 	return time.Duration(r.Querier.Store.ChunkRefsFetchTime + r.Ingester.Store.ChunkRefsFetchTime)
+}
+
+func (r Result) CongestionControlLatency() time.Duration {
+	return time.Duration(r.Querier.Store.CongestionControlLatency)
+}
+
+func (r Result) PipelineWrapperFilteredLines() int64 {
+	return r.Querier.Store.PipelineWrapperFilteredLines + r.Ingester.Store.PipelineWrapperFilteredLines
 }
 
 func (r Result) TotalDuplicates() int64 {
@@ -350,6 +396,14 @@ func (c *Context) AddChunksDownloadTime(i time.Duration) {
 
 func (c *Context) AddChunkRefsFetchTime(i time.Duration) {
 	atomic.AddInt64(&c.store.ChunkRefsFetchTime, int64(i))
+}
+
+func (c *Context) AddCongestionControlLatency(i time.Duration) {
+	atomic.AddInt64(&c.store.CongestionControlLatency, int64(i))
+}
+
+func (c *Context) AddPipelineWrapperFilterdLines(i int64) {
+	atomic.AddInt64(&c.store.PipelineWrapperFilteredLines, i)
 }
 
 func (c *Context) AddChunksDownloaded(i int64) {
@@ -469,6 +523,8 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 		stats = &c.caches.SeriesResult
 	case LabelResultCache:
 		stats = &c.caches.LabelResult
+	case InstantMetricResultsCache:
+		stats = &c.caches.InstantMetricResult
 	default:
 		return nil
 	}
@@ -570,6 +626,12 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.Result.EntriesStored", c.Result.EntriesStored,
 		"Cache.Result.BytesSent", humanize.Bytes(uint64(c.Result.BytesSent)),
 		"Cache.Result.BytesReceived", humanize.Bytes(uint64(c.Result.BytesReceived)),
-		"Cache.Result.DownloadTime", c.Result.CacheDownloadTime(),
+		"Cache.InstantMetricResult.Requests", c.InstantMetricResult.Requests,
+		"Cache.InstantMetricResult.EntriesRequested", c.InstantMetricResult.EntriesRequested,
+		"Cache.InstantMetricResult.EntriesFound", c.InstantMetricResult.EntriesFound,
+		"Cache.InstantMetricResult.EntriesStored", c.InstantMetricResult.EntriesStored,
+		"Cache.InstantMetricResult.BytesSent", humanize.Bytes(uint64(c.InstantMetricResult.BytesSent)),
+		"Cache.InstantMetricResult.BytesReceived", humanize.Bytes(uint64(c.InstantMetricResult.BytesReceived)),
+		"Cache.InstantMetricResult.DownloadTime", c.InstantMetricResult.CacheDownloadTime(),
 	)
 }

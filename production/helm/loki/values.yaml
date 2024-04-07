@@ -440,7 +440,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default verion of GEL to deploy
-  version: v1.8.4
+  version: v1.8.6
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -756,6 +756,12 @@ networkPolicy:
     podSelector: {}
     # -- Specifies the namespace the discovery Pods are running in
     namespaceSelector: {}
+  egressWorld:
+    # -- Enable additional cilium egress rules to external world for write, read and backend.
+    enabled: false
+  egressKubeApiserver:
+    # -- Enable additional cilium egress rules to kube-apiserver for backend.
+    enabled: false
 
 ######################################################################################################################
 #
@@ -1462,6 +1468,8 @@ read:
   legacyReadTarget: false
   # -- Additional CLI args for the read
   extraArgs: []
+  # -- Containers to add to the read pods
+  extraContainers: []
   # -- Environment variables to add to the read pods
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the read pods
@@ -1517,7 +1525,7 @@ backend:
     # -- Enable autoscaling for the backend.
     enabled: false
     # -- Minimum autoscaling replicas for the backend.
-    minReplicas: 2
+    minReplicas: 3
     # -- Maximum autoscaling replicas for the backend.
     maxReplicas: 6
     # -- Target CPU utilization percentage for the backend.
@@ -3295,6 +3303,13 @@ monitoring:
       enableConfigReadAPI: false
       # -- The name of the PriorityClass for GrafanaAgent pods
       priorityClassName: null
+      # -- Resource requests and limits for the grafanaAgent pods
+      resources: { }
+      #   limits:
+      #     memory: 200Mi
+      #   requests:
+      #     cpu: 50m
+      #     memory: 100Mi
       # -- Tolerations for GrafanaAgent pods
       tolerations: []
     # PodLogs configuration
@@ -3308,6 +3323,9 @@ monitoring:
       # -- PodLogs relabel configs to apply to samples before scraping
       # https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#relabelconfig
       relabelings: []
+      # -- Additional pipeline stages to process logs after scraping
+      # https://grafana.com/docs/agent/latest/operator/api/#pipelinestagespec-a-namemonitoringgrafanacomv1alpha1pipelinestagespeca
+      additionalPipelineStages: []
     # LogsInstance configuration
     logsInstance:
       # -- LogsInstance annotations

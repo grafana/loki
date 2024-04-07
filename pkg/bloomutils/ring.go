@@ -1,30 +1,65 @@
 // This file contains a bunch of utility functions for bloom components.
-// TODO: Find a better location for this package
 
 package bloomutils
 
 import (
+	"errors"
+	"fmt"
 	"math"
 	"sort"
 
 	"github.com/grafana/dskit/ring"
+	"github.com/prometheus/common/model"
+	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/slices"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 )
 
-type InstanceWithTokenRange struct {
-	Instance           ring.InstanceDesc
-	MinToken, MaxToken uint32
+var (
+	Uint32Range = Range[uint32]{Min: 0, Max: math.MaxUint32}
+	Uint64Range = Range[uint64]{Min: 0, Max: math.MaxUint64}
+)
+
+type Range[T constraints.Unsigned] struct {
+	Min, Max T
 }
 
-func (i InstanceWithTokenRange) Cmp(token uint32) v1.BoundsCheck {
-	if token < i.MinToken {
+func (r Range[T]) String() string {
+	return fmt.Sprintf("%016x-%016x", r.Min, r.Max)
+}
+
+func (r Range[T]) Less(other Range[T]) bool {
+	if r.Min != other.Min {
+		return r.Min < other.Min
+	}
+	return r.Max <= other.Max
+}
+
+func (r Range[T]) Cmp(t T) v1.BoundsCheck {
+	if t < r.Min {
 		return v1.Before
-	} else if token > i.MaxToken {
+	} else if t > r.Max {
 		return v1.After
 	}
 	return v1.Overlap
+}
+
+func NewRange[T constraints.Unsigned](min, max T) Range[T] {
+	return Range[T]{Min: min, Max: max}
+}
+
+func NewTokenRange(min, max uint32) Range[uint32] {
+	return Range[uint32]{Min: min, Max: max}
+}
+
+type InstanceWithTokenRange struct {
+	Instance   ring.InstanceDesc
+	TokenRange Range[uint32]
+}
+
+func (i InstanceWithTokenRange) Cmp(token uint32) v1.BoundsCheck {
+	return i.TokenRange.Cmp(token)
 }
 
 type InstancesWithTokenRange []InstanceWithTokenRange
@@ -38,109 +73,106 @@ func (i InstancesWithTokenRange) Contains(token uint32) bool {
 	return false
 }
 
-// GetInstanceTokenRange calculates the token range for a specific instance
-// with given id based on the first token in the ring.
-// This assumes that each instance in the ring is configured with only a single
-// token.
-func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) InstancesWithTokenRange {
-
-	// Sorting the tokens of the instances would not be necessary if there is
-	// only a single token per instances, however, since we only assume one
-	// token, but don't enforce one token, we keep the sorting.
-	for _, inst := range instances {
-		sort.Slice(inst.Tokens, func(i, j int) bool {
-			return inst.Tokens[i] < inst.Tokens[j]
+// TODO(owen-d): use https://github.com/grafana/loki/pull/11975 after merge
+func KeyspacesFromTokenRanges(tokenRanges ring.TokenRanges) []v1.FingerprintBounds {
+	keyspaces := make([]v1.FingerprintBounds, 0, len(tokenRanges)/2)
+	for i := 0; i < len(tokenRanges)-1; i += 2 {
+		keyspaces = append(keyspaces, v1.FingerprintBounds{
+			Min: model.Fingerprint(tokenRanges[i]) << 32,
+			Max: model.Fingerprint(tokenRanges[i+1])<<32 | model.Fingerprint(math.MaxUint32),
 		})
 	}
-
-	// Sort instances
-	sort.Slice(instances, func(i, j int) bool {
-		return instances[i].Tokens[0] < instances[j].Tokens[0]
-	})
-
-	idx := slices.IndexFunc(instances, func(inst ring.InstanceDesc) bool {
-		return inst.Id == id
-	})
-
-	// instance with Id == id not found
-	if idx == -1 {
-		return InstancesWithTokenRange{}
-	}
-
-	i := uint32(idx)
-	n := uint32(len(instances))
-	step := math.MaxUint32 / n
-
-	minToken := step * i
-	maxToken := step*i + step - 1
-	if i == n-1 {
-		// extend the last token tange to MaxUint32
-		maxToken = math.MaxUint32
-	}
-
-	return InstancesWithTokenRange{
-		{MinToken: minToken, MaxToken: maxToken, Instance: instances[i]},
-	}
+	return keyspaces
 }
 
-// GetInstancesWithTokenRanges calculates the token ranges for a specific
-// instance with given id based on all tokens in the ring.
-// If the instances in the ring are configured with a single token, such as the
-// bloom compactor, use GetInstanceWithTokenRange() instead.
-func GetInstancesWithTokenRanges(id string, instances []ring.InstanceDesc) InstancesWithTokenRange {
-	servers := make([]InstanceWithTokenRange, 0, len(instances))
-	it := NewInstanceSortMergeIterator(instances)
-	var firstInst ring.InstanceDesc
-	var lastToken uint32
-	for it.Next() {
-		if firstInst.Id == "" {
-			firstInst = it.At().Instance
-		}
-		if it.At().Instance.Id == id {
-			servers = append(servers, it.At())
-		}
-		lastToken = it.At().MaxToken
-	}
-	// append token range from lastToken+1 to MaxUint32
-	// only if the instance with the first token is the current one
-	if len(servers) > 0 && firstInst.Id == id {
-		servers = append(servers, InstanceWithTokenRange{
-			MinToken: lastToken + 1,
-			MaxToken: math.MaxUint32,
-			Instance: servers[0].Instance,
-		})
-	}
-	return servers
-}
+func TokenRangesForInstance(id string, instances []ring.InstanceDesc) (ranges ring.TokenRanges, err error) {
+	var ownedTokens map[uint32]struct{}
 
-// NewInstanceSortMergeIterator creates an iterator that yields instanceWithToken elements
-// where the token of the elements are sorted in ascending order.
-func NewInstanceSortMergeIterator(instances []ring.InstanceDesc) v1.Iterator[InstanceWithTokenRange] {
-	it := &sortMergeIterator[ring.InstanceDesc, uint32, InstanceWithTokenRange]{
-		items: instances,
-		transform: func(item ring.InstanceDesc, val uint32, prev *InstanceWithTokenRange) *InstanceWithTokenRange {
-			var prevToken uint32
-			if prev != nil {
-				prevToken = prev.MaxToken + 1
+	// lifted from grafana/dskit/ring/model.go <*Desc>.GetTokens()
+	toks := make([][]uint32, 0, len(instances))
+	for _, instance := range instances {
+		if instance.Id == id {
+			ranges = make(ring.TokenRanges, 0, 2*(len(instance.Tokens)+1))
+			ownedTokens = make(map[uint32]struct{}, len(instance.Tokens))
+			for _, tok := range instance.Tokens {
+				ownedTokens[tok] = struct{}{}
 			}
-			return &InstanceWithTokenRange{Instance: item, MinToken: prevToken, MaxToken: val}
-		},
-	}
-	sequences := make([]v1.PeekingIterator[v1.IndexedValue[uint32]], 0, len(instances))
-	for i := range instances {
-		sort.Slice(instances[i].Tokens, func(a, b int) bool {
-			return instances[i].Tokens[a] < instances[i].Tokens[b]
-		})
-		iter := v1.NewIterWithIndex[uint32](v1.NewSliceIter(instances[i].Tokens), i)
-		sequences = append(sequences, v1.NewPeekingIter[v1.IndexedValue[uint32]](iter))
-	}
-	it.heap = v1.NewHeapIterator(
-		func(i, j v1.IndexedValue[uint32]) bool {
-			return i.Value() < j.Value()
-		},
-		sequences...,
-	)
-	it.err = nil
+		}
 
-	return it
+		// Tokens may not be sorted for an older version which, so we enforce sorting here.
+		tokens := instance.Tokens
+		if !sort.IsSorted(ring.Tokens(tokens)) {
+			sort.Sort(ring.Tokens(tokens))
+		}
+
+		toks = append(toks, tokens)
+	}
+
+	if cap(ranges) == 0 {
+		return nil, fmt.Errorf("instance %s not found", id)
+	}
+
+	allTokens := ring.MergeTokens(toks)
+	if len(allTokens) == 0 {
+		return nil, errors.New("no tokens in the ring")
+	}
+
+	// mostly lifted from grafana/dskit/ring/token_range.go <*Ring>.GetTokenRangesForInstance()
+
+	// non-zero value means we're now looking for start of the range. Zero value means we're looking for next end of range (ie. token owned by this instance).
+	rangeEnd := uint32(0)
+
+	// if this instance claimed the first token, it owns the wrap-around range, which we'll break into two separate ranges
+	firstToken := allTokens[0]
+	_, ownsFirstToken := ownedTokens[firstToken]
+
+	if ownsFirstToken {
+		// we'll start by looking for the beginning of the range that ends with math.MaxUint32
+		rangeEnd = math.MaxUint32
+	}
+
+	// walk the ring backwards, alternating looking for ends and starts of ranges
+	for i := len(allTokens) - 1; i > 0; i-- {
+		token := allTokens[i]
+		_, owned := ownedTokens[token]
+
+		if rangeEnd == 0 {
+			// we're looking for the end of the next range
+			if owned {
+				rangeEnd = token - 1
+			}
+		} else {
+			// we have a range end, and are looking for the start of the range
+			if !owned {
+				ranges = append(ranges, rangeEnd, token)
+				rangeEnd = 0
+			}
+		}
+	}
+
+	// finally look at the first token again
+	// - if we have a range end, check if we claimed token 0
+	//   - if we don't, we have our start
+	//   - if we do, the start is 0
+	// - if we don't have a range end, check if we claimed token 0
+	//   - if we don't, do nothing
+	//   - if we do, add the range of [0, token-1]
+	//     - BUT, if the token itself is 0, do nothing, because we don't own the tokens themselves (we should be covered by the already added range that ends with MaxUint32)
+
+	if rangeEnd == 0 {
+		if ownsFirstToken && firstToken != 0 {
+			ranges = append(ranges, firstToken-1, 0)
+		}
+	} else {
+		if ownsFirstToken {
+			ranges = append(ranges, rangeEnd, 0)
+		} else {
+			ranges = append(ranges, rangeEnd, firstToken)
+		}
+	}
+
+	// Ensure returned ranges are sorted.
+	slices.Sort(ranges)
+
+	return ranges, nil
 }

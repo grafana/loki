@@ -53,7 +53,7 @@ var (
 			Namespace: "some-ns",
 		},
 		Data: map[string][]byte{
-			"endpoint":          []byte("s3://your-endpoint"),
+			"endpoint":          []byte("https://s3.a-region.amazonaws.com"),
 			"region":            []byte("a-region"),
 			"bucketnames":       []byte("bucket1,bucket2"),
 			"access_key_id":     []byte("a-secret-id"),
@@ -108,7 +108,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNotFound_DoesNotError(t *testing.
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	_, err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
 	// make sure create was NOT called because the Get failed
@@ -132,7 +132,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsAnErrorOtherThanNotFound_ReturnsT
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	_, err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	require.Equal(t, badRequestErr, errors.Unwrap(err))
 
@@ -219,7 +219,7 @@ func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	_, err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
 	// make sure create was called
@@ -327,7 +327,7 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	_, err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
 	// make sure create was called
@@ -387,7 +387,7 @@ func TestCreateOrUpdateLokiStack_WhenSetControllerRefInvalid_ContinueWithOtherOb
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	_, err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
@@ -490,7 +490,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	_, err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
 	// make sure create not called
@@ -556,7 +556,7 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	_, err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
@@ -663,7 +663,7 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	_, err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
@@ -734,7 +734,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidQueryTimeout_SetDegraded(t *testing.
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	_, err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned
 	require.Error(t, err)

@@ -10,24 +10,31 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/status"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
+	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
-	"github.com/grafana/loki/pkg/distributor/clientpool"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/discovery"
-	util_math "github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/discovery"
+	util_math "github.com/grafana/loki/v3/pkg/util/math"
 )
 
 const (
@@ -72,6 +79,9 @@ type IndexGatewayClientConfig struct {
 	// LogGatewayRequests configures if requests sent to the gateway should be logged or not.
 	// The log messages are of type debug and contain the address of the gateway and the relevant tenant.
 	LogGatewayRequests bool `yaml:"log_gateway_requests"`
+
+	GRPCUnaryClientInterceptors  []grpc.UnaryClientInterceptor  `yaml:"-"`
+	GRCPStreamClientInterceptors []grpc.StreamClientInterceptor `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.
@@ -136,7 +146,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 		done:                              make(chan struct{}),
 	}
 
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(sgClient.storeGatewayClientRequestDuration))
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(instrumentation(cfg, sgClient.storeGatewayClientRequestDuration))
 	if err != nil {
 		return nil, errors.Wrap(err, "index gateway grpc dial option")
 	}
@@ -231,76 +241,182 @@ func (s *GatewayClient) QueryIndex(_ context.Context, _ *logproto.QueryIndexRequ
 	panic("not implemented")
 }
 
-func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest, opts ...grpc.CallOption) (*logproto.GetChunkRefResponse, error) {
+func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
 	var (
 		resp *logproto.GetChunkRefResponse
 		err  error
 	)
 	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetChunkRef(ctx, in, opts...)
+		resp, err = client.GetChunkRef(ctx, in)
 		return err
 	})
 	return resp, err
 }
 
-func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest, opts ...grpc.CallOption) (*logproto.GetSeriesResponse, error) {
+func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
 	var (
 		resp *logproto.GetSeriesResponse
 		err  error
 	)
 	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetSeries(ctx, in, opts...)
+		resp, err = client.GetSeries(ctx, in)
 		return err
 	})
 	return resp, err
 }
 
-func (s *GatewayClient) LabelNamesForMetricName(ctx context.Context, in *logproto.LabelNamesForMetricNameRequest, opts ...grpc.CallOption) (*logproto.LabelResponse, error) {
+func (s *GatewayClient) LabelNamesForMetricName(ctx context.Context, in *logproto.LabelNamesForMetricNameRequest) (*logproto.LabelResponse, error) {
 	var (
 		resp *logproto.LabelResponse
 		err  error
 	)
 	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.LabelNamesForMetricName(ctx, in, opts...)
+		resp, err = client.LabelNamesForMetricName(ctx, in)
 		return err
 	})
 	return resp, err
 }
 
-func (s *GatewayClient) LabelValuesForMetricName(ctx context.Context, in *logproto.LabelValuesForMetricNameRequest, opts ...grpc.CallOption) (*logproto.LabelResponse, error) {
+func (s *GatewayClient) LabelValuesForMetricName(ctx context.Context, in *logproto.LabelValuesForMetricNameRequest) (*logproto.LabelResponse, error) {
 	var (
 		resp *logproto.LabelResponse
 		err  error
 	)
 	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.LabelValuesForMetricName(ctx, in, opts...)
+		resp, err = client.LabelValuesForMetricName(ctx, in)
 		return err
 	})
 	return resp, err
 }
 
-func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsRequest, opts ...grpc.CallOption) (*logproto.IndexStatsResponse, error) {
+func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
 	var (
 		resp *logproto.IndexStatsResponse
 		err  error
 	)
 	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetStats(ctx, in, opts...)
+		resp, err = client.GetStats(ctx, in)
 		return err
 	})
 	return resp, err
 }
 
-func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeRequest, opts ...grpc.CallOption) (*logproto.VolumeResponse, error) {
+func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	var (
 		resp *logproto.VolumeResponse
 		err  error
 	)
 	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetVolume(ctx, in, opts...)
+		resp, err = client.GetVolume(ctx, in)
 		return err
 	})
 	return resp, err
+}
+
+func (s *GatewayClient) GetShards(
+	ctx context.Context,
+	in *logproto.ShardsRequest,
+) (res *logproto.ShardsResponse, err error) {
+
+	// We try to get the shards from the index gateway,
+	// but if it's not implemented, we fall back to the stats.
+	// We limit the maximum number of errors to 2 to avoid
+	// cascading all requests to new node(s) when
+	// the idx-gw replicas start to update to a version
+	// which supports the new API.
+	var (
+		maxErrs = 2
+		errCt   int
+	)
+
+	if err := s.poolDoWithStrategy(
+		ctx,
+		func(client logproto.IndexGatewayClient) error {
+			perReplicaResult := &logproto.ShardsResponse{}
+			streamer, err := client.GetShards(ctx, in)
+			if err != nil {
+				return errors.Wrap(err, "get shards")
+			}
+
+			// TODO(owen-d): stream currently unused (buffered) because query planning doesn't expect a streamed response,
+			// but can be improved easily in the future by using a stream here.
+			for {
+				resp, err := streamer.Recv()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				perReplicaResult.Shards = append(perReplicaResult.Shards, resp.Shards...)
+				perReplicaResult.Statistics.Merge(resp.Statistics)
+			}
+
+			// Since `poolDo` retries on error, we only want to set the response if we got a successful response.
+			// This avoids cases where we add duplicates to the response on retries.
+			res = perReplicaResult
+
+			return nil
+		},
+		func(err error) bool {
+			errCt++
+			return errCt <= maxErrs
+		},
+	); err != nil {
+		if isUnimplementedCallError(err) {
+			return s.getShardsFromStatsFallback(ctx, in)
+		}
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *GatewayClient) getShardsFromStatsFallback(
+	ctx context.Context,
+	in *logproto.ShardsRequest,
+) (*logproto.ShardsResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "index gateway client get tenant ID")
+	}
+
+	p, err := indexgateway.ExtractShardRequestMatchersAndAST(in.Query)
+	if err != nil {
+		return nil, errors.Wrap(err, "failure while falling back to stats for shard calculation")
+
+	}
+
+	stats, err := s.GetStats(
+		ctx,
+		&logproto.IndexStatsRequest{
+			From:     in.From,
+			Through:  in.Through,
+			Matchers: (&syntax.MatchersExpr{Mts: p.Matchers}).String(),
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var strategy sharding.PowerOfTwoSharding
+	shards := strategy.ShardsFor(stats.Bytes, uint64(s.limits.TSDBMaxBytesPerShard(userID)))
+	return &logproto.ShardsResponse{
+		Shards: shards,
+	}, nil
+}
+
+// TODO(owen-d): this was copied from ingester_querier.go -- move it to a shared pkg
+// isUnimplementedCallError tells if the GRPC error is a gRPC error with code Unimplemented.
+func isUnimplementedCallError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	s, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	return (s.Code() == codes.Unimplemented)
 }
 
 func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
@@ -359,6 +475,14 @@ func (s *GatewayClient) clientDoQueries(ctx context.Context, gatewayQueries []*l
 // poolDo executes the given function for each Index Gateway instance in the ring mapping to the correct tenant in the index.
 // In case of callback failure, we'll try another member of the ring for that tenant ID.
 func (s *GatewayClient) poolDo(ctx context.Context, callback func(client logproto.IndexGatewayClient) error) error {
+	return s.poolDoWithStrategy(ctx, callback, func(error) bool { return true })
+}
+
+func (s *GatewayClient) poolDoWithStrategy(
+	ctx context.Context,
+	callback func(client logproto.IndexGatewayClient) error,
+	shouldRetry func(error) bool,
+) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return errors.Wrap(err, "index gateway client get tenant ID")
@@ -389,6 +513,10 @@ func (s *GatewayClient) poolDo(ctx context.Context, callback func(client logprot
 		if err := callback(client); err != nil {
 			lastErr = err
 			level.Error(s.logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err)
+
+			if !shouldRetry(err) {
+				return err
+			}
 			continue
 		}
 
@@ -457,4 +585,20 @@ func (b *grpcIter) RangeValue() []byte {
 
 func (b *grpcIter) Value() []byte {
 	return b.Rows[b.i].Value
+}
+
+func instrumentation(cfg IndexGatewayClientConfig, clientRequestDuration *prometheus.HistogramVec) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
+	var unaryInterceptors []grpc.UnaryClientInterceptor
+	unaryInterceptors = append(unaryInterceptors, cfg.GRPCUnaryClientInterceptors...)
+	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
+	unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
+	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(clientRequestDuration))
+
+	var streamInterceptors []grpc.StreamClientInterceptor
+	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
+	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
+	streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
+	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(clientRequestDuration))
+
+	return unaryInterceptors, streamInterceptors
 }

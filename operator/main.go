@@ -15,13 +15,13 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	runtimemetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	ctrlconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokictrl "github.com/grafana/loki/operator/controllers/loki"
 	"github.com/grafana/loki/operator/internal/config"
-	manifestsocp "github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/operator"
 	"github.com/grafana/loki/operator/internal/validation"
@@ -60,10 +60,14 @@ func main() {
 
 	var err error
 
-	ctrlCfg, options, err := config.LoadConfig(scheme, configFile)
+	ctrlCfg, tokenCCOAuth, options, err := config.LoadConfig(scheme, configFile)
 	if err != nil {
 		logger.Error(err, "failed to load operator configuration")
 		os.Exit(1)
+	}
+
+	if tokenCCOAuth != nil {
+		logger.Info("Discovered OpenShift Cluster within a token cco authentication environment")
 	}
 
 	if ctrlCfg.Gates.LokiStackAlerts && !ctrlCfg.Gates.ServiceMonitors {
@@ -95,16 +99,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if ctrlCfg.Gates.OpenShift.Enabled && manifestsocp.DiscoverManagedAuthEnv() != nil {
-		logger.Info("discovered OpenShift Cluster within a managed authentication environment")
-		ctrlCfg.Gates.OpenShift.ManagedAuthEnv = true
-	}
-
 	if err = (&lokictrl.LokiStackReconciler{
 		Client:       mgr.GetClient(),
 		Log:          logger.WithName("controllers").WithName("lokistack"),
 		Scheme:       mgr.GetScheme(),
 		FeatureGates: ctrlCfg.Gates,
+		AuthConfig:   tokenCCOAuth,
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "unable to create controller", "controller", "lokistack")
 		os.Exit(1)
@@ -125,17 +125,6 @@ func main() {
 			OperatorNs: ns,
 		}).SetupWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create controller", "controller", "lokistack-dashboards")
-			os.Exit(1)
-		}
-	}
-
-	if ctrlCfg.Gates.OpenShift.ManagedAuthEnabled() {
-		if err = (&lokictrl.CredentialsRequestsReconciler{
-			Client: mgr.GetClient(),
-			Scheme: mgr.GetScheme(),
-			Log:    logger.WithName("controllers").WithName("lokistack-credentialsrequest"),
-		}).SetupWithManager(mgr); err != nil {
-			logger.Error(err, "unable to create controller", "controller", "lokistack-credentialsrequest")
 			os.Exit(1)
 		}
 	}
@@ -230,7 +219,11 @@ func main() {
 	}
 
 	logger.Info("registering metrics")
-	metrics.RegisterMetricCollectors()
+	err = metrics.RegisterLokiStackCollector(logger, mgr.GetClient(), runtimemetrics.Registry)
+	if err != nil {
+		logger.Error(err, "failed to register metrics")
+		os.Exit(1)
+	}
 
 	logger.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

@@ -11,12 +11,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/internal/errorinfo"
 	msal "github.com/AzureAD/microsoft-authentication-library-for-go/apps/errors"
 )
+
+// errAuthenticationRequired indicates a credential's Authenticate method must be called to acquire a token
+// because user interaction is required and the credential is configured not to automatically prompt the user.
+var errAuthenticationRequired error = &credentialUnavailableError{"can't acquire a token without user interaction. Call Authenticate to interactively authenticate a user"}
 
 // getResponseFromError retrieves the response carried by
 // an AuthenticationFailedError or MSAL CallErr, if any
@@ -53,21 +57,26 @@ func (e *AuthenticationFailedError) Error() string {
 	}
 	msg := &bytes.Buffer{}
 	fmt.Fprintf(msg, e.credType+" authentication failed\n")
-	fmt.Fprintf(msg, "%s %s://%s%s\n", e.RawResponse.Request.Method, e.RawResponse.Request.URL.Scheme, e.RawResponse.Request.URL.Host, e.RawResponse.Request.URL.Path)
+	if e.RawResponse.Request != nil {
+		fmt.Fprintf(msg, "%s %s://%s%s\n", e.RawResponse.Request.Method, e.RawResponse.Request.URL.Scheme, e.RawResponse.Request.URL.Host, e.RawResponse.Request.URL.Path)
+	} else {
+		// this happens when the response is created from a custom HTTP transporter,
+		// which doesn't guarantee to bind the original request to the response
+		fmt.Fprintln(msg, "Request information not available")
+	}
 	fmt.Fprintln(msg, "--------------------------------------------------------------------------------")
 	fmt.Fprintf(msg, "RESPONSE %s\n", e.RawResponse.Status)
 	fmt.Fprintln(msg, "--------------------------------------------------------------------------------")
-	body, err := io.ReadAll(e.RawResponse.Body)
-	e.RawResponse.Body.Close()
-	if err != nil {
+	body, err := runtime.Payload(e.RawResponse)
+	switch {
+	case err != nil:
 		fmt.Fprintf(msg, "Error reading response body: %v", err)
-	} else if len(body) > 0 {
-		e.RawResponse.Body = io.NopCloser(bytes.NewReader(body))
+	case len(body) > 0:
 		if err := json.Indent(msg, body, "", "  "); err != nil {
 			// failed to pretty-print so just dump it verbatim
 			fmt.Fprint(msg, string(body))
 		}
-	} else {
+	default:
 		fmt.Fprint(msg, "Response contained no body")
 	}
 	fmt.Fprintln(msg, "\n--------------------------------------------------------------------------------")
@@ -75,6 +84,8 @@ func (e *AuthenticationFailedError) Error() string {
 	switch e.credType {
 	case credNameAzureCLI:
 		anchor = "azure-cli"
+	case credNameAzureDeveloperCLI:
+		anchor = "azd"
 	case credNameCert:
 		anchor = "client-cert"
 	case credNameSecret:
