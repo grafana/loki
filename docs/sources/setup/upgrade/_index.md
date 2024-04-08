@@ -52,6 +52,7 @@ Here is the shortlist of things we think most people may encounter:
   * The `shared_store` config is removed. Refer to [Removed `shared_store` and `shared_store_key_prefix` from shipper configuration](#removed-shared_store-and-shared_store_key_prefix-from-shipper-configuration).
   * Loki now enforces a max line size of 256KB by default (you can disable this or increase this but this is how Grafana Labs runs Loki). Refer to [Changes to default configure values](#changes-to-default-configuration-values-in-30).
   * Loki now enforces a max label limit of 15 labels per series, down from 30. Extra labels inflate the size of the index and reduce performance, you should almost never need more than 15 labels. Refer to [Changes to default configure values](#changes-to-default-configuration-values-in-30).
+  * Loki will automatically attempt to populate a `service_name` label on ingestion. Refer to [`service_name` label](#service_name-label)
   * There are many metric name changes. Refer to [Distributor metric changes](#distributor-metric-changes), [Embedded cache metric changes](#embedded-cache-metric-changes), and [Metrics namespace](#metrics-namespace).
 
 If you would like to see if your existing configuration will work with Loki 3.0:
@@ -81,6 +82,29 @@ A flagship feature of Loki 3.0 is native support for the Open Telemetry Protocol
 Structured Metadata is enabled by default in Loki 3.0, however, it requires your active schema be using both the `tsdb` index type AND the `v13` storage schema.  If you are not using both of these you have two options:
 * Upgrade your index version and schema version before updating to 3.0, see [schema config upgrade](https://grafana.com/docs/loki/latest/operations/storage/schema/).
 * Disable Structured Metadata (and therefor OTLP support) and upgrade to 3.0 and perform the schema migration after. This can be done by setting `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false`.
+
+#### `service_name` label
+
+Loki 3.0 will automatically assign a `service_name` label to all ingested logs by default. A service name is something required by Open Telemetry semantic conventions and is something Grafana Labs is building into our future user interface and query experiences.
+
+Loki will attempt to create the `service_name` label by looking for the following labels in this order:
+
+  - service
+  - app
+  - application
+  - name
+  - app_kubernetes_io_name
+  - container
+  - container_name
+  - component
+  - workload
+  - job
+
+If no label is found matching the list, a value of `unknown_service` is applied.
+
+You can change this list by providing a list of labels to the `discover_service_name` in the [limits_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config) block.
+
+**You can disable this by providing an empty value for `discover_service_name`**
 
 #### Removed `shared_store` and `shared_store_key_prefix` from shipper configuration
 
