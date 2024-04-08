@@ -65,25 +65,6 @@ local imagePrefix = 'grafana';
       name: 'Prepare Minor Release PR from Weekly',
     }, false, false
   ),
-  'three-zero-release.yml': std.manifestYamlDoc(
-    lokiRelease.releasePRWorkflow(
-      branches=['release-3.0.x'],
-      buildImage=buildImage,
-      checkTemplate=checkTemplate,
-      golangCiLintVersion=golangCiLintVersion,
-      imageBuildTimeoutMin=imageBuildTimeoutMin,
-      imageJobs=imageJobs,
-      imagePrefix=imagePrefix,
-      releaseLibRef=releaseLibRef,
-      releaseRepo='grafana/loki',
-      skipArm=false,
-      skipValidation=false,
-      useGitHubAppToken=true,
-      releaseAs='3.0.0',
-    ) + {
-      name: 'Prepare Loki 3.0 release',
-    }, false, false
-  ),
   'release.yml': std.manifestYamlDoc(
     lokiRelease.releaseWorkflow(
       branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+', 'main'],
