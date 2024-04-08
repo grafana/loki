@@ -36,13 +36,35 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+## 3.0.0
+
+Loki 3.0 is a major version increase and comes with several breaking changes.
+
+Here is the shortlist of things we think most people may encounter:
+
+  * Structured metadata is enabled by default and requires `tsdb` and `v13` schema or Loki won't start. See [Structured Metadata, Open Telemetry, Schemas and Indexes](#structured-metadata-open-telemetry-schemas-and-indexes)
+  * `shared_store` config is removed. See [Removed `shared_store` and `shared_store_key_prefix` from shipper configuration](#removed-sharedstore-and-sharedstorekeyprefix-from-shipper-configuration)
+  * Loki now enforces a max line size of 256KB by default (you can disable this or increase this but this is how we run Loki). See [Changes to default configure values](#changes-to-default-configuration-values-in-30)
+  * Loki now enforces a max label limit of 15 labels per series, down from 30. Extra labels inflate the size of the index and reduce performance, you should almost never need more than 15 labels. See [Changes to default configure values](#changes-to-default-configuration-values-in-30)
+  * Be aware of a lot of metric name changes See [Distributor metric changes](#distributor-metric-changes), [Embedded cache metric changes](#embedded-cache-metric-changes), and [Metrics namespace](#metrics-namespace)
+
+If you would like to see if your existing config will work with Loki 3.0:
+  * In an empty directory on your computer, put your config into a file named `loki-config.yaml`
+  * Run this command from that directory `docker run --rm -t -v "${PWD}":/config grafana/loki:3.0.0 -config.file=/config/loki-config.yaml -verify-config=true`
+  * Note: if you introduce a new schema_config entry it may cause additional validation errors
+    * Tip: if you configure `path_prefix` in the `common` config section this can help save a lot of configuration. See the [Common Config Docs](https://grafana.com/docs/loki/latest/configure/#common)
+
+Note: the **Helm chart** us gone through some significant changes and has a separate upgrade guide: [Upgrading to Helm 6.x](https://grafana.com/docs/loki/latest/setup/upgrade/upgrade-to-6x/)
+
 ### Loki
 
-#### Removed the `default` section of the runtime overrides config file.
+#### Structured Metadata, Open Telemetry, Schemas and Indexes
 
-This was introduced in 2.9 and likely not widely used.  This only affects you if you run Loki with a runtime config file AND you had populated the new `default` block added in 2.9.
+A flagship feature of Loki 3.0 is native support for the Open Telemetry Protocol (OTLP). This is made possible by a new feature in Loki called [Structured Metadata](https://grafana.com/docs/loki/latest/get-started/labels/structured-metadata/), a place for metadata which doesn't belong in labels or log lines. OTel resources and attributes are often a great example of data which doesn't belong in the index nor in the log line.
 
-The `default` block was removed and instead a top level config now exists in the standard Loki config called `operational_config`, you can set default values here for runtime configs.
+Structured Metadata is enabled by default in Loki 3.0, however, it requires your active schema be using both the `tsdb` index type AND the `v13` storage schema.  If you are not using both of these you have two options:
+* Upgrade your index version and schema version before updating to 3.0, see [schema config upgrade](https://grafana.com/docs/loki/latest/operations/storage/schema/).
+* Disable Structured Metadata (and therefor OTLP support) and upgrade to 3.0 and perform the schema migration after. This can be done by setting `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false`.
 
 #### Removed `shared_store` and `shared_store_key_prefix` from shipper configuration
 
@@ -116,6 +138,25 @@ These configurations were redundant with the `Background` configuration in the [
 
 additionally the `Background` configuration also lest you set `writeback_size_limit` which can be used to set a maximum amount of memory to use for writeback objects vs a count of objects.
 
+#### Legacy ingester shutdown handler is removed
+
+The already deprecated handler `/ingester/flush_shutdown` is removed in favor of `/ingester/shutdown?flush=true`.
+
+#### Ingester configuration `max_transfer_retries` is removed.
+
+The setting `max_transfer_retries` (`-ingester.max-transfer-retries`) is removed in favor of the Write Ahead log (WAL).
+It was used to allow transferring chunks to new ingesters when the old ingester was shutting down during a rolling restart.
+Alternatives to this setting are:
+- **A. (Preferred)** Enable the WAL and rely on the new ingester to replay the WAL.
+  - Optionally, you can enable `flush_on_shutdown` (`-ingester.flush-on-shutdown`) to flush to long-term storage on shutdowns.
+- **B.** Manually flush during shutdowns via [the ingester `/shutdown?flush=true` endpoint]({{< relref "../../reference/api#flush-in-memory-chunks-and-shut-down" >}}).
+
+#### Removed the `default` section of the runtime overrides config file.
+
+This was introduced in 2.9 and likely not widely used.  This only affects you if you run Loki with a runtime config file AND you had populated the new `default` block added in 2.9.
+
+The `default` block was removed and instead a top level config now exists in the standard Loki config called `operational_config`, you can set default values here for runtime configs.
+
 #### Configuration `use_boltdb_shipper_as_backup` is removed
 
 The setting `use_boltdb_shipper_as_backup` (`-tsdb.shipper.use-boltdb-shipper-as-backup`) was a remnant from the development of the TSDB storage.
@@ -141,25 +182,13 @@ The previous default value `false` is applied.
 1. `boltdb.shipper.compactor.deletion-mode` CLI flag and the corresponding YAML setting are removed. You can instead configure the `compactor.deletion-mode` CLI flag or `deletion_mode` YAML setting in [Limits Config](/docs/loki/latest/configuration/#limits_config).
 1. Compactor CLI flags that use the prefix `boltdb.shipper.compactor.` are removed. You can instead use CLI flags with the `compactor.` prefix.
 
-#### Legacy ingester shutdown handler is removed
-
-The already deprecated handler `/ingester/flush_shutdown` is removed in favor of `/ingester/shutdown?flush=true`.
-
-#### Ingester configuration `max_transfer_retries` is removed.
-
-The setting `max_transfer_retries` (`-ingester.max-transfer-retries`) is removed in favor of the Write Ahead log (WAL).
-It was used to allow transferring chunks to new ingesters when the old ingester was shutting down during a rolling restart.
-Alternatives to this setting are:
-- **A. (Preferred)** Enable the WAL and rely on the new ingester to replay the WAL.
-     - Optionally, you can enable `flush_on_shutdown` (`-ingester.flush-on-shutdown`) to flush to long-term storage on shutdowns.
-- **B.** Manually flush during shutdowns via [the ingester `/shutdown?flush=true` endpoint]({{< relref "../../reference/api#flush-in-memory-chunks-and-shut-down" >}}).
 
 #### Distributor metric changes
 
 The `loki_distributor_ingester_append_failures_total` metric has been removed in favour of `loki_distributor_ingester_append_timeouts_total`.
 This new metric will provide a more clear signal that there is an issue with ingesters, and this metric can be used for high-signal alerting.
 
-#### Changes to default configuration values
+#### Changes to default configuration values in 3.0
 
 {{% responsive-table %}}
 | configuration                                          | new default | old default | notes |
@@ -172,8 +201,8 @@ This new metric will provide a more clear signal that there is an issue with ing
 | `frontend.max-cache-freshness`                         | 10m         | 1m          | - |
 | `frontend.max-stats-cache-freshness`                   | 10m         | 0           | - |
 | `frontend.embedded-cache.max-size-mb`                  | 100MB       | 1GB         | embedded results cache size now defaults to 100MB |
-| `memcached.batchsize`                                  | 256         | 1024        | - |
-| `memcached.parallelism`                                | 10          | 100         | - |
+| `memcached.batchsize`                                  | 4           | 1024        | - |
+| `memcached.parallelism`                                | 5           | 100         | - |
 | `querier.compress-http-responses`                      | true        | false       | compress response if the request accepts gzip encoding |
 | `querier.max-concurrent`                               | 4           | 10          | Consider increasing this if queriers have access to more CPU resources. Note that you risk running into out of memory errors if you set this to a very high value. |
 | `querier.split-queries-by-interval`                    | 1h          | 30m         | - |
@@ -182,14 +211,6 @@ This new metric will provide a more clear signal that there is an issue with ing
 | `validation.max-label-names-per-series`                | 15          | 30          | - |
 | `legacy-read-mode`                                     | false       | true        | Deprecated. It will be removed in the next minor release. |
 {{% /responsive-table %}}
-
-#### Structured Metadata, Open Telemetry, Schemas and Indexes
-
-A flagship feature of Loki 3.0 is native support for the Open Telemetry Protocol (OTLP). This is made possible by a new feature in Loki called [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}), a place for metadata which doesn't belong in labels or log lines. OTel resources and attributes are often a great example of data which doesn't belong in the index nor in the log line.
-
-Structured Metadata is enabled by default in Loki 3.0, however, it requires your active schema be using both the `TSDB` index type AND the `v13` storage schema.  If you are not using both of these you have two options:
-  * Upgrade your index version and schema version before updating to 3.0, see [schema config upgrade]({{< relref "../../operations/storage/schema#changing-the-schema" >}}). 
-  * Disable Structured Metadata (and therefor OTLP support) and upgrade to 3.0 and perform the schema migration after. This can be done by setting `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false`.
 
 #### Automatic stream sharding is enabled by default
 
