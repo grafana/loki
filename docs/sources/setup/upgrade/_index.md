@@ -56,7 +56,7 @@ Here is the shortlist of things we think most people may encounter:
 
 If you would like to see if your existing configuration will work with Loki 3.0:
 1. In an empty directory on your computer, copy you configuration into a file named `loki-config.yaml`.
-  * Run this command from that directory: 
+1. Run this command from that directory: 
 ```bash
 docker run --rm -t -v "${PWD}":/config grafana/loki:3.0.0 -config.file=/config/loki-config.yaml -verify-config=true`
 ```
