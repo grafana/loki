@@ -65,7 +65,10 @@ docker run --rm -t -v "${PWD}":/config grafana/loki:3.0.0 -config.file=/config/l
 If you introduce a new schema_config entry it may cause additional validation errors.
 {{< /admonition >}}
 
-**Tip:** if you configure `path_prefix` in the `common` config section this can help save a lot of configuration. See the [Common Config Docs](https://grafana.com/docs/loki/latest/configure/#common)
+{{< admonition type="tip" >}}
+If you configure `path_prefix` in the `common` config section this can help save a lot of configuration. Refer to the [Common Config Docs](https://grafana.com/docs/loki/latest/configure/#common).
+{{< /admonition >}}
+
 
 The **Helm chart** us gone through some significant changes and has a separate upgrade guide: [Upgrading to Helm 6.x](https://grafana.com/docs/loki/latest/setup/upgrade/upgrade-to-6x/)
 
