@@ -48,7 +48,7 @@ Here is the shortlist of things we think most people may encounter:
   * Loki now enforces a max label limit of 15 labels per series, down from 30. Extra labels inflate the size of the index and reduce performance, you should almost never need more than 15 labels. Refer to [Changes to default configure values](#changes-to-default-configuration-values-in-30).
   * There are many metric name changes. Refer to [Distributor metric changes](#distributor-metric-changes), [Embedded cache metric changes](#embedded-cache-metric-changes), and [Metrics namespace](#metrics-namespace).
 
-If you would like to see if your existing config will work with Loki 3.0:
+If you would like to see if your existing configuration will work with Loki 3.0:
   * In an empty directory on your computer, put your config into a file named `loki-config.yaml`
   * Run this command from that directory: 
 ```bash
