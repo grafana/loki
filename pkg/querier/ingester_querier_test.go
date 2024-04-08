@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"go.uber.org/atomic"
+
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
