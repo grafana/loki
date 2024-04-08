@@ -52,7 +52,7 @@ The [Meta Monitoring Chart](https://github.com/grafana/meta-monitoring-chart) im
 
 The monitoring sections of this chart still exist but are disabled by default.
 
-If you wish to continue using the self monitoring features you should use these configs, but please do note a future version of this chart will remove this capability completely:
+If you wish to continue using the self monitoring features you should use the following configuration, but please do note a future version of this chart will remove this capability completely:
 
 ```
 monitoring:
