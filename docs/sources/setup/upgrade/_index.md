@@ -61,7 +61,9 @@ If you would like to see if your existing configuration will work with Loki 3.0:
 docker run --rm -t -v "${PWD}":/config grafana/loki:3.0.0 -config.file=/config/loki-config.yaml -verify-config=true`
 ```
 
-**Note:** if you introduce a new schema_config entry it may cause additional validation errors
+{{< admonition type="note" >}}
+If you introduce a new schema_config entry it may cause additional validation errors.
+{{< /admonition >}}
 
 **Tip:** if you configure `path_prefix` in the `common` config section this can help save a lot of configuration. See the [Common Config Docs](https://grafana.com/docs/loki/latest/configure/#common)
 
