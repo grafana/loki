@@ -7,7 +7,7 @@ env:
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
   IMAGE_PREFIX: "grafana"
-  RELEASE_AS: "3.0.0-rc.1"
+  RELEASE_AS: "3.0.0"
   RELEASE_LIB_REF: "main"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
@@ -823,7 +823,7 @@ name: "Prepare Loki 3.0 release"
 "on":
   push:
     branches:
-    - "main"
+    - "release-3.0.x"
 permissions:
   contents: "write"
   id-token: "write"
