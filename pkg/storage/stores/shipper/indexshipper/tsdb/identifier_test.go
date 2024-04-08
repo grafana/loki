@@ -28,6 +28,17 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 			ok: true,
 		},
 		{
+			desc:  "simple_works_with_nanosecond",
+			input: "1712534400000000000-compactor-1-10-ff.tsdb",
+			id: SingleTenantTSDBIdentifier{
+				TS:       time.Unix(0, 1712534400000000000),
+				From:     1,
+				Through:  10,
+				Checksum: 255,
+			},
+			ok: true,
+		},
+		{
 			desc:  "uint32_max_checksum_works",
 			input: fmt.Sprintf("1-compactor-1-10-%x.tsdb", math.MaxUint32),
 			id: SingleTenantTSDBIdentifier{
