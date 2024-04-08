@@ -50,7 +50,7 @@ Chunks cannot be deleted immediately for the following reasons:
 
 Marker files should be stored on a persistent disk to ensure that the chunks pending for deletion are processed even if the Compactor process restarts.
 {{% admonition type="note" %}}
-We recommend running Compactor as a stateful deployment (StatefulSet when using Kubernetes) with a persistent storage for storing marker files.
+Grafana Labs recommends running Compactor as a stateful deployment (StatefulSet when using Kubernetes) with a persistent storage for storing marker files.
 {{% /admonition %}}
 
 ### Retention Configuration
@@ -150,7 +150,7 @@ overrides:
 ```
 
 Retention period for a given stream is decided based on the first match in this list:
-1. If mutiple per-tenant `retention_stream` selectors match the stream, retention period with the highest priority is picked.
+1. If multiple per-tenant `retention_stream` selectors match the stream, retention period with the highest priority is picked.
 2. If multiple global `retention_stream` selectors match the stream, retention period with the highest priority is picked. This value is not considered if per-tenant `retention_stream` is set.
 3. If a per-tenant `retention_period` is specified, it will be applied.
 4. The global `retention_period` will be applied if none of the above match.
@@ -196,8 +196,8 @@ can be parsed using the Prometheus common model [ParseDuration](https://pkg.go.d
 
 {{% admonition type="warning" %}}
 The retention period must be a multiple of the index and chunks table
-`period`, configured in the [`period_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config)
-block. See the [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/#retention) documentation for
+`period`, configured in the [`period_config`](https://grafana.com/docs/loki/latest/configure/#period_config) block.
+See the [Table Manager](https://grafana.com/docs/loki/latest/operations/storage/table-manager/#retention) documentation for
 more information.
 {{% /admonition %}}
 
