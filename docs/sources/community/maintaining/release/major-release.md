@@ -3,7 +3,7 @@ title: Prepare Major Release
 description: Describes the process to create a workflow for a major release of Grafana Loki.
 ---
 
-# Major Release
+# Prepare Major Release
 
 A major release follows the same process as [minor and patch releases]({{< relref "./prepare-release.md" >}}), but requires a custom workflow to be created to run on the branch we want to release from. The reason for this is that we don't do major releases very often, so it is not economical to keep those workflows running all the time.
 
