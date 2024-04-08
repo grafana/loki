@@ -65,7 +65,7 @@ monitoring:
 
 #### Memcached is included and enabled by default
 
-Caching is crucial to the proper operation of Loki and Memcached is now included in this chart and enabled by default for the `chunksCache` and `resultsCache`
+Caching is crucial to the proper operation of Loki and Memcached is now included in this chart and enabled by default for the `chunksCache` and `resultsCache`.
 
 If you are already running Memcached separately you can remove your existing installation and use the Memcached deployments built into this chart.
 
