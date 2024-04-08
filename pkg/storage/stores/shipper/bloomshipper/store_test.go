@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
 func newMockBloomStore(t *testing.T) (*BloomStore, string, error) {
@@ -34,7 +35,7 @@ func newMockBloomStore(t *testing.T) (*BloomStore, string, error) {
 func newMockBloomStoreWithWorkDir(t *testing.T, workDir, storeDir string) (*BloomStore, string, error) {
 	periodicConfigs := []storageconfig.PeriodConfig{
 		{
-			ObjectType: storageconfig.StorageTypeFileSystem,
+			ObjectType: types.StorageTypeFileSystem,
 			From:       parseDayTime("2024-01-01"),
 			IndexTables: storageconfig.IndexPeriodicTableConfig{
 				PeriodicTableConfig: storageconfig.PeriodicTableConfig{
@@ -43,7 +44,7 @@ func newMockBloomStoreWithWorkDir(t *testing.T, workDir, storeDir string) (*Bloo
 				}},
 		},
 		{
-			ObjectType: storageconfig.StorageTypeFileSystem,
+			ObjectType: types.StorageTypeFileSystem,
 			From:       parseDayTime("2024-02-01"),
 			IndexTables: storageconfig.IndexPeriodicTableConfig{
 				PeriodicTableConfig: storageconfig.PeriodicTableConfig{

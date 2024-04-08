@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
 
@@ -998,13 +999,13 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 func (i *Ingester) asyncStoreMaxLookBack() time.Duration {
 	activePeriodicConfigIndex := config.ActivePeriodConfig(i.periodicConfigs)
 	activePeriodicConfig := i.periodicConfigs[activePeriodicConfigIndex]
-	if activePeriodicConfig.IndexType != config.BoltDBShipperType && activePeriodicConfig.IndexType != config.TSDBType {
+	if activePeriodicConfig.IndexType != types.BoltDBShipperType && activePeriodicConfig.IndexType != types.TSDBType {
 		return 0
 	}
 
 	startTime := activePeriodicConfig.From
-	if activePeriodicConfigIndex != 0 && (i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == config.BoltDBShipperType ||
-		i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == config.TSDBType) {
+	if activePeriodicConfigIndex != 0 && (i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.BoltDBShipperType ||
+		i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.TSDBType) {
 		startTime = i.periodicConfigs[activePeriodicConfigIndex-1].From
 	}
 

@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/cfg"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 
@@ -140,13 +141,13 @@ func lastConfigFor(configs []config.PeriodConfig, predicate func(config.PeriodCo
 
 func lastBoltdbShipperConfig(configs []config.PeriodConfig) int {
 	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
-		return p.IndexType == config.BoltDBShipperType
+		return p.IndexType == types.BoltDBShipperType
 	})
 }
 
 func lastTSDBConfig(configs []config.PeriodConfig) int {
 	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
-		return p.IndexType == config.TSDBType
+		return p.IndexType == types.TSDBType
 	})
 }
 
@@ -676,7 +677,7 @@ func applyChunkRetain(cfg, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(cfg.StorageConfig.IndexQueriesCacheConfig, defaults.StorageConfig.IndexQueriesCacheConfig) {
 		// Only apply this change if the active index period is for boltdb-shipper
 		p := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
-		if cfg.SchemaConfig.Configs[p].IndexType == config.BoltDBShipperType {
+		if cfg.SchemaConfig.Configs[p].IndexType == types.BoltDBShipperType {
 			// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
 			// buffer to make sure the chunks are there until the index entries expire.
 			cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute

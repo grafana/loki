@@ -55,7 +55,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	internalserver "github.com/grafana/loki/v3/pkg/server"
 	"github.com/grafana/loki/v3/pkg/storage"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -90,8 +89,8 @@ type Config struct {
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
-	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor"`
-	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway"`
+	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor,omitempty" category:"experimental"`
+	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
 	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
 	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
@@ -112,7 +111,7 @@ type Config struct {
 
 	Common common.Config `yaml:"common,omitempty"`
 
-	ShutdownDelay time.Duration `yaml:"shutdown_delay" category:"experimental"`
+	ShutdownDelay time.Duration `yaml:"shutdown_delay"`
 
 	MetricsNamespace string `yaml:"metrics_namespace"`
 }
@@ -221,97 +220,70 @@ func (c *Config) Clone() flagext.Registerer {
 // Validate the config and returns an error if the validation
 // doesn't pass
 func (c *Config) Validate() error {
-	if err := c.SchemaConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid schema config")
-	}
-	if err := c.StorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid storage config")
-	}
-	if err := c.QueryRange.Validate(); err != nil {
-		return errors.Wrap(err, "invalid queryrange config")
-	}
-	if err := c.Querier.Validate(); err != nil {
-		return errors.Wrap(err, "invalid querier config")
-	}
-	if err := c.QueryScheduler.Validate(); err != nil {
-		return errors.Wrap(err, "invalid query_scheduler config")
-	}
-	if err := c.TableManager.Validate(); err != nil {
-		return errors.Wrap(err, "invalid tablemanager config")
-	}
-	if err := c.Ruler.Validate(); err != nil {
-		return errors.Wrap(err, "invalid ruler config")
-	}
-	if err := c.Ingester.Validate(); err != nil {
-		return errors.Wrap(err, "invalid ingester config")
-	}
-	if err := c.LimitsConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid limits config")
-	}
-	if err := c.Worker.Validate(); err != nil {
-		return errors.Wrap(err, "invalid frontend-worker config")
-	}
-	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid boltdb-shipper config")
-	}
-	if err := c.IndexGateway.Validate(); err != nil {
-		return errors.Wrap(err, "invalid index_gateway config")
-	}
-	if err := c.CompactorConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid compactor config")
-	}
-	if err := c.ChunkStoreConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid chunk store config")
-	}
-	if err := c.QueryRange.Validate(); err != nil {
-		return errors.Wrap(err, "invalid query_range config")
-	}
-	if err := c.BloomCompactor.Validate(); err != nil {
-		return errors.Wrap(err, "invalid bloom_compactor config")
-	}
-
-	if err := c.Pattern.Validate(); err != nil {
-		return errors.Wrap(err, "invalid pattern_ingester config")
-	}
-
-	if err := ValidateConfigCompatibility(*c); err != nil {
-		return err
-	}
-
-	// Honor the legacy scalable deployment topology
-	if c.LegacyReadTarget {
-		if c.isModuleEnabled(Backend) {
-			return fmt.Errorf("invalid target, cannot run backend target with legacy read mode")
-		}
-	}
-
 	var errs []error
 
-	p := config.ActivePeriodConfig(c.SchemaConfig.Configs)
-
-	// If the active index type is not TSDB (which does not use an index cache)
-	// and the index queries cache is configured
-	// and the chunk retain period is less than the validity period of the index cache
-	// throw an error.
-	if c.SchemaConfig.Configs[p].IndexType != config.TSDBType &&
-		cache.IsCacheConfigured(c.StorageConfig.IndexQueriesCacheConfig) &&
-		c.Ingester.RetainPeriod < c.StorageConfig.IndexCacheValidity {
-		errs = append(errs, fmt.Errorf("CONFIG ERROR: the active index is %s which is configured to use an `index_cache_validty` (TTL) of %s, however the chunk_retain_period is %s which is LESS than the `index_cache_validity`. This can lead to query gaps, please configure the `chunk_retain_period` to be greater than the `index_cache_validity`", c.SchemaConfig.Configs[p].IndexType, c.StorageConfig.IndexCacheValidity, c.Ingester.RetainPeriod))
+	if err := c.SchemaConfig.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid schema config"))
+	}
+	if err := c.StorageConfig.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid storage_config config"))
+	}
+	if err := c.QueryRange.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_range config"))
+	}
+	if err := c.Querier.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid querier config"))
+	}
+	if err := c.QueryScheduler.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_scheduler config"))
+	}
+	if err := c.TableManager.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid table_manager config"))
+	}
+	if err := c.Ruler.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ruler config"))
+	}
+	if err := c.Ingester.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingester config"))
+	}
+	if err := c.LimitsConfig.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits_config config"))
+	}
+	if err := c.Worker.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid frontend_worker config"))
+	}
+	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid boltdb_shipper config"))
+	}
+	if err := c.IndexGateway.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid index_gateway config"))
+	}
+	if err := c.CompactorConfig.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid compactor config"))
+	}
+	if err := c.ChunkStoreConfig.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid chunk_store_config config"))
+	}
+	if err := c.QueryRange.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_range config"))
+	}
+	if err := c.BloomCompactor.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid bloom_compactor config"))
+	}
+	if err := c.BloomGateway.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid bloom_gateway config"))
+	}
+	if err := c.Pattern.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid pattern_ingester config"))
 	}
 
-	// Schema version 13 is required to use structured metadata
-	version, err := c.SchemaConfig.Configs[p].VersionAsInt()
-	if err != nil {
-		return err
-	}
-	if c.LimitsConfig.AllowStructuredMetadata && version < 13 {
-		errs = append(errs, fmt.Errorf("CONFIG ERROR: schema v13 is required to store Structured Metadata and use native OTLP ingestion, your schema version is %s. Set `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false` and restart Loki. Then proceed to update to schema v13 or newer before re-enabling this config, search for 'Storage Schema' in the docs for the schema update procedure", c.SchemaConfig.Configs[p].Schema))
-	}
-	// TSDB index is required to use structured metadata
-	if c.LimitsConfig.AllowStructuredMetadata && c.SchemaConfig.Configs[p].IndexType != config.TSDBType {
-		errs = append(errs, fmt.Errorf("CONFIG ERROR: `tsdb` index type is required to store Structured Metadata and use native OTLP ingestion, your index type is `%s` (defined in the `store` parameter of the schema_config). Set `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false` and restart Loki. Then proceed to update the schema to use index type `tsdb` before re-enabling this config, search for 'Storage Schema' in the docs for the schema update procedure", c.SchemaConfig.Configs[p].IndexType))
-	}
+	errs = append(errs, validateSchemaValues(c)...)
+	errs = append(errs, ValidateConfigCompatibility(*c)...)
+	errs = append(errs, validateBackendAndLegacyReadMode(c)...)
+	errs = append(errs, validateSchemaRequirements(c)...)
+	errs = append(errs, validateDirectoriesExist(c)...)
 
+	// The output format isn't great for this, so try to get the operators attention if there are multiple errors
 	if len(errs) > 1 {
 		errs = append([]error{fmt.Errorf("MULTIPLE CONFIG ERRORS FOUND, PLEASE READ CAREFULLY")}, errs...)
 		return stdlib_errors.Join(errs...)
