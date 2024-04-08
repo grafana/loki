@@ -79,7 +79,7 @@ func (i SingleTenantTSDBIdentifier) Hash(h hash.Hash32) (err error) {
 func (i SingleTenantTSDBIdentifier) str() string {
 	return fmt.Sprintf(
 		"%d-%s-%d-%d-%x.tsdb",
-		i.TS.Unix(),
+		i.TS.UnixNano(),
 		compactedFileUploader,
 		i.From,
 		i.Through,
@@ -109,7 +109,7 @@ func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 		return
 	}
 
-	ts, err := strconv.Atoi(elems[0])
+	ts, err := strconv.ParseInt(elems[0], 10, 64)
 	if err != nil {
 		return
 	}
@@ -133,8 +133,14 @@ func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 		return
 	}
 
+	var parsedTS time.Time
+	if len(elems[0]) <= 10 {
+		parsedTS = time.Unix(ts, 0)
+	} else {
+		parsedTS = time.Unix(0, ts)
+	}
 	return SingleTenantTSDBIdentifier{
-		TS:       time.Unix(int64(ts), 0),
+		TS:       parsedTS,
 		From:     model.Time(from),
 		Through:  model.Time(through),
 		Checksum: uint32(checksum),
