@@ -49,7 +49,7 @@ Here is the shortlist of things we think most people may encounter:
   * There are many metric name changes. Refer to [Distributor metric changes](#distributor-metric-changes), [Embedded cache metric changes](#embedded-cache-metric-changes), and [Metrics namespace](#metrics-namespace).
 
 If you would like to see if your existing configuration will work with Loki 3.0:
-  * In an empty directory on your computer, put your config into a file named `loki-config.yaml`
+1. In an empty directory on your computer, copy you configuration into a file named `loki-config.yaml`.
   * Run this command from that directory: 
 ```bash
 docker run --rm -t -v "${PWD}":/config grafana/loki:3.0.0 -config.file=/config/loki-config.yaml -verify-config=true`
