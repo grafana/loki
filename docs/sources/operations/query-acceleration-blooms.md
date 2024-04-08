@@ -213,9 +213,9 @@ Query acceleration introduces a new sharding strategy: `bounded`, which uses blo
 processed right away during the planning phase in the query frontend, 
 as well as evenly distributes the amount of chunks each sharded query will need to process.
 
-[ring]: https://grafana.com/docs/loki /<LOKI_VERSION>/get-started/hash-rings/
-[tenant-limits]: https://grafana.com/docs/loki /<LOKI_VERSION>/configure/#limits_config
-[gateway-cfg]: https://grafana.com/docs/loki /<LOKI_VERSION>/configure/#bloom_gateway
-[compactor-cfg]: https://grafana.com/docs/loki /<LOKI_VERSION>/configure/#bloom_compactor
-[microservices]: https://grafana.com/docs/loki /<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode
-[ssd]: https://grafana.com/docs/loki /<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable
+[ring]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/hash-rings/
+[tenant-limits]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config
+[gateway-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway
+[compactor-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_compactor
+[microservices]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode
+[ssd]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable

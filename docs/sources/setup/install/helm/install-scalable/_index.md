@@ -92,4 +92,4 @@ It is not recommended to run scalable mode with `filesystem` storage.
        ```
 
 ## Next Steps 
-Configure an agent to [send log data to Loki](/docs/loki /<LOKI_VERSION>/send-data/).
+Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).
