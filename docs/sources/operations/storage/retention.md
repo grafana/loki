@@ -202,7 +202,9 @@ more information.
 {{% /admonition %}}
 
 {{% admonition type="note" %}}
-To avoid querying of data beyond the retention period,`max_query_lookback` config in [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) must be set to a value less than or equal to what is set in `table_manager.retention_period`.
+To avoid querying of data beyond the retention period,
+`max_query_lookback` config in [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) must be set to a value less than or equal to
+what is set in `table_manager.retention_period`.
 {{% /admonition %}}
 
 When using S3 or GCS, the bucket storing the chunks needs to have the expiry
