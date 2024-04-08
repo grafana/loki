@@ -26,9 +26,7 @@ var (
 	//go:embed loki-runtime-config.yaml
 	lokiRuntimeConfigYAMLTmplFile embed.FS
 
-	lokiConfigYAMLTmpl = template.Must(template.New("loki-config.yaml").Funcs(template.FuncMap{
-		"isEndpointAWS": isEndpointAWS,
-	}).ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml"))
+	lokiConfigYAMLTmpl = template.Must(template.ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml"))
 
 	lokiRuntimeConfigYAMLTmpl = template.Must(template.New("loki-runtime-config.yaml").ParseFS(lokiRuntimeConfigYAMLTmplFile, "loki-runtime-config.yaml"))
 )
@@ -37,6 +35,9 @@ var (
 func Build(opts Options) ([]byte, []byte, error) {
 	// Build loki config yaml
 	w := bytes.NewBuffer(nil)
+
+	setS3ForcePathStyle(&opts)
+
 	err := lokiConfigYAMLTmpl.Execute(w, opts)
 	if err != nil {
 		return nil, nil, kverrors.Wrap(err, "failed to create loki configuration")
@@ -58,11 +59,9 @@ func Build(opts Options) ([]byte, []byte, error) {
 	return cfg, rcfg, nil
 }
 
-func isEndpointAWS(endpoint string) bool {
-	awsEndpointSuffix := ".amazonaws.com"
-	if strings.HasSuffix(endpoint, awsEndpointSuffix) {
-		return true
-	} else {
-		return false
+func setS3ForcePathStyle(opts *Options) {
+	if opts.ObjectStorage.S3 != nil {
+		awsEndpointSuffix := ".amazonaws.com"
+		opts.ObjectStorage.S3.ForcePathStyle = !strings.HasSuffix(opts.ObjectStorage.S3.Endpoint, awsEndpointSuffix)
 	}
 }
