@@ -1,5 +1,7 @@
 ## Main/Unreleased
 
+* [11899](https://github.com/grafana/loki/pull/11899) **toontijtgat**: add documentation for ruler_alertmanager_config and change the function so that you only need to fill in the value you want to override.
+
 ### All Changes
 
 #### Loki
