@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
@@ -41,23 +43,25 @@ type IngesterQuerier struct {
 	ring            ring.ReadRing
 	pool            *ring_client.Pool
 	extraQueryDelay time.Duration
+	logger          log.Logger
 }
 
-func NewIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, metricsNamespace string) (*IngesterQuerier, error) {
+func NewIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, metricsNamespace string, logger log.Logger) (*IngesterQuerier, error) {
 	factory := func(addr string) (ring_client.PoolClient, error) {
 		return client.New(clientCfg, addr)
 	}
 
-	return newIngesterQuerier(clientCfg, ring, extraQueryDelay, ring_client.PoolAddrFunc(factory), metricsNamespace)
+	return newIngesterQuerier(clientCfg, ring, extraQueryDelay, ring_client.PoolAddrFunc(factory), metricsNamespace, logger)
 }
 
 // newIngesterQuerier creates a new IngesterQuerier and allows to pass a custom ingester client factory
 // used for testing purposes
-func newIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, clientFactory ring_client.PoolFactory, metricsNamespace string) (*IngesterQuerier, error) {
+func newIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, clientFactory ring_client.PoolFactory, metricsNamespace string, logger log.Logger) (*IngesterQuerier, error) {
 	iq := IngesterQuerier{
 		ring:            ring,
 		pool:            clientpool.NewPool("ingester", clientCfg.PoolConfig, ring, clientFactory, util_log.Logger, metricsNamespace),
 		extraQueryDelay: extraQueryDelay,
+		logger:          logger,
 	}
 
 	err := services.StartAndAwaitRunning(context.Background(), iq.pool)
@@ -364,12 +368,17 @@ func (q *IngesterQuerier) DetectedLabel(ctx context.Context, req *logproto.Detec
 	})
 
 	if err != nil {
+		level.Error(q.logger).Log("msg", "error getting detected labels", "err", err)
 		return nil, err
 	}
 
 	labelMap := make(map[string][]string)
 	for _, resp := range ingesterResponses {
-		thisIngester := resp.response.(*logproto.LabelToValuesResponse)
+		thisIngester, ok := resp.response.(*logproto.LabelToValuesResponse)
+		if !ok {
+			level.Error(q.logger).Log("msg", "Cannot convert response to LabelToValuesResponse in detectedlabels",
+				"response", resp)
+		}
 
 		for label, thisIngesterValues := range thisIngester.Labels {
 			var combinedValues []string

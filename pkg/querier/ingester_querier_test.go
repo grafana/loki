@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"go.uber.org/atomic"
 
 	"google.golang.org/grpc/codes"
@@ -110,6 +111,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 					mockQuerierConfig().ExtraQueryDelay,
 					newIngesterClientMockFactory(ingesterClient),
 					constants.Loki,
+					util_log.Logger,
 				)
 				require.NoError(t, err)
 
@@ -210,6 +212,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 					mockQuerierConfig().ExtraQueryDelay,
 					newIngesterClientMockFactory(ingesterClient),
 					constants.Loki,
+					util_log.Logger,
 				)
 				require.NoError(t, err)
 
@@ -308,6 +311,7 @@ func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 				mockQuerierConfig().ExtraQueryDelay,
 				newIngesterClientMockFactory(ingesterClient),
 				constants.Loki,
+				util_log.Logger,
 			)
 			require.NoError(t, err)
 
@@ -371,6 +375,7 @@ func TestIngesterQuerier_Volume(t *testing.T) {
 			mockQuerierConfig().ExtraQueryDelay,
 			newIngesterClientMockFactory(ingesterClient),
 			constants.Loki,
+			util_log.Logger,
 		)
 		require.NoError(t, err)
 
@@ -392,6 +397,7 @@ func TestIngesterQuerier_Volume(t *testing.T) {
 			mockQuerierConfig().ExtraQueryDelay,
 			newIngesterClientMockFactory(ingesterClient),
 			constants.Loki,
+			util_log.Logger,
 		)
 		require.NoError(t, err)
 
