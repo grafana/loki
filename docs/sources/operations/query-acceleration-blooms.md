@@ -196,7 +196,7 @@ Loki will check blooms for any log filtering expression within a query that sati
     whereas `|~ "f.*oo"` would not be simplifiable.
 - The filtering expression is a match (`|=`) or regex match (`|~`) filter. We don’t use blooms for not equal (`!=`) or not regex (`!~`) expressions.
   - For example, `|= "level=error"` would use blooms but `!= "level=error"` would not.
-- The filtering expression is placed before a [line format expression](https://grafana.com/docs/loki/latest/query/log_queries/#line-format-expression).
+- The filtering expression is placed before a [line format expression](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#line-format-expression).
   - For example, with `|= "level=error" | logfmt | line_format "ERROR {{.err}}" |= "traceID=3ksn8d4jj3"`, 
     the first filter (`|= "level=error"`) will benefit from blooms but the second one (`|= "traceID=3ksn8d4jj3"`) will not.
 
@@ -213,9 +213,9 @@ Query acceleration introduces a new sharding strategy: `bounded`, which uses blo
 processed right away during the planning phase in the query frontend, 
 as well as evenly distributes the amount of chunks each sharded query will need to process.
 
-[ring]: https://grafana.com/docs/loki/latest/get-started/hash-rings/
-[tenant-limits]: https://grafana.com/docs/loki/latest/configure/#limits_config
-[gateway-cfg]: https://grafana.com/docs/loki/latest/configure/#bloom_gateway
-[compactor-cfg]: https://grafana.com/docs/loki/latest/configure/#bloom_compactor
-[microservices]: https://grafana.com/docs/loki/latest/get-started/deployment-modes/#microservices-mode
-[ssd]: https://grafana.com/docs/loki/latest/get-started/deployment-modes/#simple-scalable
+[ring]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/hash-rings/
+[tenant-limits]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config
+[gateway-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway
+[compactor-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_compactor
+[microservices]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode
+[ssd]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable
