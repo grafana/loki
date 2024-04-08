@@ -50,11 +50,16 @@ Here is the shortlist of things we think most people may encounter:
 
 If you would like to see if your existing config will work with Loki 3.0:
   * In an empty directory on your computer, put your config into a file named `loki-config.yaml`
-  * Run this command from that directory `docker run --rm -t -v "${PWD}":/config grafana/loki:3.0.0 -config.file=/config/loki-config.yaml -verify-config=true`
-  * Note: if you introduce a new schema_config entry it may cause additional validation errors
-    * Tip: if you configure `path_prefix` in the `common` config section this can help save a lot of configuration. See the [Common Config Docs](https://grafana.com/docs/loki/latest/configure/#common)
+  * Run this command from that directory: 
+```bash
+docker run --rm -t -v "${PWD}":/config grafana/loki:3.0.0 -config.file=/config/loki-config.yaml -verify-config=true`
+```
 
-Note: the **Helm chart** us gone through some significant changes and has a separate upgrade guide: [Upgrading to Helm 6.x](https://grafana.com/docs/loki/latest/setup/upgrade/upgrade-to-6x/)
+**Note:** if you introduce a new schema_config entry it may cause additional validation errors
+
+**Tip:** if you configure `path_prefix` in the `common` config section this can help save a lot of configuration. See the [Common Config Docs](https://grafana.com/docs/loki/latest/configure/#common)
+
+The **Helm chart** us gone through some significant changes and has a separate upgrade guide: [Upgrading to Helm 6.x](https://grafana.com/docs/loki/latest/setup/upgrade/upgrade-to-6x/)
 
 ### Loki
 
