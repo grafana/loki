@@ -70,7 +70,7 @@ If you configure `path_prefix` in the `common` config section this can help save
 {{< /admonition >}}
 
 
-The **Helm chart** us gone through some significant changes and has a separate upgrade guide: [Upgrading to Helm 6.x](https://grafana.com/docs/loki/latest/setup/upgrade/upgrade-to-6x/)
+The **Helm chart** has gone through some significant changes and has a separate upgrade guide: [Upgrading to Helm 6.x](https://grafana.com/docs/loki/latest/setup/upgrade/upgrade-to-6x/).
 
 ### Loki
 
