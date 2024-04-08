@@ -26,7 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
 )
 
@@ -550,7 +550,7 @@ func setupTestEnv(t *testing.T) (string, client.ObjectClient) {
 		},
 	}
 
-	client, err := GetObjectClient(config.StorageTypeFileSystem, conf, cm)
+	client, err := GetObjectClient(types.StorageTypeFileSystem, conf, cm)
 	require.NoError(t, err)
 	require.NotNil(t, client)
 

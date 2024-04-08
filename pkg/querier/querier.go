@@ -105,6 +105,7 @@ type Querier interface {
 	IndexShards(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error)
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
+	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
 	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
 }
 
@@ -123,6 +124,7 @@ type SingleTenantQuerier struct {
 	store           Store
 	limits          Limits
 	ingesterQuerier *IngesterQuerier
+	patternQuerier  PatterQuerier
 	deleteGetter    deleteGetter
 	metrics         *Metrics
 	logger          log.Logger
@@ -915,7 +917,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 
 	g, ctx := errgroup.WithContext(ctx)
 	ingesterQueryInterval, _ := q.buildQueryIntervals(*req.Start, *req.End)
-	if !q.cfg.QueryStoreOnly {
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		g.Go(func() error {
 			var err error
 			splitReq := *req
@@ -932,6 +934,12 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		return nil, err
 	}
 
+	if ingesterLabels == nil {
+		return &logproto.DetectedLabelsResponse{
+			DetectedLabels: []*logproto.DetectedLabel{},
+		}, nil
+	}
+
 	for label, values := range ingesterLabels.Labels {
 		if q.isLabelRelevant(label, values) {
 			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(values.Values))})
@@ -941,6 +949,22 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	return &logproto.DetectedLabelsResponse{
 		DetectedLabels: detectedLabels,
 	}, nil
+}
+
+type PatterQuerier interface {
+	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
+}
+
+func (q *SingleTenantQuerier) WithPatternQuerier(pq PatterQuerier) {
+	q.patternQuerier = pq
+}
+
+func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	if q.patternQuerier == nil {
+		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
+	}
+	res, err := q.patternQuerier.Patterns(ctx, req)
+	return res, err
 }
 
 func (q *SingleTenantQuerier) isLabelRelevant(label string, values *logproto.UniqueLabelValues) bool {
@@ -994,7 +1018,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		return nil, err
 	}
 
-	//TODO(twhitney): converting from a step to a duration should be abstracted and reused,
+	// TODO(twhitney): converting from a step to a duration should be abstracted and reused,
 	// doing this in a few places now.
 	streams, err := streamsForFieldDetection(iters, req.LineLimit, time.Duration(req.Step*1e6))
 	if err != nil {

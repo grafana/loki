@@ -12,6 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
 
 	"github.com/go-kit/log"
@@ -874,6 +877,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
+	_, ctx = metadata.NewContext(ctx)
 
 	if req.Plan == nil {
 		parsed, err := syntax.ParseLogSelector(req.Selector, true)
@@ -933,6 +937,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
+	_, ctx = metadata.NewContext(ctx)
 	sp := opentracing.SpanFromContext(ctx)
 
 	// If the plan is empty we want all series to be returned.
@@ -994,13 +999,13 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 func (i *Ingester) asyncStoreMaxLookBack() time.Duration {
 	activePeriodicConfigIndex := config.ActivePeriodConfig(i.periodicConfigs)
 	activePeriodicConfig := i.periodicConfigs[activePeriodicConfigIndex]
-	if activePeriodicConfig.IndexType != config.BoltDBShipperType && activePeriodicConfig.IndexType != config.TSDBType {
+	if activePeriodicConfig.IndexType != types.BoltDBShipperType && activePeriodicConfig.IndexType != types.TSDBType {
 		return 0
 	}
 
 	startTime := activePeriodicConfig.From
-	if activePeriodicConfigIndex != 0 && (i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == config.BoltDBShipperType ||
-		i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == config.TSDBType) {
+	if activePeriodicConfigIndex != 0 && (i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.BoltDBShipperType ||
+		i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.TSDBType) {
 		startTime = i.periodicConfigs[activePeriodicConfigIndex-1].From
 	}
 
@@ -1385,7 +1390,7 @@ func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.Detected
 	}
 	var matchers []*labels.Matcher
 	if req.Query != "" {
-		matchers, err := syntax.ParseMatchers(req.Query, true)
+		matchers, err = syntax.ParseMatchers(req.Query, true)
 		if err != nil {
 			return nil, err
 		}
@@ -1399,7 +1404,7 @@ func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.Detected
 	}
 	result := make(map[string]*logproto.UniqueLabelValues)
 	for label, values := range labelMap {
-		uniqueValues := make([]string, len(values))
+		var uniqueValues []string
 		for v := range values {
 			uniqueValues = append(uniqueValues, v)
 		}

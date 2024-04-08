@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
 const (
@@ -185,7 +186,7 @@ func NewTSDBStores(
 	}
 
 	for i, cfg := range schemaCfg.Configs {
-		if cfg.IndexType == config.TSDBType {
+		if cfg.IndexType == types.TSDBType {
 
 			c, err := baseStore.NewObjectClient(cfg.ObjectType, storeCfg, clientMetrics)
 			if err != nil {

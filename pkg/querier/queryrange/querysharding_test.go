@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
@@ -301,7 +302,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				ShardingConfigs{
 					config.PeriodConfig{
 						RowShards: 2,
-						IndexType: config.TSDBType,
+						IndexType: types.TSDBType,
 					},
 				},
 				testEngineOpts,

@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/exp/maps"
+
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
@@ -478,12 +480,17 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			DetectedFieldsRequest: *req,
 			path:                  r.URL.Path,
 		}, nil
+	case PatternsQueryOp:
+		req, err := loghttp.ParsePatternsQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return req, nil
 	case DetectedLabelsOp:
 		req, err := loghttp.ParseDetectedLabelsQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-
 		return &DetectedLabelsRequest{
 			DetectedLabelsRequest: *req,
 			path:                  r.URL.Path,
@@ -691,6 +698,12 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 			DetectedFieldsRequest: *req,
 			path:                  httpReq.URL.Path,
 		}, ctx, nil
+	case PatternsQueryOp:
+		req, err := loghttp.ParsePatternsQuery(httpReq)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return req, ctx, nil
 	case DetectedLabelsOp:
 		req, err := loghttp.ParseDetectedLabelsQuery(httpReq)
 		if err != nil {
@@ -977,6 +990,26 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 
 		return req.WithContext(ctx), nil
+	case *logproto.QueryPatternsRequest:
+		params := url.Values{
+			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
+			"query": []string{request.GetQuery()},
+		}
+
+		u := &url.URL{
+			Path:     "/loki/api/v1/patterns",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     header,
+		}
+
+		return req.WithContext(ctx), nil
 	case *DetectedLabelsRequest:
 		params := url.Values{
 			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
@@ -1024,6 +1057,8 @@ func (c Codec) Path(r queryrangebase.Request) string {
 		return "/loki/api/v1/index/volume_range"
 	case *DetectedFieldsRequest:
 		return "/loki/api/v1/detected_fields"
+	case *logproto.QueryPatternsRequest:
+		return "/loki/api/v1/patterns"
 	case *DetectedLabelsRequest:
 		return "/loki/api/v1/detected_labels"
 	}
@@ -1135,6 +1170,15 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
+	case *logproto.QueryPatternsRequest:
+		var resp logproto.QueryPatternsResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+		return &QueryPatternsResponse{
+			Response: &resp,
+			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+		}, nil
 	case *DetectedLabelsRequest:
 		var resp logproto.DetectedLabelsResponse
 		if err := json.Unmarshal(buf, &resp); err != nil {
@@ -1158,7 +1202,8 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 						ResultType: loghttp.ResultTypeMatrix,
 						Result:     toProtoMatrix(resp.Data.Result.(loghttp.Matrix)),
 					},
-					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
+					Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
+					Warnings: resp.Warnings,
 				},
 				Statistics: resp.Data.Statistics,
 			}, nil
@@ -1188,7 +1233,8 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 					ResultType: loghttp.ResultTypeStream,
 					Result:     resp.Data.Result.(loghttp.Streams).ToProto(),
 				},
-				Headers: httpResponseHeadersToPromResponseHeaders(headers),
+				Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+				Warnings: resp.Warnings,
 			}, nil
 		case loghttp.ResultTypeVector:
 			return &LokiPromResponse{
@@ -1198,7 +1244,8 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 						ResultType: loghttp.ResultTypeVector,
 						Result:     toProtoVector(resp.Data.Result.(loghttp.Vector)),
 					},
-					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
+					Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
+					Warnings: resp.Warnings,
 				},
 				Statistics: resp.Data.Statistics,
 			}, nil
@@ -1210,7 +1257,8 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 						ResultType: loghttp.ResultTypeScalar,
 						Result:     toProtoScalar(resp.Data.Result.(loghttp.Scalar)),
 					},
-					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
+					Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
+					Warnings: resp.Warnings,
 				},
 				Statistics: resp.Data.Statistics,
 			}, nil
@@ -1324,7 +1372,7 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 				return err
 			}
 		} else {
-			if err := marshal.WriteQueryResponseJSON(logqlmodel.Streams(streams), response.Statistics, w, encodeFlags); err != nil {
+			if err := marshal.WriteQueryResponseJSON(logqlmodel.Streams(streams), response.Warnings, response.Statistics, w, encodeFlags); err != nil {
 				return err
 			}
 		}
@@ -1360,6 +1408,10 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 		}
 	case *DetectedFieldsResponse:
 		if err := marshal.WriteDetectedFieldsResponseJSON(response.Response, w); err != nil {
+			return err
+		}
+	case *QueryPatternsResponse:
+		if err := marshal.WriteQueryPatternsResponseJSON(response.Response, w); err != nil {
 			return err
 		}
 	case *DetectedLabelsResponse:
@@ -1977,10 +2029,24 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 		lokiResponses = make([]*LokiResponse, 0, len(responses))
 	)
 
+	uniqueWarnings := map[string]struct{}{}
 	for _, res := range responses {
 		lokiResult := res.(*LokiResponse)
 		mergedStats.MergeSplit(lokiResult.Statistics)
 		lokiResponses = append(lokiResponses, lokiResult)
+
+		for _, w := range lokiResult.Warnings {
+			uniqueWarnings[w] = struct{}{}
+		}
+	}
+
+	warnings := maps.Keys(uniqueWarnings)
+	sort.Strings(warnings)
+
+	if len(warnings) == 0 {
+		// When there are no warnings, keep it nil so it can be compared against
+		// the default value
+		warnings = nil
 	}
 
 	return &LokiResponse{
@@ -1991,6 +2057,7 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 		ErrorType:  lokiRes.ErrorType,
 		Error:      lokiRes.Error,
 		Statistics: mergedStats,
+		Warnings:   warnings,
 		Data: LokiData{
 			ResultType: loghttp.ResultTypeStream,
 			Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),

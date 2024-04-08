@@ -112,6 +112,7 @@ message QueryResponse {
     (gogoproto.nullable) = true
   ];
   stats.Ingester stats = 2 [(gogoproto.nullable) = false];
+  repeated string warnings = 3;
 }
 
 message SampleQueryResponse {
@@ -120,6 +121,7 @@ message SampleQueryResponse {
     (gogoproto.nullable) = true
   ];
   stats.Ingester stats = 2 [(gogoproto.nullable) = false];
+  repeated string warnings = 3;
 }
 
 enum Direction {

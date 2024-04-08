@@ -67,22 +67,20 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.goHeapInUsePanel('Memory (go heap inuse)', 'querier'),
           )
           .addPanel(
-            $.panel('Disk Writes') +
+            $.newQueryPanel('Disk Writes', 'Bps') +
             $.queryPanel(
               'sum by(%s, %s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDiskContainer('querier')],
               '{{%s}} - {{device}}' % $._config.per_instance_label
             ) +
-            $.stack +
-            { yaxes: $.yaxes('Bps') },
+            $.withStacking,
           )
           .addPanel(
-            $.panel('Disk Reads') +
+            $.newQueryPanel('Disk Reads', 'Bps') +
             $.queryPanel(
               'sum by(%s, %s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDiskContainer('querier')],
               '{{%s}} - {{device}}' % $._config.per_instance_label
             ) +
-            $.stack +
-            { yaxes: $.yaxes('Bps') },
+            $.withStacking,
           )
           .addPanel(
             $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'querier'),
@@ -100,22 +98,20 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.goHeapInUsePanel('Memory (go heap inuse)', index_gateway_job_matcher),
           )
           .addPanel(
-            $.panel('Disk Writes') +
+            $.newQueryPanel('Disk Writes', 'Bps') +
             $.queryPanel(
               'sum by(%s, %s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(index_gateway_pod_matcher)],
               '{{%s}} - {{device}}' % $._config.per_instance_label
             ) +
-            $.stack +
-            { yaxes: $.yaxes('Bps') },
+            $.withStacking,
           )
           .addPanel(
-            $.panel('Disk Reads') +
+            $.newQueryPanel('Disk Reads', 'Bps') +
             $.queryPanel(
               'sum by(%s, %s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(index_gateway_pod_matcher)],
               '{{%s}} - {{device}}' % $._config.per_instance_label
             ) +
-            $.stack +
-            { yaxes: $.yaxes('Bps') },
+            $.withStacking,
           )
           .addPanel(
             $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', index_gateway_job_matcher),
@@ -137,7 +133,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           !$._config.ssd.enabled,
           grafana.row.new('Ruler')
           .addPanel(
-            $.panel('Rules') +
+            $.newQueryPanel('Rules') +
             $.queryPanel(
               'sum by(%(label)s) (loki_prometheus_rule_group_rules{%(matcher)s}) or sum by(%(label)s) (cortex_prometheus_rule_group_rules{%(matcher)s})' % { label: $._config.per_instance_label, matcher: $.jobMatcher('ruler') },
               '{{%s}}' % $._config.per_instance_label

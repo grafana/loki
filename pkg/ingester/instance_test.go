@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	"github.com/grafana/dskit/tenant"
@@ -60,7 +61,7 @@ func MustParseDayTime(s string) config.DayTime {
 var defaultPeriodConfigs = []config.PeriodConfig{
 	{
 		From:      MustParseDayTime("1900-01-01"),
-		IndexType: config.StorageTypeBigTable,
+		IndexType: types.StorageTypeBigTable,
 		Schema:    "v13",
 	},
 }
@@ -1082,8 +1083,8 @@ func TestStreamShardingUsage(t *testing.T) {
 	tenantShardStreamsCfg := limiter.limits.ShardStreams(customTenant1)
 
 	t.Run("test default configuration", func(t *testing.T) {
-		require.Equal(t, false, defaultShardStreamsCfg.Enabled)
-		require.Equal(t, "3MB", defaultShardStreamsCfg.DesiredRate.String())
+		require.Equal(t, true, defaultShardStreamsCfg.Enabled)
+		require.Equal(t, "1536KB", defaultShardStreamsCfg.DesiredRate.String())
 		require.Equal(t, false, defaultShardStreamsCfg.LoggingEnabled)
 	})
 
