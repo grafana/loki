@@ -73,7 +73,7 @@ If you are already running Memcached separately you can remove your existing ins
 
 Memcached also deploys for the Single Binary, but this may not be desired in resource constrained environments.
 
-You can disable it with the following.
+You can disable it with the following configuration:
 
 ```
 chunksCache:
