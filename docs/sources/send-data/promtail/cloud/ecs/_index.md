@@ -231,12 +231,12 @@ That's it ! Make sure to checkout LogQL to learn more about Loki powerful query 
 [ecs iam]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
 [arn]: https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html
 [task]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definitions.html
-[fluentd loki]: https://grafana.com/docs/loki/latest/send-data/fluentd/
-[fluentbit loki]: https://grafana.com/docs/loki/latest/send-data/fluentbit/
+[fluentd loki]: https://grafana.com/docs/loki /<LOKI_VERSION>/send-data/fluentd/
+[fluentbit loki]: https://grafana.com/docs/loki /<LOKI_VERSION>/send-data/fluentbit/
 [fluentbit]: https://fluentbit.io/
 [fluentd]: https://www.fluentd.org/
 [fluentbit loki image]: https://hub.docker.com/r/grafana/fluent-bit-plugin-loki
-[logql]: https://grafana.com/docs/loki/latest/logql/
+[logql]: https://grafana.com/docs/loki /<LOKI_VERSION>/logql/
 [alpine]:https://hub.docker.com/_/alpine
 [fluentbit output]: https://fluentbit.io/documentation/0.14/output/
 [routing]: https://fluentbit.io/documentation/0.13/getting_started/routing.html
