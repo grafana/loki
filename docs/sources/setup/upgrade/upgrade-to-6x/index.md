@@ -41,7 +41,7 @@ This gives greater flexibility in using the chart to still generate a config obj
 
 #### Monitoring
 
-After some consideration of how this chart works with other charts provided by Grafana, we decided to deprecate the monitoring sections of this chart and take a new approach entirely to monitoring Loki, Mimir and Tempo with the [Meta Monitoring Chart](https://github.com/grafana/meta-monitoring-chart)
+After some consideration of how this chart works with other charts provided by Grafana, we decided to deprecate the monitoring sections of this chart and take a new approach entirely to monitoring Loki, Mimir and Tempo with the [Meta Monitoring Chart](https://github.com/grafana/meta-monitoring-chart).
 
 Reasons:
   * There were conflicts with this chart and the Mimir chart both installing the Agent Operator
