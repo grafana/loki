@@ -14,11 +14,6 @@ import (
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/user"
-	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
-
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -28,6 +23,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -1148,6 +1147,13 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 			},
 		},
 	}, nil)
+	ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.DetectedLabelsResponse{
+		DetectedLabels: []*logproto.DetectedLabel{
+			{Label: "pod", Cardinality: 1},
+			{Label: "namespace", Cardinality: 3},
+			{Label: "customerId", Cardinality: 200},
+		},
+	}, nil)
 
 	store := newStoreMock()
 	store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(0, 1), nil)
@@ -1409,8 +1415,63 @@ func TestQuerier_isLabelRelevant(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			querier := &SingleTenantQuerier{cfg: mockQuerierConfig()}
-			assert.Equal(t, tc.expected, querier.isLabelRelevant(tc.label, tc.values))
+			assert.Equal(t, tc.expected, querier.isLabelRelevant(tc.label, tc.values, []string{"host", "cluster", "namespace", "instance", "pod"}))
 		})
 
 	}
+}
+
+func TestQuerier_DetectedLabels(t *testing.T) {
+	start := time.Now()
+	end := time.Now()
+	ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+		"cluster": {[]string{"ingester"}},
+		"foo":     {[]string{"abc", "def", "ghi"}},
+		"bar":     {[]string{"cgi", "def"}},
+		"all-ids": {[]string{"1", "2", "3", "5"}},
+		"uuids":   {[]string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef", "6b7e2663-8ecb-42e1-8bdc-0c5de70185b3", "2e1e67ff-be4f-47b8-aee1-5d67ff1ddabf", "c95b2d62-74ed-4ed7-a8a1-eb72fc67946e"}},
+	}}
+
+	expectedResponse := logproto.DetectedLabelsResponse{DetectedLabels: []*logproto.DetectedLabel{
+		{
+			Label:       "cluster",
+			Cardinality: 1,
+		},
+		{
+			Label:       "foo",
+			Cardinality: 3,
+		},
+		{
+			Label:       "bar",
+			Cardinality: 2,
+		},
+	}}
+
+	query := ""
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	ctx := user.InjectOrgID(context.Background(), "test")
+	request := logproto.DetectedLabelsRequest{
+		Start: &start,
+		End:   &end,
+		Query: query,
+	}
+	conf := mockQuerierConfig()
+	conf.IngesterQueryStoreMaxLookback = 0
+
+	ingesterClient := newQuerierClientMock()
+	ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(&ingesterResponse, nil)
+	querier, err := newQuerier(
+		conf,
+		mockIngesterClientConfig(),
+		newIngesterClientMockFactory(ingesterClient),
+		mockReadRingWithOneActiveIngester(),
+		&mockDeleteGettter{},
+		newStoreMock(), limits)
+
+	resp, err := querier.DetectedLabels(ctx, &request)
+	calls := ingesterClient.GetMockedCallsByMethod("GetDetectedLabels")
+	assert.Equal(t, 1, len(calls))
+	require.Equal(t, &expectedResponse, resp)
 }

@@ -914,6 +914,7 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
 	var ingesterLabels *logproto.LabelToValuesResponse
 	var detectedLabels []*logproto.DetectedLabel
+	staticLabels := []string{"cluster", "namespace", "instance", "pod"}
 
 	g, ctx := errgroup.WithContext(ctx)
 	ingesterQueryInterval, _ := q.buildQueryIntervals(*req.Start, *req.End)
@@ -940,8 +941,15 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		}, nil
 	}
 
+	// append static labels before so they are in sorted order
+	for _, l := range staticLabels {
+		if values, present := ingesterLabels.Labels[l]; present {
+			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: l, Cardinality: uint64(len(values.Values))})
+		}
+	}
+
 	for label, values := range ingesterLabels.Labels {
-		if q.isLabelRelevant(label, values) {
+		if q.isLabelRelevant(label, values, staticLabels) {
 			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(values.Values))})
 		}
 	}
@@ -967,12 +975,10 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 	return res, err
 }
 
-func (q *SingleTenantQuerier) isLabelRelevant(label string, values *logproto.UniqueLabelValues) bool {
-	staticLabels := []string{"pod", "namespace", "cluster", "instance"}
+func (q *SingleTenantQuerier) isLabelRelevant(label string, values *logproto.UniqueLabelValues, staticLabels []string) bool {
 	cardinality := len(values.Values)
-	// TODO(shantanu) make these values configurable
-	if !slices.Contains(staticLabels, label) &&
-		(cardinality < 1 || cardinality > 50) ||
+	if slices.Contains(staticLabels, label) ||
+		(cardinality < 2 || cardinality > 50) ||
 		containsAllIDTypes(values.Values) {
 		return false
 	}
