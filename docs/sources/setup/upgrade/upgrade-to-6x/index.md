@@ -9,7 +9,7 @@ keywords:
 
 ## Upgrading to v6.x
 
-v6.x of this chart introduces distributed mode but also makes a few breaking changes.
+v6.x of this chart introduces distributed mode but also introduces breaking changes from v5x.
 
 ### Changes
 
