@@ -48,7 +48,7 @@ Reasons:
   * The Agent Operator is deprecated.
   * The dependency on the Prometheus operator is not one we are able to support well.
 
-The [Meta Monitoring Chart](https://github.com/grafana/meta-monitoring-chart) improves several things here by allowing for installing a clustered Grafana Agent which can send metrics, logs, and traces to Grafana Cloud, or the ability to install a monitoring only installation of Loki, Mimir, Tempo, and Grafana locally.
+The [Meta Monitoring Chart](https://github.com/grafana/meta-monitoring-chart) is an improvement over the the previous approach because it allows for installing a clustered Grafana Agent which can send metrics, logs, and traces to Grafana Cloud, or letting you install a monitoring-only local installation of Loki, Mimir, Tempo, and Grafana.
 
 The monitoring sections of this chart still exist but are disabled by default.
 
