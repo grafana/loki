@@ -154,7 +154,7 @@ It was used to allow transferring chunks to new ingesters when the old ingester 
 Alternatives to this setting are:
 - **A. (Preferred)** Enable the WAL and rely on the new ingester to replay the WAL.
   - Optionally, you can enable `flush_on_shutdown` (`-ingester.flush-on-shutdown`) to flush to long-term storage on shutdowns.
-- **B.** Manually flush during shutdowns via [the ingester `/shutdown?flush=true` endpoint]({{< relref "../../reference/api#flush-in-memory-chunks-and-shut-down" >}}).
+- **B.** Manually flush during shutdowns via [the ingester `/shutdown?flush=true` endpoint](https://grafana.com/docs/loki/latest/reference/api/#flush-in-memory-chunks-and-shut-down).
 
 #### Removed the `default` section of the runtime overrides config file.
 
