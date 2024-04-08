@@ -1,0 +1,32 @@
+---
+loki:
+  commonConfig:
+    replication_factor: 1
+  useTestSchema: true
+deploymentMode: Distributed
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 3 # Kind seems to be a single node for testing so the anti-affinity rules fail here with zone awareness
+querier:
+  replicas: 1
+queryFrontend:
+  replicas: 1
+queryScheduler:
+  replicas: 1
+distributor:
+  replicas: 1
+compactor:
+  replicas: 1
+indexGateway:
+  replicas: 1
+bloomCompactor:
+  replicas: 0
+bloomGateway:
+  replicas: 0
+minio:
+  enabled: true
