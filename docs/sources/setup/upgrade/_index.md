@@ -43,7 +43,7 @@ Loki 3.0 is a major version increase and comes with several breaking changes.
 Here is the shortlist of things we think most people may encounter:
 
   * Structured metadata is enabled by default and requires `tsdb` and `v13` schema or Loki won't start. Refer to [Structured Metadata, Open Telemetry, Schemas and Indexes](#structured-metadata-open-telemetry-schemas-and-indexes).
-  * `shared_store` config is removed. See [Removed `shared_store` and `shared_store_key_prefix` from shipper configuration](#removed-sharedstore-and-sharedstorekeyprefix-from-shipper-configuration)
+  * The `shared_store` config is removed. Refer to [Removed `shared_store` and `shared_store_key_prefix` from shipper configuration](#removed-shared_store-and-shared_store_key_prefix-from-shipper-configuration).
   * Loki now enforces a max line size of 256KB by default (you can disable this or increase this but this is how we run Loki). See [Changes to default configure values](#changes-to-default-configuration-values-in-30)
   * Loki now enforces a max label limit of 15 labels per series, down from 30. Extra labels inflate the size of the index and reduce performance, you should almost never need more than 15 labels. See [Changes to default configure values](#changes-to-default-configuration-values-in-30)
   * Be aware of a lot of metric name changes See [Distributor metric changes](#distributor-metric-changes), [Embedded cache metric changes](#embedded-cache-metric-changes), and [Metrics namespace](#metrics-namespace)
