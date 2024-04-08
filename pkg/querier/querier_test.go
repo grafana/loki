@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -1424,20 +1425,31 @@ func TestQuerier_isLabelRelevant(t *testing.T) {
 }
 
 func TestQuerier_DetectedLabels(t *testing.T) {
+
 	start := time.Now()
 	end := time.Now()
+	manyValues := []string{}
+	for i := 0; i < 60; i++ {
+		manyValues = append(manyValues, "a"+strconv.Itoa(i))
+	}
 	ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
-		"cluster": {[]string{"ingester"}},
-		"foo":     {[]string{"abc", "def", "ghi"}},
-		"bar":     {[]string{"cgi", "def"}},
-		"all-ids": {[]string{"1", "2", "3", "5"}},
-		"uuids":   {[]string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef", "6b7e2663-8ecb-42e1-8bdc-0c5de70185b3", "2e1e67ff-be4f-47b8-aee1-5d67ff1ddabf", "c95b2d62-74ed-4ed7-a8a1-eb72fc67946e"}},
+		"cluster":    {Values: []string{"ingester"}},
+		"foo":        {Values: []string{"abc", "def", "ghi"}},
+		"bar":        {Values: []string{"cgi", "def"}},
+		"all-ids":    {Values: []string{"1", "2", "3", "5"}},
+		"uuids":      {Values: []string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef", "6b7e2663-8ecb-42e1-8bdc-0c5de70185b3", "2e1e67ff-be4f-47b8-aee1-5d67ff1ddabf", "c95b2d62-74ed-4ed7-a8a1-eb72fc67946e"}},
+		"manyvalues": {Values: manyValues},
+		"namespace":  {Values: manyValues},
 	}}
 
 	expectedResponse := logproto.DetectedLabelsResponse{DetectedLabels: []*logproto.DetectedLabel{
 		{
 			Label:       "cluster",
 			Cardinality: 1,
+		},
+		{
+			Label:       "namespace",
+			Cardinality: 60,
 		},
 		{
 			Label:       "foo",
@@ -1471,8 +1483,9 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 		mockReadRingWithOneActiveIngester(),
 		&mockDeleteGettter{},
 		newStoreMock(), limits)
-
+	require.NoError(t, err)
 	resp, err := querier.DetectedLabels(ctx, &request)
+	require.NoError(t, err)
 	calls := ingesterClient.GetMockedCallsByMethod("GetDetectedLabels")
 	assert.Equal(t, 1, len(calls))
 	require.Equal(t, &expectedResponse, resp)
