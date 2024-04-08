@@ -1848,7 +1848,7 @@ true
 		<tr>
 			<td>loki.commonConfig</td>
 			<td>object</td>
-			<td>Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration</td>
+			<td>Check https://grafana.com/docs/loki /<LOKI_VERSION>/configuration/#common_config for more info on how to provide a common configuration</td>
 			<td><pre lang="json">
 {
   "compactor_address": "{{ include \"loki.compactorAddress\" . }}",
@@ -1879,7 +1879,7 @@ See values.yaml
 		<tr>
 			<td>loki.configStorageType</td>
 			<td>string</td>
-			<td>Defines what kind of object stores the configuration, a ConfigMap or a Secret. In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use [environment variables in the configuration](https://grafana.com/docs/loki/latest/configuration/#use-environment-variables-in-the-configuration). Such environment variables can be then stored in a separate Secret and injected via the global.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).</td>
+			<td>Defines what kind of object stores the configuration, a ConfigMap or a Secret. In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use [environment variables in the configuration](https://grafana.com/docs/loki /<LOKI_VERSION>/configuration/#use-environment-variables-in-the-configuration). Such environment variables can be then stored in a separate Secret and injected via the global.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).</td>
 			<td><pre lang="json">
 "ConfigMap"
 </pre>
@@ -2175,7 +2175,7 @@ null
 		<tr>
 			<td>loki.rulerConfig</td>
 			<td>object</td>
-			<td>Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler</td>
+			<td>Check https://grafana.com/docs/loki /<LOKI_VERSION>/configuration/#ruler for more info on configuring ruler</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2193,7 +2193,7 @@ null
 		<tr>
 			<td>loki.schemaConfig</td>
 			<td>object</td>
-			<td>Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas</td>
+			<td>Check https://grafana.com/docs/loki /<LOKI_VERSION>/configuration/#schema_config for more info on how to configure schemas</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2202,7 +2202,7 @@ null
 		<tr>
 			<td>loki.server</td>
 			<td>object</td>
-			<td>Check https://grafana.com/docs/loki/latest/configuration/#server for more info on the server configuration.</td>
+			<td>Check https://grafana.com/docs/loki /<LOKI_VERSION>/configuration/#server for more info on the server configuration.</td>
 			<td><pre lang="json">
 {
   "grpc_listen_port": 9095,
@@ -2300,7 +2300,7 @@ null
 		<tr>
 			<td>loki.storage.s3.backoff_config</td>
 			<td>object</td>
-			<td>Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config</td>
+			<td>Check https://grafana.com/docs/loki /<LOKI_VERSION>/configure/#s3_storage_config for more info on how to provide a backoff_config</td>
 			<td><pre lang="json">
 {}
 </pre>

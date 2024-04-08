@@ -101,7 +101,7 @@ config:
         Match kube.*
         Url ${FLUENT_LOKI_URL}
         Labels {job="fluent-bit"}
-        LabelKeys level,app # this sets the values for actual Loki streams and the other labels are converted to structured_metadata https://grafana.com/docs/loki/latest/get-started/labels/structured-metadata/
+        LabelKeys level,app # this sets the values for actual Loki streams and the other labels are converted to structured_metadata https://grafana.com/docs/loki /<LOKI_VERSION>/get-started/labels/structured-metadata/
         BatchWait 1
         BatchSize 1001024
         LineFormat json
@@ -117,7 +117,7 @@ helm install fluent-bit fluent/fluent-bit -f values.yaml
 
 By default it will collect all containers logs and extract labels from Kubernetes API (`container_name`, `namespace`, etc..).
 
-If you also want to host your Loki instance inside the cluster install the [official Loki helm chart](https://grafana.com/docs/loki/latest/setup/install/helm/).
+If you also want to host your Loki instance inside the cluster install the [official Loki helm chart](https://grafana.com/docs/loki /<LOKI_VERSION>/setup/install/helm/).
 
 ### AWS Elastic Container Service (ECS)
 
