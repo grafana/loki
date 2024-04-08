@@ -102,7 +102,7 @@ Loki will attempt to create the `service_name` label by looking for the followin
 
 If no label is found matching the list, a value of `unknown_service` is applied.
 
-You can change this list by providing a list of labels to the `discover_service_name` in the [limits_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config) block.
+You can change this list by providing a list of labels to `discover_service_name` in the [limits_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config) block.
 
 **You can disable this by providing an empty value for `discover_service_name`**
 
