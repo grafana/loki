@@ -86,4 +86,4 @@ With these caches disabled, Loki will return to defaults which enables an in-mem
 
 #### Distributed mode
 
-This chart introduces the ability to run Loki in distributed, or microservices mode. Separate instructions on how to enable this as well as how to migrate from the existing community chart will be coming shortly!
+This chart introduces the ability to run Loki in distributed, or [microservices mode](https://grafana.com/docs/loki/latest/get-started/deployment-modes/#microservices-mode). Separate instructions on how to enable this as well as how to migrate from the existing community chart will be coming shortly.
