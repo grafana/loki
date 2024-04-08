@@ -45,7 +45,7 @@ After some consideration of how this chart works with other charts provided by G
 
 Reasons:
   * There were conflicts with this chart and the Mimir chart both installing the Agent Operator.
-  * The Agent Operator is deprecated
+  * The Agent Operator is deprecated.
   * The dependency on the Prometheus operator is not one we are able to support well.
 
 The [Meta Monitoring Chart](https://github.com/grafana/meta-monitoring-chart) improves several things here by allowing for installing a clustered Grafana Agent which can send metrics, logs, and traces to Grafana Cloud, or the ability to install a monitoring only installation of Loki, Mimir, Tempo, and Grafana locally.
