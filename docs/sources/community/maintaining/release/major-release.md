@@ -36,3 +36,4 @@ To create a major release workflow, follow the steps below.
 
 1. Make sure the `branches` field is set to the release branch you want to release from.
 1. Make sure the `releaseAs` field is set to the version you want to release.
+1. Run `make release-workflows` to generate the new workflow. Merge this change to both the main and release branch.
