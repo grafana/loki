@@ -39,7 +39,7 @@ The output is incredibly verbose as it shows the entire internal config struct u
 ## 3.0.0
 
 {{% admonition type="note" %}}
-If you have questions about upgrading to Loki 3.0, please join us at https://slack.grafana.com/ in the channel `#loki-3`
+If you have questions about upgrading to Loki 3.0, please join us on the [community Slack(https://slack.grafana.com/) in the `#loki-3` channel.
 
 Or leave a comment on this [Github Issue](https://github.com/grafana/loki/issues/12506)
 {{% /admonition %}}
