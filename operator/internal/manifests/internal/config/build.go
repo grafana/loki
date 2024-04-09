@@ -34,7 +34,6 @@ var (
 func Build(opts Options) ([]byte, []byte, error) {
 	// Build loki config yaml
 	w := bytes.NewBuffer(nil)
-
 	err := lokiConfigYAMLTmpl.Execute(w, opts)
 	if err != nil {
 		return nil, nil, kverrors.Wrap(err, "failed to create loki configuration")
