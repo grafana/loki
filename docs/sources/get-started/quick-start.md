@@ -1,7 +1,7 @@
 ---
 title: Quickstart to run Loki locally
 menuTitle: Loki quickstart
-weight: 550
+weight: 200
 description: How to create and use a simple local Loki cluster for testing and evaluation purposes.
 ---
 
