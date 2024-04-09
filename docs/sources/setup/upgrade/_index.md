@@ -206,6 +206,7 @@ The previous default value `false` is applied.
 
 #### Deprecated configuration options are removed
 
+1. Legacy index and chunk stores that are not "single store" (such as `tsdb`, `boltdb-shipper`) are deprecated. These storage backends are Cassandra (`cassandra`), DynamoDB (`aws`, `aws-dynamo`), BigTable (`bigtable`, `bigtable-hashed`), GCP (`gcp`, `gcp-columnkey`), and gRPC (`grpc`).
 1. Removed already deprecated `store.max-look-back-period` CLI flag and the corresponding YAML settings. Use `querier.max-query-lookback` config instead.
 1. Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting.
 1. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/<LOKI_VERSION>/configuration/#limits_config).
@@ -221,6 +222,8 @@ The previous default value `false` is applied.
 1. `validation.enforce-metric-name` CLI flag and the corresponding YAML setting are removed.
 1. `boltdb.shipper.compactor.deletion-mode` CLI flag and the corresponding YAML setting are removed. You can instead configure the `compactor.deletion-mode` CLI flag or `deletion_mode` YAML setting in [Limits Config](/docs/loki/<LOKI_VERSION>/configuration/#limits_config).
 1. Compactor CLI flags that use the prefix `boltdb.shipper.compactor.` are removed. You can instead use CLI flags with the `compactor.` prefix.
+1. `ingester.unordered-writes` CLI flag is deprecated and will always default to `true` in the next major release.
+1. `table-manager` target is deprecated, because it is not used by single store implementations.
 
 
 #### Distributor metric changes
