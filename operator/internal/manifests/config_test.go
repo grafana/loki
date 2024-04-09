@@ -59,7 +59,6 @@ func randomConfigOptions() Options {
 		Timeouts:  testTimeoutConfig(),
 		Stack: lokiv1.LokiStackSpec{
 			Size:             lokiv1.SizeOneXExtraSmall,
-			Storage:          lokiv1.ObjectStorageSpec{},
 			StorageClassName: uuid.New().String(),
 			Replication: &lokiv1.ReplicationSpec{
 				Factor: rand.Int31(),

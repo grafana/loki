@@ -245,9 +245,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -592,9 +593,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -676,9 +678,10 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -1028,9 +1031,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -1387,9 +1391,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -1776,9 +1781,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -2111,9 +2117,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -2533,9 +2540,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -3374,9 +3382,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -3634,9 +3643,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -3896,9 +3906,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -4156,9 +4167,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -4453,9 +4465,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 
 				SSE: storage.S3SSEConfig{
 					Type:                 storage.SSEKMSType,
@@ -4752,9 +4765,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 
 				SSE: storage.S3SSEConfig{
 					Type:                 storage.SSES3Type,
@@ -5010,9 +5024,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -5099,9 +5114,10 @@ func defaultOptions() Options {
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint: "http://test.default.svc.cluster.local.:9000",
-				Region:   "us-east",
-				Buckets:  "loki",
+				Endpoint:       "http://test.default.svc.cluster.local.:9000",
+				Region:         "us-east",
+				Buckets:        "loki",
+				ForcePathStyle: true,
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{

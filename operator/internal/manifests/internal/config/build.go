@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"embed"
 	"io"
-	"strings"
 	"text/template"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -36,8 +35,6 @@ func Build(opts Options) ([]byte, []byte, error) {
 	// Build loki config yaml
 	w := bytes.NewBuffer(nil)
 
-	setS3ForcePathStyle(&opts)
-
 	err := lokiConfigYAMLTmpl.Execute(w, opts)
 	if err != nil {
 		return nil, nil, kverrors.Wrap(err, "failed to create loki configuration")
@@ -57,11 +54,4 @@ func Build(opts Options) ([]byte, []byte, error) {
 		return nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 	}
 	return cfg, rcfg, nil
-}
-
-func setS3ForcePathStyle(opts *Options) {
-	if opts.ObjectStorage.S3 != nil {
-		awsEndpointSuffix := ".amazonaws.com"
-		opts.ObjectStorage.S3.ForcePathStyle = !strings.HasSuffix(opts.ObjectStorage.S3.Endpoint, awsEndpointSuffix)
-	}
 }
