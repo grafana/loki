@@ -37,6 +37,9 @@ type Config struct {
 	// https://github.com/grpc/grpc/blob/master/doc/connection-backoff.md
 	ConnectBackoffBaseDelay time.Duration `yaml:"connect_backoff_base_delay" category:"advanced"`
 	ConnectBackoffMaxDelay  time.Duration `yaml:"connect_backoff_max_delay" category:"advanced"`
+
+	Middleware       []grpc.UnaryClientInterceptor  `yaml:"-"`
+	StreamMiddleware []grpc.StreamClientInterceptor `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -91,7 +94,8 @@ func (cfg *Config) CallOptions() []grpc.CallOption {
 	return opts
 }
 
-// DialOption returns the config as a grpc.DialOptions.
+// DialOption returns the config as a grpc.DialOptions. The passed inceptors
+// wrap around the configured middleware.
 func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientInterceptor, streamClientInterceptors []grpc.StreamClientInterceptor) ([]grpc.DialOption, error) {
 	var opts []grpc.DialOption
 	tlsOpts, err := cfg.TLS.GetGRPCDialOptions(cfg.TLSEnabled)
@@ -99,6 +103,9 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 		return nil, err
 	}
 	opts = append(opts, tlsOpts...)
+
+	unaryClientInterceptors = append(unaryClientInterceptors, cfg.Middleware...)
+	streamClientInterceptors = append(streamClientInterceptors, cfg.StreamMiddleware...)
 
 	if cfg.BackoffOnRatelimits {
 		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewBackoffRetry(cfg.BackoffConfig)}, unaryClientInterceptors...)

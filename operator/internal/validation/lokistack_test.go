@@ -5,14 +5,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/validation"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/validation"
 )
 
 var ltt = []struct {
@@ -350,6 +349,47 @@ var ltt = []struct {
 			},
 		),
 	},
+	{
+		desc: "using default InstanceAddrType and enableIPv6",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+					MemberList: &lokiv1.MemberListSpec{
+						EnableIPv6:       true,
+						InstanceAddrType: lokiv1.InstanceAddrDefault,
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+				Replication: &lokiv1.ReplicationSpec{
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "zone",
+						},
+					},
+					Factor: 1,
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "hashRing", "memberlist", "instanceAddrType"),
+					lokiv1.InstanceAddrDefault,
+					lokiv1.ErrIPv6InstanceAddrTypeNotAllowed.Error(),
+				),
+			},
+		),
+	},
 }
 
 func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
@@ -366,7 +406,7 @@ func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
 			ctx := context.Background()
 
 			v := &validation.LokiStackValidator{}
-			err := v.ValidateCreate(ctx, l)
+			_, err := v.ValidateCreate(ctx, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
@@ -390,7 +430,7 @@ func TestLokiStackValidationWebhook_ValidateUpdate(t *testing.T) {
 			ctx := context.Background()
 
 			v := &validation.LokiStackValidator{}
-			err := v.ValidateUpdate(ctx, &lokiv1.LokiStack{}, l)
+			_, err := v.ValidateUpdate(ctx, &lokiv1.LokiStack{}, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {

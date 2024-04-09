@@ -11,14 +11,15 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/loki/common"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/cfg"
+	"github.com/grafana/loki/v3/pkg/loki/common"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util/cfg"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 
-	"github.com/grafana/loki/pkg/ruler/rulestore/local"
-	loki_net "github.com/grafana/loki/pkg/util/net"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
+	loki_net "github.com/grafana/loki/v3/pkg/util/net"
 )
 
 const versionFlag = "version"
@@ -113,14 +114,14 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		}
 
 		if i := lastBoltdbShipperConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
-			betterBoltdbShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
+			betterBoltdbShipperDefaults(r)
 		}
 
 		if i := lastTSDBConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
-			betterTSDBShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
+			betterTSDBShipperDefaults(r)
 		}
 
-		applyFIFOCacheConfig(r)
+		applyEmbeddedCacheConfig(r)
 		applyIngesterFinalSleep(r)
 		applyIngesterReplicationFactor(r)
 		applyChunkRetain(r, &defaults)
@@ -140,13 +141,13 @@ func lastConfigFor(configs []config.PeriodConfig, predicate func(config.PeriodCo
 
 func lastBoltdbShipperConfig(configs []config.PeriodConfig) int {
 	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
-		return p.IndexType == config.BoltDBShipperType
+		return p.IndexType == types.BoltDBShipperType
 	})
 }
 
 func lastTSDBConfig(configs []config.PeriodConfig) int {
 	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
-		return p.IndexType == config.TSDBType
+		return p.IndexType == types.TSDBType
 	})
 }
 
@@ -178,7 +179,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 	}
 }
 
-// applyCommonReplicationFactor apply the common replication factor to the Index Gateway ring.
+// applyCommonReplicationFactor apply the common replication factor to the Index Gateway and Bloom Gateway rings.
 func applyCommonReplicationFactor(r, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(r.Common.ReplicationFactor, defaults.Common.ReplicationFactor) {
 		r.IndexGateway.Ring.ReplicationFactor = r.Common.ReplicationFactor
@@ -211,7 +212,7 @@ func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
 		// neither common ring nor memberlist set, use ingester ring configuration for all rings
 		// that have not been configured. Don't merge any ingester ring configurations for rings
 		// that deviate from the default in any way.
-		ingesterRingCfg := util.CortexLifecyclerConfigToRingConfig(r.Ingester.LifecyclerConfig)
+		ingesterRingCfg := lokiring.CortexLifecyclerConfigToRingConfig(r.Ingester.LifecyclerConfig)
 		applyConfigToRings(r, defaults, ingesterRingCfg, false)
 	}
 }
@@ -223,7 +224,7 @@ func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
 // ring defined. When `mergeWithExisting` is false, we will not apply any of the ring config to a ring that has
 // any deviations from defaults. When mergeWithExisting is true, the ring config is overlaid on top of any specified
 // derivations, with the derivations taking precedence.
-func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWithExisting bool) {
+func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, mergeWithExisting bool) {
 	// Ingester - mergeWithExisting is false when applying the ingester config, and we only want to
 	// change ingester ring values when applying the common config, so there's no need for the DeepEqual
 	// check here.
@@ -240,6 +241,21 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.Ingester.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Ingester.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Ingester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+	}
+
+	if mergeWithExisting {
+		r.Pattern.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.Pattern.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.Pattern.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.Pattern.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.Pattern.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.Pattern.LifecyclerConfig.ID = rc.InstanceID
+		r.Pattern.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.Pattern.LifecyclerConfig.Port = rc.InstancePort
+		r.Pattern.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.Pattern.LifecyclerConfig.Zone = rc.InstanceZone
+		r.Pattern.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.Pattern.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
 	}
 
 	// Distributor
@@ -302,6 +318,20 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
+
+	// BloomCompactor
+	if mergeWithExisting || reflect.DeepEqual(r.BloomCompactor.Ring, defaults.BloomCompactor.Ring) {
+		r.BloomCompactor.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.BloomCompactor.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.BloomCompactor.Ring.InstancePort = rc.InstancePort
+		r.BloomCompactor.Ring.InstanceAddr = rc.InstanceAddr
+		r.BloomCompactor.Ring.InstanceID = rc.InstanceID
+		r.BloomCompactor.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.BloomCompactor.Ring.InstanceZone = rc.InstanceZone
+		r.BloomCompactor.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.BloomCompactor.Ring.KVStore = rc.KVStore
+		r.BloomCompactor.Ring.NumTokens = rc.NumTokens
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -326,11 +356,26 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	}
 	cfg.QueryScheduler.SchedulerRing.TokensFilePath = f
 
+	// Index Gateway
 	f, err = tokensFile(cfg, "indexgateway.tokens")
 	if err != nil {
 		return err
 	}
 	cfg.IndexGateway.Ring.TokensFilePath = f
+
+	// Bloom-Compactor
+	f, err = tokensFile(cfg, "bloom-compactor.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.BloomCompactor.Ring.TokensFilePath = f
+
+	// Pattern
+	f, err = tokensFile(cfg, "pattern.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.Pattern.LifecyclerConfig.TokensFilePath = f
 
 	return nil
 }
@@ -365,6 +410,11 @@ func applyPathPrefixDefaults(r, defaults *ConfigWrapper) {
 		if r.CompactorConfig.WorkingDirectory == defaults.CompactorConfig.WorkingDirectory {
 			r.CompactorConfig.WorkingDirectory = fmt.Sprintf("%s/compactor", prefix)
 		}
+		if len(r.StorageConfig.BloomShipperConfig.WorkingDirectory) == 1 &&
+			len(r.StorageConfig.BloomShipperConfig.WorkingDirectory) == len(defaults.StorageConfig.BloomShipperConfig.WorkingDirectory) &&
+			r.StorageConfig.BloomShipperConfig.WorkingDirectory[0] == defaults.StorageConfig.BloomShipperConfig.WorkingDirectory[0] {
+			_ = r.StorageConfig.BloomShipperConfig.WorkingDirectory.Set(fmt.Sprintf("%s/blooms", prefix))
+		}
 	}
 }
 
@@ -380,6 +430,9 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 
 	if reflect.DeepEqual(cfg.Ingester.LifecyclerConfig.InfNames, defaults.Ingester.LifecyclerConfig.InfNames) {
 		cfg.Ingester.LifecyclerConfig.InfNames = append(cfg.Ingester.LifecyclerConfig.InfNames, loopbackIface)
+	}
+	if reflect.DeepEqual(cfg.Pattern.LifecyclerConfig.InfNames, defaults.Pattern.LifecyclerConfig.InfNames) {
+		cfg.Pattern.LifecyclerConfig.InfNames = append(cfg.Pattern.LifecyclerConfig.InfNames, loopbackIface)
 	}
 
 	if reflect.DeepEqual(cfg.Frontend.FrontendV2.InfNames, defaults.Frontend.FrontendV2.InfNames) {
@@ -409,6 +462,10 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
+
+	if reflect.DeepEqual(cfg.BloomCompactor.Ring.InstanceInterfaceNames, defaults.BloomCompactor.Ring.InstanceInterfaceNames) {
+		cfg.BloomCompactor.Ring.InstanceInterfaceNames = append(cfg.BloomCompactor.Ring.InstanceInterfaceNames, loopbackIface)
+	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -417,11 +474,13 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 // (for example, use consul for the distributor), it seems harmless to take a guess at better defaults here.
 func applyMemberlistConfig(r *ConfigWrapper) {
 	r.Ingester.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
+	r.Pattern.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
 	r.Distributor.DistributorRing.KVStore.Store = memberlistStr
 	r.Ruler.Ring.KVStore.Store = memberlistStr
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
+	r.BloomCompactor.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
@@ -521,11 +580,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	return nil
 }
 
-func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-	if cfg.CompactorConfig.DefaultDeleteRequestStore == defaults.CompactorConfig.DefaultDeleteRequestStore {
-		cfg.CompactorConfig.DefaultDeleteRequestStore = period.ObjectType
-	}
-
+func betterBoltdbShipperDefaults(cfg *ConfigWrapper) {
 	if cfg.Common.PathPrefix != "" {
 		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
 
@@ -539,11 +594,7 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.Per
 	}
 }
 
-func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-	if cfg.CompactorConfig.DefaultDeleteRequestStore == defaults.CompactorConfig.DefaultDeleteRequestStore {
-		cfg.CompactorConfig.DefaultDeleteRequestStore = period.ObjectType
-	}
-
+func betterTSDBShipperDefaults(cfg *ConfigWrapper) {
 	if cfg.Common.PathPrefix != "" {
 		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
 
@@ -557,35 +608,55 @@ func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.Perio
 	}
 }
 
-// applyFIFOCacheConfig turns on FIFO cache for the chunk store, for the query range results,
-// and for the index stats results, but only if no other cache storage is configured (redis or memcache).
-// This behavior is only applied for the chunk store cache, for the query range results cache, and for
-// the index stats results (i.e: not applicable for the index queries cache or for the write dedupe cache).
-func applyFIFOCacheConfig(r *ConfigWrapper) {
+// applyEmbeddedCacheConfig turns on Embedded cache for the chunk store, query range results,
+// index stats and volume results only if no other cache storage is configured (redis or memcache).
+// Not applicable for the index queries cache or for the write dedupe cache.
+func applyEmbeddedCacheConfig(r *ConfigWrapper) {
 	chunkCacheConfig := r.ChunkStoreConfig.ChunkCacheConfig
 	if !cache.IsCacheConfigured(chunkCacheConfig) {
-		r.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache = true
+		r.ChunkStoreConfig.ChunkCacheConfig.EmbeddedCache.Enabled = true
 	}
 
 	resultsCacheConfig := r.QueryRange.ResultsCacheConfig.CacheConfig
 	if !cache.IsCacheConfigured(resultsCacheConfig) {
-		r.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache = true
-		// The query results fifocache is still in Cortex so we couldn't change the flag defaults
-		// so instead we will override them here.
-		r.QueryRange.ResultsCacheConfig.CacheConfig.Fifocache.MaxSizeBytes = "1GB"
-		r.QueryRange.ResultsCacheConfig.CacheConfig.Fifocache.TTL = 1 * time.Hour
+		r.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled = true
 	}
 
 	indexStatsCacheConfig := r.QueryRange.StatsCacheConfig.CacheConfig
 	if !cache.IsCacheConfigured(indexStatsCacheConfig) {
+		prefix := indexStatsCacheConfig.Prefix
 		// We use the same config as the query range results cache.
 		r.QueryRange.StatsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.StatsCacheConfig.CacheConfig.Prefix = prefix
 	}
 
 	volumeCacheConfig := r.QueryRange.VolumeCacheConfig.CacheConfig
 	if !cache.IsCacheConfigured(volumeCacheConfig) {
+		prefix := volumeCacheConfig.Prefix
 		// We use the same config as the query range results cache.
 		r.QueryRange.VolumeCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.VolumeCacheConfig.CacheConfig.Prefix = prefix
+	}
+
+	seriesCacheConfig := r.QueryRange.SeriesCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(seriesCacheConfig) {
+		prefix := seriesCacheConfig.Prefix
+		r.QueryRange.SeriesCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.SeriesCacheConfig.CacheConfig.Prefix = prefix
+	}
+
+	labelsCacheConfig := r.QueryRange.LabelsCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(labelsCacheConfig) {
+		prefix := labelsCacheConfig.Prefix
+		r.QueryRange.LabelsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.LabelsCacheConfig.CacheConfig.Prefix = prefix
+	}
+
+	instantMetricCacheConfig := r.QueryRange.InstantMetricCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(instantMetricCacheConfig) {
+		prefix := instantMetricCacheConfig.Prefix
+		r.QueryRange.InstantMetricCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.InstantMetricCacheConfig.CacheConfig.Prefix = prefix
 	}
 }
 
@@ -604,8 +675,12 @@ func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
 // for at least as long as the TTL on the index queries cache.
 func applyChunkRetain(cfg, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(cfg.StorageConfig.IndexQueriesCacheConfig, defaults.StorageConfig.IndexQueriesCacheConfig) {
-		// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
-		// buffer to make sure the chunks are there until the index entries expire.
-		cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
+		// Only apply this change if the active index period is for boltdb-shipper
+		p := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
+		if cfg.SchemaConfig.Configs[p].IndexType == types.BoltDBShipperType {
+			// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
+			// buffer to make sure the chunks are there until the index entries expire.
+			cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
+		}
 	}
 }

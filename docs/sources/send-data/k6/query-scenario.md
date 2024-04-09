@@ -1,7 +1,7 @@
 ---
 title: Use k6 to load test log queries
 menuTitle:  Query testing
-description: Using K6 to load test the read path (queries).
+description: Using k6 to load test the read path (queries).
 aliases: 
 - ../../clients/k6/query-scenario/
 weight: 930
@@ -22,7 +22,7 @@ Loki has 5 types of queries:
 * series query
 
 In a real-world use-case, such as querying Loki using it as a Grafana
-datasource, all of these queries are used. Each of them has a different
+data source, all of these queries are used. Each of them has a different
 [API]({{< relref "../../reference/api.md" >}}) endpoint. The xk6-loki extension
 provides a [Javascript API](https://github.com/grafana/xk6-loki#javascript-api)
 for all these query types.

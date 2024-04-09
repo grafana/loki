@@ -25,7 +25,6 @@ import (
 
 	"cloud.google.com/go/iam"
 	"cloud.google.com/go/internal/optional"
-	ipubsub "cloud.google.com/go/internal/pubsub"
 	pb "cloud.google.com/go/pubsub/apiv1/pubsubpb"
 	"cloud.google.com/go/pubsub/internal/scheduler"
 	gax "github.com/googleapis/gax-go/v2"
@@ -148,6 +147,10 @@ type PushConfig struct {
 	// This field is optional and should be set only by users interested in
 	// authenticated push.
 	AuthenticationMethod AuthenticationMethod
+
+	// The format of the delivered message to the push endpoint is defined by
+	// the chosen wrapper. When unset, `PubsubWrapper` is used.
+	Wrapper Wrapper
 }
 
 func (pc *PushConfig) toProto() *pb.PushConfig {
@@ -165,12 +168,19 @@ func (pc *PushConfig) toProto() *pb.PushConfig {
 		default: // TODO: add others here when GAIC adds more definitions.
 		}
 	}
+	if w := pc.Wrapper; w != nil {
+		switch wt := w.(type) {
+		case *PubsubWrapper:
+			pbCfg.Wrapper = wt.toProto()
+		case *NoWrapper:
+			pbCfg.Wrapper = wt.toProto()
+		default:
+		}
+	}
 	return pbCfg
 }
 
-// AuthenticationMethod is used by push points to verify the source of push requests.
-// This interface defines fields that are part of a closed alpha that may not be accessible
-// to all users.
+// AuthenticationMethod is used by push subscriptions to verify the source of push requests.
 type AuthenticationMethod interface {
 	isAuthMethod() bool
 }
@@ -208,6 +218,49 @@ func (oidcToken *OIDCToken) toProto() *pb.PushConfig_OidcToken_ {
 		OidcToken: &pb.PushConfig_OidcToken{
 			Audience:            oidcToken.Audience,
 			ServiceAccountEmail: oidcToken.ServiceAccountEmail,
+		},
+	}
+}
+
+// Wrapper defines the format of message delivered to push endpoints.
+type Wrapper interface {
+	isWrapper() bool
+}
+
+// PubsubWrapper denotes sending the payload to the push endpoint in the form of the JSON
+// representation of a PubsubMessage
+// (https://cloud.google.com/pubsub/docs/reference/rpc/google.pubsub.v1#pubsubmessage).
+type PubsubWrapper struct{}
+
+var _ Wrapper = (*PubsubWrapper)(nil)
+
+func (p *PubsubWrapper) isWrapper() bool { return true }
+
+func (p *PubsubWrapper) toProto() *pb.PushConfig_PubsubWrapper_ {
+	if p == nil {
+		return nil
+	}
+	return &pb.PushConfig_PubsubWrapper_{
+		PubsubWrapper: &pb.PushConfig_PubsubWrapper{},
+	}
+}
+
+// NoWrapper denotes not wrapping the payload sent to the push endpoint.
+type NoWrapper struct {
+	WriteMetadata bool
+}
+
+var _ Wrapper = (*NoWrapper)(nil)
+
+func (n *NoWrapper) isWrapper() bool { return true }
+
+func (n *NoWrapper) toProto() *pb.PushConfig_NoWrapper_ {
+	if n == nil {
+		return nil
+	}
+	return &pb.PushConfig_NoWrapper_{
+		NoWrapper: &pb.PushConfig_NoWrapper{
+			WriteMetadata: n.WriteMetadata,
 		},
 	}
 }
@@ -645,6 +698,16 @@ func protoToPushConfig(pbPc *pb.PushConfig) *PushConfig {
 			pc.AuthenticationMethod = &OIDCToken{
 				Audience:            oidcToken.OidcToken.GetAudience(),
 				ServiceAccountEmail: oidcToken.OidcToken.GetServiceAccountEmail(),
+			}
+		}
+	}
+	if w := pbPc.Wrapper; w != nil {
+		switch wt := w.(type) {
+		case *pb.PushConfig_PubsubWrapper_:
+			pc.Wrapper = &PubsubWrapper{}
+		case *pb.PushConfig_NoWrapper_:
+			pc.Wrapper = &NoWrapper{
+				WriteMetadata: wt.NoWrapper.WriteMetadata,
 			}
 		}
 	}
@@ -1325,24 +1388,19 @@ func (s *Subscription) Receive(ctx context.Context, f func(context.Context, *Mes
 						return nil
 					}
 					iter.eoMu.RLock()
-					ackh, _ := msgAckHandler(msg, iter.enableExactlyOnceDelivery)
+					msgAckHandler(msg, iter.enableExactlyOnceDelivery)
 					iter.eoMu.RUnlock()
-					old := ackh.doneFunc
-					msgLen := len(msg.Data)
-					ackh.doneFunc = func(ackID string, ack bool, r *ipubsub.AckResult, receiveTime time.Time) {
-						defer fc.release(ctx, msgLen)
-						old(ackID, ack, r, receiveTime)
-					}
+
 					wg.Add(1)
 					// Make sure the subscription has ordering enabled before adding to scheduler.
 					var key string
 					if s.enableOrdering {
 						key = msg.OrderingKey
 					}
-					// TODO(deklerk): Can we have a generic handler at the
-					// constructor level?
+					msgLen := len(msg.Data)
 					if err := sched.Add(key, msg, func(msg interface{}) {
 						defer wg.Done()
+						defer fc.release(ctx, msgLen)
 						f(ctx2, msg.(*Message))
 					}); err != nil {
 						wg.Done()

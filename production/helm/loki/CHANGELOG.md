@@ -12,6 +12,265 @@ Entries should be ordered as follows:
 Entries should include a reference to the pull request that introduced the change.
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
+
+## 6.0.0
+
+- [CHANGE] the lokiCanary section was moved from under monitoring to be under the root of the file.
+- [CHANGE] the definitions for topologySpreadConstraints and podAffinity were converted from string templates to objects. Also removed the soft constraint on zone.
+- [CHANGE] the externalConfigSecretName was replaced with more generic configs
+
+## 5.47.2
+
+- [ENHANCEMENT] Allow for additional pipeline stages to be configured on the `selfMonitoring` `Podlogs` resource.
+
+## 5.47.1
+
+- [BUGFIX] Increase default value of backend minReplicas to 3
+
+## 5.47.0
+
+- [CHANGE] Changed version of Loki to 2.9.6
+
+
+## 5.46.0
+
+- [CHANGE] Changed version of Loki to 2.9.5
+
+## 5.45.0
+
+- [CHANGE] Add extraContainers parameter for the read pod
+
+## 5.44.4
+
+- [ENHANCEMENT] Use http_listen_port for `compactorAddress`.
+
+## 5.44.3
+
+- [BUGFIX] Fix template error: `<.Values.loki.server.http_listen_port>: can't evaluate field Values in type interface {}`
+
+## 5.44.2
+
+- [BUGFIX] Fix usage of `http_listen_port` and `grpc_listen_port` field in template.
+
+## 5.44.1
+
+- [BUGFIX] Fix `compactorAddress` field: add protocol and port.
+
+## 5.44.0
+
+- [FEATURE] Modified helm template to use parameters http_listen_port and grpc_listen_port instead of hardcoded values.
+
+## 5.43.7
+
+- [BUGFIX] allow to configure http_config for ruler
+
+## 5.43.6
+
+- [ENHANCEMENT] Add `ciliumnetworkpolicy` with egress to world for table-manager if enabled.
+
+## 5.43.5
+
+- [BUGFIX] Add `---` before the `backend-kubeapiserver-egress` ciliumnetworkpolicy to prevent the `backend-world-egress` one from being dumped if both are enabled.
+
+## 5.43.4
+
+- [ENHANCEMENT] Add `ciliumnetworkpolicies` with egress to world for write, read and backend.
+
+## 5.43.3
+
+- [ENHANCEMENT] Added missing default values to support ServerSideApply
+
+## 5.43.2
+
+- [BUGFIX] Added `alibabacloud` to `isUsingObjectStorage` check.
+
+## 5.43.1
+
+- [BUGFIX] Fix `toPorts` fields in the `ciliumnetworkpolicy` template
+
+## 5.43.0
+
+- [ENHANCEMENT] Allow the definition of resources for GrafanaAgent pods
+
+## 5.42.3
+
+- [BUGFIX] Added condition for `egress-discovery` networkPolicies and ciliumNetworkPolicies.
+
+## 5.42.2
+
+- [BUGFIX] Remove trailing tab character in statefulset templates
+
+## 5.42.1
+
+- [BUGFIX] Added missing annotations to loki-read StatefulSet.
+
+## 5.42.0
+
+- [CHANGE] Changed versions of Loki v2.9.4 and GEL v1.8.6
+- [ENHANCEMENT] Bumped "grafana-agent-operator" depenency chart version to it's latest version
+
+## 5.41.8
+
+- [BUGFIX] Fix gateway: add possibility to disable listening on ipv6 to prevent crash on ipv4-only system.
+
+## 5.41.7
+
+- [FEATURE] Add support to disable specific alert rules
+
+## 5.41.6
+
+- [BUGFIX] Added missing namespace to query-scheduler-discovery service when deploying loki in a specific namespace.
+
+## 5.41.5
+
+- [BUGFIX] Added "swift" type object storage to resolve Loki HELM Chart error.
+
+## 5.41.4
+
+- [CHANGE] Use `/ingester/shutdown?terminate=false` for write `preStop` hook
+
+## 5.41.3
+
+- [FEATURE] Add support for defining an s3 backoff config.
+
+## 5.41.2
+
+- [FEATURE] Add ciliumnetworkpolicies.
+
+## 5.41.1
+
+- [FEATURE] Allow topology spread constraints for Loki read deployment component.
+
+## 5.41.0
+
+- [CHANGE] Changed version of Loki to 2.9.3
+
+## 5.40.1
+
+- [BUGFIX] Remove ruler enabled condition in networkpolicies.
+
+## 5.40.0
+
+- [CHANGE] Add extraContainers parameter for the write pod
+
+## 5.39.0
+
+- [FEATURE] Add support for adding OpenStack swift container credentials via helm chart
+
+## 5.38.0
+
+- [CHANGE] Changed MinIO Helm Chart version to 4.0.15
+
+## 5.37.0
+
+- [FEATURE] Add support for enabling tracing.
+
+## 5.36.2
+
+- [BUGFIX] Add support to run dnsmasq
+
+## 5.36.1
+
+- [FEATURE] Allow topology spread constraints for Loki
+
+## 5.36.0
+
+- [CHANGE] Changed version of Loki to 2.9.2
+
+## 5.35.0
+
+- [FEATURE] Add support for configuring distributor.
+
+## 5.34.0
+
+- [BUGFIX] Fix missing annotations when using Loki in single binary mode.
+
+## 5.33.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.4
+
+
+## 5.32.0
+
+- [CHANGE] Grafana dashboards are no longer created solely in scalable mode and with external cloud storage enabled.
+
+## 5.31.0
+
+- [CHANGE] Changed version of Loki to 2.9.2
+
+## 5.30.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.3
+
+## 5.29.0
+
+- [ENHANCEMENT] Allow specifying `apiVersion` for Loki's PodLog CRD.
+
+## 5.28.0
+
+- [BUGFIX] Fix GrafanaAgent tolerations scope
+
+## 5.27.0
+
+- [CHANGE] Bump `nginxinc/nginx-unpriviledged` image version to remediate [CVE-2023-4863](https://github.com/advisories/GHSA-j7hp-h8jx-5ppr)
+
+## 5.26.0
+
+- [ENHANCEMENT] Allow emptyDir data volumes for backend and write (via `X.persistence.volumeClaimsEnabled: false`)
+
+## 5.25.0
+
+- [BUGFIX] Add complete object schema to single-binary volumeClaimTemplate to avoid synchronization issues
+
+## 5.24.0
+
+- [ENHANCEMENT] #10613 Allow tolerations for GrafanaAgent pods
+
+## 5.23.1
+
+- [BUGFIX] Add missing namespaces to some components
+
+## 5.23.0
+
+- [ENHANCEMENT] Add loki.storage.azure.connectionString to support Azure connection string
+
+## 5.22.2
+
+- [BUGFIX] Fix sidecar configuration for Backend
+
+## 5.22.1
+
+- ENHANCEMENT #10452 Improve gitops compatibility
+
+## 5.22.0
+
+- [CHANGE] Changed version of Loki to 2.9.1
+
+## 5.21.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.1
+
+## 5.20.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.0
+
+## 5.19.0
+
+- [FEATURE] Add optional sidecard to load rules from ConfigMaps and Secrets.
+
+## 5.18.1
+
+- [ENHANCEMENT] #8627 Add service labels and annotations for all services.
+- [CHANGE] #8627 Move read, write and table manager labels from #component.serviceLabels to #component.service.labels to improve consistency.
+
+## 5.18.0
+
+- [CHANGE] Changed version of Loki to 2.9.0
+
+## 5.17.0
+
+- [CHANGE] Changed version of Loki to 2.9.0
+
 ## 5.16.1
 
 - [BUGFIX] Increase default minReplicas to 2 and maxReplicas to 6

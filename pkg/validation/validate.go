@@ -6,7 +6,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 const (
@@ -27,7 +28,7 @@ const (
 	// StreamLimit is a reason for discarding lines when we can't create a new stream
 	// because the limit of active streams has been reached.
 	StreamLimit         = "stream_limit"
-	StreamLimitErrorMsg = "Maximum active stream limit exceeded, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased, user: '%s'"
+	StreamLimitErrorMsg = "Maximum active stream limit exceeded when trying to create stream %s, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased, user: '%s'"
 	// StreamRateLimit is a reason for discarding lines when the streams own rate limit is hit
 	// rather than the overall ingestion rate limit.
 	StreamRateLimit = "per_stream_rate_limit"
@@ -58,8 +59,14 @@ const (
 	LabelValueTooLong         = "label_value_too_long"
 	LabelValueTooLongErrorMsg = "stream '%s' has label value too long: '%s'"
 	// DuplicateLabelNames is a reason for discarding a log line which has duplicate label names
-	DuplicateLabelNames         = "duplicate_label_names"
-	DuplicateLabelNamesErrorMsg = "stream '%s' has duplicate label name: '%s'"
+	DuplicateLabelNames                  = "duplicate_label_names"
+	DuplicateLabelNamesErrorMsg          = "stream '%s' has duplicate label name: '%s'"
+	DisallowedStructuredMetadata         = "disallowed_structured_metadata"
+	DisallowedStructuredMetadataErrorMsg = "stream '%s' includes structured metadata, but this feature is disallowed. Please see `limits_config.structured_metadata` or contact your Loki administrator to enable it."
+	StructuredMetadataTooLarge           = "structured_metadata_too_large"
+	StructuredMetadataTooLargeErrorMsg   = "stream '%s' has structured metadata too large: '%d' bytes, limit: '%d' bytes. Please see `limits_config.structured_metadata_max_size` or contact your Loki administrator to increase it."
+	StructuredMetadataTooMany            = "structured_metadata_too_many"
+	StructuredMetadataTooManyErrorMsg    = "stream '%s' has too many structured metadata labels: '%d', limit: '%d'. Please see `limits_config.max_structured_metadata_entries_count` or contact your Loki administrator to increase it."
 )
 
 type ErrStreamRateLimit struct {
@@ -78,7 +85,7 @@ func (e *ErrStreamRateLimit) Error() string {
 // MutatedSamples is a metric of the total number of lines mutated, by reason.
 var MutatedSamples = promauto.NewCounterVec(
 	prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "mutated_samples_total",
 		Help:      "The total number of samples that have been mutated.",
 	},
@@ -88,7 +95,7 @@ var MutatedSamples = promauto.NewCounterVec(
 // MutatedBytes is a metric of the total mutated bytes, by reason.
 var MutatedBytes = promauto.NewCounterVec(
 	prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "mutated_bytes_total",
 		Help:      "The total number of bytes that have been mutated.",
 	},
@@ -98,7 +105,7 @@ var MutatedBytes = promauto.NewCounterVec(
 // DiscardedBytes is a metric of the total discarded bytes, by reason.
 var DiscardedBytes = promauto.NewCounterVec(
 	prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "discarded_bytes_total",
 		Help:      "The total number of bytes that were discarded.",
 	},
@@ -108,7 +115,7 @@ var DiscardedBytes = promauto.NewCounterVec(
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
 var DiscardedSamples = promauto.NewCounterVec(
 	prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "discarded_samples_total",
 		Help:      "The total number of samples that were discarded.",
 	},
@@ -116,7 +123,7 @@ var DiscardedSamples = promauto.NewCounterVec(
 )
 
 var LineLengthHist = promauto.NewHistogram(prometheus.HistogramOpts{
-	Namespace: "loki",
+	Namespace: constants.Loki,
 	Name:      "bytes_per_line",
 	Help:      "The total number of bytes per line.",
 	Buckets:   prometheus.ExponentialBuckets(1, 8, 8), // 1B -> 16MB

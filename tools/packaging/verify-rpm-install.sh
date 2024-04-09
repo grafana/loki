@@ -24,7 +24,7 @@ cat <<EOF | docker exec --interactive "${image}" sh
 
     # Write some logs
     mkdir -p /var/log/
-    echo "blablabla" > /var/log/test.log
+    echo "blablabla" >> /var/log/messages
 
     # Install logcli
     rpm -i ${dir}/dist/logcli-*.x86_64.rpm

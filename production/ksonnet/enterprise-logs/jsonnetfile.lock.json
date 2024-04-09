@@ -8,7 +8,7 @@
           "subdir": "consul"
         }
       },
-      "version": "00795013f5975f518a0a3de99253f9d5590271c8",
+      "version": "27b5767bcbb26bb44db1a6d2f87b84dcfaeaf883",
       "sum": "Po3c1Ic96ngrJCtOazic/7OsLkoILOKZWXWyZWl+od8="
     },
     {
@@ -18,8 +18,8 @@
           "subdir": "jaeger-agent-mixin"
         }
       },
-      "version": "00795013f5975f518a0a3de99253f9d5590271c8",
-      "sum": "DsdBoqgx5kE3zc6fMYnfiGjW2+9Mx2OXFieWm1oFHgY="
+      "version": "27b5767bcbb26bb44db1a6d2f87b84dcfaeaf883",
+      "sum": "NyRKfJyqLhB9oHLpr+b47b5yiB3BuBB9ZmRcVk0IVEk="
     },
     {
       "source": {
@@ -28,8 +28,8 @@
           "subdir": "ksonnet-util"
         }
       },
-      "version": "00795013f5975f518a0a3de99253f9d5590271c8",
-      "sum": "OxgtIWL4hjvG0xkMwUzZ7Yjs52zUhLhaVQpwHCbqf8A="
+      "version": "27b5767bcbb26bb44db1a6d2f87b84dcfaeaf883",
+      "sum": "0y3AFX9LQSpfWTxWKSwoLgbt0Wc9nnCwhMH2szKzHv0="
     },
     {
       "source": {
@@ -38,8 +38,8 @@
           "subdir": "memcached"
         }
       },
-      "version": "00795013f5975f518a0a3de99253f9d5590271c8",
-      "sum": "dTOeEux3t9bYSqP2L/uCuLo/wUDpCKH4w+4OD9fePUk="
+      "version": "27b5767bcbb26bb44db1a6d2f87b84dcfaeaf883",
+      "sum": "Cc715Y3rgTuimgDFIw+FaKzXSJGRYwt1pFTMbdrNBD8="
     },
     {
       "source": {
@@ -48,18 +48,8 @@
           "subdir": "production/ksonnet/loki"
         }
       },
-      "version": "9ea59f2062016d91398387ee2231e2e840af6a06",
-      "sum": "i27fS9sssvYd9Ywyq6uoB52EUWTaOPxo9DczCBVBuaM="
-    },
-    {
-      "source": {
-        "git": {
-          "remote": "https://github.com/jsonnet-libs/k8s-libsonnet.git",
-          "subdir": "1.18"
-        }
-      },
-      "version": "91008dbd2ea5734288467d6dcafef7c285c3f7e6",
-      "sum": "x881PM+6ARMsa9OSJcxO6L+4GOBy91clZipjeYbbzpw="
+      "version": "34b9b9a11feb689d748c3ec6c9e0a1717ceaac27",
+      "sum": "iTedVpHYnXgt23Fz0jfzT5z9naAUGcJcWoJhXMtV8TM="
     }
   ],
   "legacyImports": false

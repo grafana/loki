@@ -1,0 +1,64 @@
+# This file should contain a list fo deprecated config options.
+#
+# -- Syntax --
+# The value for a deprecated option should be a message that explains why the option is deprecated and what to use instead. E.g.
+# storage_config:
+#  cassandra: "Cassandra is deprecated. Use any other non-deprecated storage instead.
+#
+# A given set of deprecated values can also be given though the _deprecated field along with a message in the _msg field. E.g.
+# schema_config:
+#   configs:
+#     store:
+#       _deprecated: ["aws", "aws-dynamo", "gcp", "gcp-columnkey", "bigtable", "bigtable-hashed", "cassandra", "grpc"]
+#       _msg: "Use tsdb (preferred) or boltdb-shipper instead."
+#
+# Note that even though the configs in schema_config takes a list, here we specify the deprecated fields for each item in the list.
+legacy-read-mode: "Legacy read SSD mode is deprecated and will be eventually removed. Use the new read and backend targets."
+
+ruler:
+  remote_write:
+    client: "Use clients instead."
+
+index_gateway:
+  ring:
+    replication_factor: "Use global or per-tenant index_gateway_shard_size configuration from limits_config."
+
+schema_config:
+  configs:
+    store:
+      _deprecated: ["aws", "aws-dynamo", "gcp", "gcp-columnkey", "bigtable", "bigtable-hashed", "cassandra", "grpc"]
+      _msg: "Use tsdb (preferred) or boltdb-shipper instead."
+    object_store:
+      _deprecated: ["aws-dynamo", "gcp", "gcp-columnkey", "bigtable", "bigtable-hashed", "cassandra", "grpc"]
+      _msg: "Use any other non-deprecated storage instead."
+
+storage_config:
+  bigtable: "Bigtable is deprecated. Use any other non-deprecated storage instead."
+  cassandra: "Cassandra is deprecated. Use any other non-deprecated storage instead."
+  boltdb: "Boltdb is deprecated. Consider using boltdb_shipper or any other non-deprecated storage instead."
+  grpc_store: "gRPC store is deprecated. Use any other non-deprecated storage instead."
+  aws:
+    dynamodb: "DynamoDB is deprecated and will be eventually removed"
+
+chunk_store_config:
+  write_dedupe_cache_config: "Write dedupe cache is deprecated along with deprecated index types. Consider using TSDB index which does not require a write dedupe cache."
+
+## NOTE: This will also be used to validate per-tenant overrides.
+limits_config:
+  unordered_writes: "Will be eventually removed."
+  ruler_remote_write_url: "Use ruler_remote_write_config instead."
+  ruler_remote_write_timeout: "Use ruler_remote_write_config instead."
+  ruler_remote_write_headers: "Use ruler_remote_write_config instead."
+  ruler_remote_write_relabel_configs: "Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_capacity: "Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_min_shards: "Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_max_shards: "Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_max_samples_per_send: "Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_batch_send_deadline: "Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_min_backoff: "Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_max_backoff: "Use ruler_remote_write_config instead."
+  ruler_remote_write_queue_retry_on_ratelimit: "Use ruler_remote_write_config instead."
+  ruler_remote_write_sigv4_config: "Use ruler_remote_write_config instead."
+  per_tenant_override_config: "Feature renamed to 'runtime configuration', flag deprecated in favor of runtime_config.file"
+  per_tenant_override_period: "Feature renamed to 'runtime configuration', flag deprecated in favor of runtime_config.period"
+  allow_deletes: "Use deletion_mode per tenant configuration instead."

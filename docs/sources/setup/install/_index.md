@@ -1,13 +1,13 @@
 ---
-title: Installation
+title: Install Loki
 menuTitle:  Install
-description: Describes how to install Loki.
+description: Overview of methods for installing Loki.
 aliases: 
  -  ../installation/
 weight: 200
 ---
 
-# Installation
+# Install Loki
 
 There are several methods of installing Loki and Promtail:
 

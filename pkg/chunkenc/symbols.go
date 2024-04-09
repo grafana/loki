@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // symbol holds reference to a label name and value pair
@@ -172,11 +172,11 @@ func (s *symbolizer) SerializeTo(w io.Writer, pool WriterPool) (int, []byte, err
 
 	_, err := crc32Hash.Write(eb.get())
 	if err != nil {
-		return 0, nil, errors.Wrap(err, "write num non-indexed labels to crc32hash")
+		return 0, nil, errors.Wrap(err, "write num of labels of structured metadata to crc32hash")
 	}
 	n, err := w.Write(eb.get())
 	if err != nil {
-		return 0, nil, errors.Wrap(err, "write num non-indexed labels to writer")
+		return 0, nil, errors.Wrap(err, "write num of labels of structured metadata to writer")
 	}
 	writtenBytes += n
 
@@ -214,13 +214,13 @@ func (s *symbolizer) SerializeTo(w io.Writer, pool WriterPool) (int, []byte, err
 	// hash the labels block
 	_, err = crc32Hash.Write(b)
 	if err != nil {
-		return writtenBytes, nil, errors.Wrap(err, "build non-indexed labels hash")
+		return writtenBytes, nil, errors.Wrap(err, "build structured metadata hash")
 	}
 
 	// write the labels block to writer
 	n, err = w.Write(b)
 	if err != nil {
-		return writtenBytes, nil, errors.Wrap(err, "write non-indexed labels block")
+		return writtenBytes, nil, errors.Wrap(err, "write structured metadata block")
 	}
 	writtenBytes += n
 	return writtenBytes, crc32Hash.Sum(nil), nil
@@ -350,7 +350,7 @@ func symbolizerFromEnc(b []byte, pool ReaderPool) (*symbolizer, error) {
 					return nil, fmt.Errorf("got unexpected EOF")
 				}
 				if readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
-					return nil, fmt.Errorf("invalid non-indexed labels block in chunk")
+					return nil, fmt.Errorf("invalid structured metadata block in chunk")
 				}
 			}
 			var l uint64

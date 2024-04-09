@@ -1,7 +1,8 @@
 ---
 title: Multi-tenancy
-description: Multi-tenancy
-weight: 50
+menuTitle:  
+description: Describes how Loki implements multi-tenancy to isolate tenant data and queries.
+weight: 
 ---
 # Multi-tenancy
 

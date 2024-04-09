@@ -37,7 +37,7 @@ type clientImpl struct {
 	config             *bootstrap.Config
 	logger             *grpclog.PrefixLogger
 	watchExpiryTimeout time.Duration
-	serializer         *callbackSerializer
+	serializer         *grpcsync.CallbackSerializer
 	serializerClose    func()
 	resourceTypes      *resourceTypeRegistry
 
@@ -85,5 +85,17 @@ func (c *clientImpl) close() {
 	c.authorityMu.Unlock()
 	c.serializerClose()
 
+	for _, f := range c.config.XDSServer.Cleanups {
+		f()
+	}
+	for _, a := range c.config.Authorities {
+		if a.XDSServer == nil {
+			// The server for this authority is the top-level one, cleaned up above.
+			continue
+		}
+		for _, f := range a.XDSServer.Cleanups {
+			f()
+		}
+	}
 	c.logger.Infof("Shutdown")
 }

@@ -17,7 +17,7 @@ type RuleName struct {
 	filename string
 }
 
-// RulesConfigMap returns a ConfigMap resource that contains
+// RulesConfigMapShards returns a ConfigMap resource that contains
 // all loki alerting and recording rules as YAML data.
 // If the size of the data is more than 1MB, the ConfigMap will
 // be split into multiple shards, and this function will return

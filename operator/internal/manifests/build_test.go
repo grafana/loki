@@ -6,6 +6,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
+	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -13,8 +14,6 @@ import (
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
@@ -44,7 +43,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, defs.Size, opt.Stack.Size)
 		require.Equal(t, defs.Limits, opt.Stack.Limits)
-		require.Equal(t, defs.ReplicationFactor, opt.Stack.ReplicationFactor)
+		require.Equal(t, defs.ReplicationFactor, opt.Stack.ReplicationFactor) //nolint:staticcheck
 		require.Equal(t, defs.Replication, opt.Stack.Replication)
 		require.Equal(t, defs.ManagementState, opt.Stack.ManagementState)
 		require.Equal(t, defs.Template.Ingester, opt.Stack.Template.Ingester)

@@ -19,7 +19,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
 )
 
 func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
@@ -37,9 +39,9 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 			return nil, loopClient.Context().Err()
 		})
 
-		requestHandler.On("Handle", mock.Anything, mock.Anything).Return(&httpgrpc.HTTPResponse{}, nil)
+		requestHandler.On("Do", mock.Anything, mock.Anything).Return(&queryrange.LokiResponse{}, nil)
 
-		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1")
+		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1", "1")
 
 		// We expect at this point, the execution context has been canceled too.
 		require.Error(t, loopClient.Context().Err())
@@ -58,8 +60,13 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 			switch recvCount.Inc() {
 			case 1:
 				return &schedulerpb.SchedulerToQuerier{
-					QueryID:         1,
-					HttpRequest:     nil,
+					QueryID: 1,
+					Request: &schedulerpb.SchedulerToQuerier_HttpRequest{
+						HttpRequest: &httpgrpc.HTTPRequest{
+							Method: "GET",
+							Url:    `/loki/api/v1/query_range?query={foo="bar"}&step=10&limit=200&direction=FORWARD`,
+						},
+					},
 					FrontendAddress: "127.0.0.2",
 					UserID:          "user-1",
 				}, nil
@@ -72,7 +79,7 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 
 		workerCtx, workerCancel := context.WithCancel(context.Background())
 
-		requestHandler.On("Handle", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		requestHandler.On("Do", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 			// Cancel the worker context while the query execution is in progress.
 			workerCancel()
 
@@ -81,10 +88,10 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 
 			// Intentionally slow down the query execution, to double check the worker waits until done.
 			time.Sleep(time.Second)
-		}).Return(&httpgrpc.HTTPResponse{}, nil)
+		}).Return(&queryrange.LokiResponse{}, nil)
 
 		startTime := time.Now()
-		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1")
+		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1", "1")
 		assert.GreaterOrEqual(t, time.Since(startTime), time.Second)
 
 		// We expect at this point, the execution context has been canceled too.
@@ -113,9 +120,9 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 			return nil, status.Error(codes.Unknown, schedulerpb.ErrSchedulerIsNotRunning.Error())
 		})
 
-		requestHandler.On("Handle", mock.Anything, mock.Anything).Return(&httpgrpc.HTTPResponse{}, nil)
+		requestHandler.On("Do", mock.Anything, mock.Anything).Return(&queryrange.LokiResponse{}, nil)
 
-		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1")
+		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1", "1")
 
 		// We expect no error in the log.
 		assert.NotContains(t, logs.String(), "error")
@@ -139,7 +146,7 @@ func prepareSchedulerProcessor() (*schedulerProcessor, *querierLoopClientMock, *
 
 	requestHandler := &requestHandlerMock{}
 	metrics := NewMetrics(Config{}, nil)
-	sp, _ := newSchedulerProcessor(Config{QuerierID: "test-querier-id"}, requestHandler, log.NewNopLogger(), metrics)
+	sp, _ := newSchedulerProcessor(Config{QuerierID: "test-querier-id"}, requestHandler, log.NewNopLogger(), metrics, queryrange.DefaultCodec)
 	sp.schedulerClientFactory = func(_ *grpc.ClientConn) schedulerpb.SchedulerForQuerierClient {
 		return schedulerClient
 	}
@@ -221,7 +228,7 @@ type requestHandlerMock struct {
 	mock.Mock
 }
 
-func (m *requestHandlerMock) Handle(ctx context.Context, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (m *requestHandlerMock) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	args := m.Called(ctx, req)
-	return args.Get(0).(*httpgrpc.HTTPResponse), args.Error(1)
+	return args.Get(0).(queryrangebase.Response), args.Error(1)
 }

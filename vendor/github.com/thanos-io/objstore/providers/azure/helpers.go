@@ -38,6 +38,16 @@ func getContainerClient(conf Config) (*container.Client, error) {
 			Transport: &http.Client{Transport: dt},
 		},
 	}
+
+	// Use connection string if set
+	if conf.StorageConnectionString != "" {
+		containerClient, err := container.NewClientFromConnectionString(conf.StorageConnectionString, conf.ContainerName, opt)
+		if err != nil {
+			return nil, err
+		}
+		return containerClient, nil
+	}
+
 	containerURL := fmt.Sprintf("https://%s.%s/%s", conf.StorageAccountName, conf.Endpoint, conf.ContainerName)
 
 	// Use shared keys if set

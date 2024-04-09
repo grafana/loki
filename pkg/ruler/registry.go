@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -24,16 +25,17 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
-	"github.com/grafana/loki/pkg/ruler/storage/instance"
-	"github.com/grafana/loki/pkg/ruler/storage/wal"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/cleaner"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/wal"
 )
 
 type walRegistry struct {
 	logger  log.Logger
 	manager instance.Manager
 
-	metrics *storageRegistryMetrics
+	metrics     *storageRegistryMetrics
+	overridesMu sync.Mutex
 
 	config         Config
 	overrides      RulesLimits
@@ -177,6 +179,9 @@ func (r *walRegistry) stop() {
 }
 
 func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
+	r.overridesMu.Lock()
+	defer r.overridesMu.Unlock()
+
 	conf, err := r.config.WAL.Clone()
 	if err != nil {
 		return instance.Config{}, err
@@ -207,8 +212,10 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 				}
 			}
 
-			// always inject the X-Scope-OrgId header for multi-tenant metrics backends
-			clt.Headers[user.OrgIDHeaderName] = tenant
+			if rwCfg.AddOrgIDHeader {
+				// inject the X-Scope-OrgId header for multi-tenant metrics backends
+				clt.Headers[user.OrgIDHeaderName] = tenant
+			}
 
 			rwCfg.Clients[id] = clt
 
@@ -374,6 +381,9 @@ func (n notReadyAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _
 func (n notReadyAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	return 0, errNotReady
 }
+func (n notReadyAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
+	return 0, errNotReady
+}
 func (n notReadyAppender) Commit() error   { return errNotReady }
 func (n notReadyAppender) Rollback() error { return errNotReady }
 
@@ -389,6 +399,9 @@ func (n discardingAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels,
 	return 0, nil
 }
 func (n discardingAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	return 0, nil
+}
+func (n discardingAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
 	return 0, nil
 }
 func (n discardingAppender) Commit() error   { return nil }

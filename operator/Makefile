@@ -21,10 +21,9 @@ LOKI_OPERATOR_NS ?= kubernetes-operators
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.4.0
+VERSION ?= 0.6.0
 CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
-SUPPORTED_OCP_VERSIONS="v4.12"
 
 # REGISTRY_BASE
 # defines the container registry and organization for the bundle and operator container images.
@@ -126,6 +125,12 @@ deps: go.mod go.sum
 	go mod download
 	go mod verify
 
+.PHONY: deps-api
+deps-api: apis/loki/go.mod apis/loki/go.sum
+	@cd ./apis/loki/ && go mod tidy
+	@cd ./apis/loki/ && go mod download
+	@cd ./apis/loki/ && go mod verify
+
 .PHONY: cli
 cli: deps bin/loki-broker ## Build loki-broker CLI binary
 bin/loki-broker: $(GO_FILES) | generate
@@ -152,9 +157,13 @@ manifests: $(CONTROLLER_GEN) ## Generate manifests e.g. CRD, RBAC etc.
 	$(CONTROLLER_GEN) rbac:roleName=lokistack-manager crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: test
-test: deps generate go-generate lint lint-prometheus manifests ## Run tests
+test: deps deps-api generate go-generate lint lint-prometheus manifests test-unit-api ## Run tests
 test: $(GO_FILES)
 	go test ./... -coverprofile cover.out
+
+.PHONY: test-unit-api
+test-unit-api: $(GO_FILES)
+	@cd ./apis/loki/ && go test ./... -coverprofile cover.out
 
 .PHONY: test-unit-prometheus
 test-unit-prometheus: $(PROMTOOL) ## Run prometheus unit tests
@@ -333,15 +342,6 @@ web: $(HUGO) | web-pre ## Run production build of the loki-operator.dev website
 .PHONY: web-serve
 web-serve: $(HUGO) | web-pre ## Run local preview version of the loki-operator.dev website
 	@cd $(WEBSITE_DIR) && $(HUGO) serve
-
-.PHONY: operatorhub
-operatorhub: check-operatorhub-pr-template
-	SUPPORTED_OCP_VERSIONS="$(SUPPORTED_OCP_VERSIONS)" ./hack/operatorhub.sh
-
-.PHONY: check-operatorhub-pr-template
-check-operatorhub-pr-template:
-	curl https://raw.githubusercontent.com/operator-framework/community-operators/master/docs/pull_request_template.md -o hack/.operatorhub-pr-template.md -s > /dev/null 2>&1
-	git diff -s --exit-code hack/.operatorhub-pr-template.md || (echo "Build failed: the PR template for OperatorHub has changed. Sync it and try again." && exit 1)
 
 JSONNET_SRC = $(shell find . -type f -not -path './jsonnet/vendor/*' \( -name '*.libsonnet' -o -name '*.jsonnet' \))
 JSONNET_VENDOR_DIR = jsonnet/vendor

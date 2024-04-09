@@ -1,139 +1,113 @@
 ---
-title: Get started
+title: Get started with Grafana Loki
+menuTitle: Get started
 weight: 200
-description: How to create and use a simple Loki cluster for testing and evaluation purposes.
-aliases:
-    - ../getting-started/get-logs-into-loki/
-    - ../getting-started/
+description: Provides an overview of the steps for implementing Grafana Loki to collect and view logs.
 ---
 
-# Get started
+# Get started with Grafana Loki
 
-This guide assists the reader to create and use a simple Loki cluster.
-The cluster is intended for testing, development, and evaluation;
-it will not meet most production requirements.
+Loki is a horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by Prometheus. It is designed to be very cost effective and easy to operate. It does not index the contents of the logs, but rather a set of labels for each log stream.
 
-The test environment runs the [flog](https://github.com/mingrammer/flog) app to generate log lines.
-Promtail is the test environment's agent (or client) that captures the log lines and pushes them to the Loki cluster through a gateway.
-In a typical environment, the log-generating app and the agent run together, but in locations distinct from the Loki cluster. This guide runs each piece of the test environment locally, in Docker containers.
+Because all Loki implementations are unique, the installation process is
+different for every customer. But there are some steps in the process that
+should be common to every installation.
 
-Grafana provides a way to pose queries against the logs stored in Loki and visualize query results.
- 
-![Simple scalable deployment test environment](simple-scalable-test-environment.png)
+To collect logs and view your log data generally involves the following steps:
 
-The test environment uses Docker compose to instantiate these parts, each in its own container: 
+![Loki implementation steps](loki-install.png)
 
-- One [single scalable deployment]({{< relref "../get-started/deployment-modes" >}}) mode **Loki** instance has:
-    - One Loki read component
-    - One Loki write component
-    - **Minio** is Loki's storage back end in the test environment.
-- The **gateway** receives requests and redirects them to the appropriate container based on the request's URL.
-- **Flog** generates log lines.
-- **Promtail** scrapes the log lines from flog, and pushes them to Loki through the gateway.
-- **Grafana** provides visualization of the log lines captured within Loki.
+1. Install Loki on Kubernetes in simple scalable mode, using the recommended [Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-scalable/). Supply the Helm chart with your object storage authentication details.
+   - [Storage options](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/)
+   - [Configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/)
+   - There are [examples](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/) for specific Object Storage providers that you can modify.
+1. Deploy the [Grafana Agent](https://grafana.com/docs/agent/latest/flow/) to collect logs from your applications.
+    1. On Kubernetes, deploy the Grafana Agent using the Helm chart. Configure Grafana Agent to scrape logs from your Kubernetes cluster, and add your Loki endpoint details. See the following section for an example Grafana Agent Flow configuration file.
+    1. Add [labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/) to your logs following our [best practices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/bp-labels/). Most Loki users start by adding labels which describe where the logs are coming from (region, cluster, environment, etc.).
+1. Deploy [Grafana](https://grafana.com/docs/grafana/latest/setup-grafana/) or [Grafana Cloud](https://grafana.com/docs/grafana-cloud/quickstart/) and configure a [Loki datasource](https://grafana.com/docs/grafana/latest/datasources/loki/configure-loki-data-source/).
+1. Select the [Explore feature](https://grafana.com/docs/grafana/latest/explore/) in the Grafana main menu. To [view logs in Explore](https://grafana.com/docs/grafana/latest/explore/logs-integration/):
+    1. Pick a time range.
+    1. Choose the Loki datasource.
+    1. Use [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query/) in the [query editor](https://grafana.com/docs/grafana/latest/datasources/loki/query-editor/), use the Builder view to explore your labels, or select from sample pre-configured queries using the **Kick start your query** button.
 
-## Prerequisites
+**Next steps:** Learn more about Loki’s query language, [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
 
-- [Docker](https://docs.docker.com/install)
-- [Docker Compose](https://docs.docker.com/compose/install)
+## Example Grafana Agent configuration file to ship Kubernetes Pod logs to Loki
 
-## Obtain the test environment
+To deploy Grafana Agent to collect Pod logs from your Kubernetes cluster and ship them to Loki, you an use the Grafana Agent Helm chart, and a `values.yaml` file.
 
-1. Create a directory called `evaluate-loki` for the test environment. Make `evaluate-loki` your current working directory:
+1. Install Loki with the [Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-scalable/).
+1. Deploy the Grafana Agent, using the [Grafana Agent Helm chart](https://grafana.com/docs/agent/latest/flow/setup/install/kubernetes/) and this example `values.yaml` file updating the value for `forward_to = [loki.write.endpoint.receiver]`:
+
+```yaml
+agent:
+  mounts:
+    varlog: true
+  configMap:
+    content: |
+      logging {
+        level  = "info"
+        format = "logfmt"
+      }
+
+      discovery.kubernetes "k8s" {
+        role = "pod"
+      }
+
+      discovery.relabel "k8s" {
+        targets = discovery.kubernetes.k8s.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          action = "replace"
+          target_label = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          action = "replace"
+          target_label = "container"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_name"]
+          target_label  = "job"
+          separator     = "/"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+          target_label  = "__path__"
+          separator     = "/"
+          replacement   = "/var/log/pods/*$1/*.log"
+        }
+      }
+
+      local.file_match "pods" {
+        path_targets = discovery.relabel.k8s.output
+      }
+
+      loki.source.file "pods" {
+        targets = local.file_match.pods.targets
+        forward_to = [loki.write.endpoint.receiver]
+      }
+
+      loki.write "endpoint" {
+        endpoint {
+            url = "http://loki-gateway:80/loki/api/v1/push"
+            tenant_id = "cloud"
+        }
+      }
+
+```
+
+1. Then install Grafana Agent in your Kubernetes cluster using:
+
     ```bash
-    mkdir evaluate-loki
-    cd evaluate-loki
-    ```
-1. Download `loki-config.yaml`, `promtail-local-config.yaml`, and `docker-compose.yaml`:
-
-    ```bash
-    wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/loki-config.yaml -O loki-config.yaml
-    wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/promtail-local-config.yaml -O promtail-local-config.yaml
-    wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
-    ```
-
-## Deploy the test environment
-
-1. With `evaluate-loki` as the current working directory, deploy the test environment using `docker-compose`:
-    ```bash
-    docker-compose up -d
-    ```
-1. (Optional) Verify that the Loki cluster is up and running. The read component returns `ready` when you point a web browser at http://localhost:3101/ready. The message `Query Frontend not ready: not ready: number of schedulers this worker is connected to is 0` will show prior to the read component being ready.
-The write component returns `ready` when you point a web browser at http://localhost:3102/ready. The message `Ingester not ready: waiting for 15s after being ready` will show prior to the write component being ready.
-
-## Use Grafana and the test environment
-
-Use [Grafana](/docs/grafana/latest/) to query and observe the log lines captured in the Loki cluster by navigating a browser to http://localhost:3000.
-The Grafana instance has Loki configured as a [datasource](/docs/grafana/latest/datasources/loki/).
-
-Click on the Grafana instance's [Explore](/docs/grafana/latest/explore/) icon to bring up the explore pane.
-
-Use the Explore dropdown menu to choose the Loki datasource and bring up the Loki query browser.
-
-Try some queries.
-Enter your query into the **Log browser** box, and click on the blue **Run query** button.
-
-To see all the log lines that flog has generated:
-```
-{container="evaluate-loki-flog-1"}
-```
-
-The flog app will generate log lines for invented HTTP requests.
-To see all `GET` log lines, enter the query:
-
-```
-{container="evaluate-loki-flog-1"} |= "GET"
-```
-For `POST` methods:
-```
-{container="evaluate-loki-flog-1"} |= "POST"
-```
-
-To see every log line with a 401 status (unauthorized error): 
-```
-{container="evaluate-loki-flog-1"} | json | status="401"
-```
-To see every log line other than those that contain the value 401: 
-```
-{container="evaluate-loki-flog-1"} != "401"
-```
-
-Refer to [query examples]({{< relref "../query/query_examples" >}}) for more examples.
-
-## Stop and clean up the test environment
-
-To break down the test environment:
-
-- Close the Grafana browser window
-
-- With `evaluate-loki` as the current working directory, stop and remove all the Docker containers:
-    ```bash
-    docker-compose down
+    helm upgrade -f values.yaml agent grafana/grafana-agent 
     ```
 
-## Modifying the flog app output
+This sample file is configured to:
 
-You can modify the flog app's log line generation by changing
-its configuration.
-Choose one of these two ways to apply a new configuration:
-
-- To remove already-generated logs, restart the test environment with a new configuration.
-
-    1. With `evaluate-loki` as the current working directory, stop and clean up an existing test environment:
-        ```
-        docker-compose down
-        ```
-    1. Edit the `docker-compose.yaml` file.  Within the YAML file, change the `flog.command` field's value to specify your flog output. Refer to the `flog` [command line arguments](https://hub.docker.com/r/mingrammer/flog).
-    1. With `evaluate-loki` as the current working directory, instantiate the new test environment:
-        ```
-        docker-compose up -d
-        ```
-
-- To keep already-generated logs in the running test environment, restart flog with a new configuration.
-
-    1. Edit the `docker-compose.yaml` file.  Within the YAML file, change the `flog.command` field's value to specify your flog output.
-    1. With `evaluate-loki` as the current working directory, restart only the flog app within the currently-running test environment:
-        ```
-        docker-compose up -d --force-recreate flog
-        ```
-
+- Install Grafana Agent to discover Pod logs.
+- Add `container` and `pod` labels to the logs.
+- Push the logs to your Loki cluster using the tenant ID `cloud`.

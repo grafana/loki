@@ -1,8 +1,8 @@
 ---
 title: Automatic stream sharding
 menuTitle: Automatic stream sharding
-description: Automatic stream sharding can control issues around the per-stream rate limit
-weight: 110
+description: Describes how to control issues around the per-stream rate limit using automatic stream sharding.
+weight: 
 ---
 
 # Automatic stream sharding
@@ -18,14 +18,17 @@ per-stream rate limit.
      shard_streams:
          enabled: true
    ```
-2. Optionally lower the `desired_rate` in bytes if you find that the system is still hitting the `per_stream_rate_limit`:
+1. Optionally lower the `desired_rate` in bytes if you find that the system is still hitting the `per_stream_rate_limit`:
    ```yaml
    limits_config:
      shard_streams:
        enabled: true
        desired_rate: 2097152 #2MiB
    ```
-3. Optionally enable `logging_enabled` for debugging stream sharding. **Note**: this may affect the ingestion performance of Loki.
+1. Optionally enable `logging_enabled` for debugging stream sharding. 
+  {{% admonition type="note" %}}
+  This may affect the ingestion performance of Loki.
+  {{% /admonition %}}
    ```yaml
    limits_config:
      shard_streams:

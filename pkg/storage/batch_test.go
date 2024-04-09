@@ -13,13 +13,13 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 var NilMetrics = NewChunkMetrics(nil, 0)
@@ -1742,6 +1742,7 @@ func TestBatchCancel(t *testing.T) {
 	it, err := newLogBatchIterator(ctx, s, NilMetrics, chunks, 1, newMatchers(fooLabels.String()), log.NewNoopPipeline(), logproto.FORWARD, from, time.Now(), nil)
 	require.NoError(t, err)
 	defer require.NoError(t, it.Close())
+	//nolint:revive
 	for it.Next() {
 	}
 	require.Equal(t, context.Canceled, it.Error())
@@ -1760,7 +1761,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 	require.NoError(b, err)
 
 	b.ReportAllocs()
-	st := &store{
+	st := &LokiStore{
 		chunkMetrics: NilMetrics,
 		cfg: Config{
 			MaxChunkBatchSize: 50,

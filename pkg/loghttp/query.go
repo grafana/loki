@@ -8,13 +8,19 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/buger/jsonparser"
+	"github.com/c2h5oh/datasize"
+	"github.com/grafana/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/dskit/httpgrpc"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 var (
@@ -32,12 +38,16 @@ type QueryStatus string
 const (
 	QueryStatusSuccess = "success"
 	QueryStatusFail    = "fail"
+	// How much stack space to allocate for unescaping JSON strings; if a string longer
+	// than this needs to be escaped, it will result in a heap allocation
+	unescapeStackBufSize = 64
 )
 
 // QueryResponse represents the http json response to a Loki range and instant query
 type QueryResponse struct {
-	Status string            `json:"status"`
-	Data   QueryResponseData `json:"data"`
+	Status   string            `json:"status"`
+	Warnings []string          `json:"warnings,omitempty"`
+	Data     QueryResponseData `json:"data"`
 }
 
 func (q *QueryResponse) UnmarshalJSON(data []byte) error {
@@ -45,6 +55,17 @@ func (q *QueryResponse) UnmarshalJSON(data []byte) error {
 		switch string(key) {
 		case "status":
 			q.Status = string(value)
+		case "warnings":
+			var warnings []string
+			if _, err := jsonparser.ArrayEach(value, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
+				if dataType == jsonparser.String {
+					warnings = append(warnings, unescapeJSONString(value))
+				}
+			}); err != nil {
+				return err
+			}
+
+			q.Warnings = warnings
 		case "data":
 			var responseData QueryResponseData
 			if err := responseData.UnmarshalJSON(value); err != nil {
@@ -54,6 +75,16 @@ func (q *QueryResponse) UnmarshalJSON(data []byte) error {
 		}
 		return nil
 	})
+}
+
+func unescapeJSONString(b []byte) string {
+	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
+	bU, err := jsonparser.Unescape(b, stackbuf[:])
+	if err != nil {
+		return ""
+	}
+
+	return string(bU)
 }
 
 // PushRequest models a log stream push but is unmarshalled to proto push format.
@@ -69,15 +100,8 @@ func (s *LogProtoStream) UnmarshalJSON(data []byte) error {
 	err := jsonparser.ObjectEach(data, func(key, val []byte, ty jsonparser.ValueType, _ int) error {
 		switch string(key) {
 		case "stream":
-			labels := make(LabelSet)
-			err := jsonparser.ObjectEach(val, func(key, val []byte, dataType jsonparser.ValueType, _ int) error {
-				if dataType != jsonparser.String {
-					return jsonparser.MalformedStringError
-				}
-				labels[string(key)] = string(val)
-				return nil
-			})
-			if err != nil {
+			var labels LabelSet
+			if err := labels.UnmarshalJSON(val); err != nil {
 				return err
 			}
 			s.Labels = labels.String()
@@ -155,13 +179,13 @@ func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
 				return
 			}
 			e.Line = v
-		case 2: // nonIndexedLabels
-			var nonIndexedLabels []logproto.LabelAdapter
+		case 2: // structuredMetadata
+			var structuredMetadata []logproto.LabelAdapter
 			err := jsonparser.ObjectEach(value, func(key, val []byte, dataType jsonparser.ValueType, _ int) error {
 				if dataType != jsonparser.String {
 					return jsonparser.MalformedStringError
 				}
-				nonIndexedLabels = append(nonIndexedLabels, logproto.LabelAdapter{
+				structuredMetadata = append(structuredMetadata, logproto.LabelAdapter{
 					Name:  string(key),
 					Value: string(val),
 				})
@@ -171,7 +195,7 @@ func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
 				parseError = err
 				return
 			}
-			e.NonIndexedLabels = nonIndexedLabels
+			e.StructuredMetadata = structuredMetadata
 		}
 		i++
 	})
@@ -242,7 +266,10 @@ func (s Streams) ToProto() []logproto.Stream {
 	result := make([]logproto.Stream, 0, len(s))
 	for _, s := range s {
 		entries := *(*[]logproto.Entry)(unsafe.Pointer(&s.Entries))
-		result = append(result, logproto.Stream{Labels: s.Labels.String(), Entries: entries})
+		result = append(result, logproto.Stream{
+			Labels:  s.Labels.String(),
+			Entries: entries,
+		})
 	}
 	return result
 }
@@ -407,6 +434,24 @@ type RangeQuery struct {
 	Shards    []string
 }
 
+func NewRangeQueryWithDefaults() *RangeQuery {
+	start, end, _ := determineBounds(time.Now(), "", "", "")
+	result := &RangeQuery{
+		Start:     start,
+		End:       end,
+		Limit:     defaultQueryLimit,
+		Direction: defaultDirection,
+		Interval:  0,
+	}
+	result.UpdateStep()
+	return result
+}
+
+// UpdateStep will adjust the step given new start and end.
+func (q *RangeQuery) UpdateStep() {
+	q.Step = time.Duration(defaultQueryRangeStep(q.Start, q.End)) * time.Second
+}
+
 // ParseRangeQuery parses a RangeQuery request from an http request.
 func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 	var result RangeQuery
@@ -458,6 +503,23 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 		return nil, errNegativeInterval
 	}
 
+	if GetVersion(r.URL.Path) == VersionLegacy {
+		result.Query, err = parseRegexQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		expr, err := syntax.ParseExpr(result.Query)
+		if err != nil {
+			return nil, err
+		}
+
+		// short circuit metric queries
+		if _, ok := expr.(syntax.SampleExpr); ok {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "legacy endpoints only support %s result type", logqlmodel.ValueTypeStreams)
+		}
+	}
+
 	return &result, nil
 }
 
@@ -465,6 +527,38 @@ func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
 	// TODO(owen-d): use a specific type/validation instead
 	// of using range query parameters (superset)
 	return ParseRangeQuery(r)
+}
+
+func ParseIndexShardsQuery(r *http.Request) (*RangeQuery, datasize.ByteSize, error) {
+	// TODO(owen-d): use a specific type/validation instead
+	// of using range query parameters (superset)
+	parsed, err := ParseRangeQuery(r)
+	if err != nil {
+		return nil, 0, err
+	}
+	targetBytes, err := parseBytes(r, "targetBytesPerShard", true)
+	return parsed, targetBytes, err
+}
+
+func NewVolumeRangeQueryWithDefaults(matchers string) *logproto.VolumeRequest {
+	start, end, _ := determineBounds(time.Now(), "", "", "")
+	step := (time.Duration(defaultQueryRangeStep(start, end)) * time.Second).Milliseconds()
+	from, through := util.RoundToMilliseconds(start, end)
+	return &logproto.VolumeRequest{
+		From:         from,
+		Through:      through,
+		Matchers:     matchers,
+		Limit:        seriesvolume.DefaultLimit,
+		Step:         step,
+		TargetLabels: nil,
+		AggregateBy:  seriesvolume.DefaultAggregateBy,
+	}
+}
+
+func NewVolumeInstantQueryWithDefaults(matchers string) *logproto.VolumeRequest {
+	r := NewVolumeRangeQueryWithDefaults(matchers)
+	r.Step = 0
+	return r
 }
 
 type VolumeInstantQuery struct {
@@ -546,6 +640,48 @@ func ParseVolumeRangeQuery(r *http.Request) (*VolumeRangeQuery, error) {
 		TargetLabels: targetLabels(r),
 		AggregateBy:  aggregateBy,
 	}, nil
+}
+
+func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest, error) {
+	var err error
+	result := &logproto.DetectedFieldsRequest{}
+
+	result.Query = query(r)
+	result.Start, result.End, err = bounds(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if result.End.Before(result.Start) {
+		return nil, errEndBeforeStart
+	}
+
+	result.LineLimit, err = lineLimit(r)
+	if err != nil {
+		return nil, err
+	}
+
+	result.FieldLimit, err = fieldLimit(r)
+	if err != nil {
+		return nil, err
+	}
+
+	step, err := step(r, result.Start, result.End)
+	result.Step = step.Milliseconds()
+	if err != nil {
+		return nil, err
+	}
+
+	if result.Step <= 0 {
+		return nil, errZeroOrNegativeStep
+	}
+
+	// For safety, limit the number of returned points per timeseries.
+	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
+	if (result.End.Sub(result.Start) / step) > 11000 {
+		return nil, errStepTooSmall
+	}
+	return result, nil
 }
 
 func targetLabels(r *http.Request) []string {

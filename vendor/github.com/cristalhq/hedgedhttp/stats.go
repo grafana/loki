@@ -16,6 +16,8 @@ type Stats struct {
 	requestedRoundTrips      atomicCounter
 	actualRoundTrips         atomicCounter
 	failedRoundTrips         atomicCounter
+	originalRequestWins      atomicCounter
+	hedgedRequestWins        atomicCounter
 	canceledByUserRoundTrips atomicCounter
 	canceledSubRequests      atomicCounter
 	_                        cacheLine
@@ -24,6 +26,8 @@ type Stats struct {
 func (s *Stats) requestedRoundTripsInc()      { atomic.AddUint64(&s.requestedRoundTrips.count, 1) }
 func (s *Stats) actualRoundTripsInc()         { atomic.AddUint64(&s.actualRoundTrips.count, 1) }
 func (s *Stats) failedRoundTripsInc()         { atomic.AddUint64(&s.failedRoundTrips.count, 1) }
+func (s *Stats) originalRequestWinsInc()      { atomic.AddUint64(&s.originalRequestWins.count, 1) }
+func (s *Stats) hedgedRequestWinsInc()        { atomic.AddUint64(&s.hedgedRequestWins.count, 1) }
 func (s *Stats) canceledByUserRoundTripsInc() { atomic.AddUint64(&s.canceledByUserRoundTrips.count, 1) }
 func (s *Stats) canceledSubRequestsInc()      { atomic.AddUint64(&s.canceledSubRequests.count, 1) }
 
@@ -40,6 +44,16 @@ func (s *Stats) ActualRoundTrips() uint64 {
 // FailedRoundTrips returns count of requests that failed.
 func (s *Stats) FailedRoundTrips() uint64 {
 	return atomic.LoadUint64(&s.failedRoundTrips.count)
+}
+
+// OriginalRequestWins returns count of original requests that were faster than the original.
+func (s *Stats) OriginalRequestWins() uint64 {
+	return atomic.LoadUint64(&s.originalRequestWins.count)
+}
+
+// HedgedRequestWins returns count of hedged requests that were faster than the original.
+func (s *Stats) HedgedRequestWins() uint64 {
+	return atomic.LoadUint64(&s.hedgedRequestWins.count)
 }
 
 // CanceledByUserRoundTrips returns count of requests that were canceled by user, using request context.

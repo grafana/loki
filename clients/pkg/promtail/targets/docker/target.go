@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	docker_types "github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/go-kit/log"
@@ -20,11 +20,11 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type Target struct {
@@ -88,7 +88,7 @@ func (t *Target) processLoop(ctx context.Context) {
 	t.wg.Add(1)
 	defer t.wg.Done()
 
-	opts := docker_types.ContainerLogsOptions{
+	opts := container.LogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     true,
@@ -222,6 +222,7 @@ func (t *Target) process(r io.Reader, logStream string) {
 		}
 		t.metrics.dockerEntries.Inc()
 		t.positions.Put(positions.CursorKey(t.containerName), ts.Unix())
+		t.since = ts.Unix()
 	}
 }
 

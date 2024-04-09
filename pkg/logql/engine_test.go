@@ -11,8 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
@@ -23,13 +24,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 var (
@@ -64,8 +65,15 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 				{newSeries(testSize, offset(46, constantValue(1)), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"} | unwrap foo[30s])`}},
-			},
+				{&logproto.SampleQueryRequest{
+					Start:    time.Unix(30, 0),
+					End:      time.Unix(60, 0),
+					Selector: `rate({app="foo"} | unwrap foo[30s])`,
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
+					},
+				},
+				}},
 			// there are 15 samples (from 47 to 61) matched from the generated series
 			// SUM(n=47, 61, 1) = 15
 			// 15 / 30 = 0.5
@@ -82,7 +90,14 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 				{newSeries(testSize, offset(46, incValue(1)), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"} | unwrap foo[30s])`}},
+				{&logproto.SampleQueryRequest{
+					Start:    time.Unix(30, 0),
+					End:      time.Unix(60, 0),
+					Selector: `rate({app="foo"} | unwrap foo[30s])`,
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
+					},
+				}},
 			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
 			// SUM(n=47, 61, n) = (47+48+...+61) = 810
@@ -100,7 +115,14 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 				{newSeries(testSize, offset(46, constantValue(1)), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate_counter({app="foo"} | unwrap foo[30s])`}},
+				{&logproto.SampleQueryRequest{
+					Start:    time.Unix(30, 0),
+					End:      time.Unix(60, 0),
+					Selector: `rate_counter({app="foo"} | unwrap foo[30s])`,
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(`rate_counter({app="foo"} | unwrap foo[30s])`),
+					},
+				}},
 			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
 			// (1 - 1) / 30 = 0
@@ -129,13 +151,9 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 			t.Parallel()
 
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
-			q := eng.Query(LiteralParams{
-				qs:        test.qs,
-				start:     test.ts,
-				end:       test.ts,
-				direction: test.direction,
-				limit:     test.limit,
-			})
+			params, err := NewLiteralParams(test.qs, test.ts, test.ts, 0, 0, test.direction, test.limit, nil)
+			require.NoError(t, err)
+			q := eng.Query(params)
 			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if expectedError, ok := test.expected.(error); ok {
 				assert.Equal(t, expectedError.Error(), err.Error())
@@ -581,7 +599,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 				{T: 60 * 1000, F: 1.2, Metric: labels.FromStrings("app", "fuzz")},
 			},
 		},
-		//sort and sort_desc
+		// sort and sort_desc
 		{
 			`sort(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
 			[][]logproto.Series{
@@ -662,6 +680,25 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 		},
 		{
 			`count_over_time({app="foo"}[1m]) > 1`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			0,
+			[][]logproto.Series{
+				{newSeries(testSize, identity, `{app="foo"}`)},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}[1m])`}},
+			},
+			promql.Vector{
+				{T: 60 * 1000, F: 60, Metric: labels.FromStrings("app", "foo")},
+			},
+		},
+		{
+			// should return same results as `count_over_time({app="foo"}[1m]) > 1`.
+			// https://grafana.com/docs/loki/latest/query/#comparison-operators
+			// Between a vector and a scalar, these operators are
+			// applied to the value of every data sample in the vector
+			`1 < count_over_time({app="foo"}[1m])`,
 			time.Unix(60, 0),
 			logproto.FORWARD,
 			0,
@@ -941,13 +978,10 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			t.Parallel()
 
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
-			q := eng.Query(LiteralParams{
-				qs:        test.qs,
-				start:     test.ts,
-				end:       test.ts,
-				direction: test.direction,
-				limit:     test.limit,
-			})
+
+			params, err := NewLiteralParams(test.qs, test.ts, test.ts, 0, 0, test.direction, test.limit, nil)
+			require.NoError(t, err)
+			q := eng.Query(params)
 			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if expectedError, ok := test.expected.(error); ok {
 				assert.Equal(t, expectedError.Error(), err.Error())
@@ -1575,7 +1609,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 			promql.Matrix{
 				promql.Series{
-					//vector result
+					// vector result
 					Metric: labels.Labels(nil),
 					Floats: []promql.FPoint{{T: 60000, F: 0}, {T: 80000, F: 0}, {T: 100000, F: 0}, {T: 120000, F: 0}, {T: 140000, F: 0}, {T: 160000, F: 0}, {T: 180000, F: 0}}},
 				promql.Series{
@@ -2108,7 +2142,69 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
+			// should return same results as `bytes_over_time({app="foo"}[30s]) > 1`.
+			// https://grafana.com/docs/loki/latest/query/#comparison-operators
+			// Between a vector and a scalar, these operators are
+			// applied to the value of every data sample in the vector
+			`1 < bytes_over_time({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Series{
+				{logproto.Series{
+					Labels: `{app="foo"}`,
+					Samples: []logproto.Sample{
+						{Timestamp: time.Unix(45, 0).UnixNano(), Hash: 1, Value: 5.}, // 5 bytes
+						{Timestamp: time.Unix(60, 0).UnixNano(), Hash: 2, Value: 0.},
+						{Timestamp: time.Unix(75, 0).UnixNano(), Hash: 3, Value: 0.},
+						{Timestamp: time.Unix(90, 0).UnixNano(), Hash: 4, Value: 0.},
+						{Timestamp: time.Unix(105, 0).UnixNano(), Hash: 5, Value: 4.}, // 4 bytes
+					},
+				}},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.FromStrings("app", "foo"),
+					Floats: []promql.FPoint{{T: 60 * 1000, F: 5.}, {T: 105 * 1000, F: 4.}, {T: 120 * 1000, F: 4.}},
+				},
+			},
+		},
+		{
 			`bytes_over_time({app="foo"}[30s]) > bool 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Series{
+				{logproto.Series{
+					Labels: `{app="foo"}`,
+					Samples: []logproto.Sample{
+						{Timestamp: time.Unix(45, 0).UnixNano(), Hash: 1, Value: 5.}, // 5 bytes
+						{Timestamp: time.Unix(60, 0).UnixNano(), Hash: 2, Value: 0.},
+						{Timestamp: time.Unix(75, 0).UnixNano(), Hash: 3, Value: 0.},
+						{Timestamp: time.Unix(90, 0).UnixNano(), Hash: 4, Value: 0.},
+						{Timestamp: time.Unix(105, 0).UnixNano(), Hash: 5, Value: 4.}, // 4 bytes
+					},
+				}},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.FromStrings("app", "foo"),
+					Floats: []promql.FPoint{
+						{T: 60000, F: 1},
+						{T: 75000, F: 0},
+						{T: 90000, F: 0},
+						{T: 105000, F: 1},
+						{T: 120000, F: 1},
+					},
+				},
+			},
+		},
+		{
+			// should return same results as `bytes_over_time({app="foo"}[30s]) > bool 1`.
+			// https://grafana.com/docs/loki/latest/query/#comparison-operators
+			// Between a vector and a scalar, these operators are
+			// applied to the value of every data sample in the vector
+			`1 < bool bytes_over_time({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
 			[][]logproto.Series{
 				{logproto.Series{
 					Labels: `{app="foo"}`,
@@ -2185,15 +2281,9 @@ func TestEngine_RangeQuery(t *testing.T) {
 
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
 
-			q := eng.Query(LiteralParams{
-				qs:        test.qs,
-				start:     test.start,
-				end:       test.end,
-				step:      test.step,
-				interval:  test.interval,
-				direction: test.direction,
-				limit:     test.limit,
-			})
+			params, err := NewLiteralParams(test.qs, test.start, test.end, test.step, test.interval, test.direction, test.limit, nil)
+			require.NoError(t, err)
+			q := eng.Query(params)
 			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if err != nil {
 				t.Fatal(err)
@@ -2221,13 +2311,11 @@ func TestEngine_Stats(t *testing.T) {
 	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
 
 	queueTime := 2 * time.Nanosecond
-	q := eng.Query(LiteralParams{
-		qs:        `{foo="bar"}`,
-		start:     time.Now(),
-		end:       time.Now(),
-		direction: logproto.BACKWARD,
-		limit:     1000,
-	})
+
+	params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil)
+	require.NoError(t, err)
+	q := eng.Query(params)
+
 	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
 	r, err := q.Exec(user.InjectOrgID(ctx, "fake"))
 	require.NoError(t, err)
@@ -2257,13 +2345,9 @@ func (metaQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (ite
 func TestEngine_Metadata(t *testing.T) {
 	eng := NewEngine(EngineOpts{}, &metaQuerier{}, NoLimits, log.NewNopLogger())
 
-	q := eng.Query(LiteralParams{
-		qs:        `{foo="bar"}`,
-		start:     time.Now(),
-		end:       time.Now(),
-		direction: logproto.BACKWARD,
-		limit:     1000,
-	})
+	params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.BACKWARD, 1000, nil)
+	require.NoError(t, err)
+	q := eng.Query(params)
 
 	r, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 	require.NoError(t, err)
@@ -2272,51 +2356,17 @@ func TestEngine_Metadata(t *testing.T) {
 	}, r.Headers)
 }
 
-func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
-
-	queueTime := 2 * time.Nanosecond
-	illegalVector := `vector(abc)`
-	q := eng.Query(LiteralParams{
-		qs:        illegalVector,
-		start:     time.Now(),
-		end:       time.Now(),
-		step:      time.Second * 30,
-		interval:  time.Second * 30,
-		direction: logproto.BACKWARD,
-		limit:     1000,
-	})
-	expectErr := logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER", 1, 8)
-	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
-	_, err := q.Exec(user.InjectOrgID(ctx, "fake"))
-
-	require.EqualError(t, err, expectErr.Error())
-
-	qry, ok := q.(*query)
-	require.Equal(t, ok, true)
-	vectorExpr := syntax.NewVectorExpr(illegalVector)
-
-	_, err = qry.evalSample(ctx, vectorExpr)
-	expectEvalSampleErr := logqlmodel.NewParseError("unable to parse vectorExpr as a float: strconv.ParseFloat: parsing \"vector(abc)\": invalid syntax", 0, 0)
-	require.EqualError(t, err, expectEvalSampleErr.Error())
-}
-
 func TestEngine_LogsInstantQuery_Vector(t *testing.T) {
 	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
 	now := time.Now()
 	queueTime := 2 * time.Nanosecond
 	logqlVector := `vector(5)`
-	q := eng.Query(LiteralParams{
-		qs:        logqlVector,
-		start:     now,
-		end:       now,
-		step:      0,
-		interval:  time.Second * 30,
-		direction: logproto.BACKWARD,
-		limit:     1000,
-	})
+
+	params, err := NewLiteralParams(logqlVector, now, now, 0, time.Second*30, logproto.BACKWARD, 1000, nil)
+	require.NoError(t, err)
+	q := eng.Query(params)
 	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
-	_, err := q.Exec(user.InjectOrgID(ctx, "fake"))
+	_, err = q.Exec(user.InjectOrgID(ctx, "fake"))
 
 	require.NoError(t, err)
 
@@ -2333,16 +2383,16 @@ func TestEngine_LogsInstantQuery_Vector(t *testing.T) {
 }
 
 type errorIteratorQuerier struct {
-	samples []iter.SampleIterator
-	entries []iter.EntryIterator
+	samples func() []iter.SampleIterator
+	entries func() []iter.EntryIterator
 }
 
 func (e errorIteratorQuerier) SelectLogs(_ context.Context, p SelectLogParams) (iter.EntryIterator, error) {
-	return iter.NewSortEntryIterator(e.entries, p.Direction), nil
+	return iter.NewSortEntryIterator(e.entries(), p.Direction), nil
 }
 
 func (e errorIteratorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
-	return iter.NewSortSampleIterator(e.samples), nil
+	return iter.NewSortSampleIterator(e.samples()), nil
 }
 
 func TestStepEvaluator_Error(t *testing.T) {
@@ -2356,9 +2406,11 @@ func TestStepEvaluator_Error(t *testing.T) {
 			"rangeAggEvaluator",
 			`count_over_time({app="foo"}[1m])`,
 			&errorIteratorQuerier{
-				samples: []iter.SampleIterator{
-					iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
-					NewErrorSampleIterator(),
+				samples: func() []iter.SampleIterator {
+					return []iter.SampleIterator{
+						iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
+						NewErrorSampleIterator(),
+					}
 				},
 			},
 			ErrMock,
@@ -2367,9 +2419,11 @@ func TestStepEvaluator_Error(t *testing.T) {
 			"stream",
 			`{app="foo"}`,
 			&errorIteratorQuerier{
-				entries: []iter.EntryIterator{
-					iter.NewStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
-					NewErrorEntryIterator(),
+				entries: func() []iter.EntryIterator {
+					return []iter.EntryIterator{
+						iter.NewStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
+						NewErrorEntryIterator(),
+					}
 				},
 			},
 			ErrMock,
@@ -2378,9 +2432,11 @@ func TestStepEvaluator_Error(t *testing.T) {
 			"binOpStepEvaluator",
 			`count_over_time({app="foo"}[1m]) / count_over_time({app="foo"}[1m])`,
 			&errorIteratorQuerier{
-				samples: []iter.SampleIterator{
-					iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
-					NewErrorSampleIterator(),
+				samples: func() []iter.SampleIterator {
+					return []iter.SampleIterator{
+						iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
+						NewErrorSampleIterator(),
+					}
 				},
 			},
 			ErrMockMultiple,
@@ -2391,14 +2447,11 @@ func TestStepEvaluator_Error(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits, log.NewNopLogger())
-			q := eng.Query(LiteralParams{
-				qs:    tc.qs,
-				start: time.Unix(0, 0),
-				end:   time.Unix(180, 0),
-				step:  1 * time.Second,
-				limit: 1,
-			})
-			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+
+			params, err := NewLiteralParams(tc.qs, time.Unix(0, 0), time.Unix(180, 0), 1*time.Second, 0, logproto.BACKWARD, 1, nil)
+			require.NoError(t, err)
+			q := eng.Query(params)
+			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			require.Equal(t, tc.err, err)
 		})
 	}
@@ -2421,15 +2474,10 @@ func TestEngine_MaxSeries(t *testing.T) {
 		{`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.FORWARD, false},
 	} {
 		t.Run(test.qs, func(t *testing.T) {
-			q := eng.Query(LiteralParams{
-				qs:        test.qs,
-				start:     time.Unix(0, 0),
-				end:       time.Unix(100000, 0),
-				step:      60 * time.Second,
-				direction: test.direction,
-				limit:     1000,
-			})
-			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+			params, err := NewLiteralParams(test.qs, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, test.direction, 1000, nil)
+			require.NoError(t, err)
+			q := eng.Query(params)
+			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if test.expectLimitErr {
 				require.NotNil(t, err)
 				require.True(t, errors.Is(err, logqlmodel.ErrLimit))
@@ -2453,15 +2501,11 @@ func TestEngine_MaxRangeInterval(t *testing.T) {
 		{`topk(1,rate({app=~"foo|bar"}[12h]) / (rate({app="baz"}[23h]) + rate({app="fiz"}[25h])))`, logproto.FORWARD, true},
 	} {
 		t.Run(test.qs, func(t *testing.T) {
-			q := eng.Query(LiteralParams{
-				qs:        test.qs,
-				start:     time.Unix(0, 0),
-				end:       time.Unix(100000, 0),
-				step:      60 * time.Second,
-				direction: test.direction,
-				limit:     1000,
-			})
-			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+			params, err := NewLiteralParams(test.qs, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, test.direction, 1000, nil)
+			require.NoError(t, err)
+			q := eng.Query(params)
+
+			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if test.expectLimitErr {
 				require.Error(t, err)
 				require.ErrorIs(t, err, logqlmodel.ErrIntervalLimit)
@@ -2524,14 +2568,10 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 			{`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, logproto.FORWARD},
 			{`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app)`, logproto.FORWARD},
 		} {
-			q := eng.Query(LiteralParams{
-				qs:        test.qs,
-				start:     start,
-				end:       end,
-				step:      60 * time.Second,
-				direction: test.direction,
-				limit:     1000,
-			})
+			params, err := NewLiteralParams(test.qs, start, end, 60*time.Second, 0, logproto.BACKWARD, 1000, nil)
+			require.NoError(b, err)
+			q := eng.Query(params)
+
 			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if err != nil {
 				b.Fatal(err)
@@ -2559,8 +2599,13 @@ func TestHashingStability(t *testing.T) {
 		buf := bytes.NewBufferString("")
 		logger := log.NewLogfmtLogger(buf)
 		eng := NewEngine(EngineOpts{LogExecutingQuery: true}, getLocalQuerier(4), NoLimits, logger)
+
+		parsed, err := syntax.ParseExpr(params.QueryString())
+		require.NoError(t, err)
+		params.queryExpr = parsed
+
 		query := eng.Query(params)
-		_, err := query.Exec(ctx)
+		_, err = query.Exec(ctx)
 		require.NoError(t, err)
 		return buf.String()
 	}
@@ -2587,8 +2632,8 @@ func TestHashingStability(t *testing.T) {
 		{`sum by(query_hash) (count_over_time({app="myapp",env="myenv"} |= "error" |= "metrics.go" | logfmt [10s]))`},
 		{`sum (count_over_time({app="myapp",env="myenv"} |= "error" |= "metrics.go" | logfmt [10s])) by(query_hash)`},
 	} {
-		params.qs = test.qs
-		expectedQueryHash := HashedQuery(test.qs)
+		params.queryString = test.qs
+		expectedQueryHash := util.HashedQuery(test.qs)
 
 		// check that both places will end up having the same query hash, even though they're emitting different log lines.
 		require.Regexp(t,
@@ -2652,6 +2697,9 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 	if streamsIn, ok := data.([][]logproto.Stream); ok {
 		if paramsIn, ok2 := params.([]SelectLogParams); ok2 {
 			for i, p := range paramsIn {
+				p.Plan = &plan.QueryPlan{
+					AST: syntax.MustParseExpr(p.Selector),
+				}
 				streams[paramsID(p)] = streamsIn[i]
 			}
 		}
@@ -2661,6 +2709,9 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 	if seriesIn, ok := data.([][]logproto.Series); ok {
 		if paramsIn, ok2 := params.([]SelectSampleParams); ok2 {
 			for i, p := range paramsIn {
+				p.Plan = &plan.QueryPlan{
+					AST: syntax.MustParseExpr(p.Selector),
+				}
 				series[paramsID(p)] = seriesIn[i]
 			}
 		}

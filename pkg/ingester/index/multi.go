@@ -7,9 +7,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
 type periodIndex struct {
@@ -34,7 +35,7 @@ func NewMultiInvertedIndex(periods []config.PeriodConfig, indexShards uint32) (*
 
 	for _, pd := range periods {
 		switch pd.IndexType {
-		case config.TSDBType:
+		case types.TSDBType:
 			if bitPrefixed == nil {
 				bitPrefixed, err = NewBitPrefixWithShards(indexShards)
 				if err != nil {
@@ -80,15 +81,15 @@ func (m *Multi) Delete(labels labels.Labels, fp model.Fingerprint) {
 
 }
 
-func (m *Multi) Lookup(t time.Time, matchers []*labels.Matcher, shard *astmapper.ShardAnnotation) ([]model.Fingerprint, error) {
+func (m *Multi) Lookup(t time.Time, matchers []*labels.Matcher, shard *logql.Shard) ([]model.Fingerprint, error) {
 	return m.indexFor(t).Lookup(matchers, shard)
 }
 
-func (m *Multi) LabelNames(t time.Time, shard *astmapper.ShardAnnotation) ([]string, error) {
+func (m *Multi) LabelNames(t time.Time, shard *logql.Shard) ([]string, error) {
 	return m.indexFor(t).LabelNames(shard)
 }
 
-func (m *Multi) LabelValues(t time.Time, name string, shard *astmapper.ShardAnnotation) ([]string, error) {
+func (m *Multi) LabelValues(t time.Time, name string, shard *logql.Shard) ([]string, error) {
 	return m.indexFor(t).LabelValues(name, shard)
 }
 
@@ -111,14 +112,14 @@ func (noopInvertedIndex) Add(_ []logproto.LabelAdapter, _ model.Fingerprint) lab
 
 func (noopInvertedIndex) Delete(_ labels.Labels, _ model.Fingerprint) {}
 
-func (noopInvertedIndex) Lookup(_ []*labels.Matcher, _ *astmapper.ShardAnnotation) ([]model.Fingerprint, error) {
+func (noopInvertedIndex) Lookup(_ []*labels.Matcher, _ *logql.Shard) ([]model.Fingerprint, error) {
 	return nil, nil
 }
 
-func (noopInvertedIndex) LabelNames(_ *astmapper.ShardAnnotation) ([]string, error) {
+func (noopInvertedIndex) LabelNames(_ *logql.Shard) ([]string, error) {
 	return nil, nil
 }
 
-func (noopInvertedIndex) LabelValues(_ string, _ *astmapper.ShardAnnotation) ([]string, error) {
+func (noopInvertedIndex) LabelValues(_ string, _ *logql.Shard) ([]string, error) {
 	return nil, nil
 }

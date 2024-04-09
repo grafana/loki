@@ -29,7 +29,6 @@ import (
 	"io"
 	"sync"
 
-	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/grpclog"
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
@@ -39,8 +38,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	v3adminpb "github.com/envoyproxy/go-control-plane/envoy/admin/v3"
-	v2corepb "github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
-	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	v3statusgrpc "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 	v3statuspb "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 )
@@ -126,7 +123,7 @@ func (s *ClientStatusDiscoveryServer) buildClientStatusRespForReq(req *v3statusp
 	ret := &v3statuspb.ClientStatusResponse{
 		Config: []*v3statuspb.ClientConfig{
 			{
-				Node:              nodeProtoToV3(s.xdsClient.BootstrapConfig().XDSServer.NodeProto, s.logger),
+				Node:              s.xdsClient.BootstrapConfig().NodeProto,
 				GenericXdsConfigs: dumpToGenericXdsConfig(dump),
 			},
 		},
@@ -139,37 +136,6 @@ func (s *ClientStatusDiscoveryServer) Close() {
 	if s.xdsClientClose != nil {
 		s.xdsClientClose()
 	}
-}
-
-// nodeProtoToV3 converts the given proto into a v3.Node. n is from bootstrap
-// config, it can be either v2.Node or v3.Node.
-//
-// If n is already a v3.Node, return it.
-// If n is v2.Node, marshal and unmarshal it to v3.
-// Otherwise, return nil.
-//
-// The default case (not v2 or v3) is nil, instead of error, because the
-// resources in the response are more important than the node. The worst case is
-// that the user will receive no Node info, but will still get resources.
-func nodeProtoToV3(n proto.Message, logger *internalgrpclog.PrefixLogger) *v3corepb.Node {
-	var node *v3corepb.Node
-	switch nn := n.(type) {
-	case *v3corepb.Node:
-		node = nn
-	case *v2corepb.Node:
-		v2, err := proto.Marshal(nn)
-		if err != nil {
-			logger.Warningf("Failed to marshal node (%v): %v", n, err)
-			break
-		}
-		node = new(v3corepb.Node)
-		if err := proto.Unmarshal(v2, node); err != nil {
-			logger.Warningf("Failed to unmarshal node (%v): %v", v2, err)
-		}
-	default:
-		logger.Warningf("node from bootstrap is %#v, only v2.Node and v3.Node are supported", nn)
-	}
-	return node
 }
 
 func dumpToGenericXdsConfig(dump map[string]map[string]xdsresource.UpdateWithMD) []*v3statuspb.ClientConfig_GenericXdsConfig {

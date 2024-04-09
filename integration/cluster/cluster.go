@@ -23,17 +23,17 @@ import (
 	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/integration/util"
+	"github.com/grafana/loki/v3/integration/util"
 
-	"github.com/grafana/loki/pkg/loki"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/cfg"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/cfg"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-var (
-	configTemplate = template.Must(template.New("").Parse(`
+var configTemplate = template.Must(template.New("").Parse(`
 auth_enabled: true
 
 server:
@@ -41,7 +41,6 @@ server:
   grpc_listen_port: 0
   grpc_server_max_recv_msg_size: 110485813
   grpc_server_max_send_msg_size: 110485813
-
 
 common:
   path_prefix: {{.dataPath}}
@@ -61,6 +60,14 @@ limits_config:
   ingestion_rate_mb: 50
   ingestion_burst_size_mb: 50
   reject_old_samples: false
+  allow_structured_metadata: true
+  discover_service_name:
+  discover_log_levels: false
+  otlp_config:
+    resource_attributes:
+      attributes_config:
+        - action: index_label
+          attributes: ["service.name"]
 
 storage_config:
   named_stores:
@@ -68,15 +75,24 @@ storage_config:
       store-1:
         directory: {{.sharedDataPath}}/fs-store-1
   boltdb_shipper:
-    active_index_directory: {{.dataPath}}/index
+    active_index_directory: {{.dataPath}}/boltdb-index
     cache_location: {{.dataPath}}/boltdb-cache
   tsdb_shipper:
     active_index_directory: {{.dataPath}}/tsdb-index
     cache_location: {{.dataPath}}/tsdb-cache
+  bloom_shipper:
+    working_directory: {{.dataPath}}/bloom-shipper
+
+bloom_gateway:
+  enabled: false
+
+bloom_compactor:
+  enabled: false
 
 compactor:
-  working_directory: {{.dataPath}}/retention
+  working_directory: {{.dataPath}}/compactor
   retention_enabled: true
+  delete_request_store: store-1
 
 analytics:
   reporting_enabled: false
@@ -104,7 +120,6 @@ ruler:
       directory: {{.sharedDataPath}}/rules
   rule_path: {{.sharedDataPath}}/prom-rule
 `))
-)
 
 func resetMetricRegistry() {
 	registry := &wrappedRegisterer{Registry: prometheus.NewRegistry()}
@@ -151,14 +166,14 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 	}
 
 	resetMetricRegistry()
-	sharedPath, err := os.MkdirTemp("", "loki-shared-data")
+	sharedPath, err := os.MkdirTemp("", "loki-shared-data-")
 	if err != nil {
 		panic(err.Error())
 	}
 
 	overridesFile := filepath.Join(sharedPath, "loki-overrides.yaml")
 
-	err = os.WriteFile(filepath.Join(sharedPath, "loki-overrides.yaml"), []byte(`overrides:`), 0777)
+	err = os.WriteFile(overridesFile, []byte(`overrides:`), 0o777)
 	if err != nil {
 		panic(fmt.Errorf("error creating overrides file: %w", err))
 	}
@@ -208,6 +223,8 @@ func (c *Cluster) Restart() error {
 }
 
 func (c *Cluster) Cleanup() error {
+	// cleanup singleton boltdb shipper client instances
+	storage.ResetBoltDBIndexClientsWithShipper()
 	return c.stop(true)
 }
 
@@ -313,12 +330,12 @@ func port(addr string) string {
 func (c *Component) writeConfig() error {
 	var err error
 
-	configFile, err := os.CreateTemp("", "loki-config")
+	configFile, err := os.CreateTemp("", fmt.Sprintf("loki-%s-config-*.yaml", c.name))
 	if err != nil {
 		return fmt.Errorf("error creating config file: %w", err)
 	}
 
-	c.dataPath, err = os.MkdirTemp("", "loki-data")
+	c.dataPath, err = os.MkdirTemp("", fmt.Sprintf("loki-%s-data-", c.name))
 	if err != nil {
 		return fmt.Errorf("error creating data path: %w", err)
 	}
@@ -328,7 +345,7 @@ func (c *Component) writeConfig() error {
 		return fmt.Errorf("error getting merged config: %w", err)
 	}
 
-	if err := os.WriteFile(configFile.Name(), mergedConfig, 0644); err != nil {
+	if err := os.WriteFile(configFile.Name(), mergedConfig, 0o644); err != nil {
 		return fmt.Errorf("error writing config file: %w", err)
 	}
 
@@ -395,7 +412,7 @@ func (c *Component) run() error {
 
 	var config loki.ConfigWrapper
 
-	var flagset = flag.NewFlagSet("test-flags", flag.ExitOnError)
+	flagset := flag.NewFlagSet("test-flags", flag.ExitOnError)
 
 	if err := cfg.DynamicUnmarshal(&config, append(
 		c.flags,
@@ -403,6 +420,8 @@ func (c *Component) run() error {
 		c.configFile,
 		"-limits.per-user-override-config",
 		c.overridesFile,
+		"-limits.per-user-override-period",
+		"1s",
 	), flagset); err != nil {
 		return err
 	}
@@ -502,7 +521,7 @@ func (c *Component) SetTenantLimits(tenant string, limits validation.Limits) err
 		return err
 	}
 
-	return os.WriteFile(c.overridesFile, config, 0777)
+	return os.WriteFile(c.overridesFile, config, 0o777)
 }
 
 func (c *Component) GetTenantLimits(tenant string) validation.Limits {

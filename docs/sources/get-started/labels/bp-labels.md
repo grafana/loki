@@ -1,9 +1,9 @@
 ---
 title: Label best practices
 menuTitle:  Label best practices
-description: Grafana Loki label best practices
-aliases: 
-- ../best-practices/
+description: Describes best practices for using labels in Grafana Loki.
+aliases:
+- ../../best-practices/ # /docs/loki/<LOKI_VERSION>/best-practices/
 weight: 700
 ---
 # Label best practices
@@ -21,7 +21,7 @@ Too many label value combinations leads to too many streams. The penalties for t
 To avoid those issues, don't add a label for something until you know you need it! Use filter expressions (`|= "text"`, `|~ "regex"`, …) and brute force those logs. It works -- and it's fast.
 
 If you often parse a label from a log line at query time, the label has a high cardinality, and extracting that label is expensive in terms of performance; consider extracting the label on the client side
-attaching it as metadata to log lines using a [non-indexed label]({{< relref "./non-indexed-labels" >}}).
+attaching it as [structured metadata]({{< relref "./structured-metadata" >}}) to log lines .
 
 From early on, we have set a label dynamically using Promtail pipelines for `level`. This seemed intuitive for us as we often wanted to only show logs for `level="error"`; however, we are re-evaluating this now as writing a query. `{app="loki"} |= "level=error"` is proving to be just as fast for many of our applications as `{app="loki",level="error"}`.
 
@@ -41,11 +41,11 @@ Try to keep values bounded to as small a set as possible. We don't have perfect 
 
 ## Be aware of dynamic labels applied by clients
 
-Loki has several client options: [Promtail](/grafana/loki/blob/main/docs/sources/send-data/promtail) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd](https://github.com/grafana/loki/tree/main/send-data/cmd/fluentd), [Fluent Bit](https://github.com/grafana/loki/tree/main/send-data/cmd/fluent-bit), a [Docker plugin](/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
+Loki has several client options: [Promtail]({{< relref "../../send-data/promtail" >}}) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd]({{< relref "../../send-data/fluentd" >}}), [Fluent Bit]({{< relref "../../send-data/fluentbit" >}}), a [Docker plugin](/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
 
 Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied.
 Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality.
-Series information can be queried through the [Series API](/docs/loki/latest/api/#series), or you can use [logcli](/docs/loki/latest/getting-started/logcli/).
+Series information can be queried through the [Series API]({{< relref "../../reference/api" >}}), or you can use [logcli]({{< relref "../../query" >}}).
 
 In Loki 1.6.0 and newer the logcli series command added the `--analyze-labels` flag specifically for debugging high cardinality labels:
 

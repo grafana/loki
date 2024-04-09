@@ -12,15 +12,19 @@
 
     grpc_server_max_msg_size: 100 << 20,  // 100MB
 
-    wal_enabled: true,
     query_scheduler_enabled: false,
     overrides_exporter_enabled: false,
 
-    // flags for running ingesters/queriers as a statefulset instead of deployment type.
-    // WAL enabled configurations automatically use statefulsets.
-    stateful_ingesters: false,
     ingester_pvc_size: '10Gi',
     ingester_pvc_class: 'fast',
+
+    ingester_data_disk_size: self.ingester_pvc_size,  // keep backwards compatibility
+    ingester_data_disk_class: self.ingester_pvc_class,  // keep backwards compatibility
+
+    ingester_wal_disk_size: '150Gi',
+    ingester_wal_disk_class: 'fast',
+
+    ingester_allow_multiple_replicas_on_same_node: false,
 
     stateful_queriers: false,
     querier_pvc_size: '10Gi',
@@ -79,10 +83,6 @@
       use_topology_spread: true,
       topology_spread_max_skew: 1,
     },
-
-    ingester_allow_multiple_replicas_on_same_node: false,
-    ingester_data_disk_size: '10Gi',
-    ingester_data_disk_class: 'fast',
 
     // Bigtable variables
     bigtable_instance: error 'must specify bigtable instance',
@@ -180,7 +180,6 @@
         log_queries_longer_than: '5s',
       },
       frontend_worker: {
-        match_max_concurrent: true,
         grpc_client_config: {
           max_send_msg_size: $._config.grpc_server_max_msg_size,
         },
@@ -209,7 +208,6 @@
         query_ingesters_within: '2h',  // twice the max-chunk age (1h default) for safety buffer
       },
       limits_config: {
-        enforce_metric_name: false,
         // align middleware parallelism with shard factor to optimize one-legged sharded queries.
         max_query_parallelism: if $._config.queryFrontend.sharded_queries_enabled then
           // For a sharding factor of 16 (default), this is 256, or enough for 16 sharded queries.
@@ -232,6 +230,12 @@
         chunk_idle_period: '15m',
         chunk_block_size: 262144,
 
+        wal+: {
+          enabled: true,
+          dir: '/loki/wal',
+          replay_memory_ceiling: '7GB',  // should be set upto ~50% of available memory
+        },
+
         lifecycler: {
           ring: {
             heartbeat_timeout: '1m',
@@ -252,7 +256,34 @@
           interface_names: ['eth0'],
         },
       },
+      pattern_ingester: {
+        enabled: $._config.pattern_ingester.enabled,
+        lifecycler: {
+          ring: {
+            heartbeat_timeout: '1m',
+            replication_factor: 1,
+            kvstore: if $._config.memberlist_ring_enabled then {} else {
+              store: 'consul',
+              consul: {
+                host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
+                http_client_timeout: '20s',
+                consistent_reads: true,
+              },
+            },
+          },
 
+          num_tokens: 512,
+          heartbeat_period: '5s',
+          join_after: '30s',
+          interface_names: ['eth0'],
+        },
+        client_config: {
+          grpc_client_config: {
+            max_recv_msg_size: 1024 * 1024 * 64,
+          },
+          remote_timeout: '1s',
+        },
+      },
       ingester_client: {
         grpc_client_config: {
           max_recv_msg_size: 1024 * 1024 * 64,

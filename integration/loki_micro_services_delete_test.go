@@ -1,3 +1,5 @@
+//go:build integration
+
 package integration
 
 import (
@@ -11,12 +13,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/integration/client"
-	"github.com/grafana/loki/integration/cluster"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/integration/client"
+	"github.com/grafana/loki/v3/integration/cluster"
+
 	"github.com/grafana/loki/pkg/push"
-	"github.com/grafana/loki/pkg/storage"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage"
 )
 
 type pushRequest struct {
@@ -25,13 +29,11 @@ type pushRequest struct {
 }
 
 func TestMicroServicesDeleteRequest(t *testing.T) {
-	storage.ResetBoltDBIndexClientsWithShipper()
-	clu := cluster.New(nil, cluster.SchemaWithBoltDBAndBoltDB, func(c *cluster.Cluster) {
+	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
-		storage.ResetBoltDBIndexClientsWithShipper()
 	}()
 
 	// initially, run only compactor, index-gateway and distributor.
@@ -39,11 +41,12 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
-			"-boltdb.shipper.compactor.retention-delete-delay=1s",
+			"-compactor.compaction-interval=1s",
+			"-compactor.retention-delete-delay=1s",
 			// By default, a minute is added to the delete request start time. This compensates for that.
-			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
+			"-compactor.delete-request-cancel-period=-60s",
 			"-compactor.deletion-mode=filter-only",
+			"-compactor.delete-max-interval=0",
 			"-limits.per-user-override-period=1s",
 		)
 		tDistributor = clu.AddComponent(
@@ -131,13 +134,13 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	pushRequests = append(pushRequests, pushRequest{
 		stream: map[string]string{
 			"job":           "fake",
-			"deletion_type": "with_non_indexed_labels",
+			"deletion_type": "with_structured_metadata",
 		},
 		entries: []logproto.Entry{
 			{
 				Timestamp: now.Add(-48 * time.Hour),
 				Line:      "AlineA",
-				NonIndexedLabels: push.LabelsAdapter{
+				StructuredMetadata: push.LabelsAdapter{
 					{
 						Name:  "line",
 						Value: "A",
@@ -147,7 +150,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			{
 				Timestamp: now.Add(-48 * time.Hour),
 				Line:      "AlineB",
-				NonIndexedLabels: push.LabelsAdapter{
+				StructuredMetadata: push.LabelsAdapter{
 					{
 						Name:  "line",
 						Value: "B",
@@ -157,7 +160,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			{
 				Timestamp: now.Add(-time.Minute),
 				Line:      "AlineC",
-				NonIndexedLabels: push.LabelsAdapter{
+				StructuredMetadata: push.LabelsAdapter{
 					{
 						Name:  "line",
 						Value: "C",
@@ -167,7 +170,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			{
 				Timestamp: now.Add(-time.Minute),
 				Line:      "AlineD",
-				NonIndexedLabels: push.LabelsAdapter{
+				StructuredMetadata: push.LabelsAdapter{
 					{
 						Name:  "line",
 						Value: "D",
@@ -209,13 +212,14 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		{
 			StartTime: now.Add(-48 * time.Hour).Unix(),
 			EndTime:   now.Unix(),
-			Query:     `{deletion_type="with_non_indexed_labels"} | line="A"`,
+			Query:     `{deletion_type="with_structured_metadata"} | line="A"`,
 			Status:    "received",
 		},
 	}
 
 	validateQueryResponse := func(expectedStreams []client.StreamValues, resp *client.Response) {
 		t.Helper()
+		assert.Equal(t, "success", resp.Status)
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
 		require.Len(t, resp.Data.Stream, len(expectedStreams))
@@ -234,10 +238,10 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		// ingest some log lines
 		for _, pr := range pushRequests {
 			for _, entry := range pr.entries {
-				require.NoError(t, cliDistributor.PushLogLineWithTimestampAndNonIndexedLabels(
+				require.NoError(t, cliDistributor.PushLogLine(
 					entry.Line,
 					entry.Timestamp,
-					logproto.FromLabelAdaptersToLabels(entry.NonIndexedLabels).Map(),
+					logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata).Map(),
 					pr.stream,
 				))
 			}
@@ -358,7 +362,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.NoError(t, err)
 		checkUserLabelAndMetricValue(t, "loki_compactor_delete_requests_processed_total", metrics, tenantID, float64(len(expectedDeleteRequests)))
 
-		// ideally this metric should be equal to 2 given that a single line matches the line filter and non-indexed labels filter
+		// ideally this metric should be equal to 2 given that a single line matches the line filter and structured metadata filter
 		// but the same chunks are indexed in 3 tables
 		checkUserLabelAndMetricValue(t, "loki_compactor_deleted_lines", metrics, tenantID, 6)
 	})
@@ -408,10 +412,10 @@ func getMetricValue(t *testing.T, metricName, metrics string) float64 {
 }
 
 func pushRequestToClientStreamValues(t *testing.T, p pushRequest) []client.StreamValues {
-	logsByStream := map[string][][]string{}
+	logsByStream := map[string][]client.Entry{}
 	for _, entry := range p.entries {
 		lb := labels.NewBuilder(labels.FromMap(p.stream))
-		for _, l := range entry.NonIndexedLabels {
+		for _, l := range entry.StructuredMetadata {
 			lb.Set(l.Name, l.Value)
 		}
 		stream := lb.Labels().String()

@@ -9,7 +9,7 @@ import (
 	"github.com/thanos-io/objstore"
 	thanos_s3 "github.com/thanos-io/objstore/providers/s3"
 
-	"github.com/grafana/loki/pkg/storage/bucket/s3"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 )
 
 // TenantConfigProvider defines a per-tenant config provider.
@@ -129,9 +129,9 @@ func (b *SSEBucketClient) ReaderWithExpectedErrs(fn objstore.IsOpFailureExpected
 	return b.WithExpectedErrs(fn)
 }
 
-// IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
-func (b *SSEBucketClient) IsCustomerManagedKeyError(err error) bool {
-	return b.bucket.IsCustomerManagedKeyError(err)
+// IsAccessDeniedErr returns true if access to object is denied.
+func (b *SSEBucketClient) IsAccessDeniedErr(err error) bool {
+	return b.bucket.IsAccessDeniedErr(err)
 }
 
 // WithExpectedErrs implements objstore.Bucket.

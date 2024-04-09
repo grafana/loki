@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func TestInstanceCountDelegateCounting(t *testing.T) {
@@ -102,6 +102,8 @@ func TestInstanceCountDelegate_CorrectlyInvokesOtherDelegates(t *testing.T) {
 	delegate = &sentryDelegate{BasicLifecyclerDelegate: delegate, calls: sentry2} // sentry delegate AFTER newHealthyInstancesDelegate
 
 	ringCfg := &RingConfig{}
+	ringCfg.InstanceAddr = "localhost"
+
 	logger := log.With(util_log.Logger, "component", "lifecycler")
 	lifecyclerCfg, err := ringCfg.ToBasicLifecyclerConfig(logger)
 	require.NoError(t, err)

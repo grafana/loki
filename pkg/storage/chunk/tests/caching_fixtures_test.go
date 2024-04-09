@@ -8,14 +8,14 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
-	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type fixture struct {
@@ -31,7 +31,7 @@ func (f fixture) Clients() (index.Client, client.Client, index.TableClient, conf
 	indexClient, chunkClient, tableClient, schemaConfig, closer, err := f.fixture.Clients()
 	reg := prometheus.NewRegistry()
 	logger := log.NewNopLogger()
-	indexClient = index.NewCachingIndexClient(indexClient, cache.NewFifoCache("index-fifo", cache.FifoCacheConfig{
+	indexClient = index.NewCachingIndexClient(indexClient, cache.NewEmbeddedCache("index-embedded", cache.EmbeddedCacheConfig{
 		MaxSizeItems: 500,
 		TTL:          5 * time.Minute,
 	}, reg, logger, stats.ChunkCache), 5*time.Minute, limits, logger, false)

@@ -149,10 +149,17 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:0.4.0
-    createdAt: "2023-08-02T07:55:26Z"
+    containerImage: docker.io/grafana/loki-operator:0.6.0
+    createdAt: "2024-03-27T08:04:23Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
+    features.operators.openshift.io/disconnected: "true"
+    features.operators.openshift.io/fips-compliant: "false"
+    features.operators.openshift.io/proxy-aware: "true"
+    features.operators.openshift.io/tls-profiles: "true"
+    features.operators.openshift.io/token-auth-aws: "true"
+    features.operators.openshift.io/token-auth-azure: "true"
+    features.operators.openshift.io/token-auth-gcp: "false"
     operators.operatorframework.io/builder: operator-sdk-unknown
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
     repository: https://github.com/grafana/loki/tree/main/operator
@@ -160,7 +167,7 @@ metadata:
   labels:
     operatorframework.io/arch.amd64: supported
     operatorframework.io/arch.arm64: supported
-  name: loki-operator.v0.4.0
+  name: loki-operator.v0.6.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -265,6 +272,13 @@ spec:
       - description: MemberList configuration spec
         displayName: Memberlist Config
         path: hashRing.memberlist
+      - description: "EnableIPv6 enables IPv6 support for the memberlist based hash
+          ring. \n Currently this also forces the instanceAddrType to podIP to avoid
+          local address lookup for the memberlist."
+        displayName: Enable IPv6
+        path: hashRing.memberlist.enableIPv6
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: InstanceAddrType defines the type of address to use to advertise
           to the ring. Defaults to the first address from any private network interfaces
           of the current pod. Alternatively the public pod IP can be used in case
@@ -327,6 +341,12 @@ spec:
           Units in Bytes.
         displayName: Max Line Size
         path: limits.global.ingestion.maxLineSize
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamDesiredRate defines the desired ingestion rate per second
+          that LokiStack should target applying automatic stream sharding. Units MB.
+        displayName: Per Stream Desired Rate (in MB)
+        path: limits.global.ingestion.perStreamDesiredRate
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: PerStreamRateLimit defines the maximum byte rate per second per
@@ -413,6 +433,12 @@ spec:
         path: limits.tenants.ingestion.maxLineSize
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamDesiredRate defines the desired ingestion rate per second
+          that LokiStack should target applying automatic stream sharding. Units MB.
+        displayName: Per Stream Desired Rate (in MB)
+        path: limits.tenants.ingestion.perStreamDesiredRate
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: PerStreamRateLimit defines the maximum byte rate per second per
           stream. Units MB.
         displayName: Maximum byte rate per second per stream (in MB)
@@ -425,6 +451,27 @@ spec:
         path: limits.tenants.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Blocked defines the list of rules to block matching queries.
+        displayName: Blocked
+        path: limits.tenants.queries.blocked
+      - description: Hash is a 32-bit FNV-1 hash of the query string.
+        displayName: Query Hash
+        path: limits.tenants.queries.blocked[0].hash
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Pattern defines the pattern matching the queries to be blocked.
+        displayName: Query Pattern
+        path: limits.tenants.queries.blocked[0].pattern
+      - description: Regex defines if the pattern is a regular expression. If false
+          the pattern will be used only for exact matches.
+        displayName: Regex
+        path: limits.tenants.queries.blocked[0].regex
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: Types defines the list of query types that should be considered
+          for blocking.
+        displayName: Query Types
+        path: limits.tenants.queries.blocked[0].types
       - description: CardinalityLimit defines the cardinality limit for index queries.
         displayName: Cardinality Limit
         path: limits.tenants.queries.cardinalityLimit
@@ -537,6 +584,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:v11
         - urn:alm:descriptor:com.tectonic.ui:select:v12
+        - urn:alm:descriptor:com.tectonic.ui:select:v13
       - description: Name of a secret in the namespace configured for object storage
           secrets.
         displayName: Object Storage Secret Name
@@ -1416,6 +1464,17 @@ spec:
           - update
           - watch
         - apiGroups:
+          - cloudcredential.openshift.io
+          resources:
+          - credentialsrequests
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - update
+          - watch
+        - apiGroups:
           - config.openshift.io
           resources:
           - apiservers
@@ -1546,6 +1605,12 @@ spec:
         - apiGroups:
           - monitoring.coreos.com
           resources:
+          - alertmanagers/api
+          verbs:
+          - create
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
           - prometheusrules
           - servicemonitors
           verbs:
@@ -1613,14 +1678,14 @@ spec:
           - subjectaccessreviews
           verbs:
           - create
-        serviceAccountName: default
+        serviceAccountName: loki-operator-controller-manager
       deployments:
       - label:
-          app.kubernetes.io/instance: loki-operator-v0.4.0
+          app.kubernetes.io/instance: loki-operator-v0.6.0
           app.kubernetes.io/managed-by: operator-lifecycle-manager
           app.kubernetes.io/name: loki-operator
           app.kubernetes.io/part-of: loki-operator
-          app.kubernetes.io/version: 0.4.0
+          app.kubernetes.io/version: 0.6.0
           control-plane: controller-manager
         name: loki-operator-controller-manager
         spec:
@@ -1649,12 +1714,12 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: docker.io/grafana/loki:2.8.3
+                  value: docker.io/grafana/loki:2.9.6
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
                   value: quay.io/observatorium/opa-openshift:latest
-                image: docker.io/grafana/loki-operator:0.4.0
+                image: docker.io/grafana/loki-operator:0.6.0
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -1714,6 +1779,7 @@ spec:
                 runAsNonRoot: true
                 seccompProfile:
                   type: RuntimeDefault
+              serviceAccountName: loki-operator-controller-manager
               terminationGracePeriodSeconds: 10
               volumes:
               - configMap:
@@ -1747,7 +1813,7 @@ spec:
           verbs:
           - create
           - patch
-        serviceAccountName: default
+        serviceAccountName: loki-operator-controller-manager
     strategy: deployment
   installModes:
   - supported: false
@@ -1772,14 +1838,14 @@ spec:
   provider:
     name: Grafana Loki SIG Operator
   relatedImages:
-  - image: docker.io/grafana/loki:2.8.3
+  - image: docker.io/grafana/loki:2.9.6
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
   - image: quay.io/observatorium/opa-openshift:latest
     name: opa
-  replaces: loki-operator.v0.3.0
-  version: 0.4.0
+  replaces: loki-operator.v0.5.0
+  version: 0.6.0
   webhookdefinitions:
   - admissionReviewVersions:
     - v1

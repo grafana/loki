@@ -598,7 +598,7 @@
                "steppedLine": false,
                "targets": [
                   {
-                     "expr": "cortex_ingester_flush_queue_length{namespace=\"$namespace\", job=~\".+-ingester-http\"}",
+                     "expr": "loki_ingester_flush_queue_length{namespace=\"$namespace\", job=~\".+-ingester-http\"} or cortex_ingester_flush_queue_length{namespace=\"$namespace\", job=~\".+-ingester-http\"}",
                      "format": "time_series",
                      "intervalFactor": 2,
                      "legendFormat": "{{pod}}",

@@ -8,16 +8,17 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/grafana/dskit/test"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
 type mockStore int
@@ -36,7 +37,7 @@ func (m mockStore) LabelValuesForMetricName(_ context.Context, _ string, _, _ mo
 
 func (m mockStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
 
-func (m mockStore) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (m mockStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
@@ -60,6 +61,14 @@ func (m mockStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32,
 	return nil, nil
 }
 
+func (m mockStore) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {
+	return nil, nil
+}
+
+func (m mockStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
+	return nil, false
+}
+
 func (m mockStore) Stop() {}
 
 func TestCompositeStore(t *testing.T) {
@@ -73,7 +82,7 @@ func TestCompositeStore(t *testing.T) {
 			return nil
 		}
 	}
-	cs := compositeStore{
+	cs := CompositeStore{
 		stores: []compositeStoreEntry{
 			{model.TimeFromUnix(0), mockStore(1)},
 			{model.TimeFromUnix(100), mockStore(2)},
@@ -82,16 +91,18 @@ func TestCompositeStore(t *testing.T) {
 	}
 
 	for i, tc := range []struct {
-		cs            compositeStore
+		cs            CompositeStore
 		from, through int64
 		want          []result
 	}{
 		// Test we have sensible results when there are no schema's defined
-		{compositeStore{}, 0, 1, []result{}},
+		{
+			CompositeStore{}, 0, 1, []result{},
+		},
 
 		// Test we have sensible results when there is a single schema
 		{
-			compositeStore{
+			CompositeStore{
 				stores: []compositeStoreEntry{
 					{model.TimeFromUnix(0), mockStore(1)},
 				},
@@ -104,7 +115,7 @@ func TestCompositeStore(t *testing.T) {
 
 		// Test we have sensible results for negative (ie pre 1970) times
 		{
-			compositeStore{
+			CompositeStore{
 				stores: []compositeStoreEntry{
 					{model.TimeFromUnix(0), mockStore(1)},
 				},
@@ -113,7 +124,7 @@ func TestCompositeStore(t *testing.T) {
 			[]result{},
 		},
 		{
-			compositeStore{
+			CompositeStore{
 				stores: []compositeStoreEntry{
 					{model.TimeFromUnix(0), mockStore(1)},
 				},
@@ -126,7 +137,7 @@ func TestCompositeStore(t *testing.T) {
 
 		// Test we have sensible results when there is two schemas
 		{
-			compositeStore{
+			CompositeStore{
 				stores: []compositeStoreEntry{
 					{model.TimeFromUnix(0), mockStore(1)},
 					{model.TimeFromUnix(100), mockStore(2)},
@@ -206,7 +217,7 @@ func (m mockStoreLabel) LabelNamesForMetricName(_ context.Context, _ string, _, 
 func TestCompositeStoreLabels(t *testing.T) {
 	t.Parallel()
 
-	cs := compositeStore{
+	cs := CompositeStore{
 		stores: []compositeStoreEntry{
 			{model.TimeFromUnix(0), mockStore(1)},
 			{model.TimeFromUnix(20), mockStoreLabel{mockStore(1), []string{"b", "c", "e"}}},
@@ -256,7 +267,7 @@ func (m mockStoreGetChunkFetcher) GetChunkFetcher(_ model.Time) *fetcher.Fetcher
 }
 
 func TestCompositeStore_GetChunkFetcher(t *testing.T) {
-	cs := compositeStore{
+	cs := CompositeStore{
 		stores: []compositeStoreEntry{
 			{model.TimeFromUnix(10), mockStoreGetChunkFetcher{mockStore(0), &fetcher.Fetcher{}}},
 			{model.TimeFromUnix(20), mockStoreGetChunkFetcher{mockStore(1), &fetcher.Fetcher{}}},
@@ -311,7 +322,7 @@ func (m mockStoreVolume) Volume(_ context.Context, _ string, _, _ model.Time, _ 
 
 func TestVolume(t *testing.T) {
 	t.Run("it returns volumes from all stores", func(t *testing.T) {
-		cs := compositeStore{
+		cs := CompositeStore{
 			stores: []compositeStoreEntry{
 				{model.TimeFromUnix(10), mockStoreVolume{mockStore: mockStore(0), value: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{{Name: `{foo="bar"}`, Volume: 15}}, Limit: 10,
@@ -328,7 +339,7 @@ func TestVolume(t *testing.T) {
 	})
 
 	t.Run("it returns an error if any store returns an error", func(t *testing.T) {
-		cs := compositeStore{
+		cs := CompositeStore{
 			stores: []compositeStoreEntry{
 				{model.TimeFromUnix(10), mockStoreVolume{mockStore: mockStore(0), value: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{{Name: `{foo="bar"}`, Volume: 15}}, Limit: 10,

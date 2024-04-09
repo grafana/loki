@@ -1,7 +1,7 @@
 ---
 title: Lambda Promtail client 
 menuTitle:  Lambda Promtail
-description: How to configure the Lambda Promtail client workflow.
+description: Configuring the Lambda Promtail client to send logs to Loki.
 aliases: 
 - ../clients/lambda-promtail/
 weight:  700
@@ -60,7 +60,7 @@ To add tenant id add `-var "tenant_id=value"`.
 
 Note that the creation of a subscription filter on Cloudwatch in the provided Terraform file only accepts an array of log group names.
 It does **not** accept strings for regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so.
-Or, have lambda-promtail write to Promtail and use [pipeline stages](/docs/loki/latest/send-data/promtail/stages/drop/).
+Or, have lambda-promtail write to Promtail and use [pipeline stages](/docs/loki/<LOKI_VERSION>/send-data/promtail/stages/drop/).
 
 CloudFormation:
 ```
@@ -85,6 +85,8 @@ To add a tenant ID, add `ParameterKey=TenantID,ParameterValue=value`.
 
 To modify an existing CloudFormation stack, use [update-stack](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/update-stack.html).
 
+If using CloudFormation to write your infrastructure code, you should consider the [EventBridge based solution](#s3-based-logging-and-cloudformation) for easier deployment.
+
 ## Uses
 
 ### Ephemeral Jobs
@@ -97,7 +99,9 @@ Ephemeral jobs can quite easily run afoul of cardinality best practices. During 
 
 For those using Cloudwatch and wishing to test out Loki in a low-risk way, this workflow allows piping Cloudwatch logs to Loki regardless of the event source (EC2, Kubernetes, Lambda, ECS, etc) without setting up a set of Promtail daemons across their infrastructure. However, running Promtail as a daemon on your infrastructure is the best-practice deployment strategy in the long term for flexibility, reliability, performance, and cost.
 
-Note: Propagating logs from Cloudwatch to Loki means you'll still need to _pay_ for Cloudwatch.
+{{% admonition type="note" %}}
+Propagating logs from Cloudwatch to Loki means you'll still need to _pay_ for Cloudwatch.
+{{% /admonition %}}
 
 ### VPC Flow logs
 
@@ -124,6 +128,27 @@ For AWS services supporting sending messages to SQS (for example, S3 with an S3 
 ### On-Failure log recovery using SQS
 Triggering lambda-promtail through SQS allows handling on-failure recovery of the logs using a secondary SQS queue as a dead-letter-queue (DLQ). You can configure lambda so that unsuccessfully processed messages will be sent to the DLQ. After fixing the issue, operators will be able to reprocess the messages by sending back messages from the DLQ to the source queue using the [SQS DLQ redrive](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-configure-dead-letter-queue-redrive.html) feature.
 
+### S3 based logging and CloudFormation
+
+Lambda-promtail lets you send logs from different services that use S3 as their logs destination (ALB, VPC Flow, CloudFront access logs, etc.). For this, you need to configure S3 bucket notifications to trigger the lambda-promtail deployment. However, when using CloudFormation to encode infrastructure, there is a [known issue](https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/79) when configuring `AWS::S3::BucketNotification` and the resource that will be triggered by the notification in the same stack.
+
+To manage this issue, AWS introduced [S3 event notifications with Event Bridge](https://aws.amazon.com/blogs/aws/new-use-amazon-s3-event-notifications-with-amazon-eventbridge/). When an object gets created in a S3 bucket, this sends an event to an EventBridge bus, and you can create a rule to send those events to Lambda-promtail.
+
+The diagram below shows how notifications logs will be written from the source service into an S3 bucket. From there on, the S3 bucket will send an `Object created` notification into the EventBridge `default` bus, where we can configure a rule to trigger Lambda Promtail.
+
+{{< figure src="https://grafana.com/media/docs/loki/lambda-promtail-with-eventbridge.png" alt="The diagram shows how notifications logs are written from the source service into an S3 bucket">}}
+
+The [template-eventbridge.yaml](https://github.com/grafana/loki/blob/main/tools/lambda-promtail/template-eventbridge.yaml) CloudFormation template configures Lambda-promtail with EventBridge to address this known issue. To deploy the template, use the snippet below, completing appropriately the `ParameterValue` arguments.
+
+```bash
+aws cloudformation create-stack \
+  --stack-name lambda-promtail-stack \
+  --template-body file://template-eventbridge.yaml \
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+  --region us-east-2 \
+  --parameters ParameterKey=WriteAddress,ParameterValue=https://your-loki-url/loki/api/v1/push ParameterKey=Username,ParameterValue=<basic-auth-username> ParameterKey=Password,ParameterValue=<basic-auth-pw> ParameterKey=BearerToken,ParameterValue=<bearer-token> ParameterKey=LambdaPromtailImage,ParameterValue=<ecr-repo>:<tag> ParameterKey=ExtraLabels,ParameterValue="name1,value1,name2,value2" ParameterKey=TenantID,ParameterValue=<value> ParameterKey=SkipTlsVerify,ParameterValue="false" ParameterKey=EventSourceS3Bucket,ParameterValue=<S3 where target logs are stored>
+```
+
 ## Propagated Labels
 
 Incoming logs can have seven special labels assigned to them which can be used in [relabeling]({{< relref "../../send-data/promtail/configuration#relabel_configs" >}}) or later stages in a Promtail [pipeline]({{< relref "../../send-data/promtail/pipelines" >}}):
@@ -140,7 +165,9 @@ Incoming logs can have seven special labels assigned to them which can be used i
 
 ### Promtail labels
 
-Note: This section is relevant if running Promtail between lambda-promtail and the end Loki deployment and was used to circumvent `out of order` problems prior to the v2.4 Loki release which removed the ordering constraint.
+{{% admonition type="note" %}}
+This section is relevant if running Promtail between lambda-promtail and the end Loki deployment and was used to circumvent `out of order` problems prior to the v2.4 Loki release which removed the ordering constraint.
+{{% /admonition %}}
 
 As stated earlier, this workflow moves the worst case stream cardinality from `number_of_log_streams` -> `number_of_log_groups` * `number_of_promtails`. For this reason, each Promtail must have a unique label attached to logs it processes (ideally via something like `--client.external-labels=promtail=${HOSTNAME}`) and it's advised to run a small number of Promtails behind a load balancer according to your throughput and redundancy needs.
 
@@ -168,7 +195,9 @@ The provided Terraform and CloudFormation files are meant to cover the default u
 
 ## Example Promtail Config
 
-Note: this should be run in conjunction with a Promtail-specific label attached, ideally via a flag argument like `--client.external-labels=promtail=${HOSTNAME}`. It will receive writes via the push-api on ports `3500` (http) and `3600` (grpc).
+{{% admonition type="note" %}}
+This should be run in conjunction with a Promtail-specific label attached, ideally via a flag argument like `--client.external-labels=promtail=${HOSTNAME}`. It will receive writes via the push-api on ports `3500` (http) and `3600` (grpc).
+{{% /admonition %}}
 
 ```yaml
 server:

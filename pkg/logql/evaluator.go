@@ -13,14 +13,17 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 type QueryRangeType string
+
+const trueString = "true"
 
 var (
 	InstantType QueryRangeType = "instant"
@@ -29,7 +32,7 @@ var (
 
 // Params details the parameters associated with a loki request
 type Params interface {
-	Query() string
+	QueryString() string
 	Start() time.Time
 	End() time.Time
 	Step() time.Duration
@@ -37,6 +40,7 @@ type Params interface {
 	Limit() uint32
 	Direction() logproto.Direction
 	Shards() []string
+	GetExpression() syntax.Expr
 }
 
 func NewLiteralParams(
@@ -46,33 +50,41 @@ func NewLiteralParams(
 	direction logproto.Direction,
 	limit uint32,
 	shards []string,
-) LiteralParams {
-	return LiteralParams{
-		qs:        qs,
-		start:     start,
-		end:       end,
-		step:      step,
-		interval:  interval,
-		direction: direction,
-		limit:     limit,
-		shards:    shards,
+) (LiteralParams, error) {
+	p := LiteralParams{
+		queryString: qs,
+		start:       start,
+		end:         end,
+		step:        step,
+		interval:    interval,
+		direction:   direction,
+		limit:       limit,
+		shards:      shards,
 	}
+	var err error
+	p.queryExpr, err = syntax.ParseExpr(qs)
+	return p, err
+
 }
 
 // LiteralParams impls Params
 type LiteralParams struct {
-	qs             string
+	queryString    string
 	start, end     time.Time
 	step, interval time.Duration
 	direction      logproto.Direction
 	limit          uint32
 	shards         []string
+	queryExpr      syntax.Expr
 }
 
 func (p LiteralParams) Copy() LiteralParams { return p }
 
 // String impls Params
-func (p LiteralParams) Query() string { return p.qs }
+func (p LiteralParams) QueryString() string { return p.queryString }
+
+// GetExpression impls Params
+func (p LiteralParams) GetExpression() syntax.Expr { return p.queryExpr }
 
 // Start impls Params
 func (p LiteralParams) Start() time.Time { return p.start }
@@ -103,14 +115,40 @@ func GetRangeType(q Params) QueryRangeType {
 	return RangeType
 }
 
+// ParamsWithExpressionOverride overrides the query expression so that the query
+// string and the expression can differ. This is useful for for query planning
+// when plan my not match externally available logql syntax
+type ParamsWithExpressionOverride struct {
+	Params
+	ExpressionOverride syntax.Expr
+}
+
+// GetExpression returns the parsed expression of the query.
+func (p ParamsWithExpressionOverride) GetExpression() syntax.Expr {
+	return p.ExpressionOverride
+}
+
+// ParamsWithExpressionOverride overrides the shards. Since the backing
+// implementation of the Params interface is unknown they are embedded and the
+// original shards are shadowed.
+type ParamsWithShardsOverride struct {
+	Params
+	ShardsOverride []string
+}
+
+// Shards returns this overwriting shards.
+func (p ParamsWithShardsOverride) Shards() []string {
+	return p.ShardsOverride
+}
+
 // Sortable logql contain sort or sort_desc.
 func Sortable(q Params) (bool, error) {
 	var sortable bool
-	expr, err := syntax.ParseSampleExpr(q.Query())
-	if err != nil {
-		return false, err
+	expr, ok := q.GetExpression().(syntax.SampleExpr)
+	if !ok {
+		return false, errors.New("only sample expression supported")
 	}
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		rangeExpr, ok := e.(*syntax.VectorAggregationExpr)
 		if !ok {
 			return
@@ -173,6 +211,9 @@ func (ev *DefaultEvaluator) NewIterator(ctx context.Context, expr syntax.LogSele
 			Direction: q.Direction(),
 			Selector:  expr.String(),
 			Shards:    q.Shards(),
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
 		},
 	}
 
@@ -201,6 +242,9 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 						End:      q.End().Add(-rangExpr.Left.Offset),
 						Selector: e.String(), // intentionally send the vector for reducing labels.
 						Shards:   q.Shards(),
+						Plan: &plan.QueryPlan{
+							AST: expr,
+						},
 					},
 				})
 				if err != nil {
@@ -217,6 +261,9 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				End:      q.End().Add(-e.Left.Offset),
 				Selector: expr.String(),
 				Shards:   q.Shards(),
+				Plan: &plan.QueryPlan{
+					AST: expr,
+				},
 			},
 		})
 		if err != nil {
@@ -268,16 +315,17 @@ type VectorAggEvaluator struct {
 	lb            *labels.Builder
 }
 
-func (e *VectorAggEvaluator) Next() (bool, int64, promql.Vector) {
-	next, ts, vec := e.nextEvaluator.Next()
+func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
+	next, ts, r := e.nextEvaluator.Next()
 
 	if !next {
-		return false, 0, promql.Vector{}
+		return false, 0, SampleVector{}
 	}
+	vec := r.SampleVector()
 	result := map[uint64]*groupedAggregation{}
 	if e.expr.Operation == syntax.OpTypeTopK || e.expr.Operation == syntax.OpTypeBottomK {
 		if e.expr.Params < 1 {
-			return next, ts, promql.Vector{}
+			return next, ts, SampleVector{}
 		}
 	}
 	for _, s := range vec {
@@ -460,7 +508,7 @@ func (e *VectorAggEvaluator) Next() (bool, int64, promql.Vector) {
 			F:      aggr.value,
 		})
 	}
-	return next, ts, vec
+	return next, ts, SampleVector(vec)
 }
 
 func (e *VectorAggEvaluator) Close() error {
@@ -477,16 +525,18 @@ func newRangeAggEvaluator(
 	q Params,
 	o time.Duration,
 ) (StepEvaluator, error) {
-	iter, err := newRangeVectorIterator(
-		it, expr,
-		expr.Left.Interval.Nanoseconds(),
-		q.Step().Nanoseconds(),
-		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	if expr.Operation == syntax.OpRangeTypeAbsent {
+	switch expr.Operation {
+	case syntax.OpRangeTypeAbsent:
+		iter, err := newRangeVectorIterator(
+			it, expr,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		)
+		if err != nil {
+			return nil, err
+		}
+
 		absentLabels, err := absentLabels(expr)
 		if err != nil {
 			return nil, err
@@ -495,10 +545,32 @@ func newRangeAggEvaluator(
 			iter: iter,
 			lbs:  absentLabels,
 		}, nil
+	case syntax.OpRangeTypeQuantileSketch:
+		iter := newQuantileSketchIterator(
+			it,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		)
+
+		return &QuantileSketchStepEvaluator{
+			iter: iter,
+		}, nil
+	default:
+		iter, err := newRangeVectorIterator(
+			it, expr,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		return &RangeVectorEvaluator{
+			iter: iter,
+		}, nil
 	}
-	return &RangeVectorEvaluator{
-		iter: iter,
-	}, nil
 }
 
 type RangeVectorEvaluator struct {
@@ -507,17 +579,17 @@ type RangeVectorEvaluator struct {
 	err error
 }
 
-func (r *RangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
+func (r *RangeVectorEvaluator) Next() (bool, int64, StepResult) {
 	next := r.iter.Next()
 	if !next {
-		return false, 0, promql.Vector{}
+		return false, 0, SampleVector{}
 	}
 	ts, vec := r.iter.At()
-	for _, s := range vec {
+	for _, s := range vec.SampleVector() {
 		// Errors are not allowed in metrics unless they've been specifically requested.
-		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
+		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != trueString {
 			r.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, promql.Vector{}
+			return false, 0, SampleVector{}
 		}
 	}
 	return true, ts, vec
@@ -539,24 +611,24 @@ type AbsentRangeVectorEvaluator struct {
 	err error
 }
 
-func (r *AbsentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
+func (r *AbsentRangeVectorEvaluator) Next() (bool, int64, StepResult) {
 	next := r.iter.Next()
 	if !next {
-		return false, 0, promql.Vector{}
+		return false, 0, SampleVector{}
 	}
 	ts, vec := r.iter.At()
-	for _, s := range vec {
+	for _, s := range vec.SampleVector() {
 		// Errors are not allowed in metrics unless they've been specifically requested.
-		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
+		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != trueString {
 			r.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, promql.Vector{}
+			return false, 0, SampleVector{}
 		}
 	}
-	if len(vec) > 0 {
-		return next, ts, promql.Vector{}
+	if len(vec.SampleVector()) > 0 {
+		return next, ts, SampleVector{}
 	}
 	// values are missing.
-	return next, ts, promql.Vector{
+	return next, ts, SampleVector{
 		promql.Sample{
 			T:      ts,
 			F:      1.,
@@ -574,7 +646,7 @@ func (r AbsentRangeVectorEvaluator) Error() error {
 	return r.iter.Error()
 }
 
-// binOpExpr explicitly does not handle when both legs are literals as
+// newBinOpStepEvaluator explicitly does not handle when both legs are literals as
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr
 func newBinOpStepEvaluator(
 	ctx context.Context,
@@ -657,27 +729,30 @@ type BinOpStepEvaluator struct {
 	lastErr error
 }
 
-func (e *BinOpStepEvaluator) Next() (bool, int64, promql.Vector) {
+func (e *BinOpStepEvaluator) Next() (bool, int64, StepResult) {
 	var (
 		ts       int64
 		next     bool
 		lhs, rhs promql.Vector
+		r        StepResult
 	)
-	next, ts, rhs = e.rse.Next()
+	next, ts, r = e.rse.Next()
 	// These should _always_ happen at the same step on each evaluator.
 	if !next {
 		return next, ts, nil
 	}
+	rhs = r.SampleVector()
 	// build matching signature for each sample in right vector
 	rsigs := make([]uint64, len(rhs))
 	for i, sample := range rhs {
 		rsigs[i] = matchingSignature(sample, e.expr.Opts)
 	}
 
-	next, ts, lhs = e.lse.Next()
+	next, ts, r = e.lse.Next()
 	if !next {
 		return next, ts, nil
 	}
+	lhs = r.SampleVector()
 	// build matching signature for each sample in left vector
 	lsigs := make([]uint64, len(lhs))
 	for i, sample := range lhs {
@@ -695,7 +770,7 @@ func (e *BinOpStepEvaluator) Next() (bool, int64, promql.Vector) {
 	default:
 		results, e.lastErr = vectorBinop(e.expr.Op, e.expr.Opts, lhs, rhs, lsigs, rsigs)
 	}
-	return true, ts, results
+	return true, ts, SampleVector(results)
 }
 
 func (e *BinOpStepEvaluator) Close() (lastError error) {
@@ -732,9 +807,9 @@ func matchingSignature(sample promql.Sample, opts *syntax.BinOpOptions) uint64 {
 		return sample.Metric.Hash()
 	} else if opts.VectorMatching.On {
 		return labels.NewBuilder(sample.Metric).Keep(opts.VectorMatching.MatchingLabels...).Labels().Hash()
-	} else {
-		return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels().Hash()
 	}
+
+	return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels().Hash()
 }
 
 func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) (promql.Vector, error) {
@@ -802,7 +877,7 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 				ls, rs = rs, ls
 			}
 		}
-		merged, err := syntax.MergeBinOp(op, ls, rs, filter, syntax.IsComparisonOperator(op))
+		merged, err := syntax.MergeBinOp(op, ls, rs, false, filter, syntax.IsComparisonOperator(op))
 		if err != nil {
 			return nil, err
 		}
@@ -943,8 +1018,12 @@ type LiteralStepEvaluator struct {
 	returnBool bool
 }
 
-func (e *LiteralStepEvaluator) Next() (bool, int64, promql.Vector) {
-	ok, ts, vec := e.nextEv.Next()
+func (e *LiteralStepEvaluator) Next() (bool, int64, StepResult) {
+	ok, ts, r := e.nextEv.Next()
+	if !ok {
+		return ok, ts, r
+	}
+	vec := r.SampleVector()
 	results := make(promql.Vector, 0, len(vec))
 	for _, sample := range vec {
 
@@ -962,6 +1041,7 @@ func (e *LiteralStepEvaluator) Next() (bool, int64, promql.Vector) {
 			e.op,
 			left,
 			right,
+			!e.inverted,
 			!e.returnBool,
 			syntax.IsComparisonOperator(e.op),
 		)
@@ -974,7 +1054,7 @@ func (e *LiteralStepEvaluator) Next() (bool, int64, promql.Vector) {
 		}
 	}
 
-	return ok, ts, results
+	return ok, ts, SampleVector(results)
 }
 
 func (e *LiteralStepEvaluator) Close() error {
@@ -1007,7 +1087,7 @@ func newVectorIterator(val float64,
 	}
 }
 
-func (r *VectorIterator) Next() (bool, int64, promql.Vector) {
+func (r *VectorIterator) Next() (bool, int64, StepResult) {
 	r.currentMs = r.currentMs + r.stepMs
 	if r.currentMs > r.endMs {
 		return false, 0, nil
@@ -1015,7 +1095,7 @@ func (r *VectorIterator) Next() (bool, int64, promql.Vector) {
 	results := make(promql.Vector, 0)
 	vectorPoint := promql.Sample{T: r.currentMs, F: r.val}
 	results = append(results, vectorPoint)
-	return true, r.currentMs, results
+	return true, r.currentMs, SampleVector(results)
 }
 
 func (r *VectorIterator) Close() error {
@@ -1052,11 +1132,12 @@ type LabelReplaceEvaluator struct {
 	buf           []byte
 }
 
-func (e *LabelReplaceEvaluator) Next() (bool, int64, promql.Vector) {
-	next, ts, vec := e.nextEvaluator.Next()
+func (e *LabelReplaceEvaluator) Next() (bool, int64, StepResult) {
+	next, ts, r := e.nextEvaluator.Next()
 	if !next {
-		return false, 0, promql.Vector{}
+		return false, 0, SampleVector{}
 	}
+	vec := r.SampleVector()
 	if e.labelCache == nil {
 		e.labelCache = make(map[uint64]labels.Labels, len(vec))
 	}
@@ -1084,7 +1165,7 @@ func (e *LabelReplaceEvaluator) Next() (bool, int64, promql.Vector) {
 		e.labelCache[hash] = outLbs
 		vec[i].Metric = outLbs
 	}
-	return next, ts, vec
+	return next, ts, SampleVector(vec)
 }
 
 func (e *LabelReplaceEvaluator) Close() error {

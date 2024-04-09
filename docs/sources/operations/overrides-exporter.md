@@ -1,7 +1,8 @@
 ---
-title: "Overrides exporter"
-description: "Overrides Exporter"
-weight: 20
+title: Overrides exporter
+menuTitle:  
+description: Describes how the Overrides Exporter module exposes tenant limits as Prometheus metrics.
+weight: 
 ---
 
 # Overrides exporter

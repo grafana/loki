@@ -3,6 +3,7 @@ package series
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 
@@ -16,46 +17,47 @@ import (
 
 	"github.com/grafana/dskit/concurrency"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/config"
-	storageerrors "github.com/grafana/loki/pkg/storage/errors"
-	"github.com/grafana/loki/pkg/storage/stores"
-	"github.com/grafana/loki/pkg/storage/stores/index"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/extract"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	storageerrors "github.com/grafana/loki/v3/pkg/storage/errors"
+	"github.com/grafana/loki/v3/pkg/storage/stores"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	series_index "github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/extract"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 var (
 	indexLookupsPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "chunk_store_index_lookups_per_query",
 		Help:      "Distribution of #index lookups per query.",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
 	})
 	preIntersectionPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "chunk_store_series_pre_intersection_per_query",
 		Help:      "Distribution of #series (pre intersection) per query.",
 		// A reasonable upper bound is around 100k - 10*(8^(6-1)) = 327k.
 		Buckets: prometheus.ExponentialBuckets(10, 8, 6),
 	})
 	postIntersectionPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "chunk_store_series_post_intersection_per_query",
 		Help:      "Distribution of #series (post intersection) per query.",
 		// A reasonable upper bound is around 100k - 10*(8^(6-1)) = 327k.
 		Buckets: prometheus.ExponentialBuckets(10, 8, 6),
 	})
 	chunksPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "chunk_store_chunks_per_query",
 		Help:      "Distribution of #chunks per query.",
 		// For 100k series for 7 week, could be 1.2m - 10*(8^(7-1)) = 2.6m.
@@ -63,7 +65,8 @@ var (
 	})
 )
 
-type indexReaderWriter struct {
+// IndexReaderWriter implements pkg/storage/stores/index.ReaderWriter
+type IndexReaderWriter struct {
 	schema           series_index.SeriesStoreSchema
 	index            series_index.Client
 	schemaCfg        config.SchemaConfig
@@ -74,8 +77,8 @@ type indexReaderWriter struct {
 }
 
 func NewIndexReaderWriter(schemaCfg config.SchemaConfig, schema series_index.SeriesStoreSchema, index series_index.Client,
-	fetcher *fetcher.Fetcher, chunkBatchSize int, writeDedupeCache cache.Cache) index.ReaderWriter {
-	return &indexReaderWriter{
+	fetcher *fetcher.Fetcher, chunkBatchSize int, writeDedupeCache cache.Cache) *IndexReaderWriter {
+	return &IndexReaderWriter{
 		schema:           schema,
 		index:            index,
 		schemaCfg:        schemaCfg,
@@ -85,7 +88,7 @@ func NewIndexReaderWriter(schemaCfg config.SchemaConfig, schema series_index.Ser
 	}
 }
 
-func (c *indexReaderWriter) IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
+func (c *IndexReaderWriter) IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
 	writeReqs, keysToCache, err := c.calculateIndexEntries(ctx, from, through, chk)
 	if err != nil {
 		return err
@@ -104,7 +107,7 @@ func (c *indexReaderWriter) IndexChunk(ctx context.Context, from, through model.
 }
 
 // calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.
-func (c *indexReaderWriter) calculateIndexEntries(ctx context.Context, from, through model.Time, chunk chunk.Chunk) (series_index.WriteBatch, []string, error) {
+func (c *IndexReaderWriter) calculateIndexEntries(ctx context.Context, from, through model.Time, chunk chunk.Chunk) (series_index.WriteBatch, []string, error) {
 	seenIndexEntries := map[string]struct{}{}
 	entries := []series_index.Entry{}
 
@@ -149,10 +152,10 @@ func (c *indexReaderWriter) calculateIndexEntries(ctx context.Context, from, thr
 	return result, missing, nil
 }
 
-func (c *indexReaderWriter) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+func (c *IndexReaderWriter) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error) {
 	log := util_log.WithContext(ctx, util_log.Logger)
 	// Check there is a metric name matcher of type equal,
-	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(allMatchers)
+	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(predicate.Matchers)
 	if !ok || metricNameMatcher.Type != labels.MatchEqual {
 		return nil, storageerrors.ErrQueryMustContainMetricName
 	}
@@ -192,7 +195,7 @@ func (c *indexReaderWriter) GetChunkRefs(ctx context.Context, userID string, fro
 	return chunks, nil
 }
 
-func (c *indexReaderWriter) SetChunkFilterer(f chunk.RequestChunkFilterer) {
+func (c *IndexReaderWriter) SetChunkFilterer(f chunk.RequestChunkFilterer) {
 	c.chunkFilterer = f
 }
 
@@ -209,8 +212,8 @@ func (c chunkGroup) Less(i, j int) bool {
 	return c.schema.ExternalKey(c.chunks[i].ChunkRef) < c.schema.ExternalKey(c.chunks[j].ChunkRef)
 }
 
-func (c *indexReaderWriter) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
-	chks, err := c.GetChunkRefs(ctx, userID, from, through, matchers...)
+func (c *IndexReaderWriter) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	chks, err := c.GetChunkRefs(ctx, userID, from, through, chunk.Predicate{Matchers: matchers})
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +221,7 @@ func (c *indexReaderWriter) GetSeries(ctx context.Context, userID string, from, 
 	return c.chunksToSeries(ctx, chks, matchers)
 }
 
-func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.ChunkRef, matchers []*labels.Matcher) ([]labels.Labels, error) {
+func (c *IndexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.ChunkRef, matchers []*labels.Matcher) ([]labels.Labels, error) {
 	// download one per series and merge
 	// group chunks by series
 	chunksBySeries := filterChunkRefsByUniqueFingerprint(in)
@@ -313,7 +316,7 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *indexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (c *IndexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelNamesForMetricName")
 	defer sp.Finish()
 	log := spanlogger.FromContext(ctx)
@@ -341,7 +344,7 @@ func (c *indexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID 
 	return labelNames, nil
 }
 
-func (c *indexReaderWriter) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+func (c *IndexReaderWriter) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelValuesForMetricName")
 	defer sp.Finish()
 	log := spanlogger.FromContext(ctx)
@@ -377,7 +380,7 @@ func (c *indexReaderWriter) LabelValuesForMetricName(ctx context.Context, userID
 }
 
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
-func (c *indexReaderWriter) labelValuesForMetricNameWithMatchers(ctx context.Context, userID string, from, through model.Time, metricName, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+func (c *IndexReaderWriter) labelValuesForMetricNameWithMatchers(ctx context.Context, userID string, from, through model.Time, metricName, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	// Otherwise get series which include other matchers
 	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)
 	if err != nil {
@@ -419,7 +422,7 @@ func (c *indexReaderWriter) labelValuesForMetricNameWithMatchers(ctx context.Con
 	return result.Strings(), nil
 }
 
-func (c *indexReaderWriter) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, userID, metricName string, matchers []*labels.Matcher) ([]string, error) {
+func (c *IndexReaderWriter) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, userID, metricName string, matchers []*labels.Matcher) ([]string, error) {
 	// Check if one of the labels is a shard annotation, pass that information to lookupSeriesByMetricNameMatcher,
 	// and remove the label.
 	shard, shardLabelIndex, err := astmapper.ShardFromMatchers(matchers)
@@ -502,13 +505,13 @@ func (c *indexReaderWriter) lookupSeriesByMetricNameMatchers(ctx context.Context
 	return ids, nil
 }
 
-func (c *indexReaderWriter) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *astmapper.ShardAnnotation) ([]string, error) {
+func (c *IndexReaderWriter) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *astmapper.ShardAnnotation) ([]string, error) {
 	return c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []series_index.Query) []series_index.Query {
 		return c.schema.FilterReadQueries(queries, shard)
 	})
 }
 
-func (c *indexReaderWriter) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]series_index.Query) []series_index.Query) ([]string, error) {
+func (c *IndexReaderWriter) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]series_index.Query) []series_index.Query) ([]string, error) {
 	var err error
 	var queries []series_index.Query
 	var labelName string
@@ -600,7 +603,7 @@ var entriesPool = sync.Pool{
 	},
 }
 
-func (c *indexReaderWriter) lookupEntriesByQueries(ctx context.Context, queries []series_index.Query, entries *[]series_index.Entry) error {
+func (c *IndexReaderWriter) lookupEntriesByQueries(ctx context.Context, queries []series_index.Query, entries *[]series_index.Entry) error {
 	*entries = (*entries)[:0]
 	// Nothing to do if there are no queries.
 	if len(queries) == 0 {
@@ -628,7 +631,7 @@ func (c *indexReaderWriter) lookupEntriesByQueries(ctx context.Context, queries 
 	return err
 }
 
-func (c *indexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
+func (c *IndexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.lookupLabelNamesBySeries")
 	defer sp.Finish()
 	log := spanlogger.FromContext(ctx)
@@ -665,7 +668,7 @@ func (c *indexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, 
 	return result.Strings(), nil
 }
 
-func (c *indexReaderWriter) lookupLabelNamesByChunks(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
+func (c *IndexReaderWriter) lookupLabelNamesByChunks(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.lookupLabelNamesByChunks")
 	defer sp.Finish()
 	log := spanlogger.FromContext(ctx)
@@ -701,7 +704,7 @@ func (c *indexReaderWriter) lookupLabelNamesByChunks(ctx context.Context, from, 
 	return labelNamesFromChunks(allChunks), nil
 }
 
-func (c *indexReaderWriter) lookupChunksBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
+func (c *IndexReaderWriter) lookupChunksBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
 	queries := make([]series_index.Query, 0, len(seriesIDs))
 	for _, seriesID := range seriesIDs {
 		qs, err := c.schema.GetChunksForSeries(from, through, userID, []byte(seriesID))
@@ -722,7 +725,7 @@ func (c *indexReaderWriter) lookupChunksBySeries(ctx context.Context, from, thro
 	return result, err
 }
 
-func (c *indexReaderWriter) convertChunkIDsToChunks(_ context.Context, userID string, chunkIDs []string) ([]chunk.Chunk, error) {
+func (c *IndexReaderWriter) convertChunkIDsToChunks(_ context.Context, userID string, chunkIDs []string) ([]chunk.Chunk, error) {
 	chunkSet := make([]chunk.Chunk, 0, len(chunkIDs))
 	for _, chunkID := range chunkIDs {
 		chunk, err := chunk.ParseExternalKey(userID, chunkID)
@@ -735,7 +738,7 @@ func (c *indexReaderWriter) convertChunkIDsToChunks(_ context.Context, userID st
 	return chunkSet, nil
 }
 
-func (c *indexReaderWriter) convertChunkIDsToChunkRefs(_ context.Context, userID string, chunkIDs []string) ([]logproto.ChunkRef, error) {
+func (c *IndexReaderWriter) convertChunkIDsToChunkRefs(_ context.Context, userID string, chunkIDs []string) ([]logproto.ChunkRef, error) {
 	chunkSet := make([]logproto.ChunkRef, 0, len(chunkIDs))
 	for _, chunkID := range chunkIDs {
 		chunk, err := chunk.ParseExternalKey(userID, chunkID)
@@ -749,11 +752,38 @@ func (c *indexReaderWriter) convertChunkIDsToChunkRefs(_ context.Context, userID
 }
 
 // old index stores do not implement stats -- skip
-func (c *indexReaderWriter) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
+func (c *IndexReaderWriter) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return nil, nil
 }
 
 // old index stores do not implement label volume -- skip
-func (c *indexReaderWriter) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (c *IndexReaderWriter) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
+}
+
+// old index stores do not implement dynamic sharidng -- skip
+func (c *IndexReaderWriter) GetShards(
+	_ context.Context,
+	_ string,
+	_, _ model.Time,
+	_ uint64,
+	_ chunk.Predicate,
+) (*logproto.ShardsResponse, error) {
+	// should not be called for legacy indices at all, so just return a single shard covering everything
+	// could be improved by reading schema shards
+	return &logproto.ShardsResponse{
+		Shards: []logproto.Shard{
+			{
+				Bounds: logproto.FPBounds{
+					Min: 0,
+					Max: math.MaxUint64,
+				},
+			},
+		},
+	}, nil
+}
+
+// old index stores do not implement tsdb.ForSeries -- skip
+func (c *IndexReaderWriter) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
+	return nil, false
 }

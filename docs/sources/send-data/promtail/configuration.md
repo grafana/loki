@@ -66,10 +66,12 @@ ${VAR:-default_value}
 
 Where default_value is the value to use if the environment variable is undefined.
 
-**Note**: With `expand-env=true` the configuration will first run through
+{{% admonition type="note" %}}
+With `expand-env=true` the configuration will first run through
 [envsubst](https://pkg.go.dev/github.com/drone/envsubst) which will replace double
 backslashes with single backslashes. Because of this every use of a backslash `\` needs to
-be replaced with a double backslash `\\`
+be replaced with a double backslash `\\`.
+{{% /admonition %}}
 
 ### Generic placeholders
 
@@ -848,7 +850,9 @@ labels:
 [path: <string>]
 ```
 
-**Note**: priority label is available as both value and keyword. For example, if `priority` is `3` then the labels will be `__journal_priority` with a value `3` and `__journal_priority_keyword` with a corresponding keyword `err`.
+{{% admonition type="note" %}}
+Priority label is available as both value and keyword. For example, if `priority` is `3` then the labels will be `__journal_priority` with a value `3` and `__journal_priority_keyword` with a corresponding keyword `err`.
+{{% /admonition %}}
 
 ### syslog
 
@@ -922,7 +926,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API]({{< relref "../../reference/api#push-log-entries-to-loki" >}}) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API]({{< relref "../../reference/api#ingest-logs" >}}) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
@@ -1141,7 +1145,7 @@ The `group_id` defined the unique consumer group id to use for consuming logs. E
 - If all promtail instances have the same consumer group, then the records will effectively be load balanced over the promtail instances.
 - If all promtail instances have different consumer groups, then each record will be broadcast to all promtail instances.
 
-The `group_id` is useful if you want to effectively send the data to multiple loki instances and/or other sinks.
+The `group_id` is useful if you want to effectively send the data to multiple Loki instances and/or other sinks.
 
 The `assignor` configuration allow you to select the rebalancing strategy to use for the consumer group.
 Rebalancing is the process where a group of consumer instances (belonging to the same group) co-ordinate to own a mutually exclusive set of partitions of topics that the group is subscribed to.
@@ -1936,7 +1940,7 @@ users with thousands of services it can be more efficient to use the Consul API
 directly which has basic support for filtering nodes (currently by node
 metadata and a single tag).
 
-### docker_sd_config
+### docker_sd_configs
 
 Docker service discovery allows retrieving targets from a Docker daemon.
 It will only watch containers of the Docker daemon referenced with the host parameter. Docker
@@ -2089,16 +2093,6 @@ sync_period: "10s"
 ```
 
 ## options_config
-
-```yaml
-# Deprecated.
-# A comma-separated list of labels to include in the stream lag metric
-# `promtail_stream_lag_seconds`. The default value is "filename". A "host" label is
-# always included. The stream lag metric indicates which streams are falling behind
-# on writes to Loki; be mindful about using too many labels,
-# as it can increase cardinality.
-[stream_lag_labels: <string> | default = "filename"]
-```
 
 ## tracing_config
 

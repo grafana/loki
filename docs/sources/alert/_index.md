@@ -155,7 +155,7 @@ At the time of writing, these are the compatible backends that support this:
 - [Grafana Mimir](/docs/mimir/latest/operators-guide/reference-http-api/#remote-write)
 - [Thanos (`Receiver`)](https://thanos.io/tip/components/receive.md/)
 
-Here is an example remote-write configuration for sending to a local Prometheus instance:
+Here is an example of a remote-write configuration for sending data to a local Prometheus instance:
 
 ```yaml
 ruler:
@@ -202,15 +202,22 @@ Another great use case is alerting on high cardinality sources. These are things
 
 Creating these alerts in LogQL is attractive because these metrics can be extracted at _query time_, meaning we don't suffer the cardinality explosion in our metrics store.
 
-> **Note** As an example, we can use LogQL v2 to help Loki to monitor _itself_, alerting us when specific tenants have queries that take longer than 10s to complete! To do so, we'd use the following query: `sum by (org_id) (rate({job="loki-prod/query-frontend"} |= "metrics.go" | logfmt | duration > 10s [1m]))`
+{{% admonition type="note" %}}
+As an example, we can use LogQL v2 to help Loki to monitor _itself_, alerting us when specific tenants have queries that take longer than 10s to complete! To do so, we'd use the following query: `sum by (org_id) (rate({job="loki-prod/query-frontend"} |= "metrics.go" | logfmt | duration > 10s [1m])
+{{% /admonition %}}`.
 
 ## Interacting with the Ruler
 
+### Cortextool
 Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortextool`](https://github.com/grafana/cortex-tools#rules). The CLI is in early development, but it works with both Loki and Cortex. Pass the `--backend=loki` option when using it with Loki.
 
-> **Note:** Not all commands in cortextool currently support Loki.
+{{% admonition type="note" %}}
+Not all commands in cortextool currently support Loki.
+{{% /admonition %}}
 
-> **Note:** cortextool was intended to run against multi-tenant Loki, commands need an `--id=` flag set to the Loki instance ID or set the environment variable `CORTEX_TENANT_ID`.  If Loki is running in single tenant mode, the required ID is `fake` (yes we know this might seem alarming but it's totally fine, no it can't be changed) 
+{{% admonition type="note" %}}
+cortextool was intended to run against multi-tenant Loki, commands need an `--id=` flag set to the Loki instance ID or set the environment variable `CORTEX_TENANT_ID`.  If Loki is running in single tenant mode, the required ID is `fake`.
+{{% /admonition %}}
 
 An example workflow is included below:
 
@@ -228,6 +235,7 @@ cortextool rules sync --rule-dirs=./output --backend=loki
 cortextool rules print --backend=loki
 ```
 
+### Cortextool Github Actions
 There is also a [github action](https://github.com/grafana/cortex-rules-action) available for `cortex-tool`, so you can add it into your CI/CD pipelines!
 
 For instance, you can sync rules on master builds via
@@ -269,6 +277,58 @@ jobs:
         uses: grafana/cortex-rules-action@v0.4.0
         env:
           ACTION: 'print'
+```
+### Terraform
+
+With the [Terraform provider for Loki](https://registry.terraform.io/providers/fgouteroux/loki/latest), you can manage alerts and recording rules in Terraform HCL format:
+
+```tf
+terraform {
+  required_providers {
+    loki = {
+      source = "fgouteroux/loki"
+    }
+  }
+}
+
+# Provider config
+provider "loki" {
+  uri = "http://127.0.0.1:3100"
+  org_id = "mytenant"
+}
+
+# Create an alert rule
+resource "loki_rule_group_alerting" "test" {
+  name      = "test1"
+  namespace = "namespace1"
+  rule {
+    alert       = "HighPercentageError"
+    expr        = <<EOT
+sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
+  /
+sum(rate({app="foo", env="production"}[5m])) by (job)
+  > 0.05
+EOT
+    for         = "10m"
+    labels      = {
+      severity = "warning"
+    }
+    annotations = {
+      summary = "High request latency"
+    }
+  }
+}
+
+# Create a recording rule
+resource "loki_rule_group_recording" "test" {
+  name      = "test1"
+  namespace = "namespace1"
+  rule {
+    expr   = "sum by (job) (http_inprogress_requests)"
+    record = "job:http_inprogress_requests:sum"
+  }
+}
+
 ```
 
 ## Scheduling and best practices
@@ -319,9 +379,8 @@ Yaml files are expected to be [Prometheus-compatible](https://prometheus.io/docs
 
 There are a few things coming to increase the robustness of this service. In no particular order:
 
-- WAL for recording rule.
 - Backend metric stores adapters for generated alert rule data.
 
 ## Misc Details: Metrics backends vs in-memory
 
-Currently the Loki Ruler is decoupled from a backing Prometheus store. Generally, the result of evaluating rules as well as the history of the alert's state are stored as a time series. Loki is unable to store/retrieve these in order to allow it to run independently of i.e. Prometheus. As a workaround, Loki keeps a small in memory store whose purpose is to lazy load past evaluations when rescheduling or resharding Rulers. In the future, Loki will support optional metrics backends, allowing storage of these metrics for auditing & performance benefits.
+Currently the Loki Ruler is decoupled from a backing Prometheus store. Generally, the result of evaluating rules as well as the history of the alert's state are stored as a time series. Loki is unable to store/retrieve these in order to allow it to run independently of i.e. Prometheus. As a workaround, Loki keeps a small in memory store whose purpose is to lazy load past evaluations when rescheduling or resharding Rulers. In the future, Loki will support optional metrics backends, allowing storage of these metrics for auditing and performance benefits.

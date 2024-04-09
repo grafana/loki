@@ -124,8 +124,8 @@ func (t TracingBucket) IsObjNotFoundErr(err error) bool {
 	return t.bkt.IsObjNotFoundErr(err)
 }
 
-func (t TracingBucket) IsCustomerManagedKeyError(err error) bool {
-	return t.bkt.IsCustomerManagedKeyError(err)
+func (t TracingBucket) IsAccessDeniedErr(err error) bool {
+	return t.bkt.IsAccessDeniedErr(err)
 }
 
 func (t TracingBucket) WithExpectedErrs(expectedFunc objstore.IsOpFailureExpectedFunc) objstore.Bucket {

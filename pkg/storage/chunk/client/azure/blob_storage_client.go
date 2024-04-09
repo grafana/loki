@@ -19,16 +19,19 @@ import (
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
 	"github.com/mattn/go-ieproxy"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
-	client_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/util"
-	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	client_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
+	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -84,8 +87,9 @@ type BlobStorageConfig struct {
 	Environment         string         `yaml:"environment"`
 	StorageAccountName  string         `yaml:"account_name"`
 	StorageAccountKey   flagext.Secret `yaml:"account_key"`
+	ConnectionString    string         `yaml:"connection_string"`
 	ContainerName       string         `yaml:"container_name"`
-	Endpoint            string         `yaml:"endpoint_suffix"`
+	EndpointSuffix      string         `yaml:"endpoint_suffix"`
 	UseManagedIdentity  bool           `yaml:"use_managed_identity"`
 	UseFederatedToken   bool           `yaml:"use_federated_token"`
 	UserAssignedID      string         `yaml:"user_assigned_id"`
@@ -118,8 +122,9 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.StringVar(&c.Environment, prefix+"azure.environment", azureGlobal, fmt.Sprintf("Azure Cloud environment. Supported values are: %s.", strings.Join(supportedEnvironments, ", ")))
 	f.StringVar(&c.StorageAccountName, prefix+"azure.account-name", "", "Azure storage account name.")
 	f.Var(&c.StorageAccountKey, prefix+"azure.account-key", "Azure storage account key.")
-	f.StringVar(&c.ContainerName, prefix+"azure.container-name", "loki", "Name of the storage account blob container used to store chunks. This container must be created before running cortex.")
-	f.StringVar(&c.Endpoint, prefix+"azure.endpoint-suffix", "", "Azure storage endpoint suffix without schema. The storage account name will be prefixed to this value to create the FQDN.")
+	f.StringVar(&c.ConnectionString, prefix+"azure.connection-string", "", "If `connection-string` is set, the values of `account-name` and `endpoint-suffix` values will not be used. Use this method over `account-key` if you need to authenticate via a SAS token. Or if you use the Azurite emulator.")
+	f.StringVar(&c.ContainerName, prefix+"azure.container-name", constants.Loki, "Name of the storage account blob container used to store chunks. This container must be created before running cortex.")
+	f.StringVar(&c.EndpointSuffix, prefix+"azure.endpoint-suffix", "", "Azure storage endpoint suffix without schema. The storage account name will be prefixed to this value to create the FQDN.")
 	f.BoolVar(&c.UseManagedIdentity, prefix+"azure.use-managed-identity", false, "Use Managed Identity to authenticate to the Azure storage account.")
 	f.BoolVar(&c.UseFederatedToken, prefix+"azure.use-federated-token", false, "Use Federated Token to authenticate to the Azure storage account.")
 	f.StringVar(&c.UserAssignedID, prefix+"azure.user-assigned-id", "", "User assigned identity ID to authenticate to the Azure storage account.")
@@ -146,7 +151,7 @@ type BlobStorageMetrics struct {
 func NewBlobStorageMetrics() BlobStorageMetrics {
 	b := BlobStorageMetrics{
 		requestDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "azure_blob_request_duration_seconds",
 			Help:      "Time spent doing azure blob requests.",
 			// Latency seems to range from a few ms to a few secs and is
@@ -154,7 +159,7 @@ func NewBlobStorageMetrics() BlobStorageMetrics {
 			Buckets: prometheus.ExponentialBuckets(0.005, 4, 6),
 		}, []string{"operation", "status_code"}),
 		egressBytesTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "azure_blob_egress_bytes_total",
 			Help:      "Total bytes downloaded from Azure Blob Storage.",
 		}),
@@ -293,7 +298,7 @@ func (b *BlobStorage) getBlobURL(blobID string, hedging bool) (azblob.BlockBlobU
 	blobID = strings.Replace(blobID, ":", b.cfg.ChunkDelimiter, -1)
 
 	// generate url for new chunk blob
-	u, err := url.Parse(fmt.Sprintf(b.selectBlobURLFmt(), b.cfg.StorageAccountName, b.cfg.ContainerName, blobID))
+	u, err := url.Parse(b.fmtBlobURL(blobID))
 	if err != nil {
 		return azblob.BlockBlobURL{}, err
 	}
@@ -306,7 +311,7 @@ func (b *BlobStorage) getBlobURL(blobID string, hedging bool) (azblob.BlockBlobU
 }
 
 func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
-	u, err := url.Parse(fmt.Sprintf(b.selectContainerURLFmt(), b.cfg.StorageAccountName, b.cfg.ContainerName))
+	u, err := url.Parse(b.fmtContainerURL())
 	if err != nil {
 		return azblob.ContainerURL{}, err
 	}
@@ -346,6 +351,18 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 				return pipeline.NewHTTPResponse(resp), err
 			}
 		})
+	}
+
+	if b.cfg.ConnectionString != "" {
+		parsed, err := parseConnectionString(b.cfg.ConnectionString)
+		if err != nil {
+			return nil, err
+		}
+		credential, err := azblob.NewSharedKeyCredential(parsed.AccountName, parsed.AccountKey)
+		if err != nil {
+			return nil, err
+		}
+		return azblob.NewPipeline(credential, opts), nil
 	}
 
 	if !b.cfg.UseFederatedToken && !b.cfg.UseManagedIdentity && !b.cfg.UseServicePrincipal && b.cfg.UserAssignedID == "" {
@@ -401,14 +418,7 @@ func (b *BlobStorage) getOAuthToken() (azblob.TokenCredential, error) {
 }
 
 func (b *BlobStorage) getServicePrincipalToken(authFunctions authFunctions) (*adal.ServicePrincipalToken, error) {
-	var endpoint string
-	if b.cfg.Endpoint != "" {
-		endpoint = b.cfg.Endpoint
-	} else {
-		endpoint = defaultEndpoints[b.cfg.Environment]
-	}
-
-	resource := fmt.Sprintf("https://%s.%s", b.cfg.StorageAccountName, endpoint)
+	resource := b.fmtResourceURL()
 
 	if b.cfg.UseFederatedToken {
 		token, err := b.servicePrincipalTokenFromFederatedToken(resource, authFunctions.NewOAuthConfigFunc, authFunctions.NewServicePrincipalTokenFromFederatedTokenFunc)
@@ -551,18 +561,35 @@ func (c *BlobStorageConfig) Validate() error {
 	return nil
 }
 
-func (b *BlobStorage) selectBlobURLFmt() string {
-	if b.cfg.Endpoint != "" {
-		return fmt.Sprintf("https://%%s.%s/%%s/%%s", b.cfg.Endpoint)
+func (b *BlobStorage) fmtResourceURL() string {
+	if b.cfg.ConnectionString != "" {
+		return b.endpointFromConnectionString()
 	}
-	return fmt.Sprintf("https://%%s.%s/%%s/%%s", defaultEndpoints[b.cfg.Environment])
+
+	var endpoint string
+	if b.cfg.EndpointSuffix != "" {
+		endpoint = b.cfg.EndpointSuffix
+	} else {
+		endpoint = defaultEndpoints[b.cfg.Environment]
+	}
+
+	return fmt.Sprintf("https://%s.%s", b.cfg.StorageAccountName, endpoint)
 }
 
-func (b *BlobStorage) selectContainerURLFmt() string {
-	if b.cfg.Endpoint != "" {
-		return fmt.Sprintf("https://%%s.%s/%%s", b.cfg.Endpoint)
+func (b *BlobStorage) endpointFromConnectionString() string {
+	parsed, err := parseConnectionString(b.cfg.ConnectionString)
+	if err != nil || parsed.ServiceURL == "" {
+		level.Warn(log.Logger).Log("msg", "could not get resource URL from connection string", "err", err)
 	}
-	return fmt.Sprintf("https://%%s.%s/%%s", defaultEndpoints[b.cfg.Environment])
+	return parsed.ServiceURL
+}
+
+func (b *BlobStorage) fmtBlobURL(blobID string) string {
+	return fmt.Sprintf("%s/%s", b.fmtContainerURL(), blobID)
+}
+
+func (b *BlobStorage) fmtContainerURL() string {
+	return fmt.Sprintf("%s/%s", b.fmtResourceURL(), b.cfg.ContainerName)
 }
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
@@ -573,6 +600,80 @@ func (b *BlobStorage) IsObjectNotFoundErr(err error) bool {
 	}
 
 	return false
+}
+
+var errConnectionString = errors.New("connection string is either blank or malformed. The expected connection string " +
+	"should contain key value pairs separated by semicolons. For example 'DefaultEndpointsProtocol=https;AccountName=<accountName>;" +
+	"AccountKey=<accountKey>;EndpointSuffix=core.windows.net'")
+
+type ParsedConnectionString struct {
+	ServiceURL  string
+	AccountName string
+	AccountKey  string
+}
+
+// parseConnectionString dissects a connection string into url, account and key
+// (copied from github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/shared)
+func parseConnectionString(connectionString string) (ParsedConnectionString, error) {
+	const (
+		defaultScheme = "https"
+		defaultSuffix = "core.windows.net"
+	)
+
+	connStrMap := make(map[string]string)
+	connectionString = strings.TrimRight(connectionString, ";")
+
+	splitString := strings.Split(connectionString, ";")
+	if len(splitString) == 0 {
+		return ParsedConnectionString{}, errConnectionString
+	}
+	for _, stringPart := range splitString {
+		parts := strings.SplitN(stringPart, "=", 2)
+		if len(parts) != 2 {
+			return ParsedConnectionString{}, errConnectionString
+		}
+		connStrMap[parts[0]] = parts[1]
+	}
+
+	accountName, ok := connStrMap["AccountName"]
+	if !ok {
+		return ParsedConnectionString{}, errors.New("connection string missing AccountName")
+	}
+
+	accountKey, ok := connStrMap["AccountKey"]
+	if !ok {
+		sharedAccessSignature, ok := connStrMap["SharedAccessSignature"]
+		if !ok {
+			return ParsedConnectionString{}, errors.New("connection string missing AccountKey and SharedAccessSignature")
+		}
+		return ParsedConnectionString{
+			ServiceURL: fmt.Sprintf("%v://%v.blob.%v/?%v", defaultScheme, accountName, defaultSuffix, sharedAccessSignature),
+		}, nil
+	}
+
+	protocol, ok := connStrMap["DefaultEndpointsProtocol"]
+	if !ok {
+		protocol = defaultScheme
+	}
+
+	suffix, ok := connStrMap["EndpointSuffix"]
+	if !ok {
+		suffix = defaultSuffix
+	}
+
+	if blobEndpoint, ok := connStrMap["BlobEndpoint"]; ok {
+		return ParsedConnectionString{
+			ServiceURL:  blobEndpoint,
+			AccountName: accountName,
+			AccountKey:  accountKey,
+		}, nil
+	}
+
+	return ParsedConnectionString{
+		ServiceURL:  fmt.Sprintf("%v://%v.blob.%v", protocol, accountName, suffix),
+		AccountName: accountName,
+		AccountKey:  accountKey,
+	}, nil
 }
 
 // TODO(dannyk): implement for client

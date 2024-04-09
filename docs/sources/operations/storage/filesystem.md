@@ -1,8 +1,10 @@
 ---
-title: Filesystem
-description: Filesystem Object Store
+title: Filesystem object store
+menuTitle:  Filesystem object store
+description: Describes the features and limitations of using a filesystem object store with Loki.
+weight:  300
 ---
-# Filesystem
+# Filesystem object store
 
 The filesystem object store is the easiest to get started with Grafana Loki but there are some pros/cons to this approach.
 

@@ -32,19 +32,61 @@
     in
     {
       inherit (loki-helm-test) loki-helm-test loki-helm-test-docker;
-
-      loki = prev.callPackage ./loki.nix {
+    } // rec {
+      loki = prev.callPackage ./packages/loki.nix {
         inherit imageTag;
         version = shortGitRevsion;
         pkgs = prev;
       };
 
-      faillint = prev.callPackage ./faillint.nix {
-        inherit (prev) lib buildGoModule fetchFromGitHub;
-      };
+      logcli = loki.overrideAttrs (oldAttrs: {
+        pname = "logcli";
 
-      chart-releaser = prev.callPackage ./chart-releaser.nix {
-        inherit (prev) pkgs lib buildGoModule fetchFromGitHub;
-      };
+        buildPhase = ''
+          export GOCACHE=$TMPDIR/go-cache
+          make clean logcli
+        '';
+
+        installPhase = ''
+          mkdir -p $out/bin
+          install -m755 cmd/logcli/logcli $out/bin/logcli
+        '';
+      });
+
+      loki-canary = loki.overrideAttrs (oldAttrs: {
+        pname = "loki-canary";
+
+        buildPhase = ''
+          export GOCACHE=$TMPDIR/go-cache
+          make clean loki-canary
+        '';
+
+        installPhase = ''
+          mkdir -p $out/bin
+          install -m755 cmd/loki-canary/loki-canary $out/bin/loki-canary
+        '';
+      });
+
+      promtail = loki.overrideAttrs (oldAttrs: {
+        pname = "promtail";
+
+        buildInputs =
+          let
+            inherit (oldAttrs) buildInputs;
+          in
+          if prev.stdenv.hostPlatform.isLinux then
+            buildInputs ++ (with prev; [ systemd ])
+          else buildInputs;
+
+        buildPhase = ''
+          export GOCACHE=$TMPDIR/go-cache
+          make clean promtail
+        '';
+
+        installPhase = ''
+          mkdir -p $out/bin
+          install -m755 clients/cmd/promtail/promtail $out/bin/promtail
+        '';
+      });
     };
 }

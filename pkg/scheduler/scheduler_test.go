@@ -2,16 +2,18 @@ package scheduler
 
 import (
 	"context"
+	"os"
 	"testing"
 
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func TestScheduler_setRunState(t *testing.T) {
@@ -61,6 +63,54 @@ func TestScheduler_setRunState(t *testing.T) {
 	s.setRunState(false)
 	assert.Nil(t, mock.msg)
 
+}
+
+func TestProtobufBackwardsCompatibility(t *testing.T) {
+	t.Run("SchedulerToQuerier", func(t *testing.T) {
+		expected := &schedulerpb.SchedulerToQuerier{
+			QueryID: 42,
+			UserID:  "100",
+			Request: &schedulerpb.SchedulerToQuerier_HttpRequest{
+				HttpRequest: &httpgrpc.HTTPRequest{
+					Headers: []*httpgrpc.Header{{Key: "foo", Values: []string{"bar"}}},
+					Body:    []byte("Hello echo!"),
+				},
+			},
+			StatsEnabled: true,
+		}
+
+		b, err := os.ReadFile("testdata/scheduler_to_querier_k173.bin")
+		assert.NoError(t, err)
+
+		actual := &schedulerpb.SchedulerToQuerier{}
+		err = actual.Unmarshal(b)
+		assert.NoError(t, err)
+
+		assert.IsType(t, &schedulerpb.SchedulerToQuerier_HttpRequest{}, actual.Request)
+		assert.EqualValues(t, expected, actual)
+	})
+
+	t.Run("FrontendToScheduler", func(t *testing.T) {
+		expected := &schedulerpb.FrontendToScheduler{
+			QueryID: 42,
+			UserID:  "100",
+			Request: &schedulerpb.FrontendToScheduler_HttpRequest{
+				HttpRequest: &httpgrpc.HTTPRequest{
+					Headers: []*httpgrpc.Header{{Key: "foo", Values: []string{"bar"}}},
+					Body:    []byte("Hello echo!"),
+				},
+			},
+		}
+		b, err := os.ReadFile("testdata/frontend_to_scheduler_k173.bin")
+		assert.NoError(t, err)
+
+		actual := &schedulerpb.FrontendToScheduler{}
+		err = actual.Unmarshal(b)
+		assert.NoError(t, err)
+
+		assert.IsType(t, &schedulerpb.FrontendToScheduler_HttpRequest{}, actual.Request)
+		assert.EqualValues(t, expected, actual)
+	})
 }
 
 type mockSchedulerForFrontendFrontendLoopServer struct {

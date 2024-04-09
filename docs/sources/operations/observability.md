@@ -1,7 +1,8 @@
 ---
 title: Observability
+menuTitle:  
 description: Observing Grafana Loki
-weight: 20
+weight: 
 ---
 # Observability
 
@@ -15,8 +16,8 @@ All components of Loki expose the following metrics:
 
 | Metric Name                        | Metric Type | Description                                                                                                                  |
 | ---------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `loki_log_messages_total`          | Counter     | DEPRECATED. Use internal_log_messages_total for the same functionality. Total number of log messages created by loki itself. |
-| `loki_internal_log_messages_total` | Counter     | Total number of log messages created by loki itself.                                                                         |
+| `loki_log_messages_total`          | Counter     | DEPRECATED. Use internal_log_messages_total for the same functionality. Total number of log messages created by Loki itself. |
+| `loki_internal_log_messages_total` | Counter     | Total number of log messages created by Loki itself.                                                                         |
 | `loki_request_duration_seconds`    | Histogram   | Number of received HTTP requests.                                                                                            |
 
 The Loki Distributors expose the following metrics:
@@ -32,7 +33,7 @@ The Loki Ingesters expose the following metrics:
 
 | Metric Name                                  | Metric Type | Description                                                                                               |
 | -------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
-| `cortex_ingester_flush_queue_length`         | Gauge       | The total number of series pending in the flush queue.                                                    |
+| `loki_ingester_flush_queue_length`           | Gauge       | The total number of series pending in the flush queue.                                                    |
 | `loki_chunk_store_index_entries_per_chunk`   | Histogram   | Number of index entries written to storage per chunk.                                                     |
 | `loki_ingester_memory_chunks`                | Gauge       | The total number of chunks in memory.                                                                     |
 | `loki_ingester_memory_streams`               | Gauge       | The total number of streams in memory.                                                                    |

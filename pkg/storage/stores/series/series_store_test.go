@@ -17,17 +17,18 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type configFactory func() config.ChunkStoreConfig
@@ -54,9 +55,7 @@ var (
 			configFn: func() config.ChunkStoreConfig {
 				var storeCfg config.ChunkStoreConfig
 				flagext.DefaultValues(&storeCfg)
-				storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
-					MaxSizeItems: 500,
-				}, prometheus.NewRegistry(), log.NewNopLogger(), stats.ChunkCache)
+				storeCfg.WriteDedupeCacheConfig.Cache = cache.NewEmbeddedCache("test", cache.EmbeddedCacheConfig{MaxSizeItems: 500}, prometheus.NewRegistry(), log.NewNopLogger(), stats.ChunkCache)
 				return storeCfg
 			},
 		},
@@ -91,9 +90,9 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg config
 	}, nil)
 	require.NoError(t, err)
 
-	store, err := storage.NewStore(storage.Config{MaxChunkBatchSize: 1}, storeCfg, schemaCfg, limits, cm, prometheus.NewRegistry(), log.NewNopLogger())
+	store, err := storage.NewStore(storage.Config{MaxChunkBatchSize: 1}, storeCfg, schemaCfg, limits, cm, prometheus.NewRegistry(), log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
-	tm, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, testutils.NewMockStorage(), nil, nil, nil)
+	tm, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, testutils.NewMockStorage(), nil, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	_ = tm.SyncTables(context.Background())
 	return store
@@ -389,13 +388,12 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 
 			for _, tc := range testCases {
 				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema, storeCase.name), func(t *testing.T) {
-					t.Log("========= Running query", tc.query, "with schema", schema)
 					matchers, err := parser.ParseMetricSelector(tc.query)
 					if err != nil {
 						t.Fatal(err)
 					}
 
-					chunks, fetchers, err := store.GetChunkRefs(ctx, userID, now.Add(-time.Hour), now, matchers...)
+					chunks, fetchers, err := store.GetChunks(ctx, userID, now.Add(-time.Hour), now, chunk.NewPredicate(matchers, nil))
 					require.NoError(t, err)
 					fetchedChunk := []chunk.Chunk{}
 					for _, f := range fetchers {
@@ -519,7 +517,6 @@ func Test_GetSeries(t *testing.T) {
 
 			for _, tc := range testCases {
 				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema, storeCase.name), func(t *testing.T) {
-					t.Log("========= Running query", tc.query, "with schema", schema)
 					matchers, err := parser.ParseMetricSelector(tc.query)
 					if err != nil {
 						t.Fatal(err)
@@ -655,7 +652,7 @@ func TestChunkStoreError(t *testing.T) {
 				require.NoError(t, err)
 
 				// Query with ordinary time-range
-				_, _, err = store.GetChunkRefs(ctx, userID, tc.from, tc.through, matchers...)
+				_, _, err = store.GetChunks(ctx, userID, tc.from, tc.through, chunk.NewPredicate(matchers, nil))
 				require.EqualError(t, err, tc.err)
 			})
 		}

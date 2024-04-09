@@ -1,22 +1,23 @@
 ---
 title: Loki Canary
-description: Loki Canary is a standalone app that audits the log-capturing performance of a Grafana Loki cluster.
-weight: 60
+menuTitle:  
+description: Describes how to use Loki Canary to audit the log-capturing performance of a Grafana Loki cluster to ensure Loki is ingesting logs without data loss.
+weight: 
 ---
 # Loki Canary
 
-Loki Canary is a standalone app that audits the log-capturing performance of
-a Grafana Loki cluster.
+Loki Canary is a standalone app that audits the log-capturing performance of a Grafana Loki cluster.  
+This component emits and periodically queries for logs, making sure that Loki is ingesting logs without any data loss.
+When something is wrong with Loki, the Canary often provides the first indication. 
 
 Loki Canary generates artificial log lines.
 These log lines are sent to the Loki cluster.
 Loki Canary communicates with the Loki cluster to capture metrics about the
 artificial log lines,
-such that Loki Canary forms information about the performance of the
-Loki cluster.
+such that Loki Canary forms information about the performance of the Loki cluster.
 The information is available as Prometheus time series metrics.
 
-![block_diagram](./loki-canary-block.png)
+{{< figure max-width="75%" src="./loki-canary-block.png" alt="Loki canary">}}
 
 Loki Canary writes a log to a file and stores the timestamp in an internal
 array. The contents look something like this:
@@ -132,7 +133,7 @@ Loki Canary is also provided as a Docker container image:
 
 ```bash
 # change tag to the most recent release
-$ docker pull grafana/loki-canary:2.0.0
+$ docker pull grafana/loki-canary:2.9.2
 ```
 
 ### Kubernetes
@@ -259,16 +260,23 @@ spec:
 If the other options are not sufficient for your use case, you can compile
 `loki-canary` yourself:
 
-```bash
-# clone the source tree
-$ git clone https://github.com/grafana/loki
+1. Clone the source tree.
 
-# build the binary
-$ make loki-canary
+    ```bash
+    $ git clone https://github.com/grafana/loki
+    ```
 
-# (optionally build the container image)
-$ make loki-canary-image
-```
+1. Build the binary.
+
+    ```bash
+    $ make loki-canary
+    ```
+
+1. Optional: Build the container image.
+
+    ```bash
+    $ make loki-canary-image
+    ```
 
 ## Configuration
 
@@ -281,7 +289,7 @@ The `-labelname` and `-labelvalue` flags should also be provided, as these are
 used by Loki Canary to filter the log stream to only process logs for the
 current instance of the canary. Ensure that the values provided to the flags are
 unique to each instance of Loki Canary. Grafana Labs' Tanka config
-accomplishes this by passing in the pod name as the label value.
+accomplishes this by passing in the Pod name as the label value.
 
 If Loki Canary reports a high number of `unexpected_entries`, Loki Canary may
 not be waiting long enough and the value for the `-wait` flag should be

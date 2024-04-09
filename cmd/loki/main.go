@@ -6,19 +6,23 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/log"
+	"github.com/grafana/dskit/spanprofiler"
 	"github.com/grafana/dskit/tracing"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 
-	"github.com/grafana/loki/pkg/loki"
-	"github.com/grafana/loki/pkg/util"
-	_ "github.com/grafana/loki/pkg/util/build"
-	"github.com/grafana/loki/pkg/util/cfg"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/loki"
+	loki_runtime "github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util"
+	_ "github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/cfg"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func exit(code int) {
@@ -27,6 +31,8 @@ func exit(code int) {
 }
 
 func main() {
+	startTime := time.Now()
+
 	var config loki.ConfigWrapper
 
 	if loki.PrintVersion(os.Args[1:]) {
@@ -38,17 +44,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Set the global OTLP config which is needed in per tenant otlp config
+	config.LimitsConfig.SetGlobalOTLPConfig(config.Distributor.OTLPConfig)
 	// This global is set to the config passed into the last call to `NewOverrides`. If we don't
 	// call it atleast once, the defaults are set to an empty struct.
 	// We call it with the flag values so that the config file unmarshalling only overrides the values set in the config.
 	validation.SetDefaultLimitsForYAMLUnmarshalling(config.LimitsConfig)
+	loki_runtime.SetDefaultLimitsForYAMLUnmarshalling(config.OperationalConfig)
 
 	// Init the logger which will honor the log level set in config.Server
 	if reflect.DeepEqual(&config.Server.LogLevel, &log.Level{}) {
 		level.Error(util_log.Logger).Log("msg", "invalid log level")
 		exit(1)
 	}
-	util_log.InitLogger(&config.Server, prometheus.DefaultRegisterer, config.UseBufferedLogger, config.UseSyncLogger)
+	serverCfg := &config.Server
+	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, false)
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
@@ -80,7 +90,9 @@ func main() {
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
 		}
-
+		if config.Tracing.ProfilingEnabled {
+			opentracing.SetGlobalTracer(spanprofiler.NewTracer(opentracing.GlobalTracer()))
+		}
 		defer func() {
 			if trace != nil {
 				if err := trace.Close(); err != nil {
@@ -107,6 +119,6 @@ func main() {
 
 	level.Info(util_log.Logger).Log("msg", "Starting Loki", "version", version.Info())
 
-	err = t.Run(loki.RunOpts{})
+	err = t.Run(loki.RunOpts{StartTime: startTime})
 	util_log.CheckFatal("running loki", err, util_log.Logger)
 }

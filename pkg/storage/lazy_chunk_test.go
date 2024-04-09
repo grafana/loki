@@ -9,13 +9,13 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 func TestLazyChunkIterator(t *testing.T) {
@@ -204,7 +204,7 @@ func (fakeBlock) Entries() int     { return 0 }
 func (fakeBlock) Offset() int      { return 0 }
 func (f fakeBlock) MinTime() int64 { return f.mint }
 func (f fakeBlock) MaxTime() int64 { return f.maxt }
-func (fakeBlock) Iterator(context.Context, log.StreamPipeline, ...iter.EntryIteratorOption) iter.EntryIterator {
+func (fakeBlock) Iterator(context.Context, log.StreamPipeline) iter.EntryIterator {
 	return nil
 }
 
