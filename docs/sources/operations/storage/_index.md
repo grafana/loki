@@ -2,7 +2,6 @@
 title: Manage storage
 menuTitle: Storage
 description: Describes Loki's storage needs and supported stores.
-weight: 
 ---
 # Manage storage
 

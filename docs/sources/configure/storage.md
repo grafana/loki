@@ -1,4 +1,6 @@
 ---
+aliases:
+  - ../storage/ # /docs/loki/latest/storage/
 title: Storage
 description: Describes Loki storage.
 weight: 475
