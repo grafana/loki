@@ -31,7 +31,7 @@
 
 * This release should only be used for the release branches such as 2.8.x and 2.7.x. *
 The current release of the build image uses golangci-lint to v1.53.2 which makes
-a lot of linter checks mandatory requiring a huge amount of fixes. 
+a lot of linter checks mandatory requiring a huge amount of fixes.
 See https://github.com/grafana/loki/pull/9601. To avoid the integration problems this
 build image will be used in those branches.
 
