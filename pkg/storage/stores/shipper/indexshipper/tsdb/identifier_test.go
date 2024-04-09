@@ -20,6 +20,7 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 			desc:  "simple_works",
 			input: "1-compactor-1-10-ff.tsdb",
 			id: SingleTenantTSDBIdentifier{
+				origTS:   1,
 				TS:       time.Unix(1, 0),
 				From:     1,
 				Through:  10,
@@ -31,6 +32,7 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 			desc:  "simple_works_with_nanosecond",
 			input: "1712534400000000000-compactor-1-10-ff.tsdb",
 			id: SingleTenantTSDBIdentifier{
+				origTS:   1712534400000000000,
 				TS:       time.Unix(0, 1712534400000000000),
 				From:     1,
 				Through:  10,
@@ -42,6 +44,7 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 			desc:  "uint32_max_checksum_works",
 			input: fmt.Sprintf("1-compactor-1-10-%x.tsdb", math.MaxUint32),
 			id: SingleTenantTSDBIdentifier{
+				origTS:   1,
 				TS:       time.Unix(1, 0),
 				From:     1,
 				Through:  10,
@@ -69,6 +72,9 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 			id, ok := ParseSingleTenantTSDBPath(tc.input)
 			require.Equal(t, tc.ok, ok)
 			require.Equal(t, tc.id, id)
+			if ok {
+				require.Equal(t, tc.input, id.Name())
+			}
 		})
 	}
 }

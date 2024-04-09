@@ -64,6 +64,10 @@ func (p prefixedIdentifier) Name() string {
 // Identifier has all the information needed to resolve a TSDB index
 // Notably this abstracts away OS path separators, etc.
 type SingleTenantTSDBIdentifier struct {
+	// origTS holds original timestamp from filename which was parsed to TS as time.Time.
+	// timestamp in filename could be a unix second or a unix nanosecond so
+	// retaining the original timestamp to be able to reproduce filename back from parsed identifier.
+	origTS        int64
 	TS            time.Time
 	From, Through model.Time
 	Checksum      uint32
@@ -77,9 +81,13 @@ func (i SingleTenantTSDBIdentifier) Hash(h hash.Hash32) (err error) {
 
 // str builds filename with format <file-creation-ts> + `-` + `compactor` + `-` + <oldest-chunk-start-ts> + `-` + <latest-chunk-end-ts> `-` + <index-checksum>
 func (i SingleTenantTSDBIdentifier) str() string {
+	ts := i.origTS
+	if ts == 0 {
+		ts = i.TS.UnixNano()
+	}
 	return fmt.Sprintf(
 		"%d-%s-%d-%d-%x.tsdb",
-		i.TS.UnixNano(),
+		ts,
 		compactedFileUploader,
 		i.From,
 		i.Through,
@@ -140,6 +148,7 @@ func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 		parsedTS = time.Unix(0, ts)
 	}
 	return SingleTenantTSDBIdentifier{
+		origTS:   ts,
 		TS:       parsedTS,
 		From:     model.Time(from),
 		Through:  model.Time(through),
