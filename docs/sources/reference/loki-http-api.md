@@ -111,7 +111,7 @@ These HTTP endpoints are exposed by all individual components:
 ### Deprecated endpoints
 
 {{% admonition type="note" %}}
-The following endpoints are deprecated.  While they still exist and work, they should not be used for new deployments.
+The following endpoints are deprecated.While they still exist and work, they should not be used for new deployments.
 Existing deployments should upgrade to use the supported endpoints.
 {{% /admonition %}}
 
@@ -131,17 +131,17 @@ Existing deployments should upgrade to use the supported endpoints.
 Some Loki API endpoints return a result of a matrix, a vector, or a stream:
 
 - **Matrix**: a table of values where each row represents a different label set
-  and the columns are each sample values for that row over the queried time.
-  Matrix types are only returned when running a query that computes some value.
+and the columns are each sample values for that row over the queried time.
+Matrix types are only returned when running a query that computes some value.
 
 - **Instant Vector**: denoted in the type as just `vector`, an Instant Vector
-  represents the latest value of a calculation for a given labelset. Instant
-  Vectors are only returned when doing a query against a single point in
-  time.
+represents the latest value of a calculation for a given labelset. Instant
+Vectors are only returned when doing a query against a single point in
+time.
 
 - **Stream**: a Stream is a set of all values (logs) for a given label set over the
-  queried time range. Streams are the only type that will result in log lines
-  being returned.
+queried time range. Streams are the only type that will result in log lines
+being returned.
 
 ### Timestamps
 
@@ -269,7 +269,7 @@ GET /loki/api/v1/query
 This type of query is often referred to as an instant query. Instant queries are mostly used for metric type LogQL queries.
 It accepts the following query parameters in the URL:
 
-- `query`: The [LogQL]({{< relref "../query" >}}) query to perform.  Requests that do not use valid LogQL syntax will return errors.
+- `query`: The [LogQL]({{< relref "../query" >}}) query to perform. Requests that do not use valid LogQL syntax will return errors.
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream (log lines) response.
 - `time`: The evaluation time for the query as a nanosecond Unix epoch or another [supported format](#timestamps). Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward`.
