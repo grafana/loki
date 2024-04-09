@@ -23,7 +23,7 @@ jobs:
         with:
           path: operator
           config-file: operator/release-please-config.json
-          token: ${{ secrets.MY_RELEASE_PLEASE_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
   publishRelease:
     needs:
     - "releasePlease"
@@ -36,7 +36,7 @@ jobs:
           path: "release"
       - name: "publish release"
         env:
-          GH_TOKEN: ${{ secrets.MY_RELEASE_PLEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         working-directory: "release"
         run: |
           gh release edit "${{ needs.releasePlease.outputs.release_name }}" --draft=false --latest=false

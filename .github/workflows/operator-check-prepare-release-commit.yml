@@ -30,7 +30,7 @@ jobs:
       - name: Check main commits for prepare release commit
         id: check_commit
         env:
-          GH_TOKEN: ${{ secrets.MY_RELEASE_PLEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         working-directory: "release"
         run: |
           COMMIT=$(gh search commits "chore(operator): prepare community release v${{ steps.pr_semver.outputs.semver }}")
