@@ -36,9 +36,6 @@ schema_config:
       period: 24h
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /tmp/loki/index
-    cache_location: /tmp/loki/index_cache
   filesystem:
     directory: /tmp/loki/chunks
 
@@ -148,6 +145,8 @@ storage_config:
 
 # This is a partial configuration to deploy Loki backed by Baidu Object Storage (BOS).
 # The index will be shipped to the storage via tsdb-shipper.
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:
@@ -160,9 +159,6 @@ schema_config:
         period: 24h
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
   bos:
     bucket_name: bucket_name_1
     endpoint: bj.bcebos.com
@@ -189,6 +185,9 @@ compactor:
 ## 7-Schema-Migration-Snippet.yaml
 
 ```yaml
+
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:
@@ -221,6 +220,8 @@ schema_config:
 ```yaml
 
 # This partial configuration uses Alibaba for chunk storage.
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:
@@ -291,6 +292,8 @@ storage_config:
 ```yaml
 
 # This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. HMAC will be used for authenticating with COS.
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:
@@ -303,9 +306,6 @@ schema_config:
         prefix: index_
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -321,6 +321,8 @@ storage_config:
 ```yaml
 
 # This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. APIKey will be used for authenticating with COS.
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:
@@ -333,9 +335,6 @@ schema_config:
         prefix: index_
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -358,6 +357,8 @@ storage_config:
 # the same trusted profile.
 # In order to use trusted profile authentication we need to follow an additional step to create a trusted profile.
 # For more details about creating a trusted profile, see https://cloud.ibm.com/docs/account?topic=account-create-trusted-profile&interface=ui.
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:
@@ -370,9 +371,6 @@ schema_config:
         prefix: index_
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>

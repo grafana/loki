@@ -35,6 +35,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/bloomcompactor"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
@@ -114,7 +115,6 @@ const (
 	MemberlistKV             string = "memberlist-kv"
 	Compactor                string = "compactor"
 	BloomGateway             string = "bloom-gateway"
-	BloomGatewayRing         string = "bloom-gateway-ring"
 	IndexGateway             string = "index-gateway"
 	IndexGatewayRing         string = "index-gateway-ring"
 	IndexGatewayInterceptors string = "index-gateway-interceptors"
@@ -278,7 +278,6 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	t.Cfg.BloomCompactor.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.IndexGateway.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
-	t.Cfg.BloomGateway.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ruler.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
@@ -809,16 +808,16 @@ func (t *Loki) setupAsyncStore() error {
 
 	shipperConfigIdx := config.ActivePeriodConfig(t.Cfg.SchemaConfig.Configs)
 	iTy := t.Cfg.SchemaConfig.Configs[shipperConfigIdx].IndexType
-	if iTy != config.BoltDBShipperType && iTy != config.TSDBType {
+	if iTy != types.BoltDBShipperType && iTy != types.TSDBType {
 		shipperConfigIdx++
 	}
 
 	// TODO(owen-d): make helper more agnostic between boltdb|tsdb
 	var resyncInterval time.Duration
 	switch t.Cfg.SchemaConfig.Configs[shipperConfigIdx].IndexType {
-	case config.BoltDBShipperType:
+	case types.BoltDBShipperType:
 		resyncInterval = t.Cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval
-	case config.TSDBType:
+	case types.TSDBType:
 		resyncInterval = t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval
 	}
 
@@ -1293,7 +1292,6 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.BloomGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.BloomCompactor.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Pattern.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
@@ -1349,8 +1347,8 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		return nil, err
 	}
 
-	t.compactor.RegisterIndexCompactor(config.BoltDBShipperType, boltdbcompactor.NewIndexCompactor())
-	t.compactor.RegisterIndexCompactor(config.TSDBType, tsdb.NewIndexCompactor())
+	t.compactor.RegisterIndexCompactor(types.BoltDBShipperType, boltdbcompactor.NewIndexCompactor())
+	t.compactor.RegisterIndexCompactor(types.TSDBType, tsdb.NewIndexCompactor())
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 
 	if t.Cfg.InternalServer.Enable {
@@ -1386,35 +1384,6 @@ func (t *Loki) initBloomGateway() (services.Service, error) {
 	return gateway, nil
 }
 
-func (t *Loki) initBloomGatewayRing() (services.Service, error) {
-	if !t.Cfg.BloomGateway.Enabled {
-		return nil, nil
-	}
-	// Inherit ring listen port from gRPC config
-	t.Cfg.BloomGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
-
-	// TODO(chaudum): Do we want to integration the bloom gateway component into the backend target?
-	mode := lokiring.ClientMode
-	legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
-	if t.Cfg.isModuleEnabled(BloomGateway) || t.Cfg.isModuleEnabled(Backend) || legacyReadMode {
-		mode = lokiring.ServerMode
-	}
-	manager, err := lokiring.NewRingManager(bloomGatewayRingKey, mode, t.Cfg.BloomGateway.Ring, t.Cfg.BloomGateway.Ring.ReplicationFactor, t.Cfg.BloomGateway.Ring.NumTokens, util_log.Logger, prometheus.DefaultRegisterer)
-	if err != nil {
-		return nil, gerrors.Wrap(err, "error initializing bloom gateway ring manager")
-	}
-
-	t.bloomGatewayRingManager = manager
-
-	t.Server.HTTP.Path("/bloomgateway/ring").Methods("GET", "POST").Handler(t.bloomGatewayRingManager)
-
-	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/bloomgateway/ring").Methods("GET", "POST").Handler(t.bloomGatewayRingManager)
-	}
-
-	return t.bloomGatewayRingManager, nil
-}
-
 func (t *Loki) initIndexGateway() (services.Service, error) {
 	shardingStrategy := indexgateway.GetShardingStrategy(t.Cfg.IndexGateway, t.indexGatewayRingManager, t.Overrides)
 
@@ -1422,7 +1391,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 	for i, period := range t.Cfg.SchemaConfig.Configs {
 		period := period
 
-		if period.IndexType != config.BoltDBShipperType {
+		if period.IndexType != types.BoltDBShipperType {
 			continue
 		}
 
@@ -1822,7 +1791,7 @@ func (dh ignoreSignalHandler) Stop() {
 
 func schemaHasBoltDBShipperConfig(scfg config.SchemaConfig) bool {
 	for _, cfg := range scfg.Configs {
-		if cfg.IndexType == config.BoltDBShipperType {
+		if cfg.IndexType == types.BoltDBShipperType {
 			return true
 		}
 	}

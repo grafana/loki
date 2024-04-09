@@ -12,16 +12,18 @@ Loki is a modular system that contains many components that can either be run to
 in logical groups (in "simple scalable deployment" mode with targets `read`, `write`, `backend`), or individually (in "microservice" mode).
 For more information see [Deployment modes]({{< relref "./deployment-modes" >}}).
 
-| Component | _individual_ | `all` | `read` | `write` | `backend` |
-| ----------------------------------- | - | - | - | - | - |
-| [Distributor](#distributor)         | x | x |   | x |   |
-| [Ingester](#ingester)               | x | x |   | x |   |
-| [Query Frontend](#query-frontend)   | x | x | x |   |   |
-| [Query Scheduler](#query-scheduler) | x | x |   |   | x |
-| [Querier](#querier)                 | x | x | x |   |   |
-| [Index Gateway](#index-gateway)     | x |   |   |   | x |
-| [Compactor](#compactor)             | x | x |   |   | x |
-| [Ruler](#ruler)                     | x | x |   |   | x |
+| Component                                          | _individual_ | `all` | `read` | `write` | `backend` |
+|----------------------------------------------------|--------------| - | - | - | - |
+| [Distributor](#distributor)                        | x            | x |   | x |   |
+| [Ingester](#ingester)                              | x            | x |   | x |   |
+| [Query Frontend](#query-frontend)                  | x            | x | x |   |   |
+| [Query Scheduler](#query-scheduler)                | x            | x |   |   | x |
+| [Querier](#querier)                                | x            | x | x |   |   |
+| [Index Gateway](#index-gateway)                    | x            |   |   |   | x |
+| [Compactor](#compactor)                            | x            | x |   |   | x |
+| [Ruler](#ruler)                                    | x            | x |   |   | x |
+| [Bloom Compactor (Experimental)](#bloom-compactor) | x            |   |   |   | x |
+| [Bloom Gateway (Experimental)](#bloom-gateway)     | x            |   |   |   | x |
 
 This page describes the responsibilities of each of these components.
 
@@ -334,3 +336,29 @@ This mode is called remote rule evaluation and is used to gain the advantages of
 from the query frontend.
 
 When running multiple rulers, they use a consistent hash ring to distribute rule groups amongst available ruler instances.
+
+## Bloom Compactor
+{{% admonition type="warning" %}}
+This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.  No SLA is provided.  
+{{% /admonition %}}
+
+The Bloom Compactor service is responsible for building blooms for chunks in the object store. 
+The resulting blooms are grouped in bloom blocks spanning multiple series and chunks from a given day. 
+This component also builds metadata files to track which blocks are available for each series and TSDB index file.
+
+The service is horizontally scalable. When running multiple Bloom Compactors, they use a ring to shard tenants and 
+distribute series fingerprints among the available Bloom Compactor instances. 
+The ring is also used to decide which compactor should apply blooms retention.
+
+## Bloom Gateway
+{{% admonition type="warning" %}}
+This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.  No SLA is provided.  
+{{% /admonition %}}
+
+The Bloom Gateway service is responsible for handling and serving chunks filtering requests. 
+The index gateway queries the Bloom Gateway when computing chunk references, or when computing shards for a given query.
+The gateway service takes a list of chunks and a filtering expression and matches them against the blooms, 
+filtering out any chunks that do not match the given filter expression.
+
+The service is horizontally scalable. When running multiple instances, they use a ring to shard tenants and 
+distribute series fingerprints across instances.
