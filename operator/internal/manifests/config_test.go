@@ -15,7 +15,6 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 func TestConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
@@ -1412,67 +1411,6 @@ func TestConfigOptions_Shipper(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := ConfigOptions(tc.inOpt)
 			require.Equal(t, tc.wantShipper, got.Shippers)
-		})
-	}
-}
-
-func TestConfigOptions_S3ForcePathStyle(t *testing.T) {
-	tt := []struct {
-		desc               string
-		inOptions          Options
-		wantStorageOptions storage.Options
-	}{
-		{
-			desc: "aws s3 endpoint",
-			inOptions: Options{
-				Name:      "my-stack",
-				Namespace: "my-ns",
-				ObjectStorage: storage.Options{
-					S3: &storage.S3StorageConfig{
-						Endpoint: "https://s3.us-east.amazonaws.com",
-						Region:   "us-east",
-						Buckets:  "loki",
-					},
-				},
-			},
-			wantStorageOptions: storage.Options{
-				S3: &storage.S3StorageConfig{
-					Endpoint: "https://s3.us-east.amazonaws.com",
-					Region:   "us-east",
-					Buckets:  "loki",
-				},
-			},
-		},
-		{
-			desc: "non-aws s3 endpoint",
-			inOptions: Options{
-				Name:      "my-stack",
-				Namespace: "my-ns",
-				ObjectStorage: storage.Options{
-					S3: &storage.S3StorageConfig{
-						Endpoint: "https://test.default.svc.cluster.local.:9000",
-						Region:   "us-east",
-						Buckets:  "loki",
-					},
-				},
-			},
-			wantStorageOptions: storage.Options{
-				S3: &storage.S3StorageConfig{
-					Endpoint:       "https://test.default.svc.cluster.local.:9000",
-					Region:         "us-east",
-					Buckets:        "loki",
-					ForcePathStyle: true,
-				},
-			},
-		},
-	}
-
-	for _, tc := range tt {
-		tc := tc
-		t.Run(tc.desc, func(t *testing.T) {
-			t.Parallel()
-			options := ConfigOptions(tc.inOptions)
-			require.Equal(t, tc.wantStorageOptions, options.ObjectStorage)
 		})
 	}
 }

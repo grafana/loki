@@ -132,11 +132,6 @@ func ConfigOptions(opt Options) config.Options {
 		}
 	}
 
-	if opt.ObjectStorage.S3 != nil {
-		awsEndpointSuffix := ".amazonaws.com"
-		opt.ObjectStorage.S3.ForcePathStyle = !strings.HasSuffix(opt.ObjectStorage.S3.Endpoint, awsEndpointSuffix)
-	}
-
 	return config.Options{
 		Stack: opt.Stack,
 		Gates: opt.Gates,
