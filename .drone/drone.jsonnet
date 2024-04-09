@@ -376,7 +376,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ],
 };
 
-local build_image_tag = '0.33.1-golangci.1.51.2';
+local build_image_tag = '0.33.1';
 [
   pipeline('loki-build-image-' + arch) {
     workspace: {
