@@ -1340,4 +1340,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: a86ee316be8eac6e8af4f33b2dbf469ef8e16f2aa4912d1124cfed3ecd30f449
+hmac: dbc4d2b5c84e0464f24846abc8e7e73a5a937df289a0ecdb501f3bca28ebb8e3
+
+...
