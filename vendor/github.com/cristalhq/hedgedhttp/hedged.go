@@ -12,6 +12,79 @@ import (
 
 const infiniteTimeout = 30 * 24 * time.Hour // domain specific infinite
 
+// Client represents a hedged HTTP client.
+type Client struct {
+	rt    http.RoundTripper
+	stats *Stats
+}
+
+// Config for the [Client].
+type Config struct {
+	// Transport of the [Client].
+	// Default is nil which results in [net/http.DefaultTransport].
+	Transport http.RoundTripper
+
+	// Upto says how much requests to make.
+	// Default is zero which means no hedged requests will be made.
+	Upto int
+
+	// Delay before 2 consequitive hedged requests.
+	Delay time.Duration
+
+	// Next returns the upto and delay for each HTTP that will be hedged.
+	// Default is nil which results in (Upto, Delay) result.
+	Next NextFn
+}
+
+// NextFn represents a function that is called for each HTTP request for retrieving hedging options.
+type NextFn func() (upto int, delay time.Duration)
+
+// New returns a new Client for the given config.
+func New(cfg Config) (*Client, error) {
+	switch {
+	case cfg.Delay < 0:
+		return nil, errors.New("hedgedhttp: timeout cannot be negative")
+	case cfg.Upto < 0:
+		return nil, errors.New("hedgedhttp: upto cannot be negative")
+	}
+	if cfg.Transport == nil {
+		cfg.Transport = http.DefaultTransport
+	}
+
+	rt, stats, err := NewRoundTripperAndStats(cfg.Delay, cfg.Upto, cfg.Transport)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO(cristaloleg): this should be removed after internals cleanup.
+	rt2, ok := rt.(*hedgedTransport)
+	if !ok {
+		panic(fmt.Sprintf("want *hedgedTransport got %T", rt))
+	}
+	rt2.next = cfg.Next
+
+	c := &Client{
+		rt:    rt2,
+		stats: stats,
+	}
+	return c, nil
+}
+
+// Stats returns statistics for the given client, see [Stats] methods.
+func (c *Client) Stats() *Stats {
+	return c.stats
+}
+
+// Do does the same as [RoundTrip], this method is presented to align with [net/http.Client].
+func (c *Client) Do(req *http.Request) (*http.Response, error) {
+	return c.rt.RoundTrip(req)
+}
+
+// RoundTrip implements [net/http.RoundTripper] interface.
+func (c *Client) RoundTrip(req *http.Request) (*http.Response, error) {
+	return c.rt.RoundTrip(req)
+}
+
 // NewClient returns a new http.Client which implements hedged requests pattern.
 // Given Client starts a new request after a timeout from previous request.
 // Starts no more than upto requests.
@@ -63,8 +136,8 @@ func NewRoundTripperAndStats(timeout time.Duration, upto int, rt http.RoundTripp
 	switch {
 	case timeout < 0:
 		return nil, nil, errors.New("hedgedhttp: timeout cannot be negative")
-	case upto < 1:
-		return nil, nil, errors.New("hedgedhttp: upto must be greater than 0")
+	case upto < 0:
+		return nil, nil, errors.New("hedgedhttp: upto cannot be negative")
 	}
 
 	if rt == nil {
@@ -88,21 +161,35 @@ type hedgedTransport struct {
 	rt      http.RoundTripper
 	timeout time.Duration
 	upto    int
+	next    NextFn
 	metrics *Stats
 }
 
 func (ht *hedgedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	mainCtx := req.Context()
 
-	timeout := ht.timeout
+	upto, timeout := ht.upto, ht.timeout
+	if ht.next != nil {
+		upto, timeout = ht.next()
+	}
+
+	// no hedged requests, just a regular one.
+	if upto <= 0 {
+		return ht.rt.RoundTrip(req)
+	}
+	// rollback to default timeout.
+	if timeout < 0 {
+		timeout = ht.timeout
+	}
+
 	errOverall := &MultiError{}
-	resultCh := make(chan indexedResp, ht.upto)
-	errorCh := make(chan error, ht.upto)
+	resultCh := make(chan indexedResp, upto)
+	errorCh := make(chan error, upto)
 
 	ht.metrics.requestedRoundTripsInc()
 
 	resultIdx := -1
-	cancels := make([]func(), ht.upto)
+	cancels := make([]func(), upto)
 
 	defer runInPool(func() {
 		for i, cancel := range cancels {
@@ -113,8 +200,8 @@ func (ht *hedgedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		}
 	})
 
-	for sent := 0; len(errOverall.Errors) < ht.upto; sent++ {
-		if sent < ht.upto {
+	for sent := 0; len(errOverall.Errors) < upto; sent++ {
+		if sent < upto {
 			idx := sent
 			subReq, cancel := reqWithCtx(req, mainCtx, idx != 0)
 			cancels[idx] = cancel
@@ -132,7 +219,7 @@ func (ht *hedgedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		}
 
 		// all request sent - effectively disabling timeout between requests
-		if sent == ht.upto {
+		if sent == upto {
 			timeout = infiniteTimeout
 		}
 		resp, err := waitResult(mainCtx, resultCh, errorCh, timeout)
@@ -140,6 +227,11 @@ func (ht *hedgedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		switch {
 		case resp.Resp != nil:
 			resultIdx = resp.Index
+			if resultIdx == 0 {
+				ht.metrics.originalRequestWinsInc()
+			} else {
+				ht.metrics.hedgedRequestWinsInc()
+			}
 			return resp.Resp, nil
 		case mainCtx.Err() != nil:
 			ht.metrics.canceledByUserRoundTripsInc()

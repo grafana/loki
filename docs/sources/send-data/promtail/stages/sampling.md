@@ -47,7 +47,7 @@ pipeline_stages:
       app:
 - match:
     pipeline_name: "app2"
-    selector: "{app="poki"}"
+    selector: '{app="poki"}'
     stages:
     - sampling:
         rate: 0.1

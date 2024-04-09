@@ -10,7 +10,7 @@ import (
 
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestExplain(t *testing.T) {
@@ -28,15 +28,16 @@ func TestExplain(t *testing.T) {
 	defaultEv := NewDefaultEvaluator(querier, 30*time.Second)
 	downEv := &DownstreamEvaluator{Downstreamer: MockDownstreamer{regular}, defaultEvaluator: defaultEv}
 
-	mapper := NewShardMapper(ConstantShards(4), nilShardMetrics)
-	_, _, expr, err := mapper.Parse(query)
+	strategy := NewPowerOfTwoStrategy(ConstantShards(4))
+	mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
+	_, _, expr, err := mapper.Parse(syntax.MustParseExpr(query))
 	require.NoError(t, err)
 
 	params := LiteralParams{
-		qs:    query,
-		start: time.Unix(60, 0),
-		end:   time.Unix(60, 0),
-		limit: 1000,
+		queryString: query,
+		start:       time.Unix(60, 0),
+		end:         time.Unix(60, 0),
+		limit:       1000,
 	}
 
 	ev, err := downEv.NewStepEvaluator(ctx, downEv, expr.(syntax.SampleExpr), params)

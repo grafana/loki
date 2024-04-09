@@ -13,12 +13,12 @@ import (
 	dslog "github.com/grafana/dskit/log"
 	"github.com/prometheus/common/version"
 
-	_ "github.com/grafana/loki/pkg/util/build"
+	_ "github.com/grafana/loki/v3/pkg/util/build"
 )
 import (
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
 )
 
 var (
@@ -63,7 +63,7 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 
 	level.Info(logger).Log("[flb-go]", "Starting fluent-bit-go-loki", "version", version.Info())
 	paramLogger := log.With(logger, "[flb-go]", "provided parameter")
-	level.Info(paramLogger).Log("URL", conf.clientConfig.URL)
+	level.Info(paramLogger).Log("URL", conf.clientConfig.URL.Redacted())
 	level.Info(paramLogger).Log("TenantID", conf.clientConfig.TenantID)
 	level.Info(paramLogger).Log("BatchWait", fmt.Sprintf("%.3fs", conf.clientConfig.BatchWait.Seconds()))
 	level.Info(paramLogger).Log("BatchSize", conf.clientConfig.BatchSize)

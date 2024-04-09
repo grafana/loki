@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 func TestParseRangeQuery(t *testing.T) {
@@ -151,7 +151,7 @@ func TestStreams_ToProto(t *testing.T) {
 			"some",
 			[]Stream{
 				{
-					Labels: map[string]string{"foo": "bar"},
+					Labels: map[string]string{"job": "fake"},
 					Entries: []Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},
 						{Timestamp: time.Unix(0, 2), Line: "2", StructuredMetadata: labels.Labels{
@@ -161,19 +161,20 @@ func TestStreams_ToProto(t *testing.T) {
 					},
 				},
 				{
-					Labels: map[string]string{"foo": "bar", "lvl": "error"},
+					Labels: map[string]string{"job": "fake", "lvl": "error"},
 					Entries: []Entry{
 						{Timestamp: time.Unix(0, 3), Line: "3"},
-						{Timestamp: time.Unix(0, 4), Line: "4", StructuredMetadata: labels.Labels{
-							{Name: "foo", Value: "a"},
-							{Name: "bar", Value: "b"},
-						}},
+						{Timestamp: time.Unix(0, 4), Line: "4",
+							StructuredMetadata: labels.Labels{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							}},
 					},
 				},
 			},
 			[]logproto.Stream{
 				{
-					Labels: `{foo="bar"}`,
+					Labels: `{job="fake"}`,
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},
 						{Timestamp: time.Unix(0, 2), Line: "2", StructuredMetadata: []logproto.LabelAdapter{
@@ -183,7 +184,7 @@ func TestStreams_ToProto(t *testing.T) {
 					},
 				},
 				{
-					Labels: `{foo="bar", lvl="error"}`,
+					Labels: `{job="fake", lvl="error"}`,
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 3), Line: "3"},
 						{Timestamp: time.Unix(0, 4), Line: "4", StructuredMetadata: []logproto.LabelAdapter{

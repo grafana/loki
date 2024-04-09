@@ -13,11 +13,12 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 type QueryRangeType string
@@ -31,7 +32,7 @@ var (
 
 // Params details the parameters associated with a loki request
 type Params interface {
-	Query() string
+	QueryString() string
 	Start() time.Time
 	End() time.Time
 	Step() time.Duration
@@ -39,6 +40,7 @@ type Params interface {
 	Limit() uint32
 	Direction() logproto.Direction
 	Shards() []string
+	GetExpression() syntax.Expr
 }
 
 func NewLiteralParams(
@@ -48,33 +50,41 @@ func NewLiteralParams(
 	direction logproto.Direction,
 	limit uint32,
 	shards []string,
-) LiteralParams {
-	return LiteralParams{
-		qs:        qs,
-		start:     start,
-		end:       end,
-		step:      step,
-		interval:  interval,
-		direction: direction,
-		limit:     limit,
-		shards:    shards,
+) (LiteralParams, error) {
+	p := LiteralParams{
+		queryString: qs,
+		start:       start,
+		end:         end,
+		step:        step,
+		interval:    interval,
+		direction:   direction,
+		limit:       limit,
+		shards:      shards,
 	}
+	var err error
+	p.queryExpr, err = syntax.ParseExpr(qs)
+	return p, err
+
 }
 
 // LiteralParams impls Params
 type LiteralParams struct {
-	qs             string
+	queryString    string
 	start, end     time.Time
 	step, interval time.Duration
 	direction      logproto.Direction
 	limit          uint32
 	shards         []string
+	queryExpr      syntax.Expr
 }
 
 func (p LiteralParams) Copy() LiteralParams { return p }
 
 // String impls Params
-func (p LiteralParams) Query() string { return p.qs }
+func (p LiteralParams) QueryString() string { return p.queryString }
+
+// GetExpression impls Params
+func (p LiteralParams) GetExpression() syntax.Expr { return p.queryExpr }
 
 // Start impls Params
 func (p LiteralParams) Start() time.Time { return p.start }
@@ -105,14 +115,40 @@ func GetRangeType(q Params) QueryRangeType {
 	return RangeType
 }
 
+// ParamsWithExpressionOverride overrides the query expression so that the query
+// string and the expression can differ. This is useful for for query planning
+// when plan my not match externally available logql syntax
+type ParamsWithExpressionOverride struct {
+	Params
+	ExpressionOverride syntax.Expr
+}
+
+// GetExpression returns the parsed expression of the query.
+func (p ParamsWithExpressionOverride) GetExpression() syntax.Expr {
+	return p.ExpressionOverride
+}
+
+// ParamsWithExpressionOverride overrides the shards. Since the backing
+// implementation of the Params interface is unknown they are embedded and the
+// original shards are shadowed.
+type ParamsWithShardsOverride struct {
+	Params
+	ShardsOverride []string
+}
+
+// Shards returns this overwriting shards.
+func (p ParamsWithShardsOverride) Shards() []string {
+	return p.ShardsOverride
+}
+
 // Sortable logql contain sort or sort_desc.
 func Sortable(q Params) (bool, error) {
 	var sortable bool
-	expr, err := syntax.ParseSampleExpr(q.Query())
-	if err != nil {
-		return false, err
+	expr, ok := q.GetExpression().(syntax.SampleExpr)
+	if !ok {
+		return false, errors.New("only sample expression supported")
 	}
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		rangeExpr, ok := e.(*syntax.VectorAggregationExpr)
 		if !ok {
 			return
@@ -175,6 +211,9 @@ func (ev *DefaultEvaluator) NewIterator(ctx context.Context, expr syntax.LogSele
 			Direction: q.Direction(),
 			Selector:  expr.String(),
 			Shards:    q.Shards(),
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
 		},
 	}
 
@@ -203,6 +242,9 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 						End:      q.End().Add(-rangExpr.Left.Offset),
 						Selector: e.String(), // intentionally send the vector for reducing labels.
 						Shards:   q.Shards(),
+						Plan: &plan.QueryPlan{
+							AST: expr,
+						},
 					},
 				})
 				if err != nil {
@@ -219,6 +261,9 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				End:      q.End().Add(-e.Left.Offset),
 				Selector: expr.String(),
 				Shards:   q.Shards(),
+				Plan: &plan.QueryPlan{
+					AST: expr,
+				},
 			},
 		})
 		if err != nil {
@@ -480,17 +525,18 @@ func newRangeAggEvaluator(
 	q Params,
 	o time.Duration,
 ) (StepEvaluator, error) {
+	switch expr.Operation {
+	case syntax.OpRangeTypeAbsent:
+		iter, err := newRangeVectorIterator(
+			it, expr,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		)
+		if err != nil {
+			return nil, err
+		}
 
-	iter, err := newRangeVectorIterator(
-		it, expr,
-		expr.Left.Interval.Nanoseconds(),
-		q.Step().Nanoseconds(),
-		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	if expr.Operation == syntax.OpRangeTypeAbsent {
 		absentLabels, err := absentLabels(expr)
 		if err != nil {
 			return nil, err
@@ -499,10 +545,32 @@ func newRangeAggEvaluator(
 			iter: iter,
 			lbs:  absentLabels,
 		}, nil
+	case syntax.OpRangeTypeQuantileSketch:
+		iter := newQuantileSketchIterator(
+			it,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		)
+
+		return &QuantileSketchStepEvaluator{
+			iter: iter,
+		}, nil
+	default:
+		iter, err := newRangeVectorIterator(
+			it, expr,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		return &RangeVectorEvaluator{
+			iter: iter,
+		}, nil
 	}
-	return &RangeVectorEvaluator{
-		iter: iter,
-	}, nil
 }
 
 type RangeVectorEvaluator struct {
@@ -578,7 +646,7 @@ func (r AbsentRangeVectorEvaluator) Error() error {
 	return r.iter.Error()
 }
 
-// binOpExpr explicitly does not handle when both legs are literals as
+// newBinOpStepEvaluator explicitly does not handle when both legs are literals as
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr
 func newBinOpStepEvaluator(
 	ctx context.Context,
@@ -739,9 +807,9 @@ func matchingSignature(sample promql.Sample, opts *syntax.BinOpOptions) uint64 {
 		return sample.Metric.Hash()
 	} else if opts.VectorMatching.On {
 		return labels.NewBuilder(sample.Metric).Keep(opts.VectorMatching.MatchingLabels...).Labels().Hash()
-	} else {
-		return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels().Hash()
 	}
+
+	return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels().Hash()
 }
 
 func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) (promql.Vector, error) {
@@ -809,7 +877,7 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 				ls, rs = rs, ls
 			}
 		}
-		merged, err := syntax.MergeBinOp(op, ls, rs, filter, syntax.IsComparisonOperator(op))
+		merged, err := syntax.MergeBinOp(op, ls, rs, false, filter, syntax.IsComparisonOperator(op))
 		if err != nil {
 			return nil, err
 		}
@@ -973,6 +1041,7 @@ func (e *LiteralStepEvaluator) Next() (bool, int64, StepResult) {
 			e.op,
 			left,
 			right,
+			!e.inverted,
 			!e.returnBool,
 			syntax.IsComparisonOperator(e.op),
 		)

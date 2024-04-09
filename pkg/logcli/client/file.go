@@ -11,15 +11,15 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logcli/volume"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	logqllog "github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/marshal"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logcli/volume"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
@@ -69,7 +69,7 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 
 	ctx = user.InjectOrgID(ctx, f.orgID)
 
-	params := logql.NewLiteralParams(
+	params, err := logql.NewLiteralParams(
 		q,
 		t, t,
 		0,
@@ -78,6 +78,9 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 		uint32(limit),
 		nil,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse query: %w", err)
+	}
 
 	query := f.engine.Query(params)
 
@@ -106,7 +109,7 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 
 	ctx = user.InjectOrgID(ctx, f.orgID)
 
-	params := logql.NewLiteralParams(
+	params, err := logql.NewLiteralParams(
 		queryStr,
 		start,
 		end,
@@ -116,6 +119,9 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 		uint32(limit),
 		nil,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	query := f.engine.Query(params)
 

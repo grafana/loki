@@ -8,7 +8,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/config"
 
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
+	lokiflag "github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 // NOTE the helm chart for promtail and fluent-bit also have defaults for these values, please update to match if you make changes here.
@@ -23,6 +23,10 @@ const (
 
 // Config describes configuration for an HTTP pusher client.
 type Config struct {
+	// Note even though the command line flag arguments which use this config
+	// are deprecated, this struct is still the primary way to configure
+	// a promtail client
+
 	Name      string `yaml:"name,omitempty"`
 	URL       flagext.URLValue
 	BatchWait time.Duration `yaml:"batchwait"`

@@ -1,7 +1,7 @@
 ---
 title: Configure monitoring and alerting of Loki using Grafana Cloud
 menuTitle: Monitor Loki with Grafana Cloud
-description: setup monitoring and alerts for Loki using Grafana Cloud
+description: Configuring monitoring and alerts for Loki using Grafana Cloud.
 aliases:
   - ../../../../installation/helm/monitor-and-alert/with-grafana-cloud
 weight: 200

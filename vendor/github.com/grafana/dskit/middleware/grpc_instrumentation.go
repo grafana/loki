@@ -6,6 +6,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strconv"
 	"time"
@@ -13,72 +14,69 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/grafana/dskit/grpcutil"
-	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/instrument"
 )
 
-func observe(ctx context.Context, hist *prometheus.HistogramVec, method string, err error, duration time.Duration) {
-	respStatus := "success"
-	if err != nil {
-		if errResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
-			respStatus = strconv.Itoa(int(errResp.Code))
-		} else if grpcutil.IsCanceled(err) {
-			respStatus = "cancel"
-		} else {
-			respStatus = "error"
-		}
-	}
-	instrument.ObserveWithExemplar(ctx, hist.WithLabelValues(gRPC, method, respStatus, "false"), duration.Seconds())
+func observe(ctx context.Context, hist *prometheus.HistogramVec, method string, err error, duration time.Duration, instrumentLabel instrumentationLabel) {
+	instrument.ObserveWithExemplar(ctx, hist.WithLabelValues(gRPC, method, instrumentLabel.getInstrumentationLabel(err), "false"), duration.Seconds())
 }
 
 // UnaryServerInstrumentInterceptor instruments gRPC requests for errors and latency.
-func UnaryServerInstrumentInterceptor(hist *prometheus.HistogramVec) grpc.UnaryServerInterceptor {
+func UnaryServerInstrumentInterceptor(hist *prometheus.HistogramVec, instrumentationOptions ...InstrumentationOption) grpc.UnaryServerInterceptor {
+	instrumentationLabel := applyInstrumentationOptions(false, instrumentationOptions...)
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		begin := time.Now()
 		resp, err := handler(ctx, req)
-		observe(ctx, hist, info.FullMethod, err, time.Since(begin))
+		observe(ctx, hist, info.FullMethod, err, time.Since(begin), instrumentationLabel)
 		return resp, err
 	}
 }
 
 // StreamServerInstrumentInterceptor instruments gRPC requests for errors and latency.
-func StreamServerInstrumentInterceptor(hist *prometheus.HistogramVec) grpc.StreamServerInterceptor {
+func StreamServerInstrumentInterceptor(hist *prometheus.HistogramVec, instrumentationOptions ...InstrumentationOption) grpc.StreamServerInterceptor {
+	instrumentationLabel := applyInstrumentationOptions(false, instrumentationOptions...)
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		begin := time.Now()
 		err := handler(srv, ss)
-		observe(ss.Context(), hist, info.FullMethod, err, time.Since(begin))
+		observe(ss.Context(), hist, info.FullMethod, err, time.Since(begin), instrumentationLabel)
 		return err
 	}
 }
 
 // UnaryClientInstrumentInterceptor records duration of gRPC requests client side.
-func UnaryClientInstrumentInterceptor(metric *prometheus.HistogramVec) grpc.UnaryClientInterceptor {
+func UnaryClientInstrumentInterceptor(metric *prometheus.HistogramVec, instrumentationOptions ...InstrumentationOption) grpc.UnaryClientInterceptor {
+	// we enforce masking of HTTP statuses.
+	instrumentationLabel := applyInstrumentationOptions(true, instrumentationOptions...)
 	return func(ctx context.Context, method string, req, resp interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		start := time.Now()
 		err := invoker(ctx, method, req, resp, cc, opts...)
-		metric.WithLabelValues(method, errorCode(err)).Observe(time.Since(start).Seconds())
+		metric.WithLabelValues(method, instrumentationLabel.getInstrumentationLabel(err)).Observe(time.Since(start).Seconds())
 		return err
 	}
 }
 
 // StreamClientInstrumentInterceptor records duration of streaming gRPC requests client side.
-func StreamClientInstrumentInterceptor(metric *prometheus.HistogramVec) grpc.StreamClientInterceptor {
+func StreamClientInstrumentInterceptor(metric *prometheus.HistogramVec, instrumentationOptions ...InstrumentationOption) grpc.StreamClientInterceptor {
+	// we enforce masking of HTTP statuses.
+	instrumentationLabel := applyInstrumentationOptions(true, instrumentationOptions...)
 	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string,
 		streamer grpc.Streamer, opts ...grpc.CallOption,
 	) (grpc.ClientStream, error) {
 		start := time.Now()
 		stream, err := streamer(ctx, desc, cc, method, opts...)
 		s := &instrumentedClientStream{
-			metric:        metric,
-			start:         start,
-			method:        method,
-			serverStreams: desc.ServerStreams,
-			finished:      atomic.NewBool(false),
-			finishedChan:  make(chan struct{}),
-			stream:        stream,
+			metric:               metric,
+			start:                start,
+			method:               method,
+			serverStreams:        desc.ServerStreams,
+			finished:             atomic.NewBool(false),
+			finishedChan:         make(chan struct{}),
+			stream:               stream,
+			instrumentationLabel: instrumentationLabel,
 		}
 		s.awaitCompletion(ctx)
 		return s, err
@@ -87,13 +85,14 @@ func StreamClientInstrumentInterceptor(metric *prometheus.HistogramVec) grpc.Str
 
 // This implementation is heavily inspired by github.com/opentracing-contrib/go-grpc's openTracingClientStream.
 type instrumentedClientStream struct {
-	metric        *prometheus.HistogramVec
-	start         time.Time
-	method        string
-	serverStreams bool
-	finished      *atomic.Bool
-	finishedChan  chan struct{}
-	stream        grpc.ClientStream
+	metric               *prometheus.HistogramVec
+	start                time.Time
+	method               string
+	serverStreams        bool
+	finished             *atomic.Bool
+	finishedChan         chan struct{}
+	stream               grpc.ClientStream
+	instrumentationLabel instrumentationLabel
 }
 
 func (s *instrumentedClientStream) Trailer() metadata.MD {
@@ -122,7 +121,7 @@ func (s *instrumentedClientStream) finish(err error) {
 
 	close(s.finishedChan)
 
-	s.metric.WithLabelValues(s.method, errorCode(err)).Observe(time.Since(s.start).Seconds())
+	s.metric.WithLabelValues(s.method, s.instrumentationLabel.getInstrumentationLabel(err)).Observe(time.Since(s.start).Seconds())
 }
 
 func (s *instrumentedClientStream) SendMsg(m interface{}) error {
@@ -173,18 +172,75 @@ func (s *instrumentedClientStream) CloseSend() error {
 	return err
 }
 
-// errorCode converts an error into an error code string.
-func errorCode(err error) string {
-	if err == nil {
-		return "2xx"
+type InstrumentationOption func(*instrumentationLabel)
+
+var (
+	// ReportGRPCStatusOption is an InstrumentationOption that is used for enabling gRPC status codes to be used
+	// in instrumentation labels.
+	ReportGRPCStatusOption InstrumentationOption = func(instrumentationLabel *instrumentationLabel) {
+		instrumentationLabel.reportGRPCStatus = true
+	}
+)
+
+func applyInstrumentationOptions(maskHTTPStatuses bool, options ...InstrumentationOption) instrumentationLabel {
+	instrumentationLabel := instrumentationLabel{maskHTTPStatus: maskHTTPStatuses}
+	for _, opt := range options {
+		opt(&instrumentationLabel)
+	}
+	return instrumentationLabel
+}
+
+type instrumentationLabel struct {
+	reportGRPCStatus bool
+	maskHTTPStatus   bool
+}
+
+// getInstrumentationLabel converts an error into an error code string by applying the configurations
+// contained in this instrumentationLabel object.
+func (i *instrumentationLabel) getInstrumentationLabel(err error) string {
+	statusCode := errorToStatusCode(err)
+	return i.statusCodeToString(statusCode)
+}
+
+func (i *instrumentationLabel) statusCodeToString(statusCode codes.Code) string {
+	if isHTTPStatusCode(statusCode) {
+		statusFamily := int(statusCode / 100)
+		if i.maskHTTPStatus {
+			return strconv.Itoa(statusFamily) + "xx"
+		}
+		return strconv.Itoa(int(statusCode))
 	}
 
-	if errResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
-		statusFamily := int(errResp.Code / 100)
-		return strconv.Itoa(statusFamily) + "xx"
-	} else if grpcutil.IsCanceled(err) {
-		return "cancel"
-	} else {
-		return "error"
+	if i.reportGRPCStatus {
+		return statusCode.String()
 	}
+
+	if statusCode == codes.OK {
+		if i.maskHTTPStatus {
+			return "2xx"
+		}
+		return "success"
+	}
+
+	if statusCode == codes.Canceled {
+		return "cancel"
+	}
+
+	return "error"
+}
+
+func errorToStatusCode(err error) codes.Code {
+	if err == nil {
+		return codes.OK
+	}
+
+	if errors.Is(err, context.Canceled) {
+		return codes.Canceled
+	}
+
+	return grpcutil.ErrorToStatusCode(err)
+}
+
+func isHTTPStatusCode(statusCode codes.Code) bool {
+	return int(statusCode) >= 100 && int(statusCode) < 600
 }

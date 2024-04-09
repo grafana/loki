@@ -11,8 +11,8 @@ import (
 	"github.com/richardartoul/molecule"
 	"github.com/richardartoul/molecule/src/codec"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 // Pull fiel numbers from protobuf message descriptions.
@@ -62,13 +62,22 @@ func GetLokiSeriesResponseView(data []byte) (view *LokiSeriesResponseView, err e
 // message. It is decoded lazily view ForEachSeries.
 type LokiSeriesResponseView struct {
 	buffer  []byte
-	headers []*queryrangebase.PrometheusResponseHeader
+	headers []queryrangebase.PrometheusResponseHeader
 }
 
 var _ queryrangebase.Response = &LokiSeriesResponseView{}
 
 func (v *LokiSeriesResponseView) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
-	return v.headers
+	return convertPrometheusResponseHeadersToPointers(v.headers)
+}
+
+func (v *LokiSeriesResponseView) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+	v.headers = h
+	return v
+}
+
+func (v *LokiSeriesResponseView) SetHeader(name, value string) {
+	v.headers = setHeader(v.headers, name, value)
 }
 
 // Implement proto.Message
@@ -231,13 +240,22 @@ func (v *SeriesIdentifierView) Hash(b []byte, keyLabelPairs []string) (uint64, [
 // ForEachUniqueSeries iteration.
 type MergedSeriesResponseView struct {
 	responses []*LokiSeriesResponseView
-	headers   []*queryrangebase.PrometheusResponseHeader
+	headers   []queryrangebase.PrometheusResponseHeader
 }
 
 var _ queryrangebase.Response = &MergedSeriesResponseView{}
 
 func (v *MergedSeriesResponseView) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
-	return v.headers
+	return convertPrometheusResponseHeadersToPointers(v.headers)
+}
+
+func (v *MergedSeriesResponseView) WithHeaders(headers []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+	v.headers = headers
+	return v
+}
+
+func (v *MergedSeriesResponseView) SetHeader(name, value string) {
+	v.headers = setHeader(v.headers, name, value)
 }
 
 // Implement proto.Message
@@ -284,9 +302,9 @@ func (v *MergedSeriesResponseView) ForEachUniqueSeries(fn func(*SeriesIdentifier
 func (v *MergedSeriesResponseView) Materialize() (*LokiSeriesResponse, error) {
 	mat := &LokiSeriesResponse{}
 	err := v.ForEachUniqueSeries(func(series *SeriesIdentifierView) error {
-		identifier := logproto.SeriesIdentifier{Labels: make(map[string]string)}
+		identifier := logproto.SeriesIdentifier{Labels: make([]logproto.SeriesIdentifier_LabelsEntry, 0)}
 		err := series.ForEachLabel(func(name, value string) error {
-			identifier.Labels[name] = value
+			identifier.Labels = append(identifier.Labels, logproto.SeriesIdentifier_LabelsEntry{Key: name, Value: value})
 			return nil
 		})
 		if err != nil {

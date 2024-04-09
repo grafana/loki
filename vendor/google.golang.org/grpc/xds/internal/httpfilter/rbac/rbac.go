@@ -25,13 +25,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes"
 	"google.golang.org/grpc/internal"
-	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/xds/rbac"
 	"google.golang.org/grpc/xds/internal/httpfilter"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	v3rbacpb "github.com/envoyproxy/go-control-plane/envoy/config/rbac/v3"
@@ -39,9 +37,7 @@ import (
 )
 
 func init() {
-	if envconfig.XDSRBAC {
-		httpfilter.Register(builder{})
-	}
+	httpfilter.Register(builder{})
 
 	// TODO: Remove these once the RBAC env var is removed.
 	internal.RegisterRBACHTTPFilterForTesting = func() {
@@ -126,7 +122,10 @@ func parseConfig(rbacCfg *rpb.RBAC) (httpfilter.FilterConfig, error) {
 		return config{}, nil
 	}
 
-	ce, err := rbac.NewChainEngine([]*v3rbacpb.RBAC{rbacCfg.GetRules()})
+	// TODO(gregorycooke) - change the call chain to here so we have the filter
+	// name to input here instead of an empty string. It will come from here:
+	// https://github.com/grpc/grpc-go/blob/eff0942e95d93112921414aee758e619ec86f26f/xds/internal/xdsclient/xdsresource/unmarshal_lds.go#L199
+	ce, err := rbac.NewChainEngine([]*v3rbacpb.RBAC{rbacCfg.GetRules()}, "")
 	if err != nil {
 		// "At this time, if the RBAC.action is Action.LOG then the policy will be
 		// completely ignored, as if RBAC was not configurated." - A41
@@ -147,7 +146,7 @@ func (builder) ParseFilterConfig(cfg proto.Message) (httpfilter.FilterConfig, er
 		return nil, fmt.Errorf("rbac: error parsing config %v: unknown type %T", cfg, cfg)
 	}
 	msg := new(rpb.RBAC)
-	if err := ptypes.UnmarshalAny(any, msg); err != nil {
+	if err := any.UnmarshalTo(msg); err != nil {
 		return nil, fmt.Errorf("rbac: error parsing config %v: %v", cfg, err)
 	}
 	return parseConfig(msg)
@@ -162,7 +161,7 @@ func (builder) ParseFilterConfigOverride(override proto.Message) (httpfilter.Fil
 		return nil, fmt.Errorf("rbac: error parsing override config %v: unknown type %T", override, override)
 	}
 	msg := new(rpb.RBACPerRoute)
-	if err := ptypes.UnmarshalAny(any, msg); err != nil {
+	if err := any.UnmarshalTo(msg); err != nil {
 		return nil, fmt.Errorf("rbac: error parsing override config %v: %v", override, err)
 	}
 	return parseConfig(msg.Rbac)

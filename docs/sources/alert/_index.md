@@ -155,7 +155,7 @@ At the time of writing, these are the compatible backends that support this:
 - [Grafana Mimir](/docs/mimir/latest/operators-guide/reference-http-api/#remote-write)
 - [Thanos (`Receiver`)](https://thanos.io/tip/components/receive.md/)
 
-Here is an example remote-write configuration for sending to a local Prometheus instance:
+Here is an example of a remote-write configuration for sending data to a local Prometheus instance:
 
 ```yaml
 ruler:
@@ -202,16 +202,22 @@ Another great use case is alerting on high cardinality sources. These are things
 
 Creating these alerts in LogQL is attractive because these metrics can be extracted at _query time_, meaning we don't suffer the cardinality explosion in our metrics store.
 
-> **Note** As an example, we can use LogQL v2 to help Loki to monitor _itself_, alerting us when specific tenants have queries that take longer than 10s to complete! To do so, we'd use the following query: `sum by (org_id) (rate({job="loki-prod/query-frontend"} |= "metrics.go" | logfmt | duration > 10s [1m]))`
+{{% admonition type="note" %}}
+As an example, we can use LogQL v2 to help Loki to monitor _itself_, alerting us when specific tenants have queries that take longer than 10s to complete! To do so, we'd use the following query: `sum by (org_id) (rate({job="loki-prod/query-frontend"} |= "metrics.go" | logfmt | duration > 10s [1m])
+{{% /admonition %}}`.
 
 ## Interacting with the Ruler
 
 ### Cortextool
 Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortextool`](https://github.com/grafana/cortex-tools#rules). The CLI is in early development, but it works with both Loki and Cortex. Pass the `--backend=loki` option when using it with Loki.
 
-> **Note:** Not all commands in cortextool currently support Loki.
+{{% admonition type="note" %}}
+Not all commands in cortextool currently support Loki.
+{{% /admonition %}}
 
-> **Note:** cortextool was intended to run against multi-tenant Loki, commands need an `--id=` flag set to the Loki instance ID or set the environment variable `CORTEX_TENANT_ID`.  If Loki is running in single tenant mode, the required ID is `fake` (yes we know this might seem alarming but it's totally fine, no it can't be changed) 
+{{% admonition type="note" %}}
+cortextool was intended to run against multi-tenant Loki, commands need an `--id=` flag set to the Loki instance ID or set the environment variable `CORTEX_TENANT_ID`.  If Loki is running in single tenant mode, the required ID is `fake`.
+{{% /admonition %}}
 
 An example workflow is included below:
 
@@ -373,7 +379,6 @@ Yaml files are expected to be [Prometheus-compatible](https://prometheus.io/docs
 
 There are a few things coming to increase the robustness of this service. In no particular order:
 
-- WAL for recording rule.
 - Backend metric stores adapters for generated alert rule data.
 
 ## Misc Details: Metrics backends vs in-memory

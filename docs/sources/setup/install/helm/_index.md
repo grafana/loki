@@ -1,7 +1,7 @@
 ---
 title: Install Grafana Loki with Helm
 menuTitle: Install using Helm
-description: Learn how to install Grafana Loki on Kubernetes with Helm.
+description: Overview of topics for how to install Grafana Loki on Kubernetes with Helm.
 aliases:
   - ../../installation/helm/
 weight: 200

@@ -6,12 +6,30 @@ on:
       - "flake.nix"
       - "nix/**"
 jobs:
-  tests:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: cachix/install-nix-action@v22
         with:
           nix_path: nixpkgs=channel:nixos-unstable
-      - run: nix run .#lint
-      - run: nix build --print-build-logs
+      - run: nix run --print-build-logs .#lint
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: cachix/install-nix-action@v22
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+      - run: nix run --print-build-logs .#test
+  packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: cachix/install-nix-action@v22
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+      - run: nix build --print-build-logs .#promtail
+      - run: nix build --print-build-logs .#logcli
+      - run: nix build --print-build-logs .#loki
+      - run: nix build --print-build-logs .#loki-canary

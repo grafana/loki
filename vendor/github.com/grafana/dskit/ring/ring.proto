@@ -41,6 +41,9 @@ message InstanceDesc {
 	// was already registered before "now". If unknown (0), it should be left as is, and the
 	// code will properly deal with that.
 	int64 registered_timestamp = 8;
+
+	// ID of the instance. This value is the same as the key in the ingesters map in Desc.
+	string id = 9;
 }
 
 enum InstanceState {

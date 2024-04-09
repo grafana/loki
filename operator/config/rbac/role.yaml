@@ -2,7 +2,6 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  creationTimestamp: null
   name: lokistack-manager
 rules:
 - nonResourceURLs:
@@ -46,6 +45,17 @@ rules:
   - get
   - list
   - patch
+  - update
+  - watch
+- apiGroups:
+  - cloudcredential.openshift.io
+  resources:
+  - credentialsrequests
+  verbs:
+  - create
+  - delete
+  - get
+  - list
   - update
   - watch
 - apiGroups:
@@ -176,6 +186,12 @@ rules:
   - alertmanagers
   verbs:
   - patch
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - alertmanagers/api
+  verbs:
+  - create
 - apiGroups:
   - monitoring.coreos.com
   resources:

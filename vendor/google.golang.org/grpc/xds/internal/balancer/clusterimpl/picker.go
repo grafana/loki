@@ -160,7 +160,7 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 			d.loadStore.CallFinished(lIDStr, info.Err)
 
 			load, ok := info.ServerLoad.(*v3orcapb.OrcaLoadReport)
-			if !ok {
+			if !ok || load == nil {
 				return
 			}
 			d.loadStore.CallServerLoad(lIDStr, serverLoadCPUName, load.CpuUtilization)

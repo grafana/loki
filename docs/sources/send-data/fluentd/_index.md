@@ -1,7 +1,7 @@
 ---
 title: Fluentd client
 menuTitle:  Fluentd
-description: Instructions to install, configure, and use the Fluentd client to send logs to Loki.
+description: Instructions for how to install, configure, and use the Fluentd client to send logs to Loki.
 aliases: 
 - ../clients/fluentd/
 weight:  600
@@ -69,7 +69,9 @@ services:
 
 ## Usage
 
-**Note**: use either `<label>...</label>` or `extra_labels` to set at least one label.
+{{% admonition type="note" %}}
+Use either `<label>...</label>` or `extra_labels` to set at least one label.
+{{% /admonition %}}
 
 In your Fluentd configuration, add `@type loki`. Additional configuration is optional. Default values would look like this:
 
@@ -80,8 +82,10 @@ In your Fluentd configuration, add `@type loki`. Additional configuration is opt
   username "#{ENV['LOKI_USERNAME']}"
   password "#{ENV['LOKI_PASSWORD']}"
   extra_labels {"env":"dev"}
-  flush_interval 10s
-  flush_at_shutdown true
+  <buffer>
+    flush_interval 10s
+    flush_at_shutdown true
+  </buffer>
   buffer_chunk_limit 1m
 </match>
 ```
@@ -185,7 +189,7 @@ This plugin automatically adds a `fluentd_thread` label with the name of the buf
 
 ### `url`
 
-The URL of the Loki server to send logs to.  When sending data, the publish path (`../reference/api/loki/v1/push`) will automatically be appended.
+The URL of the Loki server to send logs to. When sending data, the publish path (`../reference/api/loki/v1/push`) will automatically be appended.
 By default the url is set to `https://logs-prod-us-central1.grafana.net`, the url of the Grafana Labs [hosted Loki](/products/cloud/) service.
 
 #### Proxy Support
@@ -199,10 +203,10 @@ If using the GrafanaLab's hosted Loki, the username needs to be set to your inst
 
 ### tenant
 
-All requests sent to Loki, a multi-tenant log storage platform, must include a tenant.  For some installations the tenant will be set automatically by an authenticating proxy.  Otherwise you can define a tenant to be passed through.
+All requests sent to Loki, a multi-tenant log storage platform, must include a tenant. For some installations the tenant will be set automatically by an authenticating proxy. Otherwise you can define a tenant to be passed through.
 The tenant can be any string value.
 
-The tenant field also supports placeholders, allowing it to dynamically change based on tag and record fields. Each placeholder must be added as a buffer chunk key. The following is an example of setting the tenant based on a k8s pod label:
+The tenant field also supports placeholders, allowing it to dynamically change based on tag and record fields. Each placeholder must be added as a buffer chunk key. The following is an example of setting the tenant based on a Kubernetes pod label:
 
 ```conf
 <match **>
@@ -253,7 +257,7 @@ A flag to disable server certificate verification. By default the `insecure_tls`
 
 ### Output format
 
-Loki is intended to index and group log streams using only a small set of labels.  It is not intended for full-text indexing.  When sending logs to Loki the majority of log message will be sent as a single log "line".
+Loki is intended to index and group log streams using only a small set of labels. It is not intended for full-text indexing. When sending logs to Loki the majority of log message will be sent as a single log "line".
 
 Several configuration settings are available to control the output format.
 

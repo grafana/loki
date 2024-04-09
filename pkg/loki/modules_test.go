@@ -2,7 +2,6 @@ package loki
 
 import (
 	"fmt"
-	"path"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,13 +13,14 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
-
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
 func Test_calculateMaxLookBack(t *testing.T) {
@@ -176,6 +176,9 @@ func TestIndexGatewayRingMode_when_TargetIsLegacyReadOrBackend(t *testing.T) {
 		{
 			name:   "leagcy read",
 			target: Read,
+			transformer: func(cfg *Config) {
+				cfg.LegacyReadTarget = true
+			},
 		},
 		{
 			name:   "backend",
@@ -264,7 +267,7 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 
 	t.Run("IndexGateway client is enabled when running querier target", func(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Querier)
-		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
+		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -285,9 +288,8 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Read, func(cfg *Config) {
 			cfg.LegacyReadTarget = true
 		})
-		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
+		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
-		cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -308,9 +310,8 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Read, func(cfg *Config) {
 			cfg.LegacyReadTarget = false
 		})
-		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
+		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
-		cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -331,9 +332,8 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Backend, func(cfg *Config) {
 			cfg.LegacyReadTarget = false
 		})
-		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
+		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
-		cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -367,25 +367,35 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	// This would be overwritten by the default values setting.
 	cfg.StorageConfig = storage.Config{
 		FSConfig: local.FSConfig{Directory: dir},
-		BoltDBShipperConfig: shipper.Config{
+		BloomShipperConfig: bloomshipperconfig.Config{
+			WorkingDirectory:    []string{filepath.Join(dir, "blooms")},
+			DownloadParallelism: 1,
+		},
+		BoltDBShipperConfig: boltdb.IndexCfg{
 			Config: indexshipper.Config{
-				SharedStoreType:      config.StorageTypeFileSystem,
-				ActiveIndexDirectory: path.Join(dir, "index"),
-				CacheLocation:        path.Join(dir, "cache"),
+				ActiveIndexDirectory: filepath.Join(dir, "index"),
+				CacheLocation:        filepath.Join(dir, "cache"),
 				Mode:                 indexshipper.ModeWriteOnly,
 				ResyncInterval:       24 * time.Hour,
 			},
 		},
 	}
 
+	// Disable some caches otherwise we'll get errors if we don't configure them
+	cfg.QueryRange.CacheLabelResults = false
+	cfg.QueryRange.CacheSeriesResults = false
+	cfg.QueryRange.CacheIndexStatsResults = false
+	cfg.QueryRange.CacheVolumeResults = false
+
 	cfg.SchemaConfig = config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				IndexType:  config.BoltDBShipperType,
-				ObjectType: config.StorageTypeFileSystem,
-				IndexTables: config.PeriodicTableConfig{
-					Period: time.Hour * 24,
-				},
+				IndexType:  types.BoltDBShipperType,
+				ObjectType: types.StorageTypeFileSystem,
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Period: time.Hour * 24,
+					}},
 				RowShards: 16,
 				Schema:    "v11",
 				From: config.DayTime{
@@ -400,12 +410,12 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.Distributor.DistributorRing.InstanceAddr = localhost
 	cfg.IndexGateway.Mode = indexgateway.SimpleMode
 	cfg.IndexGateway.Ring.InstanceAddr = localhost
+	cfg.BloomCompactor.Ring.InstanceAddr = localhost
 	cfg.CompactorConfig.CompactorRing.InstanceAddr = localhost
-	cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
-	cfg.CompactorConfig.WorkingDirectory = path.Join(dir, "compactor")
+	cfg.CompactorConfig.WorkingDirectory = filepath.Join(dir, "compactor")
 
 	cfg.Ruler.Config.Ring.InstanceAddr = localhost
-	cfg.Ruler.Config.StoreConfig.Type = config.StorageTypeLocal
+	cfg.Ruler.Config.StoreConfig.Type = types.StorageTypeLocal
 	cfg.Ruler.Config.StoreConfig.Local.Directory = dir
 
 	cfg.Common.CompactorAddress = "http://localhost:0"

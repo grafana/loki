@@ -25,12 +25,13 @@ import (
 	"github.com/mattn/go-ieproxy"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
-	client_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/util"
-	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
-	"github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	client_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
+	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -122,7 +123,7 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.StringVar(&c.StorageAccountName, prefix+"azure.account-name", "", "Azure storage account name.")
 	f.Var(&c.StorageAccountKey, prefix+"azure.account-key", "Azure storage account key.")
 	f.StringVar(&c.ConnectionString, prefix+"azure.connection-string", "", "If `connection-string` is set, the values of `account-name` and `endpoint-suffix` values will not be used. Use this method over `account-key` if you need to authenticate via a SAS token. Or if you use the Azurite emulator.")
-	f.StringVar(&c.ContainerName, prefix+"azure.container-name", "loki", "Name of the storage account blob container used to store chunks. This container must be created before running cortex.")
+	f.StringVar(&c.ContainerName, prefix+"azure.container-name", constants.Loki, "Name of the storage account blob container used to store chunks. This container must be created before running cortex.")
 	f.StringVar(&c.EndpointSuffix, prefix+"azure.endpoint-suffix", "", "Azure storage endpoint suffix without schema. The storage account name will be prefixed to this value to create the FQDN.")
 	f.BoolVar(&c.UseManagedIdentity, prefix+"azure.use-managed-identity", false, "Use Managed Identity to authenticate to the Azure storage account.")
 	f.BoolVar(&c.UseFederatedToken, prefix+"azure.use-federated-token", false, "Use Federated Token to authenticate to the Azure storage account.")
@@ -150,7 +151,7 @@ type BlobStorageMetrics struct {
 func NewBlobStorageMetrics() BlobStorageMetrics {
 	b := BlobStorageMetrics{
 		requestDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "azure_blob_request_duration_seconds",
 			Help:      "Time spent doing azure blob requests.",
 			// Latency seems to range from a few ms to a few secs and is
@@ -158,7 +159,7 @@ func NewBlobStorageMetrics() BlobStorageMetrics {
 			Buckets: prometheus.ExponentialBuckets(0.005, 4, 6),
 		}, []string{"operation", "status_code"}),
 		egressBytesTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "azure_blob_egress_bytes_total",
 			Help:      "Total bytes downloaded from Azure Blob Storage.",
 		}),

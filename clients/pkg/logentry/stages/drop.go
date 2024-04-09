@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 const (
@@ -106,6 +106,12 @@ func validateDropConfig(cfg *DropConfig) error {
 // unifySourceField unify Source into a slice of strings
 func unifySourceField(s interface{}) ([]string, error) {
 	switch s := s.(type) {
+	case []interface{}:
+		r := make([]string, len(s))
+		for i := range s {
+			r[i] = s[i].(string)
+		}
+		return r, nil
 	case []string:
 		return s, nil
 	case string:

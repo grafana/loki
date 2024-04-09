@@ -8,7 +8,11 @@ import (
 
 	json "github.com/json-iterator/go"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/dskit/httpgrpc"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 )
 
 const (
@@ -65,8 +69,21 @@ func (s *DroppedStream) UnmarshalJSON(data []byte) error {
 // ParseTailQuery parses a TailRequest request from an http request.
 func ParseTailQuery(r *http.Request) (*logproto.TailRequest, error) {
 	var err error
+	qs := query(r)
+	parsed, err := syntax.ParseExpr(qs)
+	if err != nil {
+		return nil, err
+	}
 	req := logproto.TailRequest{
-		Query: query(r),
+		Query: qs,
+		Plan: &plan.QueryPlan{
+			AST: parsed,
+		},
+	}
+
+	req.Query, err = parseRegexQuery(r)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	req.Limit, err = limit(r)

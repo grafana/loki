@@ -27,8 +27,8 @@ cmd/querytee/querytee
 dlv
 rootfs/
 dist
-coverage.txt
-test_results.txt
+*coverage.txt
+*test_results.txt
 .DS_Store
 .aws-sam
 .idea
@@ -51,3 +51,7 @@ pkg/loki/wal
 
 # nix
 nix/result
+/result
+
+# snyk
+.dccache

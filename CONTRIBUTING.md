@@ -14,19 +14,15 @@ LIDs must be created as a pull request using [this template](docs/sources/commun
 
 ## Pull Request Prerequisites/Checklist
 
-1. Your PR title is in the form `<Feature Area>: Your change`.
-   1. It does not end the title with punctuation. It will be added in the changelog.
-   1. It starts with an imperative verb. Example: Fix the latency between System A and System B.
-   1. It uses Sentence case, not Title Case.
+**NOTE:** The Loki team has adopted the use of [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for commit messages. 
+
+1. Your PR title is in the conventional commits form `<change type>: Your change`.
    1. It uses a complete phrase or sentence. The PR title will appear in a changelog, so help other people understand what your change will be.
-   1. It has a clear description saying what it does and why. Your PR description will be present in the project' commit log, so be gentle to it.
-1. Your PR is well sync'ed with main
-1. Your PR is correctly documenting appropriate changes under the CHANGELOG. You should document your changes there if:
-   * It adds an important feature
-   * It fixes an issue present in a previous release
-   * It causes a change in operation that would be useful for an operator of Loki to know
-   * You can skip this step for documentation changes, build related changes and simple bug fixes or enhancements. Rationale being we are attempting to curate the CHANGELOG entries with the most relevant and important changes that end users of Loki care about.
-1. Your PR documents upgrading steps under `docs/sources/setup/upgrade/_index.md` if it changes:
+   1. It starts with an imperative verb. Example: Fix the latency between System A and System B.
+   2. It uses Sentence case, not Title Case.
+2. It has a clear description saying what it does and why. Your PR description is a reviewers first impression of your changes.
+3. Your PR branch is sync'ed with main
+4. Your PR documents upgrading steps under `docs/sources/setup/upgrade/_index.md` if it changes:
    * Default configuration values
    * Metric names or label names
    * Changes existing log lines that may be used in dashboard or alerts. e.g: logs lines in any `metrics.go` files might be used in building dashboards or alerts.
@@ -35,6 +31,8 @@ LIDs must be created as a pull request using [this template](docs/sources/commun
    * Any other change that would require special attention or extra steps to upgrade
 
 Please document clearly what changed AND what needs to be done in the upgrade guide.
+
+**NOTE:** A member of the Loki repo maintainers must approve and run the continuous integration (CI) workflows for community contributions.
 
 ## Setup
 
@@ -135,13 +133,13 @@ import (
 
 We're glad you're here to help make our technical documentation even better for Loki users.
 
-The Grafana docs team has created a [Writer's Toolkit](https://grafana.com/docs/writers-toolkit/) that includes information about how we write docs, a [Style Guide](https://grafana.com/docs/writers-toolkit/write/style-guide/), and templates to help you contribute to the Loki documentation. 
+The Grafana docs team has created a [Writers' Toolkit](https://grafana.com/docs/writers-toolkit/) that includes information about how we write docs, a [Style Guide](https://grafana.com/docs/writers-toolkit/write/style-guide/), and templates to help you contribute to the Loki documentation.
 
 The Loki documentation is written using the CommonMark flavor of markdown, including some extended features. For more information about markdown, you can see the [CommonMark specification](https://spec.commonmark.org/), and a [quick reference guide](https://commonmark.org/help/) for CommonMark.
 
 Loki uses the static site generator [Hugo](https://gohugo.io/) to generate the documentation. Loki uses a continuous integration (CI) action to sync documentation to the [Grafana website](https://grafana.com/docs/loki/latest). The CI is triggered on every merge to main in the `docs` subfolder.
 
-You can preview the documentation locally after installing [Docker](https://www.docker.com/) or [Podman](https://podman.io/).  
+You can preview the documentation locally after installing [Docker](https://www.docker.com/) or [Podman](https://podman.io/).
 
 To get a local preview of the documentation:
 1. Run Docker (or Podman).
@@ -149,4 +147,16 @@ To get a local preview of the documentation:
 3. Run the command `make docs`. This uses the `grafana/docs` image which internally uses Hugo to generate the static site.
 4. Open http://localhost:3002/docs/loki/latest/ to review your changes.
 
-> Note that `make docs` uses a lot of memory.  If it crashes, increase the memory allocated to Docker and try again.
+**Remember:** If running `make docs` command gave you the following error.
+
+   - `path /tmp/make-docs.Dcq is not shared from the host and is not known to Docker.`
+   - `You can configure shared paths from Docker -> Preferences... -> Resources -> File Sharing.`
+
+Then you can go to Docker Desktop settings and open the resources, add the temporary directory path `/tmp`.
+
+> Note that `make docs` uses a lot of memory. If it crashes, increase the memory allocated to Docker and try again.
+
+Also note that PRs are merged to the main branch.  If your changes need to be immediately published to the latest release, you must add the appropriate backport label to your PR, for example, `backport-release-2.9.x`.  If the changes in your PR can be automatically backported, the backport label will trigger GrafanaBot to create the backport PR, otherwise you will need to create a PR to manually backport your changes.
+
+* [Latest release](https://grafana.com/docs/loki/latest/)
+* [Upcoming release](https://grafana.com/docs/loki/next/), at the tip of the main branch

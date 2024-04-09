@@ -13,28 +13,26 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange"
-	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/marshal"
-	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
-	serverutil "github.com/grafana/loki/pkg/util/server"
-	"github.com/grafana/loki/pkg/util/spanlogger"
-	util_validation "github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	loghttp_legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
+	marshal_legacy "github.com/grafana/loki/v3/pkg/util/marshal/legacy"
+	serverutil "github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 const (
@@ -69,154 +67,50 @@ func NewQuerierAPI(cfg Config, querier Querier, limits Limits, logger log.Logger
 	}
 }
 
-// RangeQueryHandler is a http.HandlerFunc for range queries.
-func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
-	request, err := loghttp.ParseRangeQuery(r)
+// RangeQueryHandler is a http.HandlerFunc for range queries and legacy log queries
+func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.LokiRequest) (logqlmodel.Result, error) {
+	if err := q.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {
+		return logqlmodel.Result{}, err
+	}
+
+	params, err := queryrange.ParamsFromRequest(req)
 	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
+		return logqlmodel.Result{}, err
 	}
 
-	ctx := r.Context()
-	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	params := logql.NewLiteralParams(
-		request.Query,
-		request.Start,
-		request.End,
-		request.Step,
-		request.Interval,
-		request.Direction,
-		request.Limit,
-		request.Shards,
-	)
 	query := q.engine.Query(params)
-	result, err := query.Exec(ctx)
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
+	return query.Exec(ctx)
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
-func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
-	request, err := loghttp.ParseInstantQuery(r)
+func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.LokiInstantRequest) (logqlmodel.Result, error) {
+	if err := q.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {
+		return logqlmodel.Result{}, err
+	}
+
+	params, err := queryrange.ParamsFromRequest(req)
 	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
+		return logqlmodel.Result{}, err
 	}
-
-	ctx := r.Context()
-	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	params := logql.NewLiteralParams(
-		request.Query,
-		request.Ts,
-		request.Ts,
-		0,
-		0,
-		request.Direction,
-		request.Limit,
-		request.Shards,
-	)
 	query := q.engine.Query(params)
-	result, err := query.Exec(ctx)
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
-}
-
-// LogQueryHandler is a http.HandlerFunc for log only queries.
-func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
-	request, err := loghttp.ParseRangeQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-	request.Query, err = parseRegexQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
-	expr, err := syntax.ParseExpr(request.Query)
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	// short circuit metric queries
-	if _, ok := expr.(syntax.SampleExpr); ok {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "legacy endpoints only support %s result type", logqlmodel.ValueTypeStreams), w)
-		return
-	}
-
-	ctx := r.Context()
-	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	params := logql.NewLiteralParams(
-		request.Query,
-		request.Start,
-		request.End,
-		request.Step,
-		request.Interval,
-		request.Direction,
-		request.Limit,
-		request.Shards,
-	)
-	query := q.engine.Query(params)
-
-	result, err := query.Exec(ctx)
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
+	return query.Exec(ctx)
 }
 
 // LabelHandler is a http.HandlerFunc for handling label queries.
-func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
-	req, err := loghttp.ParseLabelQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
-	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("labels"))
+func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeLabels))
 	defer timer.ObserveDuration()
 
 	start := time.Now()
-	statsCtx, ctx := stats.NewContext(r.Context())
+	statsCtx, ctx := stats.NewContext(ctx)
 
-	resp, err := q.querier.Label(r.Context(), req)
+	resp, err := q.querier.Label(ctx, req)
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	resLength := 0
 	if resp != nil {
 		resLength = len(resp.Values)
 	}
-	// record stats about the label query
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 	log := spanlogger.FromContext(ctx)
 	statResult.Log(level.Debug(log))
@@ -228,14 +122,7 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 
 	logql.RecordLabelQueryMetrics(ctx, log, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
 
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
+	return resp, err
 }
 
 // TailHandler is a http.HandlerFunc for handling tail queries.
@@ -251,18 +138,15 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req.Query, err = parseRegexQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
 	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
 		level.Warn(logger).Log("msg", "error getting tenant id", "err", err)
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
+
+	encodingFlags := httpreq.ExtractEncodingFlags(r)
+	version := loghttp.GetVersion(r.RequestURI)
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -282,7 +166,7 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	tailer, err := q.querier.Tail(r.Context(), req)
+	tailer, err := q.querier.Tail(r.Context(), req, encodingFlags.Has(httpreq.FlagCategorizeLabels))
 	if err != nil {
 		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
 			level.Error(logger).Log("msg", "Error connecting to ingesters for tailing", "err", err)
@@ -297,6 +181,8 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 	ticker := time.NewTicker(wsPingPeriod)
 	defer ticker.Stop()
+
+	connWriter := marshal.NewWebsocketJSONWriter(conn)
 
 	var response *loghttp_legacy.TailResponse
 	responseChan := tailer.getResponseChan()
@@ -313,12 +199,12 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 					}
 					level.Error(logger).Log("msg", "Error from client", "err", err)
 					break
-				} else if tailer.stopped {
+				} else if tailer.stopped.Load() {
 					return
-				} else {
-					level.Error(logger).Log("msg", "Unexpected error from client", "err", err)
-					break
 				}
+
+				level.Error(logger).Log("msg", "Unexpected error from client", "err", err)
+				break
 			}
 		}
 		doneChan <- struct{}{}
@@ -328,8 +214,8 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		select {
 		case response = <-responseChan:
 			var err error
-			if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-				err = marshal.WriteTailResponseJSON(*response, conn)
+			if version == loghttp.VersionV1 {
+				err = marshal.WriteTailResponseJSON(*response, connWriter, encodingFlags)
 			} else {
 				err = marshal_legacy.WriteTailResponseJSON(*response, conn)
 			}
@@ -364,20 +250,14 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 // SeriesHandler returns the list of time series that match a certain label set.
 // See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
-func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
-	req, err := loghttp.ParseAndValidateSeriesQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
-	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("series"))
+func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, stats.Result, error) {
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeSeries))
 	defer timer.ObserveDuration()
 
 	start := time.Now()
-	statsCtx, ctx := stats.NewContext(r.Context())
+	statsCtx, ctx := stats.NewContext(ctx)
 
-	resp, err := q.querier.Series(r.Context(), req)
+	resp, err := q.querier.Series(ctx, req)
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	resLength := 0
@@ -385,7 +265,6 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 		resLength = len(resp.Series)
 	}
 
-	// record stats about the label query
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 	log := spanlogger.FromContext(ctx)
 	statResult.Log(level.Debug(log))
@@ -395,132 +274,141 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordSeriesQueryMetrics(ctx, log, req.Start, req.End, req.Groups, strconv.Itoa(status), statResult)
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
+	logql.RecordSeriesQueryMetrics(ctx, log, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
 
-	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
+	return resp, statResult, err
 }
 
 // IndexStatsHandler queries the index for the data statistics related to a query
-func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
-	req, err := loghttp.ParseIndexStatsQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
+func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQuery) (*logproto.IndexStatsResponse, error) {
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeStats))
+	defer timer.ObserveDuration()
 
-	// TODO(owen-d): log metadata, record stats?
-	resp, err := q.querier.IndexStats(r.Context(), req)
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
+
+	// TODO(karsten): we might want to change IndexStats to receive a logproto.IndexStatsRequest instead
+	resp, err := q.querier.IndexStats(ctx, req)
 	if resp == nil {
 		// Some stores don't implement this
 		resp = &index_stats.Stats{}
 	}
 
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
+	log := spanlogger.FromContext(ctx)
+	statResult.Log(level.Debug(log))
+
+	status := 200
 	if err != nil {
-		serverutil.WriteError(err, w)
-		return
+		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
-	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
+	logql.RecordStatsQueryMetrics(ctx, log, req.Start, req.End, req.Query, strconv.Itoa(status), statResult)
+
+	return resp, err
 }
 
-//TODO(trevorwhitney): add test for the handler split
+func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error) {
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeShards))
+	defer timer.ObserveDuration()
 
-// VolumeRangeHandler queries the index label volumes related to the passed matchers and given time range.
-// Returns N values where N is the time range / step.
-func (q *QuerierAPI) VolumeRangeHandler(w http.ResponseWriter, r *http.Request) {
-	rawReq, err := loghttp.ParseVolumeRangeQuery(r)
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
+
+	resp, err := q.querier.IndexShards(ctx, req, targetBytesPerShard)
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+
+	resLength := 0
+	if resp != nil {
+		resLength = len(resp.Shards)
+		stats.JoinResults(ctx, resp.Statistics)
+	}
+
+	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
+
+	log := spanlogger.FromContext(ctx)
+	statResult.Log(level.Debug(log))
+
+	status := 200
 	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
+		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
-	req := &logproto.VolumeRequest{
-		From:         model.TimeFromUnixNano(rawReq.Start.UnixNano()),
-		Through:      model.TimeFromUnixNano(rawReq.End.UnixNano()),
-		Matchers:     rawReq.Query,
-		Step:         rawReq.Step.Milliseconds(),
-		Limit:        int32(rawReq.Limit),
-		TargetLabels: rawReq.TargetLabels,
-		AggregateBy:  rawReq.AggregateBy,
-	}
+	logql.RecordShardsQueryMetrics(
+		ctx, log, req.Start, req.End, req.Query, targetBytesPerShard, strconv.Itoa(status), resLength, statResult,
+	)
 
-	q.seriesVolumeHandler(r.Context(), r, req, w)
+	return resp, err
 }
 
-// VolumeInstantHandler queries the index label volumes related to the passed matchers and given time range.
-// Returns a single value for the time range.
-func (q *QuerierAPI) VolumeInstantHandler(w http.ResponseWriter, r *http.Request) {
-	rawReq, err := loghttp.ParseVolumeInstantQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
+// TODO(trevorwhitney): add test for the handler split
 
-	req := &logproto.VolumeRequest{
-		From:         model.TimeFromUnixNano(rawReq.Start.UnixNano()),
-		Through:      model.TimeFromUnixNano(rawReq.End.UnixNano()),
-		Matchers:     rawReq.Query,
-		Step:         0,
-		Limit:        int32(rawReq.Limit),
-		TargetLabels: rawReq.TargetLabels,
-		AggregateBy:  rawReq.AggregateBy,
-	}
+// VolumeHandler queries the index label volumes related to the passed matchers and given time range.
+// Returns either N values where N is the time range / step and a single value for a time range depending on the request.
+func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeVolume))
+	defer timer.ObserveDuration()
 
-	q.seriesVolumeHandler(r.Context(), r, req, w)
-}
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
 
-func (q *QuerierAPI) seriesVolumeHandler(ctx context.Context, r *http.Request, req *logproto.VolumeRequest, w http.ResponseWriter) {
 	resp, err := q.querier.Volume(ctx, req)
 	if err != nil {
-		serverutil.WriteError(err, w)
-		return
+		return nil, err
 	}
-
 	if resp == nil { // Some stores don't implement this
-		resp = &logproto.VolumeResponse{Volumes: []logproto.Volume{}}
+		return &logproto.VolumeResponse{Volumes: []logproto.Volume{}}, nil
 	}
 
-	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
-		serverutil.WriteError(err, w)
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
+	log := spanlogger.FromContext(ctx)
+	statResult.Log(level.Debug(log))
+
+	status := 200
+	if err != nil {
+		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
+
+	logql.RecordVolumeQueryMetrics(ctx, log, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
+
+	return resp, nil
 }
 
-// parseRegexQuery parses regex and query querystring from httpRequest and returns the combined LogQL query.
-// This is used only to keep regexp query string support until it gets fully deprecated.
-func parseRegexQuery(httpRequest *http.Request) (string, error) {
-	query := httpRequest.Form.Get("query")
-	regexp := httpRequest.Form.Get("regexp")
-	if regexp != "" {
-		expr, err := syntax.ParseLogSelector(query, true)
-		if err != nil {
-			return "", err
-		}
-		newExpr, err := syntax.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
-		if err != nil {
-			return "", err
-		}
-		query = newExpr.String()
+func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	resp, err := q.querier.DetectedFields(ctx, req)
+	if err != nil {
+		return nil, err
 	}
-	return query, nil
+	if resp == nil { // Some stores don't implement this
+		level.Debug(spanlogger.FromContext(ctx)).Log(
+			"msg", "queried store for detected fields that does not support it, no response from querier.DetectedFields",
+		)
+		return &logproto.DetectedFieldsResponse{
+			Fields: []*logproto.DetectedField{},
+		}, nil
+	}
+	return resp, nil
 }
 
-func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, query string, limit uint32) error {
+func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	resp, err := q.querier.Patterns(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil { // Some stores don't implement this
+		return &logproto.QueryPatternsResponse{
+			Series: []*logproto.PatternSeries{},
+		}, nil
+	}
+	return resp, nil
+}
+
+func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.Expr, limit uint32) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
-	expr, err := syntax.ParseExpr(query)
-	if err != nil {
-		return err
 	}
 
 	// entry limit does not apply to metric queries.
@@ -537,10 +425,20 @@ func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, query string,
 	return nil
 }
 
+// DetectedLabelsHandler returns a response for detected labels
+func (q *QuerierAPI) DetectedLabelsHandler(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+	resp, err := q.querier.DetectedLabels(ctx, req)
+
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // WrapQuerySpanAndTimeout applies a context deadline and a span logger to a query call.
 //
 // The timeout is based on the per-tenant query timeout configuration.
-func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
+func WrapQuerySpanAndTimeout(call string, limits Limits) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			sp, ctx := opentracing.StartSpanFromContext(req.Context(), call)
@@ -555,7 +453,7 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 				return
 			}
 
-			timeoutCapture := func(id string) time.Duration { return q.limits.QueryTimeout(ctx, id) }
+			timeoutCapture := func(id string) time.Duration { return limits.QueryTimeout(ctx, id) }
 			timeout := util_validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
 			newCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()

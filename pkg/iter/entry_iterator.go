@@ -7,28 +7,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/loser"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
 // EntryIterator iterates over entries in time-order.
 type EntryIterator interface {
 	Iterator
 	Entry() logproto.Entry
-}
-
-type EntryIteratorOptions struct {
-	KeepStructuredMetdata bool
-}
-
-type EntryIteratorOption func(*EntryIteratorOptions)
-
-func WithKeepStructuredMetadata() EntryIteratorOption {
-	return func(o *EntryIteratorOptions) {
-		o.KeepStructuredMetdata = true
-	}
 }
 
 // streamIterator iterates over entries in a stream.
@@ -391,6 +381,7 @@ func (i *queryClientIterator) Next() bool {
 			return false
 		}
 		stats.JoinIngesters(ctx, batch.Stats)
+		_ = metadata.AddWarnings(ctx, batch.Warnings...)
 		i.curr = NewQueryResponseIterator(batch, i.direction)
 	}
 

@@ -1,6 +1,11 @@
 package encoding
 
-import "github.com/prometheus/prometheus/tsdb/encoding"
+import (
+	"encoding/binary"
+	"hash/crc32"
+
+	"github.com/prometheus/prometheus/tsdb/encoding"
+)
 
 func EncWith(b []byte) (res Encbuf) {
 	res.B = b
@@ -43,4 +48,24 @@ func (d *Decbuf) Bytes(n int) []byte {
 	x := d.B[:n]
 	d.B = d.B[n:]
 	return x
+}
+
+func (d *Decbuf) CheckCrc(castagnoliTable *crc32.Table) error {
+	if d.E != nil {
+		return d.E
+	}
+	if len(d.B) < 4 {
+		d.E = encoding.ErrInvalidSize
+		return d.E
+	}
+
+	offset := len(d.B) - 4
+	expCRC := binary.BigEndian.Uint32(d.B[offset:])
+	d.B = d.B[:offset]
+
+	if d.Crc32(castagnoliTable) != expCRC {
+		d.E = encoding.ErrInvalidChecksum
+		return d.E
+	}
+	return nil
 }

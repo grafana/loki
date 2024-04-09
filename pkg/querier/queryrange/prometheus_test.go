@@ -7,18 +7,25 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 var emptyStats = `"stats": {
+	"index": {
+		"postFilterChunks": 0,
+		"totalChunks": 0
+	},
 	"ingester" : {
 		"store": {
 			"chunksDownloadTime": 0,
+			"congestionControlLatency": 0,
 			"totalChunksRef": 0,
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
+			"queryReferencedStructuredMetadata": false,
+			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
@@ -39,9 +46,12 @@ var emptyStats = `"stats": {
 	"querier": {
 		"store": {
 			"chunksDownloadTime": 0,
+			"congestionControlLatency": 0,
 			"totalChunksRef": 0,
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
+			"queryReferencedStructuredMetadata": false,
+			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
@@ -63,7 +73,8 @@ var emptyStats = `"stats": {
 			"bytesReceived": 0,
 			"bytesSent": 0,
 			"requests": 0,
-			"downloadTime": 0
+			"downloadTime": 0,
+			"queryLengthServed": 0
 		},
 		"index": {
 			"entriesFound": 0,
@@ -72,7 +83,8 @@ var emptyStats = `"stats": {
 			"bytesReceived": 0,
 			"bytesSent": 0,
 			"requests": 0,
-			"downloadTime": 0
+			"downloadTime": 0,
+			"queryLengthServed": 0
 		},
 		"statsResult": {
 			"entriesFound": 0,
@@ -81,7 +93,28 @@ var emptyStats = `"stats": {
 			"bytesReceived": 0,
 			"bytesSent": 0,
 			"requests": 0,
-			"downloadTime": 0
+			"downloadTime": 0,
+			"queryLengthServed": 0
+		},
+		"seriesResult": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0,
+			"queryLengthServed": 0
+		},
+		"labelResult": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0,
+			"queryLengthServed": 0
 		},
 		"volumeResult": {
 			"entriesFound": 0,
@@ -90,7 +123,18 @@ var emptyStats = `"stats": {
 			"bytesReceived": 0,
 			"bytesSent": 0,
 			"requests": 0,
-			"downloadTime": 0
+			"downloadTime": 0,
+			"queryLengthServed": 0
+		},
+		"instantMetricResult": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0,
+			"queryLengthServed": 0
 		},
 		"result": {
 			"entriesFound": 0,
@@ -99,7 +143,8 @@ var emptyStats = `"stats": {
 			"bytesReceived": 0,
 			"bytesSent": 0,
 			"requests": 0,
-			"downloadTime": 0
+			"downloadTime": 0,
+			"queryLengthServed": 0
 		}
 	},
 	"summary": {
@@ -128,7 +173,8 @@ func Test_encodePromResponse(t *testing.T) {
 			"matrix",
 			&LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
-					Status: string(queryrangebase.StatusSuccess),
+					Status:   queryrangebase.StatusSuccess,
+					Warnings: []string{"this is a warning"},
 					Data: queryrangebase.PrometheusData{
 						ResultType: loghttp.ResultTypeMatrix,
 						Result: []queryrangebase.SampleStream{
@@ -156,6 +202,7 @@ func Test_encodePromResponse(t *testing.T) {
 			},
 			`{
 				"status": "success",
+				"warnings": ["this is a warning"],
 				"data": {
 					"resultType": "matrix",
 					"result": [
@@ -176,7 +223,8 @@ func Test_encodePromResponse(t *testing.T) {
 			"vector",
 			&LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
-					Status: string(queryrangebase.StatusSuccess),
+					Status:   queryrangebase.StatusSuccess,
+					Warnings: []string{"this is a warning"},
 					Data: queryrangebase.PrometheusData{
 						ResultType: loghttp.ResultTypeVector,
 						Result: []queryrangebase.SampleStream{
@@ -202,6 +250,7 @@ func Test_encodePromResponse(t *testing.T) {
 			},
 			`{
 				"status": "success",
+				"warnings": ["this is a warning"],
 				"data": {
 					"resultType": "vector",
 					"result": [

@@ -20,8 +20,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
 )
 
 func TestFileTargetSync(t *testing.T) {
@@ -475,6 +475,7 @@ func TestHandleFileCreationEvent(t *testing.T) {
 	positionsFileName := filepath.Join(dirName, "positions.yml")
 	logDir := filepath.Join(dirName, "log")
 	logFile := filepath.Join(logDir, "test1.log")
+	logFileIgnored := filepath.Join(logDir, "test.donot.log")
 
 	if err := os.MkdirAll(logDir, 0750); err != nil {
 		t.Fatal(err)
@@ -511,7 +512,8 @@ func TestHandleFileCreationEvent(t *testing.T) {
 		}
 	}()
 
-	target, err := NewFileTarget(metrics, logger, client, ps, path, "", nil, nil, &Config{
+	pathExclude := "**/*.donot.log"
+	target, err := NewFileTarget(metrics, logger, client, ps, path, pathExclude, nil, nil, &Config{
 		// To handle file creation event from channel, set enough long time as sync period
 		SyncPeriod: 10 * time.Minute,
 	}, DefaultWatchConig, fakeFileHandler, fakeTargetHandler, "", nil)
@@ -523,8 +525,16 @@ func TestHandleFileCreationEvent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	_, err = os.Create(logFileIgnored)
+	if err != nil {
+		t.Fatal(err)
+	}
 	fakeFileHandler <- fsnotify.Event{
 		Name: logFile,
+		Op:   fsnotify.Create,
+	}
+	fakeFileHandler <- fsnotify.Event{
+		Name: logFileIgnored,
 		Op:   fsnotify.Create,
 	}
 	requireEventually(t, func() bool {

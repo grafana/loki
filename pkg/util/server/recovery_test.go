@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 func Test_onPanic(t *testing.T) {
@@ -32,6 +34,13 @@ func Test_onPanic(t *testing.T) {
 		panic("foo")
 	}))
 	require.Error(t, err)
+
+	_, err = RecoveryMiddleware.
+		Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (res queryrangebase.Response, err error) {
+			panic("foo")
+		})).
+		Do(context.Background(), nil)
+	require.ErrorContains(t, err, "foo")
 }
 
 type fakeStream struct{}

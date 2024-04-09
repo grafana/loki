@@ -1,22 +1,17 @@
 package queryrange
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"sort"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -25,34 +20,40 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/marshal"
-	"github.com/grafana/loki/pkg/util/validation"
-	valid "github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/validation"
+	valid "github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
 	testTime   = time.Date(2019, 12, 2, 11, 10, 10, 10, time.UTC)
 	testConfig = Config{
-		Config: queryrangebase.Config{
+		Config: base.Config{
 			AlignQueriesWithStep: true,
 			MaxRetries:           3,
 			CacheResults:         true,
-			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
-				CacheConfig: cache.Config{
-					EmbeddedCache: cache.EmbeddedCacheConfig{
-						Enabled:   true,
-						MaxSizeMB: 1024,
-						TTL:       24 * time.Hour,
+			ResultsCacheConfig: base.ResultsCacheConfig{
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						EmbeddedCache: cache.EmbeddedCacheConfig{
+							Enabled:   true,
+							MaxSizeMB: 1024,
+							TTL:       24 * time.Hour,
+						},
 					},
 				},
 			},
@@ -60,23 +61,42 @@ var (
 		Transformer:            nil,
 		CacheIndexStatsResults: true,
 		StatsCacheConfig: IndexStatsCacheConfig{
-			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
-				CacheConfig: cache.Config{
-					EmbeddedCache: cache.EmbeddedCacheConfig{
-						Enabled:   true,
-						MaxSizeMB: 1024,
-						TTL:       24 * time.Hour,
+			ResultsCacheConfig: base.ResultsCacheConfig{
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						EmbeddedCache: cache.EmbeddedCacheConfig{
+							Enabled:   true,
+							MaxSizeMB: 1024,
+							TTL:       24 * time.Hour,
+						},
 					},
 				},
 			},
 		},
 		VolumeCacheConfig: VolumeCacheConfig{
-			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
-				CacheConfig: cache.Config{
-					EmbeddedCache: cache.EmbeddedCacheConfig{
-						Enabled:   true,
-						MaxSizeMB: 1024,
-						TTL:       24 * time.Hour,
+			ResultsCacheConfig: base.ResultsCacheConfig{
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						EmbeddedCache: cache.EmbeddedCacheConfig{
+							Enabled:   true,
+							MaxSizeMB: 1024,
+							TTL:       24 * time.Hour,
+						},
+					},
+				},
+			},
+		},
+		CacheInstantMetricResults:    true,
+		InstantMetricQuerySplitAlign: true,
+		InstantMetricCacheConfig: InstantMetricCacheConfig{
+			ResultsCacheConfig: base.ResultsCacheConfig{
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						EmbeddedCache: cache.EmbeddedCacheConfig{
+							Enabled:   true,
+							MaxSizeMB: 1024,
+							TTL:       24 * time.Hour,
+						},
 					},
 				},
 			},
@@ -135,10 +155,16 @@ var (
 	series = logproto.SeriesResponse{
 		Series: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "filename", Value: "/var/hostlog/apport.log"},
+					{Key: "job", Value: "varlogs"},
+				},
 			},
 			{
-				Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "filename", Value: "/var/hostlog/test.log"},
+					{Key: "job", Value: "varlogs"},
+				},
 			},
 		},
 	}
@@ -152,19 +178,16 @@ var (
 	}
 )
 
-func getQueryAndStatsHandler(queryHandler, statsHandler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/loki/api/v1/index/stats" {
-			statsHandler.ServeHTTP(w, r)
-			return
+func getQueryAndStatsHandler(queryHandler, statsHandler base.Handler) base.Handler {
+	return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+		switch r.(type) {
+		case *logproto.IndexStatsRequest:
+			return statsHandler.Do(ctx, r)
+		case *LokiRequest, *LokiInstantRequest:
+			return queryHandler.Do(ctx, r)
 		}
 
-		if r.URL.Path == "/loki/api/v1/query_range" || r.URL.Path == "/loki/api/v1/query" {
-			queryHandler.ServeHTTP(w, r)
-			return
-		}
-
-		panic("Request not supported")
+		return nil, fmt.Errorf("Request not supported: %T", r)
 	})
 }
 
@@ -181,9 +204,9 @@ func TestMetricsTripperware(t *testing.T) {
 	noCacheTestCfg := testConfig
 	noCacheTestCfg.CacheResults = false
 	noCacheTestCfg.CacheIndexStatsResults = false
-	tpw, stopper, err := NewTripperware(noCacheTestCfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err := NewMiddleware(noCacheTestCfg, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemasTSDB,
-	}, nil, false, nil)
+	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -197,23 +220,18 @@ func TestMetricsTripperware(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`rate({app="foo"} |= "foo"[1m])`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
-
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
-	rt, err := newfakeRoundTripper()
-	require.NoError(t, err)
 
 	// Test MaxQueryBytesRead limit
 	statsCount, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 2000})
 	queryCount, queryHandler := counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw(rt).RoundTrip(req)
+	h := getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
 	require.Equal(t, 1, *statsCount)
 	require.Equal(t, 0, *queryCount)
@@ -221,30 +239,25 @@ func TestMetricsTripperware(t *testing.T) {
 	// Test MaxQuerierBytesRead limit
 	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 200})
 	queryCount, queryHandler = counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw(rt).RoundTrip(req)
-	require.Error(t, err)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
+	require.ErrorContains(t, err, "query too large to execute on a single querier")
 	require.Equal(t, 0, *queryCount)
 	require.Equal(t, 2, *statsCount)
 
 	// testing retry
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
-	retries, queryHandler := counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw(rt).RoundTrip(req)
+	retries, queryHandler := counterWithError(errors.New("handle error"))
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	// 3 retries configured.
 	require.GreaterOrEqual(t, *retries, 3)
 	require.Error(t, err)
-	rt.Close()
-
-	rt, err = newfakeRoundTripper()
-	require.NoError(t, err)
-	defer rt.Close()
 
 	// Configure with cache
-	tpw, stopper, err = NewTripperware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err = NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemasTSDB,
-	}, nil, false, nil)
+	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -253,22 +266,18 @@ func TestMetricsTripperware(t *testing.T) {
 	// testing split interval
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
 	count, queryHandler := promqlResult(matrix)
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	resp, err := tpw(rt).RoundTrip(req)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	lokiResponse, err := tpw.Wrap(h).Do(ctx, lreq)
 	// 2 queries
 	require.Equal(t, 2, *count)
-	require.NoError(t, err)
-	lokiResponse, err := DefaultCodec.DecodeResponse(ctx, resp, lreq)
 	require.NoError(t, err)
 
 	// testing cache
 	count, queryHandler = counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	cacheResp, err := tpw(rt).RoundTrip(req)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	lokiCacheResponse, err := tpw.Wrap(h).Do(ctx, lreq)
 	// 0 queries result are cached.
 	require.Equal(t, 0, *count)
-	require.NoError(t, err)
-	lokiCacheResponse, err := DefaultCodec.DecodeResponse(ctx, cacheResp, lreq)
 	require.NoError(t, err)
 
 	require.Equal(t, lokiResponse.(*LokiPromResponse).Response, lokiCacheResponse.(*LokiPromResponse).Response)
@@ -284,14 +293,11 @@ func TestLogFilterTripperware(t *testing.T) {
 	noCacheTestCfg := testConfig
 	noCacheTestCfg.CacheResults = false
 	noCacheTestCfg.CacheIndexStatsResults = false
-	tpw, stopper, err := NewTripperware(noCacheTestCfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
+	tpw, stopper, err := NewMiddleware(noCacheTestCfg, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
 	require.NoError(t, err)
-	rt, err := newfakeRoundTripper()
-	require.NoError(t, err)
-	defer rt.Close()
 
 	lreq := &LokiRequest{
 		Query:     `{app="foo"} |= "foo"`,
@@ -300,41 +306,35 @@ func TestLogFilterTripperware(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"} |= "foo"`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
-
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
 
 	// testing limit
 	count, h := promqlResult(streams)
-	rt.setHandler(h)
-	_, err = tpw(rt).RoundTrip(req)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Equal(t, 0, *count)
 	require.Error(t, err)
 
 	// set the query length back to normal
 	lreq.StartTs = testTime.Add(-6 * time.Hour)
-	req, err = DefaultCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
 
 	// testing retry
 	_, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
-	retries, queryHandler := counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw(rt).RoundTrip(req)
+	retries, queryHandler := counterWithError(errors.New("handler failed"))
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.GreaterOrEqual(t, *retries, 3)
 	require.Error(t, err)
 
 	// Test MaxQueryBytesRead limit
 	statsCount, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 2000})
 	queryCount, queryHandler := counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw(rt).RoundTrip(req)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
 	require.Equal(t, 1, *statsCount)
 	require.Equal(t, 0, *queryCount)
@@ -342,11 +342,132 @@ func TestLogFilterTripperware(t *testing.T) {
 	// Test MaxQuerierBytesRead limit
 	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 200})
 	queryCount, queryHandler = counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw(rt).RoundTrip(req)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
 	require.Equal(t, 2, *statsCount)
 	require.Equal(t, 0, *queryCount)
+}
+
+func TestInstantQueryTripperwareResultCaching(t *testing.T) {
+	// Goal is to make sure the instant query tripperware returns same results with and without cache middleware.
+	// 1. Get result without cache middleware.
+	// 2. Get result with middelware (with splitting). Result should be same.
+	// 3. Make same query with middleware (this time hitting the cache). Result should be same.
+
+	testLocal := testConfig
+	testLocal.ShardedQueries = true
+	testLocal.CacheResults = false
+	testLocal.CacheIndexStatsResults = false
+	testLocal.CacheInstantMetricResults = false
+	var l = fakeLimits{
+		maxQueryParallelism:     1,
+		tsdbMaxQueryParallelism: 1,
+		maxQueryBytesRead:       1000,
+		maxQuerierBytesRead:     100,
+		queryTimeout:            1 * time.Minute,
+		maxSeries:               1,
+	}
+	tpw, stopper, err := NewMiddleware(testLocal, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+
+	q := `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`
+	lreq := &LokiInstantRequest{
+		Query:     q,
+		Limit:     1000,
+		TimeTs:    testTime.Add(-4 * time.Hour),
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(q),
+		},
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	// Test MaxQueryBytesRead limit
+	statsCount, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 2000})
+	queryCount, queryHandler := counter()
+	h := getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
+	require.Error(t, err)
+	require.Equal(t, 1, *statsCount)
+	require.Equal(t, 0, *queryCount)
+
+	// Test MaxQuerierBytesRead limit
+	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 200})
+	queryCount, queryHandler = counter()
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
+	require.Error(t, err)
+	require.Equal(t, 2, *statsCount)
+	require.Equal(t, 0, *queryCount)
+
+	// 1. Without cache middleware.
+	count, queryHandler := promqlResult(vector)
+	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	h = tpw.Wrap(h)
+	lokiResponse, err := h.Do(ctx, lreq)
+	require.Equal(t, 1, *count)
+	require.NoError(t, err)
+
+	exp, err := ResultToResponse(logqlmodel.Result{
+		Data: vector,
+	}, nil)
+	require.NoError(t, err)
+	expected := exp.(*LokiPromResponse)
+
+	require.IsType(t, &LokiPromResponse{}, lokiResponse)
+	concrete := lokiResponse.(*LokiPromResponse)
+	require.Equal(t, loghttp.ResultTypeVector, concrete.Response.Data.ResultType)
+	assertInstantSampleValues(t, expected, concrete) // assert actual sample values
+
+	// 2. First time with caching enabled (no cache hit).
+	testLocal.CacheInstantMetricResults = true
+	l.instantMetricSplitDuration = map[string]time.Duration{
+		// so making request [15] range, will have 2 subqueries aligned with [5m] giving total of [10m]. And 2 more subqueries for remaining [5m] aligning depending on exec time of the query.
+		"1": 5 * time.Minute,
+	}
+	tpw, stopper, err = NewMiddleware(testLocal, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+
+	count, queryHandler = promqlResult(vector)
+	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	lokiResponse, err = tpw.Wrap(h).Do(ctx, lreq)
+	require.Equal(t, 4, *count) // split into 4 subqueries. like explained in `instantMetricSplitDuration` limits config.
+	require.NoError(t, err)
+
+	exp, err = ResultToResponse(logqlmodel.Result{
+		Data: instantQueryResultWithCache(*count, 15*time.Minute, vector[0]),
+	}, nil)
+	require.NoError(t, err)
+	expected = exp.(*LokiPromResponse)
+
+	require.IsType(t, &LokiPromResponse{}, lokiResponse)
+	concrete = lokiResponse.(*LokiPromResponse)
+	require.Equal(t, loghttp.ResultTypeVector, concrete.Response.Data.ResultType)
+	assertInstantSampleValues(t, expected, concrete) // assert actual sample values
+
+	// 3. Second time with caching enabled (cache hit).
+	count, queryHandler = promqlResult(vector)
+	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	lokiResponse, err = tpw.Wrap(h).Do(ctx, lreq)
+	require.Equal(t, 0, *count) // no queries hit base handler, because all queries hit from cache.
+	require.NoError(t, err)
+
+	require.IsType(t, &LokiPromResponse{}, lokiResponse)
+	concrete = lokiResponse.(*LokiPromResponse)
+	require.Equal(t, loghttp.ResultTypeVector, concrete.Response.Data.ResultType)
+	assertInstantSampleValues(t, expected, concrete) // assert actual sample values
 }
 
 func TestInstantQueryTripperware(t *testing.T) {
@@ -362,36 +483,31 @@ func TestInstantQueryTripperware(t *testing.T) {
 		queryTimeout:            1 * time.Minute,
 		maxSeries:               1,
 	}
-	tpw, stopper, err := NewTripperware(testShardingConfigNoCache, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
+	tpw, stopper, err := NewMiddleware(testShardingConfigNoCache, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
 	require.NoError(t, err)
-	rt, err := newfakeRoundTripper()
-	require.NoError(t, err)
-	defer rt.Close()
 
+	q := `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`
 	lreq := &LokiInstantRequest{
-		Query:     `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`,
+		Query:     q,
 		Limit:     1000,
-		TimeTs:    testTime,
+		TimeTs:    testTime.Add(-4 * time.Hour), // because vector data we return from mock handler has that time.
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(q),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
-
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
 
 	// Test MaxQueryBytesRead limit
 	statsCount, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 2000})
 	queryCount, queryHandler := counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw(rt).RoundTrip(req)
+	h := getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
 	require.Equal(t, 1, *statsCount)
 	require.Equal(t, 0, *queryCount)
@@ -399,33 +515,37 @@ func TestInstantQueryTripperware(t *testing.T) {
 	// Test MaxQuerierBytesRead limit
 	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 200})
 	queryCount, queryHandler = counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw(rt).RoundTrip(req)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
 	require.Equal(t, 2, *statsCount)
 	require.Equal(t, 0, *queryCount)
 
 	count, queryHandler := promqlResult(vector)
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	resp, err := tpw(rt).RoundTrip(req)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	lokiResponse, err := tpw.Wrap(h).Do(ctx, lreq)
 	require.Equal(t, 1, *count)
 	require.NoError(t, err)
 
-	lokiResponse, err := DefaultCodec.DecodeResponse(ctx, resp, lreq)
-	require.NoError(t, err)
 	require.IsType(t, &LokiPromResponse{}, lokiResponse)
+	concrete := lokiResponse.(*LokiPromResponse)
+	require.Equal(t, loghttp.ResultTypeVector, concrete.Response.Data.ResultType)
 }
 
 func TestSeriesTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	l := fakeLimits{
+		maxQueryLength:      48 * time.Hour,
+		maxQueryParallelism: 1,
+		metadataSplitDuration: map[string]time.Duration{
+			"1": 24 * time.Hour,
+		},
+	}
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
 	require.NoError(t, err)
-	rt, err := newfakeRoundTripper()
-	require.NoError(t, err)
-	defer rt.Close()
 
 	lreq := &LokiSeriesRequest{
 		Match:   []string{`{job="varlogs"}`},
@@ -435,22 +555,15 @@ func TestSeriesTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
-
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
 
 	count, h := seriesResult(series)
-	rt.setHandler(h)
-	resp, err := tpw(rt).RoundTrip(req)
+	lokiSeriesResponse, err := tpw.Wrap(h).Do(ctx, lreq)
+	require.NoError(t, err)
+
 	// 2 queries
 	require.Equal(t, 2, *count)
-	require.NoError(t, err)
-	lokiSeriesResponse, err := DefaultCodec.DecodeResponse(ctx, resp, lreq)
 	res, ok := lokiSeriesResponse.(*LokiSeriesResponse)
-	require.Equal(t, true, ok)
+	require.True(t, ok)
 
 	// make sure we return unique series since responses from
 	// SplitByInterval middleware might have duplicate series
@@ -459,60 +572,64 @@ func TestSeriesTripperware(t *testing.T) {
 }
 
 func TestLabelsTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	l := fakeLimits{
+		maxQueryLength:      48 * time.Hour,
+		maxQueryParallelism: 1,
+		metadataSplitDuration: map[string]time.Duration{
+			"1": 24 * time.Hour,
+		},
+	}
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
 	require.NoError(t, err)
-	rt, err := newfakeRoundTripper()
-	require.NoError(t, err)
-	defer rt.Close()
 
-	lreq := &LokiLabelNamesRequest{
-		StartTs: testTime.Add(-25 * time.Hour), // bigger than the limit
-		EndTs:   testTime,
-		Path:    "/loki/api/v1/labels",
-	}
+	lreq := NewLabelRequest(
+		testTime.Add(-25*time.Hour), // bigger than the limit
+		testTime,
+		"",
+		"",
+		"/loki/api/v1/labels",
+	)
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
-
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
 
 	handler := newFakeHandler(
 		// we expect 2 calls.
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.NoError(t, marshal.WriteLabelResponseJSON(logproto.LabelResponse{Values: []string{"foo", "bar", "blop"}}, w))
+		base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
+			return &LokiLabelNamesResponse{
+				Status:  "success",
+				Data:    []string{"foo", "bar", "blop"},
+				Version: uint32(1),
+			}, nil
 		}),
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.NoError(t, marshal.WriteLabelResponseJSON(logproto.LabelResponse{Values: []string{"foo", "bar", "blip"}}, w))
+		base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
+			return &LokiLabelNamesResponse{
+				Status:  "success",
+				Data:    []string{"foo", "bar", "blip"},
+				Version: uint32(1),
+			}, nil
 		}),
 	)
-	rt.setHandler(handler)
-	resp, err := tpw(rt).RoundTrip(req)
+	lokiLabelsResponse, err := tpw.Wrap(handler).Do(ctx, lreq)
+	require.NoError(t, err)
+
 	// verify 2 calls have been made to downstream.
 	require.Equal(t, 2, handler.count)
-	require.NoError(t, err)
-	lokiLabelsResponse, err := DefaultCodec.DecodeResponse(ctx, resp, lreq)
 	res, ok := lokiLabelsResponse.(*LokiLabelNamesResponse)
-	require.Equal(t, true, ok)
+	require.True(t, ok)
 	require.Equal(t, []string{"foo", "bar", "blop", "blip"}, res.Data)
 	require.Equal(t, "success", res.Status)
 	require.NoError(t, err)
 }
 
 func TestIndexStatsTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
 	require.NoError(t, err)
-	rt, err := newfakeRoundTripper()
-	require.NoError(t, err)
-	defer rt.Close()
 
 	lreq := &logproto.IndexStatsRequest{
 		Matchers: `{job="varlogs"}`,
@@ -521,12 +638,6 @@ func TestIndexStatsTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
-
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
 
 	response := logproto.IndexStatsResponse{
 		Streams: 100,
@@ -536,8 +647,7 @@ func TestIndexStatsTripperware(t *testing.T) {
 	}
 
 	count, h := indexStatsResult(response)
-	rt.setHandler(h)
-	_, err = tpw(rt).RoundTrip(req)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	// 2 queries
 	require.Equal(t, 2, *count)
 	require.NoError(t, err)
@@ -545,14 +655,11 @@ func TestIndexStatsTripperware(t *testing.T) {
 	// Test the cache.
 	// It should have the answer already so the query handler shouldn't be hit
 	count, h = indexStatsResult(response)
-	rt.setHandler(h)
-	resp, err := tpw(rt).RoundTrip(req)
+	indexStatsResponse, err := tpw.Wrap(h).Do(ctx, lreq)
 	require.NoError(t, err)
 	require.Equal(t, 0, *count)
 
 	// Test the response is the expected
-	indexStatsResponse, err := DefaultCodec.DecodeResponse(ctx, resp, lreq)
-	require.NoError(t, err)
 	res, ok := indexStatsResponse.(*IndexStatsResponse)
 	require.Equal(t, true, ok)
 	require.Equal(t, response.Streams*2, res.Response.Streams)
@@ -563,47 +670,37 @@ func TestIndexStatsTripperware(t *testing.T) {
 
 func TestVolumeTripperware(t *testing.T) {
 	t.Run("instant queries hardcode step to 0 and return a prometheus style vector response", func(t *testing.T) {
-		tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, volumeEnabled: true}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+		limits := fakeLimits{
+			maxQueryLength: 48 * time.Hour,
+			volumeEnabled:  true,
+			maxSeries:      42,
+		}
+		tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 		if stopper != nil {
 			defer stopper.Stop()
 		}
 		require.NoError(t, err)
 
-		rt, err := newfakeRoundTripper()
-		require.NoError(t, err)
-		defer rt.Close()
-
 		lreq := &logproto.VolumeRequest{
-			Matchers: `{job="varlogs"}`,
-			From:     model.TimeFromUnixNano(testTime.Add(-25 * time.Hour).UnixNano()), // bigger than split by interval limit
-			Through:  model.TimeFromUnixNano(testTime.UnixNano()),
-			Limit:    10,
-			Step:     42, // this should be ignored and set to 0
+			Matchers:    `{job="varlogs"}`,
+			From:        model.TimeFromUnixNano(testTime.Add(-25 * time.Hour).UnixNano()), // bigger than split by interval limit
+			Through:     model.TimeFromUnixNano(testTime.UnixNano()),
+			Limit:       10,
+			Step:        0, // Setting this value to 0 is what makes this an instant query
+			AggregateBy: seriesvolume.DefaultAggregateBy,
 		}
 
 		ctx := user.InjectOrgID(context.Background(), "1")
-		req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-		require.NoError(t, err)
-
-		req = req.WithContext(ctx)
-		err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-		require.NoError(t, err)
-
-		req.URL.Path = "/loki/api/v1/index/volume"
 
 		count, h := seriesVolumeResult(seriesVolume)
-		rt.setHandler(h)
 
-		resp, err := tpw(rt).RoundTrip(req)
+		volumeResp, err := tpw.Wrap(h).Do(ctx, lreq)
 		require.NoError(t, err)
 		require.Equal(t, 2, *count) // 2 queries from splitting
 
-		volumeResp, err := DefaultCodec.DecodeResponse(ctx, resp, nil)
-		require.NoError(t, err)
-
-		expected := queryrangebase.PrometheusData{
+		expected := base.PrometheusData{
 			ResultType: loghttp.ResultTypeVector,
-			Result: []queryrangebase.SampleStream{
+			Result: []base.SampleStream{
 				{
 					Labels: []logproto.LabelAdapter{{
 						Name:  "bar",
@@ -634,41 +731,29 @@ func TestVolumeTripperware(t *testing.T) {
 	})
 
 	t.Run("range queries return a prometheus style metrics response, putting volumes in buckets based on the step", func(t *testing.T) {
-		tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, volumeEnabled: true}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+		tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, volumeEnabled: true}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 		if stopper != nil {
 			defer stopper.Stop()
 		}
 		require.NoError(t, err)
 
-		rt, err := newfakeRoundTripper()
-		require.NoError(t, err)
-		defer rt.Close()
-
 		start := testTime.Add(-5 * time.Hour)
 		end := testTime
 
 		lreq := &logproto.VolumeRequest{
-			Matchers: `{job="varlogs"}`,
-			From:     model.TimeFromUnixNano(start.UnixNano()), // bigger than split by interval limit
-			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Step:     time.Hour.Milliseconds(),
-			Limit:    10,
+			Matchers:    `{job="varlogs"}`,
+			From:        model.TimeFromUnixNano(start.UnixNano()), // bigger than split by interval limit
+			Through:     model.TimeFromUnixNano(end.UnixNano()),
+			Step:        time.Hour.Milliseconds(), // a non-zero value makes this a range query
+			Limit:       10,
+			AggregateBy: seriesvolume.DefaultAggregateBy,
 		}
 
 		ctx := user.InjectOrgID(context.Background(), "1")
-		req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-		require.NoError(t, err)
-
-		req = req.WithContext(ctx)
-		err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-		require.NoError(t, err)
-
-		req.URL.Path = "/loki/api/v1/index/volume_range"
 
 		count, h := seriesVolumeResult(seriesVolume)
-		rt.setHandler(h)
 
-		resp, err := tpw(rt).RoundTrip(req)
+		volumeResp, err := tpw.Wrap(h).Do(ctx, lreq)
 		require.NoError(t, err)
 
 		/*
@@ -678,14 +763,11 @@ func TestVolumeTripperware(t *testing.T) {
 		*/
 		require.Equal(t, 6, *count) // 6 queries from splitting into step buckets
 
-		volumeResp, err := DefaultCodec.DecodeResponse(ctx, resp, nil)
-		require.NoError(t, err)
-
 		barBazExpectedSamples := []logproto.LegacySample{}
-		util.ForInterval(time.Hour, start, end, true, func(s, _ time.Time) {
+		util.ForInterval(time.Hour, start, end, true, func(_, e time.Time) {
 			barBazExpectedSamples = append(barBazExpectedSamples, logproto.LegacySample{
 				Value:       3350,
-				TimestampMs: s.Unix() * 1e3,
+				TimestampMs: e.UnixMilli(),
 			})
 		})
 		sort.Slice(barBazExpectedSamples, func(i, j int) bool {
@@ -693,19 +775,19 @@ func TestVolumeTripperware(t *testing.T) {
 		})
 
 		fooBarExpectedSamples := []logproto.LegacySample{}
-		util.ForInterval(time.Hour, start, end, true, func(s, _ time.Time) {
+		util.ForInterval(time.Hour, start, end, true, func(_, e time.Time) {
 			fooBarExpectedSamples = append(fooBarExpectedSamples, logproto.LegacySample{
 				Value:       1024,
-				TimestampMs: s.Unix() * 1e3,
+				TimestampMs: e.UnixMilli(),
 			})
 		})
 		sort.Slice(fooBarExpectedSamples, func(i, j int) bool {
 			return fooBarExpectedSamples[i].TimestampMs < fooBarExpectedSamples[j].TimestampMs
 		})
 
-		expected := queryrangebase.PrometheusData{
+		expected := base.PrometheusData{
 			ResultType: loghttp.ResultTypeMatrix,
-			Result: []queryrangebase.SampleStream{
+			Result: []base.SampleStream{
 				{
 					Labels: []logproto.LabelAdapter{{
 						Name:  "bar",
@@ -740,7 +822,7 @@ func TestNewTripperware_Caches(t *testing.T) {
 		{
 			name: "results cache disabled, stats cache disabled",
 			config: Config{
-				Config: queryrangebase.Config{
+				Config: base.Config{
 					CacheResults: false,
 				},
 				CacheIndexStatsResults: false,
@@ -749,20 +831,41 @@ func TestNewTripperware_Caches(t *testing.T) {
 			err:       "",
 		},
 		{
-			name: "results cache enabled, stats cache disabled",
+			name: "results cache enabled",
 			config: Config{
-				Config: queryrangebase.Config{
+				Config: base.Config{
 					CacheResults: true,
-					ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								MaxSizeMB: 1,
-								Enabled:   true,
+					ResultsCacheConfig: base.ResultsCacheConfig{
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									MaxSizeMB: 1,
+									Enabled:   true,
+								},
 							},
 						},
 					},
 				},
-				CacheIndexStatsResults: false,
+			},
+			numCaches: 1,
+			err:       "",
+		},
+		{
+			name: "stats cache enabled",
+			config: Config{
+				CacheIndexStatsResults: true,
+				StatsCacheConfig: IndexStatsCacheConfig{
+					ResultsCacheConfig: base.ResultsCacheConfig{
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									Enabled:   true,
+									MaxSizeMB: 1000,
+								},
+							},
+						},
+					},
+				},
 			},
 			numCaches: 1,
 			err:       "",
@@ -770,43 +873,28 @@ func TestNewTripperware_Caches(t *testing.T) {
 		{
 			name: "results cache enabled, stats cache enabled",
 			config: Config{
-				Config: queryrangebase.Config{
+				Config: base.Config{
 					CacheResults: true,
-					ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								MaxSizeMB: 1,
-								Enabled:   true,
-							},
-						},
-					},
-				},
-				CacheIndexStatsResults: true,
-			},
-			numCaches: 2,
-			err:       "",
-		},
-		{
-			name: "results cache enabled, stats cache enabled but different",
-			config: Config{
-				Config: queryrangebase.Config{
-					CacheResults: true,
-					ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								Enabled:   true,
-								MaxSizeMB: 2000,
+					ResultsCacheConfig: base.ResultsCacheConfig{
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									Enabled:   true,
+									MaxSizeMB: 2000,
+								},
 							},
 						},
 					},
 				},
 				CacheIndexStatsResults: true,
 				StatsCacheConfig: IndexStatsCacheConfig{
-					ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								Enabled:   true,
-								MaxSizeMB: 1000,
+					ResultsCacheConfig: base.ResultsCacheConfig{
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									Enabled:   true,
+									MaxSizeMB: 1000,
+								},
 							},
 						},
 					},
@@ -818,18 +906,15 @@ func TestNewTripperware_Caches(t *testing.T) {
 		{
 			name: "results cache enabled (no config provided)",
 			config: Config{
-				Config: queryrangebase.Config{
+				Config: base.Config{
 					CacheResults: true,
 				},
 			},
 			err: fmt.Sprintf("%s cache is not configured", stats.ResultCache),
 		},
 		{
-			name: "results cache disabled, stats cache enabled (no config provided)",
+			name: "stats cache enabled (no config provided)",
 			config: Config{
-				Config: queryrangebase.Config{
-					CacheResults: false,
-				},
 				CacheIndexStatsResults: true,
 			},
 			numCaches: 0,
@@ -837,7 +922,7 @@ func TestNewTripperware_Caches(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, stopper, err := NewTripperware(tc.config, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+			_, stopper, err := NewMiddleware(tc.config, testEngineOpts, nil, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 			if stopper != nil {
 				defer stopper.Stop()
 			}
@@ -867,14 +952,11 @@ func TestNewTripperware_Caches(t *testing.T) {
 }
 
 func TestLogNoFilter(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
 	require.NoError(t, err)
-	rt, err := newfakeRoundTripper()
-	require.NoError(t, err)
-	defer rt.Close()
 
 	lreq := &LokiRequest{
 		Query:     `{app="foo"}`,
@@ -883,129 +965,57 @@ func TestLogNoFilter(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"}`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
-
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
 
 	count, h := promqlResult(streams)
-	rt.setHandler(h)
-	_, err = tpw(rt).RoundTrip(req)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Equal(t, 1, *count)
 	require.Nil(t, err)
 }
 
-func TestRegexpParamsSupport(t *testing.T) {
-	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, 4*time.Hour)
-	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
-	if stopper != nil {
-		defer stopper.Stop()
-	}
-	require.NoError(t, err)
-	rt, err := newfakeRoundTripper()
-	require.NoError(t, err)
-	defer rt.Close()
-
-	lreq := &LokiRequest{
-		Query:     `{app="foo"}`,
-		Limit:     1000,
-		StartTs:   testTime.Add(-6 * time.Hour),
-		EndTs:     testTime,
-		Direction: logproto.FORWARD,
-		Path:      "/loki/api/v1/query_range",
-	}
-
-	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
-
-	// fudge a regexp params
-	params := req.URL.Query()
-	params.Set("regexp", "foo")
-	req.URL.RawQuery = params.Encode()
-
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
-
-	count, h := promqlResult(streams)
-	rt.setHandler(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		// the query params should contain the filter.
-		require.Contains(t, r.URL.Query().Get("query"), `|~ "foo"`)
-		h.ServeHTTP(rw, r)
-	}))
-	_, err = tpw(rt).RoundTrip(req)
-	require.Equal(t, 2, *count) // expecting the query to also be splitted since it has a filter.
-	require.NoError(t, err)
-}
-
 func TestPostQueries(t *testing.T) {
-	req, err := http.NewRequest(http.MethodPost, "/loki/api/v1/query_range", nil)
-	data := url.Values{
-		"query": {`{app="foo"} |~ "foo"`},
+	lreq := &LokiRequest{
+		Query: `{app="foo"} |~ "foo"`,
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"} |~ "foo"`),
+		},
 	}
-	body := bytes.NewBufferString(data.Encode())
-	req.Body = io.NopCloser(body)
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
-	req = req.WithContext(user.InjectOrgID(context.Background(), "1"))
-	require.NoError(t, err)
-	_, err = newRoundTripper(
+	ctx := user.InjectOrgID(context.Background(), "1")
+	handler := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
+		t.Error("unexpected default roundtripper called")
+		return nil, nil
+	})
+	_, err := newRoundTripper(
 		util_log.Logger,
-		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected default roundtripper called")
+		handler,
+		handler,
+		base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
 			return nil, nil
 		}),
-		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected default roundtripper called")
-			return nil, nil
-		}),
-		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			return nil, nil
-		}),
-		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected metric roundtripper called")
-			return nil, nil
-		}),
-		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected series roundtripper called")
-			return nil, nil
-		}),
-		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected labels roundtripper called")
-			return nil, nil
-		}),
-		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected instant roundtripper called")
-			return nil, nil
-		}),
-		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected indexStats roundtripper called")
-			return nil, nil
-		}),
-		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected labelVolume roundtripper called")
-			return nil, nil
-		}),
+		handler,
+		handler,
+		handler,
+		handler,
+		handler,
+		handler,
+		handler,
+		handler,
 		fakeLimits{},
-	).RoundTrip(req)
+	).Do(ctx, lreq)
 	require.NoError(t, err)
 }
 
 func TestTripperware_EntriesLimit(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
 	require.NoError(t, err)
-	rt, err := newfakeRoundTripper()
-	require.NoError(t, err)
-	defer rt.Close()
 
 	lreq := &LokiRequest{
 		Query:     `{app="foo"}`,
@@ -1014,18 +1024,22 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"}`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
 
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
+	called := false
+	h := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
+		called = true
+		return nil, nil
+	})
 
-	_, err = tpw(rt).RoundTrip(req)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit (10000 > 5000)"), err)
+	require.False(t, called)
 }
 
 func TestTripperware_RequiredLabels(t *testing.T) {
@@ -1046,16 +1060,12 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 	} {
 		t.Run(test.qs, func(t *testing.T) {
 			limits := fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1, requiredLabels: []string{"app"}}
-			tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+			tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 			if stopper != nil {
 				defer stopper.Stop()
 			}
 			require.NoError(t, err)
-			rt, err := newfakeRoundTripper()
-			require.NoError(t, err)
-			defer rt.Close()
 			_, h := promqlResult(test.response)
-			rt.setHandler(h)
 
 			lreq := &LokiRequest{
 				Query:     test.qs,
@@ -1064,17 +1074,17 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(test.qs),
+				},
 			}
+			// See loghttp.step
+			step := time.Duration(int(math.Max(math.Floor(lreq.EndTs.Sub(lreq.StartTs).Seconds()/250), 1))) * time.Second
+			lreq.Step = step.Milliseconds()
 
 			ctx := user.InjectOrgID(context.Background(), "1")
-			req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-			require.NoError(t, err)
 
-			req = req.WithContext(ctx)
-			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-			require.NoError(t, err)
-
-			_, err = tpw(rt).RoundTrip(req)
+			_, err = tpw.Wrap(h).Do(ctx, lreq)
 			if test.expectedError != "" {
 				require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, test.expectedError), err)
 			} else {
@@ -1157,17 +1167,13 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 				maxQueryParallelism:  1,
 				requiredNumberLabels: tc.requiredNumberLabels,
 			}
-			tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+			tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 			if stopper != nil {
 				defer stopper.Stop()
 			}
 			require.NoError(t, err)
 
-			rt, err := newfakeRoundTripper()
-			require.NoError(t, err)
-			defer rt.Close()
 			_, h := promqlResult(tc.response)
-			rt.setHandler(h)
 
 			lreq := &LokiRequest{
 				Query:     tc.query,
@@ -1176,17 +1182,17 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(tc.query),
+				},
 			}
+			// See loghttp.step
+			step := time.Duration(int(math.Max(math.Floor(lreq.EndTs.Sub(lreq.StartTs).Seconds()/250), 1))) * time.Second
+			lreq.Step = step.Milliseconds()
 
 			ctx := user.InjectOrgID(context.Background(), "1")
-			req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-			require.NoError(t, err)
 
-			req = req.WithContext(ctx)
-			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-			require.NoError(t, err)
-
-			_, err = tpw(rt).RoundTrip(req)
+			_, err = tpw.Wrap(h).Do(ctx, lreq)
 			if tc.expectedError != noErr {
 				require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, tc.expectedError), err)
 			} else {
@@ -1282,7 +1288,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 
 	for _, tc := range []struct {
 		name               string
-		request            queryrangebase.Request
+		request            base.Request
 		expectedSplitStats int64
 		expectedShardStats int64
 	}{
@@ -1294,9 +1300,15 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				TimeTs:    testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[2h]))`),
+				},
 			},
-			expectedSplitStats: 2, // [2h] interval split by 1h configured split interval
-			expectedShardStats: 8, // 2 time splits * 4 row shards
+			// [2h] interval split by 1h configured split interval.
+			// Also since we split align(testConfig.InstantQuerySplitAlign=true) with split interval (1h).
+			// 1 subquery will be exactly [1h] and 2 more subqueries to align with `testTime` used in query's TimeTs.
+			expectedSplitStats: 3,
+			expectedShardStats: 12, // 3 time splits * 4 row shards
 		},
 		{
 			name: "instant query split not split",
@@ -1306,6 +1318,9 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				TimeTs:    testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
+				},
 			},
 			expectedSplitStats: 0, // [1h] interval not split
 			expectedShardStats: 4, // 4 row shards
@@ -1320,6 +1335,9 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
+				},
 			},
 			expectedSplitStats: 3,  // 2 hour range interval split based on the base hour + the remainder
 			expectedShardStats: 12, // 3 time splits * 4 row shards
@@ -1334,36 +1352,25 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
+				},
 			},
 			expectedSplitStats: 0, // 1 minute range interval not split
 			expectedShardStats: 4, // 4 row shards
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			tpw, stopper, err := NewTripperware(statsTestCfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: statsSchemas}, nil, false, nil)
+			tpw, stopper, err := NewMiddleware(statsTestCfg, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: statsSchemas}, nil, false, nil, constants.Loki)
 			if stopper != nil {
 				defer stopper.Stop()
 			}
 			require.NoError(t, err)
 
 			ctx := user.InjectOrgID(context.Background(), "1")
-			req, err := DefaultCodec.EncodeRequest(ctx, tc.request)
-			require.NoError(t, err)
-
-			req = req.WithContext(ctx)
-			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-			require.NoError(t, err)
-
-			rt, err := newfakeRoundTripper()
-			require.NoError(t, err)
-			defer rt.Close()
 
 			_, h := promqlResult(matrix)
-			rt.setHandler(h)
-			resp, err := tpw(rt).RoundTrip(req)
-			require.NoError(t, err)
-
-			lokiResponse, err := DefaultCodec.DecodeResponse(ctx, resp, tc.request)
+			lokiResponse, err := tpw.Wrap(h).Do(ctx, tc.request)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expectedSplitStats, lokiResponse.(*LokiPromResponse).Statistics.Summary.Splits)
@@ -1373,28 +1380,69 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 }
 
 type fakeLimits struct {
-	maxQueryLength          time.Duration
-	maxQueryParallelism     int
-	tsdbMaxQueryParallelism int
-	maxQueryLookback        time.Duration
-	maxEntriesLimitPerQuery int
-	maxSeries               int
-	splits                  map[string]time.Duration
-	minShardingLookback     time.Duration
-	queryTimeout            time.Duration
-	requiredLabels          []string
-	requiredNumberLabels    int
-	maxQueryBytesRead       int
-	maxQuerierBytesRead     int
-	maxStatsCacheFreshness  time.Duration
-	volumeEnabled           bool
+	maxQueryLength              time.Duration
+	maxQueryParallelism         int
+	tsdbMaxQueryParallelism     int
+	maxQueryLookback            time.Duration
+	maxEntriesLimitPerQuery     int
+	maxSeries                   int
+	splitDuration               map[string]time.Duration
+	metadataSplitDuration       map[string]time.Duration
+	recentMetadataSplitDuration map[string]time.Duration
+	recentMetadataQueryWindow   map[string]time.Duration
+	instantMetricSplitDuration  map[string]time.Duration
+	ingesterSplitDuration       map[string]time.Duration
+	minShardingLookback         time.Duration
+	queryTimeout                time.Duration
+	requiredLabels              []string
+	requiredNumberLabels        int
+	maxQueryBytesRead           int
+	maxQuerierBytesRead         int
+	maxStatsCacheFreshness      time.Duration
+	maxMetadataCacheFreshness   time.Duration
+	volumeEnabled               bool
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
-	if f.splits == nil {
+	if f.splitDuration == nil {
 		return 0
 	}
-	return f.splits[key]
+	return f.splitDuration[key]
+}
+
+func (f fakeLimits) InstantMetricQuerySplitDuration(key string) time.Duration {
+	if f.instantMetricSplitDuration == nil {
+		return 0
+	}
+	return f.instantMetricSplitDuration[key]
+}
+
+func (f fakeLimits) MetadataQuerySplitDuration(key string) time.Duration {
+	if f.metadataSplitDuration == nil {
+		return 0
+	}
+	return f.metadataSplitDuration[key]
+}
+
+func (f fakeLimits) RecentMetadataQuerySplitDuration(key string) time.Duration {
+	if f.recentMetadataSplitDuration == nil {
+		return 0
+	}
+	return f.recentMetadataSplitDuration[key]
+}
+
+func (f fakeLimits) RecentMetadataQueryWindow(key string) time.Duration {
+	if f.recentMetadataQueryWindow == nil {
+		return 0
+	}
+	return f.recentMetadataQueryWindow[key]
+}
+
+func (f fakeLimits) IngesterQuerySplitDuration(key string) time.Duration {
+	if f.ingesterSplitDuration == nil {
+		return 0
+	}
+	return f.ingesterSplitDuration[key]
 }
 
 func (f fakeLimits) MaxQueryLength(context.Context, string) time.Duration {
@@ -1464,6 +1512,10 @@ func (f fakeLimits) MaxStatsCacheFreshness(_ context.Context, _ string) time.Dur
 	return f.maxStatsCacheFreshness
 }
 
+func (f fakeLimits) MaxMetadataCacheFreshness(_ context.Context, _ string) time.Duration {
+	return f.maxMetadataCacheFreshness
+}
+
 func (f fakeLimits) VolumeEnabled(_ string) bool {
 	return f.volumeEnabled
 }
@@ -1471,111 +1523,145 @@ func (f fakeLimits) VolumeEnabled(_ string) bool {
 func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 	return valid.DefaultTSDBMaxBytesPerShard
 }
+func (f fakeLimits) TSDBShardingStrategy(string) string {
+	return logql.PowerOfTwoVersion.String()
+}
 
-func counter() (*int, http.Handler) {
+type ingesterQueryOpts struct {
+	queryStoreOnly       bool
+	queryIngestersWithin time.Duration
+}
+
+func (i ingesterQueryOpts) QueryStoreOnly() bool {
+	return i.queryStoreOnly
+}
+
+func (i ingesterQueryOpts) QueryIngestersWithin() time.Duration {
+	return i.queryIngestersWithin
+}
+
+func counter() (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
-	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
+		return base.NewEmptyPrometheusResponse(model.ValMatrix), nil
 	})
 }
 
-func promqlResult(v parser.Value) (*int, http.Handler) {
+func counterWithError(err error) (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
-	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{Data: v}, w); err != nil {
-			panic(err)
-		}
 		count++
+		return nil, err
 	})
 }
 
-func seriesResult(v logproto.SeriesResponse) (*int, http.Handler) {
+func promqlResult(v parser.Value) (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
-	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteSeriesResponseJSON(v, w); err != nil {
-			panic(err)
-		}
 		count++
+		params, err := ParamsFromRequest(r)
+		if err != nil {
+			return nil, err
+		}
+		result := logqlmodel.Result{Data: v}
+		return ResultToResponse(result, params)
 	})
 }
 
-func indexStatsResult(v logproto.IndexStatsResponse) (*int, http.Handler) {
+func seriesResult(v logproto.SeriesResponse) (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
-	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteIndexStatsResponseJSON(&v, w); err != nil {
-			panic(err)
-		}
 		count++
+		return &LokiSeriesResponse{
+			Status:  "success",
+			Version: 1,
+			Data:    v.Series,
+		}, nil
 	})
 }
 
-func seriesVolumeResult(v logproto.VolumeResponse) (*int, http.Handler) {
+func indexStatsResult(v logproto.IndexStatsResponse) (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
-	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return &count, base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteVolumeResponseJSON(&v, w); err != nil {
-			panic(err)
-		}
 		count++
+		return &IndexStatsResponse{Response: &v}, nil
 	})
+}
+
+func seriesVolumeResult(v logproto.VolumeResponse) (*int, base.Handler) {
+	count := 0
+	var lock sync.Mutex
+	return &count, base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
+		lock.Lock()
+		defer lock.Unlock()
+		count++
+		return &VolumeResponse{Response: &v}, nil
+	})
+}
+
+// instantQueryResultWithCache used when instant query tripperware is created with split align and cache middleware.
+// Assuming each subquery handler returns `val` sample, then this function returns overal result by combining all the subqueries sample values.
+func instantQueryResultWithCache(split int, ts time.Duration, val promql.Sample) promql.Vector {
+	v := (val.F * float64(split)) / ts.Seconds()
+	return promql.Vector{
+		promql.Sample{
+			T:      val.T,
+			F:      v,
+			H:      val.H,
+			Metric: val.Metric,
+		},
+	}
+}
+
+func assertInstantSampleValues(t *testing.T, exp *LokiPromResponse, got *LokiPromResponse) {
+	expR := exp.Response.Data.Result
+	gotR := got.Response.Data.Result
+
+	expSamples := make([]logproto.LegacySample, 0)
+	for _, v := range expR {
+		expSamples = append(expSamples, v.Samples...)
+	}
+
+	gotSamples := make([]logproto.LegacySample, 0)
+	for _, v := range gotR {
+		gotSamples = append(gotSamples, v.Samples...)
+	}
+
+	require.Equal(t, expSamples, gotSamples)
 }
 
 type fakeHandler struct {
 	count int
 	lock  sync.Mutex
-	calls []http.Handler
+	calls []base.Handler
 }
 
-func newFakeHandler(calls ...http.Handler) *fakeHandler {
+func newFakeHandler(calls ...base.Handler) *fakeHandler {
 	return &fakeHandler{calls: calls}
 }
 
-func (f *fakeHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (f *fakeHandler) Do(ctx context.Context, req base.Request) (base.Response, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	f.calls[f.count].ServeHTTP(w, req)
+	r, err := f.calls[f.count].Do(ctx, req)
 	f.count++
-}
-
-type fakeRoundTripper struct {
-	*httptest.Server
-	host string
-}
-
-func newfakeRoundTripper() (*fakeRoundTripper, error) {
-	s := httptest.NewServer(nil)
-	u, err := url.Parse(s.URL)
-	if err != nil {
-		return nil, err
-	}
-	return &fakeRoundTripper{
-		Server: s,
-		host:   u.Host,
-	}, nil
-}
-
-func (s *fakeRoundTripper) setHandler(h http.Handler) {
-	s.Config.Handler = middleware.AuthenticateUser.Wrap(h)
-}
-
-func (s fakeRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	r.URL.Scheme = "http"
-	r.URL.Host = s.host
-	return http.DefaultTransport.RoundTrip(r)
+	return r, err
 }
 
 func toMs(t time.Time) int64 {

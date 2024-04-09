@@ -12,6 +12,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+
+	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
+
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/modules"
@@ -22,32 +28,32 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/ingester/index"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores"
-	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/wal"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/ingester/index"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores"
+	indexstore "github.com/grafana/loki/v3/pkg/storage/stores/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/wal"
 )
 
 const (
@@ -62,10 +68,6 @@ const (
 var (
 	ErrReadOnly = errors.New("Ingester is shutting down")
 
-	flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_ingester_flush_queue_length",
-		Help: "The total number of series pending in the flush queue.",
-	})
 	compressionStats   = analytics.NewString("ingester_compression")
 	targetSizeStats    = analytics.NewInt("ingester_target_size_bytes")
 	walStats           = analytics.NewString("ingester_wal")
@@ -75,9 +77,6 @@ var (
 // Config for an ingester.
 type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
-
-	// Config for transferring chunks.
-	MaxTransferRetries int `yaml:"max_transfer_retries,omitempty"`
 
 	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
 	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
@@ -105,7 +104,10 @@ type Config struct {
 
 	WAL WALConfig `yaml:"wal,omitempty" doc:"description=The ingester WAL (Write Ahead Log) records incoming logs and stores them on the local file systems in order to guarantee persistence of acknowledged data in the event of a process crash."`
 
-	ChunkFilterer chunk.RequestChunkFilterer `yaml:"-"`
+	ChunkFilterer          chunk.RequestChunkFilterer     `yaml:"-"`
+	PipelineWrapper        lokilog.PipelineWrapper        `yaml:"-"`
+	SampleExtractorWrapper lokilog.SampleExtractorWrapper `yaml:"-"`
+
 	// Optional wrapper that can be used to modify the behaviour of the ingester
 	Wrapper Wrapper `yaml:"-"`
 
@@ -121,7 +123,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f, util_log.Logger)
 	cfg.WAL.RegisterFlags(f)
 
-	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 0, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "The timeout before a flush is cancelled.")
@@ -130,8 +131,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
 	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 1572864, "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.") // 1.5 MB
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", chunkenc.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", chunkenc.SupportedEncoding()))
-	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 0, "Parameters used to synchronize ingesters to cut chunks at the same moment. Sync period is used to roll over incoming entry to a new chunk. If chunk's utilization isn't high enough (eg. less than 50% when sync_min_utilization is set to 0.5), then this chunk rollover doesn't happen.")
-	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
+	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 1*time.Hour, "Parameters used to synchronize ingesters to cut chunks at the same moment. Sync period is used to roll over incoming entry to a new chunk. If chunk's utilization isn't high enough (eg. less than 50% when sync_min_utilization is set to 0.5), then this chunk rollover doesn't happen.")
+	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0.1, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "The maximum number of errors a stream will report to the user when a push fails. 0 to make unlimited.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
 	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper/tsdb index and filesystem object store. -1 for infinite.")
@@ -150,10 +151,6 @@ func (cfg *Config) Validate() error {
 
 	if err = cfg.WAL.Validate(); err != nil {
 		return err
-	}
-
-	if cfg.MaxTransferRetries > 0 && cfg.WAL.Enabled {
-		return errors.New("the use of the write ahead log (WAL) is incompatible with chunk transfers. It's suggested to use the WAL. Please try setting ingester.max-transfer-retries to 0 to disable transfers")
 	}
 
 	if cfg.IndexShards <= 0 {
@@ -180,7 +177,6 @@ type Store interface {
 type Interface interface {
 	services.Service
 
-	logproto.IngesterServer
 	logproto.PusherServer
 	logproto.QuerierServer
 	logproto.StreamDataServer
@@ -196,7 +192,9 @@ type Interface interface {
 type Ingester struct {
 	services.Service
 
-	cfg           Config
+	cfg    Config
+	logger log.Logger
+
 	clientConfig  client.Config
 	tenantConfigs *runtime.TenantConfigs
 
@@ -237,7 +235,9 @@ type Ingester struct {
 
 	wal WAL
 
-	chunkFilter chunk.RequestChunkFilterer
+	chunkFilter      chunk.RequestChunkFilterer
+	extractorWrapper lokilog.SampleExtractorWrapper
+	pipelineWrapper  lokilog.PipelineWrapper
 
 	streamRateCalculator *StreamRateCalculator
 
@@ -245,7 +245,7 @@ type Ingester struct {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -255,10 +255,11 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	if cfg.WAL.Enabled {
 		walStats.Set("enabled")
 	}
-	metrics := newIngesterMetrics(registerer)
+	metrics := newIngesterMetrics(registerer, metricsNamespace)
 
 	i := &Ingester{
 		cfg:                   cfg,
+		logger:                logger,
 		clientConfig:          clientConfig,
 		tenantConfigs:         configs,
 		instances:             map[string]*instance{},
@@ -271,7 +272,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
 		streamRateCalculator:  NewStreamRateCalculator(),
-		writeLogManager:       writefailures.NewManager(util_log.Logger, registerer, writeFailuresCfg, configs, "ingester"),
+		writeLogManager:       writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester"),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -293,7 +294,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	}
 	i.wal = wal
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer))
 	if err != nil {
 		return nil, err
 	}
@@ -313,11 +314,27 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.SetChunkFilterer(i.cfg.ChunkFilterer)
 	}
 
+	if i.cfg.PipelineWrapper != nil {
+		i.SetPipelineWrapper(i.cfg.PipelineWrapper)
+	}
+
+	if i.cfg.SampleExtractorWrapper != nil {
+		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
+	}
+
 	return i, nil
 }
 
 func (i *Ingester) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
+}
+
+func (i *Ingester) SetExtractorWrapper(wrapper lokilog.SampleExtractorWrapper) {
+	i.extractorWrapper = wrapper
+}
+
+func (i *Ingester) SetPipelineWrapper(wrapper lokilog.PipelineWrapper) {
+	i.pipelineWrapper = wrapper
 }
 
 // setupAutoForget looks for ring status if `AutoForgetUnhealthy` is enabled
@@ -331,11 +348,11 @@ func (i *Ingester) setupAutoForget() {
 		ctx := context.Background()
 		err := i.Service.AwaitRunning(ctx)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("autoforget received error %s, autoforget is disabled", err.Error()))
+			level.Error(i.logger).Log("msg", fmt.Sprintf("autoforget received error %s, autoforget is disabled", err.Error()))
 			return
 		}
 
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("autoforget is enabled and will remove unhealthy instances from the ring after %v with no heartbeat", i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
+		level.Info(i.logger).Log("msg", fmt.Sprintf("autoforget is enabled and will remove unhealthy instances from the ring after %v with no heartbeat", i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
 
 		ticker := time.NewTicker(i.cfg.LifecyclerConfig.HeartbeatPeriod)
 		defer ticker.Stop()
@@ -350,14 +367,14 @@ func (i *Ingester) setupAutoForget() {
 
 				ringDesc, ok := in.(*ring.Desc)
 				if !ok {
-					level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget saw a KV store value that was not `ring.Desc`, got `%T`", in))
+					level.Warn(i.logger).Log("msg", fmt.Sprintf("autoforget saw a KV store value that was not `ring.Desc`, got `%T`", in))
 					return nil, false, nil
 				}
 
 				for id, ingester := range ringDesc.Ingesters {
 					if !ingester.IsHealthy(ring.Reporting, i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout, time.Now()) {
 						if i.lifecycler.ID == id {
-							level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget has seen our ID `%s` as unhealthy in the ring, network may be partitioned, skip forgeting ingesters this round", id))
+							level.Warn(i.logger).Log("msg", fmt.Sprintf("autoforget has seen our ID `%s` as unhealthy in the ring, network may be partitioned, skip forgeting ingesters this round", id))
 							return nil, false, nil
 						}
 						forgetList = append(forgetList, id)
@@ -365,7 +382,7 @@ func (i *Ingester) setupAutoForget() {
 				}
 
 				if len(forgetList) == len(ringDesc.Ingesters)-1 {
-					level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget have seen %d unhealthy ingesters out of %d, network may be partioned, skip forgeting ingesters this round", len(forgetList), len(ringDesc.Ingesters)))
+					level.Warn(i.logger).Log("msg", fmt.Sprintf("autoforget have seen %d unhealthy ingesters out of %d, network may be partioned, skip forgeting ingesters this round", len(forgetList), len(ringDesc.Ingesters)))
 					forgetList = forgetList[:0]
 					return nil, false, nil
 				}
@@ -379,12 +396,12 @@ func (i *Ingester) setupAutoForget() {
 				return nil, false, nil
 			})
 			if err != nil {
-				level.Warn(util_log.Logger).Log("msg", err)
+				level.Warn(i.logger).Log("msg", err)
 				continue
 			}
 
 			for _, id := range forgetList {
-				level.Info(util_log.Logger).Log("msg", fmt.Sprintf("autoforget removed ingester %v from the ring because it was not healthy after %v", id, i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
+				level.Info(i.logger).Log("msg", fmt.Sprintf("autoforget removed ingester %v from the ring because it was not healthy after %v", id, i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
 			}
 			i.metrics.autoForgetUnhealthyIngestersTotal.Add(float64(len(forgetList)))
 		}
@@ -411,7 +428,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 			var once sync.Once
 			return func() {
 				once.Do(func() {
-					level.Info(util_log.Logger).Log("msg", "closing recoverer")
+					level.Info(i.logger).Log("msg", "closing recoverer")
 					recoverer.Close()
 
 					elapsed := time.Since(start)
@@ -419,14 +436,14 @@ func (i *Ingester) starting(ctx context.Context) error {
 					i.metrics.walReplayActive.Set(0)
 					i.metrics.walReplayDuration.Set(elapsed.Seconds())
 					i.cfg.RetainPeriod = oldRetain
-					level.Info(util_log.Logger).Log("msg", "WAL recovery finished", "time", elapsed.String())
+					level.Info(i.logger).Log("msg", "WAL recovery finished", "time", elapsed.String())
 				})
 			}
 		}()
 		defer endReplay()
 
-		level.Info(util_log.Logger).Log("msg", "recovering from checkpoint")
-		checkpointReader, checkpointCloser, err := newCheckpointReader(i.cfg.WAL.Dir)
+		level.Info(i.logger).Log("msg", "recovering from checkpoint")
+		checkpointReader, checkpointCloser, err := newCheckpointReader(i.cfg.WAL.Dir, i.logger)
 		if err != nil {
 			return err
 		}
@@ -435,35 +452,35 @@ func (i *Ingester) starting(ctx context.Context) error {
 		checkpointRecoveryErr := RecoverCheckpoint(checkpointReader, recoverer)
 		if checkpointRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
-			level.Error(util_log.Logger).Log(
+			level.Error(i.logger).Log(
 				"msg",
 				`Recovered from checkpoint with errors. Some streams were likely not recovered due to WAL checkpoint file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.`,
 				"elapsed", time.Since(start).String(),
 			)
 		}
-		level.Info(util_log.Logger).Log(
+		level.Info(i.logger).Log(
 			"msg", "recovered WAL checkpoint recovery finished",
 			"elapsed", time.Since(start).String(),
 			"errors", checkpointRecoveryErr != nil,
 		)
 
-		level.Info(util_log.Logger).Log("msg", "recovering from WAL")
+		level.Info(i.logger).Log("msg", "recovering from WAL")
 		segmentReader, segmentCloser, err := wal.NewWalReader(i.cfg.WAL.Dir, -1)
 		if err != nil {
 			return err
 		}
 		defer segmentCloser.Close()
 
-		segmentRecoveryErr := RecoverWAL(segmentReader, recoverer)
+		segmentRecoveryErr := RecoverWAL(ctx, segmentReader, recoverer)
 		if segmentRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
-			level.Error(util_log.Logger).Log(
+			level.Error(i.logger).Log(
 				"msg",
 				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.",
 				"elapsed", time.Since(start).String(),
 			)
 		}
-		level.Info(util_log.Logger).Log(
+		level.Info(i.logger).Log(
 			"msg", "WAL segment recovery finished",
 			"elapsed", time.Since(start).String(),
 			"errors", segmentRecoveryErr != nil,
@@ -494,7 +511,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 	}
 
 	if shutdownMarker {
-		level.Info(util_log.Logger).Log("msg", "detected existing shutdown marker, setting unregister and flush on shutdown", "path", shutdownMarkerPath)
+		level.Info(i.logger).Log("msg", "detected existing shutdown marker, setting unregister and flush on shutdown", "path", shutdownMarkerPath)
 		i.setPrepareShutdown()
 	}
 
@@ -538,8 +555,6 @@ func (i *Ingester) stopping(_ error) error {
 	}
 	errs.Add(services.StopAndAwaitTerminated(context.Background(), i.lifecycler))
 
-	// Normally, flushers are stopped via lifecycler (in transferOut), but if lifecycler fails,
-	// we better stop them.
 	for _, flushQueue := range i.flushQueues {
 		flushQueue.Close()
 	}
@@ -557,17 +572,28 @@ func (i *Ingester) stopping(_ error) error {
 	return errs.Err()
 }
 
+// stopIncomingRequests is called when ingester is stopping
+func (i *Ingester) stopIncomingRequests() {
+	i.shutdownMtx.Lock()
+	defer i.shutdownMtx.Unlock()
+
+	i.instancesMtx.Lock()
+	defer i.instancesMtx.Unlock()
+
+	i.readonly = true
+}
+
 // removeShutdownMarkerFile removes the shutdown marker if it exists. Any errors are logged.
 func (i *Ingester) removeShutdownMarkerFile() {
 	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
 	exists, err := shutdownMarkerExists(shutdownMarkerPath)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "error checking shutdown marker file exists", "err", err)
+		level.Error(i.logger).Log("msg", "error checking shutdown marker file exists", "err", err)
 	}
 	if exists {
 		err = removeShutdownMarker(shutdownMarkerPath)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error removing shutdown marker file", "err", err)
+			level.Error(i.logger).Log("msg", "error removing shutdown marker file", "err", err)
 		}
 	}
 }
@@ -584,7 +610,7 @@ func (i *Ingester) loop() {
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 
-	level.Info(util_log.Logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
+	level.Info(i.logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
 
 	select {
 	case <-initialDelay.C:
@@ -633,7 +659,7 @@ func (i *Ingester) PrepareShutdown(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		exists, err := shutdownMarkerExists(shutdownMarkerPath)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "unable to check for prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
+			level.Error(i.logger).Log("msg", "unable to check for prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -645,24 +671,24 @@ func (i *Ingester) PrepareShutdown(w http.ResponseWriter, r *http.Request) {
 		}
 	case http.MethodPost:
 		if err := createShutdownMarker(shutdownMarkerPath); err != nil {
-			level.Error(util_log.Logger).Log("msg", "unable to create prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
+			level.Error(i.logger).Log("msg", "unable to create prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
 		i.setPrepareShutdown()
-		level.Info(util_log.Logger).Log("msg", "created prepare-shutdown marker file", "path", shutdownMarkerPath)
+		level.Info(i.logger).Log("msg", "created prepare-shutdown marker file", "path", shutdownMarkerPath)
 
 		w.WriteHeader(http.StatusNoContent)
 	case http.MethodDelete:
 		if err := removeShutdownMarker(shutdownMarkerPath); err != nil {
-			level.Error(util_log.Logger).Log("msg", "unable to remove prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
+			level.Error(i.logger).Log("msg", "unable to remove prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
 		i.unsetPrepareShutdown()
-		level.Info(util_log.Logger).Log("msg", "removed prepare-shutdown marker file", "path", shutdownMarkerPath)
+		level.Info(i.logger).Log("msg", "removed prepare-shutdown marker file", "path", shutdownMarkerPath)
 
 		w.WriteHeader(http.StatusNoContent)
 	default:
@@ -672,7 +698,7 @@ func (i *Ingester) PrepareShutdown(w http.ResponseWriter, r *http.Request) {
 
 // setPrepareShutdown toggles ingester lifecycler config to prepare for shutdown
 func (i *Ingester) setPrepareShutdown() {
-	level.Info(util_log.Logger).Log("msg", "preparing full ingester shutdown, resources will be released on SIGTERM")
+	level.Info(i.logger).Log("msg", "preparing full ingester shutdown, resources will be released on SIGTERM")
 	i.lifecycler.SetFlushOnShutdown(true)
 	i.lifecycler.SetUnregisterOnShutdown(true)
 	i.terminateOnShutdown = true
@@ -680,7 +706,7 @@ func (i *Ingester) setPrepareShutdown() {
 }
 
 func (i *Ingester) unsetPrepareShutdown() {
-	level.Info(util_log.Logger).Log("msg", "undoing preparation for full ingester shutdown")
+	level.Info(i.logger).Log("msg", "undoing preparation for full ingester shutdown")
 	i.lifecycler.SetFlushOnShutdown(!i.cfg.WAL.Enabled || i.cfg.WAL.FlushOnShutdown)
 	i.lifecycler.SetUnregisterOnShutdown(i.cfg.LifecyclerConfig.UnregisterOnShutdown)
 	i.terminateOnShutdown = false
@@ -837,7 +863,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.streamRateCalculator, i.writeLogManager)
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.pipelineWrapper, i.extractorWrapper, i.streamRateCalculator, i.writeLogManager)
 		if err != nil {
 			return nil, err
 		}
@@ -851,6 +877,17 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
+	_, ctx = metadata.NewContext(ctx)
+
+	if req.Plan == nil {
+		parsed, err := syntax.ParseLogSelector(req.Selector, true)
+		if err != nil {
+			return err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -875,6 +912,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			Limit:     req.Limit,
 			Shards:    req.Shards,
 			Deletes:   req.Deletes,
+			Plan:      req.Plan,
 		}}
 		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
@@ -899,7 +937,19 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
+	_, ctx = metadata.NewContext(ctx)
 	sp := opentracing.SpanFromContext(ctx)
+
+	// If the plan is empty we want all series to be returned.
+	if req.Plan == nil {
+		parsed, err := syntax.ParseSampleExpr(req.Selector)
+		if err != nil {
+			return err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -926,6 +976,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			Selector: req.Selector,
 			Shards:   req.Shards,
 			Deletes:  req.Deletes,
+			Plan:     req.Plan,
 		}}
 		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
@@ -948,13 +999,13 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 func (i *Ingester) asyncStoreMaxLookBack() time.Duration {
 	activePeriodicConfigIndex := config.ActivePeriodConfig(i.periodicConfigs)
 	activePeriodicConfig := i.periodicConfigs[activePeriodicConfigIndex]
-	if activePeriodicConfig.IndexType != config.BoltDBShipperType && activePeriodicConfig.IndexType != config.TSDBType {
+	if activePeriodicConfig.IndexType != types.BoltDBShipperType && activePeriodicConfig.IndexType != types.TSDBType {
 		return 0
 	}
 
 	startTime := activePeriodicConfig.From
-	if activePeriodicConfigIndex != 0 && (i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == config.BoltDBShipperType ||
-		i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == config.TSDBType) {
+	if activePeriodicConfigIndex != 0 && (i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.BoltDBShipperType ||
+		i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.TSDBType) {
 		startTime = i.periodicConfigs[activePeriodicConfigIndex-1].From
 	}
 
@@ -985,7 +1036,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	}
 
 	// get chunk references
-	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, matchers...)
+	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil))
 	if err != nil {
 		return nil, err
 	}
@@ -1235,6 +1286,16 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	default:
 	}
 
+	if req.Plan == nil {
+		parsed, err := syntax.ParseLogSelector(req.Query, true)
+		if err != nil {
+			return err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
+
 	instanceID, err := tenant.TenantID(queryServer.Context())
 	if err != nil {
 		return err
@@ -1244,7 +1305,13 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	if err != nil {
 		return err
 	}
-	tailer, err := newTailer(instanceID, req.Query, queryServer, i.cfg.MaxDroppedStreams)
+
+	expr, ok := req.Plan.AST.(syntax.LogSelectorExpr)
+	if !ok {
+		return fmt.Errorf("unsupported query expression: want (LogSelectorExpr), got (%T)", req.Plan.AST)
+	}
+
+	tailer, err := newTailer(instanceID, expr, queryServer, i.cfg.MaxDroppedStreams)
 	if err != nil {
 		return err
 	}
@@ -1296,4 +1363,53 @@ func adjustQueryStartTime(maxLookBackPeriod time.Duration, start, now time.Time)
 		}
 	}
 	return start
+}
+
+func (i *Ingester) GetDetectedFields(_ context.Context, _ *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	return &logproto.DetectedFieldsResponse{
+		Fields: []*logproto.DetectedField{
+			{
+				Label:       "foo",
+				Type:        logproto.DetectedFieldString,
+				Cardinality: 1,
+			},
+		},
+	}, nil
+}
+
+// GetDetectedLabels returns map of detected labels and unique values from this ingester
+func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	instance, err := i.GetOrCreateInstance(userID)
+	if err != nil {
+		return nil, err
+	}
+	var matchers []*labels.Matcher
+	if req.Query != "" {
+		matchers, err = syntax.ParseMatchers(req.Query, true)
+		if err != nil {
+			return nil, err
+		}
+		level.Info(i.logger).Log("msg", matchers)
+	}
+
+	labelMap, err := instance.LabelsWithValues(ctx, *req.Start, matchers...)
+
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]*logproto.UniqueLabelValues)
+	for label, values := range labelMap {
+		var uniqueValues []string
+		for v := range values {
+			uniqueValues = append(uniqueValues, v)
+		}
+
+		result[label] = &logproto.UniqueLabelValues{Values: uniqueValues}
+	}
+	return &logproto.LabelToValuesResponse{Labels: result}, nil
 }

@@ -1,6 +1,7 @@
 package log
 
 import (
+	"context"
 	"sort"
 	"strconv"
 	"time"
@@ -36,6 +37,13 @@ type StreamSampleExtractor interface {
 	BaseLabels() LabelsResult
 	Process(ts int64, line []byte, structuredMetadata ...labels.Label) (float64, LabelsResult, bool)
 	ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (float64, LabelsResult, bool)
+	ReferencedStructuredMetadata() bool
+}
+
+// SampleExtractorWrapper takes an extractor, wraps it is some desired functionality
+// and returns a new pipeline
+type SampleExtractorWrapper interface {
+	Wrap(ctx context.Context, extractor SampleExtractor, query, tenant string) SampleExtractor
 }
 
 type lineSampleExtractor struct {
@@ -80,9 +88,13 @@ type streamLineSampleExtractor struct {
 	builder *LabelsBuilder
 }
 
+func (l *streamLineSampleExtractor) ReferencedStructuredMetadata() bool {
+	return l.builder.referencedStructuredMetadata
+}
+
 func (l *streamLineSampleExtractor) Process(ts int64, line []byte, structuredMetadata ...labels.Label) (float64, LabelsResult, bool) {
 	l.builder.Reset()
-	l.builder.Add(structuredMetadata...)
+	l.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 
 	// short circuit.
 	if l.Stage == NoopStage {
@@ -157,6 +169,10 @@ type streamLabelSampleExtractor struct {
 	builder *LabelsBuilder
 }
 
+func (l *labelSampleExtractor) ReferencedStructuredMetadata() bool {
+	return l.baseBuilder.referencedStructuredMetadata
+}
+
 func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
 	hash := l.baseBuilder.Hash(labels)
 	if res, ok := l.streamExtractors[hash]; ok {
@@ -174,7 +190,7 @@ func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtra
 func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMetadata ...labels.Label) (float64, LabelsResult, bool) {
 	// Apply the pipeline first.
 	l.builder.Reset()
-	l.builder.Add(structuredMetadata...)
+	l.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 	line, ok := l.preStage.Process(ts, line, l.builder)
 	if !ok {
 		return 0, nil, false
@@ -245,6 +261,10 @@ func (p *filteringSampleExtractor) ForStream(labels labels.Labels) StreamSampleE
 type filteringStreamExtractor struct {
 	filters   []streamFilter
 	extractor StreamSampleExtractor
+}
+
+func (sp *filteringStreamExtractor) ReferencedStructuredMetadata() bool {
+	return false
 }
 
 func (sp *filteringStreamExtractor) BaseLabels() LabelsResult {

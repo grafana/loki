@@ -7,12 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/dskit/loser"
-
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
+	"github.com/grafana/dskit/loser"
 )
 
 // ByAddr is a sortable list of InstanceDesc.
@@ -52,6 +51,7 @@ func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state Instanc
 	}
 
 	ingester := InstanceDesc{
+		Id:                  id,
 		Addr:                addr,
 		Timestamp:           time.Now().Unix(),
 		RegisteredTimestamp: registeredTimestamp,
@@ -585,10 +585,19 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 	return EqualButStatesAndTimestamps
 }
 
+// setInstanceIDs sets the ID of each InstanceDesc object managed by this Desc
+func (d *Desc) setInstanceIDs() {
+	for id, inst := range d.Ingesters {
+		inst.Id = id
+		d.Ingesters[id] = inst
+	}
+}
+
 func GetOrCreateRingDesc(d interface{}) *Desc {
 	if d == nil {
 		return NewDesc()
 	}
+
 	return d.(*Desc)
 }
 

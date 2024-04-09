@@ -92,16 +92,19 @@ func newRing(subConns *resolver.AddressMap, minRingSize, maxRingSize uint64, log
 	//
 	// A hash is generated for each item, and later the results will be sorted
 	// based on the hash.
-	var (
-		idx       int
-		targetIdx float64
-	)
+	var currentHashes, targetHashes float64
 	for _, scw := range normalizedWeights {
-		targetIdx += scale * scw.weight
-		for float64(idx) < targetIdx {
-			h := xxhash.Sum64String(scw.sc.addr + strconv.Itoa(idx))
-			items = append(items, &ringEntry{idx: idx, hash: h, sc: scw.sc})
+		targetHashes += scale * scw.weight
+		// This index ensures that ring entries corresponding to the same
+		// address hash to different values. And since this index is
+		// per-address, these entries hash to the same value across address
+		// updates.
+		idx := 0
+		for currentHashes < targetHashes {
+			h := xxhash.Sum64String(scw.sc.addr + "_" + strconv.Itoa(idx))
+			items = append(items, &ringEntry{hash: h, sc: scw.sc})
 			idx++
+			currentHashes++
 		}
 	}
 

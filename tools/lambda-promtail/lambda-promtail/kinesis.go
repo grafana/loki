@@ -26,7 +26,7 @@ func parseKinesisEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent) 
 			model.LabelName("__aws_kinesis_event_source_arn"): model.LabelValue(record.EventSourceArn),
 		}
 
-		labels = applyExtraLabels(labels)
+		labels = applyLabels(labels)
 
 		// Check if the data is gzipped by inspecting the 'data' field
 		if isGzipped(record.Kinesis.Data) {

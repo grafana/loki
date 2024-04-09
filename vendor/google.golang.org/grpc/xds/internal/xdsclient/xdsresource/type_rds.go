@@ -171,6 +171,7 @@ type HeaderMatcher struct {
 	SuffixMatch  *string
 	RangeMatch   *Int64Range
 	PresentMatch *bool
+	StringMatch  *matcher.StringMatcher
 }
 
 // Int64Range is a range for header range match.
@@ -244,12 +245,4 @@ func (sc *SecurityConfig) Equal(other *SecurityConfig) bool {
 		}
 	}
 	return true
-}
-
-// RouteConfigUpdateErrTuple is a tuple with the update and error. It contains
-// the results from unmarshal functions. It's used to pass unmarshal results of
-// multiple resources together, e.g. in maps like `map[string]{Update,error}`.
-type RouteConfigUpdateErrTuple struct {
-	Update RouteConfigUpdate
-	Err    error
 }

@@ -2,8 +2,8 @@ apiVersion: v2
 name: loki
 description: Helm chart for Grafana Loki in simple, scalable mode
 type: application
-appVersion: 2.9.1
-version: 5.23.0
+appVersion: 3.0.0
+version: 6.0.0
 home: https://grafana.github.io/helm-charts
 sources:
   - https://github.com/grafana/loki
@@ -13,14 +13,19 @@ icon: https://grafana.com/docs/loki/latest/logo_and_name.png
 dependencies:
   - name: minio
     alias: minio
-    version: 4.0.12
+    version: 4.0.15
     repository: https://charts.min.io/
     condition: minio.enabled
   - name: grafana-agent-operator
     alias: grafana-agent-operator
-    version: 0.2.16
+    version: 0.3.15
     repository: https://grafana.github.io/helm-charts
     condition: monitoring.selfMonitoring.grafanaAgent.installOperator
+  - name: rollout-operator
+    alias: rollout_operator
+    repository: https://grafana.github.io/helm-charts
+    version: 0.13.0
+    condition: rollout_operator.enabled
 maintainers:
   - name: trevorwhitney
   - name: jeschkies

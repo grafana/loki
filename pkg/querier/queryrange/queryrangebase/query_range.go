@@ -7,11 +7,11 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"net/url"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
@@ -21,9 +21,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 // StatusSuccess Prometheus success result.
@@ -40,21 +40,39 @@ var (
 	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
 	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per time series. Try increasing the value of the step parameter")
 
-	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
-	PrometheusCodec Codec = &prometheusCodec{}
+	// PrometheusCodecForRangeQueries is a codec to encode and decode Loki range metric query requests and responses.
+	PrometheusCodecForRangeQueries = &prometheusCodec{
+		resultType: model.ValMatrix,
+	}
+
+	// PrometheusCodecForInstantQueries is a codec to encode and decode Loki range metric query requests and responses.
+	PrometheusCodecForInstantQueries = &prometheusCodec{
+		resultType: model.ValVector,
+	}
 
 	// Name of the cache control header.
 	cacheControlHeader = "Cache-Control"
 )
 
-type prometheusCodec struct{}
+type prometheusCodec struct {
+	// prometheusCodec is used to merge multiple response of either range (matrix) or instant queries(vector).
+	// when creating empty responses during merge, it need to be aware what kind of valueType it should create with.
+	// helps other middlewares to filter the correct result type.
+	resultType model.ValueType
+}
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
-func (q *PrometheusRequest) WithStartEnd(start int64, end int64) Request {
+func (q *PrometheusRequest) WithStartEnd(start, end time.Time) Request {
 	clone := *q
 	clone.Start = start
 	clone.End = end
 	return &clone
+}
+
+// WithStartEndForCache implements resultscache.Request.
+func (q *PrometheusRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	clone := q.WithStartEnd(s, e).(resultscache.Request)
+	return clone
 }
 
 // WithQuery clones the current `PrometheusRequest` with a new query.
@@ -68,8 +86,8 @@ func (q *PrometheusRequest) WithQuery(query string) Request {
 func (q *PrometheusRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", q.GetQuery()),
-		otlog.String("start", timestamp.Time(q.GetStart()).String()),
-		otlog.String("end", timestamp.Time(q.GetEnd()).String()),
+		otlog.String("start", timestamp.Time(q.GetStart().UnixMilli()).String()),
+		otlog.String("end", timestamp.Time(q.GetEnd().UnixMilli()).String()),
 		otlog.Int64("step (ms)", q.GetStep()),
 	)
 }
@@ -91,20 +109,49 @@ func (resp *PrometheusResponse) minTime() int64 {
 	return result[0].Samples[0].TimestampMs
 }
 
+func convertPrometheusResponseHeadersToPointers(h []PrometheusResponseHeader) []*PrometheusResponseHeader {
+	if h == nil {
+		return nil
+	}
+
+	resp := make([]*PrometheusResponseHeader, len(h))
+	for i := range h {
+		resp[i] = &h[i]
+	}
+
+	return resp
+}
+
+func (resp *PrometheusResponse) WithHeaders(h []PrometheusResponseHeader) Response {
+	resp.Headers = convertPrometheusResponseHeadersToPointers(h)
+	return resp
+}
+
+func (resp *PrometheusResponse) SetHeader(name, value string) {
+	for i, h := range resp.Headers {
+		if h.Name == name {
+			resp.Headers[i].Values = []string{value}
+			return
+		}
+	}
+
+	resp.Headers = append(resp.Headers, &PrometheusResponseHeader{Name: name, Values: []string{value}})
+}
+
 // NewEmptyPrometheusResponse returns an empty successful Prometheus query range response.
-func NewEmptyPrometheusResponse() *PrometheusResponse {
+func NewEmptyPrometheusResponse(v model.ValueType) *PrometheusResponse {
 	return &PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
-			ResultType: model.ValMatrix.String(),
+			ResultType: v.String(),
 			Result:     []SampleStream{},
 		},
 	}
 }
 
-func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
+func (p prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	if len(responses) == 0 {
-		return NewEmptyPrometheusResponse(), nil
+		return NewEmptyPrometheusResponse(p.resultType), nil
 	}
 
 	promResponses := make([]*PrometheusResponse, 0, len(responses))
@@ -119,10 +166,27 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	// Merge the responses.
 	sort.Sort(byFirstTime(promResponses))
 
+	uniqueWarnings := map[string]struct{}{}
+	for _, resp := range promResponses {
+		for _, w := range resp.Warnings {
+			uniqueWarnings[w] = struct{}{}
+		}
+	}
+
+	warnings := maps.Keys(uniqueWarnings)
+	sort.Strings(warnings)
+
+	if len(warnings) == 0 {
+		// When there are no warnings, keep it nil so it can be compared against
+		// the default value
+		warnings = nil
+	}
+
 	response := PrometheusResponse{
-		Status: StatusSuccess,
+		Status:   StatusSuccess,
+		Warnings: warnings,
 		Data: PrometheusData{
-			ResultType: model.ValMatrix.String(),
+			ResultType: p.resultType.String(),
 			Result:     matrixMerge(promResponses),
 		},
 	}
@@ -135,95 +199,6 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	}
 
 	return &response, nil
-}
-
-func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (Request, error) {
-	var result PrometheusRequest
-	var err error
-	result.Start, err = util.ParseTime(r.FormValue("start"))
-	if err != nil {
-		return nil, decorateWithParamName(err, "start")
-	}
-
-	result.End, err = util.ParseTime(r.FormValue("end"))
-	if err != nil {
-		return nil, decorateWithParamName(err, "end")
-	}
-
-	if result.End < result.Start {
-		return nil, errEndBeforeStart
-	}
-
-	result.Step, err = parseDurationMs(r.FormValue("step"))
-	if err != nil {
-		return nil, decorateWithParamName(err, "step")
-	}
-
-	if result.Step <= 0 {
-		return nil, errNegativeStep
-	}
-
-	// For safety, limit the number of returned points per timeseries.
-	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
-	if (result.End-result.Start)/result.Step > 11000 {
-		return nil, errStepTooSmall
-	}
-
-	result.Query = r.FormValue("query")
-	result.Path = r.URL.Path
-
-	// Include the specified headers from http request in prometheusRequest.
-	for _, header := range forwardHeaders {
-		for h, hv := range r.Header {
-			if strings.EqualFold(h, header) {
-				result.Headers = append(result.Headers, &PrometheusRequestHeader{Name: h, Values: hv})
-				break
-			}
-		}
-	}
-
-	for _, value := range r.Header.Values(cacheControlHeader) {
-		if strings.Contains(value, noStoreValue) {
-			result.CachingOptions.Disabled = true
-			break
-		}
-	}
-
-	return &result, nil
-}
-
-func (prometheusCodec) EncodeRequest(ctx context.Context, r Request) (*http.Request, error) {
-	promReq, ok := r.(*PrometheusRequest)
-	if !ok {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, "invalid request format")
-	}
-	params := url.Values{
-		"start": []string{encodeTime(promReq.Start)},
-		"end":   []string{encodeTime(promReq.End)},
-		"step":  []string{encodeDurationMs(promReq.Step)},
-		"query": []string{promReq.Query},
-	}
-	u := &url.URL{
-		Path:     promReq.Path,
-		RawQuery: params.Encode(),
-	}
-	var h = http.Header{}
-
-	for _, hv := range promReq.Headers {
-		for _, v := range hv.Values {
-			h.Add(hv.Name, v)
-		}
-	}
-
-	req := &http.Request{
-		Method:     "GET",
-		RequestURI: u.String(), // This is what the httpgrpc code looks at.
-		URL:        u,
-		Body:       http.NoBody,
-		Header:     h,
-	}
-
-	return req.WithContext(ctx), nil
 }
 
 func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ Request) (Response, error) {

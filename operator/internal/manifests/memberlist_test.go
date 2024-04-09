@@ -3,9 +3,10 @@ package manifests
 import (
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/stretchr/testify/require"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 func TestConfigureHashRingEnv_UseDefaults_NoHashRingSpec(t *testing.T) {
@@ -44,9 +45,9 @@ func TestConfigureHashRingEnv_UseDefaults_NoHashRingSpec(t *testing.T) {
 		},
 	}
 
-	wantEnvVar := v1.EnvVar{
-		ValueFrom: &v1.EnvVarSource{
-			FieldRef: &v1.ObjectFieldSelector{
+	wantEnvVar := corev1.EnvVar{
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{
 				APIVersion: "v1",
 				FieldPath:  "status.podIP",
 			},
@@ -102,9 +103,9 @@ func TestConfigureHashRingEnv_UseDefaults_WithCustomHashRingSpec(t *testing.T) {
 		},
 	}
 
-	wantEnvVar := v1.EnvVar{
-		ValueFrom: &v1.EnvVarSource{
-			FieldRef: &v1.ObjectFieldSelector{
+	wantEnvVar := corev1.EnvVar{
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{
 				APIVersion: "v1",
 				FieldPath:  "status.podIP",
 			},
@@ -160,10 +161,10 @@ func TestConfigureHashRingEnv_UseInstanceAddrPodIP(t *testing.T) {
 		},
 	}
 
-	wantEnvVar := v1.EnvVar{
+	wantEnvVar := corev1.EnvVar{
 		Name: gossipInstanceAddrEnvVarName,
-		ValueFrom: &v1.EnvVarSource{
-			FieldRef: &v1.ObjectFieldSelector{
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{
 				APIVersion: "v1",
 				FieldPath:  "status.podIP",
 			},

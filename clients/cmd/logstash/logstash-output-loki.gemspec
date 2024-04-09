@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name    = 'logstash-output-loki'
-  s.version = '1.1.0'
+  s.version = '1.2.0'
   s.authors = ['Aditya C S','Cyril Tovena']
   s.email   = ['aditya.gnu@gmail.com','cyril.tovena@grafana.com']
 

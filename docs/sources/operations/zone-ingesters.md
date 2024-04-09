@@ -1,13 +1,13 @@
 ---
 title: Zone aware ingesters
 menuTitle:  
-description: How to migrate from a single ingester statefulset to three zone aware ingester StatefulSets
+description: Describes how to migrate from a single ingester StatefulSet to three zone aware ingester StatefulSets
 weight:
 ---
 
 # Zone aware ingesters
 
-Loki's zone aware ingesters are used by Grafana Labs in order to allow for easier rollouts of large Loki deployments. You can think of them in three logical zones, however with some extra Kubernetes configuration you could deploy them in separate zones.
+Loki's zone aware ingesters are used by Grafana Labs in order to allow for easier rollouts of large Loki deployments. You can think of them as three logical zones, however with some extra Kubernetes configuration you could deploy them in separate zones.
 
 By default, an incoming log stream's logs are replicated to 3 random ingesters. Except in the case of some replica scaling up or down, a given stream will always be replicated to the same 3 ingesters. This means that if one of those ingesters is restarted no data is lost. However two or more ingesters restarting can result in data loss and also impacts the systems ability to ingest logs because of an unhealthy ring status.
 
@@ -103,7 +103,7 @@ These instructions assume you are using the zone aware ingester jsonnet deployme
 
 1. If you're using an automated reconciliation or deployment system like flux, disable it now (for example using flux ignore) if possible for just the default ingester StatefulSet.
 
-1. Shutdown flush the default ingesters, unregistering them from the ring, you can do this by port-forwarding each ingester pod and using the endpoint: `"http://url:PORT/ingester/shutdown?flush=true&delete_ring_tokens=true&terminate=false"`
+1. Shutdown flush the default ingesters, unregistering them from the ring, you can do this by port-forwarding each ingester Pod and using the endpoint: `"http://url:PORT/ingester/shutdown?flush=true&delete_ring_tokens=true&terminate=false"`
 
 1. manually scale down the default ingester StatefulSet to 0 replicas, we do this via `tk apply` but you could do it via modifying the yaml.
 

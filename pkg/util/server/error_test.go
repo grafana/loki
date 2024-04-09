@@ -9,17 +9,16 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
+	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
-	storage_errors "github.com/grafana/loki/pkg/storage/errors"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	storage_errors "github.com/grafana/loki/v3/pkg/storage/errors"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 func Test_writeError(t *testing.T) {
@@ -32,9 +31,9 @@ func Test_writeError(t *testing.T) {
 	}{
 		{"cancelled", context.Canceled, ErrClientCanceled, StatusClientClosedRequest},
 		{"cancelled multi", util.MultiError{context.Canceled, context.Canceled}, ErrClientCanceled, StatusClientClosedRequest},
-		{"rpc cancelled", status.New(codes.Canceled, context.Canceled.Error()).Err(), "rpc error: code = Canceled desc = context canceled", http.StatusInternalServerError},
-		{"rpc cancelled multi", util.MultiError{status.New(codes.Canceled, context.Canceled.Error()).Err(), status.New(codes.Canceled, context.Canceled.Error()).Err()}, "2 errors: rpc error: code = Canceled desc = context canceled; rpc error: code = Canceled desc = context canceled", http.StatusInternalServerError},
-		{"mixed context and rpc cancelled", util.MultiError{context.Canceled, status.New(codes.Canceled, context.Canceled.Error()).Err()}, "2 errors: context canceled; rpc error: code = Canceled desc = context canceled", http.StatusInternalServerError},
+		{"rpc cancelled", status.Error(codes.Canceled, context.Canceled.Error()), "rpc error: code = Canceled desc = context canceled", http.StatusInternalServerError},
+		{"rpc cancelled multi", util.MultiError{status.Error(codes.Canceled, context.Canceled.Error()), status.Error(codes.Canceled, context.Canceled.Error())}, "2 errors: rpc error: code = Canceled desc = context canceled; rpc error: code = Canceled desc = context canceled", http.StatusInternalServerError},
+		{"mixed context and rpc cancelled", util.MultiError{context.Canceled, status.Error(codes.Canceled, context.Canceled.Error())}, "2 errors: context canceled; rpc error: code = Canceled desc = context canceled", http.StatusInternalServerError},
 		{"mixed context, rpc cancelled and another", util.MultiError{errors.New("standard error"), context.Canceled, status.New(codes.Canceled, context.Canceled.Error()).Err()}, "3 errors: standard error; context canceled; rpc error: code = Canceled desc = context canceled", http.StatusInternalServerError},
 		{"cancelled storage", promql.ErrStorage{Err: context.Canceled}, ErrClientCanceled, StatusClientClosedRequest},
 		{"orgid", user.ErrNoOrgID, user.ErrNoOrgID.Error(), http.StatusBadRequest},
@@ -56,10 +55,20 @@ func Test_writeError(t *testing.T) {
 			WriteError(tt.err, rec)
 			require.Equal(t, tt.expectedStatus, rec.Result().StatusCode)
 			b, err := io.ReadAll(rec.Result().Body)
-			if err != nil {
-				t.Fatal(err)
-			}
-			require.Equal(t, tt.msg, string(b[:len(b)-1]))
+			require.NoError(t, err)
+			require.EqualValues(t, tt.msg, b)
+		})
+
+		t.Run(tt.name+"-roundtrip", func(t *testing.T) {
+			status := WrapError(tt.err)
+			unwrappedErr := UnwrapError(status)
+
+			rec := httptest.NewRecorder()
+			WriteError(unwrappedErr, rec)
+			require.Equal(t, tt.expectedStatus, rec.Result().StatusCode)
+			b, err := io.ReadAll(rec.Result().Body)
+			require.NoError(t, err)
+			require.EqualValues(t, tt.msg, b)
 		})
 	}
 }

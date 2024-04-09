@@ -59,7 +59,7 @@ scrape_configs:
 - job_name: system
   decompression:
     enabled: true
-    initial_sleep: 10s
+    initial_delay: 10s
     format: gz
   static_configs:
   - targets:

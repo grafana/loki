@@ -14,7 +14,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/api/option"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 func Test_Hedging(t *testing.T) {
@@ -246,7 +246,7 @@ func fakeHTTPRespondingServer(t *testing.T, code int) *httptest.Server {
 }
 
 func fakeSleepingServer(t *testing.T, responseSleep, connectSleep time.Duration, closeOnNew, closeOnActive bool) *httptest.Server {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// sleep on response to mimic server overload
 		time.Sleep(responseSleep)
 	}))
@@ -264,6 +264,6 @@ func fakeSleepingServer(t *testing.T, responseSleep, connectSleep time.Duration,
 		}
 	}
 	t.Cleanup(server.Close)
-
+	server.Start()
 	return server
 }

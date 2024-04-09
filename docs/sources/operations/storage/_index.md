@@ -6,7 +6,7 @@ weight:
 ---
 # Manage storage
 
-You can read a high level overview of Loki storage [here]({{< relref "../../storage/_index.md" >}})
+You can read a high level overview of Loki storage [here](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/)
 
 Grafana Loki needs to store two different types of data: **chunks** and **indexes**.
 
@@ -18,21 +18,21 @@ format](#chunk-format) for how chunks are stored internally.
 The **index** stores each stream's label set and links them to the individual
 chunks.
 
-Refer to Loki's [configuration]({{< relref "../../configure" >}}) for details on
+Refer to Loki's [configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/) for details on
 how to configure the storage and the index.
 
 For more information:
 
-- [Table Manager]({{< relref "./table-manager" >}})
-- [Retention]({{< relref "./retention" >}})
-- [Logs Deletion]({{< relref "./logs-deletion" >}})
+- [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/)
+- [Retention](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/)
+- [Logs Deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/)
 
 ## Supported Stores
 
 The following are supported for the index:
 
-- [TSDB]({{< relref "./tsdb" >}}) index store which stores TSDB index files in the object store. This is the recommended index store for Loki 2.8 and newer.
-- [Single Store (boltdb-shipper)]({{< relref "./boltdb-shipper" >}}) index store which stores boltdb index files in the object store. 
+- [TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) index store which stores TSDB index files in the object store. This is the recommended index store for Loki 2.8 and newer.
+- [Single Store (boltdb-shipper)](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) index store which stores boltdb index files in the object store. 
 - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
 - [Google Bigtable](https://cloud.google.com/bigtable)
 - [Apache Cassandra](https://cassandra.apache.org)
@@ -76,7 +76,7 @@ When using S3 as object storage, the following permissions are needed:
 
 Resources: `arn:aws:s3:::<bucket_name>`, `arn:aws:s3:::<bucket_name>/*`
 
-See the [AWS deployment section]({{< relref "../../storage#aws-deployment-s3-single-store" >}}) on the storage page for a detailed setup guide.
+See the [AWS deployment section](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#aws-deployment-s3-single-store) on the storage page for a detailed setup guide.
 
 ### DynamoDB
 
@@ -134,7 +134,7 @@ Resources: `arn:aws:iam::<aws_account_id>:role/<role_name>`
 
 When using IBM Cloud Object Storage (COS) as object storage, IAM `Writer` role is needed.
 
-See the [IBM Cloud Object Storage section]({{< relref "../../storage#ibm-deployment-cos-single-store" >}}) on the storage page for a detailed setup guide.
+See the [IBM Cloud Object Storage section](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#ibm-deployment-cos-single-store) on the storage page for a detailed setup guide.
 
 ## Chunk Format
 

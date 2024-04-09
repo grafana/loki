@@ -9,10 +9,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
-	v1 "github.com/grafana/loki/pkg/lokifrontend/frontend/v1"
-	v2 "github.com/grafana/loki/pkg/lokifrontend/frontend/v2"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
+	v1 "github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1"
+	v2 "github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // This struct combines several configuration options together to preserve backwards compatibility.
@@ -38,7 +39,7 @@ func (cfg *CombinedFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 // Returned RoundTripper can be wrapped in more round-tripper middlewares, and then eventually registered
 // into HTTP server using the Handler from this package. Returned RoundTripper is always non-nil
 // (if there are no errors), and it uses the returned frontend (if any).
-func InitFrontend(cfg CombinedFrontendConfig, ring ring.ReadRing, limits v1.Limits, grpcListenPort int, log log.Logger, reg prometheus.Registerer) (http.RoundTripper, *v1.Frontend, *v2.Frontend, error) {
+func InitFrontend(cfg CombinedFrontendConfig, ring ring.ReadRing, limits v1.Limits, grpcListenPort int, log log.Logger, reg prometheus.Registerer, metricsNamespace string, codec transport.Codec) (queryrangebase.Handler, *v1.Frontend, *v2.Frontend, error) {
 	switch {
 	case cfg.DownstreamURL != "":
 		// If the user has specified a downstream Prometheus, then we should use that.
@@ -47,7 +48,7 @@ func InitFrontend(cfg CombinedFrontendConfig, ring ring.ReadRing, limits v1.Limi
 	case cfg.FrontendV2.SchedulerAddress != "" || ring != nil:
 		// If query-scheduler address is configured, use Frontend.
 		if cfg.FrontendV2.Addr == "" {
-			addr, err := util.GetFirstAddressOf(cfg.FrontendV2.InfNames)
+			addr, err := util.GetFirstAddressOf(cfg.FrontendV2.InfNames, log)
 			if err != nil {
 				return nil, nil, nil, errors.Wrap(err, "failed to get frontend address")
 			}
@@ -59,15 +60,15 @@ func InitFrontend(cfg CombinedFrontendConfig, ring ring.ReadRing, limits v1.Limi
 			cfg.FrontendV2.Port = grpcListenPort
 		}
 
-		fr, err := v2.NewFrontend(cfg.FrontendV2, ring, log, reg)
-		return transport.AdaptGrpcRoundTripperToHTTPRoundTripper(fr), nil, fr, err
+		fr, err := v2.NewFrontend(cfg.FrontendV2, ring, log, reg, codec, metricsNamespace)
+		return fr, nil, fr, err
 
 	default:
 		// No scheduler = use original frontend.
-		fr, err := v1.New(cfg.FrontendV1, limits, log, reg)
+		fr, err := v1.New(cfg.FrontendV1, limits, log, reg, metricsNamespace)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		return transport.AdaptGrpcRoundTripperToHTTPRoundTripper(fr), fr, nil, nil
+		return transport.AdaptGrpcRoundTripperToHandler(fr, codec), fr, nil, nil
 	}
 }
