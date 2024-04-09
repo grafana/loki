@@ -29,4 +29,4 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 
 ## Upgrade Considerations
 
-We have removed a few already deprecated configs. For a full list, please read the upgrade guide before upgrading Loki. 
+We have removed a few configurations that had previously been deprecated. For a full list, read the [upgrade guide]({{< relref "../setup/upgrade" >}})  before upgrading Loki. 
