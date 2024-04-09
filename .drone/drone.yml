@@ -1070,28 +1070,6 @@ trigger:
   - refs/tags/v*
 ---
 kind: pipeline
-name: promtail-windows
-platform:
-  arch: amd64
-  os: windows
-  version: "1809"
-steps:
-- commands:
-  - Write-Output $env:DRONE_RUNNER_NAME
-  image: golang:1.21.3-windowsservercore-1809
-  name: identify-runner
-- commands:
-  - go test .\clients\pkg\promtail\targets\windows\... -v
-  image: golang:1.21.3-windowsservercore-1809
-  name: test
-trigger:
-  ref:
-  - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
-  - refs/pull/*/head
----
-kind: pipeline
 name: logql-analyzer
 platform:
   arch: amd64
@@ -1362,6 +1340,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 452ccacf982174ae96c64fc2d0868859d26dbf6944e49d9170d780ff40a81eb8
+hmac: dbc4d2b5c84e0464f24846abc8e7e73a5a937df289a0ecdb501f3bca28ebb8e3
 
 ...

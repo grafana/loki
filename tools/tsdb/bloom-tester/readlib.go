@@ -204,7 +204,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 										bloomTokenizer.SetLineTokenizer(experiment.tokenizer)
 										for gotIdx := range got { // for every chunk
 											for _, queryExperiment := range queryExperiments { // for each search string
-												if len(queryExperiment.searchString) >= experiment.tokenizer.N+experiment.tokenizer.Skip {
+												if len(queryExperiment.searchString) >= experiment.tokenizer.N()+experiment.tokenizer.SkipFactor() {
 
 													foundInChunk := false
 													foundInSbf := false

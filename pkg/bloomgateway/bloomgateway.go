@@ -62,6 +62,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
@@ -108,6 +109,7 @@ func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
 
 // New returns a new instance of the Bloom Gateway.
 func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
+	utillog.WarnExperimentalUse("Bloom Gateway", logger)
 	g := &Gateway{
 		cfg:     cfg,
 		logger:  logger,

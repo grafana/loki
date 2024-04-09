@@ -227,6 +227,8 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.TopkSketches, nil
 	case *QueryResponse_QuantileSketches:
 		return concrete.QuantileSketches, nil
+	case *QueryResponse_PatternsResponse:
+		return concrete.PatternsResponse, nil
 	case *QueryResponse_DetectedLabels:
 		return concrete.DetectedLabels, nil
 	case *QueryResponse_DetectedFields:
@@ -266,6 +268,8 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_QuantileSketches{response}
 	case *ShardsResponse:
 		p.Response = &QueryResponse_ShardsResponse{response}
+	case *QueryPatternsResponse:
+		p.Response = &QueryResponse_PatternsResponse{response}
 	case *DetectedLabelsResponse:
 		p.Response = &QueryResponse_DetectedLabels{response}
 	case *DetectedFieldsResponse:
@@ -358,6 +362,8 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		return &LabelRequest{
 			LabelRequest: *concrete.Labels,
 		}, ctx, nil
+	case *QueryRequest_PatternsRequest:
+		return concrete.PatternsRequest, ctx, nil
 	case *QueryRequest_DetectedLabels:
 		return &DetectedLabelsRequest{
 			DetectedLabelsRequest: *concrete.DetectedLabels,
@@ -372,7 +378,6 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 }
 
 func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*QueryRequest, error) {
-
 	result := &QueryRequest{
 		Metadata: make(map[string]string),
 	}
@@ -392,6 +397,8 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 		result.Request = &QueryRequest_Streams{Streams: req}
 	case *logproto.ShardsRequest:
 		result.Request = &QueryRequest_ShardsRequest{ShardsRequest: req}
+	case *logproto.QueryPatternsRequest:
+		result.Request = &QueryRequest_PatternsRequest{PatternsRequest: req}
 	case *DetectedLabelsRequest:
 		result.Request = &QueryRequest_DetectedLabels{DetectedLabels: &req.DetectedLabelsRequest}
 	case *DetectedFieldsRequest:

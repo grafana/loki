@@ -102,11 +102,6 @@ var (
 			Desc:       "The index_gateway block configures the Loki index gateway server, responsible for serving index queries without the need to constantly interact with the object store.",
 		},
 		{
-			Name:       "bloom_gateway",
-			StructType: []reflect.Type{reflect.TypeOf(bloomgateway.Config{})},
-			Desc:       "The bloom_gateway block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.",
-		},
-		{
 			Name:       "storage_config",
 			StructType: []reflect.Type{reflect.TypeOf(storage.Config{})},
 			Desc:       "The storage_config block configures one of many possible stores for both the index and chunks. Which configuration to be picked should be defined in schema_config block.",
@@ -129,7 +124,12 @@ var (
 		{
 			Name:       "bloom_compactor",
 			StructType: []reflect.Type{reflect.TypeOf(bloomcompactor.Config{})},
-			Desc:       "The bloom_compactor block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks",
+			Desc:       "Experimental: The bloom_compactor block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks.",
+		},
+		{
+			Name:       "bloom_gateway",
+			StructType: []reflect.Type{reflect.TypeOf(bloomgateway.Config{})},
+			Desc:       "Experimental: The bloom_gateway block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.",
 		},
 		{
 			Name:       "limits_config",
@@ -197,7 +197,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 		{
 			Name:       "grpc_client",
 			StructType: []reflect.Type{reflect.TypeOf(grpcclient.Config{})},
-			Desc:       "The grpc_client block configures the gRPC client used to communicate between two Loki components.",
+			Desc:       "The grpc_client block configures the gRPC client used to communicate between a client and server component in Loki.",
 		},
 		// TLS config
 		{
@@ -209,7 +209,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 		{
 			Name:       "cache_config",
 			StructType: []reflect.Type{reflect.TypeOf(cache.Config{})},
-			Desc:       "The cache block configures the cache backend.",
+			Desc:       "The cache_config block configures the cache backend for a specific Loki component.",
 		},
 		// Schema periodic config
 		{
