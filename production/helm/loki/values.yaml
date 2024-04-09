@@ -270,10 +270,12 @@ loki:
     compactor_address: '{{ include "loki.compactorAddress" . }}'
   # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
   storage:
-    bucketNames:
-      chunks: chunks
-      ruler: ruler
-      admin: admin
+    # Loki requires a bucket for chunks and the ruler. GEL requires a third bucket for the admin API.
+    # Please provide these values if you are using object storage.
+    # bucketNames:
+    #   chunks: FIXME
+    #   ruler: FIXME
+    #   admin: FIXME
     type: s3
     s3:
       s3: null
@@ -405,7 +407,7 @@ enterprise:
     admin_client:
       storage:
         s3:
-          bucket_name: {{ .Values.loki.storage.bucketNames.admin }}
+          bucket_name: admin
     {{- end }}
     {{- end }}
     auth:

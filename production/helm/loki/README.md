@@ -6,15 +6,15 @@ Helm chart for Grafana Loki in simple, scalable mode
 
 ## Source Code
 
-* <https://github.com/grafana/loki>
-* <https://grafana.com/oss/loki/>
-* <https://grafana.com/docs/loki/latest/>
+- <https://github.com/grafana/loki>
+- <https://grafana.com/oss/loki/>
+- <https://grafana.com/docs/loki/latest/>
 
 ## Requirements
 
-| Repository | Name | Version |
-|------------|------|---------|
-| https://charts.min.io/ | minio(minio) | 4.0.15 |
-| https://grafana.github.io/helm-charts | grafana-agent-operator(grafana-agent-operator) | 0.3.15 |
+| Repository                            | Name                                           | Version |
+| ------------------------------------- | ---------------------------------------------- | ------- |
+| <https://charts.min.io/>                | minio(minio)                                   | 4.0.15  |
+| <https://grafana.github.io/helm-charts> | grafana-agent-operator(grafana-agent-operator) | 0.3.15  |
 
 Find more information in the Loki Helm Chart [documentation](https://grafana.com/docs/loki/next/installation/helm).
