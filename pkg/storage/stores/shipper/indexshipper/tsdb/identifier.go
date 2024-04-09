@@ -64,13 +64,14 @@ func (p prefixedIdentifier) Name() string {
 // Identifier has all the information needed to resolve a TSDB index
 // Notably this abstracts away OS path separators, etc.
 type SingleTenantTSDBIdentifier struct {
-	// origTS holds original timestamp from filename which was parsed to TS as time.Time.
+	// exportTSInSecs tells whether creation timestamp should be exported in unix seconds instead of nanoseconds.
 	// timestamp in filename could be a unix second or a unix nanosecond so
-	// retaining the original timestamp to be able to reproduce filename back from parsed identifier.
-	origTS        int64
-	TS            time.Time
-	From, Through model.Time
-	Checksum      uint32
+	// helps us to be able to reproduce filename back from parsed identifier.
+	// Should be true ideally for older files with creation timestamp in seconds.
+	exportTSInSecs bool
+	TS             time.Time
+	From, Through  model.Time
+	Checksum       uint32
 }
 
 // implement Hash
@@ -81,8 +82,10 @@ func (i SingleTenantTSDBIdentifier) Hash(h hash.Hash32) (err error) {
 
 // str builds filename with format <file-creation-ts> + `-` + `compactor` + `-` + <oldest-chunk-start-ts> + `-` + <latest-chunk-end-ts> `-` + <index-checksum>
 func (i SingleTenantTSDBIdentifier) str() string {
-	ts := i.origTS
-	if ts == 0 {
+	ts := int64(0)
+	if i.exportTSInSecs {
+		ts = i.TS.Unix()
+	} else {
 		ts = i.TS.UnixNano()
 	}
 	return fmt.Sprintf(
@@ -148,11 +151,11 @@ func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 		parsedTS = time.Unix(0, ts)
 	}
 	return SingleTenantTSDBIdentifier{
-		origTS:   ts,
-		TS:       parsedTS,
-		From:     model.Time(from),
-		Through:  model.Time(through),
-		Checksum: uint32(checksum),
+		exportTSInSecs: len(elems[0]) <= 10,
+		TS:             parsedTS,
+		From:           model.Time(from),
+		Through:        model.Time(through),
+		Checksum:       uint32(checksum),
 	}, true
 
 }
