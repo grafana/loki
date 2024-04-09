@@ -102,6 +102,34 @@
 * [10301](https://github.com/grafana/loki/pull/10301) **wildum**: users can now define `additional_fields` in cloudflare configuration.
 * [10755](https://github.com/grafana/loki/pull/10755) **hainenber**: Lambda-Promtail: Add support for dropping labels passed via env var
 
+## [2.10.0](https://github.com/grafana/loki/compare/v2.9.6...v2.10.0) (2024-04-09)
+
+
+### Features
+
+* **helm:** configurable API version for PodLog CRD ([#10812](https://github.com/grafana/loki/issues/10812)) ([d1dee91](https://github.com/grafana/loki/commit/d1dee9150b0e69941b2bd3ce4b23afead174ea29))
+* **lambda/promtail:** support dropping labels ([#10755](https://github.com/grafana/loki/issues/10755)) ([ec54c72](https://github.com/grafana/loki/commit/ec54c723ebbeeda88000dde188d539ecfe05dad8))
+* **logstash:** clients logstash output structured metadata support ([#10899](https://github.com/grafana/loki/issues/10899)) ([32f1ec2](https://github.com/grafana/loki/commit/32f1ec2fda5057732a2b20b98942aafec112c4ba))
+
+
+### Bug Fixes
+
+* All lifecycler cfgs ref a valid IPv6 addr and port combination ([#11121](https://github.com/grafana/loki/issues/11121)) ([6385b19](https://github.com/grafana/loki/commit/6385b195739bd7d4e9706faddd0de663d8e5331a))
+* **deps:** update github.com/c2h5oh/datasize digest to 859f65c (main) ([#10820](https://github.com/grafana/loki/issues/10820)) ([c66ffd1](https://github.com/grafana/loki/commit/c66ffd125cd89f5845a75a1751186fa46d003f70))
+* **deps:** update github.com/docker/go-plugins-helpers digest to 6eecb7b (main) ([#10826](https://github.com/grafana/loki/issues/10826)) ([fb9c496](https://github.com/grafana/loki/commit/fb9c496b21be62f56866ae0f92440085e7860a2a))
+* **deps:** update github.com/grafana/gomemcache digest to 6947259 (main) ([#10836](https://github.com/grafana/loki/issues/10836)) ([2327789](https://github.com/grafana/loki/commit/2327789b5506d0ccc00d931195da17a2d47bf236))
+* **deps:** update github.com/grafana/loki/pkg/push digest to 583aa28 (main) ([#10842](https://github.com/grafana/loki/issues/10842)) ([02d9418](https://github.com/grafana/loki/commit/02d9418270f4e615c1f78b0def635da7c0572ca4))
+* **deps:** update github.com/grafana/loki/pkg/push digest to cfc4f0e (main) ([#10946](https://github.com/grafana/loki/issues/10946)) ([d27c4d2](https://github.com/grafana/loki/commit/d27c4d297dc6cce93ada98f16b962380ec933c6a))
+* **deps:** update github.com/grafana/loki/pkg/push digest to e523809 (main) ([#11107](https://github.com/grafana/loki/issues/11107)) ([09cb9ae](https://github.com/grafana/loki/commit/09cb9ae76f4aef7dea477961c0c5424d7243bf2a))
+* **deps:** update github.com/joncrlsn/dque digest to c2ef48c (main) ([#10947](https://github.com/grafana/loki/issues/10947)) ([1fe4885](https://github.com/grafana/loki/commit/1fe48858ae15b33646eedb85b05d6773a8bc5020))
+* **deps:** update module google.golang.org/grpc [security] (main) ([#11031](https://github.com/grafana/loki/issues/11031)) ([0695424](https://github.com/grafana/loki/commit/0695424f7dd62435df3a9981276b40f3c5ef5641))
+* **helm:** bump nginx-unprivilege to fix CVE ([#10754](https://github.com/grafana/loki/issues/10754)) ([dbf7dd4](https://github.com/grafana/loki/commit/dbf7dd4bac112a538a59907a8c6092504e7f4a91))
+* **promtail:** correctly parse list of drop stage sources from YAML ([#10848](https://github.com/grafana/loki/issues/10848)) ([f51ee84](https://github.com/grafana/loki/commit/f51ee849b03c5f6b79f3e93cb7fd7811636bede2))
+* **promtail:** prevent panic due to duplicate metric registration after reloaded ([#10798](https://github.com/grafana/loki/issues/10798)) ([47e2c58](https://github.com/grafana/loki/commit/47e2c5884f443667e64764f3fc3948f8f11abbb8))
+* respect query matcher in ingester when getting label values ([#10375](https://github.com/grafana/loki/issues/10375)) ([85e2e52](https://github.com/grafana/loki/commit/85e2e52279ecac6dc111d5c113c54d6054d2c922))
+* Sidecar configuration for Backend ([#10603](https://github.com/grafana/loki/issues/10603)) ([c29ba97](https://github.com/grafana/loki/commit/c29ba973a0b5b7b59613d210b741d5a547ea0e83))
+* **tools/lambda-promtail:** Do not evaluate empty string for drop_labels ([#11074](https://github.com/grafana/loki/issues/11074)) ([94169a0](https://github.com/grafana/loki/commit/94169a0e6b5bf96426ad21e40f9583b721f35d6c))
+
 ## [2.9.6](https://github.com/grafana/loki/compare/v2.9.5...v2.9.6) (2024-03-21)
 
 ### Bug Fixes
