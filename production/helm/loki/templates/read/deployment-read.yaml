@@ -120,7 +120,7 @@ spec:
         {{- end }}
       {{- with .Values.read.affinity }}
       affinity:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.read.dnsConfig }}
       dnsConfig:
@@ -144,12 +144,7 @@ spec:
         - name: data
           emptyDir: {}
         - name: config
-          {{- if .Values.loki.existingSecretForConfig }}
-          secret:
-            secretName: {{ .Values.loki.existingSecretForConfig }}
-          {{- else }}
           {{- include "loki.configVolume" . | nindent 10 }}
-          {{- end }}
         - name: runtime-config
           configMap:
             name: {{ template "loki.name" . }}-runtime
