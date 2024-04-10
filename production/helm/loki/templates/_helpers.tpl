@@ -208,7 +208,7 @@ Generated storage config for loki common config
 {{- if .Values.minio.enabled -}}
 s3:
   endpoint: {{ include "loki.minio" $ }}
-  bucketnames: {{ $.Values.loki.storage.bucketNames.chunks }}
+  bucketnames: chunks
   secret_access_key: {{ $.Values.minio.rootPassword }}
   access_key_id: {{ $.Values.minio.rootUser }}
   s3forcepathstyle: true
@@ -346,7 +346,7 @@ Storage config for ruler
 {{- if .Values.minio.enabled -}}
 type: "s3"
 s3:
-  bucketnames: {{ $.Values.loki.storage.bucketNames.ruler }}
+  bucketnames: ruler
 {{- else if eq .Values.loki.storage.type "s3" -}}
 {{- with .Values.loki.storage.s3 }}
 type: "s3"
