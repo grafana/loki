@@ -19,10 +19,6 @@ type Shipper struct {
 	store Store
 }
 
-type Limits interface {
-	BloomGatewayBlocksDownloadingParallelism(tenantID string) int
-}
-
 func NewShipper(client Store) *Shipper {
 	return &Shipper{store: client}
 }

@@ -55,7 +55,7 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name operator -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Build flags
-VPREFIX := github.com/grafana/loki/pkg/util/build
+VPREFIX := github.com/grafana/loki/v3/pkg/util/build
 GO_LDFLAGS   := -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GO_FLAGS     := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo
 DYN_GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
@@ -190,6 +190,9 @@ production/helm/loki/src/helm-test/helm-test:
 
 helm-lint: ## run helm linter
 	$(MAKE) -BC production/helm/loki lint
+
+helm-docs:
+	helm-docs -c production/helm/loki -g production/helm/loki
 
 #################
 # Loki-QueryTee #

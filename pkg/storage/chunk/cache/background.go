@@ -26,9 +26,9 @@ type BackgroundConfig struct {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *BackgroundConfig) RegisterFlagsWithPrefix(prefix string, description string, f *flag.FlagSet) {
-	f.IntVar(&cfg.WriteBackGoroutines, prefix+"background.write-back-concurrency", 10, description+"At what concurrency to write back to cache.")
-	f.IntVar(&cfg.WriteBackBuffer, prefix+"background.write-back-buffer", 10000, description+"How many key batches to buffer for background write-back.")
-	_ = cfg.WriteBackSizeLimit.Set("1GB")
+	f.IntVar(&cfg.WriteBackGoroutines, prefix+"background.write-back-concurrency", 1, description+"At what concurrency to write back to cache.")
+	f.IntVar(&cfg.WriteBackBuffer, prefix+"background.write-back-buffer", 500000, description+"How many key batches to buffer for background write-back. Default is large to prefer size based limiting.")
+	_ = cfg.WriteBackSizeLimit.Set("500MB")
 	f.Var(&cfg.WriteBackSizeLimit, prefix+"background.write-back-size-limit", description+"Size limit in bytes for background write-back.")
 }
 

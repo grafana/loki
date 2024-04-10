@@ -1,4 +1,6 @@
 # This partial configuration uses Alibaba for chunk storage.
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:

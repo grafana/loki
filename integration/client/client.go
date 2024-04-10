@@ -241,6 +241,7 @@ func (c *Client) Metrics() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer res.Body.Close()
 
 	var sb strings.Builder
 	if _, err := io.Copy(&sb, res.Body); err != nil {

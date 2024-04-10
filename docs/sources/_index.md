@@ -16,4 +16,4 @@ Unlike other logging systems, Loki is built around the idea of only indexing met
 Log data itself is then compressed and stored in chunks in object stores such as Amazon Simple Storage Service (S3) or Google Cloud Storage (GCS), or even locally on the filesystem.  
 A small index and highly compressed chunks simplifies the operation and significantly lowers the cost of Loki.
 
-For more information, see the [Loki overview]({{< relref "./get-started/overview" >}})
+For more information, see the [Loki overview]({{< relref "./get-started/overview" >}}).

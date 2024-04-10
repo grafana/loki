@@ -15,7 +15,9 @@ import (
 )
 
 func TestSimpleScalable_IngestQuery(t *testing.T) {
-	clu := cluster.New(nil)
+	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
+		c.SetSchemaVer("v13")
+	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()

@@ -106,6 +106,7 @@ type Querier interface {
 	IndexShards(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error)
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
+	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
 	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
 }
 
@@ -124,6 +125,7 @@ type SingleTenantQuerier struct {
 	store           Store
 	limits          Limits
 	ingesterQuerier *IngesterQuerier
+	patternQuerier  PatterQuerier
 	deleteGetter    deleteGetter
 	metrics         *Metrics
 	logger          log.Logger
@@ -997,6 +999,22 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	}, nil
 }
 
+type PatterQuerier interface {
+	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
+}
+
+func (q *SingleTenantQuerier) WithPatternQuerier(pq PatterQuerier) {
+	q.patternQuerier = pq
+}
+
+func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	if q.patternQuerier == nil {
+		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
+	}
+	res, err := q.patternQuerier.Patterns(ctx, req)
+	return res, err
+}
+
 // isLabelRelevant returns if the label is relevant for logs app. A label is relevant if it is not of any numeric, UUID or GUID type
 // It is also not relevant to return if the values are less than 1 or beyond 50.
 func (q *SingleTenantQuerier) isLabelRelevant(label string, values []string) bool {
@@ -1050,7 +1068,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		return nil, err
 	}
 
-	//TODO(twhitney): converting from a step to a duration should be abstracted and reused,
+	// TODO(twhitney): converting from a step to a duration should be abstracted and reused,
 	// doing this in a few places now.
 	streams, err := streamsForFieldDetection(iters, req.LineLimit, time.Duration(req.Step*1e6))
 	if err != nil {

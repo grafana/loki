@@ -194,18 +194,18 @@ type Limits struct {
 
 	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
 
-	BloomGatewayShardSize int  `yaml:"bloom_gateway_shard_size" json:"bloom_gateway_shard_size"`
-	BloomGatewayEnabled   bool `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering"`
+	BloomGatewayShardSize        int           `yaml:"bloom_gateway_shard_size" json:"bloom_gateway_shard_size" category:"experimental"`
+	BloomGatewayEnabled          bool          `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering" category:"experimental"`
+	BloomGatewayCacheKeyInterval time.Duration `yaml:"bloom_gateway_cache_key_interval" json:"bloom_gateway_cache_key_interval" category:"experimental"`
 
-	BloomCompactorShardSize                  int              `yaml:"bloom_compactor_shard_size" json:"bloom_compactor_shard_size"`
-	BloomCompactorEnabled                    bool             `yaml:"bloom_compactor_enable_compaction" json:"bloom_compactor_enable_compaction"`
-	BloomNGramLength                         int              `yaml:"bloom_ngram_length" json:"bloom_ngram_length"`
-	BloomNGramSkip                           int              `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip"`
-	BloomFalsePositiveRate                   float64          `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate"`
-	BloomBlockEncoding                       string           `yaml:"bloom_block_encoding" json:"bloom_block_encoding"`
-	BloomGatewayBlocksDownloadingParallelism int              `yaml:"bloom_gateway_blocks_downloading_parallelism" json:"bloom_gateway_blocks_downloading_parallelism"`
-	BloomGatewayCacheKeyInterval             time.Duration    `yaml:"bloom_gateway_cache_key_interval" json:"bloom_gateway_cache_key_interval"`
-	BloomCompactorMaxBlockSize               flagext.ByteSize `yaml:"bloom_compactor_max_block_size" json:"bloom_compactor_max_block_size"`
+	BloomCompactorShardSize    int              `yaml:"bloom_compactor_shard_size" json:"bloom_compactor_shard_size" category:"experimental"`
+	BloomCompactorEnabled      bool             `yaml:"bloom_compactor_enable_compaction" json:"bloom_compactor_enable_compaction" category:"experimental"`
+	BloomCompactorMaxBlockSize flagext.ByteSize `yaml:"bloom_compactor_max_block_size" json:"bloom_compactor_max_block_size" category:"experimental"`
+
+	BloomNGramLength       int     `yaml:"bloom_ngram_length" json:"bloom_ngram_length" category:"experimental"`
+	BloomNGramSkip         int     `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip" category:"experimental"`
+	BloomFalsePositiveRate float64 `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate" category:"experimental"`
+	BloomBlockEncoding     string  `yaml:"bloom_block_encoding" json:"bloom_block_encoding" category:"experimental"`
 
 	AllowStructuredMetadata           bool                  `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
 	MaxStructuredMetadataSize         flagext.ByteSize      `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
@@ -255,7 +255,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"job",
 	}
 	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
-	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", false, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name 'level' and one of the values from 'debug', 'info', 'warn', 'error', 'critical', 'fatal'.")
+	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name 'level' and one of the values from 'debug', 'info', 'warn', 'error', 'critical', 'fatal'.")
 
 	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
@@ -358,21 +358,20 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
 
-	f.IntVar(&l.BloomGatewayShardSize, "bloom-gateway.shard-size", 0, "The shard size defines how many bloom gateways should be used by a tenant for querying.")
-	f.BoolVar(&l.BloomGatewayEnabled, "bloom-gateway.enable-filtering", false, "Whether to use the bloom gateway component in the read path to filter chunks.")
+	f.IntVar(&l.BloomGatewayShardSize, "bloom-gateway.shard-size", 0, "Experimental. The shard size defines how many bloom gateways should be used by a tenant for querying.")
+	f.BoolVar(&l.BloomGatewayEnabled, "bloom-gateway.enable-filtering", false, "Experimental. Whether to use the bloom gateway component in the read path to filter chunks.")
 
-	f.IntVar(&l.BloomCompactorShardSize, "bloom-compactor.shard-size", 0, "The shard size defines how many bloom compactors should be used by a tenant when computing blooms. If it's set to 0, shuffle sharding is disabled.")
-	f.BoolVar(&l.BloomCompactorEnabled, "bloom-compactor.enable-compaction", false, "Whether to compact chunks into bloom filters.")
-	f.IntVar(&l.BloomNGramLength, "bloom-compactor.ngram-length", 4, "Length of the n-grams created when computing blooms from log lines.")
-	f.IntVar(&l.BloomNGramSkip, "bloom-compactor.ngram-skip", 1, "Skip factor for the n-grams created when computing blooms from log lines.")
-	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-compactor.false-positive-rate", 0.01, "Scalable Bloom Filter desired false-positive rate.")
-	f.StringVar(&l.BloomBlockEncoding, "bloom-compactor.block-encoding", "none", "Compression algorithm for bloom block pages.")
-	f.IntVar(&l.BloomGatewayBlocksDownloadingParallelism, "bloom-gateway.blocks-downloading-parallelism", 50, "Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.")
-	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Interval for computing the cache key in the Bloom Gateway.")
+	f.IntVar(&l.BloomCompactorShardSize, "bloom-compactor.shard-size", 0, "Experimental. The shard size defines how many bloom compactors should be used by a tenant when computing blooms. If it's set to 0, shuffle sharding is disabled.")
+	f.BoolVar(&l.BloomCompactorEnabled, "bloom-compactor.enable-compaction", false, "Experimental. Whether to compact chunks into bloom filters.")
+	f.IntVar(&l.BloomNGramLength, "bloom-compactor.ngram-length", 4, "Experimental. Length of the n-grams created when computing blooms from log lines.")
+	f.IntVar(&l.BloomNGramSkip, "bloom-compactor.ngram-skip", 1, "Experimental. Skip factor for the n-grams created when computing blooms from log lines.")
+	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-compactor.false-positive-rate", 0.01, "Experimental. Scalable Bloom Filter desired false-positive rate.")
+	f.StringVar(&l.BloomBlockEncoding, "bloom-compactor.block-encoding", "none", "Experimental. Compression algorithm for bloom block pages.")
+	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Experimental. Interval for computing the cache key in the Bloom Gateway.")
 	_ = l.BloomCompactorMaxBlockSize.Set(defaultBloomCompactorMaxBlockSize)
 	f.Var(&l.BloomCompactorMaxBlockSize, "bloom-compactor.max-block-size",
 		fmt.Sprintf(
-			"The maximum bloom block size. A value of 0 sets an unlimited size. Default is %s. The actual block size might exceed this limit since blooms will be added to blocks until the block exceeds the maximum block size.",
+			"Experimental. The maximum bloom block size. A value of 0 sets an unlimited size. Default is %s. The actual block size might exceed this limit since blooms will be added to blocks until the block exceeds the maximum block size.",
 			defaultBloomCompactorMaxBlockSize,
 		),
 	)
@@ -382,7 +381,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.VolumeMaxSeries, "limits.volume-max-series", 1000, "The default number of aggregated series or labels that can be returned from a log-volume endpoint")
 
-	f.BoolVar(&l.AllowStructuredMetadata, "validation.allow-structured-metadata", false, "Allow user to send structured metadata (non-indexed labels) in push payload.")
+	f.BoolVar(&l.AllowStructuredMetadata, "validation.allow-structured-metadata", true, "Allow user to send structured metadata (non-indexed labels) in push payload.")
 	_ = l.MaxStructuredMetadataSize.Set(defaultMaxStructuredMetadataSize)
 	f.Var(&l.MaxStructuredMetadataSize, "limits.max-structured-metadata-size", "Maximum size accepted for structured metadata per entry. Default: 64 kb. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
 	f.IntVar(&l.MaxStructuredMetadataEntriesCount, "limits.max-structured-metadata-entries-count", defaultMaxStructuredMetadataCount, "Maximum number of structured metadata entries per log line. Default: 128. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
@@ -936,10 +935,6 @@ func (o *Overrides) IndexGatewayShardSize(userID string) int {
 
 func (o *Overrides) BloomGatewayShardSize(userID string) int {
 	return o.getOverridesForUser(userID).BloomGatewayShardSize
-}
-
-func (o *Overrides) BloomGatewayBlocksDownloadingParallelism(userID string) int {
-	return o.getOverridesForUser(userID).BloomGatewayBlocksDownloadingParallelism
 }
 
 func (o *Overrides) BloomGatewayCacheKeyInterval(userID string) time.Duration {

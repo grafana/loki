@@ -468,12 +468,17 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			DetectedFieldsRequest: *req,
 			path:                  r.URL.Path,
 		}, nil
+	case PatternsQueryOp:
+		req, err := loghttp.ParsePatternsQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return req, nil
 	case DetectedLabelsOp:
 		req, err := loghttp.ParseDetectedLabelsQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-
 		return &DetectedLabelsRequest{
 			DetectedLabelsRequest: *req,
 			path:                  r.URL.Path,
@@ -681,6 +686,12 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 			DetectedFieldsRequest: *req,
 			path:                  httpReq.URL.Path,
 		}, ctx, nil
+	case PatternsQueryOp:
+		req, err := loghttp.ParsePatternsQuery(httpReq)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return req, ctx, nil
 	case DetectedLabelsOp:
 		req, err := loghttp.ParseDetectedLabelsQuery(httpReq)
 		if err != nil {
@@ -967,6 +978,26 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 
 		return req.WithContext(ctx), nil
+	case *logproto.QueryPatternsRequest:
+		params := url.Values{
+			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
+			"query": []string{request.GetQuery()},
+		}
+
+		u := &url.URL{
+			Path:     "/loki/api/v1/patterns",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     header,
+		}
+
+		return req.WithContext(ctx), nil
 	case *DetectedLabelsRequest:
 		params := url.Values{
 			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
@@ -1014,6 +1045,8 @@ func (c Codec) Path(r queryrangebase.Request) string {
 		return "/loki/api/v1/index/volume_range"
 	case *DetectedFieldsRequest:
 		return "/loki/api/v1/detected_fields"
+	case *logproto.QueryPatternsRequest:
+		return "/loki/api/v1/patterns"
 	case *DetectedLabelsRequest:
 		return "/loki/api/v1/detected_labels"
 	}
@@ -1122,6 +1155,15 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 		return &DetectedFieldsResponse{
+			Response: &resp,
+			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+		}, nil
+	case *logproto.QueryPatternsRequest:
+		var resp logproto.QueryPatternsResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+		return &QueryPatternsResponse{
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
@@ -1354,6 +1396,10 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 		}
 	case *DetectedFieldsResponse:
 		if err := marshal.WriteDetectedFieldsResponseJSON(response.Response, w); err != nil {
+			return err
+		}
+	case *QueryPatternsResponse:
+		if err := marshal.WriteQueryPatternsResponseJSON(response.Response, w); err != nil {
 			return err
 		}
 	case *DetectedLabelsResponse:
