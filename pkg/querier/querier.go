@@ -964,7 +964,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 				if err != nil {
 					return err
 				}
-				if q.isLabelRelevant(label, values) {
+				if q.isLabelRelevant(label, values, staticLabels) {
 					storeLabelsMap[label] = values
 				}
 			}
@@ -1034,11 +1034,11 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 
 // isLabelRelevant returns if the label is relevant for logs app. A label is relevant if it is not of any numeric, UUID or GUID type
 // It is also not relevant to return if the values are less than 1 or beyond 50.
-func (q *SingleTenantQuerier) isLabelRelevant(label string, values *logproto.UniqueLabelValues, staticLabels []string) bool {
-	cardinality := len(values.Values)
+func (q *SingleTenantQuerier) isLabelRelevant(label string, values []string, staticLabels []string) bool {
+	cardinality := len(values)
 	if slices.Contains(staticLabels, label) ||
 		(cardinality < 2 || cardinality > 50) ||
-		containsAllIDTypes(values.Values) {
+		containsAllIDTypes(values) {
 		return false
 	}
 

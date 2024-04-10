@@ -1426,7 +1426,6 @@ func TestQuerier_isLabelRelevant(t *testing.T) {
 }
 
 func TestQuerier_DetectedLabels(t *testing.T) {
-
 	start := time.Now()
 	end := time.Now()
 	manyValues := []string{}
@@ -1460,6 +1459,14 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 			Label:       "bar",
 			Cardinality: 2,
 		},
+		{
+			Label:       "label1",
+			Cardinality: 2,
+		},
+		{
+			Label:       "label2",
+			Cardinality: 2,
+		},
 	}}
 
 	query := ""
@@ -1477,13 +1484,19 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 	ingesterClient := newQuerierClientMock()
 	ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(&ingesterResponse, nil)
+
+	storeClient := newStoreMock()
+	storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"label1", "label2"}, nil)
+	storeClient.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "label1", mock.Anything).Return([]string{"val1", "val2"}, nil)
+	storeClient.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "label2", mock.Anything).Return([]string{"val3", "val4"}, nil)
+
 	querier, err := newQuerier(
 		conf,
 		mockIngesterClientConfig(),
 		newIngesterClientMockFactory(ingesterClient),
 		mockReadRingWithOneActiveIngester(),
 		&mockDeleteGettter{},
-		newStoreMock(), limits)
+		storeClient, limits)
 	require.NoError(t, err)
 	resp, err := querier.DetectedLabels(ctx, &request)
 	require.NoError(t, err)
