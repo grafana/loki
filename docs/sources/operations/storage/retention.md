@@ -196,8 +196,8 @@ can be parsed using the Prometheus common model [ParseDuration](https://pkg.go.d
 
 {{% admonition type="warning" %}}
 The retention period must be a multiple of the index and chunks table
-`period`, configured in the [`period_config`](https://grafana.com/docs/loki/latest/configure/#period_config) block.
-See the [Table Manager](https://grafana.com/docs/loki/latest/operations/storage/table-manager/#retention) documentation for
+`period`, configured in the [`period_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) block.
+See the [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/#retention) documentation for
 more information.
 {{% /admonition %}}
 
