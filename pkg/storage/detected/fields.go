@@ -15,7 +15,8 @@ func MergeFields(fields []*logproto.DetectedField, limit uint32) []*logproto.Det
 
 		//TODO(twhitney): this will take the first N up to limit, is there a better
 		//way to rank the fields to make sure we get the most interesting ones?
-		if _, ok := mergedFields[field.Label]; !ok && foundFields < limit {
+		f, ok := mergedFields[field.Label]
+		if !ok && foundFields < limit {
 			mergedFields[field.Label] = field
 			foundFields++
 			continue
@@ -24,7 +25,7 @@ func MergeFields(fields []*logproto.DetectedField, limit uint32) []*logproto.Det
 		//seeing the same field again, update the cardinality if it's higher
 		//this is an estimation, as the true cardinality could be greater
 		//than either of the seen values, but will never be less
-		if f, ok := mergedFields[field.Label]; ok {
+		if ok {
 			curCard, newCard := f.Cardinality, field.Cardinality
 			if newCard > curCard {
 				f.Cardinality = newCard
