@@ -238,7 +238,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate(container_cpu_usage_seconds_total{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\", container=~\"$container\"}[5m]))",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\", container=~\"$container\"}[$__rate_interval]))",
           "refId": "A"
         }
       ],
@@ -410,7 +410,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate(container_network_transmit_bytes_total{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\"}[5m]))",
+          "expr": "sum(rate(container_network_transmit_bytes_total{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\"}[$__rate_interval]))",
           "refId": "A"
         }
       ],
@@ -496,7 +496,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate(container_network_receive_bytes_total{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\"}[5m]))",
+          "expr": "sum(rate(container_network_receive_bytes_total{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\"}[$__rate_interval]))",
           "refId": "A"
         }
       ],
@@ -669,7 +669,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\", exported_pod=~\"$deployment.*\", exported_pod=~\"$pod\", container=~\"$container\"}[5m])) by (level)",
+          "expr": "sum(rate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\", exported_pod=~\"$deployment.*\", exported_pod=~\"$pod\", container=~\"$container\"}[$__rate_interval])) by (level)",
           "legendFormat": "{{level}}",
           "refId": "A"
         }
@@ -773,7 +773,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\", container=~\"$container\" } |logfmt| level=\"$level\" |= \"$filter\" [5m])) by (level)",
+          "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\", container=~\"$container\" } |logfmt| level=\"$level\" |= \"$filter\" [$__rate_interval])) by (level)",
           "intervalFactor": 3,
           "legendFormat": "{{level}}",
           "refId": "A"
@@ -862,8 +862,8 @@
       "10s",
       "30s",
       "1m",
-      "5m",
-      "15m",
+      "$__rate_interval",
+      "1$__rate_interval",
       "30m",
       "1h",
       "2h",
