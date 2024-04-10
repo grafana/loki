@@ -7,7 +7,7 @@ weight:
 # Table manager
 
 {{% admonition type="note" %}}
-Table manager is only needed if you are using a multi-store [backend](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage). If you are using either TSDB (recommended), or BoltDB (deprecated) you do not need the Table Manager.
+Table manager is only needed if you are using a multi-store [backend](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/). If you are using either TSDB (recommended), or BoltDB (deprecated) you do not need the Table Manager.
 {{% /admonition %}}
 
 Grafana Loki supports storing indexes and chunks in table-based data storages. When
