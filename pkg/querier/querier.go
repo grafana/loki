@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/axiomhq/hyperloglog"
@@ -997,9 +996,11 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 				if storeHasLabel {
 					combinedValues = append(combinedValues, storeValues...)
 				}
-				uniqValues := slices.CompactFunc(combinedValues, strings.EqualFold)
+
+				slices.Sort(combinedValues)
+				uniqueValues := slices.Compact(combinedValues)
 				// TODO(shantanu): There's a bug here. Unique values can go above 50. Will need a bit of refactoring
-				detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqValues))})
+				detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqueValues))})
 				delete(storeLabelsMap, label)
 			}
 		}
@@ -1007,8 +1008,9 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 
 	if storeLabelsMap != nil {
 		for label, values := range storeLabelsMap {
-			uniqValues := slices.CompactFunc(values, strings.EqualFold)
-			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqValues))})
+			slices.Sort(values)
+			uniqueValues := slices.Compact(values)
+			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqueValues))})
 		}
 	}
 	return &logproto.DetectedLabelsResponse{
