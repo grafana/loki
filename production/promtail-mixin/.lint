@@ -2,7 +2,7 @@ exclusions:
   template-job-rule:
     reason: "Prometheus datasource variable is being named as prometheus_datasource now while linter expects 'datasource'"
     entries:
-      - dashboard: "Loki / Promtqail"
+      - dashboard: "Loki / Promtail"
   panel-datasource-rule:
     reason: "Loki datasource variable is being named as loki_datasource now while linter expects 'datasource'"
     entries:
