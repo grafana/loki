@@ -1548,7 +1548,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 				Return(storeLabels, nil)
 
 			for _, l := range storeLabels {
-				vals, _ := tc.storeResponse[l]
+				vals := tc.storeResponse[l]
 				storeClient.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, l, mock.Anything).
 					Return(vals, nil)
 			}

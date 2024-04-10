@@ -1006,13 +1006,12 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		}
 	}
 
-	if storeLabelsMap != nil {
-		for label, values := range storeLabelsMap {
-			slices.Sort(values)
-			uniqueValues := slices.Compact(values)
-			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqueValues))})
-		}
+	for label, values := range storeLabelsMap {
+		slices.Sort(values)
+		uniqueValues := slices.Compact(values)
+		detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqueValues))})
 	}
+
 	return &logproto.DetectedLabelsResponse{
 		DetectedLabels: detectedLabels,
 	}, nil
