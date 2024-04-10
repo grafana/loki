@@ -1020,7 +1020,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 
 	// TODO(twhitney): converting from a step to a duration should be abstracted and reused,
 	// doing this in a few places now.
-	streams, err := streamsForFieldDetection(iters, req.LineLimit, time.Duration(req.Step*1e6))
+	streams, err := streamsForFieldDetection(iters, req.LineLimit, time.Duration(req.Step))
 	if err != nil {
 		return nil, err
 	}
@@ -1100,7 +1100,6 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 	fieldCount := uint32(0)
 
 	for _, stream := range streams {
-
 		level.Debug(spanlogger.FromContext(ctx)).Log(
 			"detected_fields", "true",
 			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
@@ -1108,12 +1107,15 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 		for _, entry := range stream.Entries {
 			detected := parseLine(entry.Line)
 			for k, vals := range detected {
-				if fieldCount >= limit {
-					return detectedFields
+				df, ok := detectedFields[k]
+				if !ok && fieldCount < limit {
+					df = newParsedFields()
+					detectedFields[k] = df
+					fieldCount++
 				}
 
-				if _, ok := detectedFields[k]; !ok {
-					detectedFields[k] = newParsedFields()
+				if df == nil {
+					continue
 				}
 
 				for _, v := range vals {
@@ -1128,8 +1130,6 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 				level.Debug(spanlogger.FromContext(ctx)).Log(
 					"detected_fields", "true",
 					"msg", fmt.Sprintf("detected field %s with %d values", k, len(vals)))
-
-				fieldCount++
 			}
 		}
 	}

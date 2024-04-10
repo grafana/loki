@@ -377,11 +377,14 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 	case *DetectedFieldsRequest:
 		level.Info(logger).Log(
 			"msg", "executing query",
-			"type", "detected fields",
-			"query", op.Query,
-			"length", op.End.Sub(op.Start),
-			"start", op.Start,
+			"type", "detected_fields",
 			"end", op.End,
+			"field_limit", op.FieldLimit,
+			"length", op.End.Sub(op.Start),
+			"line_limit", op.LineLimit,
+			"query", op.Query,
+			"start", op.Start,
+			"step", op.Step,
 		)
 
 		return r.detectedFields.Do(ctx, req)

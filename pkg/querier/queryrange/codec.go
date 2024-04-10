@@ -973,9 +973,12 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		return req.WithContext(ctx), nil
 	case *DetectedFieldsRequest:
 		params := url.Values{
-			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
-			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
-			"query": []string{request.GetQuery()},
+			"query":       []string{request.GetQuery()},
+			"start":       []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":         []string{fmt.Sprintf("%d", request.End.UnixNano())},
+			"line_limit":  []string{fmt.Sprintf("%d", request.GetLineLimit())},
+			"field_limit": []string{fmt.Sprintf("%d", request.GetFieldLimit())},
+			"step":        []string{fmt.Sprintf("%d", request.GetStep())},
 		}
 
 		u := &url.URL{
@@ -2133,12 +2136,15 @@ type DetectedFieldsRequest struct {
 	path string
 }
 
-func NewDetectedFieldsRequest(start, end time.Time, query, path string) *DetectedFieldsRequest {
+func NewDetectedFieldsRequest(start, end time.Time, lineLimit, fieldLimit uint32, step int64, query, path string) *DetectedFieldsRequest {
 	return &DetectedFieldsRequest{
 		DetectedFieldsRequest: logproto.DetectedFieldsRequest{
-			Start: start,
-			End:   end,
-			Query: query,
+			Start:      start,
+			End:        end,
+			Query:      query,
+			LineLimit:  lineLimit,
+			FieldLimit: fieldLimit,
+			Step:       step,
 		},
 		path: path,
 	}
@@ -2165,7 +2171,15 @@ func (r *DetectedFieldsRequest) GetStartTs() time.Time {
 }
 
 func (r *DetectedFieldsRequest) GetStep() int64 {
-	return 0
+	return r.Step
+}
+
+func (r *DetectedFieldsRequest) GetLineLimit() uint32 {
+	return r.LineLimit
+}
+
+func (r *DetectedFieldsRequest) GetFieldLimit() uint32 {
+	return r.FieldLimit
 }
 
 func (r *DetectedFieldsRequest) Path() string {
