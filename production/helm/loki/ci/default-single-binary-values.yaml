@@ -3,6 +3,11 @@ loki:
   commonConfig:
     replication_factor: 1
   useTestSchema: true
+  storage:
+    bucketNames:
+      chunks: chunks
+      ruler: ruler
+      admin: admin
 deploymentMode: SingleBinary
 singleBinary:
   replicas: 1
