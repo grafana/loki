@@ -975,25 +975,34 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		return nil, err
 	}
 
-	if ingesterLabels == nil {
+	if ingesterLabels == nil && len(storeLabelsMap) == 0 {
 		return &logproto.DetectedLabelsResponse{
 			DetectedLabels: []*logproto.DetectedLabel{},
 		}, nil
 	}
 
-	for label, values := range ingesterLabels.Labels {
-		if q.isLabelRelevant(label, values.Values) {
-			combinedValues := values.Values
-			storeValues, storeHasLabel := storeLabelsMap[label]
-			if storeHasLabel {
-				combinedValues = append(combinedValues, storeValues...)
+	if ingesterLabels != nil {
+		for label, values := range ingesterLabels.Labels {
+			if q.isLabelRelevant(label, values.Values) {
+				combinedValues := values.Values
+				storeValues, storeHasLabel := storeLabelsMap[label]
+				if storeHasLabel {
+					combinedValues = append(combinedValues, storeValues...)
+				}
+				uniqValues := slices.CompactFunc(combinedValues, strings.EqualFold)
+				// TODO(shantanu): There's a bug here. Unique values can go above 50. Will need a bit of refactoring
+				detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqValues))})
+				delete(storeLabelsMap, label)
 			}
-			uniqValues := slices.CompactFunc(combinedValues, strings.EqualFold)
-			// TODO(shantanu): There's a bug here. Unique values can go above 50. Will need a bit of refactoring
-			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqValues))})
 		}
 	}
 
+	if storeLabelsMap != nil {
+		for label, values := range storeLabelsMap {
+			uniqValues := slices.CompactFunc(values, strings.EqualFold)
+			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqValues))})
+		}
+	}
 	return &logproto.DetectedLabelsResponse{
 		DetectedLabels: detectedLabels,
 	}, nil
