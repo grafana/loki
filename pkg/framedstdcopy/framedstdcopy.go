@@ -15,6 +15,7 @@ const (
 	stdWriterFdIndex   = 0
 	stdWriterSizeIndex = 4
 	startingBufLen     = 32*1024 + stdWriterPrefixLen + 1
+	maxFrameLen        = 16384 + 31 // In practice (undocumented) frame payload can be timestamp + 16k
 )
 
 // FramedStdCopy is a modified version of stdcopy.StdCopy.
@@ -126,7 +127,6 @@ func FramedStdCopy(dstout, dsterr chan []byte, src io.Reader) (written int64, er
 // In practice we can find most boundaries by looking for newlines, since these result in a new frame.
 // Otherwise we rely on using the same max frame size as used in practice by docker.
 func NoHeaderFramedStdCopy(dstout chan []byte, src io.Reader) (written int64, err error) {
-	const maxFrameLen = 16384 + 31 // In practice (undocumented) frame payload can be timestamp + 16k
 	var (
 		buf    = make([]byte, 32768)
 		nrLine int
