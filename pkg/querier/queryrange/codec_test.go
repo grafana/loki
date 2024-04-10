@@ -1013,7 +1013,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			},
 		},
 		{
-			"loki legacy", "/api/prompt/query",
+			"loki legacy", "/api/promt/query",
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
