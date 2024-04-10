@@ -9,6 +9,7 @@ import (
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 func TestHashSecretData(t *testing.T) {
@@ -613,6 +614,62 @@ func TestS3Extract(t *testing.T) {
 			} else {
 				require.EqualError(t, err, tst.wantError)
 			}
+		})
+	}
+}
+
+func TestS3Extract_S3ForcePathStyle(t *testing.T) {
+	tt := []struct {
+		desc        string
+		secret      *corev1.Secret
+		wantOptions *storage.S3StorageConfig
+	}{
+		{
+			desc: "aws s3 endpoint",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://s3.region.amazonaws.com"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantOptions: &storage.S3StorageConfig{
+				Endpoint: "https://s3.region.amazonaws.com",
+				Region:   "region",
+				Buckets:  "this,that",
+			},
+		},
+		{
+			desc: "non-aws s3 endpoint",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://test.default.svc.cluster.local:9000"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantOptions: &storage.S3StorageConfig{
+				Endpoint:       "https://test.default.svc.cluster.local:9000",
+				Region:         "region",
+				Buckets:        "this,that",
+				ForcePathStyle: true,
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			options, err := extractS3ConfigSecret(tc.secret, lokiv1.CredentialModeStatic)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantOptions, options)
 		})
 	}
 }
