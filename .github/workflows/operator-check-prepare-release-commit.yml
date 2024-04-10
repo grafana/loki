@@ -29,21 +29,14 @@ jobs:
 
       - name: Check main commits for prepare release commit
         id: check_commit
-        env:
+        env:exit 1
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         working-directory: "release"
         run: |
           COMMIT=$(gh search commits "chore(operator): prepare community release v${{ steps.pr_semver.outputs.semver }}")
           if [ -n "$COMMIT" ]; then
-            echo "Matching commit found."
-            echo "found=true" >> $GITHUB_OUTPUT 
+            echo "Prepare release commit found."
           else
-            echo "No matching commit found."
-            echo "found=false" >> $GITHUB_OUTPUT 
+            echo "No prepare release commit found for the release version ${{ steps.pr_semver.outputs.semver }}"
+            exit 1
           fi
-
-      - name: Fail if no prepare release commit
-        if: steps.check_commit.outputs.found == 'false'
-        run: |
-          echo "No prepare release commit found for the release version ${{ steps.pr_semver.outputs.semver }}"
-          exit 1
