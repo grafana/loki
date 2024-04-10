@@ -405,11 +405,14 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 	require.NoError(t, err)
 
 	req.Streams[0].Labels = `{foo="bar",bar="baz2"}`
+	// The labels in error messages are sorted lexicographically and cleaned up via Push -> ParseLabels.
+	expectedLabels, _ := syntax.ParseLabels(req.Streams[0].Labels)
 
 	_, err = i.Push(ctx, &req)
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding metrics per user, got %v", err)
 	}
+	require.Contains(t, err.Error(), expectedLabels.String())
 }
 
 type mockStore struct {

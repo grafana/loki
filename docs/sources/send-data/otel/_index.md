@@ -1,6 +1,6 @@
 ---
 title: Ingesting logs to Loki using OpenTelemetry Collector
-menuTitle:  Ingesting OpenTelemetry logs to Loki
+menuTitle:  OTEL Collector
 description: Configuring the OpenTelemetry Collector to send logs to Loki.
 aliases: 
 - ../clients/k6/
@@ -105,7 +105,7 @@ Things to note before ingesting OpenTelemetry logs to Loki:
 - Flattening of nested Attributes
 
   While converting Attributes in OTLP to Index labels or Structured Metadata, any nested attribute values are flattened out using `_` as a separator.
-  It is done in a similar way as to how it is done in the [LogQL json parser](/docs/loki/latest/query/log_queries/#json).
+  It is done in a similar way as to how it is done in the [LogQL json parser](/docs/loki/<LOKI_VERSION>/query/log_queries/#json).
 
 - Stringification of non-string Attribute values
 

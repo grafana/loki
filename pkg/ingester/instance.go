@@ -305,7 +305,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		if i.customStreamsTracker != nil {
 			i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))
 		}
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, i.instanceID)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, labels, i.instanceID)
 	}
 
 	fp := i.getHashForLabels(labels)
