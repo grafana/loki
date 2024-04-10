@@ -1,5 +1,21 @@
 # Changelog
 
+## [3.0.0-rc.1](https://github.com/grafana/loki/compare/v3.0.0...v3.0.0-rc.1) (2024-04-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* update helm chart to support distributed mode and 3.0 ([#12067](https://github.com/grafana/loki/issues/12067))
+
+### Features
+
+* update helm chart to support distributed mode and 3.0 ([#12067](https://github.com/grafana/loki/issues/12067)) ([79b876b](https://github.com/grafana/loki/commit/79b876b65d55c54f4d532e98dc24743dea8bedec))
+
+
+### Bug Fixes
+
+* loki version prefix in Makefile ([#12514](https://github.com/grafana/loki/issues/12514)) ([dff72d2](https://github.com/grafana/loki/commit/dff72d2a52094fb2a831b5930cbfc67759b0978d))
+
 ## [3.0.0](https://github.com/grafana/loki/compare/v2.9.6...v3.0.0) (2024-04-08)
 
 Starting with the 3.0 release we began using [conventional commits](https://www.conventionalcommits.org/en/v1.0.0/) and [release-please](https://github.com/googleapis/release-please) to generate the changelog. As a result the format has changed slightly from previous releases.
