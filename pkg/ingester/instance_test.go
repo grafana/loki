@@ -1480,6 +1480,61 @@ func insertData(t *testing.T, instance *instance) {
 	}
 }
 
+func TestInstance_LabelsWithValues(t *testing.T) {
+	instance, currentTime, _ := setupTestStreams(t)
+	start := []time.Time{currentTime.Add(11 * time.Nanosecond)}[0]
+	m, err := labels.NewMatcher(labels.MatchEqual, "app", "test")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name             string
+		startTime        time.Time
+		matchers         []*labels.Matcher
+		expectedResponse map[string]UniqueValues
+	}{
+		{
+			name:      "label names with no matchers",
+			startTime: start,
+			expectedResponse: map[string]UniqueValues{
+				"app": map[string]struct{}{
+					"test":  {},
+					"test2": {},
+				},
+				"job": map[string]struct{}{
+					"varlogs":  {},
+					"varlogs2": {},
+				},
+			},
+		},
+		{
+			name:      "label names with matchers",
+			startTime: start,
+			matchers:  []*labels.Matcher{m},
+			expectedResponse: map[string]UniqueValues{
+				"app": map[string]struct{}{
+					"test": {},
+				},
+				"job": map[string]struct{}{
+					"varlogs":  {},
+					"varlogs2": {},
+				},
+			},
+		},
+		{
+			name:             "label names matchers and no start time",
+			matchers:         []*labels.Matcher{m},
+			expectedResponse: map[string]UniqueValues{},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := instance.LabelsWithValues(context.Background(), tc.startTime, tc.matchers...)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedResponse, res)
+		})
+	}
+}
+
 type fakeQueryServer func(*logproto.QueryResponse) error
 
 func (f fakeQueryServer) Send(res *logproto.QueryResponse) error {
