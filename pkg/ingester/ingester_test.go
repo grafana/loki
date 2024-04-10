@@ -784,6 +784,69 @@ func Test_InMemoryLabels(t *testing.T) {
 	require.Equal(t, []string{"bar", "foo"}, res.Values)
 }
 
+func TestIngester_GetDetectedLabels(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	store := &mockStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Push labels
+	req := logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: `{foo="bar",bar="baz1"}`,
+			},
+			{
+				Labels: `{foo="bar",bar="baz2"}`,
+			},
+			{
+				Labels: `{foo="bar1",bar="baz3"}`,
+			},
+			{
+				Labels: `{foo="foo1",bar="baz1"}`,
+			},
+			{
+				Labels: `{foo="foo",bar="baz1"}`,
+			},
+		},
+	}
+	for i := 0; i < 10; i++ {
+		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      fmt.Sprintf("line %d", i),
+		})
+		req.Streams[1].Entries = append(req.Streams[1].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      fmt.Sprintf("line %d", i),
+		})
+	}
+
+	_, err = i.Push(ctx, &req)
+	require.NoError(t, err)
+
+	res, err := i.GetDetectedLabels(ctx, &logproto.DetectedLabelsRequest{
+		Start: &[]time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
+		End:   nil,
+		Query: "",
+	})
+
+	require.NoError(t, err)
+	fooValues, ok := res.Labels["foo"]
+	require.True(t, ok)
+	barValues, ok := res.Labels["bar"]
+	require.True(t, ok)
+	require.Equal(t, 4, len(fooValues.Values))
+	require.Equal(t, 3, len(barValues.Values))
+}
+
 func Test_DedupeIngester(t *testing.T) {
 	var (
 		requests      = int64(400)

@@ -9,6 +9,8 @@ import (
 
 	"go.uber.org/atomic"
 
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -110,6 +112,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 					mockQuerierConfig().ExtraQueryDelay,
 					newIngesterClientMockFactory(ingesterClient),
 					constants.Loki,
+					util_log.Logger,
 				)
 				require.NoError(t, err)
 
@@ -210,6 +213,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 					mockQuerierConfig().ExtraQueryDelay,
 					newIngesterClientMockFactory(ingesterClient),
 					constants.Loki,
+					util_log.Logger,
 				)
 				require.NoError(t, err)
 
@@ -308,6 +312,7 @@ func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 				mockQuerierConfig().ExtraQueryDelay,
 				newIngesterClientMockFactory(ingesterClient),
 				constants.Loki,
+				util_log.Logger,
 			)
 			require.NoError(t, err)
 
@@ -371,6 +376,7 @@ func TestIngesterQuerier_Volume(t *testing.T) {
 			mockQuerierConfig().ExtraQueryDelay,
 			newIngesterClientMockFactory(ingesterClient),
 			constants.Loki,
+			util_log.Logger,
 		)
 		require.NoError(t, err)
 
@@ -392,6 +398,7 @@ func TestIngesterQuerier_Volume(t *testing.T) {
 			mockQuerierConfig().ExtraQueryDelay,
 			newIngesterClientMockFactory(ingesterClient),
 			constants.Loki,
+			util_log.Logger,
 		)
 		require.NoError(t, err)
 
@@ -399,5 +406,39 @@ func TestIngesterQuerier_Volume(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume(nil), volumes.Volumes)
+	})
+}
+
+func TestIngesterQuerier_DetectedLabels(t *testing.T) {
+	t.Run("it returns all unique detected labels from all ingesters", func(t *testing.T) {
+		req := logproto.DetectedLabelsRequest{}
+		res := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"all-ids": {Values: []string{"1", "3"}},
+			"bar":     {Values: []string{"cgi", "def"}},
+			"cluster": {Values: []string{"ingester"}},
+			"foo":     {Values: []string{"abc", "ghi"}},
+		}}
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"cluster": {Values: []string{"ingester"}},
+			"foo":     {Values: []string{"abc", "abc", "ghi"}},
+			"bar":     {Values: []string{"cgi", "def"}},
+			"all-ids": {Values: []string{"1", "3", "3", "3"}},
+		}}, nil)
+
+		ingesterQuerier, err := newIngesterQuerier(
+			mockIngesterClientConfig(),
+			newReadRingMock([]ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)}, 0),
+			mockQuerierConfig().ExtraQueryDelay,
+			newIngesterClientMockFactory(ingesterClient),
+			constants.Loki,
+			util_log.Logger,
+		)
+		require.NoError(t, err)
+
+		detectedLabels, err := ingesterQuerier.DetectedLabel(context.Background(), &req)
+		require.NoError(t, err)
+		require.Equal(t, &res, detectedLabels)
 	})
 }

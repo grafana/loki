@@ -919,6 +919,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		return nil, err
 	}
 	var detectedLabels []*logproto.DetectedLabel
+	staticLabels := []string{"cluster", "namespace", "instance", "pod"}
 
 	// Enforce the query timeout while querying backends
 	queryTimeout := q.limits.QueryTimeout(ctx, userID)
@@ -981,9 +982,16 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		}, nil
 	}
 
+	// append static labels before so they are in sorted order
+	for _, l := range staticLabels {
+		if values, present := ingesterLabels.Labels[l]; present {
+			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: l, Cardinality: uint64(len(values.Values))})
+		}
+	}
+
 	if ingesterLabels != nil {
 		for label, values := range ingesterLabels.Labels {
-			if q.isLabelRelevant(label, values.Values) {
+			if q.isLabelRelevant(label, values.Values, staticLabels) {
 				combinedValues := values.Values
 				storeValues, storeHasLabel := storeLabelsMap[label]
 				if storeHasLabel {
@@ -1026,13 +1034,11 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 
 // isLabelRelevant returns if the label is relevant for logs app. A label is relevant if it is not of any numeric, UUID or GUID type
 // It is also not relevant to return if the values are less than 1 or beyond 50.
-func (q *SingleTenantQuerier) isLabelRelevant(label string, values []string) bool {
-	staticLabels := []string{"pod", "namespace", "cluster", "instance"}
-	cardinality := len(values)
-	// TODO(shantanu) make these values configurable
-	if !slices.Contains(staticLabels, label) &&
-		(cardinality < 1 || cardinality > 50) ||
-		containsAllIDTypes(values) {
+func (q *SingleTenantQuerier) isLabelRelevant(label string, values *logproto.UniqueLabelValues, staticLabels []string) bool {
+	cardinality := len(values.Values)
+	if slices.Contains(staticLabels, label) ||
+		(cardinality < 2 || cardinality > 50) ||
+		containsAllIDTypes(values.Values) {
 		return false
 	}
 
