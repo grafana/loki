@@ -3,6 +3,8 @@ aliases:
   - ../storage/ # /docs/loki/latest/storage/
 title: Storage
 description: Describes Loki storage.
+alias:
+  - /docs/loki/latest/storage/
 weight: 475
 ---
 # Storage
