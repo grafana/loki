@@ -116,6 +116,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -289,6 +294,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -375,6 +385,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "binBps"
+        }
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -461,6 +476,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "binBps"
+        }
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -634,6 +654,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        }
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -721,6 +746,11 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$loki_datasource",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        }
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -773,7 +803,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\", container=~\"$container\" } |logfmt| level=\"$level\" |= \"$filter\" [$__rate_interval])) by (level)",
+          "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\", container=~\"$container\" } |logfmt| level=\"$level\" |= \"$filter\" | __error__=\"\" [$__rate_interval])) by (level)",
           "intervalFactor": 3,
           "legendFormat": "{{level}}",
           "refId": "A"

@@ -239,7 +239,8 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "unit": "ops"
         },
         "overrides": []
       },
@@ -428,7 +429,8 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "unit": "MBs"
         },
         "overrides": []
       },
@@ -618,7 +620,8 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "unit": "s"
         },
         "overrides": []
       },
@@ -723,7 +726,8 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "unit": "s"
         },
         "overrides": []
       },
@@ -925,7 +929,8 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "unit": "s"
         },
         "overrides": []
       },
@@ -1129,7 +1134,8 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "unit": "s"
         },
         "overrides": []
       },
@@ -1236,7 +1242,8 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "unit": "s"
         },
         "overrides": []
       },
@@ -1439,7 +1446,8 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "unit": "s"
         },
         "overrides": []
       },
@@ -1844,6 +1852,7 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -1932,6 +1941,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "binBps"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -2229,6 +2243,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+          "defaults": {
+              "unit": "binBps"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -2317,6 +2336,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "binBps"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -2405,6 +2429,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -2596,6 +2625,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "binBps"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -3522,6 +3556,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "binBps"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -3834,6 +3873,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -4043,6 +4087,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -4146,6 +4195,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -4252,6 +4306,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -4349,6 +4408,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -4451,6 +4515,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -4553,6 +4622,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -4650,6 +4724,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -4739,6 +4818,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -4828,6 +4912,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -4917,6 +5006,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -5021,6 +5115,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -5666,6 +5765,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -5873,6 +5977,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -6080,6 +6189,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -6287,6 +6401,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -6494,6 +6613,11 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": "$datasource",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {

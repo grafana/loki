@@ -23,3 +23,11 @@ exclusions:
     reason: "We don't have/need a job template selector for this dashboard"
     entries:
       - dashboard: "Loki / Promtail"
+  panel-title-description-rule:
+    reason: "Panel descriptions are not very useful here"
+    entries:
+      - dashboard: "Loki / Promtail"
+  template-on-time-change-reload-rule:
+    reason: "Fixing this correctly is an upstream jsonnet library change"
+  panel-units-rule:
+    reason: "Fixing this correctly is an upstream jsonnet library change"
