@@ -5,8 +5,8 @@ on: [pull_request]
   #   paths: "production/**"
 
 jobs:
-  lint-jsonnet:
-    name: Lint Jsonnet files
+  check-mixin:
+    name: Check mixin jsonnet files
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -24,15 +24,10 @@ jobs:
           go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.5.1
       - name: run linting
         run: make BUILD_IN_CONTAINER=false lint-jsonnet
-  check-compiled-mixin:
-    name: Check compiled mixin has been updated
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      - name: check mixin
+      - name: check compiled mixin has been updated
         run: |
-          git diff --exit-code -- production/loki-mixin-compiled || (echo "Please build mixin by running 'make loki-mixin'" && false)
-          git diff --exit-code -- production/loki-mixin-compiled-ssd || (echo "Please build mixin by running 'make loki-mixin'" && false)
+          echo "Checking built mixin diff"
+          make loki-mixin-check
+      
 
 
