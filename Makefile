@@ -85,10 +85,11 @@ PROMTAIL_UI_FILES := $(shell find ./clients/pkg/promtail/server/ui -type f -name
 
 # Documentation source path
 DOC_SOURCES_PATH := docs/sources
+DOC_TEMPLATE_PATH := docs/templates
 
 # Configuration flags documentation
-DOC_FLAGS_TEMPLATE := $(DOC_SOURCES_PATH)/configure/index.template
-DOC_FLAGS := $(DOC_SOURCES_PATH)/configure/_index.md
+DOC_FLAGS_TEMPLATE := $(DOC_TEMPLATE_PATH)/configuration.template
+DOC_FLAGS := $(DOC_SOURCES_PATH)/shared/configuration.md
 
 ##########
 # Docker #
@@ -190,6 +191,9 @@ production/helm/loki/src/helm-test/helm-test:
 
 helm-lint: ## run helm linter
 	$(MAKE) -BC production/helm/loki lint
+
+helm-docs:
+	helm-docs -c production/helm/loki -g production/helm/loki
 
 #################
 # Loki-QueryTee #
@@ -801,7 +805,13 @@ check-format: format
 # Documentation related commands
 
 doc: ## Generates the config file documentation
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
 	go run ./tools/doc-generator $(DOC_FLAGS_TEMPLATE) > $(DOC_FLAGS)
+endif
 
 docs: doc
 
