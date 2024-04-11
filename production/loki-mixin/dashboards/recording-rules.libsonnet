@@ -7,7 +7,7 @@ local template = import 'grafonnet/template.libsonnet';
     template.new(
       'tenant',
       '$datasource',
-      'query_result(sum by (id) (grafanacloud_logs_instance_info) and sum(label_replace(loki_tenant:active_streams{' + $._config.per_cluster_label + '="$cluster",namespace="$namespace"},"id","$1","tenant","(.*)")) by(id))',
+      'query_result(sum by (id) (grafanacloud_logs_instance_info) and sum(label_replace(loki_tenant:active_streams{' + $._config.per_cluster_label + '=~"$cluster",namespace="$namespace"},"id","$1","tenant","(.*)")) by(id))',
       regex='/"([^"]+)"/',
       sort=1,
       includeAll=true,
@@ -29,9 +29,8 @@ local template = import 'grafonnet/template.libsonnet';
                                              p {
                                                targets: [
                                                  e {
-                                                   expr: if dashboards['loki-mixin-recording-rules.json'].showMultiCluster
-                                                   then std.strReplace(super.expr, 'cluster="$cluster", ', $._config.per_cluster_label + '=~"$cluster", ')
-                                                   else std.strReplace(super.expr, $._config.per_cluster_label + '="$cluster", ', ''),
+                                                   expr: if dashboards['loki-mixin-recording-rules.json'].showMultiCluster then super.expr
+                                                   else std.strReplace(super.expr, $._config.per_cluster_label + '=~"$cluster", ', ''),
                                                  }
                                                  for e in p.targets
                                                ],
