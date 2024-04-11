@@ -235,7 +235,17 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
-	detectedFieldsTripperware, err := NewDetectedFieldsTripperware(cfg, engineOpts, log, limits, schema, codec, iqo, resultsCache, metrics, indexStatsTripperware, metricsNamespace)
+	detectedFieldsTripperware, err := NewDetectedFieldsTripperware(
+		cfg,
+		engineOpts,
+		log,
+		limits,
+		schema,
+		codec,
+		iqo,
+		metrics,
+		indexStatsTripperware,
+		metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1107,7 +1117,18 @@ func sharedIndexTripperware(
 }
 
 // NewDetectedFieldsTripperware creates a new frontend tripperware responsible for handling detected field requests, which are basically log filter requests with a bit more processing.
-func NewDetectedFieldsTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
+func NewDetectedFieldsTripperware(
+	cfg Config,
+	engineOpts logql.EngineOpts,
+	log log.Logger,
+	limits Limits,
+	schema config.SchemaConfig,
+	merger base.Merger,
+	iqo util.IngesterQueryOptions,
+	metrics *Metrics,
+	indexStatsTripperware base.Middleware,
+	metricsNamespace string,
+) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
 
