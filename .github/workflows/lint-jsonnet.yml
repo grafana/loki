@@ -27,7 +27,7 @@ jobs:
       - name: check compiled mixin has been updated
         run: |
           echo "Checking built mixin diff"
-          make loki-mixin-check
+          make BUILD_IN_CONTAINER=false loki-mixin-check
       
 
 
