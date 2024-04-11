@@ -943,8 +943,11 @@ enableServiceLinks: false
 {{- define "loki.querySchedulerAddress" -}}
 {{- $schedulerAddress := ""}}
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- if $isDistributed -}}
 {{- $schedulerAddress = printf "%s.%s.svc.%s:%s" (include "loki.querySchedulerFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
+{{- else if $isSimpleScalable -}}
+{{- $schedulerAddress = printf "query-scheduler-discovery.%s.svc.%s.:%s" .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
 {{- end -}}
 {{- printf "%s" $schedulerAddress }}
 {{- end }}
