@@ -5,13 +5,13 @@ on:
     paths:
       - 'operator/**'
     branches:
-      - master
+      - main
 
 jobs:
   check-commit:
     runs-on: ubuntu-latest
     if: |
-      github.event.pull_request.head.ref == 'release-please--branches--master--components--operator' && 
+      github.event.pull_request.head.ref == 'release-please--branches--main--components--operator' && 
       contains(github.event.pull_request.title, 'chore( operator): community release')
     steps:
       - name: Extract release version
@@ -24,7 +24,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: master
+          ref: main
           path: "release"
 
       - name: Check main commits for prepare release commit
