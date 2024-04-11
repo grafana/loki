@@ -1150,3 +1150,8 @@ get:
   path: infra/data/ci/packages-publish/gpg
 kind: secret
 name: gpg_private_key
+---
+kind: signature
+hmac: bae59ec308e25c09461c77d427894dc761b23c523c781f984f6b5653e9ab44f7
+
+...
