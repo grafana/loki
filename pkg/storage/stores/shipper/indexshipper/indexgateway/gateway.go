@@ -238,7 +238,6 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 
 	// Return unfiltered results if there is no bloom querier (Bloom Gateway disabled)
 	if g.bloomQuerier == nil {
-		level.Info(g.log).Log("msg", "chunk filtering is not enabled")
 		return result, nil
 	}
 
