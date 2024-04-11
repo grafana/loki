@@ -14,7 +14,7 @@ jobs:
   check:
     uses: "grafana/loki-release/.github/workflows/check.yml@loki-2.8.x"
     with:
-      build_image: "grafana/loki-build-image:0.29.3-go1.20.10"
+      build_image: "grafana/loki-build-image:0.33.1-golangci.1.51.2"
       golang_ci_lint_version: "v1.51.2"
       release_lib_ref: "loki-2.8.x"
       skip_validation: false
@@ -135,7 +135,7 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "grafana/loki-build-image:0.29.3-go1.20.10"
+          --entrypoint /bin/sh "grafana/loki-build-image:0.33.1-golangci.1.51.2"
           git config --global --add safe.directory /src/loki
           echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
           make dist packages

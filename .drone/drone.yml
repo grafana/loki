@@ -10,7 +10,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.29.3-golangci.1.51.2
+    - 0.33.1-golangci.1.51.2
   when:
     event:
     - pull_request
@@ -26,7 +26,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.29.3-golangci.1.51.2
+    - 0.33.1-golangci.1.51.2
     username:
       from_secret: docker_username
   when:
@@ -100,7 +100,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.29.3-go1.20.10
+  image: grafana/loki-build-image:0.33.1-golangci.1.51.2
   name: loki-mixin-check
   when:
     event:
@@ -125,7 +125,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.29.3-go1.20.10
+  image: grafana/loki-build-image:0.33.1-golangci.1.51.2
   name: documentation-helm-reference-check
 trigger:
   ref:
@@ -929,7 +929,7 @@ steps:
       from_secret: docker_password
     DOCKER_USERNAME:
       from_secret: docker_username
-  image: grafana/loki-build-image:0.29.3-go1.20.10
+  image: grafana/loki-build-image:0.33.1-golangci.1.51.2
   name: build and push
   privileged: true
   volumes:
@@ -1150,8 +1150,3 @@ get:
   path: infra/data/ci/packages-publish/gpg
 kind: secret
 name: gpg_private_key
----
-kind: signature
-hmac: adb7abe29244c9e5d6e6e7cc61ad5d800fcbd14a2be6c5c52d4d697e09bf6131
-
-...

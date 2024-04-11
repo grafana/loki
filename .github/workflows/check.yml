@@ -10,5 +10,5 @@ jobs:
     uses: grafana/loki-release/.github/workflows/check.yml@release-1.11.x
     with:
       skip_validation: false
-      build_image: grafana/loki-build-image:0.29.3-go1.20.10
+      build_image: grafana/loki-build-image:0.33.1-golangci.1.51.2
       golang_ci_lint_version: v1.51.2
