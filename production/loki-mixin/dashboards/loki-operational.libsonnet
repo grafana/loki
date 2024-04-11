@@ -62,7 +62,15 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
                                local replaceClusterMatchers(expr) =
                                  if dashboards['loki-operational.json'].showMultiCluster
-                                 then expr
+                                 then std.strReplace(
+                                   std.strReplace(
+                                     expr,
+                                     'cluster="$cluster", ',
+                                     $._config.per_cluster_label + '=~"$cluster", '
+                                   ),
+                                    'cluster_job_route',
+                                     $._config.per_cluster_label + '_job_route'
+                                 )
                                  else
                                    std.strReplace(
                                      std.strReplace(
