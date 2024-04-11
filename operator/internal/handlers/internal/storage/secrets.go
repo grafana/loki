@@ -404,7 +404,8 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		roleArn  = s.Data[storage.KeyAWSRoleArn]
 		audience = s.Data[storage.KeyAWSAudience]
 		// Optional fields
-		region = s.Data[storage.KeyAWSRegion]
+		region         = s.Data[storage.KeyAWSRegion]
+		forcePathStyle = !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
 	)
 
 	sseCfg, err := extractS3SSEConfig(s.Data)
@@ -413,9 +414,10 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 	}
 
 	cfg := &storage.S3StorageConfig{
-		Buckets: string(buckets),
-		Region:  string(region),
-		SSE:     sseCfg,
+		Buckets:        string(buckets),
+		Region:         string(region),
+		SSE:            sseCfg,
+		ForcePathStyle: forcePathStyle,
 	}
 
 	switch credentialMode {

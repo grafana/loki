@@ -19,9 +19,9 @@ Starting with the 3.0 release we began using [conventional commits](https://www.
 * **loki**: bugfix(memcached): Make memcached batch fetch truly context aware. [11363](https://github.com/grafana/loki/pull/11363)
 * **loki**: Helm: Add extraContainers to the write pods. [11319](https://github.com/grafana/loki/pull/11319)
 * **loki**: Inflight-logging: Add extra metadata to inflight requests logging. [11243](https://github.com/grafana/loki/pull/11243)
-* **loki**: Change the default of the `metrics-namespace` flag to 'loki'. [11110](https://github.com/grafana/loki/pull/11003)
+* **loki**: Use metrics namespace for more metrics. [11025](https://github.com/grafana/loki/pull/11025).
+* **loki**: Change default of metrics.namespace. [11110](https://github.com/grafana/loki/pull/11110).
 * **loki**: Helm: Allow topologySpreadConstraints [11086](https://github.com/grafana/loki/pull/11086)
-* **loki**: Add the `metrics-namespace` flag to change the namespace of metrics currently using cortex as namespace. [11003](https://github.com/grafana/loki/pull/11003)
 * **loki**: Storage: Allow setting a constant prefix for all created keys [10096](https://github.com/grafana/loki/pull/10096)
 * **loki**: Remove already deprecated `store.max-look-back-period`. [11038](https://github.com/grafana/loki/pull/11038)
 * **loki**: Support Loki ruler to notify WAL writes to remote storage. [10906](https://github.com/grafana/loki/pull/10906)
@@ -109,6 +109,13 @@ Starting with the 3.0 release we began using [conventional commits](https://www.
 * **loki** Fix semantics of label parsing logic of metrics and logs queries. Both only parse the first label if multiple extractions into the same label are requested. [11587](https://github.com/grafana/loki/pull/11587)
 * **loki** Background Cache: Fixes a bug that is causing the background queue size to be incremented twice for each enqueued item. [11776](https://github.com/grafana/loki/pull/11776)
 * **loki**: Parsing: String array elements were not being parsed correctly in JSON processing [11921](https://github.com/grafana/loki/pull/11921)
+
+## [2.9.7](https://github.com/grafana/loki/compare/v2.9.6...v2.9.7) (2024-04-10)
+
+
+### Bug Fixes
+
+* Bump go to 1.21.9 and build image to 0.33.1 ([#12542](https://github.com/grafana/loki/issues/12542)) ([efc4d2f](https://github.com/grafana/loki/commit/efc4d2f009e04ecb1db58a637b89b33aa234de34))
 
 ## [2.9.6](https://github.com/grafana/loki/compare/v2.9.5...v2.9.6) (2024-03-21)
 
