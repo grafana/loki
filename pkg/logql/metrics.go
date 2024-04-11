@@ -579,6 +579,43 @@ func extractShard(shards []string) *astmapper.ShardAnnotation {
 	return &shard
 }
 
-func RecordDetectedLabelsQueryMetrics(_ context.Context, _ log.Logger, _ time.Time, _ time.Time, _ string, _ string, _ logql_stats.Result) {
-	// TODO(shantanu) log metrics here
+func RecordDetectedLabelsQueryMetrics(ctx context.Context, log log.Logger, start time.Time, end time.Time, query string, status string, stats logql_stats.Result) {
+	var (
+		logger      = fixLogger(ctx, log)
+		latencyType = latencyTypeFast
+		queryType   = QueryTypeVolume
+	)
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	rangeType := "range"
+
+	level.Info(logger).Log(
+		"latency", latencyType,
+		"query_type", queryType,
+		"query", query,
+		"query_hash", util.HashedQuery(query),
+		"start", start.Format(time.RFC3339Nano),
+		"end", end.Format(time.RFC3339Nano),
+		"start_delta", time.Since(start),
+		"end_delta", time.Since(end),
+		"range_type", rangeType,
+		"length", end.Sub(start),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"splits", stats.Summary.Splits,
+		"total_entries", stats.Summary.TotalEntriesReturned,
+		// cache is accumulated by middleware used by the frontend only; logs from the queriers will not show cache stats
+		"cache_volume_results_req", stats.Caches.VolumeResult.EntriesRequested,
+		"cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
+		"cache_volume_results_stored", stats.Caches.VolumeResult.EntriesStored,
+		"cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
+		"cache_volume_results_query_length_served", stats.Caches.VolumeResult.CacheQueryLengthServed(),
+	)
+
+	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
