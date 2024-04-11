@@ -3,8 +3,9 @@ package detected
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func Test_MergeFields(t *testing.T) {
