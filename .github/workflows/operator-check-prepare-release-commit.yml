@@ -29,7 +29,7 @@ jobs:
 
       - name: Check main commits for prepare release commit
         id: check_commit
-        env:exit 1
+        env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         working-directory: "release"
         run: |
