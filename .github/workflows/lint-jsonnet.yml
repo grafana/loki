@@ -26,7 +26,6 @@ jobs:
         run: make BUILD_IN_CONTAINER=false lint-jsonnet
       - name: check compiled mixin has been updated
         run: |
-          echo "Checking built mixin diff"
           make BUILD_IN_CONTAINER=false loki-mixin-check
       
 
