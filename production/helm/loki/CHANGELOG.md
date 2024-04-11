@@ -13,8 +13,17 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.2.0
+
+- [FEATURE] Add a headless service to the bloom gateway component.
+
+## 6.1.0
+
+- [CHANGE] Only default bucket names in helm when using minio.
+
 ## 6.0.0
 
+- [FEATURE] added a new `Distributed` mode of deployment.
 - [CHANGE] the lokiCanary section was moved from under monitoring to be under the root of the file.
 - [CHANGE] the definitions for topologySpreadConstraints and podAffinity were converted from string templates to objects. Also removed the soft constraint on zone.
 - [CHANGE] the externalConfigSecretName was replaced with more generic configs
