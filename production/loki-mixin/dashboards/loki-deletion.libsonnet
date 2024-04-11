@@ -2,7 +2,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  local compactor_matcher = if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'compactor',
+  local compactor_matcher = if $._config.ssd.enabled then 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher else 'container="compactor"',
   grafanaDashboards+::
     {
       'loki-deletion.json':
@@ -61,15 +61,15 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
           .addPanel(
             $.newQueryPanel('Lines Deleted / Sec') +
-            g.queryPanel('sum(rate(loki_compactor_deleted_lines{' + $._config.per_cluster_label + '=~"$cluster",job=~"$namespace/%s"}[$__rate_interval])) by (user)' % compactor_matcher, '{{user}}'),
+            g.queryPanel('sum(rate(loki_compactor_deleted_lines{' + $._config.per_cluster_label + '=~"$cluster",' + compactor_matcher + '}[$__rate_interval])) by (user)', '{{user}}'),
           )
         ).addRow(
           g.row('List of deletion requests')
           .addPanel(
-            $.logPanel('In progress/finished', '{%s, container="compactor"} |~ "Started processing delete request|delete request for user marked as processed" | logfmt | line_format "{{.ts}} user={{.user}} delete_request_id={{.delete_request_id}} msg={{.msg}}" ' % $.namespaceMatcher()),
+            $.logPanel('In progress/finished', '{%s, %s} |~ "Started processing delete request|delete request for user marked as processed" | logfmt | line_format "{{.ts}} user={{.user}} delete_request_id={{.delete_request_id}} msg={{.msg}}" ' % [$.namespaceMatcher(), compactor_matcher]),
           )
           .addPanel(
-            $.logPanel('Requests', '{%s, container="compactor"} |~ "delete request for user added" | logfmt | line_format "{{.ts}} user={{.user}} query=\'{{.query}}\'"' % $.namespaceMatcher()),
+            $.logPanel('Requests', '{%s, %s} |~ "delete request for user added" | logfmt | line_format "{{.ts}} user={{.user}} query=\'{{.query}}\'"' % [$.namespaceMatcher(), compactor_matcher]),
           )
         ),
     },
