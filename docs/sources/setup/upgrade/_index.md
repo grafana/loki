@@ -104,6 +104,10 @@ If no label is found matching the list, a value of `unknown_service` is applied.
 
 You can change this list by providing a list of labels to `discover_service_name` in the [limits_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config) block.
 
+{{< admonition type="note" >}}
+If you are already using a `service_label`, Loki will not make a new assignment.
+{{< /admonition >}}
+
 **You can disable this by providing an empty value for `discover_service_name`.**
 
 #### Removed `shared_store` and `shared_store_key_prefix` from shipper configuration
