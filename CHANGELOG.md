@@ -19,9 +19,9 @@ Starting with the 3.0 release we began using [conventional commits](https://www.
 * **loki**: bugfix(memcached): Make memcached batch fetch truly context aware. [11363](https://github.com/grafana/loki/pull/11363)
 * **loki**: Helm: Add extraContainers to the write pods. [11319](https://github.com/grafana/loki/pull/11319)
 * **loki**: Inflight-logging: Add extra metadata to inflight requests logging. [11243](https://github.com/grafana/loki/pull/11243)
-* **loki**: Change the default of the `metrics-namespace` flag to 'loki'. [11110](https://github.com/grafana/loki/pull/11003)
+* **loki**: Use metrics namespace for more metrics. [11025](https://github.com/grafana/loki/pull/11025).
+* **loki**: Change default of metrics.namespace. [11110](https://github.com/grafana/loki/pull/11110).
 * **loki**: Helm: Allow topologySpreadConstraints [11086](https://github.com/grafana/loki/pull/11086)
-* **loki**: Add the `metrics-namespace` flag to change the namespace of metrics currently using cortex as namespace. [11003](https://github.com/grafana/loki/pull/11003)
 * **loki**: Storage: Allow setting a constant prefix for all created keys [10096](https://github.com/grafana/loki/pull/10096)
 * **loki**: Remove already deprecated `store.max-look-back-period`. [11038](https://github.com/grafana/loki/pull/11038)
 * **loki**: Support Loki ruler to notify WAL writes to remote storage. [10906](https://github.com/grafana/loki/pull/10906)
