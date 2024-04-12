@@ -232,7 +232,6 @@ func TestMappingStrings(t *testing.T) {
 			)`,
 		},
 		{
-			// produced by sum/count --> (sumby(foo_extracted)(downstream<sumby(foo_extracted)(quantile_over_time(0.95,{foo=\"baz\"}|logfmt|unwrapfoo_extracted|__error__=\"\"[5m])),shard=0_of_2>++downstream<sumby(foo_extracted)(quantile_over_time(0.95,{foo=\"baz\"}|logfmt|unwrapfoo_extracted|__error__=\"\"[5m])),shard=1_of_2>)/sumby(foo_extracted)(downstream<countby(foo_extracted)(quantile_over_time(0.95,{foo=\"baz\"}|logfmt|unwrapfoo_extracted|__error__=\"\"[5m])),shard=0_of_2>++downstream<countby(foo_extracted)(quantile_over_time(0.95,{foo=\"baz\"}|logfmt|unwrapfoo_extracted|__error__=\"\"[5m])),shard=1_of_2>))
 			in: `avg by(foo_extracted) (quantile_over_time(0.95, {foo="baz"} | logfmt | unwrap foo_extracted | __error__="" [5m]))`,
 			out: `(
                sum by (foo_extracted) (
