@@ -891,3 +891,9 @@ scan-vulnerabilities: trivy snyk
 release-workflows:
 	pushd $(CURDIR)/.github && jb update && popd
 	jsonnet -SJ .github/vendor -m .github/workflows .github/release-workflows.jsonnet
+
+.PHONY: release-workflows-check
+release-workflows-check:
+	@$(MAKE) release-workflows
+	@echo "Checking diff"
+	@git diff --exit-code -- ".github/workflows/*release*" || (echo "Please build release workflows by running 'make release-workflows'" && false)
