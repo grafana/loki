@@ -16,8 +16,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func Test_LoadRetentionRules(t *testing.T) {
@@ -87,9 +87,6 @@ overrides:
 func Test_DefaultConfig(t *testing.T) {
 	runtimeGetter := newTestRuntimeconfig(t,
 		`
-default:
-    log_push_request: true
-    limited_log_push_errors: false
 configs:
     "1":
         log_push_request: false
@@ -98,19 +95,18 @@ configs:
         log_push_request: true
 `)
 
-	user1 := runtimeGetter("1")
-	user2 := runtimeGetter("2")
-	user3 := runtimeGetter("3")
+	tenantConfigs, err := runtime.NewTenantConfigs(runtimeGetter)
+	require.NoError(t, err)
 
-	require.Equal(t, false, user1.LogPushRequest)
-	require.Equal(t, false, user1.LimitedLogPushErrors)
-	require.Equal(t, false, user2.LimitedLogPushErrors)
-	require.Equal(t, true, user2.LogPushRequest)
-	require.Equal(t, false, user3.LimitedLogPushErrors)
-	require.Equal(t, true, user3.LogPushRequest)
+	require.Equal(t, false, tenantConfigs.LogPushRequest("1"))
+	require.Equal(t, false, tenantConfigs.LimitedLogPushErrors("1"))
+	require.Equal(t, false, tenantConfigs.LimitedLogPushErrors("2"))
+	require.Equal(t, true, tenantConfigs.LogPushRequest("2"))
+	require.Equal(t, true, tenantConfigs.LimitedLogPushErrors("3"))
+	require.Equal(t, false, tenantConfigs.LogPushRequest("3"))
 }
 
-func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfig {
+func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfigProvider {
 	t.Helper()
 	f, err := os.CreateTemp(t.TempDir(), "bar")
 	require.NoError(t, err)
@@ -126,11 +122,14 @@ func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfig {
 	}
 	flagset := flag.NewFlagSet("", flag.PanicOnError)
 	var defaults validation.Limits
+	var operations runtime.Config
 	defaults.RegisterFlags(flagset)
+	operations.RegisterFlags(flagset)
+	runtime.SetDefaultLimitsForYAMLUnmarshalling(operations)
 	require.NoError(t, flagset.Parse(nil))
 
 	reg := prometheus.NewPedanticRegistry()
-	runtimeConfig, err := runtimeconfig.New(cfg, prometheus.WrapRegistererWithPrefix("loki_", reg), log.NewNopLogger())
+	runtimeConfig, err := runtimeconfig.New(cfg, "test", prometheus.WrapRegistererWithPrefix("loki_", reg), log.NewNopLogger())
 	require.NoError(t, err)
 
 	require.NoError(t, runtimeConfig.StartAsync(context.Background()))
@@ -140,7 +139,7 @@ func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfig {
 		require.NoError(t, runtimeConfig.AwaitTerminated(context.Background()))
 	}()
 
-	return tenantConfigFromRuntimeConfig(runtimeConfig)
+	return newTenantConfigProvider(runtimeConfig)
 }
 
 func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
@@ -164,7 +163,7 @@ func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
 	validation.SetDefaultLimitsForYAMLUnmarshalling(defaults)
 
 	reg := prometheus.NewPedanticRegistry()
-	runtimeConfig, err := runtimeconfig.New(cfg, prometheus.WrapRegistererWithPrefix("loki_", reg), log.NewNopLogger())
+	runtimeConfig, err := runtimeconfig.New(cfg, "test", prometheus.WrapRegistererWithPrefix("loki_", reg), log.NewNopLogger())
 	require.NoError(t, err)
 
 	require.NoError(t, runtimeConfig.StartAsync(context.Background()))

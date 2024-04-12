@@ -12,11 +12,12 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 type VolumeSplitter struct {
@@ -24,7 +25,7 @@ type VolumeSplitter struct {
 }
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
-func (i VolumeSplitter) GenerateCacheKey(ctx context.Context, userID string, r queryrangebase.Request) string {
+func (i VolumeSplitter) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	cacheKey := i.cacheKeyLimits.GenerateCacheKey(ctx, userID, r)
 
 	volumeReq := r.(*logproto.VolumeRequest)
@@ -38,7 +39,7 @@ type VolumeExtractor struct{}
 
 // Extract favors the ability to cache over exactness of results. It assumes a constant distribution
 // of log volumes over a range and will extract subsets proportionally.
-func (p VolumeExtractor) Extract(start, end int64, res queryrangebase.Response, resStart, resEnd int64) queryrangebase.Response {
+func (p VolumeExtractor) Extract(start, end int64, res resultscache.Response, resStart, resEnd int64) resultscache.Response {
 	factor := util.GetFactorOfTime(start, end, resStart, resEnd)
 
 	volumeRes := res.(*VolumeResponse)
@@ -91,7 +92,7 @@ func shouldCacheVolume(ctx context.Context, req queryrangebase.Request, lim Limi
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 
 	now := volumeCacheMiddlewareNowTimeFunc()
-	return maxCacheFreshness == 0 || model.Time(req.GetEnd()).Before(now.Add(-maxCacheFreshness)), nil
+	return maxCacheFreshness == 0 || model.Time(req.GetEnd().UnixMilli()).Before(now.Add(-maxCacheFreshness)), nil
 }
 
 func NewVolumeCacheMiddleware(
@@ -100,8 +101,9 @@ func NewVolumeCacheMiddleware(
 	merger queryrangebase.Merger,
 	c cache.Cache,
 	cacheGenNumberLoader queryrangebase.CacheGenNumberLoader,
+	iqo util.IngesterQueryOptions,
 	shouldCache queryrangebase.ShouldCacheFn,
-	parallelismForReq func(ctx context.Context, tenantIDs []string, r queryrangebase.Request) int,
+	parallelismForReq queryrangebase.ParallelismForReqFn,
 	retentionEnabled bool,
 	transformer UserIDTransformer,
 	metrics *queryrangebase.ResultsCacheMetrics,
@@ -109,7 +111,7 @@ func NewVolumeCacheMiddleware(
 	return queryrangebase.NewResultsCacheMiddleware(
 		log,
 		c,
-		VolumeSplitter{cacheKeyLimits{limits, transformer}},
+		VolumeSplitter{cacheKeyLimits{limits, transformer, iqo}},
 		limits,
 		merger,
 		VolumeExtractor{},
@@ -129,6 +131,7 @@ func NewVolumeCacheMiddleware(
 		},
 		parallelismForReq,
 		retentionEnabled,
+		false,
 		metrics,
 	)
 }

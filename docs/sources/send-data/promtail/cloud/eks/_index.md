@@ -233,7 +233,7 @@ helm upgrade  promtail loki/promtail -n monitoring -f values.yaml
 And deploy the `eventrouter` using:
 
 ```bash
-kubectl create -f https://raw.githubusercontent.com/grafana/loki/main/docs/sources/clients/aws/eks/eventrouter.yaml
+kubectl create -f https://raw.githubusercontent.com/grafana/loki/main/docs/sources/send-data/promtail/cloud/eks/eventrouter.yaml
 ```
 You should see output similar to the following:
 ```bash
@@ -270,7 +270,7 @@ If you want to push this further you can check out [Joe's blog post][blog annota
 [kubelet]: https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/#:~:text=The%20kubelet%20works%20in%20terms,PodSpecs%20are%20running%20and%20healthy.
 [blog events]: https://grafana.com/blog/2019/08/21/how-grafana-labs-effectively-pairs-loki-and-kubernetes-events/
 [labels post]: https://grafana.com/blog/2020/04/21/how-labels-in-loki-can-make-log-queries-faster-and-easier/
-[pipeline]: https://grafana.com/docs/loki/latest/send-data/promtail/pipelines/
+[pipeline]: https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/pipelines/
 [final config]: values.yaml
 [blog annotations]: https://grafana.com/blog/2019/12/09/how-to-do-automatic-annotations-with-grafana-and-loki/
 [kubectl]: https://kubernetes.io/docs/tasks/tools/install-kubectl/

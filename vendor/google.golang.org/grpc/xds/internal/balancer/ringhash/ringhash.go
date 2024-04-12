@@ -218,7 +218,12 @@ func (b *ringhashBalancer) updateAddresses(addrs []resolver.Address) bool {
 		addrsSet.Set(addr, true)
 		newWeight := getWeightAttribute(addr)
 		if val, ok := b.subConns.Get(addr); !ok {
-			sc, err := b.cc.NewSubConn([]resolver.Address{addr}, balancer.NewSubConnOptions{HealthCheckEnabled: true})
+			var sc balancer.SubConn
+			opts := balancer.NewSubConnOptions{
+				HealthCheckEnabled: true,
+				StateListener:      func(state balancer.SubConnState) { b.updateSubConnState(sc, state) },
+			}
+			sc, err := b.cc.NewSubConn([]resolver.Address{addr}, opts)
 			if err != nil {
 				b.logger.Warningf("Failed to create new SubConn: %v", err)
 				continue
@@ -252,11 +257,11 @@ func (b *ringhashBalancer) updateAddresses(addrs []resolver.Address) bool {
 		if _, ok := addrsSet.Get(addr); !ok {
 			v, _ := b.subConns.Get(addr)
 			scInfo := v.(*subConn)
-			b.cc.RemoveSubConn(scInfo.sc)
+			scInfo.sc.Shutdown()
 			b.subConns.Delete(addr)
 			addrsUpdated = true
 			// Keep the state of this sc in b.scStates until sc's state becomes Shutdown.
-			// The entry will be deleted in UpdateSubConnState.
+			// The entry will be deleted in updateSubConnState.
 		}
 	}
 	return addrsUpdated
@@ -321,7 +326,11 @@ func (b *ringhashBalancer) ResolverError(err error) {
 	})
 }
 
-// UpdateSubConnState updates the per-SubConn state stored in the ring, and also
+func (b *ringhashBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
+}
+
+// updateSubConnState updates the per-SubConn state stored in the ring, and also
 // the aggregated state.
 //
 //	It triggers an update to cc when:
@@ -332,7 +341,7 @@ func (b *ringhashBalancer) ResolverError(err error) {
 //	- the aggregated state is changed
 //	  - the same picker will be sent again, but this update may trigger a re-pick
 //	    for some RPCs.
-func (b *ringhashBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+func (b *ringhashBalancer) updateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
 	s := state.ConnectivityState
 	if logger.V(2) {
 		b.logger.Infof("Handle SubConn state change: %p, %v", sc, s)
@@ -347,37 +356,23 @@ func (b *ringhashBalancer) UpdateSubConnState(sc balancer.SubConn, state balance
 	newSCState := scs.effectiveState()
 	b.logger.Infof("SubConn's effective old state was: %v, new state is %v", oldSCState, newSCState)
 
-	var sendUpdate bool
-	oldBalancerState := b.state
 	b.state = b.csEvltr.recordTransition(oldSCState, newSCState)
-	if oldBalancerState != b.state {
-		sendUpdate = true
-	}
 
 	switch s {
-	case connectivity.Idle:
-		// No need to send an update. No queued RPC can be unblocked. If the
-		// overall state changed because of this, sendUpdate is already true.
-	case connectivity.Connecting:
-		// No need to send an update. No queued RPC can be unblocked. If the
-		// overall state changed because of this, sendUpdate is already true.
-	case connectivity.Ready:
-		// We need to regenerate the picker even if the ring has not changed
-		// because we could be moving from TRANSIENT_FAILURE to READY, in which
-		// case, we need to update the error picker returned earlier.
-		b.regeneratePicker()
-		sendUpdate = true
 	case connectivity.TransientFailure:
 		// Save error to be reported via picker.
 		b.connErr = state.ConnectionError
-		b.regeneratePicker()
 	case connectivity.Shutdown:
-		// When an address was removed by resolver, b called RemoveSubConn but
-		// kept the sc's state in scStates. Remove state for this sc here.
+		// When an address was removed by resolver, b called Shutdown but kept
+		// the sc's state in scStates. Remove state for this sc here.
 		delete(b.scStates, sc)
 	}
 
-	if sendUpdate {
+	if oldSCState != newSCState {
+		// Because the picker caches the state of the subconns, we always
+		// regenerate and update the picker when the effective SubConn state
+		// changes.
+		b.regeneratePicker()
 		b.logger.Infof("Pushing new state %v and picker %p", b.state, b.picker)
 		b.cc.UpdateState(balancer.State{ConnectivityState: b.state, Picker: b.picker})
 	}

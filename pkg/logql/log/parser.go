@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"unicode/utf8"
 
-	"github.com/buger/jsonparser"
+	"github.com/grafana/jsonparser"
 
-	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
-	"github.com/grafana/loki/pkg/logql/log/logfmt"
-	"github.com/grafana/loki/pkg/logql/log/pattern"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logql/log/jsonexpr"
+	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
+	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 
 	"github.com/grafana/regexp"
 	jsoniter "github.com/json-iterator/go"
@@ -136,7 +136,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		if !ok {
 			return nil
 		}
-		j.lbs.Set(key, readValue(value, dataType))
+		j.lbs.Set(ParsedLabel, key, readValue(value, dataType))
 		if !j.parserHints.ShouldContinueParsingLine(key, j.lbs) {
 			return errLabelDoesNotMatch
 		}
@@ -166,7 +166,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		return nil
 	}
 
-	j.lbs.Set(keyString, readValue(value, dataType))
+	j.lbs.Set(ParsedLabel, keyString, readValue(value, dataType))
 	if !j.parserHints.ShouldContinueParsingLine(keyString, j.lbs) {
 		return errLabelDoesNotMatch
 	}
@@ -272,7 +272,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 				continue
 			}
 
-			lbs.Set(key, string(value))
+			lbs.Set(ParsedLabel, key, string(value))
 			if !parserHints.ShouldContinueParsingLine(key, lbs) {
 				return line, false
 			}
@@ -348,7 +348,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			continue
 		}
 
-		lbs.Set(key, string(val))
+		lbs.Set(ParsedLabel, key, string(val))
 		if !parserHints.ShouldContinueParsingLine(key, lbs) {
 			return line, false
 		}
@@ -373,7 +373,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
 
 type PatternParser struct {
-	matcher pattern.Matcher
+	matcher *pattern.Matcher
 	names   []string
 }
 
@@ -410,7 +410,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 			continue
 		}
 
-		lbs.Set(name, string(m))
+		lbs.Set(ParsedLabel, name, string(m))
 		if !parserHints.ShouldContinueParsingLine(name, lbs) {
 			return line, false
 		}
@@ -469,7 +469,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	for id, paths := range l.expressions {
 		keys[id] = fmt.Sprintf("%v", paths...)
 		if !lbs.BaseHas(id) {
-			lbs.Set(id, "")
+			lbs.Set(ParsedLabel, id, "")
 		}
 	}
 
@@ -493,11 +493,13 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 				return "", false
 			}
 
-			if !lbs.ParserLabelHints().ShouldExtract(sanitized) {
+			_, alwaysExtract := keys[sanitized]
+			if !alwaysExtract && !lbs.ParserLabelHints().ShouldExtract(sanitized) {
 				return "", false
 			}
 			return sanitized, true
 		})
+
 		if !ok {
 			continue
 		}
@@ -523,13 +525,14 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 				}
 			}
 
-			lbs.Set(key, string(val))
+			lbs.Set(ParsedLabel, key, string(val))
 
 			if lbs.ParserLabelHints().AllRequiredExtracted() {
 				break
 			}
 		}
 	}
+
 	if l.strict && l.dec.Err() != nil {
 		addErrLabel(errLogfmt, l.dec.Err(), lbs)
 		return line, true
@@ -613,9 +616,9 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 
 		switch typ {
 		case jsonparser.Null:
-			lbs.Set(key, "")
+			lbs.Set(ParsedLabel, key, "")
 		default:
-			lbs.Set(key, unescapeJSONString(data))
+			lbs.Set(ParsedLabel, key, unescapeJSONString(data))
 		}
 
 		matches++
@@ -625,7 +628,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 	if matches < len(j.ids) {
 		for _, id := range j.ids {
 			if _, ok := lbs.Get(id); !ok {
-				lbs.Set(id, "")
+				lbs.Set(ParsedLabel, id, "")
 			}
 		}
 	}
@@ -695,7 +698,7 @@ func addErrLabel(msg string, err error, lbs *LabelsBuilder) {
 	}
 
 	if lbs.ParserLabelHints().PreserveError() {
-		lbs.Set(logqlmodel.PreserveErrorLabel, "true")
+		lbs.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, "true")
 	}
 }
 
@@ -746,7 +749,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 	// flush the buffer if we found a packed entry.
 	if isPacked {
 		for i := 0; i < len(u.lbsBuffer); i = i + 2 {
-			lbs.Set(u.lbsBuffer[i], u.lbsBuffer[i+1])
+			lbs.Set(ParsedLabel, u.lbsBuffer[i], u.lbsBuffer[i+1])
 			if !lbs.ParserLabelHints().ShouldContinueParsingLine(u.lbsBuffer[i], lbs) {
 				return entry, errLabelDoesNotMatch
 			}

@@ -5,12 +5,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/iter"
-	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logproto"
+	gokitlog "github.com/go-kit/log"
+
+	"github.com/grafana/loki/v3/pkg/iter"
+	loghttp "github.com/grafana/loki/v3/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 const (
@@ -161,10 +165,218 @@ func TestTailer(t *testing.T) {
 				tailClients["test"] = test.tailClient
 			}
 
-			tailer := newTailer(0, tailClients, test.historicEntries, tailDisconnectedIngesters, timeout, throttle, NewMetrics(nil))
+			tailer := newTailer(0, tailClients, test.historicEntries, tailDisconnectedIngesters, timeout, throttle, false, NewMetrics(nil), gokitlog.NewNopLogger())
 			defer tailer.close()
 
 			test.tester(t, tailer, test.tailClient)
+		})
+	}
+}
+
+func TestCategorizedLabels(t *testing.T) {
+	t.Parallel()
+
+	lbs := labels.FromStrings("app", "foo")
+	createHistoricalEntries := func() iter.EntryIterator {
+		return iter.NewStreamIterator(logproto.Stream{
+			Labels: lbs.String(),
+			Entries: []logproto.Entry{
+				{
+					Timestamp: time.Unix(1, 0),
+					Line:      "foo=1",
+				},
+				{
+					Timestamp:          time.Unix(2, 0),
+					Line:               "foo=2",
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+				},
+			},
+		})
+	}
+	createTailClients := func() map[string]*tailClientMock {
+		return map[string]*tailClientMock{
+			"test1": newTailClientMock().mockRecvWithTrigger(mockTailResponse(logproto.Stream{
+				Labels: lbs.String(),
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(3, 0),
+						Line:      "foo=3",
+					},
+				},
+			})),
+			"test2": newTailClientMock().mockRecvWithTrigger(mockTailResponse(logproto.Stream{
+				Labels: labels.NewBuilder(lbs).Set("traceID", "123").Labels().String(),
+				Entries: []logproto.Entry{
+					{
+						Timestamp:          time.Unix(4, 0),
+						Line:               "foo=4",
+						StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+					},
+				},
+			})),
+			"test3": newTailClientMock().mockRecvWithTrigger(mockTailResponse(logproto.Stream{
+				Labels: labels.NewBuilder(lbs).Set("traceID", "123").Set("foo", "5").Labels().String(),
+				Entries: []logproto.Entry{
+					{
+						Timestamp:          time.Unix(5, 0),
+						Line:               "foo=5",
+						StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+						Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "5")),
+					},
+				},
+			})),
+		}
+	}
+
+	for _, tc := range []struct {
+		name             string
+		categorizeLabels bool
+		historicEntries  iter.EntryIterator
+		tailClients      map[string]*tailClientMock
+		expectedStreams  []logproto.Stream
+	}{
+		{
+			name:             "without categorize",
+			categorizeLabels: false,
+			historicEntries:  createHistoricalEntries(),
+			tailClients:      createTailClients(),
+			expectedStreams: []logproto.Stream{
+				{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(1, 0),
+							Line:      "foo=1",
+						},
+					},
+				},
+				{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
+						{
+							Timestamp:          time.Unix(2, 0),
+							Line:               "foo=2",
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+						},
+					},
+				},
+				{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(3, 0),
+							Line:      "foo=3",
+						},
+					},
+				},
+				{
+					Labels: labels.NewBuilder(lbs).Set("traceID", "123").Labels().String(),
+					Entries: []logproto.Entry{
+						{
+							Timestamp:          time.Unix(4, 0),
+							Line:               "foo=4",
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+						},
+					},
+				},
+				{
+					Labels: labels.NewBuilder(lbs).Set("traceID", "123").Set("foo", "5").Labels().String(),
+					Entries: []logproto.Entry{
+						{
+							Timestamp:          time.Unix(5, 0),
+							Line:               "foo=5",
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+							Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "5")),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:             "categorize",
+			categorizeLabels: true,
+			historicEntries:  createHistoricalEntries(),
+			tailClients:      createTailClients(),
+			expectedStreams: []logproto.Stream{
+				{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(1, 0),
+							Line:      "foo=1",
+						},
+					},
+				},
+				{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
+						{
+							Timestamp:          time.Unix(2, 0),
+							Line:               "foo=2",
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+						},
+					},
+				},
+				{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(3, 0),
+							Line:      "foo=3",
+						},
+					},
+				},
+				{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
+						{
+							Timestamp:          time.Unix(4, 0),
+							Line:               "foo=4",
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+						},
+					},
+				},
+				{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
+						{
+							Timestamp:          time.Unix(5, 0),
+							Line:               "foo=5",
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+							Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "5")),
+						},
+					},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tailDisconnectedIngesters := func([]string) (map[string]logproto.Querier_TailClient, error) {
+				return map[string]logproto.Querier_TailClient{}, nil
+			}
+
+			tailClients := map[string]logproto.Querier_TailClient{}
+			for k, v := range tc.tailClients {
+				tailClients[k] = v
+			}
+
+			tailer := newTailer(0, tailClients, tc.historicEntries, tailDisconnectedIngesters, timeout, throttle, tc.categorizeLabels, NewMetrics(nil), log.NewNopLogger())
+			defer tailer.close()
+
+			// Make tail clients receive their responses
+			for _, client := range tc.tailClients {
+				client.triggerRecv()
+			}
+
+			err := waitUntilTailerOpenStreamsHaveBeenConsumed(tailer)
+			require.NoError(t, err)
+
+			maxEntries := countEntriesInStreams(tc.expectedStreams)
+			responses, err := readFromTailer(tailer, maxEntries)
+			require.NoError(t, err)
+
+			streams := flattenStreamsFromResponses(responses)
+			require.ElementsMatch(t, tc.expectedStreams, streams)
 		})
 	}
 }
@@ -177,7 +389,7 @@ func readFromTailer(tailer *Tailer, maxEntries int) ([]*loghttp.TailResponse, er
 	timeoutTicker := time.NewTicker(timeout)
 	defer timeoutTicker.Stop()
 
-	for !tailer.stopped && entriesCount < maxEntries {
+	for !tailer.stopped.Load() && entriesCount < maxEntries {
 		select {
 		case <-timeoutTicker.C:
 			return nil, errors.New("timeout expired while reading responses from Tailer")
@@ -204,7 +416,7 @@ func waitUntilTailerOpenStreamsHaveBeenConsumed(tailer *Tailer) error {
 
 		select {
 		case <-timeoutTicker.C:
-			return errors.New("timeout expired while reading responses from Tailer")
+			return errors.New("timeout expired while waiting for Tailer to consume open streams")
 		default:
 			time.Sleep(throttle)
 		}

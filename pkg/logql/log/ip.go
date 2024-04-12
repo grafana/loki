@@ -3,11 +3,9 @@ package log
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"unicode"
 
-	"net/netip"
-
-	"github.com/prometheus/prometheus/model/labels"
 	"go4.org/netipx"
 )
 
@@ -28,14 +26,14 @@ type IPMatcher interface{}
 
 type IPLineFilter struct {
 	ip *ipFilter
-	ty labels.MatchType
+	ty LineMatchType
 }
 
 // NewIPLineFilter is used to construct ip filter as a `LineFilter`
-func NewIPLineFilter(pattern string, ty labels.MatchType) (*IPLineFilter, error) {
+func NewIPLineFilter(pattern string, ty LineMatchType) (*IPLineFilter, error) {
 	// check if `ty` supported in ip matcher.
 	switch ty {
-	case labels.MatchEqual, labels.MatchNotEqual:
+	case LineMatchEqual, LineMatchNotEqual:
 	default:
 		return nil, ErrIPFilterInvalidOperation
 	}
@@ -70,8 +68,8 @@ func (f *IPLineFilter) RequiredLabelNames() []string {
 	return []string{} // empty for line filter
 }
 
-func (f *IPLineFilter) filterTy(line []byte, ty labels.MatchType) bool {
-	if ty == labels.MatchNotEqual {
+func (f *IPLineFilter) filterTy(line []byte, ty LineMatchType) bool {
+	if ty == LineMatchNotEqual {
 		return !f.ip.filter(line)
 	}
 	return f.ip.filter(line)
@@ -79,39 +77,41 @@ func (f *IPLineFilter) filterTy(line []byte, ty labels.MatchType) bool {
 
 type IPLabelFilter struct {
 	ip *ipFilter
-	ty LabelFilterType
+	Ty LabelFilterType
 
-	// if used as label matcher, this holds the identifier label name.
+	// if used as Label matcher, this holds the identifier Label name.
 	// e.g: (|remote_addr = ip("xxx")). Here labelName is `remote_addr`
-	label string
+	Label string
 
 	// patError records if given pattern is invalid.
 	patError error
 
-	// local copy of pattern to display it in errors, even though pattern matcher fails because of invalid pattern.
-	pattern string
+	// local copy of Pattern to display it in errors, even though Pattern matcher fails because of invalid Pattern.
+	Pattern string
 }
 
 // NewIPLabelFilter is used to construct ip filter as label filter for the given `label`.
-func NewIPLabelFilter(pattern string, label string, ty LabelFilterType) *IPLabelFilter {
+func NewIPLabelFilter(pattern, label string, ty LabelFilterType) *IPLabelFilter {
 	ip, err := newIPFilter(pattern)
 	return &IPLabelFilter{
 		ip:       ip,
-		label:    label,
-		ty:       ty,
+		Label:    label,
+		Ty:       ty,
 		patError: err,
-		pattern:  pattern,
+		Pattern:  pattern,
 	}
 }
 
 // `Process` implements `Stage` interface
 func (f *IPLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	return line, f.filterTy(line, f.ty, lbs)
+	return line, f.filterTy(line, f.Ty, lbs)
 }
+
+func (f *IPLabelFilter) isLabelFilterer() {}
 
 // `RequiredLabelNames` implements `Stage` interface
 func (f *IPLabelFilter) RequiredLabelNames() []string {
-	return []string{f.label}
+	return []string{f.Label}
 }
 
 // PatternError will be used `labelFilter.Stage()` method so that, if the given pattern is wrong
@@ -125,7 +125,7 @@ func (f *IPLabelFilter) filterTy(_ []byte, ty LabelFilterType, lbs *LabelsBuilde
 		// why `true`?. if there's an error only the string matchers can filter out.
 		return true
 	}
-	input, ok := lbs.Get(f.label)
+	input, ok := lbs.Get(f.Label)
 	if !ok {
 		// we have not found the label.
 		return false
@@ -147,11 +147,11 @@ func (f *IPLabelFilter) filterTy(_ []byte, ty LabelFilterType, lbs *LabelsBuilde
 // `String` implements fmt.Stringer inteface, by which also implements `LabelFilterer` inteface.
 func (f *IPLabelFilter) String() string {
 	eq := "=" // LabelFilterEqual -> "==", we don't want in string representation of ip label filter.
-	if f.ty == LabelFilterNotEqual {
+	if f.Ty == LabelFilterNotEqual {
 		eq = LabelFilterNotEqual.String()
 	}
 
-	return fmt.Sprintf("%s%sip(%q)", f.label, eq, f.pattern) // label filter
+	return fmt.Sprintf("%s%sip(%q)", f.Label, eq, f.Pattern) // label filter
 }
 
 // ipFilter search for IP addresses of given `pattern` in the given `line`.

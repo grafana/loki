@@ -14,7 +14,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // NoSuchKeyErr The resource you requested does not exist.
@@ -26,7 +27,7 @@ const NoSuchKeyErr = "NoSuchKey"
 const DefaultEndpoint = bos.DEFAULT_SERVICE_DOMAIN
 
 var bosRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "loki",
+	Namespace: constants.Loki,
 	Name:      "bos_request_duration_seconds",
 	Help:      "Time spent doing BOS requests.",
 	Buckets:   prometheus.ExponentialBuckets(0.005, 4, 6),

@@ -8,12 +8,12 @@
       storage_config+: if $._config.use_index_gateway then {
         boltdb_shipper+: {
           index_gateway_client+: {
-            server_address: 'dns:///index-gateway.%s.svc.cluster.local:9095' % $._config.namespace,
+            server_address: 'dns+index-gateway-headless.%s.svc.cluster.local:9095' % $._config.namespace,
           },
         },
         tsdb_shipper+: {
           index_gateway_client+: {
-            server_address: 'dns:///index-gateway.%s.svc.cluster.local:9095' % $._config.namespace,
+            server_address: 'dns+index-gateway-headless.%s.svc.cluster.local:9095' % $._config.namespace,
           },
         },
       } else {},
@@ -68,5 +68,12 @@
 
   index_gateway_service: if $._config.use_index_gateway then
     k.util.serviceFor($.index_gateway_statefulset, $._config.service_ignored_labels)
+  else {},
+
+  index_gateway_headless_service: if $._config.use_index_gateway then
+    local service = k.core.v1.service;
+    k.util.serviceFor($.index_gateway_statefulset, $._config.service_ignored_labels) +
+    service.mixin.metadata.withName('index-gateway-headless') +
+    service.mixin.spec.withClusterIp('None')
   else {},
 }

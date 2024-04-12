@@ -14,19 +14,14 @@
     in
     {
       overlays = {
-        golangci-lint = import ./nix/overlays/golangci-lint.nix;
-        helm-docs = import ./nix/overlays/helm-docs.nix;
         default = nix.overlay;
       };
     } //
     flake-utils.lib.eachDefaultSystem (system:
       let
-
         pkgs = import nixpkgs {
           inherit system;
           overlays = [
-            (import ./nix/overlays/golangci-lint.nix)
-            (import ./nix/overlays/helm-docs.nix)
             nix.overlay
           ];
           config = { allowUnfree = true; };
@@ -40,9 +35,12 @@
 
         packages = with pkgs; {
           inherit
+            logcli
             loki
+            loki-canary
             loki-helm-test
-            loki-helm-test-docker;
+            loki-helm-test-docker
+            promtail;
         };
 
         apps = {
@@ -56,44 +54,43 @@
               }/bin/lint.sh";
           };
 
-          loki = {
+          test = {
             type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/loki";
-          };
-          promtail = {
-            type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/promtail";
-          };
-          logcli = {
-            type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/logcli";
-          };
-          loki-canary = {
-            type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/loki-canary";
-          };
-          loki-helm-test = {
-            type = "app";
-            program = with pkgs; "${loki-helm-test}/bin/helm-test";
+            program = with pkgs; "${
+                (writeShellScriptBin "test.sh" ''
+                  ${loki.overrideAttrs(old: { 
+                  buildInputs =
+                    let
+                      inherit (old) buildInputs;
+                    in
+                    if pkgs.stdenv.hostPlatform.isLinux then
+                      buildInputs ++ (with pkgs; [ systemd ])
+                    else buildInputs;
+                  doCheck = true; 
+                  })}/bin/loki --version
+                '')
+              }/bin/test.sh";
           };
         };
 
         devShell = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
+            (import ./packages/chart-releaser.nix {
+              inherit (prev) pkgs lib buildGoModule fetchFromGitHub;
+            })
+
+            chart-testing
+            faillint
             gcc
             go
-            systemd
-            yamllint
-            nixpkgs-fmt
-            statix
-            nettools
-
             golangci-lint
             gotools
             helm-docs
-            faillint
-            chart-testing
-            chart-releaser
+            nettools
+            nixpkgs-fmt
+            statix
+            systemd
+            yamllint
           ];
         };
       });

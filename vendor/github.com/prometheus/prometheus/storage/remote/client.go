@@ -36,6 +36,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/prometheus/prometheus/storage/remote/azuread"
 )
 
 const maxErrMsgLen = 1024
@@ -63,11 +64,14 @@ var (
 	)
 	remoteReadQueryDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "read_request_duration_seconds",
-			Help:      "Histogram of the latency for remote read requests.",
-			Buckets:   append(prometheus.DefBuckets, 25, 60),
+			Namespace:                       namespace,
+			Subsystem:                       subsystem,
+			Name:                            "read_request_duration_seconds",
+			Help:                            "Histogram of the latency for remote read requests.",
+			Buckets:                         append(prometheus.DefBuckets, 25, 60),
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
 		},
 		[]string{remoteName, endpoint},
 	)
@@ -97,6 +101,7 @@ type ClientConfig struct {
 	Timeout          model.Duration
 	HTTPClientConfig config_util.HTTPClientConfig
 	SigV4Config      *sigv4.SigV4Config
+	AzureADConfig    *azuread.AzureADConfig
 	Headers          map[string]string
 	RetryOnRateLimit bool
 }
@@ -139,15 +144,22 @@ func NewWriteClient(name string, conf *ClientConfig) (WriteClient, error) {
 	}
 	t := httpClient.Transport
 
+	if len(conf.Headers) > 0 {
+		t = newInjectHeadersRoundTripper(conf.Headers, t)
+	}
+
 	if conf.SigV4Config != nil {
-		t, err = sigv4.NewSigV4RoundTripper(conf.SigV4Config, httpClient.Transport)
+		t, err = sigv4.NewSigV4RoundTripper(conf.SigV4Config, t)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if len(conf.Headers) > 0 {
-		t = newInjectHeadersRoundTripper(conf.Headers, t)
+	if conf.AzureADConfig != nil {
+		t, err = azuread.NewAzureADRoundTripper(conf.AzureADConfig, t)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	httpClient.Transport = otelhttp.NewTransport(t)
@@ -186,7 +198,7 @@ type RecoverableError struct {
 
 // Store sends a batch of samples to the HTTP endpoint, the request is the proto marshalled
 // and encoded bytes from codec.go.
-func (c *Client) Store(ctx context.Context, req []byte) error {
+func (c *Client) Store(ctx context.Context, req []byte, attempt int) error {
 	httpReq, err := http.NewRequest("POST", c.urlString, bytes.NewReader(req))
 	if err != nil {
 		// Errors from NewRequest are from unparsable URLs, so are not
@@ -198,6 +210,10 @@ func (c *Client) Store(ctx context.Context, req []byte) error {
 	httpReq.Header.Set("Content-Type", "application/x-protobuf")
 	httpReq.Header.Set("User-Agent", UserAgent)
 	httpReq.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
+	if attempt > 0 {
+		httpReq.Header.Set("Retry-Attempt", strconv.Itoa(attempt))
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
@@ -223,10 +239,8 @@ func (c *Client) Store(ctx context.Context, req []byte) error {
 		}
 		err = fmt.Errorf("server returned HTTP status %s: %s", httpResp.Status, line)
 	}
-	if httpResp.StatusCode/100 == 5 {
-		return RecoverableError{err, defaultBackoff}
-	}
-	if c.retryOnRateLimit && httpResp.StatusCode == http.StatusTooManyRequests {
+	if httpResp.StatusCode/100 == 5 ||
+		(c.retryOnRateLimit && httpResp.StatusCode == http.StatusTooManyRequests) {
 		return RecoverableError{err, retryAfterDuration(httpResp.Header.Get("Retry-After"))}
 	}
 	return err

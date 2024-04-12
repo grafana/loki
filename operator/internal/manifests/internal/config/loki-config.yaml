@@ -12,8 +12,15 @@ common:
     azure:
       environment: {{ .Env }}
       container_name: {{ .Container }}
-      account_name: {{ .AccountName }}
-      account_key: {{ .AccountKey }}
+      account_name: ${AZURE_STORAGE_ACCOUNT_NAME}
+      {{- if .WorkloadIdentity }}
+      use_federated_token: true
+      {{- else }}
+      account_key: ${AZURE_STORAGE_ACCOUNT_KEY}
+      {{- end }}
+      {{- with .EndpointSuffix }}
+      endpoint_suffix: {{ . }}
+      {{- end }}
     {{- end }}
     {{- with .ObjectStorage.GCS }}
     gcs:
@@ -21,21 +28,42 @@ common:
     {{- end }}
     {{- with .ObjectStorage.S3 }}
     s3:
-      s3: {{ .Endpoint }}
+      {{- if .STS }}
+      bucketnames: {{.Buckets}}
+      region: {{.Region}}
+      s3forcepathstyle: false
+      {{- else }}
+      endpoint: {{ .Endpoint }}
       bucketnames: {{ .Buckets }}
       region: {{ .Region }}
-      access_key_id: {{ .AccessKeyID }}
-      secret_access_key: {{ .AccessKeySecret }}
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+      {{- if .ForcePathStyle  }}
       s3forcepathstyle: true
+      {{- end}}
+      {{- end }}
+      {{- with .SSE }}
+      {{- if .Type }}
+      sse:
+        type: {{ .Type }}
+        {{- if eq .Type "SSE-KMS" }}
+        kms_key_id: {{ .KMSKeyID }}
+        {{- with .KMSEncryptionContext }}
+        kms_encryption_context: |
+          ${AWS_SSE_KMS_ENCRYPTION_CONTEXT}
+        {{- end }}
+        {{- end}}
+      {{- end }}
+      {{- end }}
     {{- end }}
     {{- with .ObjectStorage.Swift }}
     swift:
       auth_url: {{ .AuthURL }}
-      username: {{ .Username }}
+      username: ${SWIFT_USERNAME}
       user_domain_name: {{ .UserDomainName }}
       user_domain_id: {{ .UserDomainID }}
       user_id: {{ .UserID }}
-      password: {{ .Password }}
+      password: ${SWIFT_PASSWORD}
       domain_id: {{ .DomainID }}
       domain_name: {{ .DomainName }}
       project_id: {{ .ProjectID }}
@@ -49,8 +77,8 @@ common:
     alibabacloud:
       bucket: {{ .Bucket }}
       endpoint: {{ .Endpoint }}
-      access_key_id: {{ .AccessKeyID }}
-      secret_access_key: {{ .SecretAccessKey }}
+      access_key_id: ${ALIBABA_CLOUD_ACCESS_KEY_ID}
+      secret_access_key: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET}
     {{- end }}
   compactor_grpc_address: {{ .Compactor.FQDN }}:{{ .Compactor.Port }}
   {{- with .GossipRing }}
@@ -88,7 +116,7 @@ frontend:
     tls_min_version: {{ .TLS.MinTLSVersion }}
 {{- end }}
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: {{ .FrontendWorker.FQDN }}:{{ .FrontendWorker.Port }}
@@ -116,6 +144,9 @@ ingester:
     final_sleep: 0s
     join_after: 30s
     num_tokens: 512
+    {{- if .GossipRing.EnableIPv6 }}
+    enable_inet6: true
+    {{- end}}
     ring:
       replication_factor: {{ .Stack.Replication.Factor }}
   max_transfer_retries: 0
@@ -165,6 +196,7 @@ limits_config:
   max_chunks_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxChunksPerQuery }}
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: {{ .Stack.Limits.Global.QueryLimits.MaxQuerySeries }}
   cardinality_limit: {{ .Stack.Limits.Global.QueryLimits.CardinalityLimit }}
   max_streams_matchers_per_query: 1000
@@ -184,6 +216,12 @@ limits_config:
   per_stream_rate_limit: {{ .Stack.Limits.Global.IngestionLimits.PerStreamRateLimit }}MB
   per_stream_rate_limit_burst: {{ .Stack.Limits.Global.IngestionLimits.PerStreamRateLimitBurst }}MB
   split_queries_by_interval: 30m
+{{- with .Stack.Limits.Global.IngestionLimits.PerStreamDesiredRate }}
+  shard_streams:
+    enabled: true
+    desired_rate: {{ . }}MB
+{{- end }}
+  allow_structured_metadata: true
 {{- with .GossipRing }}
 memberlist:
   abort_if_cluster_join_fails: true
@@ -235,7 +273,11 @@ schema_config:
         prefix: index_
       object_store: {{ $store }}
       schema: {{ .Version }}
+      {{- if or (eq .Version "v11") (eq .Version "v12")}}
       store: boltdb-shipper
+      {{- else }}
+      store: tsdb
+      {{- end}}
     {{- end }}
 {{ if .Ruler.Enabled }}
 ruler:
@@ -316,7 +358,7 @@ ruler:
       {{- with .Client }}
       name: {{ .Name }}
       url: {{ .URL }}
-      timeout: {{ .RemoteTimeout }}
+      remote_timeout: {{ .RemoteTimeout }}
       proxy_url: {{ .ProxyURL }}
       follow_redirects: {{ .FollowRedirects }}
       headers:
@@ -449,23 +491,32 @@ server:
 {{- end }}
   log_level: info
 storage_config:
+{{- range $_, $ship := .Shippers }}
+{{- if eq $ship "boltdb" }}
   boltdb_shipper:
-    active_index_directory: {{ .StorageDirectory }}/index
-    cache_location: {{ .StorageDirectory }}/index_cache
+    active_index_directory: {{ $.StorageDirectory }}/index
+    cache_location: {{ $.StorageDirectory }}/index_cache
+{{- end }}
+{{- if eq $ship "tsdb" }}
+  tsdb_shipper:
+    active_index_directory: {{ $.StorageDirectory }}/tsdb-index
+    cache_location: {{ $.StorageDirectory }}/tsdb-cache
+{{- end }}
     cache_ttl: 24h
     resync_interval: 5m
-    shared_store: {{ .ObjectStorage.SharedStore }}
+    shared_store: {{ $.ObjectStorage.SharedStore }}
     index_gateway_client:
-      server_address: dns:///{{ .IndexGateway.FQDN }}:{{ .IndexGateway.Port }}
-{{- if .Gates.GRPCEncryption }}
+      server_address: dns:///{{ $.IndexGateway.FQDN }}:{{ $.IndexGateway.Port }}
+{{- if $.Gates.GRPCEncryption }}
       grpc_client_config:
         tls_enabled: true
-        tls_cert_path: {{ .TLS.Paths.GRPC.Certificate }}
-        tls_key_path: {{ .TLS.Paths.GRPC.Key }}
-        tls_ca_path: {{ .TLS.Paths.CA }}
-        tls_server_name: {{ .TLS.ServerNames.GRPC.IndexGateway }}
-        tls_cipher_suites: {{ .TLS.CipherSuitesString }}
-        tls_min_version: {{ .TLS.MinTLSVersion }}
+        tls_cert_path: {{ $.TLS.Paths.GRPC.Certificate }}
+        tls_key_path: {{ $.TLS.Paths.GRPC.Key }}
+        tls_ca_path: {{ $.TLS.Paths.CA }}
+        tls_server_name: {{ $.TLS.ServerNames.GRPC.IndexGateway }}
+        tls_cipher_suites: {{ $.TLS.CipherSuitesString }}
+        tls_min_version: {{ $.TLS.MinTLSVersion }}
+{{- end }}
 {{- end }}
 tracing:
   enabled: false

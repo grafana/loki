@@ -62,7 +62,6 @@ loki {
     },
 
     ingester_pvc_size: '50Gi',
-    stateful_ingesters: true,
 
     querier_pvc_size: '50Gi',
     stateful_queriers: true,

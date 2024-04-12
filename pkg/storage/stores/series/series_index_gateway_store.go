@@ -9,30 +9,45 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
+
+// NB(owen-d): mostly modeled off of the proto-generated `logproto.IndexGatewayClient`,
+// but decoupled from explicit GRPC dependencies to work well with streaming grpc methods
+type GatewayClient interface {
+	GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error)
+	GetSeries(ctx context.Context, in *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error)
+	LabelNamesForMetricName(ctx context.Context, in *logproto.LabelNamesForMetricNameRequest) (*logproto.LabelResponse, error)
+	LabelValuesForMetricName(ctx context.Context, in *logproto.LabelValuesForMetricNameRequest) (*logproto.LabelResponse, error)
+	GetStats(ctx context.Context, in *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error)
+	GetVolume(ctx context.Context, in *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
+
+	GetShards(ctx context.Context, in *logproto.ShardsRequest) (*logproto.ShardsResponse, error)
+}
 
 // IndexGatewayClientStore implements pkg/storage/stores/index.ReaderWriter
 type IndexGatewayClientStore struct {
-	client logproto.IndexGatewayClient
+	client GatewayClient
 	logger log.Logger
 }
 
-func NewIndexGatewayClientStore(client logproto.IndexGatewayClient, logger log.Logger) *IndexGatewayClientStore {
+func NewIndexGatewayClientStore(client GatewayClient, logger log.Logger) *IndexGatewayClientStore {
 	return &IndexGatewayClientStore{
 		client: client,
 		logger: logger,
 	}
 }
 
-func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, from, through model.Time, allMatchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error) {
 	response, err := c.client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{
 		From:     from,
 		Through:  through,
-		Matchers: (&syntax.MatchersExpr{Mts: allMatchers}).String(),
+		Matchers: (&syntax.MatchersExpr{Mts: predicate.Matchers}).String(),
+		Plan:     predicate.Plan(),
 	})
 	if err != nil {
 		return nil, err
@@ -110,10 +125,36 @@ func (c *IndexGatewayClientStore) Volume(ctx context.Context, _ string, from, th
 	})
 }
 
+func (c *IndexGatewayClientStore) GetShards(
+	ctx context.Context,
+	_ string,
+	from, through model.Time,
+	targetBytesPerShard uint64,
+	predicate chunk.Predicate,
+) (*logproto.ShardsResponse, error) {
+	resp, err := c.client.GetShards(ctx, &logproto.ShardsRequest{
+		From:                from,
+		Through:             through,
+		Query:               predicate.Plan().AST.String(),
+		TargetBytesPerShard: targetBytesPerShard,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 func (c *IndexGatewayClientStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {
 	level.Warn(c.logger).Log("msg", "SetChunkFilterer called on index gateway client store, but it does not support it")
 }
 
 func (c *IndexGatewayClientStore) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return fmt.Errorf("index writes not supported on index gateway client")
+}
+
+// IndexGatewayClientStore does not implement tsdb.ForSeries;
+// that is implemented by the index-gws themselves and will be
+// called during the `GetShards() invocation`
+func (c *IndexGatewayClientStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
+	return nil, false
 }

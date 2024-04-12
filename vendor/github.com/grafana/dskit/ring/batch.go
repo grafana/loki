@@ -8,7 +8,8 @@ import (
 	"sync"
 
 	"go.uber.org/atomic"
-	"google.golang.org/grpc/status"
+
+	grpcUtils "github.com/grafana/dskit/grpcutil"
 )
 
 type batchTracker struct {
@@ -25,40 +26,79 @@ type instance struct {
 }
 
 type itemTracker struct {
-	minSuccess  int
-	maxFailures int
-	succeeded   atomic.Int32
-	failed4xx   atomic.Int32
-	failed5xx   atomic.Int32
-	remaining   atomic.Int32
-	err         atomic.Error
+	minSuccess   int
+	maxFailures  int
+	succeeded    atomic.Int32
+	failedClient atomic.Int32
+	failedServer atomic.Int32
+	remaining    atomic.Int32
+	err          atomic.Error
 }
 
-func (i *itemTracker) recordError(err error) int32 {
+func (i *itemTracker) recordError(err error, isClientError func(error) bool) int32 {
 	i.err.Store(err)
 
-	if s, ok := status.FromError(err); ok && s.Code()/100 == 4 {
-		return i.failed4xx.Inc()
+	if isClientError(err) {
+		return i.failedClient.Inc()
 	}
-
-	return i.failed5xx.Inc()
+	return i.failedServer.Inc()
 }
 
-// DoBatch request against a set of keys in the ring, handling replication and
-// failures. For example if we want to write N items where they may all
-// hit different instances, and we want them all replicated R ways with
-// quorum writes, we track the relationship between batch RPCs and the items
-// within them.
-//
-// Callback is passed the instance to target, and the indexes of the keys
-// to send to that instance.
-//
-// cleanup() is always called, either on an error before starting the batches or after they all finish.
-//
-// Not implemented as a method on Ring so we can test separately.
+func isHTTPStatus4xx(err error) bool {
+	code := grpcUtils.ErrorToStatusCode(err)
+	return code/100 == 4
+}
+
+// DoBatch is a deprecated version of DoBatchWithOptions where grpc errors containing status codes 4xx are treated as client errors.
+// Deprecated. Use DoBatchWithOptions instead.
 func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callback func(InstanceDesc, []int) error, cleanup func()) error {
+	return DoBatchWithOptions(ctx, op, r, keys, callback, DoBatchOptions{
+		Cleanup:       cleanup,
+		IsClientError: isHTTPStatus4xx,
+	})
+}
+
+// DoBatchOptions defines options for the DoBatchWithOptions call.
+// Zero value options are valid, as well as individual zero valued fields.
+type DoBatchOptions struct {
+	// Cleanup is always called, either on an error before starting the batches or after they are all finished.
+	// If nil, a noop will be called.
+	Cleanup func()
+
+	// IsClientError classifies errors returned by `callback()` into client or server errors.
+	// See `batchTracker.record()` function for details about how errors are combined into final error returned by DoBatchWithClientError.
+	// If nil, a default implementation is used that classifies grpc errors containing status codes 4xx as client errors.
+	IsClientError func(error) bool
+
+	// Go will be used to spawn the callback goroutines, and can be used to use a worker pool like concurrency.ReusableGoroutinesPool.
+	Go func(func())
+}
+
+func (o *DoBatchOptions) replaceZeroValuesWithDefaults() {
+	if o.Cleanup == nil {
+		o.Cleanup = func() {}
+	}
+	if o.IsClientError == nil {
+		o.IsClientError = isHTTPStatus4xx
+	}
+	if o.Go == nil {
+		o.Go = func(f func()) { go f() }
+	}
+}
+
+// DoBatchWithOptions request against a set of keys in the ring, handling replication and failures.
+// For example if we want to write N items where they may all hit different instances,
+// and we want them all replicated R ways with quorum writes,
+// we track the relationship between batch RPCs and the items within them.
+//
+// See comments on DoBatchOptions for available options for this call.
+//
+// Not implemented as a method on Ring, so we can test separately.
+func DoBatchWithOptions(ctx context.Context, op Operation, r ReadRing, keys []uint32, callback func(InstanceDesc, []int) error, o DoBatchOptions) error {
+	o.replaceZeroValuesWithDefaults()
+
 	if r.InstancesCount() <= 0 {
-		cleanup()
+		o.Cleanup()
 		return fmt.Errorf("DoBatch: InstancesCount <= 0")
 	}
 	expectedTrackers := len(keys) * (r.ReplicationFactor() + 1) / r.InstancesCount()
@@ -71,9 +111,18 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callb
 		bufZones [GetBufferSize]string
 	)
 	for i, key := range keys {
+		// Get call below takes ~1 microsecond for ~500 instances.
+		// Checking every 10K calls would be every 10ms.
+		if i%10e3 == 0 {
+			if err := ctx.Err(); err != nil {
+				o.Cleanup()
+				return err
+			}
+		}
+
 		replicationSet, err := r.Get(key, op, bufDescs[:0], bufHosts[:0], bufZones[:0])
 		if err != nil {
-			cleanup()
+			o.Cleanup()
 			return err
 		}
 		itemTrackers[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
@@ -94,6 +143,12 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callb
 		}
 	}
 
+	// One last check before calling the callbacks: it doesn't make sense if context is canceled.
+	if err := ctx.Err(); err != nil {
+		o.Cleanup()
+		return err
+	}
+
 	tracker := batchTracker{
 		done: make(chan struct{}, 1),
 		err:  make(chan error, 1),
@@ -104,19 +159,19 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callb
 
 	wg.Add(len(instances))
 	for _, i := range instances {
-		go func(i instance) {
+		i := i
+		o.Go(func() {
 			err := callback(i.desc, i.indexes)
-			tracker.record(i.itemTrackers, err)
+			tracker.record(i.itemTrackers, err, o.IsClientError)
 			wg.Done()
-		}(i)
+		})
 	}
 
 	// Perform cleanup at the end.
-	go func() {
+	o.Go(func() {
 		wg.Wait()
-
-		cleanup()
-	}()
+		o.Cleanup()
+	})
 
 	select {
 	case err := <-tracker.err:
@@ -128,35 +183,36 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callb
 	}
 }
 
-func (b *batchTracker) record(itemTrackers []*itemTracker, err error) {
+func (b *batchTracker) record(itemTrackers []*itemTracker, err error, isClientError func(error) bool) {
 	// If we reach the required number of successful puts on this item, then decrement the
 	// number of pending items by one.
 	//
 	// The use of atomic increments here is needed as:
 	// * rpcsPending and rpcsFailed guarantee only a single goroutine will write to either channel
-	// * succeeded, failed4xx, failed5xx and remaining guarantee that the "return decision" is made atomically
+	// * succeeded, failedClient, failedServer and remaining guarantee that the "return decision" is made atomically
 	// avoiding race condition
-	for i := range itemTrackers {
+	for _, it := range itemTrackers {
 		if err != nil {
 			// Track the number of errors by error family, and if it exceeds maxFailures
 			// shortcut the waiting rpc.
-			errCount := itemTrackers[i].recordError(err)
+			errCount := it.recordError(err, isClientError)
 			// We should return an error if we reach the maxFailure (quorum) on a given error family OR
-			// we don't have any remaining instances to try.
+			// we don't have any remaining instances to try. In the following we use ClientError and ServerError
+			// to denote errors, for which isClientError() returns true and false respectively.
 			//
-			// Ex: 2xx, 4xx, 5xx -> return 5xx
-			// Ex: 4xx, 4xx, _ -> return 4xx
-			// Ex: 5xx, _, 5xx -> return 5xx
+			// Ex: Success, ClientError, ServerError -> return ServerError
+			// Ex: ClientError, ClientError, Success -> return ClientError
+			// Ex: ServerError, Success, ServerError -> return ServerError
 			//
-			// The reason for searching for quorum in 4xx and 5xx errors separately is to give a more accurate
-			// response to the initial request. So if a quorum of instances rejects the request with 4xx, then the request should be rejected
-			// even if less-than-quorum instances indicated a failure to process the request (via 5xx).
+			// The reason for searching for quorum in ClientError and ServerError errors separately is to give a more accurate
+			// response to the initial request. So if a quorum of instances rejects the request with ClientError, then the request should be rejected
+			// even if less-than-quorum instances indicated a failure to process the request (via ServerError).
 			// The speculation is that had the unavailable instances been available,
-			// they would have rejected the request with a 4xx as well.
-			// Conversely, if a quorum of instances failed to process the request via 5xx and less-than-quorum
-			// instances rejected it with 4xx, then we do not have quorum to reject the request as a 4xx. Instead,
-			// we return the last 5xx error for debuggability.
-			if errCount > int32(itemTrackers[i].maxFailures) || itemTrackers[i].remaining.Dec() == 0 {
+			// they would have rejected the request with a ClientError as well.
+			// Conversely, if a quorum of instances failed to process the request via ServerError and less-than-quorum
+			// instances rejected it with ClientError, then we do not have quorum to reject the request as a ClientError. Instead,
+			// we return the last ServerError error for debuggability.
+			if errCount > int32(it.maxFailures) || it.remaining.Dec() == 0 {
 				if b.rpcsFailed.Inc() == 1 {
 					b.err <- err
 				}
@@ -164,7 +220,8 @@ func (b *batchTracker) record(itemTrackers []*itemTracker, err error) {
 		} else {
 			// If we successfully process items in minSuccess instances,
 			// then wake up the waiting rpc, so it can return early.
-			if itemTrackers[i].succeeded.Inc() >= int32(itemTrackers[i].minSuccess) {
+			succeeded := it.succeeded.Inc()
+			if succeeded == int32(it.minSuccess) {
 				if b.rpcsPending.Dec() == 0 {
 					b.done <- struct{}{}
 				}
@@ -172,11 +229,12 @@ func (b *batchTracker) record(itemTrackers []*itemTracker, err error) {
 			}
 
 			// If we successfully called this particular instance, but we don't have any remaining instances to try,
-			// and we failed to call minSuccess instances, then we need to return the last error
-			// Ex: 4xx, 5xx, 2xx
-			if itemTrackers[i].remaining.Dec() == 0 {
-				if b.rpcsFailed.Inc() == 1 {
-					b.err <- itemTrackers[i].err.Load()
+			// and we failed to call minSuccess instances, then we need to return the last error.
+			if succeeded < int32(it.minSuccess) {
+				if it.remaining.Dec() == 0 {
+					if b.rpcsFailed.Inc() == 1 {
+						b.err <- it.err.Load()
+					}
 				}
 			}
 		}

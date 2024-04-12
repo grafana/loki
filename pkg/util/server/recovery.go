@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,13 +12,16 @@ import (
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const maxStacksize = 8 * 1024
 
 var (
 	panicTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "panic_total",
 		Help:      "The total number of panic triggered",
 	})
@@ -34,6 +38,18 @@ var (
 	})
 	RecoveryGRPCStreamInterceptor = grpc_recovery.StreamServerInterceptor(grpc_recovery.WithRecoveryHandler(onPanic))
 	RecoveryGRPCUnaryInterceptor  = grpc_recovery.UnaryServerInterceptor(grpc_recovery.WithRecoveryHandler(onPanic))
+
+	RecoveryMiddleware queryrangebase.Middleware = queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (res queryrangebase.Response, err error) {
+			defer func() {
+				if p := recover(); p != nil {
+					err = onPanic(p)
+				}
+			}()
+			res, err = next.Do(ctx, req)
+			return
+		})
+	})
 )
 
 func onPanic(p interface{}) error {

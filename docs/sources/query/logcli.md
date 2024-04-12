@@ -1,7 +1,7 @@
 ---
 title: LogCLI
 menuTItle:  
-description: LogCLI, Grafana Loki's command-line interface
+description: Describes LogCLI, Grafana Loki's command-line interface.
 aliases:
 - ../getting-started/logcli/
 - ../tools/logcli/
@@ -70,9 +70,11 @@ without needing a username and password:
 export LOKI_ADDR=http://localhost:3100
 ```
 
-> Note: If you are running Loki behind a proxy server and you have
-> authentication configured, you will also have to pass in LOKI_USERNAME
-> and LOKI_PASSWORD, LOKI_BEARER_TOKEN or LOKI_BEARER_TOKEN_FILE accordingly.
+{{% admonition type="note" %}}
+If you are running Loki behind a proxy server and you have
+authentication configured, you will also have to pass in LOKI_USERNAME
+and LOKI_PASSWORD, LOKI_BEARER_TOKEN or LOKI_BEARER_TOKEN_FILE accordingly.
+{{% /admonition %}}
 
 ```bash
 $ logcli labels job
@@ -227,7 +229,7 @@ Commands:
     For more information about log queries and metric queries, refer to the
     LogQL documentation:
 
-    https://grafana.com/docs/loki/latest/logql/
+    https://grafana.com/docs/loki/<LOKI_VERSION>/logql/
 
   labels [<flags>] [<label>]
     Find values for a given label.
@@ -512,7 +514,9 @@ You can consume log lines from your `stdin` instead of Loki servers.
 
 Say you have log files in your local, and just want to do run some LogQL queries for that, `--stdin` flag can help.
 
-**NOTE: Currently it doesn't support any type of metric queries**
+{{% admonition type="note" %}}
+Currently it doesn't support any type of metric queries.
+{{% /admonition %}}
 
 You may have to use `stdin` flag for several reasons
 1. Quick way to check and validate a LogQL expressions.

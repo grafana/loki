@@ -14,10 +14,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 )
 
 const (
@@ -348,6 +348,20 @@ func (t *FileTarget) startTailing(ps []string) {
 			level.Info(t.logger).Log("msg", "failed to tail file", "error", "file is a directory", "filename", p)
 			t.metrics.totalBytes.DeleteLabelValues(p)
 			continue
+		}
+
+		if t.pathExclude != "" {
+			matched, err := doublestar.Match(t.pathExclude, p)
+			if err != nil {
+				level.Error(t.logger).Log("msg", "ignoring file, exclude pattern match failed", "error", err, "filename", p, "pathExclude", t.pathExclude)
+				t.metrics.totalBytes.DeleteLabelValues(p)
+				continue
+			}
+			if matched {
+				level.Info(t.logger).Log("msg", "ignoring file", "error", "file matches exclude pattern", "filename", p, "pathExclude", t.pathExclude)
+				t.metrics.totalBytes.DeleteLabelValues(p)
+				continue
+			}
 		}
 
 		var reader Reader

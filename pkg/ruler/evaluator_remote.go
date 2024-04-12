@@ -35,12 +35,13 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/util/build"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -86,21 +87,21 @@ func NewRemoteEvaluator(client httpgrpc.HTTPClient, overrides RulesLimits, logge
 
 func newMetrics(registerer prometheus.Registerer) *metrics {
 	reqDurationSecs := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "request_duration_seconds",
 		// 0.005000, 0.015000, 0.045000, 0.135000, 0.405000, 1.215000, 3.645000, 10.935000, 32.805000
 		Buckets: prometheus.ExponentialBuckets(0.005, 3, 9),
 	}, []string{"user"})
 	responseSizeBytes := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "response_bytes",
 		// 32, 128, 512, 2K, 8K, 32K, 128K, 512K, 2M, 8M
 		Buckets: prometheus.ExponentialBuckets(32, 4, 10),
 	}, []string{"user"})
 	responseSizeSamples := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "response_samples",
 		// 1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144
@@ -108,12 +109,12 @@ func newMetrics(registerer prometheus.Registerer) *metrics {
 	}, []string{"user"})
 
 	successfulEvals := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "success_total",
 	}, []string{"user"})
 	failedEvals := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "failure_total",
 	}, []string{"reason", "user"})
@@ -219,7 +220,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 		args.Set("time", ts.Format(time.RFC3339Nano))
 	}
 	body := []byte(args.Encode())
-	hash := logql.HashedQuery(query)
+	hash := util.HashedQuery(query)
 
 	req := httpgrpc.HTTPRequest{
 		Method: http.MethodPost,
@@ -229,7 +230,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 			{Key: textproto.CanonicalMIMEHeaderKey("User-Agent"), Values: []string{userAgent}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Type"), Values: []string{mimeTypeFormPost}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Length"), Values: []string{strconv.Itoa(len(body))}},
-			{Key: textproto.CanonicalMIMEHeaderKey(string(httpreq.QueryTagsHTTPHeader)), Values: []string{"ruler"}},
+			{Key: textproto.CanonicalMIMEHeaderKey(string(httpreq.QueryTagsHTTPHeader)), Values: []string{"source=ruler"}},
 			{Key: textproto.CanonicalMIMEHeaderKey(user.OrgIDHeaderName), Values: []string{orgID}},
 		},
 	}

@@ -1,7 +1,7 @@
 ---
 title: Single Store TSDB (tsdb)
 menuTitle: TSDB
-description: Describes the tsdb single store usage.
+description: Describes the Loki time series database (TSDB) single store.
 weight: 100
 ---
 # Single Store TSDB (tsdb)
@@ -29,7 +29,7 @@ schema_config:
         period: 24h
         prefix: index_
       object_store: gcs
-      schema: v12
+      schema: v13
       store: tsdb
 
 storage_config:
@@ -42,7 +42,6 @@ storage_config:
       # only applicable if using microservices where index-gateways are independently deployed.
       # This example is using kubernetes-style naming.
       server_address: dns:///index-gateway.<namespace>.svc.cluster.local:9095
-    shared_store: gcs
   # New tsdb-shipper configuration
   tsdb_shipper:
     active_index_directory: /data/tsdb-index
@@ -51,7 +50,6 @@ storage_config:
       # only applicable if using microservices where index-gateways are independently deployed.
       # This example is using kubernetes-style naming.
       server_address: dns:///index-gateway.<namespace>.svc.cluster.local:9095
-    shared_store: gcs
 
 query_scheduler:
   # the TSDB index dispatches many more, but each individually smaller, requests. 

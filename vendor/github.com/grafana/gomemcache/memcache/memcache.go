@@ -48,7 +48,7 @@ var (
 	// CompareAndSwap) failed because the condition was not satisfied.
 	ErrNotStored = errors.New("memcache: item not stored")
 
-	// ErrServer means that a server error occurred.
+	// ErrServerError means that a server error occurred.
 	ErrServerError = errors.New("memcache: server error")
 
 	// ErrNoStats means that no statistics were available.
@@ -135,7 +135,10 @@ func New(server ...string) *Client {
 
 // NewFromSelector returns a new Client using the provided ServerSelector.
 func NewFromSelector(ss ServerSelector) *Client {
-	c := &Client{selector: ss, closed: make(chan struct{})}
+	c := &Client{
+		selector: ss,
+		closed:   make(chan struct{}),
+	}
 
 	go c.releaseIdleConnectionsUntilClosed()
 
@@ -171,6 +174,14 @@ type Client struct {
 	// Consider your expected traffic rates and latency carefully. This should
 	// be set to a number higher than your peak parallel requests.
 	MaxIdleConns int
+
+	// WriteBufferSizeBytes specifies the size of the write buffer (in bytes). The buffer
+	// is allocated for each connection. If <= 0, the default value of 4KB will be used.
+	WriteBufferSizeBytes int
+
+	// ReadBufferSizeBytes specifies the size of the read buffer (in bytes). The buffer
+	// is allocated for each connection. If <= 0, the default value of 4KB will be used.
+	ReadBufferSizeBytes int
 
 	// recentlyUsedConnsThreshold is the default grace period given to an
 	// idle connection to consider it "recently used". Recently used connections
@@ -399,6 +410,11 @@ func (c *Client) dial(addr net.Addr) (net.Conn, error) {
 }
 
 func (c *Client) getConn(addr net.Addr) (*conn, error) {
+	var (
+		writer *bufio.Writer
+		reader *bufio.Reader
+	)
+
 	cn, ok := c.getFreeConn(addr)
 	if ok {
 		cn.extendDeadline()
@@ -408,10 +424,25 @@ func (c *Client) getConn(addr net.Addr) (*conn, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Init buffered writer.
+	if c.WriteBufferSizeBytes > 0 {
+		writer = bufio.NewWriterSize(nc, c.WriteBufferSizeBytes)
+	} else {
+		writer = bufio.NewWriter(nc)
+	}
+
+	// Init buffered reader.
+	if c.ReadBufferSizeBytes > 0 {
+		reader = bufio.NewReaderSize(nc, c.ReadBufferSizeBytes)
+	} else {
+		reader = bufio.NewReader(nc)
+	}
+
 	cn = &conn{
 		nc:   nc,
 		addr: addr,
-		rw:   bufio.NewReadWriter(bufio.NewReader(nc), bufio.NewWriter(nc)),
+		rw:   bufio.NewReadWriter(reader, writer),
 		c:    c,
 	}
 	cn.extendDeadline()
@@ -473,30 +504,31 @@ func (c *Client) withKeyAddr(key string, fn func(net.Addr) error) (err error) {
 	return fn(addr)
 }
 
-func (c *Client) withAddrRw(addr net.Addr, fn func(*bufio.ReadWriter) error) (err error) {
+func (c *Client) withAddrRw(addr net.Addr, fn func(*conn) error) (err error) {
 	cn, err := c.getConn(addr)
 	if err != nil {
 		return err
 	}
 	defer cn.condRelease(&err)
-	return fn(cn.rw)
+	return fn(cn)
 }
 
-func (c *Client) withKeyRw(key string, fn func(*bufio.ReadWriter) error) error {
+func (c *Client) withKeyRw(key string, fn func(*conn) error) error {
 	return c.withKeyAddr(key, func(addr net.Addr) error {
 		return c.withAddrRw(addr, fn)
 	})
 }
 
 func (c *Client) getFromAddr(addr net.Addr, keys []string, opts *Options, cb func(*Item)) error {
-	return c.withAddrRw(addr, func(rw *bufio.ReadWriter) error {
+	return c.withAddrRw(addr, func(conn *conn) error {
+		rw := conn.rw
 		if _, err := fmt.Fprintf(rw, "gets %s\r\n", strings.Join(keys, " ")); err != nil {
 			return err
 		}
 		if err := rw.Flush(); err != nil {
 			return err
 		}
-		if err := c.parseGetResponse(rw.Reader, opts, cb); err != nil {
+		if err := c.parseGetResponse(rw.Reader, conn, opts, cb); err != nil {
 			return err
 		}
 		return nil
@@ -505,7 +537,8 @@ func (c *Client) getFromAddr(addr net.Addr, keys []string, opts *Options, cb fun
 
 // flushAllFromAddr send the flush_all command to the given addr
 func (c *Client) flushAllFromAddr(addr net.Addr) error {
-	return c.withAddrRw(addr, func(rw *bufio.ReadWriter) error {
+	return c.withAddrRw(addr, func(conn *conn) error {
+		rw := conn.rw
 		if _, err := fmt.Fprintf(rw, "flush_all\r\n"); err != nil {
 			return err
 		}
@@ -528,7 +561,8 @@ func (c *Client) flushAllFromAddr(addr net.Addr) error {
 
 // ping sends the version command to the given addr
 func (c *Client) ping(addr net.Addr) error {
-	return c.withAddrRw(addr, func(rw *bufio.ReadWriter) error {
+	return c.withAddrRw(addr, func(conn *conn) error {
+		rw := conn.rw
 		if _, err := fmt.Fprintf(rw, "version\r\n"); err != nil {
 			return err
 		}
@@ -551,7 +585,8 @@ func (c *Client) ping(addr net.Addr) error {
 }
 
 func (c *Client) touchFromAddr(addr net.Addr, keys []string, expiration int32) error {
-	return c.withAddrRw(addr, func(rw *bufio.ReadWriter) error {
+	return c.withAddrRw(addr, func(conn *conn) error {
+		rw := conn.rw
 		for _, key := range keys {
 			if _, err := fmt.Fprintf(rw, "touch %s %d\r\n", key, expiration); err != nil {
 				return err
@@ -606,7 +641,8 @@ func (c *Client) GetMulti(keys []string, opts ...Option) (map[string]*Item, erro
 	ch := make(chan error, buffered)
 	for addr, keys := range keyMap {
 		go func(addr net.Addr, keys []string) {
-			ch <- c.getFromAddr(addr, keys, options, addItemToMap)
+			err := c.getFromAddr(addr, keys, options, addItemToMap)
+			ch <- err
 		}(addr, keys)
 	}
 
@@ -621,9 +657,12 @@ func (c *Client) GetMulti(keys []string, opts ...Option) (map[string]*Item, erro
 
 // parseGetResponse reads a GET response from r and calls cb for each
 // read and allocated Item
-func (c *Client) parseGetResponse(r *bufio.Reader, opts *Options, cb func(*Item)) error {
+func (c *Client) parseGetResponse(r *bufio.Reader, conn *conn, opts *Options, cb func(*Item)) error {
 	for {
+		// extend deadline before each additional call, otherwise all cumulative calls use the same overall deadline
+		conn.extendDeadline()
 		line, err := r.ReadSlice('\n')
+
 		if err != nil {
 			return err
 		}
@@ -820,15 +859,15 @@ func writeExpectf(rw *bufio.ReadWriter, expect []byte, format string, args ...in
 // Delete deletes the item with the provided key. The error ErrCacheMiss is
 // returned if the item didn't already exist in the cache.
 func (c *Client) Delete(key string) error {
-	return c.withKeyRw(key, func(rw *bufio.ReadWriter) error {
-		return writeExpectf(rw, resultDeleted, "delete %s\r\n", key)
+	return c.withKeyRw(key, func(conn *conn) error {
+		return writeExpectf(conn.rw, resultDeleted, "delete %s\r\n", key)
 	})
 }
 
 // DeleteAll deletes all items in the cache.
 func (c *Client) DeleteAll() error {
-	return c.withKeyRw("", func(rw *bufio.ReadWriter) error {
-		return writeExpectf(rw, resultDeleted, "flush_all\r\n")
+	return c.withKeyRw("", func(conn *conn) error {
+		return writeExpectf(conn.rw, resultDeleted, "flush_all\r\n")
 	})
 }
 
@@ -859,7 +898,8 @@ func (c *Client) Decrement(key string, delta uint64) (newValue uint64, err error
 
 func (c *Client) incrDecr(verb, key string, delta uint64) (uint64, error) {
 	var val uint64
-	err := c.withKeyRw(key, func(rw *bufio.ReadWriter) error {
+	err := c.withKeyRw(key, func(conn *conn) error {
+		rw := conn.rw
 		line, err := writeReadLine(rw, "%s %s %d\r\n", verb, key, delta)
 		if err != nil {
 			return err

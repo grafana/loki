@@ -14,33 +14,34 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
 	cacheCorruptErrs = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "querier_index_cache_corruptions_total",
 		Help:      "The number of cache corruptions for the index cache.",
 	})
 	cacheHits = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "querier_index_cache_hits_total",
 		Help:      "The number of cache hits for the index cache.",
 	})
 	cacheGets = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "querier_index_cache_gets_total",
 		Help:      "The number of gets for the index cache.",
 	})
 	cachePuts = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "querier_index_cache_puts_total",
 		Help:      "The number of puts for the index cache.",
 	})
 	cacheEncodeErrs = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "querier_index_cache_encode_errors_total",
 		Help:      "The number of errors for the index cache while encoding the body.",
 	})

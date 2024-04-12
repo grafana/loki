@@ -11,9 +11,10 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 )
 
 var (
@@ -25,7 +26,7 @@ var (
 type PrometheusExtractor struct{}
 
 // Extract wraps the original prometheus cache extractor
-func (PrometheusExtractor) Extract(start, end int64, res queryrangebase.Response, resStart, resEnd int64) queryrangebase.Response {
+func (PrometheusExtractor) Extract(start, end int64, res resultscache.Response, resStart, resEnd int64) resultscache.Response {
 	response := extractor.Extract(start, end, res.(*LokiPromResponse).Response, resStart, resEnd)
 	return &LokiPromResponse{
 		Response: response.(*queryrangebase.PrometheusResponse),
@@ -43,6 +44,28 @@ func (PrometheusExtractor) ResponseWithoutHeaders(resp queryrangebase.Response) 
 // encode encodes a Prometheus response and injects Loki stats.
 func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {
 	sp := opentracing.SpanFromContext(ctx)
+	var buf bytes.Buffer
+
+	err := p.encodeTo(&buf)
+	if err != nil {
+		return nil, err
+	}
+
+	if sp != nil {
+		sp.LogFields(otlog.Int("bytes", buf.Len()))
+	}
+
+	resp := http.Response{
+		Header: http.Header{
+			"Content-Type": []string{"application/json"},
+		},
+		Body:       io.NopCloser(&buf),
+		StatusCode: http.StatusOK,
+	}
+	return &resp, nil
+}
+
+func (p *LokiPromResponse) encodeTo(w io.Writer) error {
 	var (
 		b   []byte
 		err error
@@ -57,21 +80,11 @@ func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {
 		b, err = p.marshalScalar()
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	if sp != nil {
-		sp.LogFields(otlog.Int("bytes", len(b)))
-	}
-
-	resp := http.Response{
-		Header: http.Header{
-			"Content-Type": []string{"application/json"},
-		},
-		Body:       io.NopCloser(bytes.NewBuffer(b)),
-		StatusCode: http.StatusOK,
-	}
-	return &resp, nil
+	_, err = w.Write(b)
+	return err
 }
 
 func (p *LokiPromResponse) marshalVector() ([]byte, error) {
@@ -87,6 +100,7 @@ func (p *LokiPromResponse) marshalVector() ([]byte, error) {
 			Value:     model.SampleValue(v.Samples[0].Value),
 		}
 	}
+
 	return jsonStd.Marshal(struct {
 		Status string `json:"status"`
 		Data   struct {
@@ -94,8 +108,9 @@ func (p *LokiPromResponse) marshalVector() ([]byte, error) {
 			Result     loghttp.Vector `json:"result"`
 			Statistics stats.Result   `json:"stats,omitempty"`
 		} `json:"data,omitempty"`
-		ErrorType string `json:"errorType,omitempty"`
-		Error     string `json:"error,omitempty"`
+		ErrorType string   `json:"errorType,omitempty"`
+		Error     string   `json:"error,omitempty"`
+		Warnings  []string `json:"warnings,omitempty"`
 	}{
 		Error: p.Response.Error,
 		Data: struct {
@@ -109,10 +124,17 @@ func (p *LokiPromResponse) marshalVector() ([]byte, error) {
 		},
 		ErrorType: p.Response.ErrorType,
 		Status:    p.Response.Status,
+		Warnings:  p.Response.Warnings,
 	})
 }
 
 func (p *LokiPromResponse) marshalMatrix() ([]byte, error) {
+
+	// Make sure nil is not encoded as null.
+	if p.Response.Data.Result == nil {
+		p.Response.Data.Result = []queryrangebase.SampleStream{}
+	}
+
 	// embed response and add statistics.
 	return jsonStd.Marshal(struct {
 		Status string `json:"status"`
@@ -120,8 +142,9 @@ func (p *LokiPromResponse) marshalMatrix() ([]byte, error) {
 			queryrangebase.PrometheusData
 			Statistics stats.Result `json:"stats,omitempty"`
 		} `json:"data,omitempty"`
-		ErrorType string `json:"errorType,omitempty"`
-		Error     string `json:"error,omitempty"`
+		ErrorType string   `json:"errorType,omitempty"`
+		Error     string   `json:"error,omitempty"`
+		Warnings  []string `json:"warnings,omitempty"`
 	}{
 		Error: p.Response.Error,
 		Data: struct {
@@ -133,6 +156,7 @@ func (p *LokiPromResponse) marshalMatrix() ([]byte, error) {
 		},
 		ErrorType: p.Response.ErrorType,
 		Status:    p.Response.Status,
+		Warnings:  p.Response.Warnings,
 	})
 }
 
@@ -158,8 +182,9 @@ func (p *LokiPromResponse) marshalScalar() ([]byte, error) {
 			Result     loghttp.Scalar `json:"result"`
 			Statistics stats.Result   `json:"stats,omitempty"`
 		} `json:"data,omitempty"`
-		ErrorType string `json:"errorType,omitempty"`
-		Error     string `json:"error,omitempty"`
+		ErrorType string   `json:"errorType,omitempty"`
+		Error     string   `json:"error,omitempty"`
+		Warnings  []string `json:"warnings,omitempty"`
 	}{
 		Error: p.Response.Error,
 		Data: struct {
@@ -173,5 +198,6 @@ func (p *LokiPromResponse) marshalScalar() ([]byte, error) {
 		},
 		ErrorType: p.Response.ErrorType,
 		Status:    p.Response.Status,
+		Warnings:  p.Response.Warnings,
 	})
 }

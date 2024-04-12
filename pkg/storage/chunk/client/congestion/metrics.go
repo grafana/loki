@@ -1,6 +1,10 @@
 package congestion
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"github.com/grafana/loki/v3/pkg/util/constants"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 type Metrics struct {
 	currentLimit       prometheus.Gauge
@@ -25,7 +29,7 @@ func NewMetrics(name string, cfg Config) *Metrics {
 		"name":     name,
 	}
 
-	const namespace = "loki"
+	const namespace = constants.Loki
 	const subsystem = "store_congestion_control"
 	m := Metrics{
 		currentLimit: prometheus.NewGauge(prometheus.GaugeOpts{

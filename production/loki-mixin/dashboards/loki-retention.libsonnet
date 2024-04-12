@@ -25,71 +25,92 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
         )
         .addRow(
-          $.row('Compact and Mark')
+          $.row('Compaction')
           .addPanel(
-            $.fromNowPanel('Last Compact and Mark Operation Success', 'loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds')
+            $.fromNowPanel('Last Compact Tables Operation Success', 'loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds')
           )
           .addPanel(
-            $.panel('Compact and Mark Operations Duration') +
-            $.queryPanel(['loki_boltdb_shipper_compact_tables_operation_duration_seconds{%s}' % $.namespaceMatcher()], ['duration']) +
-            { yaxes: $.yaxes('s') },
-          )
-          .addPanel(
-            $.panel('Compact and Mark Operations Per Status') +
-            $.queryPanel(['sum by (status)(rate(loki_boltdb_shipper_compact_tables_operation_total{%s}[$__rate_interval]))' % $.namespaceMatcher()], ['{{success}}']),
-          )
-        )
-        .addRow(
-          $.row('Per Table Marker')
-          .addPanel(
-            $.panel('Processed Tables Per Action') +
-            $.queryPanel(['count by(action)(loki_boltdb_shipper_retention_marker_table_processed_total{%s})' % $.namespaceMatcher()], ['{{action}}']) + $.stack,
-          )
-          .addPanel(
-            $.panel('Modified Tables') +
-            $.queryPanel(['count by(table,action)(loki_boltdb_shipper_retention_marker_table_processed_total{%s , action=~"modified|deleted"})' % $.namespaceMatcher()], ['{{table}}-{{action}}']) + $.stack,
-          )
-          .addPanel(
-            $.panel('Marks Creation Rate Per Table') +
-            $.queryPanel(['sum by (table)(rate(loki_boltdb_shipper_retention_marker_count_total{%s}[$__rate_interval])) >0' % $.namespaceMatcher()], ['{{table}}']) + $.stack,
+            $.newQueryPanel('Compact Tables Operations Duration', 's') +
+            $.queryPanel(['loki_boltdb_shipper_compact_tables_operation_duration_seconds{%s}' % $.namespaceMatcher()], ['duration']),
           )
         )
         .addRow(
           $.row('')
           .addPanel(
-            $.panel('Marked Chunks (24h)') +
+            $.newQueryPanel('Number of times Tables were skipped during Compaction') +
+            $.queryPanel(['sum(increase(loki_compactor_skipped_compacting_locked_table_total{%s}[$__range]))' % $.namespaceMatcher()], ['{{table_name}}']),
+          )
+          .addPanel(
+            $.newQueryPanel('Compact Tables Operations Per Status') +
+            $.queryPanel(['sum by (status)(rate(loki_boltdb_shipper_compact_tables_operation_total{%s}[$__rate_interval]))' % $.namespaceMatcher()], ['{{success}}']),
+          )
+        )
+        .addRow(
+          $.row('Retention')
+          .addPanel(
+            $.fromNowPanel('Last Mark Operation Success', 'loki_compactor_apply_retention_last_successful_run_timestamp_seconds')
+          )
+          .addPanel(
+            $.newQueryPanel('Mark Operations Duration', 's') +
+            $.queryPanel(['loki_compactor_apply_retention_operation_duration_seconds{%s}' % $.namespaceMatcher()], ['duration']),
+          )
+          .addPanel(
+            $.newQueryPanel('Mark Operations Per Status') +
+            $.queryPanel(['sum by (status)(rate(loki_compactor_apply_retention_operation_total{%s}[$__rate_interval]))' % $.namespaceMatcher()], ['{{success}}']),
+          )
+        )
+        .addRow(
+          $.row('Per Table Marker')
+          .addPanel(
+            $.newQueryPanel('Processed Tables Per Action') +
+            $.queryPanel(['count by(action)(loki_boltdb_shipper_retention_marker_table_processed_total{%s})' % $.namespaceMatcher()], ['{{action}}']) +
+            $.withStacking,
+          )
+          .addPanel(
+            $.newQueryPanel('Modified Tables') +
+            $.queryPanel(['count by(table,action)(loki_boltdb_shipper_retention_marker_table_processed_total{%s , action=~"modified|deleted"})' % $.namespaceMatcher()], ['{{table}}-{{action}}']) +
+            $.withStacking,
+          )
+          .addPanel(
+            $.newQueryPanel('Marks Creation Rate Per Table') +
+            $.queryPanel(['sum by (table)(rate(loki_boltdb_shipper_retention_marker_count_total{%s}[$__rate_interval])) >0' % $.namespaceMatcher()], ['{{table}}']) +
+            $.withStacking,
+          )
+        )
+        .addRow(
+          $.row('')
+          .addPanel(
+            $.newQueryPanel('Marked Chunks (24h)') +
             $.statPanel('sum (increase(loki_boltdb_shipper_retention_marker_count_total{%s}[24h]))' % $.namespaceMatcher(), 'short')
           )
           .addPanel(
-            $.panel('Mark Table Latency') +
+            $.newQueryPanel('Mark Table Latency') +
             $.latencyPanel('loki_boltdb_shipper_retention_marker_table_processed_duration_seconds', '{%s}' % $.namespaceMatcher())
           )
         )
         .addRow(
           $.row('Sweeper')
           .addPanel(
-            $.panel('Delete Chunks (24h)') +
+            $.newQueryPanel('Delete Chunks (24h)') +
             $.statPanel('sum (increase(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count{%s}[24h]))' % $.namespaceMatcher(), 'short')
           )
           .addPanel(
-            $.panel('Delete Latency') +
+            $.newQueryPanel('Delete Latency') +
             $.latencyPanel('loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds', '{%s}' % $.namespaceMatcher())
           )
         )
         .addRow(
           $.row('')
           .addPanel(
-            $.panel('Sweeper Lag') +
-            $.queryPanel(['time() - (loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time{%s} > 0)' % $.namespaceMatcher()], ['lag']) + {
-              yaxes: $.yaxes({ format: 's', min: null }),
-            },
+            $.newQueryPanel('Sweeper Lag', 's') +
+            $.queryPanel(['time() - (loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time{%s} > 0)' % $.namespaceMatcher()], ['lag']),
           )
           .addPanel(
-            $.panel('Marks Files to Process') +
+            $.newQueryPanel('Marks Files to Process') +
             $.queryPanel(['sum(loki_boltdb_shipper_retention_sweeper_marker_files_current{%s})' % $.namespaceMatcher()], ['count']),
           )
           .addPanel(
-            $.panel('Delete Rate Per Status') +
+            $.newQueryPanel('Delete Rate Per Status') +
             $.queryPanel(['sum by (status)(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count{%s}[$__rate_interval]))' % $.namespaceMatcher()], ['{{status}}']),
           )
         )

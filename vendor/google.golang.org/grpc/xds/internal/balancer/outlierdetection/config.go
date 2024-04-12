@@ -18,9 +18,10 @@
 package outlierdetection
 
 import (
+	"encoding/json"
 	"time"
 
-	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
+	iserviceconfig "google.golang.org/grpc/internal/serviceconfig"
 	"google.golang.org/grpc/serviceconfig"
 )
 
@@ -52,6 +53,24 @@ type SuccessRateEjection struct {
 	// is lower than this setting, outlier detection via success rate statistics
 	// is not performed for that host. Defaults to 100.
 	RequestVolume uint32 `json:"requestVolume,omitempty"`
+}
+
+// For UnmarshalJSON to work correctly and set defaults without infinite
+// recursion.
+type successRateEjection SuccessRateEjection
+
+// UnmarshalJSON unmarshals JSON into SuccessRateEjection. If a
+// SuccessRateEjection field is not set, that field will get its default value.
+func (sre *SuccessRateEjection) UnmarshalJSON(j []byte) error {
+	sre.StdevFactor = 1900
+	sre.EnforcementPercentage = 100
+	sre.MinimumHosts = 5
+	sre.RequestVolume = 100
+	// Unmarshal JSON on a type with zero values for methods, including
+	// UnmarshalJSON. Overwrites defaults, leaves alone if not. typecast to
+	// avoid infinite recursion by not recalling this function and causing stack
+	// overflow.
+	return json.Unmarshal(j, (*successRateEjection)(sre))
 }
 
 // Equal returns whether the SuccessRateEjection is the same with the parameter.
@@ -101,6 +120,25 @@ type FailurePercentageEjection struct {
 	RequestVolume uint32 `json:"requestVolume,omitempty"`
 }
 
+// For UnmarshalJSON to work correctly and set defaults without infinite
+// recursion.
+type failurePercentageEjection FailurePercentageEjection
+
+// UnmarshalJSON unmarshals JSON into FailurePercentageEjection. If a
+// FailurePercentageEjection field is not set, that field will get its default
+// value.
+func (fpe *FailurePercentageEjection) UnmarshalJSON(j []byte) error {
+	fpe.Threshold = 85
+	fpe.EnforcementPercentage = 0
+	fpe.MinimumHosts = 5
+	fpe.RequestVolume = 50
+	// Unmarshal JSON on a type with zero values for methods, including
+	// UnmarshalJSON. Overwrites defaults, leaves alone if not. typecast to
+	// avoid infinite recursion by not recalling this function and causing stack
+	// overflow.
+	return json.Unmarshal(j, (*failurePercentageEjection)(fpe))
+}
+
 // Equal returns whether the FailurePercentageEjection is the same with the
 // parameter.
 func (fpe *FailurePercentageEjection) Equal(fpe2 *FailurePercentageEjection) bool {
@@ -128,15 +166,15 @@ type LBConfig struct {
 	// Interval is the time interval between ejection analysis sweeps. This can
 	// result in both new ejections as well as addresses being returned to
 	// service. Defaults to 10s.
-	Interval time.Duration `json:"interval,omitempty"`
+	Interval iserviceconfig.Duration `json:"interval,omitempty"`
 	// BaseEjectionTime is the base time that a host is ejected for. The real
 	// time is equal to the base time multiplied by the number of times the host
 	// has been ejected and is capped by MaxEjectionTime. Defaults to 30s.
-	BaseEjectionTime time.Duration `json:"baseEjectionTime,omitempty"`
+	BaseEjectionTime iserviceconfig.Duration `json:"baseEjectionTime,omitempty"`
 	// MaxEjectionTime is the maximum time that an address is ejected for. If
 	// not specified, the default value (300s) or the BaseEjectionTime value is
 	// applied, whichever is larger.
-	MaxEjectionTime time.Duration `json:"maxEjectionTime,omitempty"`
+	MaxEjectionTime iserviceconfig.Duration `json:"maxEjectionTime,omitempty"`
 	// MaxEjectionPercent is the maximum % of an upstream cluster that can be
 	// ejected due to outlier detection. Defaults to 10% but will eject at least
 	// one host regardless of the value.
@@ -148,7 +186,29 @@ type LBConfig struct {
 	// algorithm. If set, failure rate ejections will be performed.
 	FailurePercentageEjection *FailurePercentageEjection `json:"failurePercentageEjection,omitempty"`
 	// ChildPolicy is the config for the child policy.
-	ChildPolicy *internalserviceconfig.BalancerConfig `json:"childPolicy,omitempty"`
+	ChildPolicy *iserviceconfig.BalancerConfig `json:"childPolicy,omitempty"`
+}
+
+// For UnmarshalJSON to work correctly and set defaults without infinite
+// recursion.
+type lbConfig LBConfig
+
+// UnmarshalJSON unmarshals JSON into LBConfig. If a top level LBConfig field
+// (i.e. not next layer sre or fpe) is not set, that field will get its default
+// value. If sre or fpe is not set, it will stay unset, otherwise it will
+// unmarshal on those types populating with default values for their fields if
+// needed.
+func (lbc *LBConfig) UnmarshalJSON(j []byte) error {
+	// Default top layer values as documented in A50.
+	lbc.Interval = iserviceconfig.Duration(10 * time.Second)
+	lbc.BaseEjectionTime = iserviceconfig.Duration(30 * time.Second)
+	lbc.MaxEjectionTime = iserviceconfig.Duration(300 * time.Second)
+	lbc.MaxEjectionPercent = 10
+	// Unmarshal JSON on a type with zero values for methods, including
+	// UnmarshalJSON. Overwrites defaults, leaves alone if not. typecast to
+	// avoid infinite recursion by not recalling this function and causing stack
+	// overflow.
+	return json.Unmarshal(j, (*lbConfig)(lbc))
 }
 
 // EqualIgnoringChildPolicy returns whether the LBConfig is same with the

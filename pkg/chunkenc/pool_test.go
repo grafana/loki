@@ -25,8 +25,8 @@ func TestPool(t *testing.T) {
 				var (
 					buf   = bytes.NewBuffer(nil)
 					res   = make([]byte, 1024)
-					wpool = getWriterPool(enc)
-					rpool = getReaderPool(enc)
+					wpool = GetWriterPool(enc)
+					rpool = GetReaderPool(enc)
 				)
 
 				w := wpool.GetWriter(buf)

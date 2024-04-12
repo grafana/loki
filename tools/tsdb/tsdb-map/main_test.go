@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 func TestExtractChecksum(t *testing.T) {
@@ -73,6 +73,7 @@ func BenchmarkQuery_PostingsForMatchers(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				p, _ := tsdb.PostingsForMatchers(reader, nil, bm.matchers...)
 
+				//nolint:revive
 				for p.Next() {
 				}
 			}
@@ -93,7 +94,7 @@ func BenchmarkQuery_GetChunkRefs(b *testing.B) {
 		if err != nil {
 			panic(err)
 		}
-		idx := tsdb.NewTSDBIndex(reader, tsdb.NewPostingsReader(reader))
+		idx := tsdb.NewTSDBIndex(reader)
 		b.Run(bm.name, func(b *testing.B) {
 			refs := tsdb.ChunkRefsPool.Get()
 			for i := 0; i < b.N; i++ {
@@ -118,7 +119,7 @@ func BenchmarkQuery_GetChunkRefsSharded(b *testing.B) {
 		if err != nil {
 			panic(err)
 		}
-		idx := tsdb.NewTSDBIndex(reader, tsdb.NewPostingsReader(reader))
+		idx := tsdb.NewTSDBIndex(reader)
 		shardFactor := 16
 
 		b.Run(bm.name, func(b *testing.B) {

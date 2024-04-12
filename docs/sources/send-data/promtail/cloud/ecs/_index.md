@@ -39,7 +39,7 @@ We will also need an [IAM Role to run containers][ecs iam] with, let's create a 
 > You might already have this `ecsTaskExecutionRole` role in your AWS account if that's the case you can skip this step.
 
 ```bash
-curl https://raw.githubusercontent.com/grafana/loki/main/docs/sources/clients/aws/ecs/ecs-role.json > ecs-role.json
+curl https://raw.githubusercontent.com/grafana/loki/main/docs/sources/send-data/promtail/cloud/ecs/ecs-role.json > ecs-role.json
 aws iam create-role --role-name ecsTaskExecutionRole  --assume-role-policy-document file://ecs-role.json
 
 {
@@ -88,13 +88,13 @@ Our [task definition][task] will be made of two containers, the [Firelens][Firel
 Let's download the task definition, we'll go through the most important parts.
 
 ```bash
-curl https://raw.githubusercontent.com/grafana/loki/main/docs/sources/clients/aws/ecs/ecs-task.json > ecs-task.json
+curl https://raw.githubusercontent.com/grafana/loki/main/docs/sources/send-data/promtail/cloud/ecs/ecs-task.json > ecs-task.json
 ```
 
 ```json
  {
     "essential": true,
-    "image": "grafana/fluent-bit-plugin-loki:2.0.0-amd64",
+    "image": "grafana/fluent-bit-plugin-loki:2.9.3-amd64",
     "name": "log_router",
     "firelensConfiguration": {
         "type": "fluentbit",
@@ -131,12 +131,17 @@ The `log_router` container image is the [Fluent bit Loki docker image][fluentbit
         "logDriver": "awsfirelens",
         "options": {
             "Name": "loki",
-            "Url": "https://<userid>:<grafancloud apikey>@<grafanacloud host>/loki/api/v1/push",
+            "Host": "<grafanacloud host>",
+            "Http_User": "<userid>", 
             "Labels": "{job=\"firelens\"}",
             "RemoveKeys": "container_id,ecs_task_arn",
             "LabelKeys": "container_name,ecs_task_definition,source,ecs_cluster",
             "LineFormat": "key_value"
-        }
+        },
+        "secretOptions": [{
+            "name": "Http_Passwd",
+            "valueFrom": "data.aws_secretsmanager_secret.grafana_cloud_loki_http_password.id"
+        }]
     },
     "name": "sample-app"
 }
@@ -144,11 +149,11 @@ The `log_router` container image is the [Fluent bit Loki docker image][fluentbit
 
 The second container is our `sample-app`, a simple [alpine][alpine] container that prints to stdout welcoming messages. To send those logs to Loki, we will configure this container to use the log driver `awsfirelens`.
 
-Go ahead and replace the `Url` property with your [GrafanaCloud][GrafanaCloud] credentials, you can find them in your [account][grafanacloud account] in the Loki instance page. If you're running your own Loki instance replace completely the URL (e.g `http://my-loki.com:3100/loki/api/v1/push`).
+Go ahead and replace the `Host` and `HTTP_User` property with your [GrafanaCloud][GrafanaCloud] credentials, you can find them in your [account][grafanacloud account] in the Loki instance page. If you're running your own Loki instance replace completely the URL (for example, `http://my-loki.com:3100/loki/api/v1/push`).
 
 We include plain text credentials in `options` for simplicity. However, this exposes credentials in your ECS task definition and in any version-controlled configuration. Mitigate this issue by using a secret store such as [AWS Secrets Manager](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html), combined with the `secretOptions` configuration option for [injecting sensitive data in a log configuration](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/specifying-sensitive-data-secrets.html#secrets-logconfig).
 
-All `options` of the `logConfiguration` will be automatically translated into [fluentbit ouput][fluentbit ouput]. For example, the above options will produce this fluent bit `OUTPUT` config section:
+All `options` of the `logConfiguration` will be automatically translated into [fluentbit output][fluentbit output]. For example, the above options will produce this fluent bit `OUTPUT` config section:
 
 ```conf
 [OUTPUT]
@@ -226,14 +231,14 @@ That's it ! Make sure to checkout LogQL to learn more about Loki powerful query 
 [ecs iam]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
 [arn]: https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html
 [task]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definitions.html
-[fluentd loki]: https://grafana.com/docs/loki/latest/send-data/fluentd/
-[fluentbit loki]: https://grafana.com/docs/loki/latest/send-data/fluentbit/
+[fluentd loki]: https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentd/
+[fluentbit loki]: https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentbit/
 [fluentbit]: https://fluentbit.io/
 [fluentd]: https://www.fluentd.org/
 [fluentbit loki image]: https://hub.docker.com/r/grafana/fluent-bit-plugin-loki
-[logql]: https://grafana.com/docs/loki/latest/logql/
+[logql]: https://grafana.com/docs/loki/<LOKI_VERSION>/logql/
 [alpine]:https://hub.docker.com/_/alpine
-[fluentbit ouput]: https://fluentbit.io/documentation/0.14/output/
+[fluentbit output]: https://fluentbit.io/documentation/0.14/output/
 [routing]: https://fluentbit.io/documentation/0.13/getting_started/routing.html
 [grafanacloud account]: https://grafana.com/login
 [grafana logs firelens]: ./ecs-grafana.png

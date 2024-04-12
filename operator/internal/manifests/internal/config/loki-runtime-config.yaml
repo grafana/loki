@@ -32,6 +32,11 @@ overrides:
     {{- if $l.PerStreamRateLimitBurst }}
     per_stream_rate_limit_burst: {{ $l.PerStreamRateLimitBurst }}MB
     {{- end }}
+    {{- with $l.PerStreamDesiredRate }}
+    shard_streams:
+      enabled: true
+      desired_rate: {{ . }}MB
+    {{- end}}
   {{- end -}}
   {{- if $l := $spec.QueryLimits -}}
     {{- if $l.MaxEntriesLimitPerQuery }}
@@ -49,6 +54,21 @@ overrides:
     {{- if $spec.QueryLimits.CardinalityLimit }}
     cardinality_limit: {{ $spec.QueryLimits.CardinalityLimit }}
     {{- end }}
+    {{- with $l.Blocked }}
+    blocked_queries:
+    {{- range $blockedQuery := . }}
+    - pattern: {{ .Pattern | printf "%q" }}
+      {{- with $blockedQuery.Regex }}
+      regex: {{ . }}
+      {{- end }}
+      {{- with $blockedQuery.Types }}
+      types: {{ . }}
+      {{- end }}
+      {{- with $blockedQuery.Hash }}
+      hash: {{ . }}
+      {{- end }}
+    {{- end }}
+    {{- end}}
   {{- end -}}
   {{- with $spec.Retention }}
     retention_period: {{ .Days }}d

@@ -108,6 +108,10 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if c.Regex.Regexp == nil {
 		c.Regex = MustNewRegexp("")
 	}
+	return c.Validate()
+}
+
+func (c *Config) Validate() error {
 	if c.Action == "" {
 		return fmt.Errorf("relabel action cannot be empty")
 	}
@@ -117,7 +121,13 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if (c.Action == Replace || c.Action == HashMod || c.Action == Lowercase || c.Action == Uppercase || c.Action == KeepEqual || c.Action == DropEqual) && c.TargetLabel == "" {
 		return fmt.Errorf("relabel configuration for %s action requires 'target_label' value", c.Action)
 	}
-	if (c.Action == Replace || c.Action == Lowercase || c.Action == Uppercase || c.Action == KeepEqual || c.Action == DropEqual) && !relabelTarget.MatchString(c.TargetLabel) {
+	if c.Action == Replace && !strings.Contains(c.TargetLabel, "$") && !model.LabelName(c.TargetLabel).IsValid() {
+		return fmt.Errorf("%q is invalid 'target_label' for %s action", c.TargetLabel, c.Action)
+	}
+	if c.Action == Replace && strings.Contains(c.TargetLabel, "$") && !relabelTarget.MatchString(c.TargetLabel) {
+		return fmt.Errorf("%q is invalid 'target_label' for %s action", c.TargetLabel, c.Action)
+	}
+	if (c.Action == Lowercase || c.Action == Uppercase || c.Action == KeepEqual || c.Action == DropEqual) && !model.LabelName(c.TargetLabel).IsValid() {
 		return fmt.Errorf("%q is invalid 'target_label' for %s action", c.TargetLabel, c.Action)
 	}
 	if (c.Action == Lowercase || c.Action == Uppercase || c.Action == KeepEqual || c.Action == DropEqual) && c.Replacement != DefaultRelabelConfig.Replacement {
@@ -202,10 +212,12 @@ func (re Regexp) String() string {
 	return str[4 : len(str)-2]
 }
 
-// Process returns a relabeled copy of the given label set. The relabel configurations
+// Process returns a relabeled version of the given label set. The relabel configurations
 // are applied in order of input.
+// There are circumstances where Process will modify the input label.
+// If you want to avoid issues with the input label set being modified, at the cost of
+// higher memory usage, you can use lbls.Copy().
 // If a label set is dropped, EmptyLabels and false is returned.
-// May return the input labelSet modified.
 func Process(lbls labels.Labels, cfgs ...*Config) (ret labels.Labels, keep bool) {
 	lb := labels.NewBuilder(lbls)
 	if !ProcessBuilder(lb, cfgs...) {
@@ -262,12 +274,11 @@ func relabel(cfg *Config, lb *labels.Builder) (keep bool) {
 		}
 		target := model.LabelName(cfg.Regex.ExpandString([]byte{}, cfg.TargetLabel, val, indexes))
 		if !target.IsValid() {
-			lb.Del(cfg.TargetLabel)
 			break
 		}
 		res := cfg.Regex.ExpandString([]byte{}, cfg.Replacement, val, indexes)
 		if len(res) == 0 {
-			lb.Del(cfg.TargetLabel)
+			lb.Del(string(target))
 			break
 		}
 		lb.Set(string(target), string(res))

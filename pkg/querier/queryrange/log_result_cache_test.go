@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 const (
@@ -32,7 +32,7 @@ func Test_LogResultCacheSameRange(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splits: map[string]time.Duration{"foo": time.Minute},
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
 			nil,
@@ -74,7 +74,7 @@ func Test_LogResultCacheSameRangeNonEmpty(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splits: map[string]time.Duration{"foo": time.Minute},
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
 			nil,
@@ -122,7 +122,7 @@ func Test_LogResultCacheSmallerRange(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splits: map[string]time.Duration{"foo": time.Minute},
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
 			nil,
@@ -172,7 +172,7 @@ func Test_LogResultCacheDifferentRange(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splits: map[string]time.Duration{"foo": time.Minute},
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
 			nil,
@@ -248,7 +248,7 @@ func Test_LogResultCacheDifferentRangeNonEmpty(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splits: map[string]time.Duration{"foo": time.Minute},
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
 			nil,
@@ -335,7 +335,7 @@ func Test_LogResultCacheDifferentRangeNonEmptyAndEmpty(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splits: map[string]time.Duration{"foo": time.Minute},
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
 			nil,
@@ -445,7 +445,7 @@ func Test_LogResultNonOverlappingCache(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splits: map[string]time.Duration{"foo": time.Minute},
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
 			},
 			mockCache,
 			nil,
@@ -580,6 +580,54 @@ func Test_LogResultNonOverlappingCache(t *testing.T) {
 	fake.AssertExpectations(t)
 }
 
+func Test_LogResultCacheDifferentLimit(t *testing.T) {
+	var (
+		ctx = user.InjectOrgID(context.Background(), "foo")
+		lrc = NewLogResultCache(
+			log.NewNopLogger(),
+			fakeLimits{
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
+			},
+			cache.NewMockCache(),
+			nil,
+			nil,
+			nil,
+		)
+	)
+
+	req1 := &LokiRequest{
+		StartTs: time.Unix(0, time.Minute.Nanoseconds()),
+		EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
+		Limit:   entriesLimit,
+	}
+
+	req2 := &LokiRequest{
+		StartTs: time.Unix(0, time.Minute.Nanoseconds()),
+		EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
+		Limit:   10,
+	}
+
+	fake := newFakeResponse([]mockResponse{
+		{
+			RequestResponse: queryrangebase.RequestResponse{
+				Request:  req1,
+				Response: emptyResponse(req1),
+			},
+		},
+	})
+
+	h := lrc.Wrap(fake)
+
+	resp, err := h.Do(ctx, req1)
+	require.NoError(t, err)
+	require.Equal(t, emptyResponse(req1), resp)
+	resp, err = h.Do(ctx, req2)
+	require.NoError(t, err)
+	require.Equal(t, emptyResponse(req2), resp)
+
+	fake.AssertExpectations(t)
+}
+
 func TestExtractLokiResponse(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
@@ -677,6 +725,7 @@ func newFakeResponse(responses []mockResponse) fakeResponse {
 	for _, r := range responses {
 		m.On("Do", mock.Anything, r.Request).Return(r.Response, r.err).Once()
 	}
+
 	return fakeResponse{
 		Mock: m,
 	}

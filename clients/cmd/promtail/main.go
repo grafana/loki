@@ -17,22 +17,23 @@ import (
 	"github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/tracing"
 	"github.com/prometheus/client_golang/prometheus"
+	collectors_version "github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/version"
 
-	"github.com/grafana/loki/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/clients/pkg/promtail"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
-	promtail_config "github.com/grafana/loki/clients/pkg/promtail/config"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/v3/clients/pkg/promtail"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
+	promtail_config "github.com/grafana/loki/v3/clients/pkg/promtail/config"
 
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/cfg"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/cfg"
 
-	_ "github.com/grafana/loki/pkg/util/build"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	_ "github.com/grafana/loki/v3/pkg/util/build"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func init() {
-	prometheus.MustRegister(version.NewCollector("promtail"))
+	prometheus.MustRegister(collectors_version.NewCollector("promtail"))
 }
 
 var mtx sync.Mutex
@@ -107,7 +108,7 @@ func main() {
 		exit(1)
 	}
 	serverCfg := &config.Config.ServerConfig.Config
-	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, true, false)
+	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, false)
 
 	// Use Stderr instead of files for the klog.
 	klog.SetOutput(os.Stderr)

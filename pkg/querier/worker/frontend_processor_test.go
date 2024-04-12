@@ -14,7 +14,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/grafana/loki/pkg/util/test"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/util/test"
 )
 
 const bufConnSize = 1024 * 1024
@@ -32,13 +33,13 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := Config{}
-	mgr := newFrontendProcessor(cfg, nil, log.NewNopLogger())
+	mgr := newFrontendProcessor(cfg, nil, log.NewNopLogger(), queryrange.DefaultCodec)
 	running := atomic.NewBool(false)
 	go func() {
 		running.Store(true)
 		defer running.Store(false)
 
-		mgr.processQueriesOnSingleStream(ctx, cc, "test:12345")
+		mgr.processQueriesOnSingleStream(ctx, cc, "test:12345", "")
 	}()
 
 	test.Poll(t, time.Second, true, func() interface{} {

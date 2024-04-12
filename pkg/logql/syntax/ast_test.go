@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 var labelBar, _ = ParseLabels("{app=\"bar\"}")
@@ -24,7 +24,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar"}`, false},
 		{`{foo="bar", bar!="baz"}`, false},
 		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop"`, true},
-		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap"`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" |> "qux" !> "waldo" != "flip" !~ "flap"`, true},
 		{`{foo="bar", bar!="baz"} |= ""`, false},
 		{`{foo="bar", bar!="baz"} |= "" |= ip("::1")`, true},
 		{`{foo="bar", bar!="baz"} |= "" != ip("127.0.0.1")`, true},
@@ -32,7 +32,10 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar", bar!="baz"} |~ ".*"`, false},
 		{`{foo="bar", bar!="baz"} |= "" |= ""`, false},
 		{`{foo="bar", bar!="baz"} |~ "" |= "" |~ ".*"`, false},
-		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop" | json`, true},
+		{`{foo="bar", bar!="baz"} |> ""`, true},
+		{`{foo="bar", bar!="baz"} |> "<_>"`, true},
+		{`{foo="bar", bar!="baz"} |> "<_>" !> "<_> <_>"`, true},
+		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop" |> "<_> bop <_>" | json`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict --keep-empty`, true},
@@ -177,10 +180,10 @@ func Test_SampleExpr_String(t *testing.T) {
 		)
 		`,
 		`(((
-			sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-1min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 60) 
-				or on ()  
-				((sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-15min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 15) / 60)) 
-				or on ()  
+			sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-1min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 60)
+				or on ()
+				((sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-15min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 15) / 60))
+				or on ()
 				((sum by(typename,pool,commandname,colo) (sum_over_time({_namespace_="appspace", _schema_="appspace-1h", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 60) / 60))`,
 		`{app="foo"} | logfmt code="response.code", IPAddress="host"`,
 	} {
@@ -275,6 +278,7 @@ func Test_NilFilterDoesntPanic(t *testing.T) {
 		`{namespace="dev", container_name="cart"} |= "bleep" |= "" |= "bloop"`,
 		`{namespace="dev", container_name="cart"} |= "bleep" |= "" |= "bloop"`,
 		`{namespace="dev", container_name="cart"} |= "bleep" |= "bloop" |= ""`,
+		`{namespace="dev", container_name="cart"} !> ""`,
 	} {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseLogSelector(tc, true)
@@ -356,6 +360,20 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", true}, {"bar", false}, {"foobar", true}},
 		},
 		{
+			`{app="foo"} |> "foo <_>"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo bar", true}, {"foo", false}},
+		},
+		{
+			`{app="foo"} !> "foo <_>"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo bar", false}, {"foo", true}},
+		},
+		{
 			`{app="foo"} |~ "foo\\.bar\\.baz"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
@@ -384,11 +402,39 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
 		},
 		{
-			`{app="foo"} != "foo" or "bar"`,
+			`{app="foo"} |= "test" |= "foo" or "bar"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
-			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
+			[]linecheck{{"test foo", true}, {"test bar", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} |= "test" |= "foo" or "bar" or "baz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test foo", true}, {"test bar", true}, {"test baz", true}, {"baz", false}, {"bar", false}, {"foo", false}, {"none", false}},
+		},
+		{
+			`{app="foo"} |= "test" |= "foo" or "bar" or "baz" |= "car"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"car test foo", true}, {"car test bar", true}, {"car test baz", true}, {"baz", false}, {"bar", false}, {"test", false}, {"foo", false}, {"car", false}, {"none", false}},
+		},
+		{
+			`{app="foo"} |= "test" |= "foo" or "bar" or "baz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test foo", true}, {"test bar", true}, {"test baz", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} |= "foo" or "bar" |= "buzz" or "fizz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo buzz", true}, {"bar fizz", true}, {"foo", false}, {"bar", false}, {"none", false}},
 		},
 		{
 			`{app="foo"} |~ "foo" or "bar"`,
@@ -398,7 +444,113 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
 		},
 		{
+			`{app="foo"} |~ "test" |~ "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test foo", true}, {"test bar", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} |~ "test" |~ "foo" or "bar" or "baz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test foo", true}, {"test bar", true}, {"test baz", true}, {"baz", false}, {"bar", false}, {"foo", false}, {"none", false}},
+		},
+		{
+			`{app="foo"} |~ "test" |~ "foo" or "bar" or "baz" |~ "car"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"car test foo", true}, {"car test bar", true}, {"car test baz", true}, {"baz", false}, {"bar", false}, {"test", false}, {"foo", false}, {"car", false}, {"none", false}},
+		},
+		{
+			`{app="foo"} != "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} != "test" != "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test", false}, {"foo", false}, {"bar", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} != "test" != "foo" or "bar" or "baz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test", false}, {"foo", false}, {"bar", false}, {"baz", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} != "test" != "foo" or "bar" or "baz" != "car"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test", false}, {"foo", false}, {"bar", false}, {"baz", false}, {"car", false}, {"none", true}},
+		},
+
+		{
+			`{app="foo"} |~ "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
+		},
+		{
 			`{app="foo"} !~ "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} !~ "test" !~ "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test", false}, {"foo", false}, {"bar", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} !~ "test" !~ "foo" or "bar" or "baz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test", false}, {"foo", false}, {"bar", false}, {"baz", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} !~ "test" !~ "foo" or "bar" or "baz" !~ "car"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test", false}, {"foo", false}, {"bar", false}, {"baz", false}, {"car", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} |= ip("127.0.0.1") or "foo"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", false}, {"127.0.0.2", false}, {"127.0.0.1", true}},
+		},
+		{
+			`{app="foo"} != ip("127.0.0.1") or "foo"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", true}, {"127.0.0.2", true}, {"127.0.0.1", false}},
+		},
+		{
+			`{app="foo"} |> "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} !> "foo" or "bar"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
@@ -428,16 +580,18 @@ func Test_FilterMatcher(t *testing.T) {
 
 func TestOrLineFilterTypes(t *testing.T) {
 	for _, tt := range []struct {
-		ty labels.MatchType
+		ty log.LineMatchType
 	}{
-		{labels.MatchEqual},
-		{labels.MatchNotEqual},
-		{labels.MatchRegexp},
-		{labels.MatchNotRegexp},
+		{log.LineMatchEqual},
+		{log.LineMatchNotEqual},
+		{log.LineMatchRegexp},
+		{log.LineMatchNotRegexp},
+		{log.LineMatchPattern},
+		{log.LineMatchNotPattern},
 	} {
 		t.Run("right inherits left's type", func(t *testing.T) {
-			left := &LineFilterExpr{Ty: tt.ty, Match: "something"}
-			right := &LineFilterExpr{Ty: labels.MatchEqual, Match: "something"}
+			left := &LineFilterExpr{LineFilter: LineFilter{Ty: tt.ty, Match: "something"}}
+			right := &LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "something"}}
 
 			_ = newOrLineFilter(left, right)
 			require.Equal(t, tt.ty, right.Ty)
@@ -474,6 +628,116 @@ func TestStringer(t *testing.T) {
 			in:  `0 > count_over_time({foo="bar"}[1m])`,
 			out: `(0 > count_over_time({foo="bar"}[1m]))`,
 		},
+		{
+			in:  `{app="foo"} |= "foo" or "bar"`,
+			out: `{app="foo"} |= "foo" or "bar"`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or "bar" or "baz"`,
+			out: `{app="foo"} |= "foo" or "bar" or "baz"`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or "bar" or "baz" |= "car"`,
+			out: `{app="foo"} |= "foo" or "bar" or "baz" |= "car"`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or "bar" or "baz" |= "car" |= "a" or "b" or "c"`,
+			out: `{app="foo"} |= "foo" or "bar" or "baz" |= "car" |= "a" or "b" or "c"`,
+		},
+		{
+			in:  `{app="foo"} |~ "foo" or "bar" or "baz"`,
+			out: `{app="foo"} |~ "foo" or "bar" or "baz"`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or "bar" |= "buzz" or "fizz"`,
+			out: `{app="foo"} |= "foo" or "bar" |= "buzz" or "fizz"`,
+		},
+		{
+			out: `{app="foo"} |= "foo" or "bar" |~ "buzz|fizz"`,
+			in:  `{app="foo"} |= "foo" or "bar" |~ "buzz|fizz"`,
+		},
+		{
+			in:  `{app="foo"} |= ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} |= ip("127.0.0.1") or "foo"`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or ip("127.0.0.1")`,
+			out: `{app="foo"} |= "foo" or ip("127.0.0.1")`,
+		},
+		{
+			in:  `{app="foo"} |~ ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} |~ ip("127.0.0.1") or "foo"`,
+		},
+		{
+			in:  `{app="foo"} |> "foo <_> baz" or "foo <_>"`,
+			out: `{app="foo"} |> "foo <_> baz" or "foo <_>"`,
+		},
+		{
+			in:  `{app="foo"} |> "foo <_> baz" or "foo <_>" |> "foo <_> baz"`,
+			out: `{app="foo"} |> "foo <_> baz" or "foo <_>" |> "foo <_> baz"`,
+		},
+		{ // !(A || B) == !A && !B
+			in:  `{app="foo"} != "foo" or "bar"`,
+			out: `{app="foo"} != "foo" != "bar"`,
+		},
+		{
+			in:  `{app="foo"} != "test" != "foo" or "bar"`,
+			out: `{app="foo"} != "test" != "foo" != "bar"`,
+		},
+		{
+			in:  `{app="foo"} != "test" != "foo" or "bar" or "baz"`,
+			out: `{app="foo"} != "test" != "foo" != "bar" != "baz"`,
+		},
+		{
+			in:  `{app="foo"} != "foo" or "bar" or "baz" != "car"`,
+			out: `{app="foo"} != "foo" != "bar" != "baz" != "car"`,
+		},
+		{
+			in:  `{app="foo"} != "foo" or "bar" or "baz" != "car" != "a" or "b" or "c"`,
+			out: `{app="foo"} != "foo" != "bar" != "baz" != "car" != "a" != "b" != "c"`,
+		},
+		{
+			// Mix of != and |=
+			in:  `{app="foo"} |= "foo" or "bar" or "baz" != "car" != "a" or "b" or "c"`,
+			out: `{app="foo"} |= "foo" or "bar" or "baz" != "car" != "a" != "b" != "c"`,
+		},
+		{
+			in:  `{app="foo"} !~ "foo" or "bar"`,
+			out: `{app="foo"} !~ "foo" !~ "bar"`,
+		},
+		{
+			in:  `{app="foo"} !~ "test" !~ "foo" or "bar"`,
+			out: `{app="foo"} !~ "test" !~ "foo" !~ "bar"`,
+		},
+		{
+			in:  `{app="foo"} !~ "test" !~ "foo" or "bar" or "baz"`,
+			out: `{app="foo"} !~ "test" !~ "foo" !~ "bar" !~ "baz"`,
+		},
+		{
+			in:  `{app="foo"} !~ "foo" or "bar" or "baz" !~ "car"`,
+			out: `{app="foo"} !~ "foo" !~ "bar" !~ "baz" !~ "car"`,
+		},
+		{
+			in:  `{app="foo"} !~ "foo" or "bar" or "baz" !~ "car" !~ "a" or "b" or "c"`,
+			out: `{app="foo"} !~ "foo" !~ "bar" !~ "baz" !~ "car" !~ "a" !~ "b" !~ "c"`,
+		},
+		{
+			// Mix of !~ and |~
+			in:  `{app="foo"} |~ "foo" or "bar" or "baz" !~ "car" !~ "a" or "b" or "c"`,
+			out: `{app="foo"} |~ "foo" or "bar" or "baz" !~ "car" !~ "a" !~ "b" !~ "c"`,
+		},
+		{
+			in:  `{app="foo"} != ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} != ip("127.0.0.1") != "foo"`,
+		},
+		{
+			in:  `{app="foo"} !~ ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} !~ ip("127.0.0.1") !~ "foo"`,
+		},
+		{
+			in:  `{app="foo"} !> "<_> foo <_>" or "foo <_>" !> "foo <_> baz"`,
+			out: `{app="foo"} !> "<_> foo <_>" !> "foo <_>" !> "foo <_> baz"`,
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			expr, err := ParseExpr(tc.in)
@@ -498,19 +762,19 @@ func BenchmarkContainsFilter(b *testing.B) {
 	}{
 		{
 			"AllMatches",
-			`{app="foo"} |= "foo" |= "hello" |= "world" |= "bar"`,
+			`{app="foo"} |= "foo" |= "hello" |= "world" |= "bar" |> "<_> world <_>"`,
 		},
 		{
 			"OneMatches",
-			`{app="foo"} |= "foo" |= "not" |= "in" |= "there"`,
+			`{app="foo"} |= "foo" |= "not" |= "in" |= "there" |> "yet"`,
 		},
 		{
 			"MixedFiltersTrue",
-			`{app="foo"} |= "foo" != "not" |~ "hello.*bar" != "there" |= "world"`,
+			`{app="foo"} |= "foo" != "not" |~ "hello.*bar" != "there" |= "world" |> "<_> more than one <_>"`,
 		},
 		{
 			"MixedFiltersFalse",
-			`{app="foo"} |= "baz" != "not" |~ "hello.*bar" != "there" |= "world"`,
+			`{app="foo"} |= "baz" != "not" |~ "hello.*bar" != "there" |= "world" !> "<_> more than one"`,
 		},
 		{
 			"GreedyRegex",
@@ -670,6 +934,7 @@ func Test_MergeBinOpVectors_Filter(t *testing.T) {
 		OpTypeGT,
 		&promql.Sample{F: 2},
 		&promql.Sample{F: 0},
+		false,
 		true,
 		true,
 	)

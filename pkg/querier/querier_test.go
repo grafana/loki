@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
@@ -18,12 +19,15 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -82,10 +86,13 @@ func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
 
 func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	request := logproto.TailRequest{
-		Query:    "{type=\"test\"}",
+		Query:    `{type="test"}`,
 		DelayFor: 0,
 		Limit:    10,
 		Start:    time.Now(),
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{type="test"}`),
+		},
 	}
 
 	store := newStoreMock()
@@ -117,7 +124,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
-	_, err = q.Tail(ctx, &request)
+	_, err = q.Tail(ctx, &request, false)
 	require.NoError(t, err)
 
 	calls := ingesterClient.GetMockedCallsByMethod("Query")
@@ -166,11 +173,14 @@ func defaultLimitsTestConfig() validation.Limits {
 
 func TestQuerier_validateQueryRequest(t *testing.T) {
 	request := logproto.QueryRequest{
-		Selector:  "{type=\"test\", fail=\"yes\"} |= \"foo\"",
+		Selector:  `{type="test", fail="yes"} |= "foo"`,
 		Limit:     10,
 		Start:     time.Now().Add(-1 * time.Minute),
 		End:       time.Now(),
 		Direction: logproto.FORWARD,
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{type="test", fail="yes"} |= "foo"`),
+		},
 	}
 
 	store := newStoreMock()
@@ -203,7 +213,10 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max streams matchers per query exceeded, matchers-count > limit (2 > 1)"), err)
 
-	request.Selector = "{type=\"test\"}"
+	request.Selector = `{type="test"}`
+	request.Plan = &plan.QueryPlan{
+		AST: syntax.MustParseExpr(`{type="test"}`),
+	}
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
 	require.NoError(t, err)
 
@@ -224,9 +237,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 	mockSeriesResponse := func(series []map[string]string) *logproto.SeriesResponse {
 		resp := &logproto.SeriesResponse{}
 		for _, s := range series {
-			resp.Series = append(resp.Series, logproto.SeriesIdentifier{
-				Labels: s,
-			})
+			resp.Series = append(resp.Series, logproto.SeriesIdentifierFromMap(s))
 		}
 		return resp
 	}
@@ -291,8 +302,14 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				}), nil)
 
 				store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-					{Labels: map[string]string{"a": "1", "b": "4"}},
-					{Labels: map[string]string{"a": "1", "b": "5"}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "4"},
+					}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "5"},
+					}},
 				}, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
@@ -300,10 +317,22 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				resp, err := q.Series(ctx, req)
 				require.Nil(t, err)
 				require.ElementsMatch(t, []logproto.SeriesIdentifier{
-					{Labels: map[string]string{"a": "1", "b": "2"}},
-					{Labels: map[string]string{"a": "1", "b": "3"}},
-					{Labels: map[string]string{"a": "1", "b": "4"}},
-					{Labels: map[string]string{"a": "1", "b": "5"}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "2"},
+					}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "3"}},
+					},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "4"},
+					}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "5"},
+					}},
 				}, resp.GetSeries())
 			},
 		},
@@ -316,8 +345,14 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				}), nil)
 
 				store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-					{Labels: map[string]string{"a": "1", "b": "2"}},
-					{Labels: map[string]string{"a": "1", "b": "3"}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "2"},
+					}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "3"},
+					}},
 				}, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
@@ -325,8 +360,14 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				resp, err := q.Series(ctx, req)
 				require.Nil(t, err)
 				require.ElementsMatch(t, []logproto.SeriesIdentifier{
-					{Labels: map[string]string{"a": "1", "b": "2"}},
-					{Labels: map[string]string{"a": "1", "b": "3"}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "2"},
+					}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "3"},
+					}},
 				}, resp.GetSeries())
 			},
 		},
@@ -393,6 +434,9 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 				Start:     tc.end.Add(-6 * time.Hour),
 				End:       tc.end,
 				Direction: logproto.FORWARD,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{app="foo"}`),
+				},
 			}
 
 			queryClient := newQueryClientMock()
@@ -424,6 +468,7 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 			require.Nil(t, err)
 
 			// since streams are loaded lazily, force iterators to exhaust
+			//nolint:revive
 			for res.Next() {
 			}
 			queryClient.AssertExpectations(t)
@@ -439,6 +484,9 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 		DelayFor: 0,
 		Limit:    10,
 		Start:    time.Now(),
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr("{type=\"test\"}"),
+		},
 	}
 
 	t.Parallel()
@@ -511,7 +559,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 			require.NoError(t, err)
 
 			ctx := user.InjectOrgID(context.Background(), "test")
-			_, err = q.Tail(ctx, &request)
+			_, err = q.Tail(ctx, &request, false)
 			assert.Equal(t, testData.expectedError, err)
 		})
 	}
@@ -876,11 +924,14 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 			do: func(querier *SingleTenantQuerier, start, end time.Time) error {
 				_, err := querier.SelectLogs(ctx, logql.SelectLogParams{
 					QueryRequest: &logproto.QueryRequest{
-						Selector:  "{type=\"test\", fail=\"yes\"} |= \"foo\"",
+						Selector:  `{type="test", fail="yes"} |= "foo"`,
 						Limit:     10,
 						Start:     start,
 						End:       end,
 						Direction: logproto.FORWARD,
+						Plan: &plan.QueryPlan{
+							AST: syntax.MustParseExpr(`{type="test", fail="yes"} |= "foo"`),
+						},
 					},
 				})
 
@@ -892,9 +943,12 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 			do: func(querier *SingleTenantQuerier, start, end time.Time) error {
 				_, err := querier.SelectSamples(ctx, logql.SelectSampleParams{
 					SampleQueryRequest: &logproto.SampleQueryRequest{
-						Selector: "count_over_time({foo=\"bar\"}[5m])",
+						Selector: `count_over_time({foo="bar"}[5m])`,
 						Start:    start,
 						End:      end,
+						Plan: &plan.QueryPlan{
+							AST: syntax.MustParseExpr(`count_over_time({foo="bar"}[5m])`),
+						},
 					},
 				})
 				return err
@@ -1090,7 +1144,7 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	ingesterClient.On("Series", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.SeriesResponse{
 		Series: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{"bar": "1"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "bar", Value: "1"}},
 			},
 		},
 	}, nil)
@@ -1101,7 +1155,7 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"1", "2", "3"}, nil)
 	store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
 	store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-		{Labels: map[string]string{"foo": "1"}},
+		{Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "foo", Value: "1"}}},
 	}, nil)
 
 	querier, err := newQuerier(
@@ -1136,7 +1190,7 @@ func Test_validateQueryTimeRangeLimits(t *testing.T) {
 	nowFunc = func() time.Time { return now }
 	tests := []struct {
 		name        string
-		limits      timeRangeLimits
+		limits      TimeRangeLimits
 		from        time.Time
 		through     time.Time
 		wantFrom    time.Time
@@ -1201,6 +1255,9 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 		Start:     time.Unix(0, 300000000),
 		End:       time.Unix(0, 600000000),
 		Direction: logproto.FORWARD,
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{type="test"} |= "foo"`),
+		},
 	}
 
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
@@ -1216,6 +1273,9 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 			{Selector: "1", Start: 200000000, End: 400000000},
 			{Selector: "2", Start: 400000000, End: 500000000},
 			{Selector: "3", Start: 500000000, End: 700000000},
+		},
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(request.Selector),
 		},
 	}
 
@@ -1261,6 +1321,9 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 		Selector: `count_over_time({foo="bar"}[5m])`,
 		Start:    time.Unix(0, 300000000),
 		End:      time.Unix(0, 600000000),
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`count_over_time({foo="bar"}[5m])`),
+		},
 	}
 
 	_, err = q.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: &request})
@@ -1276,6 +1339,9 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 				{Selector: "2", Start: 400000000, End: 500000000},
 				{Selector: "3", Start: 500000000, End: 700000000},
 			},
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(request.Selector),
+			},
 		},
 	}
 
@@ -1285,12 +1351,12 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 }
 
 func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.PoolFactory, ring ring.ReadRing, dg *mockDeleteGettter, store storage.Store, limits *validation.Overrides) (*SingleTenantQuerier, error) {
-	iq, err := newIngesterQuerier(clientCfg, ring, cfg.ExtraQueryDelay, clientFactory)
+	iq, err := newIngesterQuerier(clientCfg, ring, cfg.ExtraQueryDelay, clientFactory, constants.Loki)
 	if err != nil {
 		return nil, err
 	}
 
-	return New(cfg, store, iq, limits, dg, nil)
+	return New(cfg, store, iq, limits, dg, nil, log.NewNopLogger())
 }
 
 type mockDeleteGettter struct {
@@ -1301,4 +1367,50 @@ type mockDeleteGettter struct {
 func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletion.DeleteRequest, error) {
 	d.user = userID
 	return d.results, nil
+}
+
+func TestQuerier_isLabelRelevant(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		label    string
+		values   *logproto.UniqueLabelValues
+		expected bool
+	}{
+		{
+			label:    "uuidv4 values are not relevant",
+			values:   &logproto.UniqueLabelValues{Values: []string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef", "6b7e2663-8ecb-42e1-8bdc-0c5de70185b3", "2e1e67ff-be4f-47b8-aee1-5d67ff1ddabf", "c95b2d62-74ed-4ed7-a8a1-eb72fc67946e"}},
+			expected: false,
+		},
+		{
+			label:    "guid values are not relevant",
+			values:   &logproto.UniqueLabelValues{Values: []string{"57808f62-f117-4a22-84a0-bc3282c7f106", "5076e837-cd8d-4dd7-95ff-fecb087dccf6", "2e2a6554-1744-4399-b89a-88ae79c27096", "d3c31248-ec0c-4bc4-b11c-8fb1cfb42e62"}},
+			expected: false,
+		},
+		{
+			label:    "integer values are not relevant",
+			values:   &logproto.UniqueLabelValues{Values: []string{"1", "2", "3", "4"}},
+			expected: false,
+		},
+		{
+			label:    "string values are relevant",
+			values:   &logproto.UniqueLabelValues{Values: []string{"ingester", "querier", "query-frontend", "index-gateway"}},
+			expected: true,
+		},
+		{
+			label:    "guid with braces are not relevant",
+			values:   &logproto.UniqueLabelValues{Values: []string{"{E9550CF7-58D9-48B9-8845-D9800C651AAC}", "{1617921B-1749-4FF0-A058-31AFB5D98149}", "{C119D92E-A4B9-48A3-A92C-6CA8AA8A6CCC}", "{228AAF1D-2DE7-4909-A4E9-246A7FA9D988}"}},
+			expected: false,
+		},
+		{
+			label:    "float values are not relevant",
+			values:   &logproto.UniqueLabelValues{Values: []string{"1.2", "2.5", "3.3", "4.1"}},
+			expected: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			querier := &SingleTenantQuerier{cfg: mockQuerierConfig()}
+			assert.Equal(t, tc.expected, querier.isLabelRelevant(tc.label, tc.values))
+		})
+
+	}
 }

@@ -7,78 +7,16 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
+	"time"
 
-	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/dskit/user"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/opentracing/opentracing-go/mocktracer"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
-
-func TestRequest(t *testing.T) {
-	// Create a Copy parsedRequest to assign the expected headers to the request without affecting other tests using the global.
-	// The test below adds a Test-Header header to the request and expects it back once the encode/decode of request is done via PrometheusCodec
-	parsedRequestWithHeaders := *parsedRequest
-	parsedRequestWithHeaders.Headers = reqHeaders
-	for i, tc := range []struct {
-		url         string
-		expected    Request
-		expectedErr error
-	}{
-		{
-			url:      query,
-			expected: &parsedRequestWithHeaders,
-		},
-		{
-			url:         "api/v1/query_range?start=foo",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"start\"; cannot parse \"foo\" to a valid timestamp"),
-		},
-		{
-			url:         "api/v1/query_range?start=123&end=bar",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"end\"; cannot parse \"bar\" to a valid timestamp"),
-		},
-		{
-			url:         "api/v1/query_range?start=123&end=0",
-			expectedErr: errEndBeforeStart,
-		},
-		{
-			url:         "api/v1/query_range?start=123&end=456&step=baz",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"step\"; cannot parse \"baz\" to a valid duration"),
-		},
-		{
-			url:         "api/v1/query_range?start=123&end=456&step=-1",
-			expectedErr: errNegativeStep,
-		},
-		{
-			url:         "api/v1/query_range?start=0&end=11001&step=1",
-			expectedErr: errStepTooSmall,
-		},
-	} {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			r, err := http.NewRequest("GET", tc.url, nil)
-			require.NoError(t, err)
-			r.Header.Add("Test-Header", "test")
-
-			ctx := user.InjectOrgID(context.Background(), "1")
-
-			// Get a deep copy of the request with Context changed to ctx
-			r = r.Clone(ctx)
-
-			req, err := PrometheusCodec.DecodeRequest(ctx, r, []string{"Test-Header"})
-			if err != nil {
-				require.EqualValues(t, tc.expectedErr, err)
-				return
-			}
-			require.EqualValues(t, tc.expected, req)
-
-			rdash, err := PrometheusCodec.EncodeRequest(context.Background(), req)
-			require.NoError(t, err)
-			require.EqualValues(t, tc.url, rdash.RequestURI)
-		})
-	}
-}
 
 func TestResponse(t *testing.T) {
 	r := *parsedResponse
@@ -98,7 +36,7 @@ func TestResponse(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 			}
-			resp, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
+			resp, err := PrometheusCodecForRangeQueries.DecodeResponse(context.Background(), response, nil)
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected, resp)
 
@@ -109,7 +47,7 @@ func TestResponse(t *testing.T) {
 				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 				ContentLength: int64(len(tc.body)),
 			}
-			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), nil, resp)
+			resp2, err := PrometheusCodecForRangeQueries.EncodeResponse(context.Background(), nil, resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})
@@ -182,6 +120,7 @@ func TestMergeAPIResponses(t *testing.T) {
 			name: "Basic merging of two responses.",
 			input: []Response{
 				&PrometheusResponse{
+					Warnings: []string{"warning1", "warning2"},
 					Data: PrometheusData{
 						ResultType: matrix,
 						Result: []SampleStream{
@@ -196,6 +135,7 @@ func TestMergeAPIResponses(t *testing.T) {
 					},
 				},
 				&PrometheusResponse{
+					Warnings: []string{"warning2", "warning3"},
 					Data: PrometheusData{
 						ResultType: matrix,
 						Result: []SampleStream{
@@ -211,7 +151,8 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 			expected: &PrometheusResponse{
-				Status: StatusSuccess,
+				Status:   StatusSuccess,
+				Warnings: []string{"warning1", "warning2", "warning3"},
 				Data: PrometheusData{
 					ResultType: matrix,
 					Result: []SampleStream{
@@ -327,10 +268,33 @@ func TestMergeAPIResponses(t *testing.T) {
 			},
 		}} {
 		t.Run(tc.name, func(t *testing.T) {
-			output, err := PrometheusCodec.MergeResponse(tc.input...)
+			output, err := PrometheusCodecForRangeQueries.MergeResponse(tc.input...)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, output)
 		})
+	}
+}
+
+func TestPrometheusRequestSpanLogging(t *testing.T) {
+	now := time.Now()
+	end := now.Add(1000 * time.Second)
+	req := PrometheusRequest{
+		Start: now,
+		End:   end,
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "start" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+			if field.Key == "end" {
+				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
+			}
+		}
 	}
 }
 

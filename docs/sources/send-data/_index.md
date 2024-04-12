@@ -22,6 +22,11 @@ Promtail is also the client of choice on bare-metal since it can be configured t
 Lastly, Promtail works well if you want to extract metrics from logs such as counting the occurrences of a particular message.
 - [xk6-loki extension](https://github.com/grafana/xk6-loki) - The k6-loki extension lets you perform [load testing on Loki]({{< relref "./k6" >}}).
 
+## OpenTelemetry Collector
+
+Loki natively supports ingesting OpenTelemetry logs over HTTP.
+See [Ingesting logs to Loki using OpenTelemetry Collector]({{< relref "./otel" >}}) for more details.
+
 ## Third-party clients
 
 The following clients have been developed by the Loki community or other third-parties and can be used to send log data to Loki.  
@@ -54,6 +59,7 @@ These third-party clients also enable sending logs to Loki:
 - [promtail-client](https://github.com/afiskon/promtail-client) (Go)
 - [push-to-loki.py](https://github.com/sleleko/devops-kb/blob/master/python/push-to-loki.py) (Python 3)
 - [python-logging-loki](https://pypi.org/project/python-logging-loki/) (Python 3)
+- [nextlog](https://pypi.org/project/nextlog/) (Python 3)
 - [Serilog-Sinks-Loki](https://github.com/JosephWoodward/Serilog-Sinks-Loki) (C#)
 - [Vector Loki Sink](https://vector.dev/docs/reference/configuration/sinks/loki/)
 - [winston-loki](https://github.com/JaniAnttonen/winston-loki) (JS)

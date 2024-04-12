@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 const UnsupportedErr = "unsupported range vector aggregation operation: %s"
@@ -26,7 +26,7 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 	var noLabels bool
 
 	// TODO(owen-d|cyriltovena): override grouping (i.e. from a parent `sum`)
-	// technicaly can break the query.
+	// technically can break the query.
 	// For intance, in  `sum by (foo) (max_over_time by (bar) (...))`
 	// the `by (bar)` grouping in the child is ignored in favor of the parent's `by (foo)`
 	for _, grp := range []*Grouping{r.Grouping, override} {
