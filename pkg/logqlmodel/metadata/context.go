@@ -77,6 +77,12 @@ func (c *Context) Headers() []*definitions.PrometheusResponseHeader {
 	return headers
 }
 
+func (c *Context) AddWarning(warning string) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	c.warnings[warning] = struct{}{}
+}
 func (c *Context) Warnings() []string {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
