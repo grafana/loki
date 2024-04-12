@@ -19,7 +19,6 @@ jobs:
       run: |
         go install github.com/google/go-jsonnet/cmd/jsonnet@v0.20.0
         go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.5.1
-    - name: Check that drone was updated properly
-      if: always()
+    - name: Check that the release workflows have been updated properly
       run: |
           make BUILD_IN_CONTAINER=false release-workflows-check
