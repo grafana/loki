@@ -7,18 +7,18 @@ env:
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "main"
+  RELEASE_LIB_REF: "124c4d996f9625478a79f1884465e29ea082d224"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
   VERSIONING_STRATEGY: "always-bump-patch"
 jobs:
   check:
-    uses: "grafana/loki-release/.github/workflows/check.yml@main"
+    uses: "grafana/loki-release/.github/workflows/check.yml@124c4d996f9625478a79f1884465e29ea082d224"
     with:
       build_image: "grafana/loki-build-image:0.33.1"
       golang_ci_lint_version: "v1.55.1"
-      release_lib_ref: "main"
+      release_lib_ref: "124c4d996f9625478a79f1884465e29ea082d224"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
@@ -58,7 +58,7 @@ jobs:
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
-      uses: "actions/github-app-token@v1"
+      uses: "actions/create-github-app-token@v1"
       with:
         app-id: "${{ secrets.APP_ID }}"
         owner: "${{ github.repository_owner }}"
@@ -753,7 +753,7 @@ jobs:
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
-      uses: "actions/github-app-token@v1"
+      uses: "actions/create-github-app-token@v1"
       with:
         app-id: "${{ secrets.APP_ID }}"
         owner: "${{ github.repository_owner }}"
