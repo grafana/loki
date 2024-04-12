@@ -32,7 +32,7 @@ func handlerForPath(t *testing.T, paths []urlContainToPath, tty bool) http.Handl
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch path := r.URL.Path; {
 		case strings.HasSuffix(path, "/logs"):
-			var filePath string = ""
+			var filePath string
 			for _, cf := range paths {
 				if strings.Contains(r.URL.RawQuery, cf.contains) {
 					filePath = cf.filePath

@@ -168,8 +168,8 @@ func (t *Target) process(frames chan []byte, logStream string) {
 	// a universally defined threshold).
 	const softMaxBuffer = 16 * 1024 * 1024
 	var (
-		payloadAcc *strings.Builder = new(strings.Builder)
-		curTs      time.Time        = time.Now()
+		payloadAcc = new(strings.Builder)
+		curTs      = time.Now()
 	)
 	for frame := range frames {
 		// Split frame into timestamp and payload
