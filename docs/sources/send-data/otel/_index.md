@@ -1,6 +1,6 @@
 ---
 title: Ingesting logs to Loki using OpenTelemetry Collector
-menuTitle:  OTEL Collector
+menuTitle:  OTel Collector
 description: Configuring the OpenTelemetry Collector to send logs to Loki.
 aliases: 
 - ../clients/k6/
@@ -86,7 +86,7 @@ Since the OpenTelemetry protocol differs from the Loki storage model, here is ho
 
 - Timestamp: One of `LogRecord.TimeUnixNano` or `LogRecord.ObservedTimestamp`, based on which one is set. If both are not set, the ingestion timestamp will be used.
 
-- LogLine: `LogRecord.Body` holds the body of the log. However, since Loki only supports Log body in string format, we will stringify non-string values using the [AsString method from the OTEL collector lib](https://github.com/open-telemetry/opentelemetry-collector/blob/ab3d6c5b64701e690aaa340b0a63f443ff22c1f0/pdata/pcommon/value.go#L353).
+- LogLine: `LogRecord.Body` holds the body of the log. However, since Loki only supports Log body in string format, we will stringify non-string values using the [AsString method from the OTel collector lib](https://github.com/open-telemetry/opentelemetry-collector/blob/ab3d6c5b64701e690aaa340b0a63f443ff22c1f0/pdata/pcommon/value.go#L353).
 
 - [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}): Anything which can’t be stored in Index labels and LogLine would be stored as Structured Metadata. Here is a non-exhaustive list of what will be stored in Structured Metadata to give a sense of what it will hold:
   - Resource Attributes not stored as Index labels is replicated and stored with each log entry.
@@ -98,7 +98,7 @@ Things to note before ingesting OpenTelemetry logs to Loki:
 - Dots (.) are converted to underscores (_).
 
   Loki does not support `.` or any other special characters other than `_` in label names. The unsupported characters are replaced with an `_` while converting Attributes to Index Labels or Structured Metadata.
-  Also, please note that while writing the queries, you must use the normalized format, i.e. use `_` instead of special characters while querying data using OTEL Attributes.
+  Also, please note that while writing the queries, you must use the normalized format, i.e. use `_` instead of special characters while querying data using OTel Attributes.
 
   For example, `service.name` in OTLP would become `service_name` in Loki.
 
@@ -109,7 +109,7 @@ Things to note before ingesting OpenTelemetry logs to Loki:
 
 - Stringification of non-string Attribute values
 
-  While converting Attribute values in OTLP to Index label values or Structured Metadata, any non-string values are converted to string using [AsString method from the OTEL collector lib](https://github.com/open-telemetry/opentelemetry-collector/blob/ab3d6c5b64701e690aaa340b0a63f443ff22c1f0/pdata/pcommon/value.go#L353).
+  While converting Attribute values in OTLP to Index label values or Structured Metadata, any non-string values are converted to string using [AsString method from the OTel collector lib](https://github.com/open-telemetry/opentelemetry-collector/blob/ab3d6c5b64701e690aaa340b0a63f443ff22c1f0/pdata/pcommon/value.go#L353).
 
 ### Changing the default mapping of OTLP to Loki Format
 

@@ -21,7 +21,7 @@ Structured metadata can also be used to query commonly needed metadata from log 
 
 You should only use structured metadata in the following situations:
 
-- If you are ingesting data in OpenTelemetry format, using the Grafana Agent or an OpenTelemetry Collector. Structured metadata was designed to support native ingestion of OpenTelemetry data.
+- If you are ingesting data in OpenTelemetry format, using Grafana Alloy or an OpenTelemetry Collector. Structured metadata was designed to support native ingestion of OpenTelemetry data.
 - If you have high cardinality metadata that should not be used as a label and does not exist in the log line.  Some examples might include `process_id` or `thread_id` or Kubernetes pod names.
  
 It is an antipattern to extract information that already exists in your log lines and put it into structured metadata.
@@ -31,7 +31,7 @@ It is an antipattern to extract information that already exists in your log line
 You have the option to attach structured metadata to log lines in the push payload along with each log line and the timestamp.
 For more information on how to push logs to Loki via the HTTP endpoint, refer to the [HTTP API documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/api/#ingest-logs).
 
-Alternatively, you can use the Grafana Agent or Promtail to extract and attach structured metadata to your log lines.
+Alternatively, you can use Grafana Alloy or Promtail to extract and attach structured metadata to your log lines.
 See the [Promtail: Structured metadata stage](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/stages/structured_metadata/) for more information.
 
 With Loki version 1.2.0, support for structured metadata has been added to the Logstash output plugin. For more information, see [logstash](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/logstash/).
