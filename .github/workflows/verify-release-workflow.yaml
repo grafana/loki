@@ -1,7 +1,7 @@
 name: Verify release workflow updates
 on: [pull_request]
 jobs:
-  check-drone-changes:
+  check-release-changes:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -11,6 +11,13 @@ jobs:
       id: changed-files
       run: |
             echo "changed_files=$(git diff --name-only main --  .github/workflows/ | grep releases | xargs)" >> $GITHUB_OUTPUT
+    - name: setup go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22.2'
+    - name: setup jsonnet
+      run: |
+        go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.5.1
     - name: Check that drone was updated properly
       if: always()
       run: |
