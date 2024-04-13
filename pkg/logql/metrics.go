@@ -203,6 +203,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"index_total_chunks", stats.Index.TotalChunks,
 		"index_post_bloom_filter_chunks", stats.Index.PostFilterChunks,
 		"index_bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
+		"index_shard_resolver_duration", stats.Index.ShardsDuration,
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)

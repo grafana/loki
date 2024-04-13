@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"time"
 
 	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
@@ -160,7 +161,14 @@ func (m MonitoredReaderWriter) GetShards(
 	var shards *logproto.ShardsResponse
 	if err := loki_instrument.TimeRequest(ctx, "shards", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
+		start := time.Now()
 		shards, err = m.rw.GetShards(ctx, userID, from, through, targetBytesPerShard, predicate)
+
+		if err == nil {
+			// record duration here from caller
+			shards.Statistics.Index.Duration = time.Since(start)
+		}
+
 		return err
 	}); err != nil {
 		return nil, err

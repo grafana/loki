@@ -116,11 +116,6 @@ func (c *Context) Caches() Caches {
 	}
 }
 
-// Index returns the index statistics accumulated so far.
-func (c *Context) Index() Index {
-	return c.index
-}
-
 // Reset clears the statistics.
 func (c *Context) Reset() {
 	c.mtx.Lock()
@@ -168,15 +163,6 @@ func JoinIngesters(ctx context.Context, inc Ingester) {
 	defer stats.mtx.Unlock()
 
 	stats.ingester.Merge(inc)
-}
-
-// JoinIndex joins the index statistics in a concurrency-safe manner.
-func JoinIndex(ctx context.Context, index Index) {
-	stats := FromContext(ctx)
-	stats.mtx.Lock()
-	defer stats.mtx.Unlock()
-
-	stats.index.Merge(index)
 }
 
 // ComputeSummary compute the summary of the statistics.
@@ -247,6 +233,7 @@ func (i *Ingester) Merge(m Ingester) {
 func (i *Index) Merge(m Index) {
 	i.TotalChunks += m.TotalChunks
 	i.PostFilterChunks += m.PostFilterChunks
+	i.ShardsDuration += m.ShardsDuration
 }
 
 func (c *Caches) Merge(m Caches) {

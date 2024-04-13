@@ -108,6 +108,11 @@ message Index {
   int64 totalChunks = 1 [(gogoproto.jsontag) = "totalChunks"];
   // Post-filtered chunks
   int64 postFilterChunks = 2 [(gogoproto.jsontag) = "postFilterChunks"];
+  // Nanosecond duration spent fetching shards
+  int64 shardsDuration = 3 [
+    (gogoproto.jsonTag) = "shardsDuration",
+    (gogoproto.customtype) = "time.Duration"
+  ];
 }
 
 message Querier {
