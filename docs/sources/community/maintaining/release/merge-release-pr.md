@@ -22,3 +22,5 @@ To test the artifacts before releasing, you can download the artifacts from the 
 ## Troubleshooting / Retrying Release
 
 If something goes wrong with the release automation, you may need to rerun the job. This may require updating the release code in the `grafana/loki` repo via a PR, or it may include updating the code in `grafana/loki-release` that the release pipeline fetches. In either case, if you need to re-release a merge release PR, you'll need to remove the `autorelease: tagged` label from that PR and add the `autorelease: pending` label. The automation relies on these labels to determine which merged PRs have and have not yet been released. After fixing the labels, re-run the release workflow, and it should correctly get passed the `should-release` step. The release process is idempotent, so if a draft release has already been created via a previously failed release, the process will continue, re-upload the binaries, and re-publish the images.
+
+Once the release is finished, you may need to manually flip the label back to `autorelease: tagged`.
