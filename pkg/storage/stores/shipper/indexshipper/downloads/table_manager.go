@@ -153,10 +153,9 @@ func (tm *tableManager) loop() {
 
 func (tm *tableManager) Stop() {
 	tm.cancel()
-
+	tm.wg.Wait()
 	tm.tablesMtx.Lock()
 	defer tm.tablesMtx.Unlock()
-	tm.wg.Wait()
 
 	for _, table := range tm.tables {
 		table.Close()

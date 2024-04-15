@@ -1932,6 +1932,76 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	}
 }
 
+func TestStore_SyncStopInteraction(t *testing.T) {
+	tempDir := t.TempDir()
+
+	ingesterName := "ingester-1"
+	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
+	// config for BoltDB Shipper
+	boltdbShipperConfig := boltdb.IndexCfg{}
+	flagext.DefaultValues(&boltdbShipperConfig)
+	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "boltdb-index")
+	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
+	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	boltdbShipperConfig.IngesterName = ingesterName
+	boltdbShipperConfig.ResyncInterval = time.Millisecond
+
+	// config for tsdb Shipper
+	tsdbShipperConfig := indexshipper.Config{}
+	flagext.DefaultValues(&tsdbShipperConfig)
+	tsdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "tsdb-index")
+	tsdbShipperConfig.CacheLocation = path.Join(tempDir, "tsdb-shipper-cache")
+	tsdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	tsdbShipperConfig.IngesterName = ingesterName
+	tsdbShipperConfig.ResyncInterval = time.Millisecond
+
+	// dates for activation of boltdb shippers
+	boltdbShipperStartDate := parseDate("2019-01-01")
+	tsdbStartDate := parseDate("2019-01-02")
+
+	cfg := Config{
+		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+		BoltDBShipperConfig: boltdbShipperConfig,
+		TSDBShipperConfig:   tsdbShipperConfig,
+	}
+
+	schemaConfig := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:       config.DayTime{Time: timeToModelTime(boltdbShipperStartDate)},
+				IndexType:  "boltdb-shipper",
+				ObjectType: types.StorageTypeFileSystem,
+				Schema:     "v12",
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
+				RowShards: 2,
+			},
+			{
+				From:       config.DayTime{Time: timeToModelTime(tsdbStartDate)},
+				IndexType:  "tsdb",
+				ObjectType: types.StorageTypeFileSystem,
+				Schema:     "v12",
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
+			},
+		},
+	}
+
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
+	require.NoError(t, err)
+	store.Stop()
+}
+
 func TestQueryReferencingStructuredMetadata(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 	tempDir := t.TempDir()
