@@ -1285,6 +1285,11 @@ singleBinary:
     # If set to "-", storageClassName: "", which disables dynamic provisioning.
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+    # -- Enable dataSource from which to populate the volume with data 
+    # dataSource:
+    #   apiGroup: snapshot.storage.k8s.io
+    #   kind: VolumeSnapshot
+    #   name: Example
     storageClass: null
     # -- Selector for persistent disk
     selector: null
