@@ -52,6 +52,7 @@ Here is the shortlist of things we think most people may encounter:
   * The `shared_store` config is removed. Refer to [Removed `shared_store` and `shared_store_key_prefix` from shipper configuration](#removed-shared_store-and-shared_store_key_prefix-from-shipper-configuration).
   * Loki now enforces a max line size of 256KB by default (you can disable this or increase this but this is how Grafana Labs runs Loki). Refer to [Changes to default configure values](#changes-to-default-configuration-values-in-30).
   * Loki now enforces a max label limit of 15 labels per series, down from 30. Extra labels inflate the size of the index and reduce performance, you should almost never need more than 15 labels. Refer to [Changes to default configure values](#changes-to-default-configuration-values-in-30).
+  * Loki will automatically attempt to populate a `service_name` label on ingestion. Refer to [`service_name` label](#service_name-label).
   * There are many metric name changes. Refer to [Distributor metric changes](#distributor-metric-changes), [Embedded cache metric changes](#embedded-cache-metric-changes), and [Metrics namespace](#metrics-namespace).
 
 If you would like to see if your existing configuration will work with Loki 3.0:
@@ -81,6 +82,33 @@ A flagship feature of Loki 3.0 is native support for the Open Telemetry Protocol
 Structured Metadata is enabled by default in Loki 3.0, however, it requires your active schema be using both the `tsdb` index type AND the `v13` storage schema.  If you are not using both of these you have two options:
 * Upgrade your index version and schema version before updating to 3.0, see [schema config upgrade](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/schema/).
 * Disable Structured Metadata (and therefor OTLP support) and upgrade to 3.0 and perform the schema migration after. This can be done by setting `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false`.
+
+#### `service_name` label
+
+Loki 3.0 will automatically assign a `service_name` label to all ingested logs by default. A service name is something required by Open Telemetry semantic conventions and is something Grafana Labs is building into our future user interface and query experiences.
+
+Loki will attempt to create the `service_name` label by looking for the following labels in this order:
+
+  - service
+  - app
+  - application
+  - name
+  - app_kubernetes_io_name
+  - container
+  - container_name
+  - component
+  - workload
+  - job
+
+If no label is found matching the list, a value of `unknown_service` is applied.
+
+You can change this list by providing a list of labels to `discover_service_name` in the [limits_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config) block.
+
+{{< admonition type="note" >}}
+If you are already using a `service_label`, Loki will not make a new assignment.
+{{< /admonition >}}
+
+**You can disable this by providing an empty value for `discover_service_name`.**
 
 #### Removed `shared_store` and `shared_store_key_prefix` from shipper configuration
 
@@ -147,7 +175,7 @@ The path prefix under which the delete requests are stored is decided by `-compa
 
 #### Configuration `async_cache_write_back_concurrency` and `async_cache_write_back_buffer_size` have been removed
 
-These configurations were redundant with the `Background` configuration in the [cache-config]({{< relref "../../configure#cache_config" >}}).
+These configurations were redundant with the `Background` configuration in the [cache-config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#cache_config).
 
 `async_cache_write_back_concurrency` can be set with `writeback_goroutines`
 `async_cache_write_back_buffer_size` can be set with `writeback_buffer`
@@ -198,6 +226,18 @@ The previous default value `false` is applied.
 1. `boltdb.shipper.compactor.deletion-mode` CLI flag and the corresponding YAML setting are removed. You can instead configure the `compactor.deletion-mode` CLI flag or `deletion_mode` YAML setting in [Limits Config](/docs/loki/<LOKI_VERSION>/configuration/#limits_config).
 1. Compactor CLI flags that use the prefix `boltdb.shipper.compactor.` are removed. You can instead use CLI flags with the `compactor.` prefix.
 
+#### Legacy ingester shutdown handler is removed
+
+The already deprecated handler `/ingester/flush_shutdown` is removed in favor of `/ingester/shutdown?flush=true`.
+
+#### Ingester configuration `max_transfer_retries` is removed.
+
+The setting `max_transfer_retries` (`-ingester.max-transfer-retries`) is removed in favor of the Write Ahead log (WAL).
+It was used to allow transferring chunks to new ingesters when the old ingester was shutting down during a rolling restart.
+Alternatives to this setting are:
+- **A. (Preferred)** Enable the WAL and rely on the new ingester to replay the WAL.
+     - Optionally, you can enable `flush_on_shutdown` (`-ingester.flush-on-shutdown`) to flush to long-term storage on shutdowns.
+- **B.** Manually flush during shutdowns via [the ingester `/shutdown?flush=true` endpoint](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#flush-in-memory-chunks-and-shut-down).
 
 #### Distributor metric changes
 
@@ -241,7 +281,7 @@ The TSDB index type has support for caching results for 'stats' and 'volume' que
 All of these are cached to the `results_cache` which is configured in the `query_range` config section.  By default, an in memory cache is used.
 
 #### Write dedupe cache is deprecated
-Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB]({{< relref "../../operations/storage/tsdb" >}}) and [boltdb-shipper]({{< relref "../../operations/storage/boltdb-shipper" >}})).
+Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) and [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/)).
 If you using a [legacy index type](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage), consider migrating to TSDB (recommended).
 
 #### Embedded cache metric changes
@@ -675,7 +715,7 @@ Alerting rules previously could be specified in two formats: 1.x format (legacy 
 We decided to drop support for format `1.x` as it is fairly old and keeping support for it required a lot of code.
 
 In case you're still using the legacy format, take a look at
-[Alerting Rules](https://prometheus.io/docs/prometheus/<LOKI_VERSION>/configuration/alerting_rules/) for instructions
+[Alerting Rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) for instructions
 on how to write alerting rules in the new format.
 
 For reference, the newer format follows a structure similar to the one below:
@@ -725,7 +765,7 @@ This histogram reports the distribution of log line sizes by file. It has 8 buck
 
 This creates a lot of series and we don't think this metric has enough value to offset the amount of series genereated so we are removing it.
 
-While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs]({{< relref "../../send-data/promtail/stages/metrics#counter" >}}).
+While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/stages/metrics/#counter).
 
 #### `added Docker target` log message has been demoted from level=error to level=info
 
@@ -779,7 +819,7 @@ limits_config:
   retention_period: [30d]
 ```
 
-See the [retention docs]({{< relref "../../operations/storage/retention" >}}) for more info.
+See the [retention docs](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/) for more info.
 
 #### Log messages on startup: proto: duplicate proto type registered:
 
@@ -1031,7 +1071,7 @@ In Loki 2.2 we changed the internal version of our chunk format from v2 to v3, t
 This makes it important to first upgrade to 2.0, 2.0.1, or 2.1 **before** upgrading to 2.2 so that if you need to rollback for any reason you can do so easily.
 
 {{% admonition type="note" %}}
-2.0 and 2.0.1 are identical in every aspect except 2.0.1 contains the code necessary to read the v3 chunk format. Therefor if you are on 2.0 and upgrade to 2.2, if you want to rollback, you must rollback to 2.0.1.
+2.0 and 2.0.1 are identical in every aspect except 2.0.1 contains the code necessary to read the v3 chunk format. Therefor if you are on 2.0 and ugrade to 2.2, if you want to rollback, you must rollback to 2.0.1.
 {{% /admonition %}}
 
 ### Loki Config
@@ -1250,7 +1290,7 @@ If you happen to have `results_cache.max_freshness` set, use `limits_config.max_
 
 ### Promtail config removed
 
-The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages]({{< relref "../../send-data/promtail/configuration#pipeline_stages" >}}) instead.
+The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#pipeline_stages) instead.
 
 ### Upgrading schema to use boltdb-shipper and/or v11 schema
 
@@ -1580,7 +1620,7 @@ max_retries:
 
 Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config changes](https://github.com/cortexproject/cortex/blob/v0.7.0-rc.0/CHANGELOG).
 
-In the [cache_config]({{< relref "../../configure#cache_config" >}}), `defaul_validity` has changed to `default_validity`.
+In the [cache_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure#cache_config), `defaul_validity` has changed to `default_validity`.
 
 If you configured your schema via arguments and not a config file, this is no longer supported. This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.
 
