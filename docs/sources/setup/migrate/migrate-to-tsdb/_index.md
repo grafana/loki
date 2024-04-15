@@ -17,7 +17,7 @@ we strongly recommend migrating to TSDB.
 
 ### Configure TSDB index for an upcoming period
 
-To begin the migration, add a new [period_config]({{< relref "../../../configure#period_config" >}}) entry in your [schema_config]({{< relref "../../../configure#schema_config" >}}).
+To begin the migration, add a new [period_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#schema_config).
 You can read more about schema config [here](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#schema-config).
 
 {{% admonition type="note" %}}
@@ -51,11 +51,11 @@ schema_config:
 
 ③  This sample configuration uses filesystem as the storage in both the periods. If you want to use a different storage for the TSDB index and chunks, you can specify a different `object_store` in the new period.
 
-④  Update the schema to v13 which is the recommended version at the time of writing. Please refer to the [configure page]({{< relref "../../../configure#period_config" >}}) for the current recommend version.
+④  Update the schema to v13 which is the recommended version at the time of writing. Please refer to the [configure page](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) for the current recommend version.
 
 ### Configure TSDB shipper
 
-It's also important that you configure the `tsdb_shipper` block in [storage_config]({{< relref "../../../configure#storage_config" >}}). Specifically the following options:
+It's also important that you configure the `tsdb_shipper` block in [storage_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config). Specifically the following options:
 - `active_index_directory`: directory where ingesters would write index files which will then be uploaded by shipper to configured storage.
 - `cache_location`: cache location for downloading index files from the storage for use in query path.
 

@@ -171,7 +171,7 @@ The path prefix under which the delete requests are stored is decided by `-compa
 
 #### Configuration `async_cache_write_back_concurrency` and `async_cache_write_back_buffer_size` have been removed
 
-These configurations were redundant with the `Background` configuration in the [cache-config]({{< relref "../../configure#cache_config" >}}).
+These configurations were redundant with the `Background` configuration in the [cache-config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#cache_config).
 
 `async_cache_write_back_concurrency` can be set with `writeback_goroutines`
 `async_cache_write_back_buffer_size` can be set with `writeback_buffer`
@@ -1616,7 +1616,7 @@ max_retries:
 
 Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config changes](https://github.com/cortexproject/cortex/blob/v0.7.0-rc.0/CHANGELOG).
 
-In the [cache_config]({{< relref "../../configure#cache_config" >}}), `defaul_validity` has changed to `default_validity`.
+In the [cache_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#cache_config), `defaul_validity` has changed to `default_validity`.
 
 If you configured your schema via arguments and not a config file, this is no longer supported. This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.
 
