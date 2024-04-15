@@ -1290,7 +1290,7 @@ If you happen to have `results_cache.max_freshness` set, use `limits_config.max_
 
 ### Promtail config removed
 
-The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#pipeline_stages)) instead.
+The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#pipeline_stages) instead.
 
 ### Upgrading schema to use boltdb-shipper and/or v11 schema
 
