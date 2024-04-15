@@ -607,7 +607,10 @@ func (i *instance) LabelsWithValues(ctx context.Context, startTime time.Time, ma
 			for _, v := range values {
 				existingValues[v] = struct{}{}
 			}
+			labelMap[label] = existingValues
 		}
+
+		return labelMap, nil
 	}
 
 	err := i.forMatchingStreams(ctx, startTime, matchers, nil, func(s *stream) error {
