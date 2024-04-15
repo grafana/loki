@@ -11,7 +11,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                showAnnotations:: true,
                                showLinks:: true,
                                showMultiCluster:: true,
-                               clusterLabel:: $._config.per_cluster_label,
 
                                hiddenRows:: [
                                  'Cassandra',
@@ -62,7 +61,22 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
                                local replaceClusterMatchers(expr) =
                                  if dashboards['loki-operational.json'].showMultiCluster
-                                 then expr
+                                 // Replace the recording rules cluster label with the per-cluster label
+                                 then std.strReplace(
+                                   // Replace the cluster label for equality matchers with the per-cluster label
+                                   std.strReplace(
+                                     // Replace the cluster label for regex matchers with the per-cluster label
+                                     std.strReplace(
+                                       expr,
+                                       'cluster=~"$cluster"',
+                                       $._config.per_cluster_label + '=~"$cluster"'
+                                     ),
+                                     'cluster="$cluster"',
+                                     $._config.per_cluster_label + '="$cluster"'
+                                   ),
+                                   'cluster_',
+                                   $._config.per_cluster_label + '_'
+                                 )
                                  else
                                    std.strReplace(
                                      std.strReplace(
@@ -143,7 +157,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
 
                                local replaceAllMatchers(expr) =
-                                 replaceMatchers(replaceClusterMatchers(expr)),
+                                 replaceMatchers(expr),
 
                                local selectDatasource(ds) =
                                  if ds == null || ds == '' then ds
@@ -179,7 +193,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                    datasource: selectDatasource(super.datasource),
                                    targets: if std.objectHas(p, 'targets') then [
                                      e {
-                                       expr: removeInternalComponents(p.title, e.expr),
+                                       expr: removeInternalComponents(p.title, replaceClusterMatchers(e.expr)),
                                      }
                                      for e in p.targets
                                    ] else [],
@@ -188,7 +202,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                        datasource: selectDatasource(super.datasource),
                                        targets: if std.objectHas(sp, 'targets') then [
                                          e {
-                                           expr: removeInternalComponents(p.title, e.expr),
+                                           expr: removeInternalComponents(p.title, replaceClusterMatchers(e.expr)),
                                          }
                                          for e in sp.targets
                                        ] else [],
@@ -197,7 +211,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                            datasource: selectDatasource(super.datasource),
                                            targets: if std.objectHas(ssp, 'targets') then [
                                              e {
-                                               expr: removeInternalComponents(p.title, e.expr),
+                                               expr: removeInternalComponents(p.title, replaceClusterMatchers(e.expr)),
                                              }
                                              for e in ssp.targets
                                            ] else [],

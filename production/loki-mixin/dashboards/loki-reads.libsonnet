@@ -31,10 +31,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          local cfg = self,
 
                          showMultiCluster:: true,
-                         clusterLabel:: $._config.per_cluster_label,
                          clusterMatchers::
                            if cfg.showMultiCluster then
-                             [utils.selector.re(cfg.clusterLabel, '$cluster')]
+                             [utils.selector.re($._config.per_cluster_label, '$cluster')]
                            else
                              [],
 
