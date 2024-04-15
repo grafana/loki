@@ -1444,12 +1444,12 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 			start: time.Now(),
 			end:   time.Now(),
 			ingesterResponse: logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
-				"cluster":    {Values: []string{"ingester"}},
-				"foo":        {Values: []string{"abc", "def", "ghi", "abc"}},
-				"all-ids":    {Values: []string{"1", "2", "3", "5"}},
-				"uuids":      {Values: []string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef", "6b7e2663-8ecb-42e1-8bdc-0c5de70185b3", "2e1e67ff-be4f-47b8-aee1-5d67ff1ddabf", "c95b2d62-74ed-4ed7-a8a1-eb72fc67946e"}},
-				"manyvalues": {Values: manyValues},
-				"namespace":  {Values: manyValues},
+				"cluster":      {Values: []string{"ingester"}},
+				"foo":          {Values: []string{"abc", "def", "ghi", "abc"}},
+				"all-ids":      {Values: []string{"1", "2", "3", "5"}},
+				"uuids":        {Values: []string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef", "6b7e2663-8ecb-42e1-8bdc-0c5de70185b3", "2e1e67ff-be4f-47b8-aee1-5d67ff1ddabf", "c95b2d62-74ed-4ed7-a8a1-eb72fc67946e"}},
+				"not-relevant": {Values: manyValues},
+				"namespace":    {Values: manyValues},
 			}},
 			expectedResponse: logproto.DetectedLabelsResponse{DetectedLabels: []*logproto.DetectedLabel{
 				{
@@ -1486,7 +1486,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 			}},
 		}, {
 			name:          "Only store response is present",
-			storeResponse: map[string][]string{"foo": {"val1", "val2"}},
+			storeResponse: map[string][]string{"foo": {"val1", "val2", "val1"}, "all-ids": {"1", "2", "3", "5"}},
 			expectedResponse: logproto.DetectedLabelsResponse{DetectedLabels: []*logproto.DetectedLabel{
 				{
 					Label:       "foo",
