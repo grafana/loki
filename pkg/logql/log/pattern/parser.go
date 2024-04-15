@@ -1,6 +1,9 @@
 package pattern
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 const underscore = "_"
 
@@ -8,6 +11,19 @@ var tokens = map[int]string{
 	LESS_THAN:  "<",
 	MORE_THAN:  ">",
 	UNDERSCORE: underscore,
+}
+
+type parser struct {
+	p *exprParserImpl
+}
+
+var parserPool = sync.Pool{
+	New: func() interface{} {
+		p := &parser{
+			p: &exprParserImpl{},
+		}
+		return p
+	},
 }
 
 func init() {
@@ -23,9 +39,13 @@ func parseExpr(input string) (expr, error) {
 }
 
 func parseExprBytes(input []byte) (expr, error) {
+	p := parserPool.Get().(*parser)
+	defer parserPool.Put(p)
+
 	l := newLexer()
 	l.setData(input)
-	e := exprNewParser().Parse(l)
+
+	e := p.p.Parse(l)
 	if e != 0 || len(l.errs) > 0 {
 		return nil, l.errs[0]
 	}

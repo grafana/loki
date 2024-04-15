@@ -35,7 +35,7 @@ and served by the new [Bloom Gateway](#bloom-gateway) component.
 
 ## Enable Query Acceleration with Blooms
 To start building and using blooms you need to:
-- Deploy the [Bloom Compactor](#bloom-compactor) component (as a [microservice][microservices] or via the [SSD][ssd] Backend target) and enable the component in the [Bloom Compactor config][compactor-cfg].
+- Deploy the [Bloom Compactor](#bloom-compactor) component and enable the component in the [Bloom Compactor config][compactor-cfg].
 - Deploy the [Bloom Gateway](#bloom-gateway) component (as a [microservice][microservices] or via the [SSD][ssd] Backend target) and enable the component in the [Bloom Gateway config][gateway-cfg].
 - Enable blooms filtering and compaction for each tenant individually, or for all of them by default.
 
@@ -105,7 +105,7 @@ object store they are freed. Chunks and TSDB files are downloaded from the objec
 We estimate that compactors are able to process 4 MB worth of data per second per core.
 
 ## Bloom Gateway
-Bloom Gateways handle chunks filtering requests from the [index gateway]({{< relref "../get-started/components#index-gateway" >}}). 
+Bloom Gateways handle chunks filtering requests from the [index gateway](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/components/#index-gateway). 
 The service takes a list of chunks and a filtering expression and matches them against the blooms, 
 filtering out those chunks not matching the given filter expression.
 

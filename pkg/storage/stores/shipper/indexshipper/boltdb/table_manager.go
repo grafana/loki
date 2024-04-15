@@ -88,12 +88,13 @@ func NewTableManager(cfg Config, indexShipper Shipper, tableRange config.TableRa
 	}
 
 	tm.tables = tables
+	// Increment the WaitGroup counter here before starting the goroutine
+	tm.wg.Add(1)
 	go tm.loop()
 	return &tm, nil
 }
 
 func (tm *TableManager) loop() {
-	tm.wg.Add(1)
 	defer tm.wg.Done()
 
 	tm.handoverIndexesToShipper(false)

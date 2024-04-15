@@ -85,10 +85,11 @@ PROMTAIL_UI_FILES := $(shell find ./clients/pkg/promtail/server/ui -type f -name
 
 # Documentation source path
 DOC_SOURCES_PATH := docs/sources
+DOC_TEMPLATE_PATH := docs/templates
 
 # Configuration flags documentation
-DOC_FLAGS_TEMPLATE := $(DOC_SOURCES_PATH)/configure/index.template
-DOC_FLAGS := $(DOC_SOURCES_PATH)/configure/_index.md
+DOC_FLAGS_TEMPLATE := $(DOC_TEMPLATE_PATH)/configuration.template
+DOC_FLAGS := $(DOC_SOURCES_PATH)/shared/configuration.md
 
 ##########
 # Docker #
