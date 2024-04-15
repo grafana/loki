@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"go.uber.org/atomic"
-
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -112,7 +111,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 					mockQuerierConfig().ExtraQueryDelay,
 					newIngesterClientMockFactory(ingesterClient),
 					constants.Loki,
-					util_log.Logger,
+					log.NewNopLogger(),
 				)
 				require.NoError(t, err)
 
@@ -213,7 +212,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 					mockQuerierConfig().ExtraQueryDelay,
 					newIngesterClientMockFactory(ingesterClient),
 					constants.Loki,
-					util_log.Logger,
+					log.NewNopLogger(),
 				)
 				require.NoError(t, err)
 
@@ -312,7 +311,7 @@ func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 				mockQuerierConfig().ExtraQueryDelay,
 				newIngesterClientMockFactory(ingesterClient),
 				constants.Loki,
-				util_log.Logger,
+				log.NewNopLogger(),
 			)
 			require.NoError(t, err)
 
@@ -376,7 +375,7 @@ func TestIngesterQuerier_Volume(t *testing.T) {
 			mockQuerierConfig().ExtraQueryDelay,
 			newIngesterClientMockFactory(ingesterClient),
 			constants.Loki,
-			util_log.Logger,
+			log.NewNopLogger(),
 		)
 		require.NoError(t, err)
 
@@ -398,7 +397,7 @@ func TestIngesterQuerier_Volume(t *testing.T) {
 			mockQuerierConfig().ExtraQueryDelay,
 			newIngesterClientMockFactory(ingesterClient),
 			constants.Loki,
-			util_log.Logger,
+			log.NewNopLogger(),
 		)
 		require.NoError(t, err)
 
@@ -433,7 +432,7 @@ func TestIngesterQuerier_DetectedLabels(t *testing.T) {
 			mockQuerierConfig().ExtraQueryDelay,
 			newIngesterClientMockFactory(ingesterClient),
 			constants.Loki,
-			util_log.Logger,
+			log.NewNopLogger(),
 		)
 		require.NoError(t, err)
 

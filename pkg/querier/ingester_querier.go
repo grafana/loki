@@ -376,7 +376,7 @@ func (q *IngesterQuerier) DetectedLabel(ctx context.Context, req *logproto.Detec
 	for _, resp := range ingesterResponses {
 		thisIngester, ok := resp.response.(*logproto.LabelToValuesResponse)
 		if !ok {
-			level.Error(q.logger).Log("msg", "Cannot convert response to LabelToValuesResponse in detectedlabels",
+			level.Warn(q.logger).Log("msg", "Cannot convert response to LabelToValuesResponse in detectedlabels",
 				"response", resp)
 		}
 
