@@ -110,8 +110,9 @@ message Index {
   int64 postFilterChunks = 2 [(gogoproto.jsontag) = "postFilterChunks"];
   // Nanosecond duration spent fetching shards
   int64 shardsDuration = 3 [
-    (gogoproto.jsonTag) = "shardsDuration",
-    (gogoproto.customtype) = "time.Duration"
+    (gogoproto.jsontag) = "shardsDuration",
+    (gogoproto.customtype) = "time.Duration",
+    (gogoproto.nullable) = false
   ];
 }
 
