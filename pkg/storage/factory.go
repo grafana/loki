@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
+	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
@@ -37,7 +38,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/gatewayclient"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
