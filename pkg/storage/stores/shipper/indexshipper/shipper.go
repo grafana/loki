@@ -58,12 +58,12 @@ type IndexShipper interface {
 }
 
 type Config struct {
-	ActiveIndexDirectory     string                                `yaml:"active_index_directory"`
-	CacheLocation            string                                `yaml:"cache_location"`
-	CacheTTL                 time.Duration                         `yaml:"cache_ttl"`
-	ResyncInterval           time.Duration                         `yaml:"resync_interval"`
-	QueryReadyNumDays        int                                   `yaml:"query_ready_num_days"`
-	IndexGatewayClientConfig indexgateway.IndexGatewayClientConfig `yaml:"index_gateway_client"`
+	ActiveIndexDirectory     string                    `yaml:"active_index_directory"`
+	CacheLocation            string                    `yaml:"cache_location"`
+	CacheTTL                 time.Duration             `yaml:"cache_ttl"`
+	ResyncInterval           time.Duration             `yaml:"resync_interval"`
+	QueryReadyNumDays        int                       `yaml:"query_ready_num_days"`
+	IndexGatewayClientConfig indexgateway.ClientConfig `yaml:"index_gateway_client"`
 
 	IngesterName           string
 	Mode                   Mode

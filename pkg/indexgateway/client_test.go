@@ -175,7 +175,7 @@ func TestGatewayClient_RingMode(t *testing.T) {
 		o, err := validation.NewOverrides(validation.Limits{IndexGatewayShardSize: s}, nil)
 		require.NoError(t, err)
 
-		cfg := IndexGatewayClientConfig{}
+		cfg := ClientConfig{}
 		flagext.DefaultValues(&cfg)
 		cfg.Mode = RingMode
 		cfg.Ring = igwRing
@@ -206,7 +206,7 @@ func TestGatewayClient_RingMode(t *testing.T) {
 		o, err := validation.NewOverrides(validation.Limits{IndexGatewayShardSize: s}, tl)
 		require.NoError(t, err)
 
-		cfg := IndexGatewayClientConfig{}
+		cfg := ClientConfig{}
 		flagext.DefaultValues(&cfg)
 		cfg.Mode = RingMode
 		cfg.Ring = igwRing
@@ -235,7 +235,7 @@ func TestGatewayClient(t *testing.T) {
 	cleanup, storeAddress := createTestGrpcServer(t)
 	t.Cleanup(cleanup)
 
-	var cfg IndexGatewayClientConfig
+	var cfg ClientConfig
 	cfg.Mode = SimpleMode
 	flagext.DefaultValues(&cfg)
 	cfg.Address = storeAddress
@@ -425,7 +425,7 @@ func TestDoubleRegistration(t *testing.T) {
 	r := prometheus.NewRegistry()
 	o, _ := validation.NewOverrides(validation.Limits{}, nil)
 
-	clientCfg := IndexGatewayClientConfig{
+	clientCfg := ClientConfig{
 		Address: "my-store-address:1234",
 	}
 

@@ -41,9 +41,9 @@ const (
 	maxConcurrentGrpcCalls = 10
 )
 
-// IndexGatewayClientConfig configures the Index Gateway client used to
-// communicate with the Index Gateway server.
-type IndexGatewayClientConfig struct {
+// ClientConfig configures the Index Gateway client used to communicate with
+// the Index Gateway server.
+type ClientConfig struct {
 	// Mode sets in which mode the client will operate. It is actually defined at the
 	// index_gateway YAML section and reused here.
 	Mode Mode `yaml:"-"`
@@ -86,39 +86,32 @@ type IndexGatewayClientConfig struct {
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.
 //
 // Flags that are used by both, client and server, are defined in the indexgateway package.
-func (i *IndexGatewayClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
 	f.StringVar(&i.Address, prefix+".server-address", "", "Hostname or IP of the Index Gateway gRPC server running in simple mode. Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A record with multiple IP's, a DNS SRV record with a followup A record lookup, or a DNS SRV record without a followup A record lookup, respectively.")
 	f.BoolVar(&i.LogGatewayRequests, prefix+".log-gateway-requests", false, "Whether requests sent to the gateway should be logged or not.")
 }
 
-func (i *IndexGatewayClientConfig) RegisterFlags(f *flag.FlagSet) {
+func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
 	i.RegisterFlagsWithPrefix("index-gateway-client", f)
 }
 
 type GatewayClient struct {
-	logger log.Logger
-
-	cfg IndexGatewayClientConfig
-
+	logger                            log.Logger
+	cfg                               ClientConfig
 	storeGatewayClientRequestDuration *prometheus.HistogramVec
-
-	dnsProvider *discovery.DNS
-
-	pool *client.Pool
-
-	ring ring.ReadRing
-
-	limits Limits
-
-	done chan struct{}
+	dnsProvider                       *discovery.DNS
+	pool                              *client.Pool
+	ring                              ring.ReadRing
+	limits                            Limits
+	done                              chan struct{}
 }
 
 // NewGatewayClient instantiates a new client used to communicate with an Index Gateway instance.
 //
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created using a ring.
 // Otherwise, it creates a GRPC connection pool to as many addresses as can be resolved from the given address.
-func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, limits Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
+func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "index_gateway_request_duration_seconds",
@@ -586,7 +579,7 @@ func (b *grpcIter) Value() []byte {
 	return b.Rows[b.i].Value
 }
 
-func instrumentation(cfg IndexGatewayClientConfig, clientRequestDuration *prometheus.HistogramVec) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
+func instrumentation(cfg ClientConfig, clientRequestDuration *prometheus.HistogramVec) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, cfg.GRPCUnaryClientInterceptors...)
 	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
