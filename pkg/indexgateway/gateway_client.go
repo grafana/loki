@@ -1,4 +1,4 @@
-package gatewayclient
+package indexgateway
 
 import (
 	"context"
@@ -27,7 +27,6 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
-	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
@@ -47,7 +46,7 @@ const (
 type IndexGatewayClientConfig struct {
 	// Mode sets in which mode the client will operate. It is actually defined at the
 	// index_gateway YAML section and reused here.
-	Mode indexgateway.Mode `yaml:"-"`
+	Mode Mode `yaml:"-"`
 
 	// PoolConfig defines the behavior of the gRPC connection pool used to communicate
 	// with the Index Gateway.
@@ -110,7 +109,7 @@ type GatewayClient struct {
 
 	ring ring.ReadRing
 
-	limits indexgateway.Limits
+	limits Limits
 
 	done chan struct{}
 }
@@ -119,7 +118,7 @@ type GatewayClient struct {
 //
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created using a ring.
 // Otherwise, it creates a GRPC connection pool to as many addresses as can be resolved from the given address.
-func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, limits indexgateway.Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
+func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, limits Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "index_gateway_request_duration_seconds",
@@ -165,7 +164,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 	sgClient.cfg.PoolConfig.ClientCleanupPeriod = 5 * time.Second
 	sgClient.cfg.PoolConfig.HealthCheckIngesters = true
 
-	if sgClient.cfg.Mode == indexgateway.RingMode {
+	if sgClient.cfg.Mode == RingMode {
 		sgClient.pool = clientpool.NewPool("index-gateway", sgClient.cfg.PoolConfig, sgClient.ring, client.PoolAddrFunc(factory), logger, metricsNamespace)
 	} else {
 		// Note we don't use clientpool.NewPool because we want to provide our own discovery function
@@ -380,7 +379,7 @@ func (s *GatewayClient) getShardsFromStatsFallback(
 		return nil, errors.Wrap(err, "index gateway client get tenant ID")
 	}
 
-	p, err := indexgateway.ExtractShardRequestMatchersAndAST(in.Query)
+	p, err := ExtractShardRequestMatchersAndAST(in.Query)
 	if err != nil {
 		return nil, errors.Wrap(err, "failure while falling back to stats for shard calculation")
 
@@ -531,9 +530,9 @@ func (s *GatewayClient) getServerAddresses(tenantID string) ([]string, error) {
 	// The GRPC pool we use only does discovery calls when cleaning up already existing connections,
 	// so the list of addresses should always be provided from the external provider (ring or DNS)
 	// and not from the RegisteredAddresses method as this list is only populated after a call to GetClientFor
-	if s.cfg.Mode == indexgateway.RingMode {
-		r := indexgateway.GetShuffleShardingSubring(s.ring, tenantID, s.limits)
-		rs, err := r.GetReplicationSetForOperation(indexgateway.IndexesRead)
+	if s.cfg.Mode == RingMode {
+		r := GetShuffleShardingSubring(s.ring, tenantID, s.limits)
+		rs, err := r.GetReplicationSetForOperation(IndexesRead)
 		if err != nil {
 			return nil, errors.Wrap(err, "index gateway get ring")
 		}

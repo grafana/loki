@@ -1,4 +1,4 @@
-package gatewayclient
+package indexgateway
 
 import (
 	"io"

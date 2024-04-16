@@ -1,4 +1,4 @@
-package gatewayclient
+package indexgateway
 
 import (
 	"context"
@@ -23,27 +23,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-const (
-	// query prefixes
-	tableNamePrefix        = "table-name"
-	hashValuePrefix        = "hash-value"
-	rangeValuePrefixPrefix = "range-value-prefix"
-	rangeValueStartPrefix  = "range-value-start"
-	valueEqualPrefix       = "value-equal"
-
-	// response prefixes
-	rangeValuePrefix = "range-value"
-	valuePrefix      = "value"
-
-	// the number of index entries for benchmarking will be divided amongst numTables
-	//benchMarkNumEntries = 1000000
-	//numTables           = 50
-)
+// const (
+// the number of index entries for benchmarking will be divided amongst numTables
+// benchMarkNumEntries = 1000000
+// numTables           = 50
+// )
 
 type mockIndexGatewayServer struct {
 	logproto.IndexGatewayServer
@@ -189,7 +177,7 @@ func TestGatewayClient_RingMode(t *testing.T) {
 
 		cfg := IndexGatewayClientConfig{}
 		flagext.DefaultValues(&cfg)
-		cfg.Mode = indexgateway.RingMode
+		cfg.Mode = RingMode
 		cfg.Ring = igwRing
 
 		c, err := NewGatewayClient(cfg, nil, o, logger, constants.Loki)
@@ -220,7 +208,7 @@ func TestGatewayClient_RingMode(t *testing.T) {
 
 		cfg := IndexGatewayClientConfig{}
 		flagext.DefaultValues(&cfg)
-		cfg.Mode = indexgateway.RingMode
+		cfg.Mode = RingMode
 		cfg.Ring = igwRing
 
 		c, err := NewGatewayClient(cfg, nil, o, logger, constants.Loki)
@@ -248,7 +236,7 @@ func TestGatewayClient(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	var cfg IndexGatewayClientConfig
-	cfg.Mode = indexgateway.SimpleMode
+	cfg.Mode = SimpleMode
 	flagext.DefaultValues(&cfg)
 	cfg.Address = storeAddress
 	cfg.PoolConfig = clientpool.PoolConfig{ClientCleanupPeriod: 500 * time.Millisecond}
