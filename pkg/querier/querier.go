@@ -1027,20 +1027,32 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 
 	detectedFields := parseDetectedFields(ctx, req.FieldLimit, streams)
 
+	//TODO: detected field needs to contain the sketch
+	// make sure response to frontend is GRPC
+	//only want cardinality in JSON
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
 	for k, v := range detectedFields {
+		sketch, err := v.sketch.MarshalBinary()
+		if err != nil {
+			level.Warn(q.logger).Log("msg", "failed to marshal hyperloglog sketch", "err", err)
+			continue
+		}
+
 		fields[fieldCount] = &logproto.DetectedField{
 			Label:       k,
 			Type:        v.fieldType,
 			Cardinality: v.Estimate(),
+			Sketch:      sketch,
 		}
 
 		fieldCount++
 	}
 
+	//TODO: detected fields response needs to include the sketch
 	return &logproto.DetectedFieldsResponse{
-		Fields: fields,
+		Fields:     fields,
+		FieldLimit: req.GetFieldLimit(),
 	}, nil
 }
 
@@ -1064,6 +1076,10 @@ func (p *parsedFields) Insert(value string) {
 
 func (p *parsedFields) Estimate() uint64 {
 	return p.sketch.Estimate()
+}
+
+func (p *parsedFields) Marshal() ([]byte, error) {
+	return p.sketch.MarshalBinary()
 }
 
 func (p *parsedFields) DetermineType(value string) {

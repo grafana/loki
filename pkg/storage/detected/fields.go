@@ -1,11 +1,45 @@
 package detected
 
 import (
+	"github.com/axiomhq/hyperloglog"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-func MergeFields(fields []*logproto.DetectedField, limit uint32) []*logproto.DetectedField {
-	mergedFields := make(map[string]*logproto.DetectedField, limit)
+type UnmarshaledDetectedField struct {
+	Label  string
+	Type   logproto.DetectedFieldType
+	Sketch *hyperloglog.Sketch
+}
+
+func UnmarshalDetectedField(f *logproto.DetectedField) (*UnmarshaledDetectedField, error) {
+	sketch := hyperloglog.New()
+	err := sketch.UnmarshalBinary(f.Sketch)
+	if err != nil {
+		return nil, err
+	}
+
+	return &UnmarshaledDetectedField{
+		Label:  f.Label,
+		Type:   f.Type,
+		Sketch: sketch,
+	}, nil
+}
+
+func (f *UnmarshaledDetectedField) Merge(df *logproto.DetectedField) error {
+	sketch := hyperloglog.New()
+	err := sketch.UnmarshalBinary(df.Sketch)
+	if err != nil {
+		return err
+	}
+
+	return f.Sketch.Merge(sketch)
+}
+
+func MergeFields(
+	fields []*logproto.DetectedField,
+	fieldLimit uint32,
+) ([]*logproto.DetectedField, error) {
+	mergedFields := make(map[string]*UnmarshaledDetectedField, fieldLimit)
 	foundFields := uint32(0)
 
 	for _, field := range fields {
@@ -13,30 +47,43 @@ func MergeFields(fields []*logproto.DetectedField, limit uint32) []*logproto.Det
 			continue
 		}
 
-		//TODO(twhitney): this will take the first N up to limit, is there a better
-		//way to rank the fields to make sure we get the most interesting ones?
+		// TODO(twhitney): this will take the first N up to limit, is there a better
+		// way to rank the fields to make sure we get the most interesting ones?
 		f, ok := mergedFields[field.Label]
-		if !ok && foundFields < limit {
-			mergedFields[field.Label] = field
+		if !ok && foundFields < fieldLimit {
+			unmarshaledField, err := UnmarshalDetectedField(field)
+			if err != nil {
+				return nil, err
+			}
+
+			mergedFields[field.Label] = unmarshaledField
 			foundFields++
 			continue
 		}
 
-		//seeing the same field again, update the cardinality if it's higher
-		//this is an estimation, as the true cardinality could be greater
-		//than either of the seen values, but will never be less
 		if ok {
-			curCard, newCard := f.Cardinality, field.Cardinality
-			if newCard > curCard {
-				f.Cardinality = newCard
-			}
+			// seeing the same field again, merge it with the existing one
+			f.Merge(field)
 		}
 	}
 
-	result := make([]*logproto.DetectedField, 0, limit)
+	result := make([]*logproto.DetectedField, 0, fieldLimit)
 	for _, field := range mergedFields {
-		result = append(result, field)
+		// TODO(twhitney): what's the performance cost of marshalling here? We technically don't need to marshal in the merge
+		// but it's nice to keep the response consistent through middlewares in case we need the sketch somewhere else,
+		// need to benchmark this to find out.
+		sketch, err := field.Sketch.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		detectedField := &logproto.DetectedField{
+			Label:       field.Label,
+			Type:        field.Type,
+			Cardinality: field.Sketch.Estimate(),
+			Sketch:      sketch,
+		}
+		result = append(result, detectedField)
 	}
 
-	return result
+	return result, nil
 }

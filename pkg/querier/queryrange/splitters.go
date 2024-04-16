@@ -95,6 +95,20 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 				AggregateBy:  r.AggregateBy,
 			})
 		}
+	case *DetectedFieldsRequest:
+		factory = func(start, end time.Time) {
+			reqs = append(reqs, &DetectedFieldsRequest{
+				DetectedFieldsRequest: logproto.DetectedFieldsRequest{
+					Start:      start,
+					End:        end,
+					Query:      r.GetQuery(),
+					LineLimit:  r.GetLineLimit(),
+					FieldLimit: r.GetFieldLimit(),
+					Step:       r.GetStep(),
+				},
+				path: r.path,
+			})
+		}
 	default:
 		return nil, nil
 	}

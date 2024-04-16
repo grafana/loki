@@ -1594,16 +1594,23 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 	case *DetectedFieldsResponse:
 		resp0 := responses[0].(*DetectedFieldsResponse)
 		headers := resp0.Headers
-		limit := resp0.Response.Limit
+		fieldLimit := resp0.Response.GetFieldLimit()
 
 		fields := []*logproto.DetectedField{}
 		for _, r := range responses {
 			fields = append(fields, r.(*DetectedFieldsResponse).Response.Fields...)
 		}
 
+    mergedFields, err := detected.MergeFields(fields, fieldLimit)
+
+    if err != nil {
+      return nil, err
+    }
+
 		return &DetectedFieldsResponse{
 			Response: &logproto.DetectedFieldsResponse{
-				Fields: detected.MergeFields(fields, limit),
+				Fields:     mergedFields,
+				FieldLimit: fieldLimit,
 			},
 			Headers: headers,
 		}, nil
@@ -2208,6 +2215,11 @@ func (r *DetectedFieldsRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
 		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+		otlog.String("query", r.GetQuery()),
+		otlog.Int64("step (ms)", r.GetStep()),
+		otlog.Int64("line_limit", int64(r.GetLineLimit())),
+		otlog.Int64("field_limit", int64(r.GetFieldLimit())),
+		otlog.String("step", fmt.Sprintf("%d", r.GetStep())),
 	)
 }
 
