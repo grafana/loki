@@ -77,7 +77,7 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
             index:
               prefix: loki_index_
               period: 24h
-            object_store: filesystem
+            object_store: s3
             schema: v13
         storage:
           type: 's3'
