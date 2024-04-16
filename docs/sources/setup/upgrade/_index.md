@@ -104,6 +104,10 @@ If no label is found matching the list, a value of `unknown_service` is applied.
 
 You can change this list by providing a list of labels to `discover_service_name` in the [limits_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config) block.
 
+{{< admonition type="note" >}}
+If you are already using a `service_label`, Loki will not make a new assignment.
+{{< /admonition >}}
+
 **You can disable this by providing an empty value for `discover_service_name`.**
 
 #### Removed `shared_store` and `shared_store_key_prefix` from shipper configuration
@@ -171,7 +175,7 @@ The path prefix under which the delete requests are stored is decided by `-compa
 
 #### Configuration `async_cache_write_back_concurrency` and `async_cache_write_back_buffer_size` have been removed
 
-These configurations were redundant with the `Background` configuration in the [cache-config]({{< relref "../../configure#cache_config" >}}).
+These configurations were redundant with the `Background` configuration in the [cache-config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#cache_config).
 
 `async_cache_write_back_concurrency` can be set with `writeback_goroutines`
 `async_cache_write_back_buffer_size` can be set with `writeback_buffer`
@@ -277,7 +281,7 @@ The TSDB index type has support for caching results for 'stats' and 'volume' que
 All of these are cached to the `results_cache` which is configured in the `query_range` config section.  By default, an in memory cache is used.
 
 #### Write dedupe cache is deprecated
-Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB]({{< relref "../../operations/storage/tsdb" >}}) and [boltdb-shipper]({{< relref "../../operations/storage/boltdb-shipper" >}})).
+Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) and [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/)).
 If you using a [legacy index type](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage), consider migrating to TSDB (recommended).
 
 #### Embedded cache metric changes
@@ -761,7 +765,7 @@ This histogram reports the distribution of log line sizes by file. It has 8 buck
 
 This creates a lot of series and we don't think this metric has enough value to offset the amount of series genereated so we are removing it.
 
-While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs]({{< relref "../../send-data/promtail/stages/metrics#counter" >}}).
+While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/stages/metrics/#counter).
 
 #### `added Docker target` log message has been demoted from level=error to level=info
 
@@ -815,7 +819,7 @@ limits_config:
   retention_period: [30d]
 ```
 
-See the [retention docs]({{< relref "../../operations/storage/retention" >}}) for more info.
+See the [retention docs](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/) for more info.
 
 #### Log messages on startup: proto: duplicate proto type registered:
 
@@ -1286,7 +1290,7 @@ If you happen to have `results_cache.max_freshness` set, use `limits_config.max_
 
 ### Promtail config removed
 
-The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages]({{< relref "../../send-data/promtail/configuration#pipeline_stages" >}}) instead.
+The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#pipeline_stages) instead.
 
 ### Upgrading schema to use boltdb-shipper and/or v11 schema
 
@@ -1616,7 +1620,7 @@ max_retries:
 
 Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config changes](https://github.com/cortexproject/cortex/blob/v0.7.0-rc.0/CHANGELOG).
 
-In the [cache_config]({{< relref "../../configure#cache_config" >}}), `defaul_validity` has changed to `default_validity`.
+In the [cache_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure#cache_config), `defaul_validity` has changed to `default_validity`.
 
 If you configured your schema via arguments and not a config file, this is no longer supported. This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.
 
