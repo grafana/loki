@@ -10,25 +10,25 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-// IndexGatewayGRPCPool represents a pool of gRPC connections to different index gateway instances.
+// ClientPool represents a pool of gRPC connections to different index gateway instances.
 //
 // Only used when Index Gateway is configured to run in ring mode.
-type IndexGatewayGRPCPool struct {
+type ClientPool struct {
 	grpc_health_v1.HealthClient
 	logproto.IndexGatewayClient
 	io.Closer
 }
 
-// NewIndexGatewayGRPCPool instantiates a new pool of IndexGateway GRPC connections.
+// NewClientPool instantiates a new pool of IndexGateway GRPC connections.
 //
 // Internally, it also instantiates a protobuf index gateway client and a health client.
-func NewIndexGatewayGRPCPool(address string, opts []grpc.DialOption) (*IndexGatewayGRPCPool, error) {
+func NewClientPool(address string, opts []grpc.DialOption) (*ClientPool, error) {
 	conn, err := grpc.Dial(address, opts...)
 	if err != nil {
 		return nil, errors.Wrap(err, "shipper new grpc pool dial")
 	}
 
-	return &IndexGatewayGRPCPool{
+	return &ClientPool{
 		Closer:             conn,
 		HealthClient:       grpc_health_v1.NewHealthClient(conn),
 		IndexGatewayClient: logproto.NewIndexGatewayClient(conn),

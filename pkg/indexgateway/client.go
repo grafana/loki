@@ -143,7 +143,7 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 		return nil, errors.Wrap(err, "index gateway grpc dial option")
 	}
 	factory := func(addr string) (client.PoolClient, error) {
-		igPool, err := NewIndexGatewayGRPCPool(addr, dialOpts)
+		igPool, err := NewClientPool(addr, dialOpts)
 		if err != nil {
 			return nil, errors.Wrap(err, "new index gateway grpc pool")
 		}
