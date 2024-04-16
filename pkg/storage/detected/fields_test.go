@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -29,7 +30,8 @@ func Test_MergeFields(t *testing.T) {
 
 	t.Run("merges fields, taking the highest cardinality", func(t *testing.T) {
 		limit := uint32(3)
-		result := MergeFields(fields, limit)
+		result, err := MergeFields(fields, limit)
+		require.NoError(t, err)
 		assert.Equal(t, 2, len(result))
 		var foo *logproto.DetectedField
 
@@ -45,11 +47,13 @@ func Test_MergeFields(t *testing.T) {
 
 	t.Run("returns up to limit number of fields", func(t *testing.T) {
 		limit := uint32(1)
-		result := MergeFields(fields, limit)
+		result, err := MergeFields(fields, limit)
+		require.NoError(t, err)
 		assert.Equal(t, 1, len(result))
 
 		limit = uint32(4)
-		result = MergeFields(fields, limit)
+		result, err = MergeFields(fields, limit)
+		require.NoError(t, err)
 		assert.Equal(t, 2, len(result))
 	})
 }

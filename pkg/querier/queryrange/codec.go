@@ -1601,11 +1601,11 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			fields = append(fields, r.(*DetectedFieldsResponse).Response.Fields...)
 		}
 
-    mergedFields, err := detected.MergeFields(fields, fieldLimit)
+		mergedFields, err := detected.MergeFields(fields, fieldLimit)
 
-    if err != nil {
-      return nil, err
-    }
+		if err != nil {
+			return nil, err
+		}
 
 		return &DetectedFieldsResponse{
 			Response: &logproto.DetectedFieldsResponse{

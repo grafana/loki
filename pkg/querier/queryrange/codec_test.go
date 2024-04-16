@@ -1632,7 +1632,7 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 						Type:        logproto.DetectedFieldString,
 						Cardinality: 1,
 					}},
-					Limit: 2,
+					FieldLimit: 2,
 				},
 			},
 			&DetectedFieldsResponse{
@@ -1642,7 +1642,7 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 						Type:        logproto.DetectedFieldString,
 						Cardinality: 3,
 					}},
-					Limit: 2,
+					FieldLimit: 2,
 				},
 			},
 		}
@@ -1674,7 +1674,7 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 							Cardinality: 42,
 						},
 					},
-					Limit: 2,
+					FieldLimit: 2,
 				},
 			},
 			&DetectedFieldsResponse{
@@ -1690,7 +1690,7 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 							Cardinality: 3,
 						},
 					},
-					Limit: 2,
+					FieldLimit: 2,
 				},
 			},
 		}

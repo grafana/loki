@@ -63,7 +63,10 @@ func MergeFields(
 
 		if ok {
 			// seeing the same field again, merge it with the existing one
-			f.Merge(field)
+			err := f.Merge(field)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 

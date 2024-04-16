@@ -447,11 +447,11 @@ func (f *Frontend) CheckReady(_ context.Context) error {
 }
 
 func (f *Frontend) IsProtobufEncoded() bool {
-  return f.cfg.Encoding == EncodingProtobuf
+	return f.cfg.Encoding == EncodingProtobuf
 }
 
 func (f *Frontend) IsJSONEncoded() bool {
-  return f.cfg.Encoding == EncodingJSON
+	return f.cfg.Encoding == EncodingJSON
 }
 
 const stripeSize = 1 << 6
