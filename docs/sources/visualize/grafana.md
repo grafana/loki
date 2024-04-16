@@ -13,7 +13,7 @@ keywords:
 ---
 # Visualize log data
 
-Modern Grafana versions after 6.3 have built-in support for Grafana Loki and [LogQL]({{< relref "../query/_index.md" >}}).
+Modern Grafana versions after 6.3 have built-in support for Grafana Loki and [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
 
 ## Using Explore
 
