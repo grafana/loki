@@ -165,8 +165,12 @@ func (m MonitoredReaderWriter) GetShards(
 		shards, err = m.rw.GetShards(ctx, userID, from, through, targetBytesPerShard, predicate)
 
 		if err == nil {
-			// record duration here from caller
-			shards.Statistics.Index.Duration = time.Since(start)
+			// record duration here from caller to avoid needing to do this in two separate places:
+			// 1) when we resolve shards from the index alone
+			// 2) when we resolve shards from the index + blooms
+			// NB(owen-d): since this is measured by the callee, it does not include time in queue,
+			// over the wire, etc.
+			shards.Statistics.Index.ShardsDuration = time.Since(start)
 		}
 
 		return err
