@@ -26,6 +26,7 @@ import (
 	shipperstorage "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/cfg"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -80,7 +81,7 @@ func main() {
 	}
 
 	for i, cfg := range lokiCfg.SchemaConfig.Configs {
-		if cfg.IndexType != config.TSDBType {
+		if cfg.IndexType != types.TSDBType {
 			continue
 		}
 

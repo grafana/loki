@@ -232,6 +232,18 @@ func TestMappingStrings(t *testing.T) {
 			)`,
 		},
 		{
+			in: `avg by(foo_extracted) (quantile_over_time(0.95, {foo="baz"} | logfmt | unwrap foo_extracted | __error__="" [5m]))`,
+			out: `(
+               sum by (foo_extracted) (
+                   downstream<sumby(foo_extracted)(quantile_over_time(0.95,{foo="baz"}|logfmt|unwrapfoo_extracted|__error__=""[5m])),shard=0_of_2>++downstream<sumby(foo_extracted)(quantile_over_time(0.95,{foo="baz"}|logfmt|unwrapfoo_extracted|__error__=""[5m])),shard=1_of_2>
+               )
+               / 
+               sum by (foo_extracted) (
+                   downstream<countby(foo_extracted)(quantile_over_time(0.95,{foo="baz"}|logfmt|unwrapfoo_extracted|__error__=""[5m])),shard=0_of_2>++downstream<countby(foo_extracted)(quantile_over_time(0.95,{foo="baz"}|logfmt|unwrapfoo_extracted|__error__=""[5m])),shard=1_of_2>
+               )
+            )`,
+		},
+		{
 			in: `count(rate({foo="bar"} | json | keep foo [5m]))`,
 			out: `count(
 				sum without()(
@@ -283,12 +295,12 @@ func TestMappingStrings(t *testing.T) {
 		},
 		{
 			in: `sum without (a) (
-		  			label_replace(
-		    			sum without (b) (
-		      				rate({foo="bar"}[5m])
-		    			),
-		    			"baz", "buz", "foo", "(.*)"
-		  			)
+		 			label_replace(
+		   			sum without (b) (
+		     				rate({foo="bar"}[5m])
+		   			),
+		   			"baz", "buz", "foo", "(.*)"
+		 			)
 				)`,
 			out: `sum without(a) (
 					label_replace(

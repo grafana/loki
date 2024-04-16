@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	"github.com/cespare/xxhash/v2"
@@ -212,7 +213,7 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 			{
 				From:       config.DayTime{Time: start},
 				IndexType:  "boltdb",
-				ObjectType: config.StorageTypeFileSystem,
+				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v13",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{
@@ -1282,8 +1283,8 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	periodConfig := config.PeriodConfig{
 		From:       config.DayTime{Time: timeToModelTime(firstPeriodDate)},
-		IndexType:  config.TSDBType,
-		ObjectType: config.StorageTypeFileSystem,
+		IndexType:  types.TSDBType,
+		ObjectType: types.StorageTypeFileSystem,
 		Schema:     "v9",
 		IndexTables: config.IndexPeriodicTableConfig{
 			PathPrefix: "index/",
@@ -1356,7 +1357,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 	// update schema with a new period that uses different index prefix
 	periodConfig2 := config.PeriodConfig{
 		From:       config.DayTime{Time: timeToModelTime(secondPeriodDate)},
-		IndexType:  config.TSDBType,
+		IndexType:  types.TSDBType,
 		ObjectType: "named-store",
 		Schema:     "v11",
 		IndexTables: config.IndexPeriodicTableConfig{
@@ -1435,9 +1436,9 @@ func TestStore_MultiPeriod(t *testing.T) {
 	secondStoreDate := parseDate("2019-01-02")
 
 	for name, indexes := range map[string][]string{
-		"botldb_boltdb": {config.BoltDBShipperType, config.BoltDBShipperType},
-		"botldb_tsdb":   {config.BoltDBShipperType, config.TSDBType},
-		"tsdb_tsdb":     {config.TSDBType, config.TSDBType},
+		"botldb_boltdb": {types.BoltDBShipperType, types.BoltDBShipperType},
+		"botldb_tsdb":   {types.BoltDBShipperType, types.TSDBType},
+		"tsdb_tsdb":     {types.TSDBType, types.TSDBType},
 	} {
 		t.Run(name, func(t *testing.T) {
 			tempDir := t.TempDir()
@@ -1463,7 +1464,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 			periodConfigV9 := config.PeriodConfig{
 				From:       config.DayTime{Time: timeToModelTime(firstStoreDate)},
 				IndexType:  indexes[0],
-				ObjectType: config.StorageTypeFileSystem,
+				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v9",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{
@@ -1820,7 +1821,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 			{
 				From:       config.DayTime{Time: timeToModelTime(boltdbShipperStartDate)},
 				IndexType:  "boltdb-shipper",
-				ObjectType: config.StorageTypeFileSystem,
+				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v12",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PathPrefix: "index/",
@@ -1833,7 +1834,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 			{
 				From:       config.DayTime{Time: timeToModelTime(tsdbStartDate)},
 				IndexType:  "tsdb",
-				ObjectType: config.StorageTypeFileSystem,
+				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v12",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PathPrefix: "index/",
@@ -1929,6 +1930,76 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 			require.True(t, ok)
 		}
 	}
+}
+
+func TestStore_SyncStopInteraction(t *testing.T) {
+	tempDir := t.TempDir()
+
+	ingesterName := "ingester-1"
+	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
+	// config for BoltDB Shipper
+	boltdbShipperConfig := boltdb.IndexCfg{}
+	flagext.DefaultValues(&boltdbShipperConfig)
+	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "boltdb-index")
+	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
+	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	boltdbShipperConfig.IngesterName = ingesterName
+	boltdbShipperConfig.ResyncInterval = time.Millisecond
+
+	// config for tsdb Shipper
+	tsdbShipperConfig := indexshipper.Config{}
+	flagext.DefaultValues(&tsdbShipperConfig)
+	tsdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "tsdb-index")
+	tsdbShipperConfig.CacheLocation = path.Join(tempDir, "tsdb-shipper-cache")
+	tsdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	tsdbShipperConfig.IngesterName = ingesterName
+	tsdbShipperConfig.ResyncInterval = time.Millisecond
+
+	// dates for activation of boltdb shippers
+	boltdbShipperStartDate := parseDate("2019-01-01")
+	tsdbStartDate := parseDate("2019-01-02")
+
+	cfg := Config{
+		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+		BoltDBShipperConfig: boltdbShipperConfig,
+		TSDBShipperConfig:   tsdbShipperConfig,
+	}
+
+	schemaConfig := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:       config.DayTime{Time: timeToModelTime(boltdbShipperStartDate)},
+				IndexType:  "boltdb-shipper",
+				ObjectType: types.StorageTypeFileSystem,
+				Schema:     "v12",
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
+				RowShards: 2,
+			},
+			{
+				From:       config.DayTime{Time: timeToModelTime(tsdbStartDate)},
+				IndexType:  "tsdb",
+				ObjectType: types.StorageTypeFileSystem,
+				Schema:     "v12",
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
+			},
+		},
+	}
+
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
+	require.NoError(t, err)
+	store.Stop()
 }
 
 func TestQueryReferencingStructuredMetadata(t *testing.T) {

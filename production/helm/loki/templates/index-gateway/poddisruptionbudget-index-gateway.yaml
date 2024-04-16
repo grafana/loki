@@ -1,0 +1,20 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and $isDistributed (gt (int .Values.indexGateway.replicas) 1) }}
+{{- if kindIs "invalid" .Values.indexGateway.maxUnavailable }}
+{{- fail "`.Values.indexGateway.maxUnavailable` must be set when `.Values.indexGateway.replicas` is greater than 1." }}
+{{- else }}
+apiVersion: {{ include "loki.pdb.apiVersion" . }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "loki.indexGatewayFullname" . }}
+  labels:
+    {{- include "loki.indexGatewayLabels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "loki.indexGatewaySelectorLabels" . | nindent 6 }}
+  {{- with .Values.indexGateway.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end }}
+{{- end }}
+{{- end }}

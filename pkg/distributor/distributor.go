@@ -85,7 +85,7 @@ type Config struct {
 	RateStore RateStoreConfig `yaml:"rate_store"`
 
 	// WriteFailuresLoggingCfg customizes write failures logging behavior.
-	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Experimental. Customize the logging of write failures."`
+	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Customize the logging of write failures."`
 
 	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 }
@@ -919,7 +919,7 @@ func extractLogLevelFromLogLine(log string) string {
 			return logLevelDebug
 		}
 		if strings.Contains(log, `:"info"`) || strings.Contains(log, `:"INFO"`) {
-			return logLevelDebug
+			return logLevelInfo
 		}
 	}
 
@@ -940,7 +940,7 @@ func extractLogLevelFromLogLine(log string) string {
 			return logLevelDebug
 		}
 		if strings.Contains(log, "=info") || strings.Contains(log, "=INFO") {
-			return logLevelDebug
+			return logLevelInfo
 		}
 	}
 

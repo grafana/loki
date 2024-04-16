@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -510,7 +511,7 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 				From: config.DayTime{
 					Time: borderTime.Add(-1 * time.Hour),
 				},
-				IndexType: config.TSDBType,
+				IndexType: types.TSDBType,
 			},
 		}
 
@@ -528,7 +529,7 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 				From: config.DayTime{
 					Time: borderTime.Add(-1 * time.Hour),
 				},
-				IndexType: config.TSDBType,
+				IndexType: types.TSDBType,
 			},
 		}
 
@@ -546,7 +547,7 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 				From: config.DayTime{
 					Time: borderTime.Add(-1 * time.Hour),
 				},
-				IndexType: config.TSDBType,
+				IndexType: types.TSDBType,
 			},
 		}
 
@@ -562,12 +563,12 @@ func Test_MaxQuerySize(t *testing.T) {
 		{
 			// BoltDB -> Time -4 days
 			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-96 * time.Hour).Unix())},
-			IndexType: config.BoltDBShipperType,
+			IndexType: types.BoltDBShipperType,
 		},
 		{
 			// TSDB -> Time -2 days
 			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
-			IndexType: config.TSDBType,
+			IndexType: types.TSDBType,
 		},
 	}
 
@@ -586,7 +587,7 @@ func Test_MaxQuerySize(t *testing.T) {
 	}{
 		{
 			desc:       "No TSDB",
-			schema:     config.BoltDBShipperType,
+			schema:     types.BoltDBShipperType,
 			query:      `{app="foo"} |= "foo"`,
 			queryRange: 1 * time.Hour,
 

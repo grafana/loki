@@ -60,7 +60,7 @@ To add tenant id add `-var "tenant_id=value"`.
 
 Note that the creation of a subscription filter on Cloudwatch in the provided Terraform file only accepts an array of log group names.
 It does **not** accept strings for regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so.
-Or, have lambda-promtail write to Promtail and use [pipeline stages](/docs/loki/latest/send-data/promtail/stages/drop/).
+Or, have lambda-promtail write to Promtail and use [pipeline stages](/docs/loki/<LOKI_VERSION>/send-data/promtail/stages/drop/).
 
 CloudFormation:
 ```

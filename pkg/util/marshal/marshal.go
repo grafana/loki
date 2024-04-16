@@ -44,6 +44,8 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 		return WriteIndexStatsResponseJSON(result, w)
 	case *logproto.VolumeResponse:
 		return WriteVolumeResponseJSON(result, w)
+	case *logproto.QueryPatternsResponse:
+		return WriteQueryPatternsResponseJSON(result, w)
 	}
 	return fmt.Errorf("unknown response type %T", v)
 }
@@ -181,6 +183,49 @@ func WriteDetectedFieldsResponseJSON(r *logproto.DetectedFieldsResponse, w io.Wr
 	s := jsoniter.ConfigFastest.BorrowStream(w)
 	defer jsoniter.ConfigFastest.ReturnStream(s)
 	s.WriteVal(r)
+	s.WriteRaw("\n")
+	return s.Flush()
+}
+
+// WriteQueryPatternsResponseJSON marshals a logproto.QueryPatternsResponse to JSON and then
+// writes it to the provided io.Writer.
+func WriteQueryPatternsResponseJSON(r *logproto.QueryPatternsResponse, w io.Writer) error {
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	s.WriteObjectStart()
+	s.WriteObjectField("status")
+	s.WriteString("success")
+
+	s.WriteMore()
+	s.WriteObjectField("data")
+	s.WriteArrayStart()
+	if len(r.Series) > 0 {
+		for i, series := range r.Series {
+			s.WriteObjectStart()
+			s.WriteObjectField("pattern")
+			s.WriteStringWithHTMLEscaped(series.Pattern)
+			s.WriteMore()
+			s.WriteObjectField("samples")
+			s.WriteArrayStart()
+			for j, sample := range series.Samples {
+				s.WriteArrayStart()
+				s.WriteInt64(sample.Timestamp.Unix())
+				s.WriteMore()
+				s.WriteInt64(sample.Value)
+				s.WriteArrayEnd()
+				if j < len(series.Samples)-1 {
+					s.WriteMore()
+				}
+			}
+			s.WriteArrayEnd()
+			s.WriteObjectEnd()
+			if i < len(r.Series)-1 {
+				s.WriteMore()
+			}
+		}
+	}
+	s.WriteArrayEnd()
+	s.WriteObjectEnd()
 	s.WriteRaw("\n")
 	return s.Flush()
 }

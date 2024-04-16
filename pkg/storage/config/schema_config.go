@@ -20,34 +20,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
 	// Supported storage clients
 
-	StorageTypeAlibabaCloud   = "alibabacloud"
-	StorageTypeAWS            = "aws"
-	StorageTypeAWSDynamo      = "aws-dynamo"
-	StorageTypeAzure          = "azure"
-	StorageTypeBOS            = "bos"
-	StorageTypeBoltDB         = "boltdb"
-	StorageTypeCassandra      = "cassandra"
-	StorageTypeInMemory       = "inmemory"
-	StorageTypeBigTable       = "bigtable"
-	StorageTypeBigTableHashed = "bigtable-hashed"
-	StorageTypeFileSystem     = "filesystem"
-	StorageTypeGCP            = "gcp"
-	StorageTypeGCPColumnKey   = "gcp-columnkey"
-	StorageTypeGCS            = "gcs"
-	StorageTypeGrpc           = "grpc-store"
-	StorageTypeLocal          = "local"
-	StorageTypeS3             = "s3"
-	StorageTypeSwift          = "swift"
-	StorageTypeCOS            = "cos"
 	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
-	BoltDBShipperType = "boltdb-shipper"
-	TSDBType          = "tsdb"
 
 	// ObjectStorageIndexRequiredPeriod defines the required index period for object storage based index stores like boltdb-shipper and tsdb
 	ObjectStorageIndexRequiredPeriod = 24 * time.Hour
@@ -319,13 +299,13 @@ func (cfg *SchemaConfig) Validate() error {
 	activePCIndex := ActivePeriodConfig((*cfg).Configs)
 
 	// if current index type is boltdb-shipper and there are no upcoming index types then it should be set to 24 hours.
-	if cfg.Configs[activePCIndex].IndexType == BoltDBShipperType &&
+	if cfg.Configs[activePCIndex].IndexType == types.BoltDBShipperType &&
 		cfg.Configs[activePCIndex].IndexTables.Period != ObjectStorageIndexRequiredPeriod && len(cfg.Configs)-1 == activePCIndex {
 		return errCurrentBoltdbShipperNon24Hours
 	}
 
 	// if upcoming index type is boltdb-shipper, it should always be set to 24 hours.
-	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == BoltDBShipperType &&
+	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == types.BoltDBShipperType &&
 		cfg.Configs[activePCIndex+1].IndexTables.Period != ObjectStorageIndexRequiredPeriod) {
 		return errUpcomingBoltdbShipperNon24Hours
 	}
@@ -372,7 +352,7 @@ func usingForPeriodConfigs(configs []PeriodConfig, fn func(string) bool) bool {
 
 // IsObjectStorageIndex returns true if the index type is either boltdb-shipper or tsdb.
 func IsObjectStorageIndex(indexType string) bool {
-	return indexType == BoltDBShipperType || indexType == TSDBType
+	return indexType == types.BoltDBShipperType || indexType == types.TSDBType
 }
 
 // UsingObjectStorageIndex returns true if the current or any of the upcoming periods
@@ -471,7 +451,7 @@ func (cfg PeriodConfig) validate() error {
 		return validateError
 	}
 
-	if cfg.IndexType == TSDBType && cfg.IndexTables.Period != ObjectStorageIndexRequiredPeriod {
+	if cfg.IndexType == types.TSDBType && cfg.IndexTables.Period != ObjectStorageIndexRequiredPeriod {
 		return errTSDBNon24HoursIndexPeriod
 	}
 

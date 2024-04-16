@@ -131,7 +131,7 @@ func testChunkFetcher(t *testing.T, c cache.Cache, chunks []chunk.Chunk) {
 		},
 	}
 
-	fetcher, err := fetcher.New(c, nil, false, s, nil, 10, 100, 0)
+	fetcher, err := fetcher.New(c, nil, false, s, nil, 0)
 	require.NoError(t, err)
 	defer fetcher.Stop()
 

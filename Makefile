@@ -55,7 +55,7 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name operator -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Build flags
-VPREFIX := github.com/grafana/loki/pkg/util/build
+VPREFIX := github.com/grafana/loki/v3/pkg/util/build
 GO_LDFLAGS   := -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GO_FLAGS     := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo
 DYN_GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
@@ -85,10 +85,11 @@ PROMTAIL_UI_FILES := $(shell find ./clients/pkg/promtail/server/ui -type f -name
 
 # Documentation source path
 DOC_SOURCES_PATH := docs/sources
+DOC_TEMPLATE_PATH := docs/templates
 
 # Configuration flags documentation
-DOC_FLAGS_TEMPLATE := $(DOC_SOURCES_PATH)/configure/index.template
-DOC_FLAGS := $(DOC_SOURCES_PATH)/configure/_index.md
+DOC_FLAGS_TEMPLATE := $(DOC_TEMPLATE_PATH)/configuration.template
+DOC_FLAGS := $(DOC_SOURCES_PATH)/shared/configuration.md
 
 ##########
 # Docker #
@@ -190,6 +191,9 @@ production/helm/loki/src/helm-test/helm-test:
 
 helm-lint: ## run helm linter
 	$(MAKE) -BC production/helm/loki lint
+
+helm-docs:
+	helm-docs -c production/helm/loki -g production/helm/loki
 
 #################
 # Loki-QueryTee #
@@ -801,7 +805,13 @@ check-format: format
 # Documentation related commands
 
 doc: ## Generates the config file documentation
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
 	go run ./tools/doc-generator $(DOC_FLAGS_TEMPLATE) > $(DOC_FLAGS)
+endif
 
 docs: doc
 

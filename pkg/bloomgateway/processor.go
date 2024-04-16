@@ -168,7 +168,7 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 		return err
 	}
 
-	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), 0)
+	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), schema.NGramSkip())
 	iters := make([]v1.PeekingIterator[v1.Request], 0, len(tasks))
 
 	for _, task := range tasks {
