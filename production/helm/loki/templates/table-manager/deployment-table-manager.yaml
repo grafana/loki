@@ -67,9 +67,9 @@ spec:
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.tableManager.extraEnvFrom }}
+          {{- if or .Values.global.extraEnvFrom .Values.tableManager.extraEnvFrom }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
+            {{- coalesce .Values.global.extraEnvFrom .Values.tableManager.extraEnvFrom | toYaml | nindent 10 }}
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
