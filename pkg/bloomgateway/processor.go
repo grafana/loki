@@ -74,9 +74,9 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		Keyspace: v1.NewBounds(minFpRange.Min, maxFpRange.Max),
 	}
 
-	start := time.Now()
+	startMetas := time.Now()
 	metas, err := p.store.FetchMetas(ctx, metaSearch)
-	duration := time.Since(start)
+	duration := time.Since(startMetas)
 	level.Debug(p.logger).Log("msg", "fetched metas", "count", len(metas), "duration", duration, "err", err)
 
 	for _, t := range tasks {
@@ -89,6 +89,9 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 
 	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
 
+	// resolveDuration is the time spent resolving blocks for a given set of tasks
+	p.metrics.resolveDuration.WithLabelValues(p.id).Observe(time.Since(startMetas).Seconds())
+
 	data := partitionTasks(tasks, blocksRefs)
 
 	refs := make([]bloomshipper.BlockRef, 0, len(data))
@@ -96,7 +99,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		refs = append(refs, block.ref)
 	}
 
-	start = time.Now()
+	startBlocks := time.Now()
 	bqs, err := p.store.FetchBlocks(
 		ctx,
 		refs,
@@ -108,7 +111,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		// the underlying bloom []byte outside of iteration
 		bloomshipper.WithPool(true),
 	)
-	duration = time.Since(start)
+	duration = time.Since(startBlocks)
 	level.Debug(p.logger).Log("msg", "fetched blocks", "count", len(refs), "duration", duration, "err", err)
 
 	for _, t := range tasks {
@@ -119,9 +122,9 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		return err
 	}
 
-	start = time.Now()
+	startProcess := time.Now()
 	res := p.processBlocks(ctx, bqs, data)
-	duration = time.Since(start)
+	duration = time.Since(startProcess)
 
 	for _, t := range tasks {
 		FromContext(t.ctx).AddProcessingTime(duration)

@@ -118,6 +118,7 @@ type workerMetrics struct {
 	tasksDequeued     *prometheus.CounterVec
 	tasksProcessed    *prometheus.CounterVec
 	blockQueryLatency *prometheus.HistogramVec
+	resolveDuration   *prometheus.HistogramVec
 }
 
 func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem string) *workerMetrics {
@@ -160,5 +161,11 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Name:      "block_query_latency_seconds",
 			Help:      "Time spent running searches against a bloom block",
 		}, append(labels, "status")),
+		resolveDuration: r.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "block_resolve_duration_seconds",
+			Help:      "Time spent resolving bloom blocks for series",
+		}, labels),
 	}
 }
