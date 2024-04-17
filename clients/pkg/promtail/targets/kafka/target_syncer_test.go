@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ import (
 
 func Test_TopicDiscovery(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	group := &testConsumerGroupHandler{}
+	group := &testConsumerGroupHandler{mu: &sync.Mutex{}}
 	TopicPollInterval = time.Microsecond
 	var closed bool
 	client := &mockKafkaClient{

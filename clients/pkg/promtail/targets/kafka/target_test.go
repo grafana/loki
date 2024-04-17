@@ -21,7 +21,7 @@ type testConsumerGroupHandler struct {
 	handler sarama.ConsumerGroupHandler
 	ctx     context.Context
 	topics  []string
-	mu      sync.Mutex
+	mu      *sync.Mutex
 
 	returnErr error
 
