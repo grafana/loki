@@ -18,15 +18,18 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/push"
-	loki_util "github.com/grafana/loki/pkg/util"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	loki_util "github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
 	pbContentType       = "application/x-protobuf"
 	gzipContentEncoding = "gzip"
 	attrServiceName     = "service.name"
+
+	OTLPSeverityNumber = "severity_number"
 )
 
 func newPushStats() *Stats {
@@ -287,7 +290,7 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig) push.Entry {
 
 	if severityNum := log.SeverityNumber(); severityNum != plog.SeverityNumberUnspecified {
 		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  "severity_number",
+			Name:  OTLPSeverityNumber,
 			Value: fmt.Sprintf("%d", severityNum),
 		})
 	}

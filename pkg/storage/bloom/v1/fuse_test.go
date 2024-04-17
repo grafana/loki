@@ -10,8 +10,20 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
 )
+
+// TODO(owen-d): this is unhinged from the data it represents. I'm leaving this solely so I don't
+// have to refactor tests here in order to fix this elsewhere, but it can/should be fixed --
+// the skip & n len are hardcoded based on data that's passed to it elsewhere.
+type fakeNgramBuilder struct{}
+
+func (f fakeNgramBuilder) N() int          { return 4 }
+func (f fakeNgramBuilder) SkipFactor() int { return 0 }
+
+func (f fakeNgramBuilder) Tokens(line string) Iterator[[]byte] {
+	return NewSliceIter[[]byte]([][]byte{[]byte(line)})
+}
 
 func keysToBloomTest(keys [][]byte) BloomTest {
 	var tokenizer fakeNgramBuilder

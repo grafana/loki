@@ -20,9 +20,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // ToWriteRequest converts matched slices of Labels, Samples and Metadata into a WriteRequest proto.
@@ -442,6 +442,36 @@ func (m *ShardsRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("through", timestamp.Time(int64(m.Through)).String()),
 		otlog.String("query", m.GetQuery()),
 		otlog.String("target_bytes_per_shard", datasize.ByteSize(m.TargetBytesPerShard).HumanReadable()),
+	}
+	sp.LogFields(fields...)
+}
+
+func (m *QueryPatternsRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
+
+func (m *QueryPatternsRequest) GetStep() int64 { return 0 }
+
+func (m *QueryPatternsRequest) WithStartEnd(start, end time.Time) definitions.Request {
+	clone := *m
+	clone.Start = start
+	clone.End = end
+	return &clone
+}
+
+func (m *QueryPatternsRequest) WithQuery(query string) definitions.Request {
+	clone := *m
+	clone.Query = query
+	return &clone
+}
+
+func (m *QueryPatternsRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	return m.WithStartEnd(start, end).(resultscache.Request)
+}
+
+func (m *QueryPatternsRequest) LogToSpan(sp opentracing.Span) {
+	fields := []otlog.Field{
+		otlog.String("start", m.Start.String()),
+		otlog.String("end", m.End.String()),
+		otlog.String("query", m.GetQuery()),
 	}
 	sp.LogFields(fields...)
 }

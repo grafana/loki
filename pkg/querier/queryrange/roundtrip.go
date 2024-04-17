@@ -16,17 +16,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	logqllog "github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	logutil "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	logutil "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -62,16 +62,16 @@ type Config struct {
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
-	f.BoolVar(&cfg.CacheIndexStatsResults, "querier.cache-index-stats-results", false, "Cache index stats query results.")
+	f.BoolVar(&cfg.CacheIndexStatsResults, "querier.cache-index-stats-results", true, "Cache index stats query results.")
 	cfg.StatsCacheConfig.RegisterFlags(f)
-	f.BoolVar(&cfg.CacheVolumeResults, "querier.cache-volume-results", false, "Cache volume query results.")
+	f.BoolVar(&cfg.CacheVolumeResults, "querier.cache-volume-results", true, "Cache volume query results.")
 	cfg.VolumeCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.CacheInstantMetricResults, "querier.cache-instant-metric-results", false, "Cache instant metric query results.")
 	cfg.InstantMetricCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.InstantMetricQuerySplitAlign, "querier.instant-metric-query-split-align", false, "Align the instant metric splits with splityByInterval and query's exec time.")
-	f.BoolVar(&cfg.CacheSeriesResults, "querier.cache-series-results", false, "Cache series query results.")
+	f.BoolVar(&cfg.CacheSeriesResults, "querier.cache-series-results", true, "Cache series query results.")
 	cfg.SeriesCacheConfig.RegisterFlags(f)
-	f.BoolVar(&cfg.CacheLabelResults, "querier.cache-label-results", false, "Cache label query results.")
+	f.BoolVar(&cfg.CacheLabelResults, "querier.cache-label-results", true, "Cache label query results.")
 	cfg.LabelsCacheConfig.RegisterFlags(f)
 }
 
@@ -245,23 +245,24 @@ func NewMiddleware(
 			instantRT        = instantMetricTripperware.Wrap(next)
 			statsRT          = indexStatsTripperware.Wrap(next)
 			seriesVolumeRT   = seriesVolumeTripperware.Wrap(next)
-			detectedFieldsRT = next //TODO(twhitney): add middlewares for detected fields
+			detectedFieldsRT = next // TODO(twhitney): add middlewares for detected fields
+			detectedLabelsRT = next // TODO(shantanu): add middlewares
 		)
 
-		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, detectedFieldsRT, limits)
+		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, detectedFieldsRT, detectedLabelsRT, limits)
 	}), StopperWrapper{resultsCache, statsCache, volumeCache}, nil
 }
 
 type roundTripper struct {
 	logger log.Logger
 
-	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields base.Handler
+	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels base.Handler
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields base.Handler, limits Limits) roundTripper {
+func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels base.Handler, limits Limits) roundTripper {
 	return roundTripper{
 		logger:         logger,
 		limited:        limited,
@@ -274,6 +275,7 @@ func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labe
 		indexStats:     indexStats,
 		seriesVolume:   seriesVolume,
 		detectedFields: detectedFields,
+		detectedLabels: detectedLabels,
 		next:           next,
 	}
 }
@@ -372,12 +374,13 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"msg", "executing query",
 			"type", "detected fields",
 			"query", op.Query,
-			"length", op.End.Sub(*op.Start),
+			"length", op.End.Sub(op.Start),
 			"start", op.Start,
 			"end", op.End,
 		)
 
 		return r.detectedFields.Do(ctx, req)
+	// TODO(shantanu): Add DetectedLabels
 	default:
 		return r.next.Do(ctx, req)
 	}
@@ -412,6 +415,8 @@ const (
 	VolumeRangeOp    = "volume_range"
 	IndexShardsOp    = "index_shards"
 	DetectedFieldsOp = "detected_fields"
+	PatternsQueryOp  = "patterns"
+	DetectedLabelsOp = "detected_labels"
 )
 
 func getOperation(path string) string {
@@ -432,8 +437,12 @@ func getOperation(path string) string {
 		return VolumeRangeOp
 	case path == "/loki/api/v1/index/shards":
 		return IndexShardsOp
-	case path == "/loki/api/experimental/detected_fields":
+	case path == "/loki/api/v1/detected_fields":
 		return DetectedFieldsOp
+	case path == "/loki/api/v1/patterns":
+		return PatternsQueryOp
+	case path == "/loki/api/v1/detected_labels":
+		return DetectedLabelsOp
 	default:
 		return ""
 	}
@@ -937,7 +946,6 @@ func NewVolumeTripperware(cfg Config, log log.Logger, limits Limits, schema conf
 		schema,
 		metricsNamespace,
 	)
-
 	if err != nil {
 		return nil, err
 	}

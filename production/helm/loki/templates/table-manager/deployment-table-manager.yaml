@@ -80,6 +80,10 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
+            {{- if .Values.enterprise.enabled }}
+            - name: license
+              mountPath: /etc/loki/license
+            {{- end }}
             {{- with .Values.tableManager.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -90,7 +94,7 @@ spec:
         {{- end }}
       {{- with .Values.tableManager.affinity }}
       affinity:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.tableManager.dnsConfig }}
       dnsConfig:
@@ -106,12 +110,16 @@ spec:
       {{- end }}
       volumes:
         - name: config
-          {{- if .Values.loki.existingSecretForConfig }}
-          secret:
-            secretName: {{ .Values.loki.existingSecretForConfig }}
-          {{- else }}
           {{- include "loki.configVolume" . | nindent 10 }}
+        {{- if .Values.enterprise.enabled }}
+        - name: license
+          secret:
+          {{- if .Values.enterprise.useExternalLicense }}
+            secretName: {{ .Values.enterprise.externalLicenseName }}
+          {{- else }}
+            secretName: enterprise-logs-license
           {{- end }}
+        {{- end }}
         {{- with .Values.tableManager.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

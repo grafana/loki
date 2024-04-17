@@ -7,10 +7,10 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 type Handler struct {
@@ -120,6 +120,21 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		return &queryrange.DetectedFieldsResponse{
 			Response: result,
 		}, nil
+	case *logproto.QueryPatternsRequest:
+		result, err := h.api.PatternsHandler(ctx, concrete)
+		if err != nil {
+			return nil, err
+		}
+		return &queryrange.QueryPatternsResponse{
+			Response: result,
+		}, nil
+	case *queryrange.DetectedLabelsRequest:
+		result, err := h.api.DetectedLabelsHandler(ctx, &concrete.DetectedLabelsRequest)
+		if err != nil {
+			return nil, err
+		}
+
+		return &queryrange.DetectedLabelsResponse{Response: result}, nil
 	default:
 		return nil, fmt.Errorf("unsupported query type %T", req)
 	}

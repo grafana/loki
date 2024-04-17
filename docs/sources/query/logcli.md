@@ -229,7 +229,7 @@ Commands:
     For more information about log queries and metric queries, refer to the
     LogQL documentation:
 
-    https://grafana.com/docs/loki/latest/logql/
+    https://grafana.com/docs/loki/<LOKI_VERSION>/logql/
 
   labels [<flags>] [<label>]
     Find values for a given label.

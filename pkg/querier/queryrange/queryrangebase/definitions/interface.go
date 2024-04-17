@@ -8,7 +8,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/opentracing/opentracing-go"
 
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 )
 
 // Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.

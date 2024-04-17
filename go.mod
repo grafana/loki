@@ -1,4 +1,4 @@
-module github.com/grafana/loki
+module github.com/grafana/loki/v3
 
 go 1.21
 
@@ -126,6 +126,7 @@ require (
 	github.com/gogo/googleapis v1.4.0
 	github.com/grafana/jsonparser v0.0.0-20240209175146-098958973a2d
 	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 	github.com/prometheus/alertmanager v0.27.0

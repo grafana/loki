@@ -8,35 +8,33 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 type Config struct {
-	WorkingDirectory       flagext.StringSliceCSV `yaml:"working_directory"`
-	MaxQueryPageSize       flagext.Bytes          `yaml:"max_query_page_size"`
-	BlocksDownloadingQueue DownloadingQueueConfig `yaml:"blocks_downloading_queue"`
-	BlocksCache            BlocksCacheConfig      `yaml:"blocks_cache"`
-	MetasCache             cache.Config           `yaml:"metas_cache"`
-}
+	WorkingDirectory    flagext.StringSliceCSV `yaml:"working_directory"`
+	MaxQueryPageSize    flagext.Bytes          `yaml:"max_query_page_size"`
+	DownloadParallelism int                    `yaml:"download_parallelism"`
+	BlocksCache         BlocksCacheConfig      `yaml:"blocks_cache"`
+	MetasCache          cache.Config           `yaml:"metas_cache"`
 
-type DownloadingQueueConfig struct {
-	WorkersCount              int `yaml:"workers_count"`
-	MaxTasksEnqueuedPerTenant int `yaml:"max_tasks_enqueued_per_tenant"`
-}
-
-func (cfg *DownloadingQueueConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.IntVar(&cfg.WorkersCount, prefix+"workers-count", 16, "The count of parallel workers that download Bloom Blocks.")
-	f.IntVar(&cfg.MaxTasksEnqueuedPerTenant, prefix+"max_tasks_enqueued_per_tenant", 10_000, "Maximum number of task in queue per tenant per bloom-gateway. Enqueuing the tasks above this limit will fail an error.")
+	// This will always be set to true when flags are registered.
+	// In tests, where config is created as literal, it can be set manually.
+	CacheListOps bool `yaml:"-"`
 }
 
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	//FIXME E.Welch, the helm chart does not use the /data dir rather /var so we need to probably consider not defaulting this? not sure what's best to do here.
 	c.WorkingDirectory = []string{"/data/blooms"}
 	f.Var(&c.WorkingDirectory, prefix+"shipper.working-directory", "Working directory to store downloaded bloom blocks. Supports multiple directories, separated by comma.")
 	_ = c.MaxQueryPageSize.Set("64MiB") // default should match the one set in pkg/storage/bloom/v1/bloom.go
 	f.Var(&c.MaxQueryPageSize, prefix+"max-query-page-size", "Maximum size of bloom pages that should be queried. Larger pages than this limit are skipped when querying blooms to limit memory usage.")
-	c.BlocksDownloadingQueue.RegisterFlagsWithPrefix(prefix+"shipper.blocks-downloading-queue.", f)
+	f.IntVar(&c.DownloadParallelism, prefix+"download-parallelism", 8, "The amount of maximum concurrent bloom blocks downloads. Usually set to 2x number of CPU cores.")
 	c.BlocksCache.RegisterFlagsWithPrefixAndDefaults(prefix+"blocks-cache.", "Cache for bloom blocks. ", f, 24*time.Hour)
 	c.MetasCache.RegisterFlagsWithPrefix(prefix+"metas-cache.", "Cache for bloom metas. ", f)
+
+	// always cache LIST operations
+	c.CacheListOps = true
 }
 
 func (c *Config) Validate() error {

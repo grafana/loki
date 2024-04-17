@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 // RoundTripper that forwards requests to downstream URL.

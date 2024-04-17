@@ -15,16 +15,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	logql_stats "github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logql_stats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -162,6 +162,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"splits", stats.Summary.Splits,
 		"shards", stats.Summary.Shards,
 		"query_referenced_structured_metadata", stats.QueryReferencedStructuredMetadata(),
+		"pipeline_wrapper_filtered_lines", stats.PipelineWrapperFilteredLines(),
 		"chunk_refs_fetch_time", stats.ChunkRefsFetchTime(),
 		"cache_chunk_req", stats.Caches.Chunk.EntriesRequested,
 		"cache_chunk_hit", stats.Caches.Chunk.EntriesFound,
@@ -202,6 +203,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"index_total_chunks", stats.Index.TotalChunks,
 		"index_post_bloom_filter_chunks", stats.Index.PostFilterChunks,
 		"index_bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
+		"index_shard_resolver_duration", time.Duration(stats.Index.ShardsDuration),
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
@@ -576,4 +578,8 @@ func extractShard(shards []string) *astmapper.ShardAnnotation {
 	}
 
 	return &shard
+}
+
+func RecordDetectedLabelsQueryMetrics(_ context.Context, _ log.Logger, _ time.Time, _ time.Time, _ string, _ string, _ logql_stats.Result) {
+	// TODO(shantanu) log metrics here
 }

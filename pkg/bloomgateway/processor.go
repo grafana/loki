@@ -12,9 +12,9 @@ import (
 
 	"github.com/grafana/dskit/concurrency"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 func newProcessor(id string, concurrency int, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
@@ -168,7 +168,7 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 		return err
 	}
 
-	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), 0)
+	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), schema.NGramSkip())
 	iters := make([]v1.PeekingIterator[v1.Request], 0, len(tasks))
 
 	for _, task := range tasks {

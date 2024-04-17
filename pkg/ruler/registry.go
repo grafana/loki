@@ -25,9 +25,9 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
-	"github.com/grafana/loki/pkg/ruler/storage/instance"
-	"github.com/grafana/loki/pkg/ruler/storage/wal"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/cleaner"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/wal"
 )
 
 type walRegistry struct {
