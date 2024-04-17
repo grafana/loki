@@ -904,42 +904,46 @@ func extractLogLevelFromLogLine(log string) string {
 	}
 
 	if firstNonSpaceChar == '{' && lastNonSpaceChar == '}' {
-		if strings.Contains(log, `:"err"`) || strings.Contains(log, `:"ERR"`) ||
-			strings.Contains(log, `:"error"`) || strings.Contains(log, `:"ERROR"`) {
+		levelIndex := strings.Index(log, `"level":`)
+		if levelIndex == -1 {
+			return logLevelInfo
+		}
+		compareString := log[levelIndex:min(len(log), levelIndex+20)]
+
+		if strings.Contains(strings.ToLower(compareString), `:"error"`) || strings.Contains(strings.ToLower(compareString), `":err"`) {
 			return logLevelError
 		}
-		if strings.Contains(log, `:"warn"`) || strings.Contains(log, `:"WARN"`) ||
-			strings.Contains(log, `:"warning"`) || strings.Contains(log, `:"WARNING"`) {
+		if strings.Contains(strings.ToLower(compareString), `:"warning"`) || strings.Contains(strings.ToLower(compareString), `:"warn"`) {
 			return logLevelWarn
 		}
-		if strings.Contains(log, `:"critical"`) || strings.Contains(log, `:"CRITICAL"`) {
+		if strings.Contains(strings.ToLower(compareString), `:"critical"`) {
 			return logLevelCritical
 		}
-		if strings.Contains(log, `:"debug"`) || strings.Contains(log, `:"DEBUG"`) {
+		if strings.Contains(strings.ToLower(compareString), `:"debug"`) {
 			return logLevelDebug
 		}
-		if strings.Contains(log, `:"info"`) || strings.Contains(log, `:"INFO"`) {
+		if strings.Contains(strings.ToLower(compareString), `:"info"`) {
 			return logLevelInfo
 		}
 	}
 
 	// logfmt logs:
-	if strings.Contains(log, "=") {
-		if strings.Contains(log, "=err") || strings.Contains(log, "=ERR") ||
-			strings.Contains(log, "=error") || strings.Contains(log, "=ERROR") {
+	levelIndex := strings.Index(log, "level=")
+	if levelIndex != -1 {
+		compareString := log[levelIndex:min(len(log), levelIndex+20)]
+		if strings.Contains(strings.ToLower(compareString), "=error") || strings.Contains(strings.ToLower(compareString), "err") {
 			return logLevelError
 		}
-		if strings.Contains(log, "=warn") || strings.Contains(log, "=WARN") ||
-			strings.Contains(log, "=warning") || strings.Contains(log, "=WARNING") {
+		if strings.Contains(strings.ToLower(compareString), "=warning") || strings.Contains(strings.ToLower(compareString), "warn") {
 			return logLevelWarn
 		}
-		if strings.Contains(log, "=critical") || strings.Contains(log, "=CRITICAL") {
+		if strings.Contains(strings.ToLower(compareString), "=critical") {
 			return logLevelCritical
 		}
-		if strings.Contains(log, "=debug") || strings.Contains(log, "=DEBUG") {
+		if strings.Contains(strings.ToLower(compareString), "=debug") {
 			return logLevelDebug
 		}
-		if strings.Contains(log, "=info") || strings.Contains(log, "=INFO") {
+		if strings.Contains(strings.ToLower(compareString), "=info") {
 			return logLevelInfo
 		}
 	}

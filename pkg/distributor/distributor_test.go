@@ -1637,9 +1637,16 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 		{
 			name: "json log line with an error",
 			entry: logproto.Entry{
-				Line: `{"foo":"bar",msg:"message with keyword error but it should not get picked up",level":"critical"}`,
+				Line: `{"foo":"bar",msg:"message with keyword error but it should not get picked up","level":"critical"}`,
 			},
 			expectedLogLevel: logLevelCritical,
+		},
+		{
+			name: "json log line with an warning",
+			entry: logproto.Entry{
+				Line: `{"foo":"bar",msg:"message with keyword error but it should not get picked up","level":"warn"}`,
+			},
+			expectedLogLevel: logLevelWarn,
 		},
 		{
 			name: "logfmt log line with a warn",
@@ -1647,6 +1654,20 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=warn`,
 			},
 			expectedLogLevel: logLevelWarn,
+		},
+		{
+			name: "logfmt log line with a warn",
+			entry: logproto.Entry{
+				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=Warn`,
+			},
+			expectedLogLevel: logLevelWarn,
+		},
+		{
+			name: "logfmt log line with a warn",
+			entry: logproto.Entry{
+				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=inFO`,
+			},
+			expectedLogLevel: logLevelInfo,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
