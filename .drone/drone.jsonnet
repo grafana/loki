@@ -450,23 +450,6 @@ local build_image_tag = '0.33.1';
       },
     ],
   },
-  pipeline('mixins') {
-    workspace: {
-      base: '/src',
-      path: 'loki',
-    },
-    steps: [
-      make('lint-jsonnet', container=false) {
-        // Docker image defined at https://github.com/grafana/jsonnet-libs/tree/master/build
-        image: 'grafana/jsonnet-build:c8b75df',
-        depends_on: ['clone'],
-      },
-      make('loki-mixin-check', container=false) {
-        depends_on: ['clone'],
-        when: onPRs + onPath('production/loki-mixin/**'),
-      },
-    ],
-  },
   pipeline('documentation-checks') {
     workspace: {
       base: '/src',
