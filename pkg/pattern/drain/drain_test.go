@@ -44,7 +44,6 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 		inputFile string
 		patterns  []string
 	}{
-
 		{
 			// High variation leads to many patterns including some that are too generic (many tokens matched) and some that are too specific (too few matchers)
 			name:      "Generate patterns on high variation logfmt logs",
@@ -136,14 +135,11 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 				tt.drain.Train(line, 0)
 			}
 
-			totalBadness := 0
 			var output []string
 			clusters := tt.drain.Clusters()
 			for _, cluster := range clusters {
 				output = append(output, cluster.String())
-				totalBadness += badnessHeuristic(cluster.String())
 			}
-			t.Logf("Badness: %d", totalBadness)
 
 			require.Equal(t, tt.patterns, output)
 		})
