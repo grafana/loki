@@ -301,6 +301,8 @@ var cases = map[string]watcherTest{
 		// collecting segment 0
 		res.notifySegmentReclaimed(0)
 		require.Eventually(t, func() bool {
+			res.writeTo.mu.Lock()
+			defer res.writeTo.mu.Unlock()
 			return len(res.writeTo.ReceivedSeriesReset) == 1 && res.writeTo.ReceivedSeriesReset[0] == 0
 		}, time.Second*10, time.Second, "timed out waiting to receive series reset")
 
@@ -316,6 +318,8 @@ var cases = map[string]watcherTest{
 		res.notifySegmentReclaimed(2)
 		// Expect second SeriesReset call to have the highest numbered deleted segment, 2
 		require.Eventually(t, func() bool {
+			res.writeTo.mu.Lock()
+			defer res.writeTo.mu.Unlock()
 			t.Logf("received series reset: %v", res.writeTo.ReceivedSeriesReset)
 			return len(res.writeTo.ReceivedSeriesReset) == 2 && res.writeTo.ReceivedSeriesReset[1] == 2
 		}, time.Second*10, time.Second, "timed out waiting to receive series reset")

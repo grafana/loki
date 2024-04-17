@@ -92,12 +92,14 @@ func TestFileTargetSync(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
+	target.mu.Lock()
 	if len(target.watches) != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
 	if len(target.readers) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
+	target.mu.Unlock()
 
 	// Add a file, which should create a watcher and a tailer.
 	_, err = os.Create(logDir1File1)
