@@ -22,6 +22,7 @@ message FilterChunkRefRequest {
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/plan.QueryPlan",
     (gogoproto.nullable) = false
   ];
+  repeated string blocks = 6;
 }
 
 message FilterChunkRefResponse {
