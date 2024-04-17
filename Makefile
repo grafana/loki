@@ -22,7 +22,7 @@ help:
 
 SHELL = /usr/bin/env bash -o pipefail
 
-GOTEST ?= go test
+GOTEST ?= gotestsum --
 
 #############
 # Variables #
