@@ -95,7 +95,7 @@ spec:
           {{- end }}
           {{- if or .Values.global.extraEnvFrom .Values.patternIngester.extraEnvFrom }}
           envFrom:
-            {{- coalesce .Values.global.extraEnvFrom .Values.patternIngester.extraEnvFrom | toYaml | nindent 10 }}
+            {{- coalesce .Values.patternIngester.extraEnvFrom .values.global.extraEnvFrom | toYaml | nindent 10 }}
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}

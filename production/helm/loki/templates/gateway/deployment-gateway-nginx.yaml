@@ -70,7 +70,7 @@ spec:
           {{- end }}
           {{- if or .Values.global.extraEnvFrom .Values.gateway.extraEnvFrom }}
           envFrom:
-            {{- coalesce .Values.global.extraEnvFrom .Values.gateway.extraEnvFrom | toYaml | nindent 10 }}
+            {{- coalesce .Values.gateway.extraEnvFrom .values.global.extraEnvFrom | toYaml | nindent 10 }}
           {{- end }}
           readinessProbe:
             {{- toYaml .Values.gateway.readinessProbe | nindent 12 }}
