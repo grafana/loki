@@ -33,6 +33,7 @@ dist
 .aws-sam
 .idea
 pkg/loki/wal
+production/all-modes-loki-mixin-compiled/
 
 # Workspaces
 *.work
