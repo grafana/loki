@@ -1486,53 +1486,47 @@ func TestInstance_LabelsWithValues(t *testing.T) {
 	m, err := labels.NewMatcher(labels.MatchEqual, "app", "test")
 	require.NoError(t, err)
 
-	tests := []struct {
-		name             string
-		startTime        time.Time
-		matchers         []*labels.Matcher
-		expectedResponse map[string]UniqueValues
-	}{
-		{
-			name:      "label names with no matchers",
-			startTime: start,
-			expectedResponse: map[string]UniqueValues{
-				"app": map[string]struct{}{
-					"test":  {},
-					"test2": {},
-				},
-				"job": map[string]struct{}{
-					"varlogs":  {},
-					"varlogs2": {},
-				},
+	t.Run("label names with no matchers returns all detected labels", func(t *testing.T) {
+		var matchers []*labels.Matcher
+		res, err := instance.LabelsWithValues(context.Background(), start, matchers...)
+		completeResponse := map[string]UniqueValues{
+			"app": map[string]struct{}{
+				"test":  {},
+				"test2": {},
 			},
-		},
-		{
-			name:      "label names with matchers",
-			startTime: start,
-			matchers:  []*labels.Matcher{m},
-			expectedResponse: map[string]UniqueValues{
-				"app": map[string]struct{}{
-					"test": {},
-				},
-				"job": map[string]struct{}{
-					"varlogs":  {},
-					"varlogs2": {},
-				},
+			"job": map[string]struct{}{
+				"varlogs":  {},
+				"varlogs2": {},
 			},
-		},
-		{
-			name:             "label names matchers and no start time",
-			matchers:         []*labels.Matcher{m},
-			expectedResponse: map[string]UniqueValues{},
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			res, err := instance.LabelsWithValues(context.Background(), tc.startTime, tc.matchers...)
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedResponse, res)
-		})
-	}
+		}
+		require.NoError(t, err)
+		require.Equal(t, completeResponse, res)
+	})
+
+	t.Run("label names with matcher returns response with matching detected labels", func(t *testing.T) {
+		matchers := []*labels.Matcher{m}
+		res, err := instance.LabelsWithValues(context.Background(), start, matchers...)
+		responseWithMatchingLabel := map[string]UniqueValues{
+			"app": map[string]struct{}{
+				"test": {},
+			},
+			"job": map[string]struct{}{
+				"varlogs":  {},
+				"varlogs2": {},
+			},
+		}
+		require.NoError(t, err)
+		require.Equal(t, responseWithMatchingLabel, res)
+	})
+
+	t.Run("label names matchers and no start time returns a empty response", func(t *testing.T) {
+		matchers := []*labels.Matcher{m}
+		var st time.Time
+		res, err := instance.LabelsWithValues(context.Background(), st, matchers...)
+
+		require.NoError(t, err)
+		require.Equal(t, map[string]UniqueValues{}, res)
+	})
 }
 
 type fakeQueryServer func(*logproto.QueryResponse) error
