@@ -68,7 +68,7 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	}
 
 	// in case of multiple tenants, we need to filter the store chunks by tenant if they are provided
-	storeOverridesByTenant := make(map[string][]logproto.ChunkRef)
+	storeOverridesByTenant := make(map[string][]*logproto.ChunkRef)
 	if overrides := params.GetStoreChunks(); overrides != nil {
 		storeOverridesByTenant = partitionChunkRefsByTenant(params.GetStoreChunks().Refs)
 	}
@@ -112,7 +112,7 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 	params.Selector = updatedSelector.String()
 
 	// in case of multiple tenants, we need to filter the store chunks by tenant if they are provided
-	storeOverridesByTenant := make(map[string][]logproto.ChunkRef)
+	storeOverridesByTenant := make(map[string][]*logproto.ChunkRef)
 	if overrides := params.GetStoreChunks(); overrides != nil {
 		storeOverridesByTenant = partitionChunkRefsByTenant(params.GetStoreChunks().Refs)
 	}
@@ -471,8 +471,8 @@ func (i *TenantSampleIterator) Labels() string {
 	return i.relabel.relabel(i.SampleIterator.Labels())
 }
 
-func partitionChunkRefsByTenant(refs []logproto.ChunkRef) map[string][]logproto.ChunkRef {
-	filtered := make(map[string][]logproto.ChunkRef)
+func partitionChunkRefsByTenant(refs []*logproto.ChunkRef) map[string][]*logproto.ChunkRef {
+	filtered := make(map[string][]*logproto.ChunkRef)
 	for _, ref := range refs {
 		filtered[ref.UserID] = append(filtered[ref.UserID], ref)
 	}
