@@ -452,12 +452,16 @@ message DetectedFieldsRequest {
 
 message DetectedFieldsResponse {
   repeated DetectedField fields = 1;
+  uint32 fieldLimit = 2;
 }
 
+// TODO: make the detected field include the serialized sketch
+// we only want cardinality in the JSON response
 message DetectedField {
   string label = 1;
   string type = 2 [(gogoproto.casttype) = "DetectedFieldType"];
   uint64 cardinality = 3;
+  bytes sketch = 4 [(gogoproto.jsontag) = "-"]; //serialized hyperloglog sketch
 }
 
 message DetectedLabelsRequest {

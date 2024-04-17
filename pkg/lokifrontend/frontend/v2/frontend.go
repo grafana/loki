@@ -446,6 +446,14 @@ func (f *Frontend) CheckReady(_ context.Context) error {
 	return errors.New(msg)
 }
 
+func (f *Frontend) IsProtobufEncoded() bool {
+	return f.cfg.Encoding == EncodingProtobuf
+}
+
+func (f *Frontend) IsJSONEncoded() bool {
+	return f.cfg.Encoding == EncodingJSON
+}
+
 const stripeSize = 1 << 6
 
 type requestsInProgress struct {
