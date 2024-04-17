@@ -15,6 +15,11 @@ For ingesting logs to Loki using the OpenTelemetry Collector, you must use the [
 ## Loki configuration
 
 When logs are ingested by Loki using an OpenTelemetry protocol (OTLP) ingestion endpoint, some of the data is stored as [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}).
+*Make sure to set the **allow_structured_metadata** to true within your Loki config file.*
+```yaml
+limits_config:
+  allow_structured_metadata: true
+```
 
 ## Configure the OpenTelemetry Collector to write logs into Loki
 
@@ -50,7 +55,7 @@ exporters:
   otlphttp:
     auth:
       authenticator: basicauth/otlp
-    endpoint: http://<loki-addr>/otlp
+    endpoint: http://<loki-addr>:3100/otlp
 
 service:
   extensions: [basicauth/otlp]
@@ -118,37 +123,38 @@ It currently only supports changing the storage of Attributes. Here is how the c
 
 ```yaml
 # OTLP log ingestion configurations
-otlp_config:
-  # Configuration for Resource Attributes to store them as index labels or
-  # Structured Metadata or drop them altogether
-  resource_attributes:
-    # Configure whether to ignore the default list of resource attributes set in
-    # 'distributor.otlp.default_resource_attributes_as_index_labels' to be
-    # stored as index labels and only use the given resource attributes config
-    [ignore_defaults: <boolean>]
-
-    [attributes_config: <list of attributes_configs>]
-
-  # Configuration for Scope Attributes to store them as Structured Metadata or
-  # drop them altogether
-  [scope_attributes: <list of attributes_configs>]
-
-  # Configuration for Log Attributes to store them as Structured Metadata or
-  # drop them altogether
-  [log_attributes: <list of attributes_configs>]
-
-attributes_config:
-  # Configures action to take on matching Attributes. It allows one of
-  # [structured_metadata, drop] for all Attribute types. It additionally allows
-  # index_label action for Resource Attributes
-  [action: <string> | default = ""]
-
-  # List of attributes to configure how to store them or drop them altogether
-  [attributes: <list of strings>]
-
-  # Regex to choose attributes to configure how to store them or drop them
-  # altogether
-  [regex: <Regexp>]
+limits_config:
+  otlp_config:
+    # Configuration for Resource Attributes to store them as index labels or
+    # Structured Metadata or drop them altogether
+    resource_attributes:
+      # Configure whether to ignore the default list of resource attributes set in
+      # 'distributor.otlp.default_resource_attributes_as_index_labels' to be
+      # stored as index labels and only use the given resource attributes config
+      [ignore_defaults: <boolean>]
+  
+      [attributes_config: <list of attributes_configs>]
+  
+    # Configuration for Scope Attributes to store them as Structured Metadata or
+    # drop them altogether
+    [scope_attributes: <list of attributes_configs>]
+  
+    # Configuration for Log Attributes to store them as Structured Metadata or
+    # drop them altogether
+    [log_attributes: <list of attributes_configs>]
+  
+  attributes_config:
+    # Configures action to take on matching Attributes. It allows one of
+    # [structured_metadata, drop] for all Attribute types. It additionally allows
+    # index_label action for Resource Attributes
+    [action: <string> | default = ""]
+  
+    # List of attributes to configure how to store them or drop them altogether
+    [attributes: <list of strings>]
+  
+    # Regex to choose attributes to configure how to store them or drop them
+    # altogether
+    [regex: <Regexp>]
 ```
 
 Here are some example configs to change the default mapping of OTLP to Loki format:
@@ -156,12 +162,13 @@ Here are some example configs to change the default mapping of OTLP to Loki form
 #### Example 1:
 
 ```yaml
-otlp_config:
-  resource_attributes:
-    attributes_config:
-      - action: index_label
-        attributes:
-          - service.group
+limits_config:
+  otlp_config:
+    resource_attributes:
+      attributes_config:
+        - action: index_label
+          attributes:
+            - service.group
 ```
 
 With the example config, here is how various kinds of Attributes would be stored:
@@ -172,12 +179,13 @@ With the example config, here is how various kinds of Attributes would be stored
 #### Example 2:
 
 ```yaml
-otlp_config:
-  resource_attributes:
-    ignore_defaults: true
-    attributes_config:
-      - action: index_label
-        regex: service.group
+limits_config:
+  otlp_config:
+    resource_attributes:
+      ignore_defaults: true
+      attributes_config:
+        - action: index_label
+          regex: service.group
 ```
 
 With the example config, here is how various kinds of Attributes would be stored:
@@ -188,21 +196,22 @@ With the example config, here is how various kinds of Attributes would be stored
 #### Example 2:
 
 ```yaml
-otlp_config:
-  resource_attributes:
-    attributes_config:
-      - action: index_label
-        regex: service.group
-  scope_attributes:
-    - action: drop
-      attributes:
-        - method.name
-  log_attributes:
-    - action: structured_metadata
-      attributes:
-        - user.id
-    - action: drop
-      regex: .*
+limits_config:
+  otlp_config:
+    resource_attributes:
+      attributes_config:
+        - action: index_label
+          regex: service.group
+    scope_attributes:
+      - action: drop
+        attributes:
+          - method.name
+    log_attributes:
+      - action: structured_metadata
+        attributes:
+          - user.id
+      - action: drop
+        regex: .*
 ```
 
 With the example config, here is how various kinds of Attributes would be stored:
