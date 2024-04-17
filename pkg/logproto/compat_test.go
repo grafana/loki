@@ -5,14 +5,19 @@ import (
 	"fmt"
 	"math"
 	"testing"
+	"time"
 	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/opentracing/opentracing-go/mocktracer"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 )
 
 // This test verifies that jsoninter uses our custom method for marshalling.
@@ -287,7 +292,7 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 	}{
 		{
 			desc:     "empty request",
-			expected: `0`,
+			expected: `0/0`,
 		},
 		{
 			desc: "request no filters",
@@ -299,19 +304,16 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 					},
 				},
 			},
-			expected: `9962287286179718960`,
+			expected: `9962287286179718960/0`,
 		},
 		{
 			desc: "request with filters but no chunks",
 			request: FilterChunkRefRequest{
-				Filters: []syntax.LineFilter{
-					{
-						Ty:    0,
-						Match: "uuid",
-					},
+				Plan: plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"} |= "uuid"`),
 				},
 			},
-			expected: `0/0-uuid-`,
+			expected: `0/938557591`,
 		},
 		{
 			desc: "request with filters and chunks",
@@ -326,24 +328,65 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 						Tenant:      "test",
 					},
 				},
-				Filters: []syntax.LineFilter{
-					{
-						Ty:    0,
-						Match: "uuid",
-					},
-					{
-						Ty:    1,
-						Match: "trace",
-					},
+				Plan: plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"} |= "uuid" != "trace"`),
 				},
 			},
-			expected: `8827404902424034886/0-uuid-,1-trace-`,
+			expected: `8827404902424034886/2710035654`,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			actual := tc.request.GetQuery()
 			require.Equal(t, tc.expected, actual)
 		})
+	}
+}
+
+func TestIndexStatsRequestSpanLogging(t *testing.T) {
+	now := time.Now()
+	end := now.Add(1000 * time.Second)
+	req := IndexStatsRequest{
+		From:    model.Time(now.UnixMilli()),
+		Through: model.Time(end.UnixMilli()),
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "start" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+			if field.Key == "end" {
+				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
+
+			}
+		}
+	}
+}
+
+func TestVolumeRequest(t *testing.T) {
+	now := time.Now()
+	end := now.Add(1000 * time.Second)
+	req := VolumeRequest{
+		From:    model.Time(now.UnixMilli()),
+		Through: model.Time(end.UnixMilli()),
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "start" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+			if field.Key == "end" {
+				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
+
+			}
+		}
 	}
 }
 

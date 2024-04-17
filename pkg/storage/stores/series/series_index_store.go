@@ -3,6 +3,7 @@ package series
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 
@@ -16,21 +17,22 @@ import (
 
 	"github.com/grafana/dskit/concurrency"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/config"
-	storageerrors "github.com/grafana/loki/pkg/storage/errors"
-	"github.com/grafana/loki/pkg/storage/stores"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/extract"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	storageerrors "github.com/grafana/loki/v3/pkg/storage/errors"
+	"github.com/grafana/loki/v3/pkg/storage/stores"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	series_index "github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/extract"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 var (
@@ -757,4 +759,31 @@ func (c *IndexReaderWriter) Stats(_ context.Context, _ string, _, _ model.Time, 
 // old index stores do not implement label volume -- skip
 func (c *IndexReaderWriter) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
+}
+
+// old index stores do not implement dynamic sharidng -- skip
+func (c *IndexReaderWriter) GetShards(
+	_ context.Context,
+	_ string,
+	_, _ model.Time,
+	_ uint64,
+	_ chunk.Predicate,
+) (*logproto.ShardsResponse, error) {
+	// should not be called for legacy indices at all, so just return a single shard covering everything
+	// could be improved by reading schema shards
+	return &logproto.ShardsResponse{
+		Shards: []logproto.Shard{
+			{
+				Bounds: logproto.FPBounds{
+					Min: 0,
+					Max: math.MaxUint64,
+				},
+			},
+		},
+	}, nil
+}
+
+// old index stores do not implement tsdb.ForSeries -- skip
+func (c *IndexReaderWriter) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
+	return nil, false
 }

@@ -14,12 +14,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/compactor/deletion"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -116,7 +116,9 @@ func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, inde
 }
 
 func (tm *tableManager) loop() {
+	tm.tablesMtx.Lock()
 	tm.wg.Add(1)
+	tm.tablesMtx.Unlock()
 	defer tm.wg.Done()
 
 	syncTicker := time.NewTicker(tm.cfg.SyncInterval)
@@ -152,7 +154,6 @@ func (tm *tableManager) loop() {
 func (tm *tableManager) Stop() {
 	tm.cancel()
 	tm.wg.Wait()
-
 	tm.tablesMtx.Lock()
 	defer tm.tablesMtx.Unlock()
 

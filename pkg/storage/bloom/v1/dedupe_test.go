@@ -7,6 +7,7 @@ import (
 )
 
 func TestMergeDedupeIter(t *testing.T) {
+	t.Parallel()
 	var (
 		numSeries        = 100
 		numKeysPerSeries = 10000
@@ -28,7 +29,7 @@ func TestMergeDedupeIter(t *testing.T) {
 	}
 	deduper := NewDedupingIter[*SeriesWithBloom, *SeriesWithBloom](
 		eq,
-		id[*SeriesWithBloom],
+		Identity[*SeriesWithBloom],
 		merge,
 		NewPeekingIter[*SeriesWithBloom](mbq),
 	)

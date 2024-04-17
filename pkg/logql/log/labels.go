@@ -7,7 +7,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 const MaxInternedStrings = 1024
@@ -363,6 +363,17 @@ func (b *LabelsBuilder) Add(category LabelCategory, labels ...labels.Label) *Lab
 		if b.BaseHas(name) {
 			name = fmt.Sprintf("%s%s", name, duplicateSuffix)
 		}
+
+		if name == logqlmodel.ErrorLabel {
+			b.err = l.Value
+			continue
+		}
+
+		if name == logqlmodel.ErrorDetailsLabel {
+			b.errDetails = l.Value
+			continue
+		}
+
 		b.Set(category, name, l.Value)
 	}
 	return b

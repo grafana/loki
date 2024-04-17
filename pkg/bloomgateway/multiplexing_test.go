@@ -1,14 +1,18 @@
 package bloomgateway
 
 import (
+	"context"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 func TestTask(t *testing.T) {
@@ -27,12 +31,11 @@ func TestTask(t *testing.T) {
 			},
 		}
 		swb := partitionRequest(req)[0]
-		task, err := NewTask("tenant", swb, nil)
+		task, err := NewTask(context.Background(), "tenant", swb, nil)
 		require.NoError(t, err)
 		from, through := task.Bounds()
 		require.Equal(t, ts.Add(-1*time.Hour), from)
 		require.Equal(t, ts, through)
-		require.Equal(t, truncateDay(ts), task.day)
 	})
 }
 
@@ -42,7 +45,7 @@ func createTasksForRequests(t *testing.T, tenant string, requests ...*logproto.F
 	tasks := make([]Task, 0, len(requests))
 	for _, r := range requests {
 		for _, swb := range partitionRequest(r) {
-			task, err := NewTask(tenant, swb, nil)
+			task, err := NewTask(context.Background(), tenant, swb, nil)
 			require.NoError(t, err)
 			tasks = append(tasks, task)
 		}
@@ -50,14 +53,18 @@ func createTasksForRequests(t *testing.T, tenant string, requests ...*logproto.F
 	return tasks
 }
 
-func TestTaskMergeIterator(t *testing.T) {
+func TestTask_RequestIterator(t *testing.T) {
 	ts := mktime("2024-01-24 12:00")
-	day := truncateDay(ts)
 	tenant := "fake"
 	tokenizer := v1.NewNGramTokenizer(4, 0)
 
-	t.Run("empty requests result in empty iterator", func(t *testing.T) {
-		it := newTaskMergeIterator(day, tokenizer)
+	t.Run("empty request yields empty iterator", func(t *testing.T) {
+		swb := seriesWithInterval{
+			interval: bloomshipper.Interval{Start: 0, End: math.MaxInt64},
+			series:   []*logproto.GroupedChunkRefs{},
+		}
+		task, _ := NewTask(context.Background(), tenant, swb, []syntax.LineFilterExpr{})
+		it := task.RequestIter(tokenizer)
 		// nothing to iterate over
 		require.False(t, it.Next())
 	})
@@ -97,7 +104,14 @@ func TestTaskMergeIterator(t *testing.T) {
 		}
 
 		tasks := createTasksForRequests(t, tenant, r1, r2, r3)
-		it := newTaskMergeIterator(day, tokenizer, tasks...)
+
+		iters := make([]v1.PeekingIterator[v1.Request], 0, len(tasks))
+		for _, task := range tasks {
+			iters = append(iters, v1.NewPeekingIter(task.RequestIter(tokenizer)))
+		}
+
+		// merge the request iterators using the heap sort iterator
+		it := v1.NewHeapIterator[v1.Request](func(r1, r2 v1.Request) bool { return r1.Fp < r2.Fp }, iters...)
 
 		// first item
 		require.True(t, it.Next())

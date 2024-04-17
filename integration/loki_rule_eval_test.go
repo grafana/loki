@@ -1,3 +1,5 @@
+//go:build integration
+
 package integration
 
 import (
@@ -12,10 +14,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/integration/client"
-	"github.com/grafana/loki/integration/cluster"
+	"github.com/grafana/loki/v3/integration/client"
+	"github.com/grafana/loki/v3/integration/cluster"
 
-	"github.com/grafana/loki/pkg/ruler"
+	"github.com/grafana/loki/v3/pkg/ruler"
 )
 
 // TestLocalRuleEval tests that rules are evaluated locally with an embedded query engine
@@ -34,7 +36,9 @@ func TestRemoteRuleEval(t *testing.T) {
 // In this test we stub out a remote-write receiver and check that the expected data is sent to it.
 // Both the local and the remote rule evaluation modes should produce the same result.
 func testRuleEval(t *testing.T, mode string) {
-	clu := cluster.New(nil)
+	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
+		c.SetSchemaVer("v13")
+	})
 	t.Cleanup(func() {
 		assert.NoError(t, clu.Cleanup())
 	})

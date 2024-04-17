@@ -845,8 +845,8 @@ type ShardedPostings struct {
 // For example (below), given a shard, we'll likely return a slight superset of offsets surrounding the shard.
 // ---[shard0]--- # Shard membership
 // -[--shard0--]- # Series returned by shardedPostings
-func NewShardedPostings(p Postings, shard ShardAnnotation, offsets FingerprintOffsets) *ShardedPostings {
-	min, max := offsets.Range(shard)
+func NewShardedPostings(p Postings, fpFilter FingerprintFilter, offsets FingerprintOffsets) *ShardedPostings {
+	min, max := offsets.Range(fpFilter)
 	return &ShardedPostings{
 		p:         p,
 		minOffset: min,

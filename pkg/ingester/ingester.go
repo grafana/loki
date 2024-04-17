@@ -12,7 +12,10 @@ import (
 	"sync"
 	"time"
 
-	lokilog "github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+
+	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -29,28 +32,28 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/ingester/index"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores"
-	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/wal"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/ingester/index"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores"
+	indexstore "github.com/grafana/loki/v3/pkg/storage/stores/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/wal"
 )
 
 const (
@@ -468,7 +471,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		}
 		defer segmentCloser.Close()
 
-		segmentRecoveryErr := RecoverWAL(segmentReader, recoverer)
+		segmentRecoveryErr := RecoverWAL(ctx, segmentReader, recoverer)
 		if segmentRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
 			level.Error(i.logger).Log(
@@ -871,12 +874,10 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 }
 
 // Query the ingests for log streams matching a set of matchers.
-func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) (err error) {
+func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
-
-	start := time.Now().UTC()
-	var lines int32
+	_, ctx = metadata.NewContext(ctx)
 
 	if req.Plan == nil {
 		parsed, err := syntax.ParseLogSelector(req.Selector, true)
@@ -887,17 +888,6 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			AST: parsed,
 		}
 	}
-
-	defer func() {
-		status := "successful"
-		if err != nil {
-			status = "failed"
-		}
-		statsCtx := stats.FromContext(ctx)
-		execTime := time.Since(start)
-		logql.RecordIngesterStreamsQueryMetrics(ctx, i.logger, req.Start, req.End, req.Selector, status, req.Limit, lines, req.Shards,
-			statsCtx.Result(execTime, time.Duration(0), 0))
-	}()
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -940,17 +930,15 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		batchLimit = -1
 	}
 
-	lines, err = sendBatches(ctx, it, queryServer, batchLimit)
-	return err
+	return sendBatches(ctx, it, queryServer, batchLimit)
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
-func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) (err error) {
+func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
+	_, ctx = metadata.NewContext(ctx)
 	sp := opentracing.SpanFromContext(ctx)
-	start := time.Now().UTC()
-	var lines int32
 
 	// If the plan is empty we want all series to be returned.
 	if req.Plan == nil {
@@ -962,17 +950,6 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			AST: parsed,
 		}
 	}
-
-	defer func() {
-		status := "successful"
-		if err != nil {
-			status = "failed"
-		}
-		statsCtx := stats.FromContext(ctx)
-		execTime := time.Since(start)
-		logql.RecordIngesterSeriesQueryMetrics(ctx, i.logger, req.Start, req.End, req.Selector, status, lines, req.Shards,
-			statsCtx.Result(execTime, time.Duration(0), 0))
-	}()
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -1012,8 +989,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 
 	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	lines, err = sendSampleBatches(ctx, it, queryServer)
-	return err
+	return sendSampleBatches(ctx, it, queryServer)
 }
 
 // asyncStoreMaxLookBack returns a max look back period only if active index type is one of async index stores like `boltdb-shipper` and `tsdb`.
@@ -1023,13 +999,13 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 func (i *Ingester) asyncStoreMaxLookBack() time.Duration {
 	activePeriodicConfigIndex := config.ActivePeriodConfig(i.periodicConfigs)
 	activePeriodicConfig := i.periodicConfigs[activePeriodicConfigIndex]
-	if activePeriodicConfig.IndexType != config.BoltDBShipperType && activePeriodicConfig.IndexType != config.TSDBType {
+	if activePeriodicConfig.IndexType != types.BoltDBShipperType && activePeriodicConfig.IndexType != types.TSDBType {
 		return 0
 	}
 
 	startTime := activePeriodicConfig.From
-	if activePeriodicConfigIndex != 0 && (i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == config.BoltDBShipperType ||
-		i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == config.TSDBType) {
+	if activePeriodicConfigIndex != 0 && (i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.BoltDBShipperType ||
+		i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.TSDBType) {
 		startTime = i.periodicConfigs[activePeriodicConfigIndex-1].From
 	}
 
@@ -1387,4 +1363,53 @@ func adjustQueryStartTime(maxLookBackPeriod time.Duration, start, now time.Time)
 		}
 	}
 	return start
+}
+
+func (i *Ingester) GetDetectedFields(_ context.Context, _ *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	return &logproto.DetectedFieldsResponse{
+		Fields: []*logproto.DetectedField{
+			{
+				Label:       "foo",
+				Type:        logproto.DetectedFieldString,
+				Cardinality: 1,
+			},
+		},
+	}, nil
+}
+
+// GetDetectedLabels returns map of detected labels and unique values from this ingester
+func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	instance, err := i.GetOrCreateInstance(userID)
+	if err != nil {
+		return nil, err
+	}
+	var matchers []*labels.Matcher
+	if req.Query != "" {
+		matchers, err = syntax.ParseMatchers(req.Query, true)
+		if err != nil {
+			return nil, err
+		}
+		level.Info(i.logger).Log("msg", matchers)
+	}
+
+	labelMap, err := instance.LabelsWithValues(ctx, *req.Start, matchers...)
+
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]*logproto.UniqueLabelValues)
+	for label, values := range labelMap {
+		var uniqueValues []string
+		for v := range values {
+			uniqueValues = append(uniqueValues, v)
+		}
+
+		result[label] = &logproto.UniqueLabelValues{Values: uniqueValues}
+	}
+	return &logproto.LabelToValuesResponse{Labels: result}, nil
 }

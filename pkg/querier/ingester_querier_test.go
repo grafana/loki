@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/atomic"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -17,9 +19,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
@@ -65,6 +67,8 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 		},
 	}
 
+	var cnt atomic.Int32
+
 	for testName, testData := range tests {
 		for _, retErr := range []bool{true, false} {
 			testName, testData, retErr := testName, testData, retErr
@@ -75,9 +79,9 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 			}
 
 			t.Run(testName, func(t *testing.T) {
-				cnt := 0
 				wg := sync.WaitGroup{}
 				wait := make(chan struct{})
+				cnt.Store(0)
 
 				runFn := func(args mock.Arguments) {
 					wg.Done()
@@ -88,7 +92,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 						// ctx should be cancelled after the first two replicas return
 						require.ErrorIs(t, ctx.Err(), context.Canceled)
 					case <-wait:
-						cnt++
+						cnt.Add(1)
 					case <-time.After(time.Second):
 						t.Error("timed out waiting for ctx cancellation")
 					}
@@ -121,7 +125,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 
 				err = testData.testFn(ingesterQuerier)
 				ingesterClient.AssertNumberOfCalls(t, testData.method, 3)
-				require.Equal(t, 2, cnt)
+				require.Equal(t, int32(2), cnt.Load())
 				if retErr {
 					require.ErrorContains(t, err, testData.method+" failed")
 				} else {
@@ -176,7 +180,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 			}
 
 			t.Run(testName, func(t *testing.T) {
-				cnt := 0
+				cnt.Store(0)
 				wg := sync.WaitGroup{}
 				wait := make(chan struct{})
 
@@ -189,7 +193,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 						// should not be cancelled by the tracker
 						require.NoError(t, ctx.Err())
 					case <-wait:
-						cnt++
+						cnt.Add(1)
 					case <-time.After(time.Second):
 					}
 				}
@@ -221,7 +225,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 
 				err = testData.testFn(ingesterQuerier)
 				ingesterClient.AssertNumberOfCalls(t, testData.method, 3)
-				require.Equal(t, 2, cnt)
+				require.Equal(t, int32(2), cnt.Load())
 				if retErr {
 					require.ErrorContains(t, err, testData.method+" failed")
 				} else {

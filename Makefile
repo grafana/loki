@@ -37,7 +37,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION ?= 0.33.0
+BUILD_IMAGE_VERSION ?= 0.33.1
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -55,7 +55,7 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name operator -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Build flags
-VPREFIX := github.com/grafana/loki/pkg/util/build
+VPREFIX := github.com/grafana/loki/v3/pkg/util/build
 GO_LDFLAGS   := -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GO_FLAGS     := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo
 DYN_GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
@@ -85,10 +85,11 @@ PROMTAIL_UI_FILES := $(shell find ./clients/pkg/promtail/server/ui -type f -name
 
 # Documentation source path
 DOC_SOURCES_PATH := docs/sources
+DOC_TEMPLATE_PATH := docs/templates
 
 # Configuration flags documentation
-DOC_FLAGS_TEMPLATE := $(DOC_SOURCES_PATH)/configure/index.template
-DOC_FLAGS := $(DOC_SOURCES_PATH)/configure/_index.md
+DOC_FLAGS_TEMPLATE := $(DOC_TEMPLATE_PATH)/configuration.template
+DOC_FLAGS := $(DOC_SOURCES_PATH)/shared/configuration.md
 
 ##########
 # Docker #
@@ -190,6 +191,9 @@ production/helm/loki/src/helm-test/helm-test:
 
 helm-lint: ## run helm linter
 	$(MAKE) -BC production/helm/loki lint
+
+helm-docs:
+	helm-docs -c production/helm/loki -g production/helm/loki
 
 #################
 # Loki-QueryTee #
@@ -315,18 +319,29 @@ publish: packages
 # To run this efficiently on your workstation, run this from the root dir:
 # docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.24.1 lint
 lint: ## run linters
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(SUDO) docker run  $(RM) $(TTY) -i \
+		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
 	go version
 	golangci-lint version
 	GO111MODULE=on golangci-lint run -v --timeout 15m
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
+endif
 
 ########
 # Test #
 ########
 
 test: all ## run the unit tests
-	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee test_results.txt
-	cd tools/lambda-promtail/ && $(GOTEST) -covermode=atomic -coverprofile=lambda-promtail-coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee lambda_promtail_test_results.txt
+	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
+	cd tools/lambda-promtail/ && $(GOTEST) -covermode=atomic -coverprofile=lambda-promtail-coverage.txt -p=4 ./... | tee lambda_promtail_test_results.txt
+
+test-integration:
+	$(GOTEST) -count=1 -v -tags=integration -timeout 10m ./integration
+
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
 
@@ -790,7 +805,15 @@ check-format: format
 # Documentation related commands
 
 doc: ## Generates the config file documentation
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
 	go run ./tools/doc-generator $(DOC_FLAGS_TEMPLATE) > $(DOC_FLAGS)
+endif
+
+docs: doc
 
 check-doc: ## Check the documentation files are up to date
 check-doc: doc
@@ -812,7 +835,7 @@ validate-example-configs: loki
 	for f in $$(grep -rL $(EXAMPLES_SKIP_VALIDATION_FLAG) $(EXAMPLES_YAML_PATH)/*.yaml); do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
 
 validate-dev-cluster-config: loki
-	./cmd/loki/loki -config.file=./tools/dev/loki-boltdb-storage-s3/config/loki.yaml -verify-config
+	./cmd/loki/loki -config.file=./tools/dev/loki-tsdb-storage-s3/config/loki.yaml -verify-config
 
 # Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
@@ -863,3 +886,8 @@ snyk: loki-image build-image
 
 .PHONY: scan-vulnerabilities
 scan-vulnerabilities: trivy snyk
+
+.PHONY: release-workflows
+release-workflows:
+	pushd $(CURDIR)/.github && jb update && popd
+	jsonnet -SJ .github/vendor -m .github/workflows .github/release-workflows.jsonnet

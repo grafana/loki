@@ -4,17 +4,20 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"log"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // GZip source string and return compressed string
@@ -54,6 +57,7 @@ func TestParseRequest(t *testing.T) {
 		expectedStructuredMetadataBytes int
 		expectedBytes                   int
 		expectedLines                   int
+		expectedBytesUsageTracker       map[string]float64
 	}{
 		{
 			path:        `/loki/api/v1/push`,
@@ -68,21 +72,23 @@ func TestParseRequest(t *testing.T) {
 			valid:       false,
 		},
 		{
-			path:          `/loki/api/v1/push`,
-			body:          `{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`,
-			contentType:   `application/json`,
-			valid:         true,
-			expectedBytes: len("fizzbuzz"),
-			expectedLines: 1,
+			path:                      `/loki/api/v1/push`,
+			body:                      `{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`,
+			contentType:               `application/json`,
+			valid:                     true,
+			expectedBytes:             len("fizzbuzz"),
+			expectedLines:             1,
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
 		},
 		{
-			path:            `/loki/api/v1/push`,
-			body:            `{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`,
-			contentType:     `application/json`,
-			contentEncoding: ``,
-			valid:           true,
-			expectedBytes:   len("fizzbuzz"),
-			expectedLines:   1,
+			path:                      `/loki/api/v1/push`,
+			body:                      `{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`,
+			contentType:               `application/json`,
+			contentEncoding:           ``,
+			valid:                     true,
+			expectedBytes:             len("fizzbuzz"),
+			expectedLines:             1,
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -92,22 +98,24 @@ func TestParseRequest(t *testing.T) {
 			valid:           false,
 		},
 		{
-			path:            `/loki/api/v1/push`,
-			body:            gzipString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
-			contentType:     `application/json`,
-			contentEncoding: `gzip`,
-			valid:           true,
-			expectedBytes:   len("fizzbuzz"),
-			expectedLines:   1,
+			path:                      `/loki/api/v1/push`,
+			body:                      gzipString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
+			contentType:               `application/json`,
+			contentEncoding:           `gzip`,
+			valid:                     true,
+			expectedBytes:             len("fizzbuzz"),
+			expectedLines:             1,
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
 		},
 		{
-			path:            `/loki/api/v1/push`,
-			body:            deflateString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
-			contentType:     `application/json`,
-			contentEncoding: `deflate`,
-			valid:           true,
-			expectedBytes:   len("fizzbuzz"),
-			expectedLines:   1,
+			path:                      `/loki/api/v1/push`,
+			body:                      deflateString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
+			contentType:               `application/json`,
+			contentEncoding:           `deflate`,
+			valid:                     true,
+			expectedBytes:             len("fizzbuzz"),
+			expectedLines:             1,
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -117,22 +125,24 @@ func TestParseRequest(t *testing.T) {
 			valid:           false,
 		},
 		{
-			path:            `/loki/api/v1/push`,
-			body:            gzipString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
-			contentType:     `application/json; charset=utf-8`,
-			contentEncoding: `gzip`,
-			valid:           true,
-			expectedBytes:   len("fizzbuzz"),
-			expectedLines:   1,
+			path:                      `/loki/api/v1/push`,
+			body:                      gzipString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
+			contentType:               `application/json; charset=utf-8`,
+			contentEncoding:           `gzip`,
+			valid:                     true,
+			expectedBytes:             len("fizzbuzz"),
+			expectedLines:             1,
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
 		},
 		{
-			path:            `/loki/api/v1/push`,
-			body:            deflateString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
-			contentType:     `application/json; charset=utf-8`,
-			contentEncoding: `deflate`,
-			valid:           true,
-			expectedBytes:   len("fizzbuzz"),
-			expectedLines:   1,
+			path:                      `/loki/api/v1/push`,
+			body:                      deflateString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
+			contentType:               `application/json; charset=utf-8`,
+			contentEncoding:           `deflate`,
+			valid:                     true,
+			expectedBytes:             len("fizzbuzz"),
+			expectedLines:             1,
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -185,6 +195,7 @@ func TestParseRequest(t *testing.T) {
 			expectedStructuredMetadataBytes: 2*len("a") + 2*len("b"),
 			expectedBytes:                   len("fizzbuzz") + 2*len("a") + 2*len("b"),
 			expectedLines:                   1,
+			expectedBytesUsageTracker:       map[string]float64{`{foo="bar2"}`: float64(len("fizzbuzz") + 2*len("a") + 2*len("b"))},
 		},
 	} {
 		t.Run(fmt.Sprintf("test %d", index), func(t *testing.T) {
@@ -200,7 +211,8 @@ func TestParseRequest(t *testing.T) {
 				request.Header.Add("Content-Encoding", test.contentEncoding)
 			}
 
-			data, err := ParseRequest(util_log.Logger, "fake", request, nil, nil, ParseLokiRequest)
+			tracker := NewMockTracker()
+			data, err := ParseRequest(util_log.Logger, "fake", request, nil, nil, ParseLokiRequest, tracker)
 
 			structuredMetadataBytesReceived := int(structuredMetadataBytesReceivedStats.Value()["total"].(int64)) - previousStructuredMetadataBytesReceived
 			previousStructuredMetadataBytesReceived += structuredMetadataBytesReceived
@@ -210,16 +222,18 @@ func TestParseRequest(t *testing.T) {
 			previousLinesReceived += linesReceived
 
 			if test.valid {
-				assert.Nil(t, err, "Should not give error for %d", index)
+				assert.NoErrorf(t, err, "Should not give error for %d", index)
 				assert.NotNil(t, data, "Should give data for %d", index)
 				require.Equal(t, test.expectedStructuredMetadataBytes, structuredMetadataBytesReceived)
 				require.Equal(t, test.expectedBytes, bytesReceived)
+				require.Equalf(t, tracker.Total(), float64(bytesReceived), "tracked usage bytes must equal bytes received metric")
 				require.Equal(t, test.expectedLines, linesReceived)
 				require.Equal(t, float64(test.expectedStructuredMetadataBytes), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedBytes), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedLines), testutil.ToFloat64(linesIngested.WithLabelValues("fake")))
+				require.InDeltaMapValuesf(t, test.expectedBytesUsageTracker, tracker.receivedBytes, 0.0, "%s != %s", test.expectedBytesUsageTracker, tracker.receivedBytes)
 			} else {
-				assert.NotNil(t, err, "Should give error for %d", index)
+				assert.Errorf(t, err, "Should give error for %d", index)
 				assert.Nil(t, data, "Should not give data for %d", index)
 				require.Equal(t, 0, structuredMetadataBytesReceived)
 				require.Equal(t, 0, bytesReceived)
@@ -230,4 +244,34 @@ func TestParseRequest(t *testing.T) {
 			}
 		})
 	}
+}
+
+type MockCustomTracker struct {
+	receivedBytes  map[string]float64
+	discardedBytes map[string]float64
+}
+
+func NewMockTracker() *MockCustomTracker {
+	return &MockCustomTracker{
+		receivedBytes:  map[string]float64{},
+		discardedBytes: map[string]float64{},
+	}
+}
+
+func (t *MockCustomTracker) Total() float64 {
+	total := float64(0)
+	for _, v := range t.receivedBytes {
+		total += v
+	}
+	return total
+}
+
+// DiscardedBytesAdd implements CustomTracker.
+func (t *MockCustomTracker) DiscardedBytesAdd(_ context.Context, _, _ string, labels labels.Labels, value float64) {
+	t.discardedBytes[labels.String()] += value
+}
+
+// ReceivedBytesAdd implements CustomTracker.
+func (t *MockCustomTracker) ReceivedBytesAdd(_ context.Context, _ string, _ time.Duration, labels labels.Labels, value float64) {
+	t.receivedBytes[labels.String()] += value
 }

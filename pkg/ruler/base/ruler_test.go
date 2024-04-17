@@ -45,17 +45,17 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/series"
-	"github.com/grafana/loki/pkg/ruler/config"
-	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/ruler/rulestore"
-	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
-	loki_storage "github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
-	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/series"
+	"github.com/grafana/loki/v3/pkg/ruler/config"
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore/objectclient"
+	loki_storage "github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) Config {
@@ -401,32 +401,80 @@ func TestGetRules(t *testing.T) {
 		shuffleShardSize int
 	}
 
-	expectedRules := expectedRulesMap{
+	allRules := expectedRulesMap{
 		"ruler1": map[string]rulespb.RuleGroupList{
 			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Limit: 10},
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Rules: []*rulespb.RuleDesc{createAlertingRule("COUNT_ALERT", `count_over_time({foo="bar"}[5m]) > 0`)}, Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 		"ruler2": map[string]rulespb.RuleGroupList{
 			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "fourth", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Limit: 10},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
+			},
+			"user3": {
+				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "first", Rules: []*rulespb.RuleDesc{createAlertingRule("COUNT_ALERT", `count_over_time({foo="bar"}[5m]) > 0`)}, Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 		"ruler3": map[string]rulespb.RuleGroupList{
 			"user3": {
-				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "second", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Interval: 10 * time.Second, Limit: 10},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifty", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifth", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
+			},
+		},
+	}
+
+	expectedAlertRules := expectedRulesMap{
+		"ruler1": map[string]rulespb.RuleGroupList{
+			"user1": {
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Rules: []*rulespb.RuleDesc{createAlertingRule("COUNT_ALERT", `count_over_time({foo="bar"}[5m]) > 0`)}, Interval: 10 * time.Second, Limit: 10},
+			},
+		},
+		"ruler2": map[string]rulespb.RuleGroupList{
+			"user3": {
+				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "first", Rules: []*rulespb.RuleDesc{createAlertingRule("COUNT_ALERT", `count_over_time({foo="bar"}[5m]) > 0`)}, Interval: 10 * time.Second, Limit: 10},
+			},
+		},
+		"ruler3": map[string]rulespb.RuleGroupList{},
+	}
+
+	expectedRecordingRules := expectedRulesMap{
+		"ruler1": map[string]rulespb.RuleGroupList{
+			"user1": {
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
+			},
+			"user2": {
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
+			},
+		},
+		"ruler2": map[string]rulespb.RuleGroupList{
+			"user1": {
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "fourth", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
+			},
+			"user2": {
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
+			},
+		},
+		"ruler3": map[string]rulespb.RuleGroupList{
+			"user3": {
+				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "second", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
+			},
+			"user2": {
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifth", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 	}
@@ -446,115 +494,134 @@ func TestGetRules(t *testing.T) {
 	}
 
 	for name, tc := range testCases {
-		t.Run(name, func(t *testing.T) {
-			kvStore, cleanUp := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
-			t.Cleanup(func() { assert.NoError(t, cleanUp.Close()) })
-			allRulesByUser := map[string]rulespb.RuleGroupList{}
-			allRulesByRuler := map[string]rulespb.RuleGroupList{}
-			allTokensByRuler := map[string][]uint32{}
-			rulerAddrMap := map[string]*Ruler{}
+		for _, ruleType := range []RulesRequest_RuleType{AnyRule, AlertingRule, RecordingRule} {
+			t.Run(name+" "+ruleType.String(), func(t *testing.T) {
+				kvStore, cleanUp := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+				t.Cleanup(func() { assert.NoError(t, cleanUp.Close()) })
+				allRulesByUser := map[string]rulespb.RuleGroupList{}
+				filteredRulesByUser := map[string]rulespb.RuleGroupList{}
+				allRulesByRuler := map[string]rulespb.RuleGroupList{}
+				allTokensByRuler := map[string][]uint32{}
+				rulerAddrMap := map[string]*Ruler{}
 
-			createRuler := func(id string) *Ruler {
-				cfg := defaultRulerConfig(t, newMockRuleStore(allRulesByUser))
+				createRuler := func(id string) *Ruler {
+					cfg := defaultRulerConfig(t, newMockRuleStore(allRulesByUser))
 
-				cfg.ShardingStrategy = tc.shardingStrategy
-				cfg.EnableSharding = tc.sharding
-				cfg.ShardingAlgo = tc.shardingAlgo
+					cfg.ShardingStrategy = tc.shardingStrategy
+					cfg.EnableSharding = tc.sharding
+					cfg.ShardingAlgo = tc.shardingAlgo
 
-				cfg.Ring = RingConfig{
-					InstanceID:   id,
-					InstanceAddr: id,
-					KVStore: kv.Config{
-						Mock: kvStore,
-					},
-				}
-				m := loki_storage.NewClientMetrics()
-				defer m.Unregister()
-				r := buildRuler(t, cfg, nil, m, rulerAddrMap)
-				r.limits = ruleLimits{tenantShard: tc.shuffleShardSize}
-				rulerAddrMap[id] = r
-				if r.ring != nil {
-					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
-					t.Cleanup(r.ring.StopAsync)
-				}
-				return r
-			}
-
-			for rID, r := range expectedRules {
-				createRuler(rID)
-				for user, rules := range r {
-					allRulesByUser[user] = append(allRulesByUser[user], rules...)
-					allRulesByRuler[rID] = append(allRulesByRuler[rID], rules...)
-					allTokensByRuler[rID] = generateTokenForGroups(rules, 1)
-				}
-			}
-
-			if tc.sharding {
-				err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
-					d, _ := in.(*ring.Desc)
-					if d == nil {
-						d = ring.NewDesc()
+					cfg.Ring = RingConfig{
+						InstanceID:   id,
+						InstanceAddr: id,
+						KVStore: kv.Config{
+							Mock: kvStore,
+						},
 					}
-					for rID, tokens := range allTokensByRuler {
-						d.AddIngester(rID, rulerAddrMap[rID].lifecycler.GetInstanceAddr(), "", tokens, ring.ACTIVE, time.Now())
+					m := loki_storage.NewClientMetrics()
+					defer m.Unregister()
+					r := buildRuler(t, cfg, nil, m, rulerAddrMap)
+					r.limits = ruleLimits{tenantShard: tc.shuffleShardSize}
+					rulerAddrMap[id] = r
+					if r.ring != nil {
+						require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
+						t.Cleanup(r.ring.StopAsync)
 					}
-					return d, true, nil
-				})
-				require.NoError(t, err)
-				// Wait a bit to make sure ruler's ring is updated.
-				time.Sleep(100 * time.Millisecond)
-			}
-
-			forEachRuler := func(f func(rID string, r *Ruler)) {
-				for rID, r := range rulerAddrMap {
-					f(rID, r)
+					return r
 				}
-			}
 
-			// Sync Rules
-			forEachRuler(func(_ string, r *Ruler) {
-				r.syncRules(context.Background(), rulerSyncReasonInitial)
-			})
+				for rID, r := range allRules {
+					createRuler(rID)
+					for user, rules := range r {
+						allRulesByUser[user] = append(allRulesByUser[user], rules...)
+						allRulesByRuler[rID] = append(allRulesByRuler[rID], rules...)
+						allTokensByRuler[rID] = generateTokenForGroups(rules, 1)
+					}
+				}
 
-			for u := range allRulesByUser {
-				ctx := user.InjectOrgID(context.Background(), u)
-				forEachRuler(func(_ string, r *Ruler) {
-					rules, err := r.GetRules(ctx)
-					require.NoError(t, err)
-					require.Equal(t, len(allRulesByUser[u]), len(rules))
-					if tc.sharding {
-						mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
+				var filteredRules expectedRulesMap
+				switch ruleType {
+				case AlertingRule:
+					filteredRules = expectedAlertRules
+				case RecordingRule:
+					filteredRules = expectedRecordingRules
+				default:
+					filteredRules = allRules
+				}
 
-						if tc.shardingStrategy == util.ShardingStrategyShuffle {
-							require.Equal(t, int32(tc.shuffleShardSize), mockPoolClient.numberOfCalls.Load())
-						} else {
-							require.Equal(t, int32(len(rulerAddrMap)), mockPoolClient.numberOfCalls.Load())
+				for _, r := range filteredRules {
+					for user, rules := range r {
+						filteredRulesByUser[user] = append(filteredRulesByUser[user], rules...)
+					}
+				}
+
+				if tc.sharding {
+					err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+						d, _ := in.(*ring.Desc)
+						if d == nil {
+							d = ring.NewDesc()
 						}
-						mockPoolClient.numberOfCalls.Store(0)
-					}
-				})
-			}
-
-			totalLoadedRules := 0
-			totalConfiguredRules := 0
-
-			forEachRuler(func(rID string, r *Ruler) {
-				localRules, err := r.listRules(context.Background())
-				require.NoError(t, err)
-				for _, rules := range localRules {
-					totalLoadedRules += len(rules)
+						for rID, tokens := range allTokensByRuler {
+							d.AddIngester(rID, rulerAddrMap[rID].lifecycler.GetInstanceAddr(), "", tokens, ring.ACTIVE, time.Now())
+						}
+						return d, true, nil
+					})
+					require.NoError(t, err)
+					// Wait a bit to make sure ruler's ring is updated.
+					time.Sleep(100 * time.Millisecond)
 				}
-				totalConfiguredRules += len(allRulesByRuler[rID])
-			})
 
-			if tc.sharding {
-				require.Equal(t, totalConfiguredRules, totalLoadedRules)
-			} else {
-				// Not sharding means that all rules will be loaded on all rulers
-				numberOfRulers := len(rulerAddrMap)
-				require.Equal(t, totalConfiguredRules*numberOfRulers, totalLoadedRules)
-			}
-		})
+				forEachRuler := func(f func(rID string, r *Ruler)) {
+					for rID, r := range rulerAddrMap {
+						f(rID, r)
+					}
+				}
+
+				// Sync Rules
+				forEachRuler(func(_ string, r *Ruler) {
+					r.syncRules(context.Background(), rulerSyncReasonInitial)
+				})
+
+				for u := range filteredRulesByUser {
+					ctx := user.InjectOrgID(context.Background(), u)
+					forEachRuler(func(_ string, r *Ruler) {
+						rules, err := r.GetRules(ctx, &RulesRequest{Filter: ruleType})
+						require.NoError(t, err)
+						require.Equal(t, len(filteredRulesByUser[u]), len(rules))
+						if tc.sharding {
+							mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
+
+							if tc.shardingStrategy == util.ShardingStrategyShuffle {
+								require.Equal(t, int32(tc.shuffleShardSize), mockPoolClient.numberOfCalls.Load())
+							} else {
+								require.Equal(t, int32(len(rulerAddrMap)), mockPoolClient.numberOfCalls.Load())
+							}
+							mockPoolClient.numberOfCalls.Store(0)
+						}
+					})
+				}
+
+				totalLoadedRules := 0
+				totalConfiguredRules := 0
+
+				forEachRuler(func(rID string, r *Ruler) {
+					localRules, err := r.listRules(context.Background())
+					require.NoError(t, err)
+					for _, rules := range localRules {
+						totalLoadedRules += len(rules)
+					}
+					totalConfiguredRules += len(allRulesByRuler[rID])
+				})
+
+				if tc.sharding {
+					require.Equal(t, totalConfiguredRules, totalLoadedRules)
+				} else {
+					// Not sharding means that all rules will be loaded on all rulers
+					numberOfRulers := len(rulerAddrMap)
+					require.Equal(t, totalConfiguredRules*numberOfRulers, totalLoadedRules)
+				}
+			})
+		}
 	}
 }
 

@@ -3,7 +3,8 @@ package plan
 import (
 	"bytes"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 type QueryPlan struct {
@@ -76,6 +77,20 @@ func (t QueryPlan) Equal(other QueryPlan) bool {
 		return false
 	}
 	return bytes.Equal(left, right)
+}
+
+func (t QueryPlan) String() string {
+	if t.AST == nil {
+		return ""
+	}
+	return t.AST.String()
+}
+
+func (t *QueryPlan) Hash() uint32 {
+	if t.AST == nil {
+		return 0
+	}
+	return util.HashedQuery(t.AST.String())
 }
 
 // countWriter is not writing any bytes. It just counts the bytes that would be

@@ -48,8 +48,6 @@ var (
 
 	MonitoringSVCUserWorkload = "alertmanager-user-workload"
 	MonitoringUserWorkloadNS  = "openshift-user-workload-monitoring"
-
-	AnnotationCredentialsRequestOwner = "loki.grafana.com/credentialsrequest-owner"
 )
 
 func authorizerRbacName(componentName string) string {

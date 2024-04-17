@@ -9,8 +9,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var splittableVectorOp = map[string]struct{}{
@@ -57,6 +57,20 @@ type RangeMapper struct {
 	splitByInterval time.Duration
 	metrics         *MapperMetrics
 	stats           *MapperStats
+
+	splitAlignTs time.Time
+}
+
+// NewRangeMapperWithSplitAlign is similar to `NewRangeMapper` except it accepts additional `splitAlign` argument and used to
+// align the subqueries generated according to that. Look at `rangeSplitAlign` method for more information.
+func NewRangeMapperWithSplitAlign(interval time.Duration, splitAlign time.Time, metrics *MapperMetrics, stats *MapperStats) (RangeMapper, error) {
+	rm, err := NewRangeMapper(interval, metrics, stats)
+	if err != nil {
+		return RangeMapper{}, err
+	}
+	rm.splitAlignTs = splitAlign
+
+	return rm, nil
 }
 
 // NewRangeMapper creates a new RangeMapper instance with the given duration as
@@ -327,6 +341,77 @@ func (m RangeMapper) getOriginalOffset(expr syntax.SampleExpr) (offset time.Dura
 // rangeInterval should be greater than m.splitByInterval, otherwise the resultant expression
 // will have an unnecessary aggregation operation
 func (m RangeMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInterval time.Duration, recorder *downstreamRecorder) syntax.SampleExpr {
+	if m.splitAlignTs.IsZero() {
+		return m.rangeSplit(expr, rangeInterval, recorder)
+	}
+	return m.rangeSplitAlign(expr, rangeInterval, recorder)
+}
+
+// rangeSplitAlign try to split given `rangeInterval` into units of `m.splitByInterval` by making sure `rangeInterval` is aligned with `m.splitByInterval` for as much as the units as possible.
+// Consider following example with real use case.
+// Instant Query: `sum(rate({foo="bar"}[3h])`
+// execTs: 12:34:00
+// splitBy: 1h
+// Given above parameters, queries will be split into following
+// 1. sum(rate({foo="bar"}[34m]))
+// 2. sum(rate({foo="bar"}[1h] offset 34m))
+// 3. sum(rate({foo="bar"}[1h] offset 1h34m))
+// 4. sum(rate({foo="bar"}[26m] offset 2h34m))
+func (m RangeMapper) rangeSplitAlign(
+	expr syntax.SampleExpr, rangeInterval time.Duration, recorder *downstreamRecorder,
+) syntax.SampleExpr {
+	if rangeInterval <= m.splitByInterval {
+		return expr
+	}
+
+	originalOffset, err := m.getOriginalOffset(expr)
+	if err != nil {
+		return expr
+	}
+
+	align := m.splitAlignTs.Sub(m.splitAlignTs.Truncate(m.splitByInterval)) // say, 12:34:00 - 12:00:00(truncated) = 34m
+
+	if align == 0 {
+		return m.rangeSplit(expr, rangeInterval, recorder) // Don't have to align
+	}
+
+	var (
+		newRng = align
+
+		// TODO(kavi): If the originalOffset is non-zero, there may be a edge case, where subqueries generated won't be aligned correctly. Handle this edge case in separate PR.
+		newOffset            = originalOffset
+		downstreams          *ConcatSampleExpr
+		pendingRangeInterval = rangeInterval
+		splits               = 0
+	)
+
+	// first subquery
+	downstreams = appendDownstream(downstreams, expr, newRng, newOffset)
+	splits++
+
+	newOffset += align // e.g: offset 34m
+	pendingRangeInterval -= newRng
+	newRng = m.splitByInterval // [1h]
+
+	// Rest of the subqueries.
+	for pendingRangeInterval > 0 {
+		if pendingRangeInterval < m.splitByInterval {
+			newRng = pendingRangeInterval // last subquery
+		}
+		downstreams = appendDownstream(downstreams, expr, newRng, newOffset)
+		newOffset += m.splitByInterval
+		pendingRangeInterval -= newRng
+		splits++
+	}
+
+	// update stats and metrics
+	m.stats.AddSplitQueries(splits)
+	recorder.Add(splits, MetricsKey)
+
+	return downstreams
+}
+
+func (m RangeMapper) rangeSplit(expr syntax.SampleExpr, rangeInterval time.Duration, recorder *downstreamRecorder) syntax.SampleExpr {
 	splitCount := int(math.Ceil(float64(rangeInterval) / float64(m.splitByInterval)))
 	if splitCount <= 1 {
 		return expr

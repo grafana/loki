@@ -7,6 +7,7 @@ import (
 )
 
 func TestMergeBlockQuerier_NonOverlapping(t *testing.T) {
+	t.Parallel()
 	var (
 		numSeries        = 100
 		numKeysPerSeries = 10000
@@ -34,6 +35,7 @@ func TestMergeBlockQuerier_NonOverlapping(t *testing.T) {
 }
 
 func TestMergeBlockQuerier_Duplicate(t *testing.T) {
+	t.Parallel()
 	var (
 		numSeries        = 100
 		numKeysPerSeries = 10000
@@ -64,6 +66,8 @@ func TestMergeBlockQuerier_Duplicate(t *testing.T) {
 }
 
 func TestMergeBlockQuerier_Overlapping(t *testing.T) {
+	t.Parallel()
+
 	var (
 		numSeries        = 100
 		numKeysPerSeries = 10000
