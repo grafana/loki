@@ -85,27 +85,33 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	preFilterChunks := len(chunkRefs)
 	preFilterSeries := len(grouped)
 
-	refs, err := bq.c.FilterChunks(ctx, tenant, from, through, grouped, queryPlan)
-	if err != nil {
-		return nil, err
-	}
-
-	// Flatten response from client and return
 	result := make([]*logproto.ChunkRef, 0, len(chunkRefs))
-	for i := range refs {
-		for _, ref := range refs[i].Refs {
-			result = append(result, &logproto.ChunkRef{
-				Fingerprint: refs[i].Fingerprint,
-				UserID:      tenant,
-				From:        ref.From,
-				Through:     ref.Through,
-				Checksum:    ref.Checksum,
-			})
+	seriesSeen := make(map[uint64]struct{}, len(grouped))
+
+	// We can perform requests sequentially, because most of the time the request
+	// only covers a single day, and if not, it's at most two days.
+	for _, s := range partitionSeriesByDay(from, through, grouped) {
+		refs, err := bq.c.FilterChunks(ctx, tenant, s.interval.Start, s.interval.End, s.series, queryPlan)
+		if err != nil {
+			return nil, err
+		}
+
+		for i := range refs {
+			seriesSeen[refs[i].Fingerprint] = struct{}{}
+			for _, ref := range refs[i].Refs {
+				result = append(result, &logproto.ChunkRef{
+					Fingerprint: refs[i].Fingerprint,
+					UserID:      tenant,
+					From:        ref.From,
+					Through:     ref.Through,
+					Checksum:    ref.Checksum,
+				})
+			}
 		}
 	}
 
 	postFilterChunks := len(result)
-	postFilterSeries := len(refs)
+	postFilterSeries := len(seriesSeen)
 
 	bq.metrics.chunksTotal.Add(float64(preFilterChunks))
 	bq.metrics.chunksFiltered.Add(float64(preFilterChunks - postFilterChunks))

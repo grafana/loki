@@ -270,32 +270,35 @@ func TestPartitionRequest(t *testing.T) {
 					{
 						Fingerprint: 0x00,
 						Refs: []*logproto.ShortRef{
+							{From: ts.Add(-14 * time.Hour), Through: ts.Add(-13 * time.Hour)},
 							{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)},
+							{From: ts.Add(-11 * time.Hour), Through: ts.Add(-10 * time.Hour)},
 						},
 					},
 				},
 			},
 			exp: []seriesWithInterval{
 				{
-					interval: bloomshipper.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
+					interval: bloomshipper.Interval{Start: ts.Add(-14 * time.Hour), End: ts.Add(-11 * time.Hour)},
 					day:      config.NewDayTime(mktime("2024-01-23 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
 							Refs: []*logproto.ShortRef{
+								{From: ts.Add(-14 * time.Hour), Through: ts.Add(-13 * time.Hour)},
 								{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)},
 							},
 						},
 					},
 				},
 				{
-					interval: bloomshipper.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
+					interval: bloomshipper.Interval{Start: ts.Add(-11 * time.Hour), End: ts.Add(-10 * time.Hour)},
 					day:      config.NewDayTime(mktime("2024-01-24 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
 							Refs: []*logproto.ShortRef{
-								{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)},
+								{From: ts.Add(-11 * time.Hour), Through: ts.Add(-10 * time.Hour)},
 							},
 						},
 					},
