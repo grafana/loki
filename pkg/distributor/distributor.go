@@ -910,7 +910,7 @@ func extractLogLevelFromLogLine(log string) string {
 		}
 		compareString := log[levelIndex:min(len(log), levelIndex+20)]
 
-		if strings.Contains(strings.ToLower(compareString), `:"error"`) || strings.Contains(strings.ToLower(compareString), `":err"`) {
+		if strings.Contains(strings.ToLower(compareString), `:"error"`) || strings.Contains(strings.ToLower(compareString), `:"err"`) {
 			return logLevelError
 		}
 		if strings.Contains(strings.ToLower(compareString), `:"warning"`) || strings.Contains(strings.ToLower(compareString), `:"warn"`) {
