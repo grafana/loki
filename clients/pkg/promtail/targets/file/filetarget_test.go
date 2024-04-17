@@ -75,6 +75,7 @@ func TestFileTargetSync(t *testing.T) {
 	}, DefaultWatchConig, nil, fakeHandler, "", nil)
 	assert.NoError(t, err)
 
+	target.mu.Lock()
 	// Start with nothing watched.
 	if len(target.watches) != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
@@ -82,6 +83,7 @@ func TestFileTargetSync(t *testing.T) {
 	if len(target.readers) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
+	target.mu.Unlock()
 
 	// Create the base dir, still nothing watched.
 	err = os.MkdirAll(logDir1, 0750)
@@ -138,12 +140,14 @@ func TestFileTargetSync(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
+	target.mu.Lock()
 	assert.Equal(t, 1, len(target.watches),
 		"Expected watches to be 1 at this point in the test...",
 	)
 	assert.Equal(t, 1, len(target.readers),
 		"Expected tails to be 1 at this point in the test...",
 	)
+	target.mu.Unlock()
 
 	// Remove the entire directory, other tailer should stop and watcher should go away.
 	err = os.RemoveAll(logDir1)
@@ -152,12 +156,14 @@ func TestFileTargetSync(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
+	target.mu.Lock()
 	assert.Equal(t, 0, len(target.watches),
 		"Expected watches to be 0 at this point in the test...",
 	)
 	assert.Equal(t, 0, len(target.readers),
 		"Expected tails to be 0 at this point in the test...",
 	)
+	target.mu.Unlock()
 	requireEventually(t, func() bool {
 		return receivedStartWatch.Load() == 1
 	}, "Expected received starting watch event to be 1 at this point in the test...")
@@ -198,6 +204,9 @@ func TestFileTarget_StopsTailersCleanly(t *testing.T) {
 	assert.NoError(t, err)
 
 	requireEventually(t, func() bool {
+
+		target.mu.Lock()
+		defer target.mu.Unlock()
 		return len(target.readers) == 1
 	}, "expected 1 tailer to be created")
 
@@ -213,6 +222,8 @@ func TestFileTarget_StopsTailersCleanly(t *testing.T) {
 
 	// Tailer will be replaced by a new one
 	requireEventually(t, func() bool {
+		target.mu.Lock()
+		defer target.mu.Unlock()
 		return len(target.readers) == 1 && target.readers[logFile].(*tailer) != initailTailer
 	}, "expected dead tailer to be replaced by a new one")
 
@@ -389,9 +400,11 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Start with nothing watched.
+	target.mu.Lock()
 	if len(target.watches) != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
+	target.mu.Unlock()
 	if len(target.readers) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}

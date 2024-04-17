@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/bmatcuk/doublestar"
@@ -91,6 +92,7 @@ type FileTarget struct {
 
 	fileEventWatcher   chan fsnotify.Event
 	targetEventHandler chan fileTargetEvent
+	mu                 sync.Mutex
 	watches            map[string]struct{}
 	path               string
 	pathExclude        string
@@ -226,6 +228,8 @@ func (t *FileTarget) run() {
 }
 
 func (t *FileTarget) sync() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	var matches, matchesExcluded []string
 	if fi, err := os.Stat(t.path); err == nil && !fi.IsDir() {
 		// if the path points to a file that exists, then it we can skip the Glob search
