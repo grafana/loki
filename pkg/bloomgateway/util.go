@@ -159,3 +159,19 @@ func partitionSeriesByDay(from, through model.Time, seriesWithChunks []*logproto
 
 	return result
 }
+
+// spansMultipleDays checks whether the start times of chunks of the filter
+// request span across multiple days
+func spansMultipleDays(req *logproto.FilterChunkRefRequest) bool {
+	minTs, maxTs := model.Latest, model.Earliest
+	for _, ref := range req.Refs {
+		first, last := getFirstLast(ref.Refs)
+		if first.From < minTs {
+			minTs = first.From
+		}
+		if last.From > maxTs {
+			maxTs = last.From
+		}
+	}
+	return truncateDay(maxTs).After(truncateDay(minTs))
+}

@@ -226,6 +226,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, errors.New("from time must not be after through time")
 	}
 
+	// chunks span across multiple days
+	if spansMultipleDays(req) {
+		stats.Status = labelFailure
+		return nil, errors.New("chunk start times must not span across multiple days")
+	}
+
 	filters := v1.ExtractTestableLineFilters(req.Plan.AST)
 	stats.NumFilters = len(filters)
 	g.metrics.receivedFilters.Observe(float64(len(filters)))
