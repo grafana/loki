@@ -53,7 +53,7 @@ For each node, the key-value store holds:
 
 ## Configuring rings
 
-Define [ring configuration]({{< relref "../configure#common" >}}) within the `common.ring_config` block.
+Define [ring configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#common) within the `common.ring_config` block.
 
 Use the default `memberlist` key-value store type unless there is
 a compelling reason to use a different key-value store type.
