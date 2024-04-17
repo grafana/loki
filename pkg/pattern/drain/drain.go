@@ -102,16 +102,6 @@ type Node struct {
 	clusterIDs     []int
 }
 
-func DefaultConfig() *Config {
-	return &Config{
-		LogClusterDepth: 8,
-		SimTh:           0.3,
-		MaxChildren:     100,
-		ParamString:     "<_>",
-		MaxClusters:     0,
-	}
-}
-
 func New(config *Config) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
