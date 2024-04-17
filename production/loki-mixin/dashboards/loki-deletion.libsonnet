@@ -61,7 +61,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
           .addPanel(
             $.newQueryPanel('Lines Deleted / Sec') +
-            g.queryPanel('sum(rate(loki_compactor_deleted_lines{' + $._config.per_cluster_label + '=~"$cluster",' + compactor_matcher + '}[$__rate_interval])) by (user)', '{{user}}'),
+            g.queryPanel('sum(rate(loki_compactor_deleted_lines{' + $.namespaceMatcher() + ', ' + compactor_matcher + '}[$__rate_interval])) by (user)', '{{user}}'),
           )
         ).addRow(
           g.row('List of deletion requests')

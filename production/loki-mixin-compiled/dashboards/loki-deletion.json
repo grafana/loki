@@ -579,7 +579,7 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "sum(rate(loki_compactor_deleted_lines{cluster=~\"$cluster\",container=\"compactor\"}[$__rate_interval])) by (user)",
+                        "expr": "sum(rate(loki_compactor_deleted_lines{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"compactor\"}[$__rate_interval])) by (user)",
                         "format": "time_series",
                         "legendFormat": "{{user}}",
                         "legendLink": null
