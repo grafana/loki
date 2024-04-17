@@ -293,10 +293,7 @@ message ChunkRef {
 }
 
 message ChunkRefGroup {
-  repeated ChunkRef refs = 1 [
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "refs"
-  ];
+  repeated ChunkRef refs = 1 [(gogoproto.jsontag) = "refs"];
 }
 
 message LabelValuesForMetricNameRequest {

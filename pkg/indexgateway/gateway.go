@@ -463,11 +463,12 @@ func (g *Gateway) getShardsWithBlooms(
 			},
 		}
 	} else {
-		shards, err := accumulateChunksToShards(ctx, instanceID, forSeries, req, p, filtered)
+		shards, chunkGrps, err := accumulateChunksToShards(ctx, instanceID, forSeries, req, p, filtered)
 		if err != nil {
 			return err
 		}
 		resp.Shards = shards
+		resp.ChunkGroups = chunkGrps
 	}
 
 	sp.LogKV("msg", "send shards response", "shards", len(resp.Shards))
@@ -525,7 +526,7 @@ func accumulateChunksToShards(
 	req *logproto.ShardsRequest,
 	p chunk.Predicate,
 	filtered []*logproto.ChunkRef,
-) ([]logproto.Shard, error) {
+) ([]logproto.Shard, []logproto.ChunkRefGroup, error) {
 	// map for looking up post-filtered chunks in O(n) while iterating the index again for sizing info
 	filteredM := make(map[model.Fingerprint][]refWithSizingInfo, 1024)
 	for _, ref := range filtered {
@@ -579,7 +580,7 @@ func accumulateChunksToShards(
 		},
 		p.Matchers...,
 	); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	collectedSeries := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(filteredM)))
@@ -597,7 +598,21 @@ func accumulateChunksToShards(
 	}
 	sort.Sort(collectedSeries)
 
-	return collectedSeries.ShardsFor(req.TargetBytesPerShard), nil
+	shards := collectedSeries.ShardsFor(req.TargetBytesPerShard)
+	chkGrps := make([]logproto.ChunkRefGroup, 0, len(shards))
+	for _, s := range shards {
+		from := sort.Search(len(filtered), func(i int) bool {
+			return filtered[i].Fingerprint >= uint64(s.Bounds.Min)
+		})
+		through := sort.Search(len(filtered), func(i int) bool {
+			return filtered[i].Fingerprint > uint64(s.Bounds.Max)
+		})
+		chkGrps = append(chkGrps, logproto.ChunkRefGroup{
+			Refs: filtered[from:through],
+		})
+	}
+
+	return shards, chkGrps, nil
 }
 
 type refWithSizingInfo struct {

@@ -64,11 +64,19 @@ func (c *storeEntry) GetChunks(
 		return nil, nil, nil
 	}
 
-	var refs []logproto.ChunkRef
+	var refs []*logproto.ChunkRef
 	if storeChunksOverride != nil {
 		refs = storeChunksOverride.Refs
 	} else {
-		refs, err = c.indexReader.GetChunkRefs(ctx, userID, from, through, predicate)
+		// TODO(owen-d): fix needless O(n) conversions that stem from difference in store impls (value)
+		// vs proto impls (reference)
+		var values []logproto.ChunkRef
+		values, err = c.indexReader.GetChunkRefs(ctx, userID, from, through, predicate)
+		// convert to refs
+		refs = make([]*logproto.ChunkRef, 0, len(values))
+		for i := range values {
+			refs = append(refs, &values[i])
+		}
 	}
 
 	// Store overrides are passed through from the parent and can reference chunks not owned by this particular store,
@@ -79,12 +87,12 @@ func (c *storeEntry) GetChunks(
 	return [][]chunk.Chunk{chunks}, []*fetcher.Fetcher{c.fetcher}, err
 }
 
-func filterForTimeRange(refs []logproto.ChunkRef, from, through model.Time) []chunk.Chunk {
+func filterForTimeRange(refs []*logproto.ChunkRef, from, through model.Time) []chunk.Chunk {
 	filtered := make([]chunk.Chunk, 0, len(refs))
 	for _, ref := range refs {
 		if through >= ref.From && from < ref.Through {
 			filtered = append(filtered, chunk.Chunk{
-				ChunkRef: ref,
+				ChunkRef: *ref,
 			})
 		}
 	}

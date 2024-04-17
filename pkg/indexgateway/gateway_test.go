@@ -532,7 +532,7 @@ func TestAccumulateChunksToShards(t *testing.T) {
 		},
 	}
 
-	shards, err := accumulateChunksToShards(
+	shards, grps, err := accumulateChunksToShards(
 		context.Background(),
 		"",
 		fsImpl(series),
@@ -543,6 +543,12 @@ func TestAccumulateChunksToShards(t *testing.T) {
 		filtered,
 	)
 
+	expectedChks := [][]*logproto.ChunkRef{
+		filtered[0:3],
+		filtered[3:6],
+		filtered[6:9],
+		filtered[9:10],
+	}
 	exp := []logproto.Shard{
 		{
 			Bounds: logproto.FPBounds{Min: 0, Max: 1},
@@ -586,6 +592,9 @@ func TestAccumulateChunksToShards(t *testing.T) {
 
 	for i := range shards {
 		require.Equal(t, exp[i], shards[i], "invalid shard at index %d", i)
+		for j := range grps[i].Refs {
+			require.Equal(t, expectedChks[i][j], grps[i].Refs[j], "invalid chunk in grp %d at index %d", i, j)
+		}
 	}
 	require.Equal(t, len(exp), len(shards))
 
