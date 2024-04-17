@@ -299,7 +299,7 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 		"shards", len(casted.Response.Shards),
 		"query", exprStr,
 		"total_chunks", casted.Response.Statistics.Index.TotalChunks,
-		"post_filter_chunks:", casted.Response.Statistics.Index.PostFilterChunks,
+		"post_filter_chunks", casted.Response.Statistics.Index.PostFilterChunks,
 		"total_refs", refs,
 	)
 

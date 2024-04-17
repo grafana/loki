@@ -393,7 +393,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 						t.Fatal(err)
 					}
 
-					chunks, fetchers, err := store.GetChunks(ctx, userID, now.Add(-time.Hour), now, chunk.NewPredicate(matchers, nil))
+					chunks, fetchers, err := store.GetChunks(ctx, userID, now.Add(-time.Hour), now, chunk.NewPredicate(matchers, nil), nil)
 					require.NoError(t, err)
 					fetchedChunk := []chunk.Chunk{}
 					for _, f := range fetchers {
