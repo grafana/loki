@@ -2,6 +2,7 @@ package detected
 
 import (
 	"github.com/axiomhq/hyperloglog"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
