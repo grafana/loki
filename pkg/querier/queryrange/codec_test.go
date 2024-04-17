@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/axiomhq/hyperloglog"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go/mocktracer"
@@ -1623,25 +1624,38 @@ func Test_codec_MergeResponse(t *testing.T) {
 }
 
 func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
-	t.Run("merges the responses, taking the highest cardinality", func(t *testing.T) {
+	buildDetctedField := func(label string, cardinality uint64) *logproto.DetectedField {
+		fooSketch := hyperloglog.New()
+
+		for i := 0; i < int(cardinality); i++ {
+			fooSketch.Insert([]byte(fmt.Sprintf("value %d", i)))
+		}
+		marshalledSketch, err := fooSketch.MarshalBinary()
+		require.NoError(t, err)
+
+		return &logproto.DetectedField{
+			Label:       label,
+			Type:        logproto.DetectedFieldString,
+			Cardinality: cardinality,
+			Sketch:      marshalledSketch,
+		}
+	}
+
+	t.Run("merges the responses", func(t *testing.T) {
 		responses := []queryrangebase.Response{
 			&DetectedFieldsResponse{
 				Response: &logproto.DetectedFieldsResponse{
-					Fields: []*logproto.DetectedField{{
-						Label:       "foo",
-						Type:        logproto.DetectedFieldString,
-						Cardinality: 1,
-					}},
+					Fields: []*logproto.DetectedField{
+						buildDetctedField("foo", 1),
+					},
 					FieldLimit: 2,
 				},
 			},
 			&DetectedFieldsResponse{
 				Response: &logproto.DetectedFieldsResponse{
-					Fields: []*logproto.DetectedField{{
-						Label:       "foo",
-						Type:        logproto.DetectedFieldString,
-						Cardinality: 3,
-					}},
+					Fields: []*logproto.DetectedField{
+						buildDetctedField("foo", 3),
+					},
 					FieldLimit: 2,
 				},
 			},
@@ -1663,16 +1677,8 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 			&DetectedFieldsResponse{
 				Response: &logproto.DetectedFieldsResponse{
 					Fields: []*logproto.DetectedField{
-						{
-							Label:       "foo",
-							Type:        logproto.DetectedFieldString,
-							Cardinality: 1,
-						},
-						{
-							Label:       "bar",
-							Type:        logproto.DetectedFieldInt,
-							Cardinality: 42,
-						},
+						buildDetctedField("foo", 1),
+						buildDetctedField("bar", 42),
 					},
 					FieldLimit: 2,
 				},
@@ -1680,15 +1686,8 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 			&DetectedFieldsResponse{
 				Response: &logproto.DetectedFieldsResponse{
 					Fields: []*logproto.DetectedField{
-						{
-							Label:       "foo",
-							Type:        logproto.DetectedFieldString,
-							Cardinality: 27,
-						}, {
-							Label:       "baz",
-							Type:        logproto.DetectedFieldBoolean,
-							Cardinality: 3,
-						},
+						buildDetctedField("foo", 27),
+						buildDetctedField("baz", 3),
 					},
 					FieldLimit: 2,
 				},
