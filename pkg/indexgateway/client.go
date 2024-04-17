@@ -28,9 +28,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/discovery"
 	util_math "github.com/grafana/loki/v3/pkg/util/math"
@@ -358,40 +356,6 @@ func (s *GatewayClient) GetShards(
 		return nil, err
 	}
 	return res, nil
-}
-
-func (s *GatewayClient) getShardsFromStatsFallback(
-	ctx context.Context,
-	in *logproto.ShardsRequest,
-) (*logproto.ShardsResponse, error) {
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "index gateway client get tenant ID")
-	}
-
-	p, err := ExtractShardRequestMatchersAndAST(in.Query)
-	if err != nil {
-		return nil, errors.Wrap(err, "failure while falling back to stats for shard calculation")
-
-	}
-
-	stats, err := s.GetStats(
-		ctx,
-		&logproto.IndexStatsRequest{
-			From:     in.From,
-			Through:  in.Through,
-			Matchers: (&syntax.MatchersExpr{Mts: p.Matchers}).String(),
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	var strategy sharding.PowerOfTwoSharding
-	shards := strategy.ShardsFor(stats.Bytes, uint64(s.limits.TSDBMaxBytesPerShard(userID)))
-	return &logproto.ShardsResponse{
-		Shards: shards,
-	}, nil
 }
 
 // TODO(owen-d): this was copied from ingester_querier.go -- move it to a shared pkg
