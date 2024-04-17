@@ -288,6 +288,11 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	// accumulate stats
 	logqlstats.JoinResults(ctx, casted.Response.Statistics)
 
+	var refs int
+	for _, x := range casted.Response.ChunkGroups {
+		refs += len(x.Refs)
+	}
+
 	level.Debug(log).Log(
 		"msg", "retrieved sharding ranges",
 		"target_bytes_per_shard", targetBytesPerShard,
@@ -295,6 +300,7 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 		"query", exprStr,
 		"total_chunks", casted.Response.Statistics.Index.TotalChunks,
 		"post_filter_chunks:", casted.Response.Statistics.Index.PostFilterChunks,
+		"total_refs", refs,
 	)
 
 	return casted.Response.Shards, err

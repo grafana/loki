@@ -338,8 +338,7 @@ func (s *GatewayClient) GetShards(
 				if err != nil {
 					return errors.WithStack(err)
 				}
-				perReplicaResult.Shards = append(perReplicaResult.Shards, resp.Shards...)
-				perReplicaResult.Statistics.Merge(resp.Statistics)
+				perReplicaResult.Merge(resp)
 			}
 
 			// Since `poolDo` retries on error, we only want to set the response if we got a successful response.
