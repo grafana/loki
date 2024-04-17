@@ -119,6 +119,7 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 		direction,
 		uint32(limit),
 		nil,
+		nil,
 	)
 	if err != nil {
 		return nil, err

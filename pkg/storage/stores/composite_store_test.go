@@ -356,9 +356,9 @@ func TestVolume(t *testing.T) {
 }
 
 func TestFilterForTimeRange(t *testing.T) {
-	mkRefs := func(from, through model.Time) (res []logproto.ChunkRef) {
+	mkRefs := func(from, through model.Time) (res []*logproto.ChunkRef) {
 		for i := from; i <= through; i++ {
-			res = append(res, logproto.ChunkRef{
+			res = append(res, &logproto.ChunkRef{
 				From:    i,
 				Through: i + 1,
 			})
@@ -368,14 +368,14 @@ func TestFilterForTimeRange(t *testing.T) {
 
 	mkChks := func(from, through model.Time) (res []chunk.Chunk) {
 		for _, ref := range mkRefs(from, through) {
-			res = append(res, chunk.Chunk{ChunkRef: ref})
+			res = append(res, chunk.Chunk{ChunkRef: *ref})
 		}
 		return res
 	}
 
 	for _, tc := range []struct {
 		desc          string
-		input         []logproto.ChunkRef
+		input         []*logproto.ChunkRef
 		from, through model.Time
 		exp           []chunk.Chunk
 	}{
