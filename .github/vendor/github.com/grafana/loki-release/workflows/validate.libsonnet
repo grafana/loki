@@ -24,15 +24,6 @@ local setupValidationDeps = function(job) job {
       smoke_test: '${binary} --version',
       tar_args: 'xvf',
     }),
-    step.new('install jsonnetfmt', './lib/actions/install-binary')
-    + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
-    + step.with({
-      binary: 'jsonnetfmt',
-      version: '0.18.0',
-      download_url: 'https://github.com/google/go-jsonnet/releases/download/v${version}/go-jsonnet_${version}_Linux_x86_64.tar.gz',
-      tarball_binary_path: '${binary}',
-      smoke_test: '${binary} --version',
-    }),
   ] + job.steps,
 };
 
@@ -63,7 +54,6 @@ local validationJob = _validationJob(false);
     + job.withSteps(
       [
         validationMakeStep('lint', 'lint'),
-        validationMakeStep('lint jsonnet', 'lint-jsonnet'),
         validationMakeStep('lint scripts', 'lint-scripts'),
         step.new('check format')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')

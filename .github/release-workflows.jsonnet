@@ -6,7 +6,8 @@ local releaseLibRef = std.filter(
   (import 'jsonnetfile.json').dependencies
 )[0].version;
 
-local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef;
+// local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef;
+local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@test-packages-individually';
 
 local imageJobs = {
   loki: build.image('loki', 'cmd/loki'),
