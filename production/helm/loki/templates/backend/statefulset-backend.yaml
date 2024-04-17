@@ -173,9 +173,9 @@ spec:
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.backend.extraEnvFrom }}
+          {{- if or .Values.global.extraEnvFrom .Values.backend.extraEnvFrom }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
+            {{- coalesce .Values.global.extraEnvFrom .Values.backend.extraEnvFrom | toYaml | nindent 10 }}
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}

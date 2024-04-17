@@ -10,6 +10,8 @@ global:
   dnsService: "kube-dns"
   # -- configures DNS service namespace
   dnsNamespace: "kube-system"
+  # -- Environment variables from secrets or configmaps to add to all pods
+  extraEnvFrom: []
 # -- Overrides the chart's name
 nameOverride: null
 # -- Overrides the chart's computed fullname

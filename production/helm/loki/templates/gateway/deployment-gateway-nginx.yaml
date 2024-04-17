@@ -68,9 +68,9 @@ spec:
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.gateway.extraEnvFrom }}
+          {{- if or .Values.global.extraEnvFrom .Values.gateway.extraEnvFrom }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
+            {{- coalesce .Values.global.extraEnvFrom .Values.gateway.extraEnvFrom | toYaml | nindent 10 }}
           {{- end }}
           readinessProbe:
             {{- toYaml .Values.gateway.readinessProbe | nindent 12 }}

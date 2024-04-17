@@ -93,9 +93,9 @@ spec:
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.bloomGateway.extraEnvFrom }}
+          {{- if or .Values.global.extraEnvFrom .Values.bloomGateway.extraEnvFrom }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
+            {{- coalesce .Values.global.extraEnvFrom .Values.bloomGateway.extraEnvFrom | toYaml | nindent 10 }}
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
