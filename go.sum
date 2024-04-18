@@ -377,8 +377,8 @@ github.com/aws/aws-sdk-go-v2/service/sts v1.16.1 h1:xsOtPAvHqhvQvBza5ohaUcfq1Lce
 github.com/aws/aws-sdk-go-v2/service/sts v1.16.1/go.mod h1:Aq2/Qggh2oemSfyHH+EO4UBbgWG6zFCXLHYI4ILTY7w=
 github.com/aws/smithy-go v1.11.1 h1:IQ+lPZVkSM3FRtyaDox41R8YS6iwPMYIreejOgPW49g=
 github.com/aws/smithy-go v1.11.1/go.mod h1:3xHYmszWVx2c0kIwQeEVf9uSm4fYZt67FBJnwub1bgM=
-github.com/axiomhq/hyperloglog v0.0.0-20240124082744-24bca3a5b39b h1:F3yMzKumBUQ6Fn0sYI1YQ16vQRucpZOfBQ9HXWl5+XI=
-github.com/axiomhq/hyperloglog v0.0.0-20240124082744-24bca3a5b39b/go.mod h1:k08r+Yj1PRAmuayFiRK6MYuR5Ve4IuZtTfxErMIh0+c=
+github.com/axiomhq/hyperloglog v0.0.0-20240319100328-84253e514e02 h1:bXAPYSbdYbS5VTy92NIUbeDI1qyggi+JYh5op9IFlcQ=
+github.com/axiomhq/hyperloglog v0.0.0-20240319100328-84253e514e02/go.mod h1:k08r+Yj1PRAmuayFiRK6MYuR5Ve4IuZtTfxErMIh0+c=
 github.com/baidubce/bce-sdk-go v0.9.141 h1:EV5BH5lfymIGPSmYDo9xYdsVlvWAW6nFeiA6t929zBE=
 github.com/baidubce/bce-sdk-go v0.9.141/go.mod h1:zbYJMQwE4IZuyrJiFO8tO8NbtYiKTFTbwh4eIsqjVdg=
 github.com/baiyubin/aliyun-sts-go-sdk v0.0.0-20180326062324-cfa1a18b161f/go.mod h1:AuiFmCCPBSrqvVMvuqFuk0qogytodnVFVSN5CeJB8Gc=
