@@ -59,6 +59,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/queue"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -244,42 +245,40 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}, nil
 	}
 
-	seriesByDay := partitionRequest(req)
-	stats.NumTasks = len(seriesByDay)
-
-	// no tasks --> empty response
-	if len(seriesByDay) == 0 {
-		stats.Status = labelSuccess
-		return &logproto.FilterChunkRefResponse{
-			ChunkRefs: []*logproto.GroupedChunkRefs{},
-		}, nil
-	}
+	stats.NumTasks = 1
 
 	sp.LogKV(
 		"filters", len(filters),
-		"days", len(seriesByDay),
+		"blocks", len(req.Blocks),
 		"series_requested", len(req.Refs),
 	)
 
-	tasks := make([]Task, 0, len(seriesByDay))
-	responses := make([][]v1.Output, 0, len(seriesByDay))
-	for _, seriesForDay := range seriesByDay {
-		task, err := NewTask(ctx, tenantID, seriesForDay, filters)
-		if err != nil {
-			return nil, err
-		}
-
-		// TODO(owen-d): include capacity in constructor?
-		task.responses = responsesPool.Get(len(seriesForDay.series))
-		tasks = append(tasks, task)
+	seriesForDay := seriesWithInterval{
+		day:      config.NewDayTime(req.Refs[0].Refs[0].From),
+		series:   req.Refs,
+		interval: bloomshipper.NewInterval(req.From, req.Through),
 	}
 
+	task, err := NewTask(ctx, tenantID, seriesForDay, filters)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO(owen-d): include capacity in constructor?
+	task.responses = responsesPool.Get(len(seriesForDay.series))
+
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
+
+	// TODO(chaudum): I intentionally keep the logic for handling multiple tasks,
+	// so that the PR does not explode in size. This should be cleaned up at some point.
+	tasks := []Task{task}
 
 	// Ideally we could use an unbuffered channel here, but since we return the
 	// request on the first error, there can be cases where the request context
 	// is not done yet and the consumeTask() function wants to send to the
 	// tasksCh, but nobody reads from it any more.
+	responses := make([][]v1.Output, 0, 1)
+
 	queueStart := time.Now()
 	tasksCh := make(chan Task, len(tasks))
 	for _, task := range tasks {
