@@ -305,7 +305,7 @@ func (c *IndexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 		return nil, err
 	}
 
-	results := make([]labels.Labels, len(chunksBySeries)) // Flatten out the per-job results.
+	results := make([]labels.Labels, 0, len(chunksBySeries)) // Flatten out the per-job results.
 	for _, innerSlice := range perJobResults {
 		results = append(results, innerSlice...)
 	}
