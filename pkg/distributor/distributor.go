@@ -919,7 +919,7 @@ func extractLogLevelFromLogLine(log string) string {
 			return logLevelDebug
 		}
 		if strings.Contains(log, `:"info"`) || strings.Contains(log, `:"INFO"`) {
-			return logLevelDebug
+			return logLevelInfo
 		}
 	}
 
@@ -940,7 +940,7 @@ func extractLogLevelFromLogLine(log string) string {
 			return logLevelDebug
 		}
 		if strings.Contains(log, "=info") || strings.Contains(log, "=INFO") {
-			return logLevelDebug
+			return logLevelInfo
 		}
 	}
 

@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -37,8 +38,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/series"
 	series_index "github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/gatewayclient"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/deletion"
@@ -280,7 +279,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	if p.IndexType == types.TSDBType {
 		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
 			// inject the index-gateway client into the index store
-			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
+			gw, err := indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
 			if err != nil {
 				return nil, nil, nil, err
 			}

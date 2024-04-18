@@ -5,13 +5,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/v3/pkg/ruler"
 	scheduler_limits "github.com/grafana/loki/v3/pkg/scheduler/limits"
 	"github.com/grafana/loki/v3/pkg/storage"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/indexgateway"
 )
 
 type CombinedLimits interface {
