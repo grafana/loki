@@ -66,6 +66,7 @@ const (
 	logLevelError    = "error"
 	logLevelFatal    = "fatal"
 	logLevelCritical = "critical"
+	logLevelTrace    = "trace"
 )
 
 var (
@@ -910,6 +911,9 @@ func extractLogLevelFromLogLine(log string) string {
 		}
 		compareString := log[levelIndex:min(len(log), levelIndex+20)]
 
+		if strings.Contains(strings.ToLower(compareString), `:"fatal"`) {
+			return logLevelFatal
+		}
 		if strings.Contains(strings.ToLower(compareString), `:"error"`) || strings.Contains(strings.ToLower(compareString), `:"err"`) {
 			return logLevelError
 		}
@@ -925,12 +929,19 @@ func extractLogLevelFromLogLine(log string) string {
 		if strings.Contains(strings.ToLower(compareString), `:"info"`) {
 			return logLevelInfo
 		}
+		if strings.Contains(strings.ToLower(compareString), `:"trace"`) {
+			return logLevelTrace
+		}
 	}
 
 	// logfmt logs:
 	levelIndex := strings.Index(log, "level=")
 	if levelIndex != -1 {
 		compareString := log[levelIndex:min(len(log), levelIndex+20)]
+
+		if strings.Contains(strings.ToLower(compareString), "=fatal") {
+			return logLevelFatal
+		}
 		if strings.Contains(strings.ToLower(compareString), "=error") || strings.Contains(strings.ToLower(compareString), "err") {
 			return logLevelError
 		}
