@@ -65,32 +65,41 @@ func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.M
 
 func (p *processor) processTasks(ctx context.Context, tenant string, day config.DayTime, keyspaces v1.MultiFingerprintBounds, tasks []Task) error {
 	level.Info(p.logger).Log("msg", "process tasks for day", "tenant", tenant, "tasks", len(tasks), "day", day.String())
+	var duration time.Duration
 
-	minFpRange, maxFpRange := getFirstLast(keyspaces)
-	interval := bloomshipper.NewInterval(day.Bounds())
-	metaSearch := bloomshipper.MetaSearchParams{
-		TenantID: tenant,
-		Interval: interval,
-		Keyspace: v1.NewBounds(minFpRange.Min, maxFpRange.Max),
+	blocksRefs := make([]bloomshipper.BlockRef, 0, len(tasks[0].blocks)*len(tasks))
+	for _, task := range tasks {
+		blocksRefs = append(blocksRefs, task.blocks...)
 	}
 
-	startMetas := time.Now()
-	metas, err := p.store.FetchMetas(ctx, metaSearch)
-	duration := time.Since(startMetas)
-	level.Debug(p.logger).Log("msg", "fetched metas", "count", len(metas), "duration", duration, "err", err)
+	// fallback to existing block resolving
+	if len(blocksRefs) == 0 {
+		minFpRange, maxFpRange := getFirstLast(keyspaces)
+		interval := bloomshipper.NewInterval(day.Bounds())
+		metaSearch := bloomshipper.MetaSearchParams{
+			TenantID: tenant,
+			Interval: interval,
+			Keyspace: v1.NewBounds(minFpRange.Min, maxFpRange.Max),
+		}
 
-	for _, t := range tasks {
-		FromContext(t.ctx).AddMetasFetchTime(duration)
+		startMetas := time.Now()
+		metas, err := p.store.FetchMetas(ctx, metaSearch)
+		duration = time.Since(startMetas)
+		level.Debug(p.logger).Log("msg", "fetched metas", "count", len(metas), "duration", duration, "err", err)
+
+		for _, t := range tasks {
+			FromContext(t.ctx).AddMetasFetchTime(duration)
+		}
+
+		if err != nil {
+			return err
+		}
+
+		blocksRefs = bloomshipper.BlocksForMetas(metas, interval, keyspaces)
+
+		// resolveDuration is the time spent resolving blocks for a given set of tasks
+		p.metrics.resolveDuration.WithLabelValues(p.id).Observe(time.Since(startMetas).Seconds())
 	}
-
-	if err != nil {
-		return err
-	}
-
-	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
-
-	// resolveDuration is the time spent resolving blocks for a given set of tasks
-	p.metrics.resolveDuration.WithLabelValues(p.id).Observe(time.Since(startMetas).Seconds())
 
 	data := partitionTasks(tasks, blocksRefs)
 

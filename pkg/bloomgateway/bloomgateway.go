@@ -245,6 +245,25 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}, nil
 	}
 
+	blocks := make([]bloomshipper.BlockRef, 0, len(req.Blocks))
+	for _, key := range req.Blocks {
+		block, err := bloomshipper.BlockRefFromKey(key)
+		if err != nil {
+			stats.Status = labelFailure
+			return nil, errors.New("could not parse block key")
+		}
+		blocks = append(blocks, block)
+	}
+
+	// Shortcut if request does not contain blocks
+	// TOOD(chaudum): Comment out when blocks are resolved on index gateways
+	// if len(blocks) == 0 {
+	// 	stats.Status = labelSuccess
+	// 	return &logproto.FilterChunkRefResponse{
+	// 		ChunkRefs: req.Refs,
+	// 	}, nil
+	// }
+
 	stats.NumTasks = 1
 
 	sp.LogKV(
@@ -259,7 +278,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		interval: bloomshipper.NewInterval(req.From, req.Through),
 	}
 
-	task, err := NewTask(ctx, tenantID, seriesForDay, filters)
+	task, err := NewTask(ctx, tenantID, seriesForDay, filters, blocks)
 	if err != nil {
 		return nil, err
 	}
