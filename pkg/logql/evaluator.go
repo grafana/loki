@@ -157,6 +157,26 @@ func (p ParamsWithChunkOverrides) GetStoreChunks() *logproto.ChunkRefGroup {
 	return p.StoreChunksOverride
 }
 
+func ParamOverridesFromShard(base Params, shard *ShardWithChunkRefs) (result Params) {
+	if shard == nil {
+		return base
+	}
+
+	result = ParamsWithShardsOverride{
+		Params:         base,
+		ShardsOverride: Shards{shard.Shard}.Encode(),
+	}
+
+	if shard.chunks != nil {
+		result = ParamsWithChunkOverrides{
+			Params:              result,
+			StoreChunksOverride: shard.chunks,
+		}
+	}
+
+	return result
+}
+
 // Sortable logql contain sort or sort_desc.
 func Sortable(q Params) (bool, error) {
 	var sortable bool

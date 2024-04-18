@@ -107,7 +107,7 @@ func (s DynamicBoundsStrategy) Shards(expr syntax.Expr) ([]ShardWithChunkRefs, u
 			maxBytes = max(maxBytes, shard.Stats.Bytes)
 		}
 		if len(chunks) > 0 {
-			x.chunks = chunks[i]
+			x.chunks = &chunks[i]
 		}
 		res = append(res, x)
 	}
@@ -163,7 +163,7 @@ func (s PowerOfTwoStrategy) Shards(expr syntax.Expr) ([]ShardWithChunkRefs, uint
 // and are used to precompute chunk refs for each group
 type ShardWithChunkRefs struct {
 	Shard
-	chunks logproto.ChunkRefGroup
+	chunks *logproto.ChunkRefGroup
 }
 
 // Shard represents a shard annotation
@@ -208,7 +208,7 @@ func (s Shard) Bind(chunks *logproto.ChunkRefGroup) *ShardWithChunkRefs {
 		Shard: s,
 	}
 	if chunks != nil {
-		res.chunks = *chunks
+		res.chunks = chunks
 	}
 	return res
 }
