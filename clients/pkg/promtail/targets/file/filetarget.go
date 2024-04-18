@@ -153,10 +153,7 @@ func NewFileTarget(
 
 // Ready if at least one file is being tailed
 func (t *FileTarget) Ready() bool {
-	t.readersMutex.Lock()
-	readersLen := len(t.readers)
-	t.readersMutex.Unlock()
-	return readersLen > 0
+	return t.getReadersLen() > 0
 }
 
 // Stop the target.
