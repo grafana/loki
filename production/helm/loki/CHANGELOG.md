@@ -18,6 +18,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Allow minio address to be overridden.
 - [CHANGE] `query-scheduler-discovery` service will now be prefixed by query scheduler full name.
 - [BUGFIX] Fix `helm-tests` Go source which was missing a param following #12245.
+- [BUGFIX] Removed duplicate bucketNames from documentation and fixed key name `deploymentMode`
 
 ## 6.2.0
 
