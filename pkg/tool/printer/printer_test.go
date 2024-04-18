@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/tool/rules/rwrulefmt"
+	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
 )
 
 func TestPrintRuleSet(t *testing.T) {
