@@ -148,6 +148,15 @@ func (p ParamsWithShardsOverride) Shards() []string {
 	return p.ShardsOverride
 }
 
+type ParamsWithChunkOverrides struct {
+	Params
+	StoreChunksOverride *logproto.ChunkRefGroup
+}
+
+func (p ParamsWithChunkOverrides) GetStoreChunks() *logproto.ChunkRefGroup {
+	return p.StoreChunksOverride
+}
+
 // Sortable logql contain sort or sort_desc.
 func Sortable(q Params) (bool, error) {
 	var sortable bool

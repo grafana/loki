@@ -218,7 +218,11 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 	return factor, bytesPerShard, nil
 }
 
-func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerShard uint64) ([]logproto.Shard, error) {
+func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerShard uint64) (
+	[]logproto.Shard,
+	[]logproto.ChunkRefGroup,
+	error,
+) {
 	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.ShardingRanges")
 	defer sp.Finish()
 	log := spanlogger.FromContext(ctx)
@@ -231,7 +235,7 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	// of binary ops, but I'm putting in the loop for completion
 	grps, err := syntax.MatcherGroups(expr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, grp := range grps {
@@ -265,7 +269,7 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 		if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && (resp.Code == http.StatusNotFound) {
 			n, bytesPerShard, err := r.Shards(expr)
 			if err != nil {
-				return nil, errors.Wrap(err, "falling back to building linear shards from stats")
+				return nil, nil, errors.Wrap(err, "falling back to building linear shards from stats")
 			}
 			level.Debug(log).Log(
 				"msg", "falling back to building linear shards from stats",
@@ -276,13 +280,13 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 			return sharding.LinearShards(n, uint64(n)*bytesPerShard), nil
 		}
 
-		return nil, errors.Wrapf(err, "failed to get shards for expression, got %T: %+v", err, err)
+		return nil, nil, errors.Wrapf(err, "failed to get shards for expression, got %T: %+v", err, err)
 
 	}
 
 	casted, ok := resp.(*ShardsResponse)
 	if !ok {
-		return nil, fmt.Errorf("expected *ShardsResponse while querying index, got %T", resp)
+		return nil, nil, fmt.Errorf("expected *ShardsResponse while querying index, got %T", resp)
 	}
 
 	// accumulate stats
@@ -303,5 +307,5 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 		"total_refs", refs,
 	)
 
-	return casted.Response.Shards, err
+	return casted.Response.Shards, casted.Response.ChunkGroups, err
 }

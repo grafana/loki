@@ -74,7 +74,7 @@ func (ng *DownstreamEngine) Query(ctx context.Context, p Params) Query {
 
 // DownstreamSampleExpr is a SampleExpr which signals downstream computation
 type DownstreamSampleExpr struct {
-	shard *Shard
+	shard *ShardWithChunkRefs
 	syntax.SampleExpr
 }
 
@@ -107,7 +107,7 @@ func (d DownstreamSampleExpr) Pretty(level int) string {
 
 // DownstreamLogSelectorExpr is a LogSelectorExpr which signals downstream computation
 type DownstreamLogSelectorExpr struct {
-	shard *Shard
+	shard *ShardWithChunkRefs
 	syntax.LogSelectorExpr
 }
 
@@ -396,12 +396,19 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		// downstream to a querier
 		var shards Shards
 		if e.shard != nil {
-			shards = append(shards, *e.shard)
+			shards = append(shards, e.shard.Shard)
+			params = ParamsWithChunkOverrides{
+				Params:              params,
+				StoreChunksOverride: &e.shard.chunks,
+			}
 		}
 		acc := NewBufferedAccumulator(1)
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
 			Params: ParamsWithShardsOverride{
-				Params:         ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.SampleExpr},
+				Params: ParamsWithExpressionOverride{
+					Params:             params,
+					ExpressionOverride: e.SampleExpr,
+				},
 				ShardsOverride: shards.Encode(),
 			},
 		}}, acc)
@@ -418,7 +425,13 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 				Params: ParamsWithExpressionOverride{Params: params, ExpressionOverride: cur.DownstreamSampleExpr.SampleExpr},
 			}
 			if shard := cur.DownstreamSampleExpr.shard; shard != nil {
-				qry.Params = ParamsWithShardsOverride{Params: qry.Params, ShardsOverride: Shards{*shard}.Encode()}
+				qry.Params = ParamsWithShardsOverride{
+					Params: ParamsWithChunkOverrides{
+						Params:              qry.Params,
+						StoreChunksOverride: &shard.chunks,
+					},
+					ShardsOverride: Shards{shard.Shard}.Encode(),
+				}
 			}
 			queries = append(queries, qry)
 			cur = cur.next
@@ -457,8 +470,11 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 				}
 				if shard := d.shard; shard != nil {
 					qry.Params = ParamsWithShardsOverride{
-						Params:         qry.Params,
-						ShardsOverride: Shards{*shard}.Encode(),
+						Params: ParamsWithChunkOverrides{
+							Params:              qry.Params,
+							StoreChunksOverride: &shard.chunks,
+						},
+						ShardsOverride: Shards{shard.Shard}.Encode(),
 					}
 				}
 				queries = append(queries, qry)
@@ -498,12 +514,19 @@ func (ev *DownstreamEvaluator) NewIterator(
 		// downstream to a querier
 		var shards Shards
 		if e.shard != nil {
-			shards = append(shards, *e.shard)
+			shards = append(shards, e.shard.Shard)
+			params = ParamsWithChunkOverrides{
+				Params:              params,
+				StoreChunksOverride: &e.shard.chunks,
+			}
 		}
 		acc := NewStreamAccumulator(params)
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
 			Params: ParamsWithShardsOverride{
-				Params:         ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.LogSelectorExpr},
+				Params: ParamsWithExpressionOverride{
+					Params:             params,
+					ExpressionOverride: e.LogSelectorExpr,
+				},
 				ShardsOverride: shards.Encode(),
 			},
 		}}, acc)
@@ -520,7 +543,13 @@ func (ev *DownstreamEvaluator) NewIterator(
 				Params: ParamsWithExpressionOverride{Params: params, ExpressionOverride: cur.DownstreamLogSelectorExpr.LogSelectorExpr},
 			}
 			if shard := cur.DownstreamLogSelectorExpr.shard; shard != nil {
-				qry.Params = ParamsWithShardsOverride{Params: qry.Params, ShardsOverride: Shards{*shard}.Encode()}
+				qry.Params = ParamsWithShardsOverride{
+					Params: ParamsWithChunkOverrides{
+						Params:              qry.Params,
+						StoreChunksOverride: &shard.chunks,
+					},
+					ShardsOverride: Shards{shard.Shard}.Encode(),
+				}
 			}
 			queries = append(queries, qry)
 			cur = cur.next

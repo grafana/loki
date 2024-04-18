@@ -632,7 +632,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 					shard: NewPowerOfTwoShard(index.ShardAnnotation{
 						Shard: 0,
 						Of:    3,
-					}).Ptr(),
+					}).Bind(nil),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeRate,
 						Left: &syntax.LogRange{
@@ -648,7 +648,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 						shard: NewPowerOfTwoShard(index.ShardAnnotation{
 							Shard: 1,
 							Of:    3,
-						}).Ptr(),
+						}).Bind(nil),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
 							Left: &syntax.LogRange{
@@ -664,7 +664,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 1,
 								Of:    3,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.RangeAggregationExpr{
 								Operation: syntax.OpRangeTypeRate,
 								Left: &syntax.LogRange{

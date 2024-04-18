@@ -20,6 +20,9 @@ type Shards []Shard
 
 type ShardVersion uint8
 
+// TODO(owen-d): refactor this file. There's too many layers (sharding strategies, sharding resolvers).
+// Eventually we should have a single strategy (bounded) and a single resolver (dynamic).
+// It's likely this could be refactored anyway -- I was in a rush writing it the first time around.
 const (
 	PowerOfTwoVersion ShardVersion = iota
 	BoundedVersion
@@ -62,20 +65,24 @@ func ParseShardVersion(s string) (ShardVersion, error) {
 
 type ShardResolver interface {
 	Shards(expr syntax.Expr) (int, uint64, error)
-	ShardingRanges(expr syntax.Expr, targetBytesPerShard uint64) ([]logproto.Shard, error)
+	// ShardingRanges returns shards and optionally a set of precomputed chunk refs for each group. If present,
+	// they will be used in lieu of resolving chunk refs from the index durin evaluation.
+	// If chunks are present, the number of shards returned must match the number of chunk ref groups.
+	ShardingRanges(expr syntax.Expr, targetBytesPerShard uint64) ([]logproto.Shard, []logproto.ChunkRefGroup, error)
 	GetStats(e syntax.Expr) (stats.Stats, error)
 }
 
 type ConstantShards int
 
 func (s ConstantShards) Shards(_ syntax.Expr) (int, uint64, error) { return int(s), 0, nil }
-func (s ConstantShards) ShardingRanges(_ syntax.Expr, _ uint64) ([]logproto.Shard, error) {
-	return sharding.LinearShards(int(s), 0), nil
+func (s ConstantShards) ShardingRanges(_ syntax.Expr, _ uint64) ([]logproto.Shard, []logproto.ChunkRefGroup, error) {
+	return sharding.LinearShards(int(s), 0), nil, nil
 }
 func (s ConstantShards) GetStats(_ syntax.Expr) (stats.Stats, error) { return stats.Stats{}, nil }
 
 type ShardingStrategy interface {
-	Shards(expr syntax.Expr) (shards Shards, maxBytesPerShard uint64, err error)
+	// The chunks for each shard are optional and are used to precompute chunk refs for each group
+	Shards(expr syntax.Expr) (shards []ShardWithChunkRefs, maxBytesPerShard uint64, err error)
 	Resolver() ShardResolver
 }
 
@@ -84,19 +91,25 @@ type DynamicBoundsStrategy struct {
 	targetBytesPerShard uint64
 }
 
-func (s DynamicBoundsStrategy) Shards(expr syntax.Expr) (Shards, uint64, error) {
-	shards, err := s.resolver.ShardingRanges(expr, s.targetBytesPerShard)
+func (s DynamicBoundsStrategy) Shards(expr syntax.Expr) ([]ShardWithChunkRefs, uint64, error) {
+	shards, chunks, err := s.resolver.ShardingRanges(expr, s.targetBytesPerShard)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	var maxBytes uint64
-	res := make(Shards, 0, len(shards))
-	for _, shard := range shards {
+	res := make([]ShardWithChunkRefs, 0, len(shards))
+	for i, shard := range shards {
+		x := ShardWithChunkRefs{
+			Shard: NewBoundedShard(shard),
+		}
 		if shard.Stats != nil {
 			maxBytes = max(maxBytes, shard.Stats.Bytes)
 		}
-		res = append(res, NewBoundedShard(shard))
+		if len(chunks) > 0 {
+			x.chunks = chunks[i]
+		}
+		res = append(res, x)
 	}
 
 	return res, maxBytes, nil
@@ -122,7 +135,8 @@ func (s PowerOfTwoStrategy) Resolver() ShardResolver {
 	return s.resolver
 }
 
-func (s PowerOfTwoStrategy) Shards(expr syntax.Expr) (Shards, uint64, error) {
+// PowerOfTwo strategy does not support precomputed chunk refs
+func (s PowerOfTwoStrategy) Shards(expr syntax.Expr) ([]ShardWithChunkRefs, uint64, error) {
 	factor, bytesPerShard, err := s.resolver.Shards(expr)
 	if err != nil {
 		return nil, 0, err
@@ -132,11 +146,24 @@ func (s PowerOfTwoStrategy) Shards(expr syntax.Expr) (Shards, uint64, error) {
 		return nil, bytesPerShard, nil
 	}
 
-	res := make(Shards, 0, factor)
+	res := make([]ShardWithChunkRefs, 0, factor)
 	for i := 0; i < factor; i++ {
-		res = append(res, NewPowerOfTwoShard(index.ShardAnnotation{Of: uint32(factor), Shard: uint32(i)}))
+		res = append(
+			res,
+			ShardWithChunkRefs{
+				Shard: NewPowerOfTwoShard(index.ShardAnnotation{Of: uint32(factor), Shard: uint32(i)}),
+			},
+		)
 	}
 	return res, bytesPerShard, nil
+}
+
+// ShardWithChunkRefs is a convenience type for passing around shards with associated chunk refs.
+// The chunk refs are optional as determined by their contents (zero chunks means no precomputed refs)
+// and are used to precompute chunk refs for each group
+type ShardWithChunkRefs struct {
+	Shard
+	chunks logproto.ChunkRefGroup
 }
 
 // Shard represents a shard annotation
@@ -174,6 +201,16 @@ func (s *Shard) GetFromThrough() (model.Fingerprint, model.Fingerprint) {
 // convenience method for unaddressability concerns using constructors in literals (tests)
 func (s Shard) Ptr() *Shard {
 	return &s
+}
+
+func (s Shard) Bind(chunks *logproto.ChunkRefGroup) *ShardWithChunkRefs {
+	res := &ShardWithChunkRefs{
+		Shard: s,
+	}
+	if chunks != nil {
+		res.chunks = *chunks
+	}
+	return res
 }
 
 func NewBoundedShard(shard logproto.Shard) Shard {
