@@ -132,38 +132,6 @@ workspace:
   path: loki
 ---
 kind: pipeline
-name: mixins
-steps:
-- commands:
-  - make BUILD_IN_CONTAINER=false lint-jsonnet
-  depends_on:
-  - clone
-  environment: {}
-  image: grafana/jsonnet-build:c8b75df
-  name: lint-jsonnet
-- commands:
-  - make BUILD_IN_CONTAINER=false loki-mixin-check
-  depends_on:
-  - clone
-  environment: {}
-  image: grafana/loki-build-image:0.33.1
-  name: loki-mixin-check
-  when:
-    event:
-    - pull_request
-    paths:
-    - production/loki-mixin/**
-trigger:
-  ref:
-  - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
-  - refs/pull/*/head
-workspace:
-  base: /src
-  path: loki
----
-kind: pipeline
 name: documentation-checks
 steps:
 - commands:
@@ -1340,6 +1308,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: dbc4d2b5c84e0464f24846abc8e7e73a5a937df289a0ecdb501f3bca28ebb8e3
+hmac: e0940674c7a2b5ae47c6509b0bc97dc594a054e5b881fd1962b81837d6b1dee6
 
 ...
