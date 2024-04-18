@@ -3115,6 +3115,8 @@ minio:
     requests:
       cpu: 100m
       memory: 128Mi
+  # Allow the address used by Loki to refer to Minio to be overridden
+  address: null
 # Create extra manifests via values. Would be passed through `tpl` for templating
 extraObjects: []
 # - apiVersion: v1
