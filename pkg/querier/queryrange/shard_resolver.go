@@ -277,7 +277,7 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 				"shards", n,
 				"query", exprStr,
 			)
-			return sharding.LinearShards(n, uint64(n)*bytesPerShard), nil
+			return sharding.LinearShards(n, uint64(n)*bytesPerShard), nil, nil
 		}
 
 		return nil, nil, errors.Wrapf(err, "failed to get shards for expression, got %T: %+v", err, err)
