@@ -484,7 +484,7 @@ func validateS3Endpoint(endpoint string, region string) error {
 			return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}
 
-		validEndpoint := fmt.Sprintf("https://s3.%s%s", region, awsEndpointSuffix)
+		validEndpoint := fmt.Sprintf("%s://s3.%s%s", parsedURL.Scheme, region, awsEndpointSuffix)
 		if endpoint != validEndpoint {
 			return fmt.Errorf("%w: %s", errS3EndpointAWSInvalid, validEndpoint)
 		}
