@@ -216,7 +216,7 @@ func TestFileTarget_StopsTailersCleanly(t *testing.T) {
 	// Tailer will be replaced by a new one
 	requireEventually(t, func() bool {
 		currentReader, _ := target.getReader(logFile)
-		var currentTailer *tailer = nil
+		var currentTailer *tailer
 		if currentReader != nil {
 			currentTailer = currentReader.(*tailer)
 		}
