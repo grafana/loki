@@ -988,3 +988,14 @@ Return the appropriate apiVersion for PodDisruptionBudget.
     {{- print "policy/v1beta1" -}}
   {{- end -}}
 {{- end -}}
+
+{{/*
+Return the object store type for use with the test schema.
+*/}}
+{{- define "loki.testSchemaObjectStore" -}}
+  {{- if .Values.minio.enabled -}}
+    s3
+  {{- else -}}
+    filesystem
+  {{- end -}}
+{{- end -}}

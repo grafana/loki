@@ -390,7 +390,7 @@ loki:
     configs:
       - from: 2024-04-01
         store: tsdb
-        object_store: filesystem
+        object_store: '{{ include "loki.testSchemaObjectStore" . }}'
         schema: v13
         index:
           prefix: index_
