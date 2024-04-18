@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestTailer_RoundTrip(t *testing.T) {
@@ -149,10 +149,13 @@ func Test_dropstream(t *testing.T) {
 }
 
 type fakeTailServer struct {
-	responses []logproto.TailResponse
+	responses   []logproto.TailResponse
+	responsesMu sync.Mutex
 }
 
 func (f *fakeTailServer) Send(response *logproto.TailResponse) error {
+	f.responsesMu.Lock()
+	defer f.responsesMu.Unlock()
 	f.responses = append(f.responses, *response)
 	return nil
 
@@ -160,11 +163,38 @@ func (f *fakeTailServer) Send(response *logproto.TailResponse) error {
 
 func (f *fakeTailServer) Context() context.Context { return context.Background() }
 
+func cloneTailResponse(response logproto.TailResponse) logproto.TailResponse {
+	var clone logproto.TailResponse
+	if response.Stream != nil {
+		clone.Stream = &logproto.Stream{}
+		clone.Stream.Labels = response.Stream.Labels
+		clone.Stream.Hash = response.Stream.Hash
+		if response.Stream.Entries != nil {
+			clone.Stream.Entries = make([]logproto.Entry, len(response.Stream.Entries))
+			copy(clone.Stream.Entries, response.Stream.Entries)
+		}
+	}
+	if response.DroppedStreams != nil {
+		clone.DroppedStreams = make([]*logproto.DroppedStream, len(response.DroppedStreams))
+		copy(clone.DroppedStreams, response.DroppedStreams)
+	}
+
+	return clone
+}
+
 func (f *fakeTailServer) GetResponses() []logproto.TailResponse {
+	f.responsesMu.Lock()
+	defer f.responsesMu.Unlock()
+	clonedResponses := make([]logproto.TailResponse, len(f.responses))
+	for i, resp := range f.responses {
+		clonedResponses[i] = cloneTailResponse(resp)
+	}
 	return f.responses
 }
 
 func (f *fakeTailServer) Reset() {
+	f.responsesMu.Lock()
+	defer f.responsesMu.Unlock()
 	f.responses = f.responses[:0]
 }
 

@@ -5,15 +5,19 @@ import (
 	"fmt"
 	"math"
 	"testing"
+	"time"
 	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/opentracing/opentracing-go/mocktracer"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 )
 
 // This test verifies that jsoninter uses our custom method for marshalling.
@@ -335,6 +339,54 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 			actual := tc.request.GetQuery()
 			require.Equal(t, tc.expected, actual)
 		})
+	}
+}
+
+func TestIndexStatsRequestSpanLogging(t *testing.T) {
+	now := time.Now()
+	end := now.Add(1000 * time.Second)
+	req := IndexStatsRequest{
+		From:    model.Time(now.UnixMilli()),
+		Through: model.Time(end.UnixMilli()),
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "start" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+			if field.Key == "end" {
+				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
+
+			}
+		}
+	}
+}
+
+func TestVolumeRequest(t *testing.T) {
+	now := time.Now()
+	end := now.Add(1000 * time.Second)
+	req := VolumeRequest{
+		From:    model.Time(now.UnixMilli()),
+		Through: model.Time(end.UnixMilli()),
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "start" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+			if field.Key == "end" {
+				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
+
+			}
+		}
 	}
 }
 

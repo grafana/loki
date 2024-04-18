@@ -9,11 +9,11 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 const (
@@ -87,17 +87,16 @@ func NewTask(ctx context.Context, tenantID string, refs seriesWithInterval, filt
 	}
 
 	task := Task{
-		ID:        key,
-		Tenant:    tenantID,
-		err:       new(wrappedError),
-		resCh:     make(chan v1.Output),
-		filters:   filters,
-		series:    refs.series,
-		interval:  refs.interval,
-		table:     refs.day,
-		ctx:       ctx,
-		done:      make(chan struct{}),
-		responses: make([]v1.Output, 0, len(refs.series)),
+		ID:       key,
+		Tenant:   tenantID,
+		err:      new(wrappedError),
+		resCh:    make(chan v1.Output),
+		filters:  filters,
+		series:   refs.series,
+		interval: refs.interval,
+		table:    refs.day,
+		ctx:      ctx,
+		done:     make(chan struct{}),
 	}
 	return task, nil
 }
@@ -130,16 +129,15 @@ func (t Task) CloseWithError(err error) {
 func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 	// do not copy ID to distinguish it as copied task
 	return Task{
-		Tenant:    t.Tenant,
-		err:       t.err,
-		resCh:     t.resCh,
-		filters:   t.filters,
-		series:    series,
-		interval:  t.interval,
-		table:     t.table,
-		ctx:       t.ctx,
-		done:      make(chan struct{}),
-		responses: make([]v1.Output, 0, len(series)),
+		Tenant:   t.Tenant,
+		err:      t.err,
+		resCh:    t.resCh,
+		filters:  t.filters,
+		series:   series,
+		interval: t.interval,
+		table:    t.table,
+		ctx:      t.ctx,
+		done:     make(chan struct{}),
 	}
 }
 

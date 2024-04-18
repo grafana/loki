@@ -2,6 +2,7 @@ package validation
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -11,8 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/compactor/deletionmode"
-	"github.com/grafana/loki/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logql"
 )
 
 func TestLimitsTagsYamlMatchJson(t *testing.T) {
@@ -212,6 +215,7 @@ ruler_remote_write_headers:
 `,
 			exp: Limits{
 				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"foo": "bar"}},
+				DiscoverServiceName:     []string{},
 
 				// Rest from new defaults
 				StreamRetention: []StreamRetention{
@@ -229,6 +233,7 @@ ruler_remote_write_headers:
 ruler_remote_write_headers:
 `,
 			exp: Limits{
+				DiscoverServiceName: []string{},
 
 				// Rest from new defaults
 				StreamRetention: []StreamRetention{
@@ -248,6 +253,7 @@ retention_stream:
     selector: '{foo="bar"}'
 `,
 			exp: Limits{
+				DiscoverServiceName: []string{},
 				StreamRetention: []StreamRetention{
 					{
 						Period:   model.Duration(24 * time.Hour),
@@ -266,7 +272,8 @@ retention_stream:
 reject_old_samples: true
 `,
 			exp: Limits{
-				RejectOldSamples: true,
+				RejectOldSamples:    true,
+				DiscoverServiceName: []string{},
 
 				// Rest from new defaults
 				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
@@ -285,7 +292,8 @@ reject_old_samples: true
 query_timeout: 5m
 `,
 			exp: Limits{
-				QueryTimeout: model.Duration(5 * time.Minute),
+				DiscoverServiceName: []string{},
+				QueryTimeout:        model.Duration(5 * time.Minute),
 
 				// Rest from new defaults.
 				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
@@ -308,19 +316,40 @@ query_timeout: 5m
 	}
 }
 
-func TestLimitsValidation_deletionMode(t *testing.T) {
+func TestLimitsValidation(t *testing.T) {
 	for _, tc := range []struct {
-		mode     string
+		limits   Limits
 		expected error
 	}{
-		{mode: "disabled", expected: nil},
-		{mode: "filter-only", expected: nil},
-		{mode: "filter-and-delete", expected: nil},
-		{mode: "something-else", expected: deletionmode.ErrUnknownMode},
+		{
+			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "none"},
+			expected: nil,
+		},
+		{
+			limits:   Limits{DeletionMode: "filter-only", BloomBlockEncoding: "none"},
+			expected: nil,
+		},
+		{
+			limits:   Limits{DeletionMode: "filter-and-delete", BloomBlockEncoding: "none"},
+			expected: nil,
+		},
+		{
+			limits:   Limits{DeletionMode: "something-else", BloomBlockEncoding: "none"},
+			expected: deletionmode.ErrUnknownMode,
+		},
+		{
+			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "unknown"},
+			expected: fmt.Errorf("invalid encoding: unknown, supported: %s", chunkenc.SupportedEncoding()),
+		},
 	} {
-		t.Run(tc.mode, func(t *testing.T) {
-			limits := Limits{DeletionMode: tc.mode}
-			require.ErrorIs(t, limits.Validate(), tc.expected)
+		desc := fmt.Sprintf("%s/%s", tc.limits.DeletionMode, tc.limits.BloomBlockEncoding)
+		t.Run(desc, func(t *testing.T) {
+			tc.limits.TSDBShardingStrategy = logql.PowerOfTwoVersion.String() // hacky but needed for test
+			if tc.expected == nil {
+				require.NoError(t, tc.limits.Validate())
+			} else {
+				require.ErrorContains(t, tc.limits.Validate(), tc.expected.Error())
+			}
 		})
 	}
 }

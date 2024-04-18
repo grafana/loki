@@ -7,11 +7,13 @@
 package policy
 
 import (
+	"context"
 	"net/http"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/tracing"
 )
 
@@ -27,9 +29,11 @@ type Transporter = exported.Transporter
 type Request = exported.Request
 
 // ClientOptions contains optional settings for a client's pipeline.
-// All zero-value fields will be initialized with default values.
+// Instances can be shared across calls to SDK client constructors when uniform configuration is desired.
+// Zero-value fields will have their specified default values applied during use.
 type ClientOptions struct {
-	// APIVersion overrides the default version requested of the service. Set with caution as this package version has not been tested with arbitrary service versions.
+	// APIVersion overrides the default version requested of the service.
+	// Set with caution as this package version has not been tested with arbitrary service versions.
 	APIVersion string
 
 	// Cloud specifies a cloud for the client. The default is Azure Public Cloud.
@@ -161,4 +165,23 @@ type AuthorizationHandler struct {
 	// Request.Raw().Context(). When OnChallenge returns nil, the policy will send the request again. When OnChallenge is nil,
 	// the policy will return any 401 response to the client.
 	OnChallenge func(*Request, *http.Response, func(TokenRequestOptions) error) error
+}
+
+// WithCaptureResponse applies the HTTP response retrieval annotation to the parent context.
+// The resp parameter will contain the HTTP response after the request has completed.
+func WithCaptureResponse(parent context.Context, resp **http.Response) context.Context {
+	return context.WithValue(parent, shared.CtxWithCaptureResponse{}, resp)
+}
+
+// WithHTTPHeader adds the specified http.Header to the parent context.
+// Use this to specify custom HTTP headers at the API-call level.
+// Any overlapping headers will have their values replaced with the values specified here.
+func WithHTTPHeader(parent context.Context, header http.Header) context.Context {
+	return context.WithValue(parent, shared.CtxWithHTTPHeaderKey{}, header)
+}
+
+// WithRetryOptions adds the specified RetryOptions to the parent context.
+// Use this to specify custom RetryOptions at the API-call level.
+func WithRetryOptions(parent context.Context, options RetryOptions) context.Context {
+	return context.WithValue(parent, shared.CtxWithRetryOptionsKey{}, options)
 }

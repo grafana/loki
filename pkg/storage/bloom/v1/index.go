@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"sort"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/util/encoding"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
 type Schema struct {
@@ -149,7 +151,16 @@ func (b *BlockIndex) DecodeHeaders(r io.ReadSeeker) (uint32, error) {
 }
 
 // decompress page and return an iterator over the bytes
-func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHeaderWithOffset) (*SeriesPageDecoder, error) {
+func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHeaderWithOffset, metrics *Metrics) (res *SeriesPageDecoder, err error) {
+	defer func() {
+		if err != nil {
+			metrics.pagesSkipped.WithLabelValues(pageTypeSeries, skipReasonErr).Inc()
+			metrics.bytesSkipped.WithLabelValues(pageTypeSeries).Add(float64(header.DecompressedLen))
+		} else {
+			metrics.pagesRead.WithLabelValues(pageTypeSeries).Inc()
+			metrics.bytesRead.WithLabelValues(pageTypeSeries).Add(float64(header.DecompressedLen))
+		}
+	}()
 
 	if _, err := r.Seek(int64(header.Offset), io.SeekStart); err != nil {
 		return nil, errors.Wrap(err, "seeking to series page")
@@ -157,7 +168,7 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 
 	data := BlockPool.Get(header.Len)[:header.Len]
 	defer BlockPool.Put(data)
-	_, err := io.ReadFull(r, data)
+	_, err = io.ReadFull(r, data)
 	if err != nil {
 		return nil, errors.Wrap(err, "reading series page")
 	}
@@ -178,7 +189,7 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 		return nil, errors.Wrap(err, "decompressing series page")
 	}
 
-	res := &SeriesPageDecoder{
+	res = &SeriesPageDecoder{
 		data:   decompressed,
 		header: header.SeriesHeader,
 	}
@@ -219,8 +230,8 @@ func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 		return SeriesHeader{}
 	}
 
-	fromFp, _ := xs[0].Bounds.GetFromThrough()
-	_, throughFP := xs[len(xs)-1].Bounds.GetFromThrough()
+	fromFp, _ := xs[0].Bounds.Bounds()
+	_, throughFP := xs[len(xs)-1].Bounds.Bounds()
 	res := SeriesHeader{
 		Bounds: NewBounds(fromFp, throughFP),
 	}
@@ -363,6 +374,7 @@ func (s *SeriesWithOffset) Encode(
 	previousFp model.Fingerprint,
 	previousOffset BloomOffset,
 ) (model.Fingerprint, BloomOffset) {
+	sort.Sort(s.Chunks) // ensure order
 	// delta encode fingerprint
 	enc.PutBE64(uint64(s.Fingerprint - previousFp))
 	// delta encode offsets
@@ -399,18 +411,15 @@ func (s *SeriesWithOffset) Decode(dec *encoding.Decbuf, previousFp model.Fingerp
 	return s.Fingerprint, s.Offset, dec.Err()
 }
 
-type ChunkRef struct {
-	Start, End model.Time
-	Checksum   uint32
-}
+type ChunkRef logproto.ShortRef
 
 func (r *ChunkRef) Less(other ChunkRef) bool {
-	if r.Start != other.Start {
-		return r.Start < other.Start
+	if r.From != other.From {
+		return r.From < other.From
 	}
 
-	if r.End != other.End {
-		return r.End < other.End
+	if r.Through != other.Through {
+		return r.Through < other.Through
 	}
 
 	return r.Checksum < other.Checksum
@@ -418,17 +427,17 @@ func (r *ChunkRef) Less(other ChunkRef) bool {
 
 func (r *ChunkRef) Encode(enc *encoding.Encbuf, previousEnd model.Time) model.Time {
 	// delta encode start time
-	enc.PutVarint64(int64(r.Start - previousEnd))
-	enc.PutVarint64(int64(r.End - r.Start))
+	enc.PutVarint64(int64(r.From - previousEnd))
+	enc.PutVarint64(int64(r.Through - r.From))
 	enc.PutBE32(r.Checksum)
-	return r.End
+	return r.Through
 }
 
 func (r *ChunkRef) Decode(dec *encoding.Decbuf, previousEnd model.Time) (model.Time, error) {
-	r.Start = previousEnd + model.Time(dec.Varint64())
-	r.End = r.Start + model.Time(dec.Varint64())
+	r.From = previousEnd + model.Time(dec.Varint64())
+	r.Through = r.From + model.Time(dec.Varint64())
 	r.Checksum = dec.Be32()
-	return r.End, dec.Err()
+	return r.Through, dec.Err()
 }
 
 type BloomOffset struct {

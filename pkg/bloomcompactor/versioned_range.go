@@ -3,9 +3,10 @@ package bloomcompactor
 import (
 	"sort"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/prometheus/common/model"
+
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 type tsdbToken struct {
@@ -94,7 +95,7 @@ func (t tsdbTokenRange) Add(version int, bounds v1.FingerprintBounds) (res tsdbT
 		}
 
 		// If we need to update the range, there are 5 cases:
-		// 1. `equal`: the incoming range equals an exising range ()
+		// 1. `equal`: the incoming range equals an existing range ()
 		//      ------        # addition
 		//      ------        # src
 		// 2. `subset`: the incoming range is a subset of an existing range

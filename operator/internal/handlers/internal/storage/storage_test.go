@@ -39,7 +39,7 @@ var (
 			Namespace: "some-ns",
 		},
 		Data: map[string][]byte{
-			"endpoint":          []byte("s3://your-endpoint"),
+			"endpoint":          []byte("https://s3.a-region.amazonaws.com"),
 			"region":            []byte("a-region"),
 			"bucketnames":       []byte("bucket1,bucket2"),
 			"access_key_id":     []byte("a-secret-id"),
@@ -47,7 +47,7 @@ var (
 		},
 	}
 
-	defaultManagedAuthSecret = corev1.Secret{
+	defaultTokenCCOAuthSecret = corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "some-stack-secret",
 			Namespace: "some-ns",
@@ -147,13 +147,13 @@ func TestBuildOptions_WhenMissingCloudCredentialsSecret_SetDegraded(t *testing.T
 
 	fg := configv1.FeatureGates{
 		OpenShift: configv1.OpenShiftFeatureGates{
-			ManagedAuthEnv: true,
+			TokenCCOAuthEnv: true,
 		},
 	}
 
 	degradedErr := &status.DegradedError{
 		Message: "Missing OpenShift cloud credentials secret",
-		Reason:  lokiv1.ReasonMissingManagedAuthSecret,
+		Reason:  lokiv1.ReasonMissingTokenCCOAuthSecret,
 		Requeue: true,
 	}
 
@@ -176,7 +176,7 @@ func TestBuildOptions_WhenMissingCloudCredentialsSecret_SetDegraded(t *testing.T
 					},
 				},
 				Secret: lokiv1.ObjectStorageSecretSpec{
-					Name: defaultManagedAuthSecret.Name,
+					Name: defaultTokenCCOAuthSecret.Name,
 					Type: lokiv1.ObjectStorageSecretS3,
 				},
 			},
@@ -189,8 +189,8 @@ func TestBuildOptions_WhenMissingCloudCredentialsSecret_SetDegraded(t *testing.T
 			k.SetClientObject(object, stack)
 			return nil
 		}
-		if name.Name == defaultManagedAuthSecret.Name {
-			k.SetClientObject(object, &defaultManagedAuthSecret)
+		if name.Name == defaultTokenCCOAuthSecret.Name {
+			k.SetClientObject(object, &defaultTokenCCOAuthSecret)
 			return nil
 		}
 		if name.Name == fmt.Sprintf("%s-aws-creds", stack.Name) {

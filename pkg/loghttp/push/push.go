@@ -4,12 +4,15 @@ import (
 	"compress/flate"
 	"compress/gzip"
 	"fmt"
-	"github.com/go-kit/log/level"
 	"io"
 	"math"
 	"mime"
 	"net/http"
 	"time"
+
+	"github.com/go-kit/log/level"
+
+	"github.com/grafana/loki/pkg/push"
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
@@ -17,15 +20,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/util"
-	loki_util "github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/unmarshal"
-	unmarshal2 "github.com/grafana/loki/pkg/util/unmarshal/legacy"
+	loki_util "github.com/grafana/loki/v3/pkg/util"
+
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/unmarshal"
+	unmarshal2 "github.com/grafana/loki/v3/pkg/util/unmarshal/legacy"
 )
 
 var (
@@ -66,23 +70,24 @@ type Limits interface {
 type EmptyLimits struct{}
 
 func (EmptyLimits) OTLPConfig(string) OTLPConfig {
-	return DefaultOTLPConfig
+	return DefaultOTLPConfig(GlobalOTLPConfig{})
 }
 
 type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error)
 type RequestParserWrapper func(inner RequestParser) RequestParser
 
 type Stats struct {
-	Errs                     []error
-	NumLines                 int64
-	LogLinesBytes            map[time.Duration]int64
-	StructuredMetadataBytes  map[time.Duration]int64
-	StreamLabelsSize         int64
-	MostRecentEntryTimestamp time.Time
-	ContentType              string
-	ContentEncoding          string
-	BodySize                 int64
+	Errs                            []error
+	NumLines                        int64
+	LogLinesBytes                   map[time.Duration]int64
+	StructuredMetadataBytes         map[time.Duration]int64
+	ResourceAndSourceMetadataLabels map[time.Duration]push.LabelsAdapter
+	StreamLabelsSize                int64
+	MostRecentEntryTimestamp        time.Time
+	ContentType                     string
+	ContentEncoding                 string
 
+	BodySize int64
 	// Extra is a place for a wrapped perser to record any interesting stats as key-value pairs to be logged
 	Extra []any
 }
@@ -98,7 +103,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		structuredMetadataSize int64
 	)
 	for retentionPeriod, size := range pushStats.LogLinesBytes {
-		retentionHours := retentionPeriodToString(retentionPeriod)
+		retentionHours := RetentionPeriodToString(retentionPeriod)
 
 		bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
 		bytesReceivedStats.Inc(size)
@@ -106,7 +111,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	}
 
 	for retentionPeriod, size := range pushStats.StructuredMetadataBytes {
-		retentionHours := retentionPeriodToString(retentionPeriod)
+		retentionHours := RetentionPeriodToString(retentionPeriod)
 
 		structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
 		bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
@@ -236,8 +241,8 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 			pushStats.StructuredMetadataBytes[retentionPeriod] += entryLabelsSize
 
 			if tracker != nil {
-				tracker.ReceivedBytesAdd(userID, retentionPeriod, lbs, float64(len(e.Line)))
-				tracker.ReceivedBytesAdd(userID, retentionPeriod, lbs, float64(entryLabelsSize))
+				tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(len(e.Line)))
+				tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(entryLabelsSize))
 			}
 
 			if e.Timestamp.After(pushStats.MostRecentEntryTimestamp) {
@@ -249,7 +254,7 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 	return &req, pushStats, nil
 }
 
-func retentionPeriodToString(retentionPeriod time.Duration) string {
+func RetentionPeriodToString(retentionPeriod time.Duration) string {
 	var retentionHours string
 	if retentionPeriod > 0 {
 		retentionHours = fmt.Sprintf("%d", int64(math.Floor(retentionPeriod.Hours())))
