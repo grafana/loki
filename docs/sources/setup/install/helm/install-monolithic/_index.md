@@ -39,7 +39,7 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
     - If running a single replica of Loki, configure the `filesystem` storage:
 
       ```yaml
-      mode: SingleBinary
+      deploymentMode: SingleBinary
       loki:
         commonConfig:
           replication_factor: 1
@@ -77,13 +77,9 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
             index:
               prefix: loki_index_
               period: 24h
-            object_store: filesystem
+            object_store: s3
             schema: v13
         storage:
-          bucketNames:
-            chunks: loki-chunks
-            ruler: loki-ruler
-            admin: loki-admin
           type: 's3'
           bucketNames:
             chunks: loki-chunks
