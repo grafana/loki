@@ -1156,8 +1156,8 @@ func NewDetectedFieldsTripperware(
 
 		limitedRT := NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 
-    // We only need sketches internally for calculating cardinality for split queries.
-    // This sets those sketches to nil so we don't return them to the user.
+		// We only need sketches internally for calculating cardinality for split queries.
+		// This sets those sketches to nil so we don't return them to the user.
 		return queryrangebase.HandlerFunc(
 			func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 				res, err := limitedRT.Do(ctx, req)
@@ -1166,15 +1166,15 @@ func NewDetectedFieldsTripperware(
 				}
 
 				resp, ok := res.(*DetectedFieldsResponse)
-        if !ok {
-          return res, nil
-        }
+				if !ok {
+					return res, nil
+				}
 
 				for i := range resp.Response.Fields {
 					resp.Response.Fields[i].Sketch = nil
 				}
 
-        resp.Response.FieldLimit = 0
+				resp.Response.FieldLimit = 0
 
 				return resp, nil
 			},
