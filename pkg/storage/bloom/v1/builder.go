@@ -9,13 +9,13 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
-	"github.com/grafana/loki/pkg/util/encoding"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
 var (
-	DefaultBlockOptions = NewBlockOptions(4, 1, 50<<20) // 50MB
+	DefaultBlockOptions = NewBlockOptions(0, 4, 1, 50<<20) // EncNone, 50MB
 )
 
 type BlockOptions struct {
@@ -70,9 +70,10 @@ type BlockBuilder struct {
 	blooms *BloomBlockBuilder
 }
 
-func NewBlockOptions(NGramLength, NGramSkip, MaxBlockSizeBytes uint64) BlockOptions {
+func NewBlockOptions(enc chunkenc.Encoding, NGramLength, NGramSkip, MaxBlockSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
 		version:     byte(1),
+		encoding:    enc,
 		nGramLength: NGramLength,
 		nGramSkip:   NGramSkip,
 	})
@@ -438,14 +439,14 @@ func (b *IndexBuilder) Append(series SeriesWithOffset) error {
 
 // must be > 1
 func chkBounds(chks []ChunkRef) (from, through model.Time) {
-	from, through = chks[0].Start, chks[0].End
+	from, through = chks[0].From, chks[0].Through
 	for _, chk := range chks[1:] {
-		if chk.Start.Before(from) {
-			from = chk.Start
+		if chk.From.Before(from) {
+			from = chk.From
 		}
 
-		if chk.End.After(through) {
-			through = chk.End
+		if chk.Through.After(through) {
+			through = chk.Through
 		}
 	}
 	return
@@ -525,7 +526,7 @@ type MergeBuilder struct {
 	// store
 	store Iterator[*Series]
 	// Add chunks to a bloom
-	populate func(*Series, *Bloom) error
+	populate func(*Series, *Bloom) (int, error)
 	metrics  *Metrics
 }
 
@@ -536,7 +537,7 @@ type MergeBuilder struct {
 func NewMergeBuilder(
 	blocks Iterator[*SeriesWithBloom],
 	store Iterator[*Series],
-	populate func(*Series, *Bloom) error,
+	populate func(*Series, *Bloom) (int, error),
 	metrics *Metrics,
 ) *MergeBuilder {
 	return &MergeBuilder{
@@ -547,90 +548,118 @@ func NewMergeBuilder(
 	}
 }
 
-func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
-	var (
-		nextInBlocks                                     *SeriesWithBloom
-		blocksFinished                                   bool
-		blockSeriesIterated, chunksIndexed, chunksCopied int
-	)
-
+func (mb *MergeBuilder) processNextSeries(
+	builder *BlockBuilder,
+	nextInBlocks *SeriesWithBloom,
+	blocksFinished bool,
+) (
+	*SeriesWithBloom, // nextInBlocks pointer update
+	int, // bytes added
+	bool, // blocksFinished update
+	bool, // done building block
+	error, // error
+) {
+	var blockSeriesIterated, chunksIndexed, chunksCopied, bytesAdded int
 	defer func() {
 		mb.metrics.blockSeriesIterated.Add(float64(blockSeriesIterated))
 		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeIterated).Add(float64(chunksIndexed))
 		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeCopied).Add(float64(chunksCopied))
+		mb.metrics.chunksPerSeries.Observe(float64(chunksIndexed + chunksCopied))
 	}()
 
-	for mb.store.Next() {
-		nextInStore := mb.store.At()
+	if !mb.store.Next() {
+		return nil, 0, false, true, nil
+	}
 
-		// advance the merged blocks iterator until we find a series that is
-		// greater than or equal to the next series in the store.
-		// TODO(owen-d): expensive, but Seek is not implemented for this itr.
-		// It's also more efficient to build an iterator over the Series file in the index
-		// without the blooms until we find a bloom we actually need to unpack from the blooms file.
-		for !blocksFinished && (nextInBlocks == nil || nextInBlocks.Series.Fingerprint < mb.store.At().Fingerprint) {
-			if !mb.blocks.Next() {
-				// we've exhausted all the blocks
-				blocksFinished = true
-				nextInBlocks = nil
-				break
-			}
+	nextInStore := mb.store.At()
 
-			if err := mb.blocks.Err(); err != nil {
-				return 0, errors.Wrap(err, "iterating blocks")
-			}
-			blockSeriesIterated++
-			nextInBlocks = mb.blocks.At()
+	// advance the merged blocks iterator until we find a series that is
+	// greater than or equal to the next series in the store.
+	// TODO(owen-d): expensive, but Seek is not implemented for this itr.
+	// It's also more efficient to build an iterator over the Series file in the index
+	// without the blooms until we find a bloom we actually need to unpack from the blooms file.
+	for !blocksFinished && (nextInBlocks == nil || nextInBlocks.Series.Fingerprint < mb.store.At().Fingerprint) {
+		if !mb.blocks.Next() {
+			// we've exhausted all the blocks
+			blocksFinished = true
+			nextInBlocks = nil
+			break
 		}
 
-		cur := nextInBlocks
-		chunksToAdd := nextInStore.Chunks
-		// The next series from the store doesn't exist in the blocks, so we add it
-		// in its entirety
-		if nextInBlocks == nil || nextInBlocks.Series.Fingerprint > nextInStore.Fingerprint {
-			cur = &SeriesWithBloom{
-				Series: nextInStore,
-				Bloom: &Bloom{
-					// TODO parameterise SBF options. fp_rate
-					ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
-				},
-			}
-		} else {
-			// if the series already exists in the block, we only need to add the new chunks
-			chunksToAdd = nextInStore.Chunks.Unless(nextInBlocks.Series.Chunks)
-			chunksCopied += len(nextInStore.Chunks) - len(chunksToAdd)
+		if err := mb.blocks.Err(); err != nil {
+			return nil, 0, false, false, errors.Wrap(err, "iterating blocks")
 		}
+		blockSeriesIterated++
+		nextInBlocks = mb.blocks.At()
+	}
 
-		chunksIndexed += len(chunksToAdd)
-
-		if len(chunksToAdd) > 0 {
-			if err := mb.populate(
-				&Series{
-					Fingerprint: nextInStore.Fingerprint,
-					Chunks:      chunksToAdd,
-				},
-				cur.Bloom,
-			); err != nil {
-				return 0, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
-			}
+	cur := nextInBlocks
+	chunksToAdd := nextInStore.Chunks
+	// The next series from the store doesn't exist in the blocks, so we add it
+	// in its entirety
+	if nextInBlocks == nil || nextInBlocks.Series.Fingerprint > nextInStore.Fingerprint {
+		cur = &SeriesWithBloom{
+			Series: nextInStore,
+			Bloom: &Bloom{
+				// TODO parameterise SBF options. fp_rate
+				ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+			},
 		}
+	} else {
+		// if the series already exists in the block, we only need to add the new chunks
+		chunksToAdd = nextInStore.Chunks.Unless(nextInBlocks.Series.Chunks)
+		chunksCopied += len(nextInStore.Chunks) - len(chunksToAdd)
+	}
 
-		blockFull, err := builder.AddSeries(*cur)
+	chunksIndexed += len(chunksToAdd)
+
+	if len(chunksToAdd) > 0 {
+		sourceBytes, err := mb.populate(
+			&Series{
+				Fingerprint: nextInStore.Fingerprint,
+				Chunks:      chunksToAdd,
+			},
+			cur.Bloom,
+		)
+		bytesAdded += sourceBytes
+
 		if err != nil {
-			return 0, errors.Wrap(err, "adding series to block")
+			return nil, bytesAdded, false, false, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
 		}
-		if blockFull {
+	}
+
+	done, err := builder.AddSeries(*cur)
+	if err != nil {
+		return nil, bytesAdded, false, false, errors.Wrap(err, "adding series to block")
+	}
+	return nextInBlocks, bytesAdded, blocksFinished, done, nil
+}
+
+func (mb *MergeBuilder) Build(builder *BlockBuilder) (checksum uint32, totalBytes int, err error) {
+	var (
+		nextInBlocks   *SeriesWithBloom
+		blocksFinished bool // whether any previous blocks have been exhausted while building new block
+		done           bool
+	)
+	for {
+		var bytesAdded int
+		nextInBlocks, bytesAdded, blocksFinished, done, err = mb.processNextSeries(builder, nextInBlocks, blocksFinished)
+		totalBytes += bytesAdded
+		if err != nil {
+			return 0, totalBytes, errors.Wrap(err, "processing next series")
+		}
+		if done {
 			break
 		}
 	}
 
 	if err := mb.store.Err(); err != nil {
-		return 0, errors.Wrap(err, "iterating store")
+		return 0, totalBytes, errors.Wrap(err, "iterating store")
 	}
 
-	checksum, err := builder.Close()
+	checksum, err = builder.Close()
 	if err != nil {
-		return 0, errors.Wrap(err, "closing block")
+		return 0, totalBytes, errors.Wrap(err, "closing block")
 	}
-	return checksum, nil
+	return checksum, totalBytes, nil
 }

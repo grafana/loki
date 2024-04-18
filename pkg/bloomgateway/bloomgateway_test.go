@@ -4,31 +4,30 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/kv"
-	"github.com/grafana/dskit/kv/consul"
-	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/storage"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
-	bloomshipperconfig "github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/storage"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.GroupedChunkRefs {
@@ -60,8 +59,8 @@ func setupBloomStore(t *testing.T) *bloomshipper.BloomStore {
 				Period: 24 * time.Hour,
 			},
 		},
-		IndexType:  config.TSDBType,
-		ObjectType: config.StorageTypeFileSystem,
+		IndexType:  types.TSDBType,
+		ObjectType: types.StorageTypeFileSystem,
 		Schema:     "v13",
 		RowShards:  16,
 	}
@@ -70,7 +69,13 @@ func setupBloomStore(t *testing.T) *bloomshipper.BloomStore {
 	}
 	storageCfg := storage.Config{
 		BloomShipperConfig: bloomshipperconfig.Config{
-			WorkingDirectory: t.TempDir(),
+			WorkingDirectory:    []string{t.TempDir()},
+			DownloadParallelism: 1,
+			BlocksCache: bloomshipperconfig.BlocksCacheConfig{
+				SoftLimit: flagext.Bytes(10 << 20),
+				HardLimit: flagext.Bytes(20 << 20),
+				TTL:       time.Hour,
+			},
 		},
 		FSConfig: local.FSConfig{
 			Directory: t.TempDir(),
@@ -78,7 +83,8 @@ func setupBloomStore(t *testing.T) *bloomshipper.BloomStore {
 	}
 
 	reg := prometheus.NewRegistry()
-	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, nil, nil, reg, logger)
+	blocksCache := bloomshipper.NewFsBlocksCache(storageCfg.BloomShipperConfig.BlocksCache, nil, logger)
+	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, nil, blocksCache, reg, logger)
 	require.NoError(t, err)
 	t.Cleanup(store.Stop)
 
@@ -90,21 +96,8 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 	reg := prometheus.NewRegistry()
 
 	t.Run("start and stop bloom gateway", func(t *testing.T) {
-		kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), logger, reg)
-		t.Cleanup(func() {
-			closer.Close()
-		})
-
 		cfg := Config{
-			Enabled: true,
-			Ring: lokiring.RingConfigWithRF{
-				RingConfig: lokiring.RingConfig{
-					KVStore: kv.Config{
-						Mock: kvStore,
-					},
-				},
-				ReplicationFactor: 1,
-			},
+			Enabled:                 true,
 			WorkerConcurrency:       4,
 			MaxOutstandingPerTenant: 1024,
 		}
@@ -128,26 +121,11 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	tenantID := "test"
 
-	store := setupBloomStore(t)
 	logger := log.NewNopLogger()
-	reg := prometheus.NewRegistry()
-
-	kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), logger, reg)
-	t.Cleanup(func() {
-		closer.Close()
-	})
-
 	cfg := Config{
-		Enabled: true,
-		Ring: lokiring.RingConfigWithRF{
-			RingConfig: lokiring.RingConfig{
-				KVStore: kv.Config{
-					Mock: kvStore,
-				},
-			},
-			ReplicationFactor: 1,
-		},
-		WorkerConcurrency:       4,
+		Enabled:                 true,
+		WorkerConcurrency:       2,
+		BlockQueryConcurrency:   2,
 		MaxOutstandingPerTenant: 1024,
 	}
 
@@ -240,7 +218,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, store, logger, reg)
+		gw, err := New(cfg, newMockBloomStore(nil, nil), logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -285,7 +263,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, store, logger, reg)
+		gw, err := New(cfg, newMockBloomStore(nil, nil), logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -324,15 +302,13 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	t.Run("use fuse queriers to filter chunks", func(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
-		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, store, logger, reg)
-		require.NoError(t, err)
-
 		// replace store implementation and re-initialize workers and sub-services
 		_, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 
-		gw.bloomStore = newMockBloomStore(queriers, metas)
-		err = gw.initServices()
+		reg := prometheus.NewRegistry()
+		store := newMockBloomStore(queriers, metas)
+
+		gw, err := New(cfg, store, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -405,65 +381,312 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	})
 }
 
-func TestBloomGateway_RemoveNotMatchingChunks(t *testing.T) {
-	g := &Gateway{
-		logger: log.NewNopLogger(),
+func TestFilterChunkRefsForSeries(t *testing.T) {
+	mkInput := func(xs []uint32) *logproto.GroupedChunkRefs {
+		out := &logproto.GroupedChunkRefs{Refs: make([]*logproto.ShortRef, len(xs))}
+		for i, x := range xs {
+			out.Refs[i] = &logproto.ShortRef{Checksum: x}
+		}
+		return out
 	}
-	t.Run("removing chunks partially", func(t *testing.T) {
-		req := &logproto.FilterChunkRefRequest{
-			Refs: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
-					{Checksum: 0x1},
-					{Checksum: 0x2},
-					{Checksum: 0x3},
-					{Checksum: 0x4},
-					{Checksum: 0x5},
-				}},
-			},
+	mkRemovals := func(xs []uint32) v1.ChunkRefs {
+		out := make(v1.ChunkRefs, len(xs))
+		for i, x := range xs {
+			out[i] = v1.ChunkRef{Checksum: x}
 		}
-		res := v1.Output{
-			Fp: 0x00, Removals: v1.ChunkRefs{
-				{Checksum: 0x2},
-				{Checksum: 0x4},
-			},
-		}
-		expected := &logproto.FilterChunkRefRequest{
-			Refs: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
-					{Checksum: 0x1},
-					{Checksum: 0x3},
-					{Checksum: 0x5},
-				}},
-			},
-		}
-		n := g.removeNotMatchingChunks(req, res)
-		require.Equal(t, 2, n)
-		require.Equal(t, expected, req)
-	})
+		return out
+	}
 
-	t.Run("removing all chunks removed fingerprint ref", func(t *testing.T) {
-		req := &logproto.FilterChunkRefRequest{
-			Refs: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
-					{Checksum: 0x1},
-					{Checksum: 0x2},
-					{Checksum: 0x3},
-				}},
+	for _, tc := range []struct {
+		desc                      string
+		input, removals, expected []uint32
+	}{
+		{
+			desc:     "no matches",
+			input:    []uint32{0, 1},
+			expected: []uint32{0, 1},
+		},
+		{
+			desc:     "remove all",
+			input:    []uint32{0, 1, 2, 3, 4},
+			removals: []uint32{0, 1, 2, 3, 4},
+			expected: []uint32{},
+		},
+		{
+			desc:     "remove every other",
+			input:    []uint32{0, 1, 2, 3, 4},
+			removals: []uint32{0, 2, 4},
+			expected: []uint32{1, 3},
+		},
+		{
+			desc:     "remove middle section",
+			input:    []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			removals: []uint32{3, 4, 5},
+			expected: []uint32{0, 1, 2, 6, 7, 8, 9},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			input := mkInput(tc.input)
+			expected := mkInput(tc.expected)
+
+			filterChunkRefsForSeries(input, mkRemovals(tc.removals))
+
+			require.Equal(t, expected, input)
+		})
+	}
+}
+
+func TestFilterChunkRefs(t *testing.T) {
+	mkInput := func(nSeries, chunksPerSeries int) *logproto.FilterChunkRefRequest {
+		res := &logproto.FilterChunkRefRequest{}
+		refs := make([]*logproto.GroupedChunkRefs, nSeries)
+		for i := range refs {
+			chks := make([]*logproto.ShortRef, chunksPerSeries)
+			for j := range chks {
+				chks[j] = &logproto.ShortRef{Checksum: uint32(j)}
+			}
+			refs[i] = &logproto.GroupedChunkRefs{
+				Fingerprint: uint64(i),
+				Refs:        chks,
+			}
+		}
+		res.Refs = refs
+		return res
+	}
+
+	type instruction struct {
+		fp        uint64
+		checksums []uint32
+	}
+	mkRemovals := func(xs [][]instruction) [][]v1.Output {
+		out := make([][]v1.Output, len(xs))
+		for i, x := range xs {
+			out[i] = make([]v1.Output, len(x))
+			for j, c := range x {
+				out[i][j] = v1.Output{
+					Fp:       model.Fingerprint(c.fp),
+					Removals: make(v1.ChunkRefs, len(c.checksums)),
+				}
+				for k, chk := range c.checksums {
+					out[i][j].Removals[k] = v1.ChunkRef{Checksum: chk}
+				}
+			}
+		}
+		return out
+	}
+
+	mkResult := func(xs []instruction) *logproto.FilterChunkRefRequest {
+		out := &logproto.FilterChunkRefRequest{Refs: make([]*logproto.GroupedChunkRefs, len(xs))}
+		for i, x := range xs {
+			out.Refs[i] = &logproto.GroupedChunkRefs{
+				Fingerprint: x.fp,
+				Refs:        make([]*logproto.ShortRef, len(x.checksums)),
+			}
+			for j, c := range x.checksums {
+				out.Refs[i].Refs[j] = &logproto.ShortRef{Checksum: c}
+			}
+		}
+		return out
+	}
+
+	for _, tc := range []struct {
+		desc     string
+		input    *logproto.FilterChunkRefRequest
+		removals [][]instruction
+		expected *logproto.FilterChunkRefRequest
+	}{
+		{
+			desc:     "no removals",
+			input:    mkInput(2, 2),
+			expected: mkInput(2, 2),
+		},
+		{
+			desc:  "remove all",
+			input: mkInput(2, 2),
+			removals: [][]instruction{
+				{
+					{fp: 0, checksums: []uint32{0, 1}},
+					{fp: 1, checksums: []uint32{0, 1}},
+				},
 			},
-		}
-		res := v1.Output{
-			Fp: 0x00, Removals: v1.ChunkRefs{
-				{Checksum: 0x1},
-				{Checksum: 0x2},
-				{Checksum: 0x2},
+			expected: mkInput(0, 0),
+		},
+		{
+			desc:  "remove every other series",
+			input: mkInput(4, 2),
+			removals: [][]instruction{
+				{
+					{fp: 0, checksums: []uint32{0, 1}},
+					{fp: 2, checksums: []uint32{0, 1}},
+				},
 			},
+			expected: mkResult([]instruction{
+				{fp: 1, checksums: []uint32{0, 1}},
+				{fp: 3, checksums: []uint32{0, 1}},
+			}),
+		},
+		{
+			desc:  "remove the last chunk for each series",
+			input: mkInput(4, 2),
+			removals: [][]instruction{
+				{
+					{fp: 0, checksums: []uint32{1}},
+					{fp: 1, checksums: []uint32{1}},
+					{fp: 2, checksums: []uint32{1}},
+					{fp: 3, checksums: []uint32{1}},
+				},
+			},
+			expected: mkResult([]instruction{
+				{fp: 0, checksums: []uint32{0}},
+				{fp: 1, checksums: []uint32{0}},
+				{fp: 2, checksums: []uint32{0}},
+				{fp: 3, checksums: []uint32{0}},
+			}),
+		},
+		{
+			desc:  "remove the middle chunk for every other series",
+			input: mkInput(4, 3),
+			removals: [][]instruction{
+				{
+					{fp: 0, checksums: []uint32{1}},
+					{fp: 2, checksums: []uint32{1}},
+				},
+			},
+			expected: mkResult([]instruction{
+				{fp: 0, checksums: []uint32{0, 2}},
+				{fp: 1, checksums: []uint32{0, 1, 2}},
+				{fp: 2, checksums: []uint32{0, 2}},
+				{fp: 3, checksums: []uint32{0, 1, 2}},
+			}),
+		},
+		{
+			desc:  "remove the first chunk of the last series",
+			input: mkInput(4, 3),
+			removals: [][]instruction{
+				{
+					{fp: 3, checksums: []uint32{0}},
+				},
+			},
+			expected: mkResult([]instruction{
+				{fp: 0, checksums: []uint32{0, 1, 2}},
+				{fp: 1, checksums: []uint32{0, 1, 2}},
+				{fp: 2, checksums: []uint32{0, 1, 2}},
+				{fp: 3, checksums: []uint32{1, 2}},
+			}),
+		},
+		{
+			desc:  "duplicate removals",
+			input: mkInput(4, 3),
+			removals: [][]instruction{
+				{
+					{fp: 0, checksums: []uint32{0, 1}},
+					{fp: 0, checksums: []uint32{0, 1, 2}},
+					{fp: 1, checksums: []uint32{1}},
+					{fp: 2, checksums: []uint32{1}},
+				},
+			},
+			expected: mkResult([]instruction{
+				{fp: 1, checksums: []uint32{0, 2}},
+				{fp: 2, checksums: []uint32{0, 2}},
+				{fp: 3, checksums: []uint32{0, 1, 2}},
+			}),
+		},
+		{
+			desc:  "middle duplicates across 2 days",
+			input: mkInput(4, 3),
+			removals: [][]instruction{
+				{
+					{fp: 0, checksums: []uint32{1}},
+					{fp: 2, checksums: []uint32{1}},
+				},
+				{
+					{fp: 0, checksums: []uint32{1}},
+					{fp: 2, checksums: []uint32{1}},
+				},
+			},
+			expected: mkResult([]instruction{
+				{fp: 0, checksums: []uint32{0, 2}},
+				{fp: 1, checksums: []uint32{0, 1, 2}},
+				{fp: 2, checksums: []uint32{0, 2}},
+				{fp: 3, checksums: []uint32{0, 1, 2}},
+			}),
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			res := filterChunkRefs(tc.input, mkRemovals(tc.removals))
+			require.Equal(t, tc.expected.Refs, res)
+		})
+	}
+
+}
+
+func BenchmarkFilterChunkRefs(b *testing.B) {
+	nSeries := 1024
+	chunksPerSeries := 10
+
+	mkInput := func() *logproto.FilterChunkRefRequest {
+		res := &logproto.FilterChunkRefRequest{}
+
+		refs := make([]*logproto.GroupedChunkRefs, nSeries)
+		for i := range refs {
+			chks := make([]*logproto.ShortRef, chunksPerSeries)
+			for j := range chks {
+				chks[j] = &logproto.ShortRef{Checksum: uint32(j)}
+			}
+			refs[i] = &logproto.GroupedChunkRefs{
+				Fingerprint: uint64(i),
+				Refs:        chks,
+			}
 		}
-		expected := &logproto.FilterChunkRefRequest{
-			Refs: []*logproto.GroupedChunkRefs{},
+		res.Refs = refs
+		return res
+	}
+
+	// responses aren't mutated, so we add a pool to mitigate the alloc
+	// effect on the benchmark
+	var responseP sync.Pool
+	mkOutputs := func() *[]v1.Output {
+		// remove half the chunks from half the series, so 25% of the volume
+		outputs := make([]v1.Output, nSeries/2)
+		for i := range outputs {
+			output := v1.Output{
+				Fp: model.Fingerprint(i * 2),
+			}
+			for j := 0; j < chunksPerSeries/2; j++ {
+				output.Removals = append(output.Removals, v1.ChunkRef{Checksum: uint32(j * 2)})
+			}
+
+			outputs[i] = output
 		}
-		n := g.removeNotMatchingChunks(req, res)
-		require.Equal(t, 3, n)
-		require.Equal(t, expected, req)
-	})
+		return &outputs
+	}
+	responseP.New = func() interface{} {
+		return mkOutputs()
+	}
+
+	// Add comparison functions here to bench side by side
+	for _, tc := range []struct {
+		desc string
+		f    func(req *logproto.FilterChunkRefRequest, responses []v1.Output)
+	}{
+		{
+			desc: "filterChunkRefs",
+			f: func(req *logproto.FilterChunkRefRequest, responses []v1.Output) {
+				filterChunkRefs(req, [][]v1.Output{responses})
+			},
+		},
+	} {
+		b.Run(tc.desc, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				req := mkInput()
+				ptr := responseP.Get().(*[]v1.Output)
+				resps := *ptr
+
+				tc.f(req, resps)
+
+				responseP.Put(ptr)
+			}
+		})
+	}
 
 }

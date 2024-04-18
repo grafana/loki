@@ -32,10 +32,10 @@ var (
 		},
 	}
 
-	// 1KB -> 8MB
+	// 4KB -> 128MB
 	BlockPool = BytePool{
 		pool: pool.New(
-			1<<10, 1<<24, 4,
+			4<<10, 128<<20, 2,
 			func(size int) interface{} {
 				return make([]byte, size)
 			}),
@@ -155,6 +155,10 @@ func NewSliceIter[T any](xs []T) *SliceIter[T] {
 	return &SliceIter[T]{xs: xs, cur: -1}
 }
 
+func (it *SliceIter[T]) Len() int {
+	return len(it.xs) - (max(0, it.cur))
+}
+
 func (it *SliceIter[T]) Next() bool {
 	it.cur++
 	return it.cur < len(it.xs)
@@ -216,6 +220,13 @@ func (cii *CancellableIter[T]) Next() bool {
 	default:
 		return cii.Iterator.Next()
 	}
+}
+
+func (cii *CancellableIter[T]) Err() error {
+	if err := cii.ctx.Err(); err != nil {
+		return err
+	}
+	return cii.Iterator.Err()
 }
 
 func NewCancelableIter[T any](ctx context.Context, itr Iterator[T]) *CancellableIter[T] {

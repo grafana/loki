@@ -8,9 +8,9 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 func TestBackground(t *testing.T) {

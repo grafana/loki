@@ -5,22 +5,22 @@ import (
 	"math"
 	"time"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/util/encoding"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/util/encoding"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type metrics struct {
@@ -70,11 +70,11 @@ func (bt *BloomTokenizer) SetLineTokenizer(t *v1.NGramTokenizer) {
 }
 
 func (bt *BloomTokenizer) GetNGramLength() uint64 {
-	return uint64(bt.lineTokenizer.N)
+	return uint64(bt.lineTokenizer.N())
 }
 
 func (bt *BloomTokenizer) GetNGramSkip() uint64 {
-	return uint64(bt.lineTokenizer.Skip)
+	return uint64(bt.lineTokenizer.SkipFactor())
 }
 
 func newMetrics(r prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -146,7 +146,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *v1.SeriesWith
 
 	for idx := range chunks {
 		lc := chunks[idx].Data.(*chunkenc.Facade).LokiChunk()
-		tokenBuf, prefixLn := prefixedToken(bt.lineTokenizer.N, chunks[idx].ChunkRef)
+		tokenBuf, prefixLn := prefixedToken(bt.lineTokenizer.N(), chunks[idx].ChunkRef)
 		chunkTotalUncompressedSize += lc.UncompressedSize()
 
 		itr, err := lc.Iterator(
@@ -201,8 +201,8 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *v1.SeriesWith
 
 		}
 		seriesWithBloom.Series.Chunks = append(seriesWithBloom.Series.Chunks, v1.ChunkRef{
-			Start:    chunks[idx].From,
-			End:      chunks[idx].Through,
+			From:     chunks[idx].From,
+			Through:  chunks[idx].Through,
 			Checksum: chunks[idx].Checksum,
 		})
 	} // for each chunk

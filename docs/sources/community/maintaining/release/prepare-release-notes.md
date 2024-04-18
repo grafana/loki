@@ -22,6 +22,8 @@ Release notes are the few key highlights of the release. This is what appears on
 
 ## Steps
 
+**This section is out of date now that we use conventional commits, to be updated (Trevor/Callum)**
+
 1. Discuss with Loki team to finalize what PRs should be part of release notes.
 
 1. Go to the PR and add a label `add-to-release-notes`. Example [PR](https://github.com/grafana/loki/pull/10213) with label added.

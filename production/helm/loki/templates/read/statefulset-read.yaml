@@ -86,10 +86,10 @@ spec:
             {{- end }}
           ports:
             - name: http-metrics
-              containerPort: 3100
+              containerPort: {{ .Values.loki.server.http_listen_port }}
               protocol: TCP
             - name: grpc
-              containerPort: 9095
+              containerPort: {{ .Values.loki.server.grpc_listen_port }}
               protocol: TCP
             - name: http-memberlist
               containerPort: 7946
@@ -128,9 +128,12 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.read.resources | nindent 12 }}
+        {{- with .Values.read.extraContainers }}
+        {{- toYaml . | nindent 8}}
+        {{- end }}
       {{- with .Values.read.affinity }}
       affinity:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.read.dnsConfig }}
       dnsConfig:
@@ -152,13 +155,7 @@ spec:
         - name: tmp
           emptyDir: {}
         - name: config
-          {{- if .Values.loki.existingSecretForConfig }}
-          secret:
-            secretName: {{ .Values.loki.existingSecretForConfig }}
-          {{- else }}
-          configMap:
-            name: {{ include "loki.name" . }}
-          {{- end }}
+          {{- include "loki.configVolume" . | nindent 10 }}
         - name: runtime-config
           configMap:
             name: {{ template "loki.name" . }}-runtime

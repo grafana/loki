@@ -6,8 +6,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 // Index adapter for a function which returns an index when queried.
@@ -79,4 +79,12 @@ func (f LazyIndex) Volume(ctx context.Context, userID string, from, through mode
 		return err
 	}
 	return i.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
+}
+
+func (f LazyIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+	i, err := f()
+	if err != nil {
+		return err
+	}
+	return i.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
 }

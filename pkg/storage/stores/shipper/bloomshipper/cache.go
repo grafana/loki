@@ -2,21 +2,17 @@ package bloomshipper
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
-	"go.uber.org/atomic"
+	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 type CloseableBlockQuerier struct {
@@ -39,23 +35,14 @@ func (c *CloseableBlockQuerier) SeriesIter() (v1.PeekingIterator[*v1.SeriesWithB
 	return v1.NewPeekingIter[*v1.SeriesWithBloom](c.BlockQuerier), nil
 }
 
-func NewBlocksCache(cfg cache.EmbeddedCacheConfig, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, BlockDirectory] {
-	return cache.NewTypedEmbeddedCache[string, BlockDirectory](
-		"bloom-blocks-cache",
-		cfg,
-		reg,
-		logger,
-		stats.BloomBlocksCache,
-		calculateBlockDirectorySize,
-		func(_ string, value BlockDirectory) {
-			value.removeDirectoryAsync()
-		})
-}
-
-func LoadBlocksDirIntoCache(path string, c cache.TypedCache[string, BlockDirectory], logger log.Logger) error {
-	level.Debug(logger).Log("msg", "load bloomshipper working directory into cache", "path", path)
-	keys, values := loadBlockDirectories(path, logger)
-	return c.Store(context.Background(), keys, values)
+func LoadBlocksDirIntoCache(paths []string, c Cache, logger log.Logger) error {
+	var err util.MultiError
+	for _, path := range paths {
+		level.Debug(logger).Log("msg", "load bloomshipper working directory into cache", "path", path)
+		keys, values := loadBlockDirectories(path, logger)
+		err.Add(c.PutMany(context.Background(), keys, values))
+	}
+	return err.Err()
 }
 
 func loadBlockDirectories(root string, logger log.Logger) (keys []string, values []BlockDirectory) {
@@ -77,7 +64,7 @@ func loadBlockDirectories(root string, logger log.Logger) (keys []string, values
 
 		if ok, clean := isBlockDir(path, logger); ok {
 			keys = append(keys, resolver.Block(ref).Addr())
-			values = append(values, NewBlockDirectory(ref, path, logger))
+			values = append(values, NewBlockDirectory(ref, path))
 			level.Debug(logger).Log("msg", "found block directory", "ref", ref, "path", path)
 		} else {
 			level.Warn(logger).Log("msg", "skip directory entry", "err", "not a block directory containing blooms and series", "path", path)
@@ -93,93 +80,61 @@ func calculateBlockDirectorySize(entry *cache.Entry[string, BlockDirectory]) uin
 	return uint64(entry.Value.Size())
 }
 
-func NewBlockDirectory(ref BlockRef, path string, logger log.Logger) BlockDirectory {
-	return BlockDirectory{
-		BlockRef:                    ref,
-		Path:                        path,
-		refCount:                    atomic.NewInt32(0),
-		removeDirectoryTimeout:      time.Minute,
-		logger:                      logger,
-		activeQueriersCheckInterval: defaultActiveQueriersCheckInterval,
+// NewBlockDirectory creates a new BlockDirectory. Must exist on disk.
+func NewBlockDirectory(ref BlockRef, path string) BlockDirectory {
+	bd := BlockDirectory{
+		BlockRef: ref,
+		Path:     path,
 	}
+	if err := bd.resolveSize(); err != nil {
+		panic(err)
+	}
+	return bd
 }
 
 // A BlockDirectory is a local file path that contains a bloom block.
 // It maintains a counter for currently active readers.
 type BlockDirectory struct {
 	BlockRef
-	Path                        string
-	removeDirectoryTimeout      time.Duration
-	refCount                    *atomic.Int32
-	logger                      log.Logger
-	activeQueriersCheckInterval time.Duration
+	Path string
+	size int64
 }
 
-func (b BlockDirectory) Block() *v1.Block {
-	return v1.NewBlock(v1.NewDirectoryBlockReader(b.Path))
-}
-
-func (b BlockDirectory) Acquire() {
-	_ = b.refCount.Inc()
-}
-
-func (b BlockDirectory) Release() error {
-	_ = b.refCount.Dec()
-	return nil
+func (b BlockDirectory) Block(metrics *v1.Metrics) *v1.Block {
+	return v1.NewBlock(v1.NewDirectoryBlockReader(b.Path), metrics)
 }
 
 func (b BlockDirectory) Size() int64 {
-	// TODO(chaudum): Reduce syscalls by storing the size on the block directory struct
-	bloomFileStats, _ := os.Lstat(path.Join(b.Path, v1.BloomFileName))
-	seriesFileStats, _ := os.Lstat(path.Join(b.Path, v1.SeriesFileName))
-	return bloomFileStats.Size() + seriesFileStats.Size()
+	return b.size
+}
+
+func (b *BlockDirectory) resolveSize() error {
+	bloomPath := filepath.Join(b.Path, v1.BloomFileName)
+	bloomFileStats, err := os.Lstat(bloomPath)
+	if err != nil {
+		return errors.Wrapf(err, "failed to stat bloom file (%s)", bloomPath)
+	}
+	seriesPath := filepath.Join(b.Path, v1.SeriesFileName)
+	seriesFileStats, err := os.Lstat(seriesPath)
+	if err != nil {
+		return errors.Wrapf(err, "failed to stat series file (%s)", seriesPath)
+	}
+	b.size = (bloomFileStats.Size() + seriesFileStats.Size())
+	return nil
 }
 
 // BlockQuerier returns a new block querier from the directory.
-// It increments the counter of active queriers for this directory.
-// The counter is decreased when the returned querier is closed.
-func (b BlockDirectory) BlockQuerier() *CloseableBlockQuerier {
-	b.Acquire()
+// The passed function `close` is called when the the returned querier is closed.
+
+func (b BlockDirectory) BlockQuerier(
+	usePool bool,
+	close func() error,
+	maxPageSize int,
+	metrics *v1.Metrics,
+) *CloseableBlockQuerier {
 	return &CloseableBlockQuerier{
-		BlockQuerier: v1.NewBlockQuerier(b.Block()),
+		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), usePool, maxPageSize),
 		BlockRef:     b.BlockRef,
-		close:        b.Release,
+		close:        close,
 	}
-}
-
-const defaultActiveQueriersCheckInterval = 100 * time.Millisecond
-
-func (b *BlockDirectory) removeDirectoryAsync() {
-	go func() {
-		timeout := time.After(b.removeDirectoryTimeout)
-		ticker := time.NewTicker(b.activeQueriersCheckInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				if b.refCount.Load() == 0 {
-					err := deleteFolder(b.Path)
-					if err == nil {
-						return
-					}
-					level.Error(b.logger).Log("msg", "error deleting block directory", "err", err)
-				}
-			case <-timeout:
-				level.Warn(b.logger).Log("msg", "force deleting block folder after timeout", "timeout", b.removeDirectoryTimeout)
-				err := deleteFolder(b.Path)
-				if err == nil {
-					return
-				}
-				level.Error(b.logger).Log("msg", "error force deleting block directory", "err", err)
-			}
-		}
-	}()
-}
-
-func deleteFolder(folderPath string) error {
-	err := os.RemoveAll(folderPath)
-	if err != nil {
-		return fmt.Errorf("error deleting bloom block directory: %w", err)
-	}
-	return nil
 }

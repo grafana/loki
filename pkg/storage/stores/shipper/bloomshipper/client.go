@@ -8,18 +8,20 @@ import (
 	"hash"
 	"io"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
-	"github.com/grafana/loki/pkg/util/encoding"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
 const (
@@ -92,6 +94,21 @@ type Meta struct {
 
 	// A list of blocks that were generated
 	Blocks []BlockRef
+}
+
+func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, error) {
+	if len(m.Sources) == 0 {
+		return tsdb.SingleTenantTSDBIdentifier{}, errors.New("no sources")
+	}
+
+	mostRecent := m.Sources[0]
+	for _, source := range m.Sources[1:] {
+		if source.TS.After(mostRecent.TS) {
+			mostRecent = source
+		}
+	}
+
+	return mostRecent, nil
 }
 
 func MetaRefFrom(
@@ -181,16 +198,22 @@ func (c ClosableReadSeekerAdapter) Close() error {
 	return nil
 }
 
+func BlockRefFrom(tenant, table string, md v1.BlockMetadata) BlockRef {
+	return BlockRef{
+		Ref: Ref{
+			TenantID:       tenant,
+			TableName:      table,
+			Bounds:         md.Series.Bounds,
+			StartTimestamp: md.Series.FromTs,
+			EndTimestamp:   md.Series.ThroughTs,
+			Checksum:       md.Checksum,
+		},
+	}
+}
+
 func BlockFrom(tenant, table string, blk *v1.Block) (Block, error) {
 	md, _ := blk.Metadata()
-	ref := Ref{
-		TenantID:       tenant,
-		TableName:      table,
-		Bounds:         md.Series.Bounds,
-		StartTimestamp: md.Series.FromTs,
-		EndTimestamp:   md.Series.ThroughTs,
-		Checksum:       md.Checksum,
-	}
+	ref := BlockRefFrom(tenant, table, md)
 
 	// TODO(owen-d): pool
 	buf := bytes.NewBuffer(nil)
@@ -203,7 +226,7 @@ func BlockFrom(tenant, table string, blk *v1.Block) (Block, error) {
 	reader := bytes.NewReader(buf.Bytes())
 
 	return Block{
-		BlockRef: BlockRef{Ref: ref},
+		BlockRef: ref,
 		Data:     ClosableReadSeekerAdapter{reader},
 	}, nil
 }
@@ -220,6 +243,7 @@ type Client interface {
 	MetaClient
 	BlockClient
 	IsObjectNotFoundErr(err error) bool
+	ObjectClient() client.ObjectClient
 	Stop()
 }
 
@@ -235,13 +259,22 @@ type BloomClient struct {
 }
 
 func NewBloomClient(cfg bloomStoreConfig, client client.ObjectClient, logger log.Logger) (*BloomClient, error) {
+	fsResolver, err := NewShardedPrefixedResolver(cfg.workingDirs, defaultKeyResolver{})
+	if err != nil {
+		return nil, errors.Wrap(err, "creating fs resolver")
+	}
+
 	return &BloomClient{
 		KeyResolver: defaultKeyResolver{}, // TODO(owen-d): hook into schema, similar to `{,Parse}ExternalKey`
-		fsResolver:  NewPrefixedResolver(cfg.workingDir, defaultKeyResolver{}),
+		fsResolver:  fsResolver,
 		concurrency: cfg.numWorkers,
 		client:      client,
 		logger:      logger,
 	}, nil
+}
+
+func (b *BloomClient) ObjectClient() client.ObjectClient {
+	return b.client
 }
 
 func (b *BloomClient) IsObjectNotFoundErr(err error) bool {
@@ -251,7 +284,7 @@ func (b *BloomClient) IsObjectNotFoundErr(err error) bool {
 func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
 	data, err := json.Marshal(meta)
 	if err != nil {
-		return fmt.Errorf("can not marshal the meta to json: %w", err)
+		return fmt.Errorf("failed to encode meta file %s: %w", meta.String(), err)
 	}
 	key := b.Meta(meta.MetaRef).Addr()
 	return b.client.PutObject(ctx, key, bytes.NewReader(data))
@@ -273,7 +306,7 @@ func (b *BloomClient) GetBlock(ctx context.Context, ref BlockRef) (BlockDirector
 
 	rc, _, err := b.client.GetObject(ctx, key)
 	if err != nil {
-		return BlockDirectory{}, fmt.Errorf("failed to get block from storage: %w", err)
+		return BlockDirectory{}, fmt.Errorf("failed to get block file %s: %w", key, err)
 	}
 	defer rc.Close()
 
@@ -282,15 +315,15 @@ func (b *BloomClient) GetBlock(ctx context.Context, ref BlockRef) (BlockDirector
 	path = strings.TrimSuffix(path, ".tar.gz")
 	err = util.EnsureDirectory(path)
 	if err != nil {
-		return BlockDirectory{}, fmt.Errorf("failed to create block directory: %w", err)
+		return BlockDirectory{}, fmt.Errorf("failed to create block directory %s: %w", path, err)
 	}
 
 	err = v1.UnTarGz(path, rc)
 	if err != nil {
-		return BlockDirectory{}, fmt.Errorf("failed to extract block: %w", err)
+		return BlockDirectory{}, fmt.Errorf("failed to extract block file %s: %w", key, err)
 	}
 
-	return NewBlockDirectory(ref, path, b.logger), nil
+	return NewBlockDirectory(ref, path), nil
 }
 
 func (b *BloomClient) GetBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
@@ -319,12 +352,12 @@ func (b *BloomClient) PutBlock(ctx context.Context, block Block) error {
 	key := b.Block(block.BlockRef).Addr()
 	_, err := block.Data.Seek(0, 0)
 	if err != nil {
-		return fmt.Errorf("error uploading block file %s : %w", key, err)
+		return fmt.Errorf("failed to seek block file %s: %w", key, err)
 	}
 
 	err = b.client.PutObject(ctx, key, block.Data)
 	if err != nil {
-		return fmt.Errorf("error uploading block file: %w", err)
+		return fmt.Errorf("failed to put block file %s: %w", key, err)
 	}
 	return nil
 }
@@ -336,7 +369,7 @@ func (b *BloomClient) DeleteBlocks(ctx context.Context, references []BlockRef) e
 		err := b.client.DeleteObject(ctx, key)
 
 		if err != nil {
-			return fmt.Errorf("error deleting block file: %w", err)
+			return fmt.Errorf("failed to delete block file %s: %w", key, err)
 		}
 		return nil
 	})
@@ -366,13 +399,13 @@ func (b *BloomClient) GetMeta(ctx context.Context, ref MetaRef) (Meta, error) {
 	key := b.KeyResolver.Meta(ref).Addr()
 	reader, _, err := b.client.GetObject(ctx, key)
 	if err != nil {
-		return Meta{}, fmt.Errorf("error downloading meta file %s : %w", key, err)
+		return Meta{}, fmt.Errorf("failed to get meta file%s: %w", key, err)
 	}
 	defer reader.Close()
 
 	err = json.NewDecoder(reader).Decode(&meta)
 	if err != nil {
-		return Meta{}, fmt.Errorf("error unmarshalling content of meta file %s: %w", key, err)
+		return Meta{}, fmt.Errorf("failed to decode meta file %s: %w", key, err)
 	}
 	return meta, nil
 }
@@ -385,4 +418,89 @@ func findPeriod(configs []config.PeriodConfig, ts model.Time) (config.DayTime, e
 		}
 	}
 	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", ts)
+}
+
+type listOpResult struct {
+	ts       time.Time
+	objects  []client.StorageObject
+	prefixes []client.StorageCommonPrefix
+}
+
+type listOpCache map[string]listOpResult
+
+type cachedListOpObjectClient struct {
+	client.ObjectClient
+	cache         listOpCache
+	mtx           sync.RWMutex
+	ttl, interval time.Duration
+	done          chan struct{}
+}
+
+func newCachedListOpObjectClient(oc client.ObjectClient, ttl, interval time.Duration) *cachedListOpObjectClient {
+	client := &cachedListOpObjectClient{
+		ObjectClient: oc,
+		cache:        make(listOpCache),
+		done:         make(chan struct{}),
+		ttl:          ttl,
+		interval:     interval,
+	}
+
+	go func(c *cachedListOpObjectClient) {
+		ticker := time.NewTicker(c.interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-c.done:
+				return
+			case <-ticker.C:
+				c.mtx.Lock()
+				for k := range c.cache {
+					if time.Since(c.cache[k].ts) > c.ttl {
+						delete(c.cache, k)
+					}
+				}
+				c.mtx.Unlock()
+			}
+		}
+	}(client)
+
+	return client
+}
+
+func (c *cachedListOpObjectClient) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+	if delimiter != "" {
+		return nil, nil, fmt.Errorf("does not support LIST calls with delimiter: %s", delimiter)
+	}
+	c.mtx.RLock()
+	cached, found := c.cache[prefix]
+	c.mtx.RUnlock()
+	if found {
+		return cached.objects, cached.prefixes, nil
+	}
+
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	objects, prefixes, err := c.ObjectClient.List(ctx, prefix, delimiter)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	c.cache[prefix] = listOpResult{
+		ts:       time.Now(),
+		objects:  objects,
+		prefixes: prefixes,
+	}
+
+	return objects, prefixes, err
+}
+
+func (c *cachedListOpObjectClient) Stop() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	close(c.done)
+	c.cache = nil
+	c.ObjectClient.Stop()
 }

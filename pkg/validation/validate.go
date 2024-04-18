@@ -6,8 +6,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 const (
@@ -28,7 +28,7 @@ const (
 	// StreamLimit is a reason for discarding lines when we can't create a new stream
 	// because the limit of active streams has been reached.
 	StreamLimit         = "stream_limit"
-	StreamLimitErrorMsg = "Maximum active stream limit exceeded, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased, user: '%s'"
+	StreamLimitErrorMsg = "Maximum active stream limit exceeded when trying to create stream %s, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased, user: '%s'"
 	// StreamRateLimit is a reason for discarding lines when the streams own rate limit is hit
 	// rather than the overall ingestion rate limit.
 	StreamRateLimit = "per_stream_rate_limit"

@@ -18,10 +18,10 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestClientWriter_LogEntriesAreReconstructedAndForwardedCorrectly(t *testing.T) {

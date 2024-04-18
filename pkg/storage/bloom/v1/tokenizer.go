@@ -20,9 +20,17 @@ func reassemble(buf []rune, ln, pos int, result []byte) []byte {
 
 // Iterable variants (more performant, less space)
 type NGramTokenizer struct {
-	N, Skip int
+	n, skip int
 	buffer  []rune // circular buffer used for ngram generation
 	res     []byte // buffer used for token generation
+}
+
+func (t *NGramTokenizer) N() int {
+	return t.n
+}
+
+func (t *NGramTokenizer) SkipFactor() int {
+	return t.skip
 }
 
 /*
@@ -31,8 +39,8 @@ These will be utilized for the bloom filters to allow for fuzzy searching.
 */
 func NewNGramTokenizer(n, skip int) *NGramTokenizer {
 	t := &NGramTokenizer{
-		N:      n,
-		Skip:   skip,
+		n:      n,
+		skip:   skip,
 		buffer: make([]rune, n+skip),
 		res:    make([]byte, 0, n*MaxRuneLen), // maximum 4 bytes per rune
 	}
@@ -45,8 +53,8 @@ func NewNGramTokenizer(n, skip int) *NGramTokenizer {
 // is not safe for use after subsequent calls to Next()
 func (t *NGramTokenizer) Tokens(line string) Iterator[[]byte] {
 	return &NGramTokenIter{
-		n:    t.N,
-		skip: t.Skip,
+		n:    t.N(),
+		skip: t.SkipFactor(),
 
 		line: line,
 
@@ -76,9 +84,11 @@ func (t *NGramTokenIter) Next() bool {
 
 		// if the start of the ngram is at the interval of our skip factor, emit it.
 		// we increment the skip due to modulo logic:
-		//   because `n % 0 is a divide by zero and n % 1 is always 0`
+		// because `n % 0 is a divide by zero and n % 1 is always 0`
 		if (t.runeIndex-t.n)%(t.skip+1) == 0 {
-			t.offset += (i + utf8.RuneLen(r))
+			// update the offset, but don't go past the end of the line;
+			// for instance invalid utf-8
+			t.offset = min(len(t.line), t.offset+i+utf8.RuneLen(r))
 			return true
 		}
 
