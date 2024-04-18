@@ -405,9 +405,7 @@ func (t *FileTarget) startTailing(ps []string) {
 			}
 			reader = tailer
 		}
-		t.readersMutex.Lock()
-		t.readers[p] = reader
-		t.readersMutex.Unlock()
+		t.setReader(p, reader)
 	}
 }
 
@@ -450,6 +448,12 @@ func (t *FileTarget) getReader(val string) (Reader, bool) {
 	defer t.readersMutex.Unlock()
 	reader, ok := t.readers[val]
 	return reader, ok
+}
+
+func (t *FileTarget) setReader(val string, reader Reader) {
+	t.readersMutex.Lock()
+	defer t.readersMutex.Unlock()
+	t.readers[val] = reader
 }
 
 func (t *FileTarget) getWatch(val string) (struct{}, bool) {
