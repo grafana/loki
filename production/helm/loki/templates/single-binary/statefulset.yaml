@@ -188,5 +188,9 @@ spec:
         selector:
           {{- toYaml . | nindent 10 }}
         {{- end }}
+        {{- with .Values.singleBinary.persistence.dataSource }}
+        dataSource:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
   {{- end }}
 {{- end }}
