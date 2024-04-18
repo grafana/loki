@@ -12,6 +12,7 @@ cmd/loki/loki
 cmd/logcli/logcli
 clients/cmd/promtail/promtail
 cmd/loki/loki-debug
+cmd/lokitool/lokitool
 clients/cmd/promtail/promtail-debug
 clients/cmd/docker-driver/docker-driver
 cmd/loki-canary/loki-canary
@@ -27,8 +28,8 @@ cmd/querytee/querytee
 dlv
 rootfs/
 dist
-coverage.txt
-test_results.txt
+*coverage.txt
+*test_results.txt
 .DS_Store
 .aws-sam
 .idea
@@ -51,6 +52,7 @@ pkg/loki/wal
 
 # nix
 nix/result
+/result
 
 # snyk
 .dccache

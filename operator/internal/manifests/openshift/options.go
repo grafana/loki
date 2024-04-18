@@ -6,6 +6,7 @@ import (
 	"time"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/config"
 )
 
 // Options is the set of internal template options for rendering
@@ -14,7 +15,7 @@ type Options struct {
 	BuildOpts      BuildOptions
 	Authentication []AuthenticationSpec
 	Authorization  AuthorizationSpec
-	ManagedAuthEnv *ManagedAuthEnv
+	TokenCCOAuth   *config.TokenCCOAuthConfig
 }
 
 // AuthenticationSpec describes the authentication specification
@@ -53,22 +54,6 @@ type BuildOptions struct {
 // TenantData defines the existing cookieSecret for lokistack reconcile.
 type TenantData struct {
 	CookieSecret string
-}
-
-type AWSSTSEnv struct {
-	RoleARN string
-}
-
-type AzureWIFEnvironment struct {
-	ClientID       string
-	SubscriptionID string
-	TenantID       string
-	Region         string
-}
-
-type ManagedAuthEnv struct {
-	AWS   *AWSSTSEnv
-	Azure *AzureWIFEnvironment
 }
 
 // NewOptions returns an openshift options struct.

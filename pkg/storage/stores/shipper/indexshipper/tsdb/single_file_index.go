@@ -15,12 +15,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired version")
@@ -55,8 +55,9 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipp
 	}
 
 	builder := NewBuilder(desiredVer)
-	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 		builder.AddSeries(lbls.Copy(), fp, chks)
+		return false
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
 		return nil, err
@@ -157,7 +158,10 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 
 // fn must NOT capture it's arguments. They're reused across series iterations and returned to
 // a pool after completion.
-func (i *TSDBIndex) ForSeries(ctx context.Context, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta), matchers ...*labels.Matcher) error {
+// Iteration will stop if the callback returns true.
+// Accepts a userID argument in order to implement `Index` interface, but since this is a single tenant index,
+// it is ignored (it's enforced elsewhere in index selection)
+func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
 	// TODO(owen-d): use pool
 
 	var ls labels.Labels
@@ -185,7 +189,9 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, fpFilter index.FingerprintFil
 				continue
 			}
 
-			fn(ls, model.Fingerprint(hash), chks)
+			if stop := fn(ls, model.Fingerprint(hash), chks); stop {
+				break
+			}
 		}
 		return p.Err()
 	})
@@ -212,7 +218,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 	}
 	res = res[:0]
 
-	if err := i.ForSeries(ctx, fpFilter, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+	if err := i.ForSeries(ctx, "", fpFilter, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 		for _, chk := range chks {
 
 			res = append(res, ChunkRef{
@@ -223,6 +229,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 				Checksum:    chk.Checksum,
 			})
 		}
+		return false
 	}, matchers...); err != nil {
 		return nil, err
 	}
@@ -236,7 +243,7 @@ func (i *TSDBIndex) Series(ctx context.Context, _ string, from, through model.Ti
 	}
 	res = res[:0]
 
-	if err := i.ForSeries(ctx, fpFilter, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+	if err := i.ForSeries(ctx, "", fpFilter, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 		if len(chks) == 0 {
 			return
 		}
@@ -244,6 +251,7 @@ func (i *TSDBIndex) Series(ctx context.Context, _ string, from, through model.Ti
 			Labels:      ls.Copy(),
 			Fingerprint: fp,
 		})
+		return false
 	}, matchers...); err != nil {
 		return nil, err
 	}

@@ -8,13 +8,13 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/loghttp/push"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
@@ -34,7 +34,12 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser)
+
+	if d.RequestParserWrapper != nil {
+		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
+	}
+
+	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker)
 	if err != nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(

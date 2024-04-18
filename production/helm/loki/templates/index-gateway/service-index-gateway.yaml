@@ -1,0 +1,32 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.indexGatewayFullname" . }}
+  labels:
+    {{- include "loki.indexGatewayLabels" . | nindent 4 }}
+    {{- with .Values.indexGateway.serviceLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.loki.serviceAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+      protocol: TCP
+      {{- with .Values.indexGateway.appProtocol.grpc }}
+      appProtocol: {{ . }}
+      {{- end }}
+  selector:
+    {{- include "loki.indexGatewaySelectorLabels" . | nindent 4 }}
+{{- end }}

@@ -32,10 +32,10 @@ var (
 		},
 	}
 
-	// 1KB -> 8MB
+	// 4KB -> 128MB
 	BlockPool = BytePool{
 		pool: pool.New(
-			1<<10, 1<<24, 4,
+			4<<10, 128<<20, 2,
 			func(size int) interface{} {
 				return make([]byte, size)
 			}),
@@ -155,6 +155,10 @@ func NewSliceIter[T any](xs []T) *SliceIter[T] {
 	return &SliceIter[T]{xs: xs, cur: -1}
 }
 
+func (it *SliceIter[T]) Len() int {
+	return len(it.xs) - (max(0, it.cur))
+}
+
 func (it *SliceIter[T]) Next() bool {
 	it.cur++
 	return it.cur < len(it.xs)
@@ -218,6 +222,13 @@ func (cii *CancellableIter[T]) Next() bool {
 	}
 }
 
+func (cii *CancellableIter[T]) Err() error {
+	if err := cii.ctx.Err(); err != nil {
+		return err
+	}
+	return cii.Iterator.Err()
+}
+
 func NewCancelableIter[T any](ctx context.Context, itr Iterator[T]) *CancellableIter[T] {
 	return &CancellableIter[T]{ctx: ctx, Iterator: itr}
 }
@@ -247,6 +258,18 @@ type CloseableIterator[T any] interface {
 	Close() error
 }
 
+func NewCloseableIterator[T io.Closer](itr Iterator[T]) *CloseIter[T] {
+	return &CloseIter[T]{itr}
+}
+
+type CloseIter[T io.Closer] struct {
+	Iterator[T]
+}
+
+func (i *CloseIter[T]) Close() error {
+	return i.At().Close()
+}
+
 type PeekingCloseableIterator[T any] interface {
 	PeekingIterator[T]
 	CloseableIterator[T]
@@ -258,9 +281,67 @@ type PeekCloseIter[T any] struct {
 }
 
 func NewPeekCloseIter[T any](itr CloseableIterator[T]) *PeekCloseIter[T] {
-	return &PeekCloseIter[T]{PeekIter: NewPeekingIter(itr), close: itr.Close}
+	return &PeekCloseIter[T]{PeekIter: NewPeekingIter[T](itr), close: itr.Close}
 }
 
 func (it *PeekCloseIter[T]) Close() error {
 	return it.close()
+}
+
+type ResettableIterator[T any] interface {
+	Reset() error
+	Iterator[T]
+}
+
+type CloseableResettableIterator[T any] interface {
+	CloseableIterator[T]
+	ResettableIterator[T]
+}
+
+type Predicate[T any] func(T) bool
+
+func NewFilterIter[T any](it Iterator[T], p Predicate[T]) *FilterIter[T] {
+	return &FilterIter[T]{
+		Iterator: it,
+		match:    p,
+	}
+}
+
+type FilterIter[T any] struct {
+	Iterator[T]
+	match Predicate[T]
+}
+
+func (i *FilterIter[T]) Next() bool {
+	hasNext := i.Iterator.Next()
+	for hasNext && !i.match(i.Iterator.At()) {
+		hasNext = i.Iterator.Next()
+	}
+	return hasNext
+}
+
+type CounterIterator[T any] interface {
+	Iterator[T]
+	Count() int
+}
+
+type CounterIter[T any] struct {
+	Iterator[T] // the underlying iterator
+	count       int
+}
+
+func NewCounterIter[T any](itr Iterator[T]) *CounterIter[T] {
+	return &CounterIter[T]{Iterator: itr}
+}
+
+func (it *CounterIter[T]) Next() bool {
+	if it.Iterator.Next() {
+		it.count++
+		return true
+	}
+	return false
+}
+
+func (it *CounterIter[T]) Count() int {
+	return it.count
 }

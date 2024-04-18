@@ -14,6 +14,7 @@ type BlockMetadata struct {
 }
 
 type Block struct {
+	metrics *Metrics
 	// covers series pages
 	index BlockIndex
 	// covers bloom pages
@@ -26,10 +27,15 @@ type Block struct {
 	initialized bool
 }
 
-func NewBlock(reader BlockReader) *Block {
+func NewBlock(reader BlockReader, metrics *Metrics) *Block {
 	return &Block{
-		reader: reader,
+		reader:  reader,
+		metrics: metrics,
 	}
+}
+
+func (b *Block) Reader() BlockReader {
+	return b.reader
 }
 
 func (b *Block) LoadHeaders() error {
@@ -83,19 +89,6 @@ func combineChecksums(index, blooms uint32) uint32 {
 	return index ^ blooms
 }
 
-// convenience method
-func (b *Block) Querier() *BlockQuerier {
-	return NewBlockQuerier(b)
-}
-
-func (b *Block) Series() *LazySeriesIter {
-	return NewLazySeriesIter(b)
-}
-
-func (b *Block) Blooms() *LazyBloomIter {
-	return NewLazyBloomIter(b)
-}
-
 func (b *Block) Metadata() (BlockMetadata, error) {
 	if err := b.LoadHeaders(); err != nil {
 		return BlockMetadata{}, err
@@ -119,11 +112,16 @@ type BlockQuerier struct {
 	cur *SeriesWithBloom
 }
 
-func NewBlockQuerier(b *Block) *BlockQuerier {
+// NewBlockQuerier returns a new BlockQuerier for the given block.
+// WARNING: If noCapture is true, the underlying byte slice of the bloom page
+// will be returned to the pool for efficiency. This can only safely be used
+// when the underlying bloom bytes don't escape the decoder, i.e.
+// when loading blooms for querying (bloom-gw) but not for writing (bloom-compactor).
+func NewBlockQuerier(b *Block, noCapture bool, maxPageSize int) *BlockQuerier {
 	return &BlockQuerier{
 		block:  b,
 		series: NewLazySeriesIter(b),
-		blooms: NewLazyBloomIter(b),
+		blooms: NewLazyBloomIter(b, noCapture, maxPageSize),
 	}
 }
 
@@ -135,30 +133,35 @@ func (bq *BlockQuerier) Schema() (Schema, error) {
 	return bq.block.Schema()
 }
 
+func (bq *BlockQuerier) Reset() error {
+	return bq.series.Seek(0)
+}
+
 func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {
 	return bq.series.Seek(fp)
 }
 
 func (bq *BlockQuerier) Next() bool {
-	if !bq.series.Next() {
-		return false
+	for bq.series.Next() {
+		series := bq.series.At()
+		bq.blooms.Seek(series.Offset)
+		if !bq.blooms.Next() {
+			// skip blocks that are too large
+			if errors.Is(bq.blooms.Err(), ErrPageTooLarge) {
+				// fmt.Printf("skipping bloom page: %s (%d)\n", series.Fingerprint, series.Chunks.Len())
+				bq.blooms.err = nil
+				continue
+			}
+			return false
+		}
+		bloom := bq.blooms.At()
+		bq.cur = &SeriesWithBloom{
+			Series: &series.Series,
+			Bloom:  bloom,
+		}
+		return true
 	}
-
-	series := bq.series.At()
-
-	bq.blooms.Seek(series.Offset)
-	if !bq.blooms.Next() {
-		return false
-	}
-
-	bloom := bq.blooms.At()
-
-	bq.cur = &SeriesWithBloom{
-		Series: &series.Series,
-		Bloom:  bloom,
-	}
-	return true
-
+	return false
 }
 
 func (bq *BlockQuerier) At() *SeriesWithBloom {

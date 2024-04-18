@@ -1,10 +1,6 @@
 package openshift
 
 import (
-	"fmt"
-	"os"
-	"path"
-
 	"github.com/ViaQ/logerr/v2/kverrors"
 	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -12,32 +8,28 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/grafana/loki/operator/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
-const (
-	ccoNamespace = "openshift-cloud-credential-operator"
-)
+const azureFallbackRegion = "centralus"
 
 func BuildCredentialsRequest(opts Options) (*cloudcredentialv1.CredentialsRequest, error) {
 	stack := client.ObjectKey{Name: opts.BuildOpts.LokiStackName, Namespace: opts.BuildOpts.LokiStackNamespace}
 
-	providerSpec, secretName, err := encodeProviderSpec(opts.BuildOpts.LokiStackName, opts.ManagedAuthEnv)
+	providerSpec, err := encodeProviderSpec(opts.TokenCCOAuth)
 	if err != nil {
 		return nil, kverrors.Wrap(err, "failed encoding credentialsrequest provider spec")
 	}
 
 	return &cloudcredentialv1.CredentialsRequest{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-%s", stack.Namespace, secretName),
-			Namespace: ccoNamespace,
-			Annotations: map[string]string{
-				AnnotationCredentialsRequestOwner: stack.String(),
-			},
+			Name:      stack.Name,
+			Namespace: stack.Namespace,
 		},
 		Spec: cloudcredentialv1.CredentialsRequestSpec{
 			SecretRef: corev1.ObjectReference{
-				Name:      secretName,
+				Name:      storage.ManagedCredentialsSecretName(stack.Name),
 				Namespace: stack.Namespace,
 			},
 			ProviderSpec: providerSpec,
@@ -45,16 +37,13 @@ func BuildCredentialsRequest(opts Options) (*cloudcredentialv1.CredentialsReques
 				stack.Name,
 				rulerServiceAccountName(opts),
 			},
-			CloudTokenPath: path.Join(storage.AWSTokenVolumeDirectory, "token"),
+			CloudTokenPath: storage.ServiceAccountTokenFilePath,
 		},
 	}, nil
 }
 
-func encodeProviderSpec(stackName string, env *ManagedAuthEnv) (*runtime.RawExtension, string, error) {
-	var (
-		spec       runtime.Object
-		secretName string
-	)
+func encodeProviderSpec(env *config.TokenCCOAuthConfig) (*runtime.RawExtension, error) {
+	var spec runtime.Object
 
 	switch {
 	case env.AWS != nil:
@@ -73,9 +62,17 @@ func encodeProviderSpec(stackName string, env *ManagedAuthEnv) (*runtime.RawExte
 			},
 			STSIAMRoleARN: env.AWS.RoleARN,
 		}
-		secretName = fmt.Sprintf("%s-aws-creds", stackName)
 	case env.Azure != nil:
 		azure := env.Azure
+		if azure.Region == "" {
+			// The OpenShift Console currently does not provide a UI to configure the Azure Region
+			// for an operator using managed credentials. Because the CredentialsRequest is currently
+			// not used to create a Managed Identity, the region is actually never used.
+			// We default to the US region if nothing is set, so that the CredentialsRequest can be
+			// created. This should have no effect on the generated credential secret.
+			// The region can be configured by setting an environment variable on the operator Subscription.
+			azure.Region = azureFallbackRegion
+		}
 
 		spec = &cloudcredentialv1.AzureProviderSpec{
 			Permissions: []string{
@@ -101,38 +98,8 @@ func encodeProviderSpec(stackName string, env *ManagedAuthEnv) (*runtime.RawExte
 			AzureSubscriptionID: azure.SubscriptionID,
 			AzureTenantID:       azure.TenantID,
 		}
-		secretName = fmt.Sprintf("%s-azure-creds", stackName)
 	}
 
 	encodedSpec, err := cloudcredentialv1.Codec.EncodeProviderSpec(spec.DeepCopyObject())
-	return encodedSpec, secretName, err
-}
-
-func DiscoverManagedAuthEnv() *ManagedAuthEnv {
-	// AWS
-	roleARN := os.Getenv("ROLEARN")
-
-	// Azure
-	clientID := os.Getenv("CLIENTID")
-	tenantID := os.Getenv("TENANTID")
-	subscriptionID := os.Getenv("SUBSCRIPTIONID")
-
-	switch {
-	case roleARN != "":
-		return &ManagedAuthEnv{
-			AWS: &AWSSTSEnv{
-				RoleARN: roleARN,
-			},
-		}
-	case clientID != "" && tenantID != "" && subscriptionID != "":
-		return &ManagedAuthEnv{
-			Azure: &AzureWIFEnvironment{
-				ClientID:       clientID,
-				SubscriptionID: subscriptionID,
-				TenantID:       tenantID,
-			},
-		}
-	}
-
-	return nil
+	return encodedSpec, err
 }

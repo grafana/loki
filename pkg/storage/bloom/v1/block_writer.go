@@ -8,7 +8,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 )
 
 const (

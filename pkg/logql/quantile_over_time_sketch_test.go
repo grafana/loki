@@ -11,9 +11,9 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/sketch"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/sketch"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func TestProbabilisticMQuantileMatrixSerialization(t *testing.T) {
@@ -69,7 +69,7 @@ func TestJoinQuantileSketchVectorError(t *testing.T) {
 	ev := errorStepEvaluator{
 		err: errors.New("could not evaluate"),
 	}
-	_, err := JoinQuantileSketchVector(true, result, ev, LiteralParams{})
+	_, err := MergeQuantileSketchVector(true, result, ev, LiteralParams{})
 	require.ErrorContains(t, err, "could not evaluate")
 }
 
@@ -136,7 +136,7 @@ func BenchmarkJoinQuantileSketchVector(b *testing.B) {
 			iter: iter,
 		}
 		_, _, r := ev.Next()
-		m, err := JoinQuantileSketchVector(true, r.QuantileSketchVec(), ev, params)
+		m, err := MergeQuantileSketchVector(true, r.QuantileSketchVec(), ev, params)
 		require.NoError(b, err)
 		m.(ProbabilisticQuantileMatrix).Release()
 	}
@@ -148,7 +148,9 @@ func BenchmarkQuantileBatchRangeVectorIteratorAt(b *testing.B) {
 	}{
 		{numberSamples: 1},
 		{numberSamples: 1_000},
+		{numberSamples: 10_000},
 		{numberSamples: 100_000},
+		{numberSamples: 1_000_000},
 	} {
 		b.Run(fmt.Sprintf("%d-samples", tc.numberSamples), func(b *testing.B) {
 			r := rand.New(rand.NewSource(42))

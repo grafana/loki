@@ -60,7 +60,7 @@ To add tenant id add `-var "tenant_id=value"`.
 
 Note that the creation of a subscription filter on Cloudwatch in the provided Terraform file only accepts an array of log group names.
 It does **not** accept strings for regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so.
-Or, have lambda-promtail write to Promtail and use [pipeline stages](/docs/loki/latest/send-data/promtail/stages/drop/).
+Or, have lambda-promtail write to Promtail and use [pipeline stages](/docs/loki/<LOKI_VERSION>/send-data/promtail/stages/drop/).
 
 CloudFormation:
 ```
@@ -241,4 +241,4 @@ Instead we can pipeline Cloudwatch logs to a set of Promtails, which can mitigat
 1) Using Promtail's push api along with the `use_incoming_timestamp: false` config, we let Promtail determine the timestamp based on when it ingests the logs, not the timestamp assigned by cloudwatch. Obviously, this means that we lose the origin timestamp because Promtail now assigns it, but this is a relatively small difference in a real time ingestion system like this.
 2) In conjunction with (1), Promtail can coalesce logs across  Cloudwatch log streams because it's no longer susceptible to out-of-order errors when combining multiple sources (lambda invocations).
 
-One important aspect to keep in mind when running with a set of Promtails behind a load balancer is that we're effectively moving the cardinality problems from the  number of log streams -> number of Promtails. If you have not configured Loki to [accept out-of-order writes]({{< relref "../../configure#accept-out-of-order-writes" >}}), you'll need to assign a Promtail-specific label on each Promtail so that you don't run into out-of-order errors when the Promtails send data for the same log groups to Loki. This can easily be done via a configuration like `--client.external-labels=promtail=${HOSTNAME}` passed to Promtail.
+One important aspect to keep in mind when running with a set of Promtails behind a load balancer is that we're effectively moving the cardinality problems from the  number of log streams -> number of Promtails. If you have not configured Loki to [accept out-of-order writes](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#accept-out-of-order-writes), you'll need to assign a Promtail-specific label on each Promtail so that you don't run into out-of-order errors when the Promtails send data for the same log groups to Loki. This can easily be done via a configuration like `--client.external-labels=promtail=${HOSTNAME}` passed to Promtail.

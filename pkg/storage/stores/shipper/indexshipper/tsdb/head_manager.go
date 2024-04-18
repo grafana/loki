@@ -21,10 +21,10 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/pkg/util/wal"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util/wal"
 )
 
 /*
@@ -798,6 +798,14 @@ func (t *tenantHeads) Volume(ctx context.Context, userID string, from, through m
 		return nil
 	}
 	return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
+}
+
+func (t *tenantHeads) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+	idx, ok := t.tenantIndex(userID, from, through)
+	if !ok {
+		return nil
+	}
+	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
 }
 
 // helper only used in building TSDBs

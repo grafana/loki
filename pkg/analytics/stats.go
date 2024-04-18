@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/build"
 
 	"github.com/cespare/xxhash/v2"
 	jsoniter "github.com/json-iterator/go"

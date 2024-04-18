@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	internalserver "github.com/grafana/loki/pkg/server"
+	internalserver "github.com/grafana/loki/v3/pkg/server"
 )
 
 func TestFlagDefaults(t *testing.T) {

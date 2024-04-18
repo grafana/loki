@@ -5,7 +5,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -237,7 +237,7 @@ func (p *fakeParseHints) ShouldContinueParsingLine(_ string, _ *LabelsBuilder) b
 }
 
 func TestJSONExpressionParser(t *testing.T) {
-	testLine := []byte(`{"app":"foo","field with space":"value","field with ÜFT8👌":"value","null_field":null,"bool_field":false,"namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar", "params": [1,2,3]}}}`)
+	testLine := []byte(`{"app":"foo","field with space":"value","field with ÜFT8👌":"value","null_field":null,"bool_field":false,"namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar", "params": [1,2,3,"string_value"]}}}`)
 
 	tests := []struct {
 		name        string
@@ -341,13 +341,23 @@ func TestJSONExpressionParser(t *testing.T) {
 			NoParserHints(),
 		},
 		{
+			"array string element",
+			testLine,
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("param", `pod.deployment.params[3]`),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("param", "string_value"),
+			NoParserHints(),
+		},
+		{
 			"full array",
 			testLine,
 			[]LabelExtractionExpr{
 				NewLabelExtractionExpr("params", `pod.deployment.params`),
 			},
 			labels.EmptyLabels(),
-			labels.FromStrings("params", "[1,2,3]"),
+			labels.FromStrings("params", `[1,2,3,"string_value"]`),
 			NoParserHints(),
 		},
 		{
@@ -357,7 +367,7 @@ func TestJSONExpressionParser(t *testing.T) {
 				NewLabelExtractionExpr("deployment", `pod.deployment`),
 			},
 			labels.EmptyLabels(),
-			labels.FromStrings("deployment", `{"ref":"foobar", "params": [1,2,3]}`),
+			labels.FromStrings("deployment", `{"ref":"foobar", "params": [1,2,3,"string_value"]}`),
 			NoParserHints(),
 		},
 		{

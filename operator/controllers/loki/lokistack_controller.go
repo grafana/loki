@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -16,7 +15,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -31,6 +29,7 @@ import (
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/controllers/loki/internal/management/state"
+	"github.com/grafana/loki/operator/internal/config"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers"
 	manifestsocp "github.com/grafana/loki/operator/internal/manifests/openshift"
@@ -111,6 +110,7 @@ type LokiStackReconciler struct {
 	Log          logr.Logger
 	Scheme       *runtime.Scheme
 	FeatureGates configv1.FeatureGates
+	AuthConfig   *config.TokenCCOAuthConfig
 }
 
 // +kubebuilder:rbac:groups=loki.grafana.com,resources=lokistacks,verbs=get;list;watch;create;update;patch;delete
@@ -128,7 +128,7 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=config.openshift.io,resources=dnses;apiservers;proxies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;delete
-// +kubebuilder:rbac:groups=cloudcredential.openshift.io,resources=credentialsrequests,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups=cloudcredential.openshift.io,resources=credentialsrequests,verbs=get;list;watch;create;update;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -150,7 +150,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	var degraded *status.DegradedError
-	err = r.updateResources(ctx, req)
+	credentialMode, err := r.updateResources(ctx, req)
 	switch {
 	case errors.As(err, &degraded):
 		// degraded errors are handled by status.Refresh below
@@ -158,7 +158,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	err = status.Refresh(ctx, r.Client, req, time.Now(), degraded)
+	err = status.Refresh(ctx, r.Client, req, time.Now(), credentialMode, degraded)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -172,18 +172,25 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
-func (r *LokiStackReconciler) updateResources(ctx context.Context, req ctrl.Request) error {
+func (r *LokiStackReconciler) updateResources(ctx context.Context, req ctrl.Request) (lokiv1.CredentialMode, error) {
 	if r.FeatureGates.BuiltInCertManagement.Enabled {
 		if err := handlers.CreateOrRotateCertificates(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates); err != nil {
-			return err
+			return "", err
 		}
 	}
 
-	if err := handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates); err != nil {
-		return err
+	if r.FeatureGates.OpenShift.TokenCCOAuthEnv {
+		if err := handlers.CreateUpdateDeleteCredentialsRequest(ctx, r.Log, r.Scheme, r.AuthConfig, r.Client, req); err != nil {
+			return "", err
+		}
 	}
 
-	return nil
+	credentialMode, err := handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
+	if err != nil {
+		return "", err
+	}
+
+	return credentialMode, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -216,7 +223,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 	if r.FeatureGates.OpenShift.Enabled {
 		bld = bld.
 			Owns(&routev1.Route{}, updateOrDeleteOnlyPred).
-			Watches(&cloudcredentialv1.CredentialsRequest{}, r.enqueueForCredentialsRequest(), updateOrDeleteOnlyPred)
+			Owns(&cloudcredentialv1.CredentialsRequest{}, updateOrDeleteOnlyPred)
 
 		if r.FeatureGates.OpenShift.ClusterTLSPolicy {
 			bld = bld.Watches(&openshiftconfigv1.APIServer{}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
@@ -356,36 +363,5 @@ func (r *LokiStackReconciler) enqueueForStorageCA() handler.EventHandler {
 		}
 
 		return requests
-	})
-}
-
-func (r *LokiStackReconciler) enqueueForCredentialsRequest() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-		a := obj.GetAnnotations()
-		owner, ok := a[manifestsocp.AnnotationCredentialsRequestOwner]
-		if !ok {
-			return nil
-		}
-
-		var (
-			ownerParts = strings.Split(owner, "/")
-			namespace  = ownerParts[0]
-			name       = ownerParts[1]
-			key        = client.ObjectKey{Namespace: namespace, Name: name}
-		)
-
-		var stack lokiv1.LokiStack
-		if err := r.Client.Get(ctx, key, &stack); err != nil {
-			if !apierrors.IsNotFound(err) {
-				r.Log.Error(err, "failed retrieving CredentialsRequest owning Lokistack", "key", key)
-			}
-			return nil
-		}
-
-		return []reconcile.Request{
-			{
-				NamespacedName: key,
-			},
-		}
 	})
 }

@@ -10,11 +10,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/dskit/httpgrpc"
@@ -32,27 +34,38 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/compactor/retention"
-	"github.com/grafana/loki/pkg/distributor/clientpool"
-	"github.com/grafana/loki/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
 	ringKey = "distributor"
 
-	ringAutoForgetUnhealthyPeriods = 10
+	ringAutoForgetUnhealthyPeriods = 2
+
+	labelServiceName = "service_name"
+	serviceUnknown   = "unknown_service"
+	labelLevel       = "level"
+	logLevelDebug    = "debug"
+	logLevelInfo     = "info"
+	logLevelWarn     = "warn"
+	logLevelError    = "error"
+	logLevelFatal    = "fatal"
+	logLevelCritical = "critical"
 )
 
 var (
@@ -72,11 +85,14 @@ type Config struct {
 	RateStore RateStoreConfig `yaml:"rate_store"`
 
 	// WriteFailuresLoggingCfg customizes write failures logging behavior.
-	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Experimental. Customize the logging of write failures."`
+	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Customize the logging of write failures."`
+
+	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
+	cfg.OTLPConfig.RegisterFlags(fs)
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
@@ -121,11 +137,15 @@ type Distributor struct {
 	// Push failures rate limiter.
 	writeFailuresManager *writefailures.Manager
 
+	RequestParserWrapper push.RequestParserWrapper
+
 	// metrics
 	ingesterAppends        *prometheus.CounterVec
 	ingesterAppendTimeouts *prometheus.CounterVec
 	replicationFactor      prometheus.Gauge
 	streamShardCount       prometheus.Counter
+
+	usageTracker push.UsageTracker
 }
 
 // New a distributor creates.
@@ -138,6 +158,7 @@ func New(
 	registerer prometheus.Registerer,
 	metricsNamespace string,
 	tee Tee,
+	usageTracker push.UsageTracker,
 	logger log.Logger,
 ) (*Distributor, error) {
 	factory := cfg.factory
@@ -153,7 +174,7 @@ func New(
 		return client.New(internalCfg, addr)
 	}
 
-	validator, err := NewValidator(overrides)
+	validator, err := NewValidator(overrides, usageTracker)
 	if err != nil {
 		return nil, err
 	}
@@ -185,6 +206,7 @@ func New(
 		healthyInstancesCount: atomic.NewUint32(0),
 		rateLimitStrat:        rateLimitStrat,
 		tee:                   tee,
+		usageTracker:          usageTracker,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_ingester_appends_total",
@@ -337,7 +359,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			// Truncate first so subsequent steps have consistent line lengths
 			d.truncateLines(validationContext, &stream)
 
-			stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
+			var lbs labels.Labels
+			lbs, stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, stream)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -353,13 +376,22 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			n := 0
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
+			addLogLevel := validationContext.allowStructuredMetadata && validationContext.discoverLogLevels && !lbs.Has(labelLevel)
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
+				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue
 				}
 
+				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+				if addLogLevel && !structuredMetadata.Has(labelLevel) {
+					logLevel := detectLogLevelFromLogEntry(entry, structuredMetadata)
+					entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
+						Name:  labelLevel,
+						Value: logLevel,
+					})
+				}
 				stream.Entries[n] = entry
 
 				// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
@@ -411,6 +443,24 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
+
+		if d.usageTracker != nil {
+			for _, stream := range req.Streams {
+				lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
+				if err != nil {
+					continue
+				}
+
+				discardedStreamBytes := 0
+				for _, e := range stream.Entries {
+					discardedStreamBytes += len(e.Line)
+				}
+
+				if d.usageTracker != nil {
+					d.usageTracker.DiscardedBytesAdd(ctx, tenantID, validation.RateLimited, lbs, float64(discardedStreamBytes))
+				}
+			}
+		}
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -684,30 +734,43 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 }
 
 type labelData struct {
-	labels string
-	hash   uint64
+	ls   labels.Labels
+	hash uint64
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, uint64, error) {
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		labelVal := val.(labelData)
-		return labelVal.labels, labelVal.hash, nil
+		return labelVal.ls, labelVal.ls.String(), labelVal.hash, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		return "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		return nil, "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {
-		return "", 0, err
+	if err := d.validator.ValidateLabels(vContext, ls, stream); err != nil {
+		return nil, "", 0, err
 	}
 
-	lsVal := ls.String()
+	// We do not want to count service_name added by us in the stream limit so adding it after validating original labels.
+	if !ls.Has(labelServiceName) && len(vContext.discoverServiceName) > 0 {
+		serviceName := serviceUnknown
+		for _, labelName := range vContext.discoverServiceName {
+			if labelVal := ls.Get(labelName); labelVal != "" {
+				serviceName = labelVal
+				break
+			}
+		}
+
+		ls = labels.NewBuilder(ls).Set(labelServiceName, serviceName).Labels()
+		stream.Labels = ls.String()
+	}
+
 	lsHash := ls.Hash()
 
-	d.labelCache.Add(key, labelData{lsVal, lsHash})
-	return lsVal, lsHash, nil
+	d.labelCache.Add(key, labelData{ls, lsHash})
+	return ls, ls.String(), lsHash, nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.
@@ -792,4 +855,110 @@ func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger l
 // distributor. $EFFECTIVE_RATE_LIMIT = $GLOBAL_RATE_LIMIT / $NUM_INSTANCES.
 func (d *Distributor) HealthyInstancesCount() int {
 	return int(d.healthyInstancesCount.Load())
+}
+
+func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
+	// otlp logs have a severity number, using which we are defining the log levels.
+	// Significance of severity number is explained in otel docs here https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber
+	if otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber); otlpSeverityNumberTxt != "" {
+		otlpSeverityNumber, err := strconv.Atoi(otlpSeverityNumberTxt)
+		if err != nil {
+			return logLevelInfo
+		}
+		if otlpSeverityNumber <= int(plog.SeverityNumberDebug4) {
+			return logLevelDebug
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberInfo4) {
+			return logLevelInfo
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberWarn4) {
+			return logLevelWarn
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberError4) {
+			return logLevelError
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberFatal4) {
+			return logLevelFatal
+		}
+		return logLevelInfo
+	}
+
+	return extractLogLevelFromLogLine(entry.Line)
+}
+
+func extractLogLevelFromLogLine(log string) string {
+	// check for log levels in known log formats to avoid any false detection
+
+	// json logs:
+	var firstNonSpaceChar rune
+	for _, char := range log {
+		if !unicode.IsSpace(char) {
+			firstNonSpaceChar = char
+			break
+		}
+	}
+
+	var lastNonSpaceChar rune
+	for i := len(log) - 1; i >= 0; i-- {
+		char := rune(log[i])
+		if !unicode.IsSpace(char) {
+			lastNonSpaceChar = char
+			break
+		}
+	}
+
+	if firstNonSpaceChar == '{' && lastNonSpaceChar == '}' {
+		if strings.Contains(log, `:"err"`) || strings.Contains(log, `:"ERR"`) ||
+			strings.Contains(log, `:"error"`) || strings.Contains(log, `:"ERROR"`) {
+			return logLevelError
+		}
+		if strings.Contains(log, `:"warn"`) || strings.Contains(log, `:"WARN"`) ||
+			strings.Contains(log, `:"warning"`) || strings.Contains(log, `:"WARNING"`) {
+			return logLevelWarn
+		}
+		if strings.Contains(log, `:"critical"`) || strings.Contains(log, `:"CRITICAL"`) {
+			return logLevelCritical
+		}
+		if strings.Contains(log, `:"debug"`) || strings.Contains(log, `:"DEBUG"`) {
+			return logLevelDebug
+		}
+		if strings.Contains(log, `:"info"`) || strings.Contains(log, `:"INFO"`) {
+			return logLevelInfo
+		}
+	}
+
+	// logfmt logs:
+	if strings.Contains(log, "=") {
+		if strings.Contains(log, "=err") || strings.Contains(log, "=ERR") ||
+			strings.Contains(log, "=error") || strings.Contains(log, "=ERROR") {
+			return logLevelError
+		}
+		if strings.Contains(log, "=warn") || strings.Contains(log, "=WARN") ||
+			strings.Contains(log, "=warning") || strings.Contains(log, "=WARNING") {
+			return logLevelWarn
+		}
+		if strings.Contains(log, "=critical") || strings.Contains(log, "=CRITICAL") {
+			return logLevelCritical
+		}
+		if strings.Contains(log, "=debug") || strings.Contains(log, "=DEBUG") {
+			return logLevelDebug
+		}
+		if strings.Contains(log, "=info") || strings.Contains(log, "=INFO") {
+			return logLevelInfo
+		}
+	}
+
+	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
+		strings.Contains(log, "error") || strings.Contains(log, "ERROR") {
+		return logLevelError
+	}
+	if strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
+		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
+		return logLevelWarn
+	}
+	if strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") {
+		return logLevelCritical
+	}
+	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
+		return logLevelDebug
+	}
+
+	// Default to info if no specific level is found
+	return logLevelInfo
 }
