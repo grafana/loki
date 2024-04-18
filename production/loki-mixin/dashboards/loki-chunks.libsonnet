@@ -49,7 +49,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           .addPanel(
                             $.newQueryPanel('Index Entries Per Chunk') +
                             $.queryPanel(
-                              'sum(rate(loki_chunk_store_index_entries_per_chunk_sum{%s}[5m])) / sum(rate(loki_chunk_store_index_entries_per_chunk_count{%s}[5m]))' % [
+                              'sum(rate(loki_chunk_store_index_entries_per_chunk_sum{%s}[$__rate_interval])) / sum(rate(loki_chunk_store_index_entries_per_chunk_count{%s}[$__rate_interval]))' % [
                                 dashboards['loki-chunks.json'].labelsSelector,
                                 dashboards['loki-chunks.json'].labelsSelector,
                               ],
@@ -139,9 +139,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.newQueryPanel('Chunk Size Quantiles', 'bytes') +
                             $.queryPanel(
                               [
-                                'histogram_quantile(0.99, sum(rate(loki_ingester_chunk_size_bytes_bucket{%s}[1m])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
-                                'histogram_quantile(0.90, sum(rate(loki_ingester_chunk_size_bytes_bucket{%s}[1m])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
-                                'histogram_quantile(0.50, sum(rate(loki_ingester_chunk_size_bytes_bucket{%s}[1m])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
+                                'histogram_quantile(0.99, sum(rate(loki_ingester_chunk_size_bytes_bucket{%s}[$__rate_interval])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
+                                'histogram_quantile(0.90, sum(rate(loki_ingester_chunk_size_bytes_bucket{%s}[$__rate_interval])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
+                                'histogram_quantile(0.50, sum(rate(loki_ingester_chunk_size_bytes_bucket{%s}[$__rate_interval])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
                               ],
                               [
                                 'p99',
@@ -157,9 +157,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.newQueryPanel('Chunk Duration hours (end-start)') +
                             $.queryPanel(
                               [
-                                'histogram_quantile(0.5, sum(rate(loki_ingester_chunk_bounds_hours_bucket{%s}[5m])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
-                                'histogram_quantile(0.99, sum(rate(loki_ingester_chunk_bounds_hours_bucket{%s}[5m])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
-                                'sum(rate(loki_ingester_chunk_bounds_hours_sum{%s}[5m])) / sum(rate(loki_ingester_chunk_bounds_hours_count{%s}[5m]))' % [
+                                'histogram_quantile(0.5, sum(rate(loki_ingester_chunk_bounds_hours_bucket{%s}[$__rate_interval])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
+                                'histogram_quantile(0.99, sum(rate(loki_ingester_chunk_bounds_hours_bucket{%s}[$__rate_interval])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
+                                'sum(rate(loki_ingester_chunk_bounds_hours_sum{%s}[$__rate_interval])) / sum(rate(loki_ingester_chunk_bounds_hours_count{%s}[$__rate_interval]))' % [
                                   dashboards['loki-chunks.json'].labelsSelector,
                                   dashboards['loki-chunks.json'].labelsSelector,
                                 ],
