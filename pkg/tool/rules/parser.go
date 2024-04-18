@@ -12,7 +12,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	yaml "gopkg.in/yaml.v3"
 
-	"github.com/grafana/loki/pkg/ruler"
+	"github.com/grafana/loki/v3/pkg/ruler"
 )
 
 const (

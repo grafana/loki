@@ -6,7 +6,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/rulefmt"
 
-	"github.com/grafana/loki/pkg/tool/rules/rwrulefmt"
+	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
 )
 
 func TestParseFiles(t *testing.T) {

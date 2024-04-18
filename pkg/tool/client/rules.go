@@ -10,7 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 
-	"github.com/grafana/loki/pkg/tool/rules/rwrulefmt"
+	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
 )
 
 // CreateRuleGroup creates a new rule group
