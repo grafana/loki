@@ -21,6 +21,7 @@ import (
 	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -1153,6 +1154,30 @@ func NewDetectedFieldsTripperware(
 			)
 		}
 
-		return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
+		limitedRT := NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
+
+    // We only need sketches internally for calculating cardinality for split queries.
+    // This sets those sketches to nil so we don't return them to the user.
+		return queryrangebase.HandlerFunc(
+			func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				res, err := limitedRT.Do(ctx, req)
+				if err != nil {
+					return nil, err
+				}
+
+				resp, ok := res.(*DetectedFieldsResponse)
+        if !ok {
+          return res, nil
+        }
+
+				for i := range resp.Response.Fields {
+					resp.Response.Fields[i].Sketch = nil
+				}
+
+        resp.Response.FieldLimit = 0
+
+				return resp, nil
+			},
+		)
 	}), nil
 }
