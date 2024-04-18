@@ -73,6 +73,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 	}
 
 	// fallback to existing block resolving
+	// TODO(chaudum): Remove once client side block resolving is implemented
 	if len(blocksRefs) == 0 {
 		minFpRange, maxFpRange := getFirstLast(keyspaces)
 		interval := bloomshipper.NewInterval(day.Bounds())

@@ -27,6 +27,7 @@ func newMockBloomStore(bqs []*bloomshipper.CloseableBlockQuerier, metas []blooms
 	return &dummyStore{
 		querieres: bqs,
 		metas:     metas,
+		callCount: make(map[string]int),
 	}
 }
 
@@ -38,9 +39,15 @@ type dummyStore struct {
 	delay time.Duration
 	// mock response error when serving block queriers in ForEach
 	err error
+
+	// keep track of call counts
+	mtx       sync.Mutex
+	callCount map[string]int
 }
 
 func (s *dummyStore) ResolveMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([][]bloomshipper.MetaRef, []*bloomshipper.Fetcher, error) {
+	defer s.increaseCallCount("ResolveMetas")
+
 	time.Sleep(s.delay)
 
 	//TODO(chaudum) Filter metas based on search params
@@ -52,6 +59,8 @@ func (s *dummyStore) ResolveMetas(_ context.Context, _ bloomshipper.MetaSearchPa
 }
 
 func (s *dummyStore) FetchMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([]bloomshipper.Meta, error) {
+	defer s.increaseCallCount("FetchMetas")
+
 	//TODO(chaudum) Filter metas based on search params
 	return s.metas, nil
 }
@@ -72,6 +81,8 @@ func (s *dummyStore) Stop() {
 }
 
 func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef, _ ...bloomshipper.FetchOption) ([]*bloomshipper.CloseableBlockQuerier, error) {
+	defer s.increaseCallCount("FetchBlocks")
+
 	result := make([]*bloomshipper.CloseableBlockQuerier, 0, len(s.querieres))
 
 	if s.err != nil {
@@ -92,6 +103,12 @@ func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef
 	return result, nil
 }
 
+func (s *dummyStore) increaseCallCount(method string) {
+	s.mtx.Lock()
+	s.callCount[method]++
+	s.mtx.Unlock()
+}
+
 func TestProcessor(t *testing.T) {
 	ctx := context.Background()
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "TestProcessor")
@@ -101,7 +118,7 @@ func TestProcessor(t *testing.T) {
 	now := mktime("2024-01-27 12:00")
 	metrics := newWorkerMetrics(prometheus.NewPedanticRegistry(), constants.Loki, "bloom_gatway")
 
-	t.Run("success case", func(t *testing.T) {
+	t.Run("success case - without blocks", func(t *testing.T) {
 		_, metas, queriers, data := createBlocks(t, tenant, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 
 		mockStore := newMockBloomStore(queriers, metas)
@@ -146,6 +163,66 @@ func TestProcessor(t *testing.T) {
 		wg.Wait()
 		require.NoError(t, err)
 		require.Equal(t, int64(len(swb.series)), results.Load())
+
+		// assert that we fetch metas
+		require.Equal(t, 1, mockStore.callCount["FetchMetas"])
+		require.Equal(t, 1, mockStore.callCount["FetchBlocks"])
+	})
+
+	t.Run("success case - with blocks", func(t *testing.T) {
+		_, metas, queriers, data := createBlocks(t, tenant, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
+		blocks := make([]bloomshipper.BlockRef, 0, len(metas))
+		for _, meta := range metas {
+			// we can safely append all block refs from the meta, because it only contains a single one
+			blocks = append(blocks, meta.Blocks...)
+		}
+
+		mockStore := newMockBloomStore(queriers, metas)
+		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
+
+		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
+		swb := seriesWithInterval{
+			series: groupRefs(t, chunkRefs),
+			interval: bloomshipper.Interval{
+				Start: now.Add(-1 * time.Hour),
+				End:   now,
+			},
+			day: config.NewDayTime(truncateDay(now)),
+		}
+		filters := []syntax.LineFilterExpr{
+			{
+				LineFilter: syntax.LineFilter{
+					Ty:    0,
+					Match: "no match",
+				},
+			},
+		}
+
+		t.Log("series", len(swb.series))
+		task, _ := NewTask(ctx, "fake", swb, filters, blocks)
+		tasks := []Task{task}
+
+		results := atomic.NewInt64(0)
+		var wg sync.WaitGroup
+		for i := range tasks {
+			wg.Add(1)
+			go func(ta Task) {
+				defer wg.Done()
+				for range ta.resCh {
+					results.Inc()
+				}
+				t.Log("done", results.Load())
+			}(tasks[i])
+		}
+
+		err := p.run(ctx, tasks)
+		wg.Wait()
+		require.NoError(t, err)
+		require.Equal(t, int64(len(swb.series)), results.Load())
+
+		// assert that we don't resolve/fetch metas, but instead use the provided blocks
+		require.Equal(t, 0, mockStore.callCount["FetchMetas"])
+		require.Equal(t, 1, mockStore.callCount["FetchBlocks"])
 	})
 
 	t.Run("failure case", func(t *testing.T) {
