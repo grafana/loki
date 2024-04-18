@@ -12,6 +12,7 @@ cmd/loki/loki
 cmd/logcli/logcli
 clients/cmd/promtail/promtail
 cmd/loki/loki-debug
+cmd/lokitool/lokitool
 clients/cmd/promtail/promtail-debug
 clients/cmd/docker-driver/docker-driver
 cmd/loki-canary/loki-canary
