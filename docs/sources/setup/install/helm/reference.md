@@ -5385,7 +5385,7 @@ null
           "period": "24h",
           "prefix": "index_"
         },
-        "object_store": "filesystem",
+        "object_store": "{{ include \"loki.testSchemaObjectStore\" . }}",
         "schema": "v13",
         "store": "tsdb"
       }
@@ -6333,6 +6333,7 @@ false
 			<td>Configuration for the minio subchart</td>
 			<td><pre lang="json">
 {
+  "address": null,
   "buckets": [
     {
       "name": "chunks",

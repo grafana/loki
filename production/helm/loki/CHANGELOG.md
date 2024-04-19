@@ -13,6 +13,12 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.2.3
+
+- [ENHANCEMENT] Allow minio address to be overridden.
+- [CHANGE] `query-scheduler-discovery` service will now be prefixed by query scheduler full name.
+- [BUGFIX] Fix `helm-tests` Go source which was missing a param following #12245.
+
 ## 6.2.2
 
 - [FEATURE] Add support for enabling pattern ingester config via `loki.pattern_ingester.enabled`.
