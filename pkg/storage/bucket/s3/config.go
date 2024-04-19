@@ -31,7 +31,6 @@ var (
 	supportedSSETypes        = []string{SSEKMS, SSES3}
 	errUnsupportedSSEType    = errors.New("unsupported S3 SSE type")
 	errInvalidSSEContext     = errors.New("invalid S3 SSE encryption context")
-	errInvalidEndpointPrefix = errors.New("the endpoint must not prefixed with the bucket name")
 )
 
 // HTTPConfig stores the http.Transport configuration for the s3 minio client.
