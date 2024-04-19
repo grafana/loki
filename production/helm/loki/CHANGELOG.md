@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.2.2
+
+- [FEATURE] Add support for enabling pattern ingester config via `loki.pattern_ingester.enabled`.
+
 ## 6.2.1
 
 - [BUGFIX] Removed duplicate bucketNames from documentation and fixed key name `deploymentMode`
@@ -43,7 +47,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.47.0
 
 - [CHANGE] Changed version of Loki to 2.9.6
-
 
 ## 5.46.0
 
@@ -201,7 +204,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.33.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.4
-
 
 ## 5.32.0
 
@@ -454,11 +456,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.7.2
 
-
 ## 5.4.0
 
 - [CHANGE] Changed version of Loki to 2.8.2
-
 
 - [CHANGE] Change default GEL and Loki versions to 1.7.1 and 2.8.1 respectively
 - [BUGFIX] Fix dns port in network-policy
@@ -469,11 +469,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Add projected volume type to psp
 
-
 ## 4.9.0
 
 - [CHANGE] Changed version of Loki to 2.7.5
-
 
 - [BUGFIX] Fix role/PSP mapping
 
