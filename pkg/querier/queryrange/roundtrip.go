@@ -1163,7 +1163,7 @@ func NewDetectedFieldsTripperware(
 	}), nil
 }
 
-// NewSketchRemovingHandler returns a handler that removes sketches from detected fields responses before 
+// NewSketchRemovingHandler returns a handler that removes sketches from detected fields responses before
 // returning them to the user. We only need sketches internally for calculating cardinality for split queries.
 // We're already doing this sanitization in the merge code, so this handler catches non-split queries
 // to make sure their sketches are also removed.

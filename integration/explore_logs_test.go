@@ -122,7 +122,7 @@ func Test_ExploreLogsApis(t *testing.T) {
 		require.NoError(t, cliDistributor.PushLogLine("foo=bar color=green", now, nil, map[string]string{"job": "fake"}))
 		require.NoError(t, cliDistributor.PushLogLine("foo=bar color=red", now, nil, map[string]string{"job": "fake"}))
 
-    // validate logs are there
+		// validate logs are there
 		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 		assert.Equal(t, "streams", resp.Data.ResultType)
