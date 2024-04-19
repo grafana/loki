@@ -34,7 +34,7 @@ func TestAddStream(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	it, err := stream.Iterator(context.Background(), model.Earliest, model.Latest)
+	it, err := stream.Iterator(context.Background(), model.Earliest, model.Latest, model.Time(time.Second))
 	require.NoError(t, err)
 	res, err := iter.ReadAll(it)
 	require.NoError(t, err)
@@ -68,7 +68,7 @@ func TestPruneStream(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, false, stream.prune(time.Hour))
-	it, err := stream.Iterator(context.Background(), model.Earliest, model.Latest)
+	it, err := stream.Iterator(context.Background(), model.Earliest, model.Latest, model.Time(time.Second))
 	require.NoError(t, err)
 	res, err := iter.ReadAll(it)
 	require.NoError(t, err)
