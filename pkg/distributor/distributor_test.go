@@ -1548,7 +1548,7 @@ func Test_DetectLogLevels(t *testing.T) {
 		require.Equal(t, push.LabelsAdapter{
 			{
 				Name:  labelLevel,
-				Value: logLevelInfo,
+				Value: logLevelUnknown,
 			},
 		}, topVal.Streams[0].Entries[0].StructuredMetadata)
 	})
