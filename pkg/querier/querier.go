@@ -1084,27 +1084,39 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 
 	// TODO(twhitney): converting from a step to a duration should be abstracted and reused,
 	// doing this in a few places now.
-	streams, err := streamsForFieldDetection(iters, req.LineLimit, time.Duration(req.Step*1e6))
+	streams, err := streamsForFieldDetection(iters, req.LineLimit, time.Duration(req.Step))
 	if err != nil {
 		return nil, err
 	}
 
 	detectedFields := parseDetectedFields(ctx, req.FieldLimit, streams)
 
+	//TODO: detected field needs to contain the sketch
+	// make sure response to frontend is GRPC
+	//only want cardinality in JSON
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
 	for k, v := range detectedFields {
+		sketch, err := v.sketch.MarshalBinary()
+		if err != nil {
+			level.Warn(q.logger).Log("msg", "failed to marshal hyperloglog sketch", "err", err)
+			continue
+		}
+
 		fields[fieldCount] = &logproto.DetectedField{
 			Label:       k,
 			Type:        v.fieldType,
 			Cardinality: v.Estimate(),
+			Sketch:      sketch,
 		}
 
 		fieldCount++
 	}
 
+	//TODO: detected fields response needs to include the sketch
 	return &logproto.DetectedFieldsResponse{
-		Fields: fields,
+		Fields:     fields,
+		FieldLimit: req.GetFieldLimit(),
 	}, nil
 }
 
@@ -1128,6 +1140,10 @@ func (p *parsedFields) Insert(value string) {
 
 func (p *parsedFields) Estimate() uint64 {
 	return p.sketch.Estimate()
+}
+
+func (p *parsedFields) Marshal() ([]byte, error) {
+	return p.sketch.MarshalBinary()
 }
 
 func (p *parsedFields) DetermineType(value string) {
@@ -1164,7 +1180,6 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 	fieldCount := uint32(0)
 
 	for _, stream := range streams {
-
 		level.Debug(spanlogger.FromContext(ctx)).Log(
 			"detected_fields", "true",
 			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
@@ -1172,12 +1187,15 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 		for _, entry := range stream.Entries {
 			detected := parseLine(entry.Line)
 			for k, vals := range detected {
-				if fieldCount >= limit {
-					return detectedFields
+				df, ok := detectedFields[k]
+				if !ok && fieldCount < limit {
+					df = newParsedFields()
+					detectedFields[k] = df
+					fieldCount++
 				}
 
-				if _, ok := detectedFields[k]; !ok {
-					detectedFields[k] = newParsedFields()
+				if df == nil {
+					continue
 				}
 
 				for _, v := range vals {
@@ -1192,8 +1210,6 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 				level.Debug(spanlogger.FromContext(ctx)).Log(
 					"detected_fields", "true",
 					"msg", fmt.Sprintf("detected field %s with %d values", k, len(vals)))
-
-				fieldCount++
 			}
 		}
 	}

@@ -273,7 +273,7 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 		return nil, err
 	}
 
-	counts := make([]uint32, len(responses))
+	counts := make([]uint32, 0, len(responses))
 
 	for _, resp := range responses {
 		counts = append(counts, resp.response.(uint32))
