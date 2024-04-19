@@ -2934,8 +2934,9 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 [discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name component workload job]]
 
 # Discover and add log levels during ingestion, if not present already. Levels
-# would be added to Structured Metadata with name 'level' and one of the values
-# from 'debug', 'info', 'warn', 'error', 'critical', 'fatal'.
+# would be added to Structured Metadata with name 'level' or 'LEVEL'
+# (case-sensitive) and one of the values from 'trace', 'debug', 'info', 'warn',
+# 'error', 'critical', 'fatal' (case insensitive).
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
 

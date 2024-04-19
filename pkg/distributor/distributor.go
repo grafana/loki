@@ -912,7 +912,10 @@ func extractLogLevelFromLogLine(log string) string {
 	if firstNonSpaceChar == '{' && lastNonSpaceChar == '}' {
 		levelIndex := strings.Index(log, `"level":`)
 		if levelIndex == -1 {
-			return logLevelUnknown
+			levelIndex = strings.Index(log, `"LEVEL":`)
+			if levelIndex == -1 {
+				return logLevelUnknown
+			}
 		}
 		compareString := log[levelIndex:min(len(log), levelIndex+20)]
 
@@ -940,7 +943,10 @@ func extractLogLevelFromLogLine(log string) string {
 	}
 
 	// logfmt logs:
-	levelIndex := strings.Index(log, "level=")
+	levelIndex := strings.Index(log, "LEVEL=")
+	if levelIndex == -1 {
+		levelIndex = strings.Index(log, "level=")
+	}
 	if levelIndex != -1 {
 		compareString := log[levelIndex:min(len(log), levelIndex+20)]
 
