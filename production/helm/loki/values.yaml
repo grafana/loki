@@ -117,6 +117,7 @@ loki:
   # If empty, no configmap or secret will be created.
   # The value will be passed through tpl.
   generatedConfigObjectName: '{{ include "loki.name" . }}'
+
   # -- Config file contents for Loki
   # @default -- See values.yaml
   config: |
@@ -130,6 +131,9 @@ loki:
     server:
       {{- toYaml . | nindent 2}}
     {{- end}}
+
+    pattern_ingester:
+      enabled: {{ .Values.loki.pattern_ingester.enabled }}
 
     memberlist:
     {{- if .Values.loki.memberlistConfig }}
@@ -296,6 +300,7 @@ loki:
     max_cache_freshness_per_query: 10m
     split_queries_by_interval: 15m
     query_timeout: 300s
+    volume_enabled: true
   # -- Provides a reloadable runtime configuration file for some specific configuration
   runtimeConfig: {}
   # -- Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration
@@ -384,7 +389,7 @@ loki:
     configs:
       - from: 2024-04-01
         store: tsdb
-        object_store: filesystem
+        object_store: '{{ include "loki.testSchemaObjectStore" . }}'
         schema: v13
         index:
           prefix: index_
@@ -409,6 +414,9 @@ loki:
       up_to: 3
   # --  Optional compactor configuration
   compactor: {}
+  # --  Optional pattern ingester configuration
+  pattern_ingester:
+    enabled: false
   # --  Optional analytics configuration
   analytics: {}
   # --  Optional querier configuration
@@ -836,6 +844,8 @@ adminApi:
   tolerations: []
   # -- Grace period to allow the admin-api to shutdown before it is killed
   terminationGracePeriodSeconds: 60
+
+
 ######################################################################################################################
 #
 # Gateway and Ingress
@@ -1174,6 +1184,7 @@ migrate:
     # -- If migrating from a distributed service, provide the distributed deployment's
     # memberlist service DNS so the new deployment can join its ring.
     memberlistService: ""
+
 ######################################################################################################################
 #
 # Single Binary Deployment
@@ -3070,6 +3081,8 @@ minio:
     requests:
       cpu: 100m
       memory: 128Mi
+  # Allow the address used by Loki to refer to Minio to be overridden
+  address: null
 # Create extra manifests via values. Would be passed through `tpl` for templating
 extraObjects: []
 # - apiVersion: v1

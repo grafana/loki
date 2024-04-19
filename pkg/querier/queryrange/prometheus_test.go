@@ -15,7 +15,8 @@ import (
 var emptyStats = `"stats": {
 	"index": {
 		"postFilterChunks": 0,
-		"totalChunks": 0
+		"totalChunks": 0,
+		"shardsDuration": 0
 	},
 	"ingester" : {
 		"store": {
