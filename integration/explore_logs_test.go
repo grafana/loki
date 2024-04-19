@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/integration/client"
-	"github.com/grafana/loki/v3/integration/cluster"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/integration/client"
+	"github.com/grafana/loki/v3/integration/cluster"
 )
 
 type DetectedField struct {
