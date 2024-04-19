@@ -201,7 +201,7 @@ from there. This means that if new log entries have been read and pushed to the
 ingester between the last sync period and the crash, these log entries will be
 sent again to the ingester on Promtail restart.
 
-If Loki is not configured to [accept out-of-order writes]({{< relref "../../../configure#accept-out-of-order-writes" >}}), Loki will reject all log lines received in
+If Loki is not configured to [accept out-of-order writes](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#accept-out-of-order-writes), Loki will reject all log lines received in
 what it perceives is out of
 order. If Promtail happens to
 crash, it may re-send log lines that were sent prior to the crash. The default

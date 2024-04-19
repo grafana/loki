@@ -24,7 +24,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/util/filter"
+	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
 // ChunkLen is the length of a chunk in bytes.

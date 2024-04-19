@@ -36,7 +36,79 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+## 3.0.0
+
+{{% admonition type="note" %}}
+If you have questions about upgrading to Loki 3.0, please join us on the [community Slack(https://slack.grafana.com/) in the `#loki-3` channel.
+
+Or leave a comment on this [Github Issue](https://github.com/grafana/loki/issues/12506).
+{{% /admonition %}}
+
+Loki 3.0 is a major version increase and comes with several breaking changes.
+
+Here is the shortlist of things we think most people may encounter:
+
+  * Structured metadata is enabled by default and requires `tsdb` and `v13` schema or Loki won't start. Refer to [Structured Metadata, Open Telemetry, Schemas and Indexes](#structured-metadata-open-telemetry-schemas-and-indexes).
+  * The `shared_store` config is removed. Refer to [Removed `shared_store` and `shared_store_key_prefix` from shipper configuration](#removed-shared_store-and-shared_store_key_prefix-from-shipper-configuration).
+  * Loki now enforces a max line size of 256KB by default (you can disable this or increase this but this is how Grafana Labs runs Loki). Refer to [Changes to default configure values](#changes-to-default-configuration-values-in-30).
+  * Loki now enforces a max label limit of 15 labels per series, down from 30. Extra labels inflate the size of the index and reduce performance, you should almost never need more than 15 labels. Refer to [Changes to default configure values](#changes-to-default-configuration-values-in-30).
+  * Loki will automatically attempt to populate a `service_name` label on ingestion. Refer to [`service_name` label](#service_name-label).
+  * There are many metric name changes. Refer to [Distributor metric changes](#distributor-metric-changes), [Embedded cache metric changes](#embedded-cache-metric-changes), and [Metrics namespace](#metrics-namespace).
+
+If you would like to see if your existing configuration will work with Loki 3.0:
+1. In an empty directory on your computer, copy you configuration into a file named `loki-config.yaml`.
+1. Run this command from that directory: 
+```bash
+docker run --rm -t -v "${PWD}":/config grafana/loki:3.0.0 -config.file=/config/loki-config.yaml -verify-config=true`
+```
+
+{{< admonition type="note" >}}
+If you introduce a new schema_config entry it may cause additional validation errors.
+{{< /admonition >}}
+
+{{< admonition type="tip" >}}
+If you configure `path_prefix` in the `common` config section this can help save a lot of configuration. Refer to the [Common Config Docs](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#common).
+{{< /admonition >}}
+
+
+The **Helm chart** has gone through some significant changes and has a separate upgrade guide: [Upgrading to Helm 6.x](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-6x/).
+
 ### Loki
+
+#### Structured Metadata, Open Telemetry, Schemas and Indexes
+
+A flagship feature of Loki 3.0 is native support for the Open Telemetry Protocol (OTLP). This is made possible by a new feature in Loki called [Structured Metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/), a place for metadata which doesn't belong in labels or log lines. OTel resources and attributes are often a great example of data which doesn't belong in the index nor in the log line.
+
+Structured Metadata is enabled by default in Loki 3.0, however, it requires your active schema be using both the `tsdb` index type AND the `v13` storage schema.  If you are not using both of these you have two options:
+* Upgrade your index version and schema version before updating to 3.0, see [schema config upgrade](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/schema/).
+* Disable Structured Metadata (and therefor OTLP support) and upgrade to 3.0 and perform the schema migration after. This can be done by setting `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false`.
+
+#### `service_name` label
+
+Loki 3.0 will automatically assign a `service_name` label to all ingested logs by default. A service name is something required by Open Telemetry semantic conventions and is something Grafana Labs is building into our future user interface and query experiences.
+
+Loki will attempt to create the `service_name` label by looking for the following labels in this order:
+
+  - service
+  - app
+  - application
+  - name
+  - app_kubernetes_io_name
+  - container
+  - container_name
+  - component
+  - workload
+  - job
+
+If no label is found matching the list, a value of `unknown_service` is applied.
+
+You can change this list by providing a list of labels to `discover_service_name` in the [limits_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config) block.
+
+{{< admonition type="note" >}}
+If you are already using a `service_label`, Loki will not make a new assignment.
+{{< /admonition >}}
+
+**You can disable this by providing an empty value for `discover_service_name`.**
 
 #### Removed `shared_store` and `shared_store_key_prefix` from shipper configuration
 
@@ -44,7 +116,7 @@ The following CLI flags and the corresponding YAML settings to configure shared 
 - `-boltdb.shipper.shared-store`
 - `-tsdb.shipper.shared-store`
 
-Going forward the `object_store` setting in the [period_config](/docs/loki/latest/configure/#period_config) will be used to configure the store for the index.
+Going forward the `object_store` setting in the [period_config](/docs/loki/<LOKI_VERSION>/configure/#period_config) will be used to configure the store for the index.
 This enforces chunks and index files to reside together in the same storage bucket for a given period.
 
 We are removing the shared store setting in an effort to simplify storage configuration and reduce the possibility for misconfiguration.
@@ -69,7 +141,7 @@ The following CLI flags and the corresponding YAML settings to configure a path 
 - `-boltdb.shipper.shared-store.key-prefix`
 - `-tsdb.shipper.shared-store.key-prefix`
 
-Path prefix for storing the index can now be configured by setting `path_prefix` under `index` key in [period_config](/docs/loki/latest/configure/#period_config).
+Path prefix for storing the index can now be configured by setting `path_prefix` under `index` key in [period_config](/docs/loki/<LOKI_VERSION>/configure/#period_config).
 This enables users to change the path prefix by adding a new period config.
 ```
 period_config:
@@ -79,7 +151,7 @@ period_config:
 ```
 
 {{% admonition type="note" %}}
-`path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on [legacy indexes]({{< relref "../../storage#index-storage" >}}).
+`path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on [legacy indexes](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage).
 {{% /admonition %}}
 
 `path_prefix` defaults to `index/` which is same as the default value of the removed configurations.
@@ -94,12 +166,40 @@ The following CLI flags and the corresponding YAML settings to configure the sha
 - `-boltdb.shipper.compactor.shared-store`
 - `-boltdb.shipper.compactor.shared-store.key-prefix`
 
-Going forward compactor will run compaction and retention on all the object stores configured in [period configs](/docs/loki/latest/configure/#period_config) where the index type is either `tsdb` or `boltdb-shipper`.
+Going forward compactor will run compaction and retention on all the object stores configured in [period configs](/docs/loki/<LOKI_VERSION>/configure/#period_config) where the index type is either `tsdb` or `boltdb-shipper`.
 
 #### `delete_request_store` should be explicitly configured
 
 `-compactor.delete-request-store` or its YAML setting should be explicitly configured when retention is enabled, this is required for storing delete requests.
 The path prefix under which the delete requests are stored is decided by `-compactor.delete-request-store.key-prefix`, it defaults to `index/`.
+
+#### Configuration `async_cache_write_back_concurrency` and `async_cache_write_back_buffer_size` have been removed
+
+These configurations were redundant with the `Background` configuration in the [cache-config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#cache_config).
+
+`async_cache_write_back_concurrency` can be set with `writeback_goroutines`
+`async_cache_write_back_buffer_size` can be set with `writeback_buffer`
+
+additionally the `Background` configuration also lest you set `writeback_size_limit` which can be used to set a maximum amount of memory to use for writeback objects vs a count of objects.
+
+#### Legacy ingester shutdown handler is removed
+
+The already deprecated handler `/ingester/flush_shutdown` is removed in favor of `/ingester/shutdown?flush=true`.
+
+#### Ingester configuration `max_transfer_retries` is removed.
+
+The setting `max_transfer_retries` (`-ingester.max-transfer-retries`) is removed in favor of the Write Ahead log (WAL).
+It was used to allow transferring chunks to new ingesters when the old ingester was shutting down during a rolling restart.
+Alternatives to this setting are:
+- **A. (Preferred)** Enable the WAL and rely on the new ingester to replay the WAL.
+  - Optionally, you can enable `flush_on_shutdown` (`-ingester.flush-on-shutdown`) to flush to long-term storage on shutdowns.
+- **B.** Manually flush during shutdowns via [the ingester `/shutdown?flush=true` endpoint](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/api/#flush-in-memory-chunks-and-shut-down).
+
+#### Removed the `default` section of the runtime overrides config file.
+
+This was introduced in 2.9 and likely not widely used.  This only affects you if you run Loki with a runtime config file AND you had populated the new `default` block added in 2.9.
+
+The `default` block was removed and instead a top level config now exists in the standard Loki config called `operational_config`, you can set default values here for runtime configs.
 
 #### Configuration `use_boltdb_shipper_as_backup` is removed
 
@@ -112,18 +212,18 @@ The previous default value `false` is applied.
 
 1. Removed already deprecated `store.max-look-back-period` CLI flag and the corresponding YAML settings. Use `querier.max-query-lookback` config instead.
 1. Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting.
-1. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+1. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/<LOKI_VERSION>/configuration/#limits_config).
 1. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type.
 1. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
 1. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
-1. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+1. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/<LOKI_VERSION>/configuration/#limits_config).
 1. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
 1. `frontend.cache-split-interval` CLI flag is removed. Results caching interval is now determined by `querier.split-queries-by-interval`.
 1. `querier.worker-parallelism` CLI flag and its corresponding yaml setting are now removed as it does not offer additional value to already existing `querier.max-concurrent`.
     We recommend configuring `querier.max-concurrent` to limit the max concurrent requests processed by the queriers.
 1. `ruler.evaluation-delay-duration` CLI flag and the corresponding YAML setting are removed.
 1. `validation.enforce-metric-name` CLI flag and the corresponding YAML setting are removed.
-1. `boltdb.shipper.compactor.deletion-mode` CLI flag and the corresponding YAML setting are removed. You can instead configure the `compactor.deletion-mode` CLI flag or `deletion_mode` YAML setting in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+1. `boltdb.shipper.compactor.deletion-mode` CLI flag and the corresponding YAML setting are removed. You can instead configure the `compactor.deletion-mode` CLI flag or `deletion_mode` YAML setting in [Limits Config](/docs/loki/<LOKI_VERSION>/configuration/#limits_config).
 1. Compactor CLI flags that use the prefix `boltdb.shipper.compactor.` are removed. You can instead use CLI flags with the `compactor.` prefix.
 
 #### Legacy ingester shutdown handler is removed
@@ -137,14 +237,14 @@ It was used to allow transferring chunks to new ingesters when the old ingester 
 Alternatives to this setting are:
 - **A. (Preferred)** Enable the WAL and rely on the new ingester to replay the WAL.
      - Optionally, you can enable `flush_on_shutdown` (`-ingester.flush-on-shutdown`) to flush to long-term storage on shutdowns.
-- **B.** Manually flush during shutdowns via [the ingester `/shutdown?flush=true` endpoint]({{< relref "../../reference/api#flush-in-memory-chunks-and-shut-down" >}}).
+- **B.** Manually flush during shutdowns via [the ingester `/shutdown?flush=true` endpoint](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#flush-in-memory-chunks-and-shut-down).
 
 #### Distributor metric changes
 
 The `loki_distributor_ingester_append_failures_total` metric has been removed in favour of `loki_distributor_ingester_append_timeouts_total`.
 This new metric will provide a more clear signal that there is an issue with ingesters, and this metric can be used for high-signal alerting.
 
-#### Changes to default configuration values
+#### Changes to default configuration values in 3.0
 
 {{% responsive-table %}}
 | configuration                                          | new default | old default | notes |
@@ -157,8 +257,8 @@ This new metric will provide a more clear signal that there is an issue with ing
 | `frontend.max-cache-freshness`                         | 10m         | 1m          | - |
 | `frontend.max-stats-cache-freshness`                   | 10m         | 0           | - |
 | `frontend.embedded-cache.max-size-mb`                  | 100MB       | 1GB         | embedded results cache size now defaults to 100MB |
-| `memcached.batchsize`                                  | 256         | 1024        | - |
-| `memcached.parallelism`                                | 10          | 100         | - |
+| `memcached.batchsize`                                  | 4           | 1024        | - |
+| `memcached.parallelism`                                | 5           | 100         | - |
 | `querier.compress-http-responses`                      | true        | false       | compress response if the request accepts gzip encoding |
 | `querier.max-concurrent`                               | 4           | 10          | Consider increasing this if queriers have access to more CPU resources. Note that you risk running into out of memory errors if you set this to a very high value. |
 | `querier.split-queries-by-interval`                    | 1h          | 30m         | - |
@@ -168,9 +268,21 @@ This new metric will provide a more clear signal that there is an issue with ing
 | `legacy-read-mode`                                     | false       | true        | Deprecated. It will be removed in the next minor release. |
 {{% /responsive-table %}}
 
+#### Automatic stream sharding is enabled by default
+
+Automatic stream sharding helps keep the write load of high volume streams balanced across ingesters and helps to avoid hot-spotting. Check out the [operations page](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/automatic-stream-sharding/) for more information
+
+#### More results caching is enabled by default
+
+The TSDB index type has support for caching results for 'stats' and 'volume' queries which are now enabled by default.
+
+'label' and 'series' requests can be cached now too and this is enabled by default.
+
+All of these are cached to the `results_cache` which is configured in the `query_range` config section.  By default, an in memory cache is used.
+
 #### Write dedupe cache is deprecated
-Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB]({{< relref "../../operations/storage/tsdb" >}}) and [boltdb-shipper]({{< relref "../../operations/storage/boltdb-shipper" >}})).
-If you using a [legacy index type]({{< relref "../../storage#index-storage" >}}), consider migrating to TSDB (recommended).
+Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) and [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/)).
+If you using a [legacy index type](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage), consider migrating to TSDB (recommended).
 
 #### Embedded cache metric changes
 
@@ -424,7 +536,7 @@ ruler:
 #### query-frontend Kubernetes headless service changed to load balanced service
 
 {{% admonition type="note" %}}
-This is relevant only if you are using [jsonnet for deploying Loki in Kubernetes](/docs/loki/latest/installation/tanka/).
+This is relevant only if you are using [jsonnet for deploying Loki in Kubernetes](/docs/loki/<LOKI_VERSION>/installation/tanka/).
 {{% /admonition %}}
 
 The `query-frontend` Kubernetes service was previously headless and was used for two purposes:
@@ -464,14 +576,14 @@ These statistics are also displayed when using `--stats` with LogCLI.
 
 ### Loki Canary Permission
 
-The new `push` mode to [Loki canary](/docs/loki/latest/operations/loki-canary/) can push logs that are generated by a Loki canary directly to a given Loki URL. Previously, it only wrote to a local file and you needed some agent, such as promtail, to scrape and push it to Loki.
+The new `push` mode to [Loki canary](/docs/loki/<LOKI_VERSION>/operations/loki-canary/) can push logs that are generated by a Loki canary directly to a given Loki URL. Previously, it only wrote to a local file and you needed some agent, such as promtail, to scrape and push it to Loki.
 So if you run Loki behind some proxy with different authorization policies to read and write to Loki, then auth credentials we pass to Loki canary now needs to have both `READ` and `WRITE` permissions.
 
 ### `engine.timeout` and `querier.query_timeout` are deprecated
 
 Previously, we had two configurations to define a query timeout: `engine.timeout` and `querier.query-timeout`.
 As they were conflicting and `engine.timeout` isn't as expressive as `querier.query-tiomeout`,
-we're deprecating it and moving it to [Limits Config](/docs/loki/latest/configuration/#limits_config) `limits_config.query_timeout` with same default values.
+we're deprecating it and moving it to [Limits Config](/docs/loki/<LOKI_VERSION>/configuration/#limits_config) `limits_config.query_timeout` with same default values.
 
 #### `fifocache` has been renamed
 
@@ -653,7 +765,7 @@ This histogram reports the distribution of log line sizes by file. It has 8 buck
 
 This creates a lot of series and we don't think this metric has enough value to offset the amount of series genereated so we are removing it.
 
-While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs]({{< relref "../../send-data/promtail/stages/metrics#counter" >}}).
+While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/stages/metrics/#counter).
 
 #### `added Docker target` log message has been demoted from level=error to level=info
 
@@ -707,7 +819,7 @@ limits_config:
   retention_period: [30d]
 ```
 
-See the [retention docs]({{< relref "../../operations/storage/retention" >}}) for more info.
+See the [retention docs](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/) for more info.
 
 #### Log messages on startup: proto: duplicate proto type registered:
 
@@ -906,10 +1018,10 @@ cortex_chunks_store* -> loki_chunks_store*
 
 Previously, samples generated by recording rules would only be buffered in memory before being remote-written to Prometheus; from this
 version, the `ruler` now writes these samples to a per-tenant Write-Ahead Log for durability. More details about the
-per-tenant WAL can be found [here](/docs/loki/latest/operations/recording-rules/).
+per-tenant WAL can be found [here](/docs/loki/<LOKI_VERSION>/operations/recording-rules/).
 
 The `ruler` now requires persistent storage - see the
-[Operations](/docs/loki/latest/operations/recording-rules/#deployment) page for more details about deployment.
+[Operations](/docs/loki/<LOKI_VERSION>/operations/recording-rules/#deployment) page for more details about deployment.
 
 ### Promtail
 
@@ -1178,7 +1290,7 @@ If you happen to have `results_cache.max_freshness` set, use `limits_config.max_
 
 ### Promtail config removed
 
-The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages]({{< relref "../../send-data/promtail/configuration#pipeline_stages" >}}) instead.
+The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#pipeline_stages) instead.
 
 ### Upgrading schema to use boltdb-shipper and/or v11 schema
 
@@ -1212,7 +1324,7 @@ schema_config:
 ④ Make sure this matches your existing config (e.g. maybe you were using gcs for your object_store)
 ⑤ 24h is required for boltdb-shipper
 
-There are more examples on the [Storage description page]({{< relref "../../storage/_index.md#examples" >}}) including the information you need to setup the `storage` section for boltdb-shipper.
+There are more examples on the [Storage description page](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#examples) including the information you need to setup the `storage` section for boltdb-shipper.
 
 
 ## 1.6.0
@@ -1508,7 +1620,7 @@ max_retries:
 
 Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config changes](https://github.com/cortexproject/cortex/blob/v0.7.0-rc.0/CHANGELOG).
 
-In the [cache_config]({{< relref "../../configure#cache_config" >}}), `defaul_validity` has changed to `default_validity`.
+In the [cache_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure#cache_config), `defaul_validity` has changed to `default_validity`.
 
 If you configured your schema via arguments and not a config file, this is no longer supported. This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.
 

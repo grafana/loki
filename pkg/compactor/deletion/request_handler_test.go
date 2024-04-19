@@ -10,14 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
-
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/util"
-
-	"github.com/grafana/dskit/user"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 func TestAddDeleteRequestHandler(t *testing.T) {
@@ -50,14 +48,14 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 		require.Equal(t, w.Code, http.StatusInternalServerError)
 	})
 
-	t.Run("it shards deletes based on a query param", func(t *testing.T) {
+	t.Run("it only shards deletes with line filter based on a query param", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		h := NewDeleteRequestHandler(store, 0, nil)
 
 		from := model.TimeFromUnix(model.Now().Add(-3 * time.Hour).Unix())
 		to := model.TimeFromUnix(from.Add(3 * time.Hour).Unix())
 
-		req := buildRequest("org-id", `{foo="bar"}`, unixString(from), unixString(to))
+		req := buildRequest("org-id", `{foo="bar"} |= "foo"`, unixString(from), unixString(to))
 		params := req.URL.Query()
 		params.Set("max_interval", "1h")
 		req.URL.RawQuery = params.Encode()
@@ -87,7 +85,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 		from := model.TimeFromUnix(model.Now().Add(-3 * time.Hour).Unix())
 		to := model.TimeFromUnix(from.Add(3 * time.Hour).Unix())
 
-		req := buildRequest("org-id", `{foo="bar"}`, unixString(from), unixString(to))
+		req := buildRequest("org-id", `{foo="bar"} |= "foo"`, unixString(from), unixString(to))
 
 		w := httptest.NewRecorder()
 		h.AddDeleteRequestHandler(w, req)
@@ -105,6 +103,27 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 			require.Equal(t, startTime, req.StartTime)
 			require.Equal(t, endTime, req.EndTime)
 		}
+	})
+
+	t.Run("it does not shard deletes without line filter", func(t *testing.T) {
+		store := &mockDeleteRequestsStore{}
+		h := NewDeleteRequestHandler(store, 0, nil)
+
+		from := model.TimeFromUnix(model.Now().Add(-3 * time.Hour).Unix())
+		to := model.TimeFromUnix(from.Add(3 * time.Hour).Unix())
+
+		req := buildRequest("org-id", `{foo="bar"}`, unixString(from), unixString(to))
+		params := req.URL.Query()
+		params.Set("max_interval", "1h")
+		req.URL.RawQuery = params.Encode()
+
+		w := httptest.NewRecorder()
+		h.AddDeleteRequestHandler(w, req)
+
+		require.Equal(t, w.Code, http.StatusNoContent)
+		require.Len(t, store.addReqs, 1)
+		require.Equal(t, from, store.addReqs[0].StartTime)
+		require.Equal(t, to, store.addReqs[0].EndTime)
 	})
 
 	t.Run("it works with RFC3339", func(t *testing.T) {
@@ -166,11 +185,11 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 			{"org-id", `{foo="bar"}`, "0000000000", "0000000000001", "", "invalid end time: require unix seconds or RFC3339 format\n"},
 			{"org-id", `{foo="bar"}`, "0000000000", fmt.Sprint(time.Now().Add(time.Hour).Unix())[:10], "", "deletes in the future are not allowed\n"},
 			{"org-id", `{foo="bar"}`, "0000000001", "0000000000", "", "start time can't be greater than end time\n"},
-			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "not-a-duration", "invalid max_interval: valid time units are 's', 'm', 'h'\n"},
-			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "1ms", "invalid max_interval: valid time units are 's', 'm', 'h'\n"},
-			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "1h", "max_interval can't be greater than 1m0s\n"},
-			{"org-id", `{foo="bar"}`, "0000000000", "0000000001", "30s", "max_interval can't be greater than the interval to be deleted (1s)\n"},
-			{"org-id", `{foo="bar"}`, "0000000000", "0000000000", "", "difference between start time and end time must be at least one second\n"},
+			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000001", "not-a-duration", "invalid max_interval: valid time units are 's', 'm', 'h'\n"},
+			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000001", "1ms", "invalid max_interval: valid time units are 's', 'm', 'h'\n"},
+			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000001", "1h", "max_interval can't be greater than 1m0s\n"},
+			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000001", "30s", "max_interval can't be greater than the interval to be deleted (1s)\n"},
+			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000000", "", "difference between start time and end time must be at least one second\n"},
 		} {
 			t.Run(strings.TrimSpace(tc.error), func(t *testing.T) {
 				req := buildRequest(tc.orgID, tc.query, tc.startTime, tc.endTime)

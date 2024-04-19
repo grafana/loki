@@ -10,8 +10,6 @@ type MsgAcceptFunc func(dh Header) MsgAcceptAction
 //
 // * opcode isn't OpcodeQuery or OpcodeNotify
 //
-// * Zero bit isn't zero
-//
 // * does not have exactly 1 question in the question section
 //
 // * has more than 1 RR in the Answer section

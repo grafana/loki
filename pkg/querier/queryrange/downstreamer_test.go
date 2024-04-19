@@ -17,12 +17,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 func testSampleStreams() []queryrangebase.SampleStream {
@@ -290,7 +291,7 @@ func TestInstanceFor(t *testing.T) {
 				Params: logql.ParamsWithShardsOverride{
 					Params: newParams(),
 					ShardsOverride: logql.Shards{
-						{Shard: 0, Of: 2},
+						logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 0, Of: 2}),
 					}.Encode(),
 				},
 			},
@@ -298,7 +299,7 @@ func TestInstanceFor(t *testing.T) {
 				Params: logql.ParamsWithShardsOverride{
 					Params: newParams(),
 					ShardsOverride: logql.Shards{
-						{Shard: 1, Of: 2},
+						logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 1, Of: 2}),
 					}.Encode(),
 				},
 			},
@@ -363,8 +364,10 @@ func TestInstanceDownstream(t *testing.T) {
 		queries := []logql.DownstreamQuery{
 			{
 				Params: logql.ParamsWithShardsOverride{
-					Params:         logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: expr},
-					ShardsOverride: logql.Shards{{Shard: 0, Of: 2}}.Encode(),
+					Params: logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: expr},
+					ShardsOverride: logql.Shards{
+						logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 0, Of: 2}),
+					}.Encode(),
 				},
 			},
 		}

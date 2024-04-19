@@ -20,8 +20,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
 )
 
 func TestFileTargetSync(t *testing.T) {
@@ -76,10 +76,10 @@ func TestFileTargetSync(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Start with nothing watched.
-	if len(target.watches) != 0 {
+	if target.getWatchesLen() != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.readers) != 0 {
+	if target.getReadersLen() != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -90,10 +90,10 @@ func TestFileTargetSync(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	if len(target.watches) != 0 {
+	if target.getWatchesLen() != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.readers) != 0 {
+	if target.getReadersLen() != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -106,10 +106,10 @@ func TestFileTargetSync(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	assert.Equal(t, 1, len(target.watches),
+	assert.Equal(t, 1, target.getWatchesLen(),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 1, len(target.readers),
+	assert.Equal(t, 1, target.getReadersLen(),
 		"Expected tails to be 1 at this point in the test...",
 	)
 
@@ -124,10 +124,10 @@ func TestFileTargetSync(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	assert.Equal(t, 1, len(target.watches),
+	assert.Equal(t, 1, target.getWatchesLen(),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 2, len(target.readers),
+	assert.Equal(t, 2, target.getReadersLen(),
 		"Expected tails to be 2 at this point in the test...",
 	)
 
@@ -138,10 +138,10 @@ func TestFileTargetSync(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	assert.Equal(t, 1, len(target.watches),
+	assert.Equal(t, 1, target.getWatchesLen(),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 1, len(target.readers),
+	assert.Equal(t, 1, target.getReadersLen(),
 		"Expected tails to be 1 at this point in the test...",
 	)
 
@@ -152,10 +152,10 @@ func TestFileTargetSync(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	assert.Equal(t, 0, len(target.watches),
+	assert.Equal(t, 0, target.getWatchesLen(),
 		"Expected watches to be 0 at this point in the test...",
 	)
-	assert.Equal(t, 0, len(target.readers),
+	assert.Equal(t, 0, target.getReadersLen(),
 		"Expected tails to be 0 at this point in the test...",
 	)
 	requireEventually(t, func() bool {
@@ -198,7 +198,7 @@ func TestFileTarget_StopsTailersCleanly(t *testing.T) {
 	assert.NoError(t, err)
 
 	requireEventually(t, func() bool {
-		return len(target.readers) == 1
+		return target.getReadersLen() == 1
 	}, "expected 1 tailer to be created")
 
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
@@ -208,12 +208,19 @@ func TestFileTarget_StopsTailersCleanly(t *testing.T) {
 	`), "promtail_files_active_total"))
 
 	// Inject an error to tailer
-	initailTailer := target.readers[logFile].(*tailer)
+
+	initialReader, _ := target.getReader(logFile)
+	initailTailer := initialReader.(*tailer)
 	_ = initailTailer.tail.Tomb.Killf("test: network file systems can be unreliable")
 
 	// Tailer will be replaced by a new one
 	requireEventually(t, func() bool {
-		return len(target.readers) == 1 && target.readers[logFile].(*tailer) != initailTailer
+		currentReader, _ := target.getReader(logFile)
+		var currentTailer *tailer
+		if currentReader != nil {
+			currentTailer = currentReader.(*tailer)
+		}
+		return target.getReadersLen() == 1 && currentTailer != initailTailer
 	}, "expected dead tailer to be replaced by a new one")
 
 	// The old tailer should be stopped:
@@ -389,10 +396,10 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Start with nothing watched.
-	if len(target.watches) != 0 {
+	if target.getWatchesLen() != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.readers) != 0 {
+	if target.getReadersLen() != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -407,10 +414,10 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	if len(target.watches) != 0 {
+	if target.getWatchesLen() != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.readers) != 0 {
+	if target.getReadersLen() != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -425,10 +432,10 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	assert.Equal(t, 2, len(target.watches),
+	assert.Equal(t, 2, target.getWatchesLen(),
 		"Expected watches to be 2 at this point in the test...",
 	)
-	assert.Equal(t, 3, len(target.readers),
+	assert.Equal(t, 3, target.getReadersLen(),
 		"Expected tails to be 3 at this point in the test...",
 	)
 	requireEventually(t, func() bool {
@@ -446,10 +453,10 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	assert.Equal(t, 1, len(target.watches),
+	assert.Equal(t, 1, target.getWatchesLen(),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 1, len(target.readers),
+	assert.Equal(t, 1, target.getReadersLen(),
 		"Expected tails to be 1 at this point in the test...",
 	)
 	requireEventually(t, func() bool {
@@ -538,7 +545,7 @@ func TestHandleFileCreationEvent(t *testing.T) {
 		Op:   fsnotify.Create,
 	}
 	requireEventually(t, func() bool {
-		return len(target.readers) == 1
+		return target.getReadersLen() == 1
 	}, "Expected tails to be 1 at this point in the test...")
 }
 

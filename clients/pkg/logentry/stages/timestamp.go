@@ -12,7 +12,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (

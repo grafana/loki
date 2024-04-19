@@ -27,13 +27,13 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	bucket_s3 "github.com/grafana/loki/pkg/storage/bucket/s3"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
-	storageawscommon "github.com/grafana/loki/pkg/storage/common/aws"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
+	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	storageawscommon "github.com/grafana/loki/v3/pkg/storage/common/aws"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
 )
 
 const (

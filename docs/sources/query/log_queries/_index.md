@@ -95,7 +95,7 @@ An example that mutates is the expression
 ```
 
 
-Log pipeline expressions fall into one of three categories:
+Log pipeline expressions fall into one of four categories:
 
 - Filtering expressions: [line filter expressions](#line-filter-expression)
 and
@@ -104,6 +104,7 @@ and
 - Formatting expressions: [line format expressions](#line-format-expression)
 and
 [label format expressions](#labels-format-expression)
+- Labels expressions: [drop labels expression](#drop-labels-expression) and [keep labels expression](#keep-labels-expression)
 
 ### Line filter expression
 

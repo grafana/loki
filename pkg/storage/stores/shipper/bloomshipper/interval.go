@@ -9,8 +9,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/util/encoding"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
 // Interval defines a time range with start end end time

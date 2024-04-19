@@ -6,8 +6,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/config"
 
-	ruler "github.com/grafana/loki/pkg/ruler/base"
-	"github.com/grafana/loki/pkg/ruler/rulestore"
+	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
 )
 
 func NewRuler(cfg Config, evaluator Evaluator, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, metricsNamespace string) (*ruler.Ruler, error) {

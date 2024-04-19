@@ -12,7 +12,7 @@ import (
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
 	httpgrpc "github.com/grafana/dskit/httpgrpc"
-	stats "github.com/grafana/loki/pkg/querier/stats"
+	stats "github.com/grafana/loki/v3/pkg/querier/stats"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"

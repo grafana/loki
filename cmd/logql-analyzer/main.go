@@ -10,9 +10,9 @@ import (
 	"github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/logqlanalyzer"
-	"github.com/grafana/loki/pkg/sizing"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logqlanalyzer"
+	"github.com/grafana/loki/v3/pkg/sizing"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func main() {

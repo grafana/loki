@@ -2,6 +2,7 @@ package index
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"testing"
 
@@ -9,33 +10,33 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 func Test_BitPrefixGetShards(t *testing.T) {
 	for _, tt := range []struct {
 		total    uint32
 		filter   bool
-		shard    *astmapper.ShardAnnotation
+		shard    *logql.Shard
 		expected []uint32
 	}{
 		// equal factors
-		{16, false, &astmapper.ShardAnnotation{Shard: 0, Of: 16}, []uint32{0}},
-		{16, false, &astmapper.ShardAnnotation{Shard: 4, Of: 16}, []uint32{4}},
-		{16, false, &astmapper.ShardAnnotation{Shard: 15, Of: 16}, []uint32{15}},
+		{16, false, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 0, Of: 16}).Ptr(), []uint32{0}},
+		{16, false, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 4, Of: 16}).Ptr(), []uint32{4}},
+		{16, false, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 15, Of: 16}).Ptr(), []uint32{15}},
 
 		// idx factor a larger factor of 2
-		{32, false, &astmapper.ShardAnnotation{Shard: 0, Of: 16}, []uint32{0, 1}},
-		{32, false, &astmapper.ShardAnnotation{Shard: 4, Of: 16}, []uint32{8, 9}},
-		{32, false, &astmapper.ShardAnnotation{Shard: 15, Of: 16}, []uint32{30, 31}},
-		{64, false, &astmapper.ShardAnnotation{Shard: 15, Of: 16}, []uint32{60, 61, 62, 63}},
+		{32, false, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 0, Of: 16}).Ptr(), []uint32{0, 1}},
+		{32, false, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 4, Of: 16}).Ptr(), []uint32{8, 9}},
+		{32, false, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 15, Of: 16}).Ptr(), []uint32{30, 31}},
+		{64, false, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 15, Of: 16}).Ptr(), []uint32{60, 61, 62, 63}},
 
 		// // idx factor a smaller factor of 2
-		{8, true, &astmapper.ShardAnnotation{Shard: 0, Of: 16}, []uint32{0}},
-		{8, true, &astmapper.ShardAnnotation{Shard: 4, Of: 16}, []uint32{2}},
-		{8, true, &astmapper.ShardAnnotation{Shard: 15, Of: 16}, []uint32{7}},
+		{8, true, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 0, Of: 16}).Ptr(), []uint32{0}},
+		{8, true, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 4, Of: 16}).Ptr(), []uint32{2}},
+		{8, true, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 15, Of: 16}).Ptr(), []uint32{7}},
 	} {
 		tt := tt
 		t.Run(tt.shard.String()+fmt.Sprintf("_total_%d", tt.total), func(t *testing.T) {
@@ -52,11 +53,105 @@ func Test_BitPrefixGetShards(t *testing.T) {
 	}
 }
 
+func Test_BitPrefixGetShards_Bounded(t *testing.T) {
+	for _, tt := range []struct {
+		total    uint32
+		shard    *logql.Shard
+		expected []uint32
+	}{
+		{
+			4,
+			logql.NewBoundedShard(
+				logproto.Shard{
+					Bounds: logproto.FPBounds{
+						Min: 0b01 << 62,
+						Max: 0b10 << 62,
+					},
+				},
+			).Ptr(),
+			[]uint32{1, 2},
+		},
+		{
+			4,
+			logql.NewBoundedShard(
+				logproto.Shard{
+					Bounds: logproto.FPBounds{
+						Min: 0b10 << 62,
+						Max: 0b11 << 62,
+					},
+				},
+			).Ptr(),
+			[]uint32{2, 3},
+		},
+		{
+			8,
+			logql.NewBoundedShard(
+				logproto.Shard{
+					Bounds: logproto.FPBounds{
+						Min: 0b00 << 62,
+						Max: 0b101 << 61,
+					},
+				},
+			).Ptr(),
+			[]uint32{0, 1, 2, 3, 4, 5},
+		},
+		{
+			8,
+			logql.NewBoundedShard(
+				logproto.Shard{
+					Bounds: logproto.FPBounds{
+						Min: 0b00 << 62,
+						Max: 0b110 << 61,
+					},
+				},
+			).Ptr(),
+			[]uint32{0, 1, 2, 3, 4, 5, 6},
+		},
+		{
+			8,
+			logql.NewBoundedShard(
+				logproto.Shard{
+					Bounds: logproto.FPBounds{
+						Min: 0b00 << 62,
+						Max: 0b111 << 61,
+					},
+				},
+			).Ptr(),
+			[]uint32{0, 1, 2, 3, 4, 5, 6, 7},
+		},
+		{
+			8,
+			logql.NewBoundedShard(
+				logproto.Shard{
+					Bounds: logproto.FPBounds{
+						Min: 0,
+						Max: math.MaxUint64,
+					},
+				},
+			).Ptr(),
+			[]uint32{0, 1, 2, 3, 4, 5, 6, 7},
+		},
+	} {
+		t.Run(tt.shard.String()+fmt.Sprintf("_total_%d", tt.total), func(t *testing.T) {
+			ii, err := NewBitPrefixWithShards(tt.total)
+			require.Nil(t, err)
+			res, filter := ii.getShards(tt.shard)
+			require.True(t, filter) // always need to filter bounded shards
+			resInt := []uint32{}
+			for _, r := range res {
+				resInt = append(resInt, r.shard)
+			}
+			require.Equal(t, tt.expected, resInt)
+		})
+	}
+
+}
+
 func Test_BitPrefixValidateShards(t *testing.T) {
 	ii, err := NewBitPrefixWithShards(32)
 	require.Nil(t, err)
-	require.NoError(t, ii.validateShard(&astmapper.ShardAnnotation{Shard: 1, Of: 16}))
-	require.Error(t, ii.validateShard(&astmapper.ShardAnnotation{Shard: 1, Of: 15}))
+	require.NoError(t, ii.validateShard(logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 1, Of: 16}).Ptr()))
+	require.Error(t, ii.validateShard(logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 1, Of: 15}).Ptr()))
 }
 
 func Test_BitPrefixCreation(t *testing.T) {
@@ -116,10 +211,10 @@ func Test_BitPrefix_hash_mapping(t *testing.T) {
 				[]*labels.Matcher{{Type: labels.MatchEqual,
 					Name:  "compose_project",
 					Value: "loki-tsdb-storage-s3"}},
-				&astmapper.ShardAnnotation{
-					Shard: int(expShard),
-					Of:    requestedFactor,
-				},
+				logql.NewPowerOfTwoShard(index.ShardAnnotation{
+					Shard: expShard,
+					Of:    uint32(requestedFactor),
+				}).Ptr(),
 			)
 			require.NoError(t, err)
 			require.Len(t, res, 1)
@@ -147,7 +242,7 @@ func Test_BitPrefixNoMatcherLookup(t *testing.T) {
 	require.Nil(t, err)
 	expShard := uint32(fp >> (64 - index.NewShard(0, 16).RequiredBits()))
 	ii.Add(logproto.FromLabelsToLabelAdapters(lbs), fp)
-	ids, err = ii.Lookup(nil, &astmapper.ShardAnnotation{Shard: int(expShard), Of: 16})
+	ids, err = ii.Lookup(nil, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: expShard, Of: 16}).Ptr())
 	require.Nil(t, err)
 	require.Equal(t, fp, ids[0])
 }
@@ -169,12 +264,12 @@ func Test_BitPrefixConsistentMapping(t *testing.T) {
 		b.Add(logproto.FromLabelsToLabelAdapters(lbs), fp)
 	}
 
-	shardMax := 8
-	for i := 0; i < shardMax; i++ {
-		shard := &astmapper.ShardAnnotation{
+	shardMax := uint32(8)
+	for i := uint32(0); i < shardMax; i++ {
+		shard := logql.NewPowerOfTwoShard(index.ShardAnnotation{
 			Shard: i,
 			Of:    shardMax,
-		}
+		}).Ptr()
 
 		aIDs, err := a.Lookup([]*labels.Matcher{
 			labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),

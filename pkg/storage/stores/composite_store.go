@@ -7,13 +7,15 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/stores/index"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 type ChunkWriter interface {
@@ -204,6 +206,83 @@ func (c CompositeStore) Volume(ctx context.Context, userID string, from, through
 
 	res := seriesvolume.Merge(volumes, limit)
 	return res, err
+}
+
+func (c CompositeStore) GetShards(
+	ctx context.Context,
+	userID string,
+	from, through model.Time,
+	targetBytesPerShard uint64,
+	predicate chunk.Predicate,
+) (*logproto.ShardsResponse, error) {
+	// TODO(owen-d): improve. Since shards aren't easily merge-able,
+	// we choose the store which returned the highest shard count.
+	// This is only used when a query crosses a schema boundary
+	var groups []*logproto.ShardsResponse
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+		shards, err := store.GetShards(innerCtx, userID, from, through, targetBytesPerShard, predicate)
+		if err != nil {
+			return err
+		}
+		groups = append(groups, shards)
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	switch {
+	case len(groups) == 1:
+		return groups[0], nil
+	case len(groups) == 0:
+		return nil, nil
+	default:
+		sort.Slice(groups, func(i, j int) bool {
+			return len(groups[i].Shards) > len(groups[j].Shards)
+		})
+		return groups[0], nil
+	}
+}
+
+func (c CompositeStore) HasForSeries(from, through model.Time) (sharding.ForSeries, bool) {
+	var impls []sharding.ForSeries
+	_ = c.forStores(context.Background(), from, through, func(_ context.Context, from, through model.Time, store Store) error {
+		impl, ok := store.HasForSeries(from, through)
+		if ok {
+			impls = append(impls, impl)
+		}
+		return nil
+	})
+
+	if len(impls) == 0 {
+		return nil, false
+	}
+
+	wrapped := sharding.ForSeriesFunc(
+		func(
+			ctx context.Context,
+			userID string,
+			fpFilter tsdb_index.FingerprintFilter,
+			from model.Time,
+			through model.Time,
+			fn func(
+				labels.Labels,
+				model.Fingerprint,
+				[]tsdb_index.ChunkMeta,
+			) (stop bool),
+			matchers ...*labels.Matcher,
+		) error {
+			for _, impl := range impls {
+				if err := impl.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	)
+
+	return wrapped, true
 }
 
 func (c CompositeStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {

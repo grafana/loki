@@ -1,8 +1,8 @@
 package marshal
 
 import (
-	"github.com/grafana/loki/pkg/loghttp"
-	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
 )
 
 // NewDroppedStream constructs a DroppedStream from a legacy.DroppedEntry

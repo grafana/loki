@@ -3,12 +3,14 @@ package kafka
 import (
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 type mockKafkaClient struct {
+	mu     sync.Mutex
 	topics []string
 	err    error
 }
@@ -18,6 +20,8 @@ func (m *mockKafkaClient) RefreshMetadata(_ ...string) error {
 }
 
 func (m *mockKafkaClient) Topics() ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.topics, m.err
 }
 

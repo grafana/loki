@@ -20,9 +20,9 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/ruler/config"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/ruler/config"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // Pusher is an ingester server that accepts pushes.
@@ -63,6 +63,10 @@ func (a *PusherAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ 
 
 func (a *PusherAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	return 0, errors.New("native histograms are unsupported")
+}
+
+func (a *PusherAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
+	return 0, errors.New("created timestamps are unsupported")
 }
 
 func (a *PusherAppender) Commit() error {

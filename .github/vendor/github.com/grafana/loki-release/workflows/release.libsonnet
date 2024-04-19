@@ -9,7 +9,7 @@ local releaseLibStep = common.releaseLibStep;
 // sha to release and pull aritfacts from. If you need to change this, make sure
 // to change it in both places.
 //TODO: make bucket configurable
-local pullRequestFooter = 'Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/loki-build-artifacts/${SHA}) of ${SHA}';
+local pullRequestFooter = 'Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/${BUILD_ARTIFACTS_BUCKET}/${SHA}) of ${SHA}';
 
 {
   createReleasePR:
@@ -19,6 +19,8 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
       common.fetchReleaseLib,
       common.setupNode,
       common.extractBranchName,
+      common.githubAppToken,
+      common.setToken,
 
       releaseLibStep('release please')
       + step.withId('release')
@@ -30,19 +32,23 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
       //TODO backport action should not bring over autorelease: pending label
       + step.withRun(|||
         npm install
-        echo "Pull request footer: %s"
         npm exec -- release-please release-pr \
+          --changelog-path "${CHANGELOG_PATH}" \
           --consider-all-branches \
-          --label "backport main,autorelease: pending,type/docs" \
+          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --label "backport main,autorelease: pending,product-approved" \
+          --manifest-file .release-please-manifest.json \
           --pull-request-footer "%s" \
+          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --release-as "${{ needs.dist.outputs.version }}" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
-          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token "${{ secrets.GH_TOKEN }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
           --separate-pull-requests false \
-          --debug
-      ||| % [pullRequestFooter, pullRequestFooter]),
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token "${{ steps.github_app_token.outputs.token }}" \
+          --dry-run ${{ fromJSON(env.DRY_RUN) }}
+
+      ||| % pullRequestFooter),
     ]),
 
   shouldRelease: job.new()
@@ -61,6 +67,8 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    shouldRelease: '${{ steps.should_release.outputs.shouldRelease }}',
                    sha: '${{ steps.should_release.outputs.sha }}',
                    name: '${{ steps.should_release.outputs.name }}',
+                   prNumber: '${{ steps.should_release.outputs.prNumber }}',
+                   isLatest: '${{ steps.should_release.outputs.isLatest }}',
                    branch: '${{ steps.extract_branch.outputs.branch }}',
 
                  }),
@@ -73,6 +81,8 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    common.setupNode,
                    common.googleAuth,
                    common.setupGoogleCloudSdk,
+                   common.githubAppToken,
+                   common.setToken,
 
                    // exits with code 1 if the url does not match
                    // meaning there are no artifacts for that sha
@@ -80,33 +90,67 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    releaseStep('download binaries')
                    + step.withRun(|||
                      echo "downloading binaries to $(pwd)/dist"
-                     gsutil cp -r gs://loki-build-artifacts/${{ needs.shouldRelease.outputs.sha }}/dist .
+                     gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.shouldRelease.outputs.sha }}/dist .
+                   |||),
+
+                   releaseStep('check if release exists')
+                   + step.withId('check_release')
+                   + step.withEnv({
+                     GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+                   })
+                   + step.withRun(|||
+                     set +e
+                     isDraft="$(gh release view --json="isDraft" --jq=".isDraft" ${{ needs.shouldRelease.outputs.name }} 2>&1)"
+                     set -e
+                     if [[ "$isDraft" == "release not found" ]]; then
+                       echo "exists=false" >> $GITHUB_OUTPUT
+                     else
+                       echo "exists=true" >> $GITHUB_OUTPUT
+                     fi
+
+                     if [[ "$isDraft" == "true" ]]; then
+                       echo "draft=true" >> $GITHUB_OUTPUT
+                     fi
                    |||),
 
                    releaseLibStep('create release')
                    + step.withId('release')
+                   + step.withIf('${{ !fromJSON(steps.check_release.outputs.exists) }}')
                    + step.withRun(|||
                      npm install
                      npm exec -- release-please github-release \
                        --draft \
                        --release-type simple \
-                       --repo-url="${{ env.RELEASE_REPO }}" \
+                       --repo-url "${{ env.RELEASE_REPO }}" \
                        --target-branch "${{ needs.shouldRelease.outputs.branch }}" \
-                       --token="${{ secrets.GH_TOKEN }}"
+                       --token "${{ steps.github_app_token.outputs.token }}" \
+                       --shas-to-tag "${{ needs.shouldRelease.outputs.prNumber }}:${{ needs.shouldRelease.outputs.sha }}"
                    |||),
 
                    releaseStep('upload artifacts')
                    + step.withId('upload')
                    + step.withEnv({
-                     GH_TOKEN: '${{ secrets.GH_TOKEN }}',
+                     GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
                    })
                    + step.withRun(|||
-                     gh release upload ${{ needs.shouldRelease.outputs.name }} dist/*
-                     gh release edit ${{ needs.shouldRelease.outputs.name }} --draft=false
+                     gh release upload --clobber ${{ needs.shouldRelease.outputs.name }} dist/*
                    |||),
+
+                   step.new('release artifacts', 'google-github-actions/upload-cloud-storage@v2')
+                   + step.withIf('${{ fromJSON(env.PUBLISH_TO_GCS) }}')
+                   + step.with({
+                     path: 'release/dist',
+                     destination: '${{ env.PUBLISH_BUCKET }}',
+                     parent: false,
+                     process_gcloudignore: false,
+                   }),
                  ])
                  + job.withOutputs({
                    sha: '${{ needs.shouldRelease.outputs.sha }}',
+                   name: '${{ needs.shouldRelease.outputs.name }}',
+                   isLatest: '${{ needs.shouldRelease.outputs.isLatest }}',
+                   draft: '${{ steps.check_release.outputs.draft }}',
+                   exists: '${{ steps.check_release.outputs.exists }}',
                  }),
 
   publishImages: function(getDockerCredsFromVault=false, dockerUsername='grafanabot')
@@ -141,4 +185,20 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         }),
       ]
     ),
+
+  publishRelease: job.new()
+                  + job.withNeeds(['createRelease', 'publishImages'])
+                  + job.withSteps([
+                    common.fetchReleaseRepo,
+                    common.githubAppToken,
+                    common.setToken,
+                    releaseStep('publish release')
+                    + step.withIf('${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}')
+                    + step.withEnv({
+                      GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+                    })
+                    + step.withRun(|||
+                      gh release edit ${{ needs.createRelease.outputs.name }} --draft=false --latest=${{ needs.createRelease.outputs.isLatest }}
+                    |||),
+                  ]),
 }

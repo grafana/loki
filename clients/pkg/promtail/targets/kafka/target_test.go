@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
 )
 
 // Consumergroup handler
@@ -21,6 +21,7 @@ type testConsumerGroupHandler struct {
 	handler sarama.ConsumerGroupHandler
 	ctx     context.Context
 	topics  []string
+	mu      *sync.Mutex
 
 	returnErr error
 
@@ -32,7 +33,9 @@ func (c *testConsumerGroupHandler) Consume(ctx context.Context, topics []string,
 		return c.returnErr
 	}
 	c.ctx = ctx
+	c.mu.Lock()
 	c.topics = topics
+	c.mu.Unlock()
 	c.handler = handler
 	c.consuming.Store(true)
 	<-ctx.Done()

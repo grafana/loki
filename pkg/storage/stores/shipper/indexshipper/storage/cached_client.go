@@ -11,9 +11,9 @@ import (
 	"github.com/go-kit/log/level"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (

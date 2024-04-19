@@ -1,4 +1,4 @@
-FROM golang:1.21.3 as build
+FROM golang:1.21.9 as build
 ENV BUILD_IN_CONTAINER=false
 
 COPY . /src/bloom-tester

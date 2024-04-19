@@ -9,8 +9,8 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/windows/win_eventlog"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/windows/win_eventlog"
 )
 
 type Event struct {

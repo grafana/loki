@@ -19,8 +19,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/version"
 
-	"github.com/grafana/loki/pkg/configs/userconfig"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/configs/userconfig"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (

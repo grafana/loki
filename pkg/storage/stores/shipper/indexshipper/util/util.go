@@ -9,7 +9,7 @@ import (
 
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 )
 
 const maxStackSize = 8 * 1024

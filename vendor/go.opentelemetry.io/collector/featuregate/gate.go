@@ -3,7 +3,12 @@
 
 package featuregate // import "go.opentelemetry.io/collector/featuregate"
 
-import "sync/atomic"
+import (
+	"fmt"
+	"sync/atomic"
+
+	"github.com/hashicorp/go-version"
+)
 
 // Gate is an immutable object that is owned by the Registry and represents an individual feature that
 // may be enabled or disabled based on the lifecycle state of the feature and CLI flags specified by the user.
@@ -11,8 +16,8 @@ type Gate struct {
 	id           string
 	description  string
 	referenceURL string
-	fromVersion  string
-	toVersion    string
+	fromVersion  *version.Version
+	toVersion    *version.Version
 	stage        Stage
 	enabled      *atomic.Bool
 }
@@ -44,10 +49,10 @@ func (g *Gate) ReferenceURL() string {
 
 // FromVersion returns the version information when the Gate's was added.
 func (g *Gate) FromVersion() string {
-	return g.fromVersion
+	return fmt.Sprintf("v%s", g.fromVersion)
 }
 
 // ToVersion returns the version information when Gate's in StageStable.
 func (g *Gate) ToVersion() string {
-	return g.toVersion
+	return fmt.Sprintf("v%s", g.toVersion)
 }

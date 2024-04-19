@@ -25,12 +25,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
-	"github.com/grafana/loki/pkg/querier/queryrange"
-	querier_stats "github.com/grafana/loki/pkg/querier/stats"
-	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
-	httpgrpcutil "github.com/grafana/loki/pkg/util/httpgrpc"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	querier_stats "github.com/grafana/loki/v3/pkg/querier/stats"
+	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
+	httpgrpcutil "github.com/grafana/loki/v3/pkg/util/httpgrpc"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, metrics *Metrics, codec RequestCodec) (*schedulerProcessor, []services.Service) {

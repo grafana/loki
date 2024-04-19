@@ -6,9 +6,11 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/grafana/loki/pkg/storage/bucket/filesystem"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 )
 
 func TestAWSThanosObjStore_List(t *testing.T) {
@@ -94,10 +96,11 @@ func TestAWSThanosObjStore_List(t *testing.T) {
 		require.NoError(t, newBucket.Upload(context.Background(), "depply/nested/folder/b", buff))
 		require.NoError(t, newBucket.Upload(context.Background(), "depply/nested/folder/c", buff))
 
-		gcpClient := &S3ThanosObjectClient{}
-		gcpClient.client = newBucket
+		s3Client := &S3ThanosObjectClient{
+			clients: []objstore.Bucket{newBucket},
+		}
 
-		storageObj, storageCommonPref, err := gcpClient.List(context.Background(), tt.prefix, tt.delimiter)
+		storageObj, storageCommonPref, err := s3Client.List(context.Background(), tt.prefix, tt.delimiter)
 		if tt.wantErr != nil {
 			require.Equal(t, tt.wantErr.Error(), err.Error())
 			continue

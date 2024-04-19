@@ -5,21 +5,20 @@
 # the same trusted profile.
 # In order to use trusted profile authentication we need to follow an additional step to create a trusted profile.
 # For more details about creating a trusted profile, see https://cloud.ibm.com/docs/account?topic=account-create-trusted-profile&interface=ui.
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:
     - from: 2020-10-01
       store: tsdb
       object_store: cos
-      schema: v12
+      schema: v13
       index:
         period: 24h
         prefix: index_
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>

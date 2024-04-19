@@ -9,10 +9,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type querierMetrics struct {
@@ -73,7 +73,7 @@ func convertToShortRef(ref *logproto.ChunkRef) *logproto.ShortRef {
 
 func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, queryPlan plan.QueryPlan) ([]*logproto.ChunkRef, error) {
 	// Shortcut that does not require any filtering
-	if len(chunkRefs) == 0 || len(syntax.ExtractLineFilters(queryPlan.AST)) == 0 {
+	if len(chunkRefs) == 0 || len(v1.ExtractTestableLineFilters(queryPlan.AST)) == 0 {
 		return chunkRefs, nil
 	}
 

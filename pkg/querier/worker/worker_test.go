@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/util/test"
+	"github.com/grafana/loki/v3/pkg/util/test"
 )
 
 func TestResetConcurrency(t *testing.T) {

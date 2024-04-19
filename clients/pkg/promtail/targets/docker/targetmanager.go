@@ -9,13 +9,13 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
 
-	"github.com/grafana/loki/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
@@ -44,14 +44,25 @@ func NewTargetManager(
 	pushClient api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
 ) (*TargetManager, error) {
+	noopRegistry := util.NoopRegistry{}
+	noopSdMetrics, err := discovery.CreateAndRegisterSDMetrics(noopRegistry)
+	if err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := &TargetManager{
-		metrics:    metrics,
-		logger:     logger,
-		cancel:     cancel,
-		done:       make(chan struct{}),
-		positions:  positions,
-		manager:    discovery.NewManager(ctx, log.With(logger, "component", "docker_discovery")),
+		metrics:   metrics,
+		logger:    logger,
+		cancel:    cancel,
+		done:      make(chan struct{}),
+		positions: positions,
+		manager: discovery.NewManager(
+			ctx,
+			log.With(logger, "component", "docker_discovery"),
+			noopRegistry,
+			noopSdMetrics,
+		),
 		pushClient: pushClient,
 		groups:     make(map[string]*targetGroup),
 	}

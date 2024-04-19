@@ -12,9 +12,9 @@ import (
 
 	gokitlog "github.com/go-kit/log"
 
-	"github.com/grafana/loki/pkg/iter"
-	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/iter"
+	loghttp "github.com/grafana/loki/v3/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 const (

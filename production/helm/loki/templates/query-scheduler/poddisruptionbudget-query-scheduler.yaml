@@ -1,0 +1,21 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and $isDistributed (gt (int .Values.queryScheduler.replicas) 1) }}
+{{- if kindIs "invalid" .Values.queryScheduler.maxUnavailable }}
+{{- fail "`.Values.queryScheduler.maxUnavailable` must be set when `.Values.queryScheduler.replicas` is greater than 1." }}
+{{- else }}
+apiVersion: {{ include "loki.pdb.apiVersion" . }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "loki.querySchedulerFullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.querySchedulerLabels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "loki.querySchedulerSelectorLabels" . | nindent 6 }}
+  {{- with .Values.queryScheduler.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end }}
+{{- end }}
+{{- end }}

@@ -11,8 +11,12 @@ gateway:
 loki:
   commonConfig:
     replication_factor: 1
-  image:
-    tag: "main-5e53303"
+  useTestSchema: true
+  storage:
+    bucketNames:
+      chunks: chunks
+      ruler: ruler
+      admin: admin
 read:
   replicas: 1
 write:

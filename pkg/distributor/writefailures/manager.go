@@ -8,7 +8,7 @@ import (
 	"github.com/grafana/dskit/limiter"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/runtime"
 )
 
 type Manager struct {

@@ -16,6 +16,10 @@ common:
     kvstore:
       store: inmemory
 
+limits_config:
+  split_instant_metric_queries_by_interval: '10m'
+
+
 query_range:
   align_queries_with_step: true
   cache_index_stats_results: true
@@ -76,7 +80,7 @@ schema_config:
     - from: 2020-10-24
       store: tsdb
       object_store: filesystem
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h

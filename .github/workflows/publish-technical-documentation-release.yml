@@ -10,30 +10,16 @@ on:
       - "docs/sources/**"
   workflow_dispatch:
 jobs:
-  test:
-    runs-on: "ubuntu-latest"
-    steps:
-      - name: "Check out code"
-        uses: "actions/checkout@v3"
-      - name:
-          "Build website"
-          # -e HUGO_REFLINKSERRORLEVEL=ERROR prevents merging broken refs with the downside
-          # that no refs to external content can be used as these refs will not resolve in the
-          # docs-base image.
-        run: |
-          docker run -v ${PWD}/docs/sources:/hugo/content/docs/loki/release -e HUGO_REFLINKSERRORLEVEL=ERROR --rm grafana/docs-base:latest /bin/bash -c 'make hugo'
-
   sync:
     runs-on: "ubuntu-latest"
-    needs: "test"
     steps:
       - name: "Checkout code and tags"
-        uses: "actions/checkout@v3"
+        uses: "actions/checkout@v4"
         with:
           fetch-depth: 0
 
       - name: "Checkout Actions library"
-        uses: "actions/checkout@v3"
+        uses: "actions/checkout@v4"
         with:
           repository: "grafana/grafana-github-actions"
           path: "./actions"

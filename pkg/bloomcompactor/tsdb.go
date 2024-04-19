@@ -15,13 +15,15 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	baseStore "github.com/grafana/loki/pkg/storage"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	baseStore "github.com/grafana/loki/v3/pkg/storage"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
 const (
@@ -122,34 +124,22 @@ func (b *BloomTSDBStore) LoadTSDB(
 		}
 	}()
 
-	return NewTSDBSeriesIter(ctx, idx, bounds)
+	return NewTSDBSeriesIter(ctx, tenant, idx, bounds)
 }
 
-// TSDBStore is an interface for interacting with the TSDB,
-// modeled off a relevant subset of the `tsdb.TSDBIndex` struct
-type forSeries interface {
-	ForSeries(
-		ctx context.Context,
-		fpFilter index.FingerprintFilter,
-		from model.Time,
-		through model.Time,
-		fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta),
-		matchers ...*labels.Matcher,
-	) error
-}
-
-func NewTSDBSeriesIter(ctx context.Context, f forSeries, bounds v1.FingerprintBounds) (v1.Iterator[*v1.Series], error) {
+func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, bounds v1.FingerprintBounds) (v1.Iterator[*v1.Series], error) {
 	// TODO(salvacorts): Create a pool
 	series := make([]*v1.Series, 0, 100)
 
 	if err := f.ForSeries(
 		ctx,
+		user,
 		bounds,
 		0, math.MaxInt64,
-		func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 			select {
 			case <-ctx.Done():
-				return
+				return true
 			default:
 				res := &v1.Series{
 					Fingerprint: fp,
@@ -164,6 +154,7 @@ func NewTSDBSeriesIter(ctx context.Context, f forSeries, bounds v1.FingerprintBo
 				}
 
 				series = append(series, res)
+				return false
 			}
 		},
 		labels.MustNewMatcher(labels.MatchEqual, "", ""),
@@ -196,7 +187,7 @@ func NewTSDBStores(
 	}
 
 	for i, cfg := range schemaCfg.Configs {
-		if cfg.IndexType == config.TSDBType {
+		if cfg.IndexType == types.TSDBType {
 
 			c, err := baseStore.NewObjectClient("tsdb-store", cfg.ObjectType, storeCfg, clientMetrics, prometheus.DefaultRegisterer)
 			if err != nil {

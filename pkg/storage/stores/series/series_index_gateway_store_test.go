@@ -7,20 +7,15 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type fakeClient struct {
-	logproto.IndexGatewayClient
+	GatewayClient
 }
 
-func (fakeClient) GetChunkRef(_ context.Context, _ *logproto.GetChunkRefRequest, _ ...grpc.CallOption) (*logproto.GetChunkRefResponse, error) {
-	return &logproto.GetChunkRefResponse{}, nil
-}
-
-func (fakeClient) GetSeries(_ context.Context, _ *logproto.GetSeriesRequest, _ ...grpc.CallOption) (*logproto.GetSeriesResponse, error) {
+func (fakeClient) GetSeries(_ context.Context, _ *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
 	return &logproto.GetSeriesResponse{}, nil
 }
 

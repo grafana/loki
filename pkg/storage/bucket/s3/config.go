@@ -12,9 +12,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore/providers/s3"
 
-	bucket_http "github.com/grafana/loki/pkg/storage/bucket/http"
-	"github.com/grafana/loki/pkg/storage/common/aws"
-	"github.com/grafana/loki/pkg/util"
+	bucket_http "github.com/grafana/loki/v3/pkg/storage/bucket/http"
+	"github.com/grafana/loki/v3/pkg/storage/common/aws"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
@@ -28,9 +28,9 @@ const (
 )
 
 var (
-	supportedSSETypes        = []string{SSEKMS, SSES3}
-	errUnsupportedSSEType    = errors.New("unsupported S3 SSE type")
-	errInvalidSSEContext     = errors.New("invalid S3 SSE encryption context")
+	supportedSSETypes     = []string{SSEKMS, SSES3}
+	errUnsupportedSSEType = errors.New("unsupported S3 SSE type")
+	errInvalidSSEContext  = errors.New("invalid S3 SSE encryption context")
 )
 
 // HTTPConfig stores the http.Transport configuration for the s3 minio client.

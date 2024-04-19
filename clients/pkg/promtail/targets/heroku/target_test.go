@@ -19,9 +19,9 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 
-	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	lokiClient "github.com/grafana/loki/v3/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
 )
 
 const localhost = "127.0.0.1"

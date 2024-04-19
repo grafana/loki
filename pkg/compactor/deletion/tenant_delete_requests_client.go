@@ -2,12 +2,17 @@ package deletion
 
 import (
 	"context"
+	"time"
+
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const deletionNotAvailableMsg = "deletion is not available for this tenant"
 
 type Limits interface {
 	DeletionMode(userID string) string
+	RetentionPeriod(userID string) time.Duration
+	StreamRetention(userID string) []validation.StreamRetention
 }
 
 type perTenantDeleteRequestsClient struct {

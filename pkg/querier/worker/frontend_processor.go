@@ -13,9 +13,9 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
-	querier_stats "github.com/grafana/loki/pkg/querier/stats"
-	httpgrpcutil "github.com/grafana/loki/pkg/util/httpgrpc"
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb"
+	querier_stats "github.com/grafana/loki/v3/pkg/querier/stats"
+	httpgrpcutil "github.com/grafana/loki/v3/pkg/util/httpgrpc"
 )
 
 var (

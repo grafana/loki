@@ -18,7 +18,7 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 )
 
 var (

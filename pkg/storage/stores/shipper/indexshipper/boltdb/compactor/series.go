@@ -4,7 +4,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 type userSeries struct {

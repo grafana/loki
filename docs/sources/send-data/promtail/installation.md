@@ -19,7 +19,7 @@ Every Grafana Loki release includes binaries for Promtail which can be found on 
 
 ## Install using APT or RPM package manager
 
-See the instructions [here](https://grafana.com/docs/loki//setup/install/local/#install-using-apt-or-rpm-package-manager). 
+See the instructions [here](https://grafana.com/docs/loki/setup/install/local/#install-using-apt-or-rpm-package-manager). 
 
 ## Install using Docker 
 

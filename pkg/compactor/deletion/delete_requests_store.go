@@ -17,8 +17,8 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
 
 type (

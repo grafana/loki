@@ -7,8 +7,8 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
-	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
+	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 
 	"hash/fnv"
 	"math"
@@ -23,17 +23,17 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage"
-	bt "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/tools/tsdb/helpers"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage"
+	bt "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/tools/tsdb/helpers"
 )
 
 const (
@@ -281,8 +281,8 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 				casted := idx.(*tsdb.TSDBFile).Index.(*tsdb.TSDBIndex)
 				_ = casted.ForSeries(
 					context.Background(),
-					nil, model.Earliest, model.Latest,
-					func(ls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
+					"", nil, model.Earliest, model.Latest,
+					func(ls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
 						seriesString := ls.String()
 						seriesStringHash := FNV32a(seriesString)
 						pos, _ := strconv.Atoi(seriesStringHash)
@@ -399,6 +399,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 							)*/
 						} // for each series
 
+						return false
 					},
 					labels.MustNewMatcher(labels.MatchEqual, "", ""),
 				)

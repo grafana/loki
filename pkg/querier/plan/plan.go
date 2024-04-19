@@ -3,8 +3,8 @@ package plan
 import (
 	"bytes"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 type QueryPlan struct {

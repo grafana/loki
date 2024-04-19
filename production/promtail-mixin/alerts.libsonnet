@@ -17,7 +17,8 @@
               severity: 'critical',
             },
             annotations: {
-              message: |||
+              summary: 'Promtail request error rate is high.',
+              description: |||
                 {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
               |||,
             },
@@ -32,7 +33,8 @@
               severity: 'critical',
             },
             annotations: {
-              message: |||
+              summary: 'Promtail request latency P99 is high.',
+              description: |||
                 {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
               |||,
             },
@@ -47,7 +49,8 @@
               severity: 'warning',
             },
             annotations: {
-              message: |||
+              summary: 'Promtail cannot find a file it should be tailing.',
+              description: |||
                 {{ $labels.instance }} {{ $labels.job }} {{ $labels.path }} matches the glob but is not being tailed.
               |||,
             },

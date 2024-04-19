@@ -59,15 +59,7 @@ func setDefaults(o *policy.RetryOptions) {
 }
 
 func calcDelay(o policy.RetryOptions, try int32) time.Duration { // try is >=1; never 0
-	pow := func(number int64, exponent int32) int64 { // pow is nested helper function
-		var result int64 = 1
-		for n := int32(0); n < exponent; n++ {
-			result *= number
-		}
-		return result
-	}
-
-	delay := time.Duration(pow(2, try)-1) * o.RetryDelay
+	delay := time.Duration((1<<try)-1) * o.RetryDelay
 
 	// Introduce some jitter:  [0.0, 1.0) / 2 = [0.0, 0.5) + 0.8 = [0.8, 1.3)
 	delay = time.Duration(delay.Seconds() * (rand.Float64()/2 + 0.8) * float64(time.Second)) // NOTE: We want math/rand; not crypto/rand
@@ -209,8 +201,9 @@ func (p *retryPolicy) Do(req *policy.Request) (resp *http.Response, err error) {
 
 // WithRetryOptions adds the specified RetryOptions to the parent context.
 // Use this to specify custom RetryOptions at the API-call level.
+// Deprecated: use [policy.WithRetryOptions] instead.
 func WithRetryOptions(parent context.Context, options policy.RetryOptions) context.Context {
-	return context.WithValue(parent, shared.CtxWithRetryOptionsKey{}, options)
+	return policy.WithRetryOptions(parent, options)
 }
 
 // ********** The following type/methods implement the retryableRequestBody (a ReadSeekCloser)

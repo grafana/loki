@@ -3,7 +3,7 @@ package shardstreams
 import (
 	"flag"
 
-	"github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 type Config struct {
@@ -16,8 +16,8 @@ type Config struct {
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
-	fs.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Automatically shard streams to keep them under the per-stream rate limit")
+	fs.BoolVar(&cfg.Enabled, prefix+".enabled", true, "Automatically shard streams to keep them under the per-stream rate limit")
 	fs.BoolVar(&cfg.LoggingEnabled, prefix+".logging-enabled", false, "Enable logging when sharding streams")
-	cfg.DesiredRate.Set("3mb") //nolint:errcheck
-	fs.Var(&cfg.DesiredRate, prefix+".desired-rate", "threshold used to cut a new shard. Default (3MB) means if a rate is above 3MB, it will be sharded.")
+	cfg.DesiredRate.Set("1536KB") //nolint:errcheck
+	fs.Var(&cfg.DesiredRate, prefix+".desired-rate", "threshold used to cut a new shard. Default (1536KB) means if a rate is above 1536KB/s, it will be sharded.")
 }

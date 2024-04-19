@@ -6,7 +6,7 @@ aliases:
   - ../installation/sizing/
   - ../installation/helm/generate
 weight: 100
-keywords: []
+draft: true
 ---
 
 <link rel="stylesheet" href="../../query/analyzer/style.css">

@@ -10,8 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/tools/querytee"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/tools/querytee"
 )
 
 type Config struct {

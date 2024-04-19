@@ -5,7 +5,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/util/filter"
+	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
 func newDummyChunk() *dummyChunk {

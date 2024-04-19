@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 )
 
 func TestGenLabelsCorrectness(t *testing.T) {

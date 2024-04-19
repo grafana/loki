@@ -3,13 +3,14 @@ package iter
 import (
 	"container/heap"
 	"context"
-	"go.uber.org/atomic"
 	"io"
 	"sync"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // SampleIterator iterates over samples in time-order.
@@ -491,6 +492,8 @@ func (i *sampleQueryClientIterator) Next() bool {
 			return false
 		}
 		stats.JoinIngesters(ctx, batch.Stats)
+		_ = metadata.AddWarnings(ctx, batch.Warnings...)
+
 		i.curr = NewSampleQueryResponseIterator(batch)
 	}
 	return true
@@ -522,7 +525,7 @@ func NewSampleQueryResponseIterator(resp *logproto.SampleQueryResponse) SampleIt
 }
 
 type seriesIterator struct {
-	i      *atomic.Int32
+	i      int
 	series logproto.Series
 }
 
@@ -568,14 +571,14 @@ func NewMultiSeriesIterator(series []logproto.Series) SampleIterator {
 // NewSeriesIterator iterates over sample in a series.
 func NewSeriesIterator(series logproto.Series) SampleIterator {
 	return &seriesIterator{
-		i:      atomic.NewInt32(-1),
+		i:      -1,
 		series: series,
 	}
 }
 
 func (i *seriesIterator) Next() bool {
-	tmp := i.i.Add(1)
-	return int(tmp) < len(i.series.Samples)
+	i.i++
+	return i.i < len(i.series.Samples)
 }
 
 func (i *seriesIterator) Error() error {
@@ -591,7 +594,7 @@ func (i *seriesIterator) StreamHash() uint64 {
 }
 
 func (i *seriesIterator) Sample() logproto.Sample {
-	return i.series.Samples[i.i.Load()]
+	return i.series.Samples[i.i]
 }
 
 func (i *seriesIterator) Close() error {

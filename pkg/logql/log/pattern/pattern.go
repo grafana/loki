@@ -6,23 +6,19 @@ import (
 )
 
 var (
-	ErrNoCapture   = errors.New("at least one capture is required")
-	ErrInvalidExpr = errors.New("invalid expression")
+	ErrNoCapture         = errors.New("at least one capture is required")
+	ErrCaptureNotAllowed = errors.New("named captures are not allowed")
+	ErrInvalidExpr       = errors.New("invalid expression")
 )
 
-type Matcher interface {
-	Matches(in []byte) [][]byte
-	Names() []string
-}
-
-type matcher struct {
+type Matcher struct {
 	e expr
 
 	captures [][]byte
 	names    []string
 }
 
-func New(in string) (Matcher, error) {
+func New(in string) (*Matcher, error) {
 	e, err := parseExpr(in)
 	if err != nil {
 		return nil, err
@@ -30,16 +26,47 @@ func New(in string) (Matcher, error) {
 	if err := e.validate(); err != nil {
 		return nil, err
 	}
-	return &matcher{
+	return &Matcher{
 		e:        e,
 		captures: make([][]byte, 0, e.captureCount()),
 		names:    e.captures(),
 	}, nil
 }
 
+func ParseLineFilter(in []byte) (*Matcher, error) {
+	if len(in) == 0 {
+		return new(Matcher), nil
+	}
+	e, err := parseExprBytes(in)
+	if err != nil {
+		return nil, err
+	}
+	if err = e.validateNoConsecutiveCaptures(); err != nil {
+		return nil, err
+	}
+	if err = e.validateNoNamedCaptures(); err != nil {
+		return nil, err
+	}
+	return &Matcher{e: e}, nil
+}
+
+func ParseLiterals(in string) ([][]byte, error) {
+	e, err := parseExpr(in)
+	if err != nil {
+		return nil, err
+	}
+	lit := make([][]byte, 0, len(e))
+	for _, n := range e {
+		if l, ok := n.(literals); ok {
+			lit = append(lit, l)
+		}
+	}
+	return lit, nil
+}
+
 // Matches matches the given line with the provided pattern.
 // Matches invalidates the previous returned captures array.
-func (m *matcher) Matches(in []byte) [][]byte {
+func (m *Matcher) Matches(in []byte) [][]byte {
 	if len(in) == 0 {
 		return nil
 	}
@@ -62,7 +89,7 @@ func (m *matcher) Matches(in []byte) [][]byte {
 	// from now we have capture - literals - capture ... (literals)?
 	for len(expr) != 0 {
 		if len(expr) == 1 { // we're ending on a capture.
-			if !(expr[0].(capture)).isUnamed() {
+			if !(expr[0].(capture)).isUnnamed() {
 				captures = append(captures, in)
 			}
 			return captures
@@ -73,13 +100,13 @@ func (m *matcher) Matches(in []byte) [][]byte {
 		i := bytes.Index(in, ls)
 		if i == -1 {
 			// if a capture is missed we return up to the end as the capture.
-			if !capt.isUnamed() {
+			if !capt.isUnnamed() {
 				captures = append(captures, in)
 			}
 			return captures
 		}
 
-		if capt.isUnamed() {
+		if capt.isUnnamed() {
 			in = in[len(ls)+i:]
 			continue
 		}
@@ -90,6 +117,42 @@ func (m *matcher) Matches(in []byte) [][]byte {
 	return captures
 }
 
-func (m *matcher) Names() []string {
+func (m *Matcher) Names() []string {
 	return m.names
+}
+
+func (m *Matcher) Test(in []byte) bool {
+	if len(in) == 0 || len(m.e) == 0 {
+		// An empty line can only match an empty pattern.
+		return len(in) == 0 && len(m.e) == 0
+	}
+	var off int
+	for i := 0; i < len(m.e); i++ {
+		lit, ok := m.e[i].(literals)
+		if !ok {
+			continue
+		}
+		j := bytes.Index(in[off:], lit)
+		if j == -1 {
+			return false
+		}
+		if i != 0 && j == 0 {
+			// This means we either have repetitive literals, or an empty
+			// capture. Either way, the line does not match the pattern.
+			return false
+		}
+		off += j + len(lit)
+	}
+	// If we end up on a literal, we only consider the test successful if
+	// the remaining input is empty. Otherwise, if we end up on a capture,
+	// the remainder (the captured text) must not be empty.
+	//
+	// For example, "foo bar baz" does not match "<_> bar", but it matches
+	// "<_> baz" and "foo <_>".
+	//
+	// Empty captures are not allowed as well: " bar " does not match
+	// "<_> bar <_>", but matches "<_>bar<_>".
+	_, reqRem := m.e[len(m.e)-1].(capture)
+	hasRem := off != len(in)
+	return reqRem == hasRem
 }

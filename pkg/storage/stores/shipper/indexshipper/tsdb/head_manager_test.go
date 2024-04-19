@@ -18,14 +18,15 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type noopTSDBManager struct {
@@ -443,8 +444,8 @@ func TestBuildLegacyWALs(t *testing.T) {
 			Configs: []config.PeriodConfig{
 				{
 					Schema:     "v11",
-					IndexType:  config.TSDBType,
-					ObjectType: config.StorageTypeFileSystem,
+					IndexType:  types.TSDBType,
+					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
 							Prefix: "index_",
@@ -454,8 +455,8 @@ func TestBuildLegacyWALs(t *testing.T) {
 				{
 					Schema:     "v11",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-					IndexType:  config.TSDBType,
-					ObjectType: config.StorageTypeFileSystem,
+					IndexType:  types.TSDBType,
+					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
 							Prefix: "index_",
@@ -467,8 +468,8 @@ func TestBuildLegacyWALs(t *testing.T) {
 			Configs: []config.PeriodConfig{
 				{
 					Schema:     "v12",
-					IndexType:  config.TSDBType,
-					ObjectType: config.StorageTypeFileSystem,
+					IndexType:  types.TSDBType,
+					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
 							Prefix: "index_",
@@ -478,8 +479,8 @@ func TestBuildLegacyWALs(t *testing.T) {
 				{
 					Schema:     "v12",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-					IndexType:  config.TSDBType,
-					ObjectType: config.StorageTypeFileSystem,
+					IndexType:  types.TSDBType,
+					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
 							Prefix: "index_",
@@ -491,8 +492,8 @@ func TestBuildLegacyWALs(t *testing.T) {
 			Configs: []config.PeriodConfig{
 				{
 					Schema:     "v13",
-					IndexType:  config.TSDBType,
-					ObjectType: config.StorageTypeFileSystem,
+					IndexType:  types.TSDBType,
+					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
 							Prefix: "index_",
@@ -502,8 +503,8 @@ func TestBuildLegacyWALs(t *testing.T) {
 				{
 					Schema:     "v13",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-					IndexType:  config.TSDBType,
-					ObjectType: config.StorageTypeFileSystem,
+					IndexType:  types.TSDBType,
+					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
 							Prefix: "index_",

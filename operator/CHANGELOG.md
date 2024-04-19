@@ -1,5 +1,10 @@
 ## Main
 
+- [11708](https://github.com/grafana/loki/pull/11708) **btaani**: Add support for Swift TLS CA configuration
+
+## 0.6.0 (2024-03-19)
+
+- [12228](https://github.com/grafana/loki/pull/12228) **xperimental**: Restructure LokiStack metrics
 - [12164](https://github.com/grafana/loki/pull/12164) **periklis**: Use safe bearer token authentication to scrape operator metrics
 - [12216](https://github.com/grafana/loki/pull/12216) **xperimental**: Fix duplicate operator metrics due to ServiceMonitor selector
 - [12212](https://github.com/grafana/loki/pull/12212) **xperimental**: Keep credentialMode in status when updating schemas

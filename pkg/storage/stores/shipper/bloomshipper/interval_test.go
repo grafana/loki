@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 )
 
 func Test_Interval_String(t *testing.T) {

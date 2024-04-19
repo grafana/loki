@@ -28,14 +28,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/internal/grpcrand"
 	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/xds/internal/httpfilter"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	cpb "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/common/fault/v3"
@@ -87,7 +86,7 @@ func parseConfig(cfg proto.Message) (httpfilter.FilterConfig, error) {
 		return nil, fmt.Errorf("fault: error parsing config %v: unknown type %T", cfg, cfg)
 	}
 	msg := new(fpb.HTTPFault)
-	if err := ptypes.UnmarshalAny(any, msg); err != nil {
+	if err := any.UnmarshalTo(msg); err != nil {
 		return nil, fmt.Errorf("fault: error parsing config %v: %v", cfg, err)
 	}
 	return config{config: msg}, nil

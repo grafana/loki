@@ -15,14 +15,15 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/exp/slices"
 
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
@@ -169,7 +170,8 @@ func (h *readHandler) remoteReadSamples(
 			}
 			return nil
 		}(); err != nil {
-			if httpErr, ok := err.(HTTPError); ok {
+			var httpErr HTTPError
+			if errors.As(err, &httpErr) {
 				http.Error(w, httpErr.Error(), httpErr.Status())
 				return
 			}
@@ -241,7 +243,8 @@ func (h *readHandler) remoteReadStreamedXORChunks(ctx context.Context, w http.Re
 			}
 			return nil
 		}(); err != nil {
-			if httpErr, ok := err.(HTTPError); ok {
+			var httpErr HTTPError
+			if errors.As(err, &httpErr) {
 				http.Error(w, httpErr.Error(), httpErr.Status())
 				return
 			}

@@ -11,25 +11,28 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/dskit/concurrency"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
-func newProcessor(id string, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
+func newProcessor(id string, concurrency int, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
 	return &processor{
-		id:      id,
-		store:   store,
-		logger:  logger,
-		metrics: metrics,
+		id:          id,
+		concurrency: concurrency,
+		store:       store,
+		logger:      logger,
+		metrics:     metrics,
 	}
 }
 
 type processor struct {
-	id      string
-	store   bloomshipper.Store
-	logger  log.Logger
-	metrics *workerMetrics
+	id          string
+	concurrency int // concurrency at which bloom blocks are processed
+	store       bloomshipper.Store
+	logger      log.Logger
+	metrics     *workerMetrics
 }
 
 func (p *processor) run(ctx context.Context, tasks []Task) error {
@@ -42,7 +45,7 @@ func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.M
 		"msg", "process tasks with bounds",
 		"tenant", tenant,
 		"tasks", len(tasks),
-		"bounds", JoinFunc(bounds, ",", func(e v1.FingerprintBounds) string { return e.String() }),
+		"bounds", len(bounds),
 	)
 
 	for ts, tasks := range group(tasks, func(t Task) config.DayTime { return t.table }) {
@@ -70,47 +73,82 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		Interval: interval,
 		Keyspace: v1.NewBounds(minFpRange.Min, maxFpRange.Max),
 	}
+
+	start := time.Now()
 	metas, err := p.store.FetchMetas(ctx, metaSearch)
+	duration := time.Since(start)
+	level.Debug(p.logger).Log("msg", "fetched metas", "count", len(metas), "duration", duration, "err", err)
+
+	for _, t := range tasks {
+		FromContext(t.ctx).AddMetasFetchTime(duration)
+	}
+
 	if err != nil {
 		return err
 	}
 
 	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
-	level.Info(p.logger).Log("msg", "blocks for metas", "num_metas", len(metas), "num_blocks", len(blocksRefs))
-	return p.processBlocks(ctx, partitionTasks(tasks, blocksRefs))
-}
 
-func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) error {
+	data := partitionTasks(tasks, blocksRefs)
+
 	refs := make([]bloomshipper.BlockRef, 0, len(data))
 	for _, block := range data {
 		refs = append(refs, block.ref)
 	}
 
-	start := time.Now()
-	bqs, err := p.store.FetchBlocks(ctx, refs, bloomshipper.WithFetchAsync(true), bloomshipper.WithIgnoreNotFound(true))
-	level.Debug(p.logger).Log("msg", "fetch blocks", "count", len(bqs), "duration", time.Since(start), "err", err)
+	start = time.Now()
+	bqs, err := p.store.FetchBlocks(
+		ctx,
+		refs,
+		bloomshipper.WithFetchAsync(true),
+		bloomshipper.WithIgnoreNotFound(true),
+		// NB(owen-d): we relinquish bloom pages to a pool
+		// after iteration for performance (alloc reduction).
+		// This is safe to do here because we do not capture
+		// the underlying bloom []byte outside of iteration
+		bloomshipper.WithPool(true),
+	)
+	duration = time.Since(start)
+	level.Debug(p.logger).Log("msg", "fetched blocks", "count", len(refs), "duration", duration, "err", err)
+
+	for _, t := range tasks {
+		FromContext(t.ctx).AddBlocksFetchTime(duration)
+	}
 
 	if err != nil {
 		return err
 	}
 
-	// TODO(chaudum): What's a good cocurrency value?
-	return concurrency.ForEachJob(ctx, len(bqs), 10, func(ctx context.Context, i int) error {
+	start = time.Now()
+	res := p.processBlocks(ctx, bqs, data)
+	duration = time.Since(start)
+
+	for _, t := range tasks {
+		FromContext(t.ctx).AddProcessingTime(duration)
+	}
+
+	return res
+}
+
+func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.CloseableBlockQuerier, data []blockWithTasks) error {
+
+	defer func() {
+		for i := range bqs {
+			if bqs[i] == nil {
+				continue
+			}
+			bqs[i].Close()
+		}
+	}()
+
+	return concurrency.ForEachJob(ctx, len(bqs), p.concurrency, func(ctx context.Context, i int) error {
 		bq := bqs[i]
 		if bq == nil {
 			// TODO(chaudum): Add metric for skipped blocks
 			return nil
 		}
-		defer bq.Close()
 
 		block := data[i]
-		level.Debug(p.logger).Log(
-			"msg", "process block with tasks",
-			"job", i+1,
-			"of_jobs", len(bqs),
-			"block", block.ref,
-			"num_tasks", len(block.tasks),
-		)
 
 		if !block.ref.Bounds.Equal(bq.Bounds) {
 			return errors.Errorf("block and querier bounds differ: %s vs %s", block.ref.Bounds, bq.Bounds)
@@ -130,25 +168,15 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 		return err
 	}
 
-	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), 0)
+	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), schema.NGramSkip())
 	iters := make([]v1.PeekingIterator[v1.Request], 0, len(tasks))
 
-	// collect spans & run single defer to avoid blowing call stack
-	// if there are many tasks
-	spans := make([]opentracing.Span, 0, len(tasks))
-	defer func() {
-		for _, sp := range spans {
-			sp.Finish()
-		}
-	}()
-
 	for _, task := range tasks {
-		// add spans for each task context for this block
-		sp, _ := opentracing.StartSpanFromContext(task.ctx, "bloomgateway.ProcessBlock")
-		spans = append(spans, sp)
-		md, _ := blockQuerier.Metadata()
-		blk := bloomshipper.BlockRefFrom(task.Tenant, task.table.String(), md)
-		sp.LogKV("block", blk.String())
+		if sp := opentracing.SpanFromContext(task.ctx); sp != nil {
+			md, _ := blockQuerier.Metadata()
+			blk := bloomshipper.BlockRefFrom(task.Tenant, task.table.String(), md)
+			sp.LogKV("process block", blk.String(), "series", len(task.series))
+		}
 
 		it := v1.NewPeekingIter(task.RequestIter(tokenizer))
 		iters = append(iters, it)
@@ -158,10 +186,18 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 
 	start := time.Now()
 	err = fq.Run()
+	duration := time.Since(start)
+
 	if err != nil {
-		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelFailure).Observe(time.Since(start).Seconds())
+		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelFailure).Observe(duration.Seconds())
 	} else {
-		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelSuccess).Observe(time.Since(start).Seconds())
+		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelSuccess).Observe(duration.Seconds())
+	}
+
+	for _, task := range tasks {
+		stats := FromContext(task.ctx)
+		stats.AddTotalProcessingTime(duration)
+		stats.IncProcessedBlocks()
 	}
 
 	return err

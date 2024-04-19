@@ -366,6 +366,11 @@ func (m *GettableAlert) contextValidateReceivers(ctx context.Context, formats st
 	for i := 0; i < len(m.Receivers); i++ {
 
 		if m.Receivers[i] != nil {
+
+			if swag.IsZero(m.Receivers[i]) { // not required
+				return nil
+			}
+
 			if err := m.Receivers[i].ContextValidate(ctx, formats); err != nil {
 				if ve, ok := err.(*errors.Validation); ok {
 					return ve.ValidateName("receivers" + "." + strconv.Itoa(i))
@@ -384,6 +389,7 @@ func (m *GettableAlert) contextValidateReceivers(ctx context.Context, formats st
 func (m *GettableAlert) contextValidateStatus(ctx context.Context, formats strfmt.Registry) error {
 
 	if m.Status != nil {
+
 		if err := m.Status.ContextValidate(ctx, formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("status")

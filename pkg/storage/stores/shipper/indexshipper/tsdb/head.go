@@ -22,7 +22,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 /*

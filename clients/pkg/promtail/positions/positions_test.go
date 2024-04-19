@@ -9,7 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func tempFilename(t *testing.T) string {

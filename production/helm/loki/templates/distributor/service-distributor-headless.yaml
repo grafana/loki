@@ -1,0 +1,36 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.distributorFullname" . }}-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.distributorSelectorLabels" . | nindent 4 }}
+    {{- with .Values.distributor.serviceLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    variant: headless
+    prometheus.io/service-monitor: "false"
+  {{- with .Values.loki.serviceAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+      protocol: TCP
+      {{- if .Values.distributor.appProtocol.grpc }}
+      appProtocol: {{ .Values.distributor.appProtocol.grpc }}
+      {{- end }}
+  selector:
+    {{- include "loki.distributorSelectorLabels" . | nindent 4 }}
+{{- end -}}

@@ -21,10 +21,15 @@ func (ms ByteSlice) getOrig() *[]byte {
 	return internal.GetOrigByteSlice(internal.ByteSlice(ms))
 }
 
+func (ms ByteSlice) getState() *internal.State {
+	return internal.GetByteSliceState(internal.ByteSlice(ms))
+}
+
 // NewByteSlice creates a new empty ByteSlice.
 func NewByteSlice() ByteSlice {
 	orig := []byte(nil)
-	return ByteSlice(internal.NewByteSlice(&orig))
+	state := internal.StateMutable
+	return ByteSlice(internal.NewByteSlice(&orig, &state))
 }
 
 // AsRaw returns a copy of the []byte slice.
@@ -34,6 +39,7 @@ func (ms ByteSlice) AsRaw() []byte {
 
 // FromRaw copies raw []byte into the slice ByteSlice.
 func (ms ByteSlice) FromRaw(val []byte) {
+	ms.getState().AssertMutable()
 	*ms.getOrig() = copyByteSlice(*ms.getOrig(), val)
 }
 
@@ -52,6 +58,7 @@ func (ms ByteSlice) At(i int) byte {
 // SetAt sets byte item at particular index.
 // Equivalent of byteSlice[i] = val
 func (ms ByteSlice) SetAt(i int, val byte) {
+	ms.getState().AssertMutable()
 	(*ms.getOrig())[i] = val
 }
 
@@ -62,6 +69,7 @@ func (ms ByteSlice) SetAt(i int, val byte) {
 //     copy(buf, byteSlice)
 //     byteSlice = buf
 func (ms ByteSlice) EnsureCapacity(newCap int) {
+	ms.getState().AssertMutable()
 	oldCap := cap(*ms.getOrig())
 	if newCap <= oldCap {
 		return
@@ -75,18 +83,22 @@ func (ms ByteSlice) EnsureCapacity(newCap int) {
 // Append appends extra elements to ByteSlice.
 // Equivalent of byteSlice = append(byteSlice, elms...)
 func (ms ByteSlice) Append(elms ...byte) {
+	ms.getState().AssertMutable()
 	*ms.getOrig() = append(*ms.getOrig(), elms...)
 }
 
 // MoveTo moves all elements from the current slice overriding the destination and
 // resetting the current instance to its zero value.
 func (ms ByteSlice) MoveTo(dest ByteSlice) {
+	ms.getState().AssertMutable()
+	dest.getState().AssertMutable()
 	*dest.getOrig() = *ms.getOrig()
 	*ms.getOrig() = nil
 }
 
 // CopyTo copies all elements from the current slice overriding the destination.
 func (ms ByteSlice) CopyTo(dest ByteSlice) {
+	dest.getState().AssertMutable()
 	*dest.getOrig() = copyByteSlice(*dest.getOrig(), *ms.getOrig())
 }
 

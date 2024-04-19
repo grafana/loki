@@ -24,11 +24,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/internal/cache"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
 // New returns a new xDS client configured by the bootstrap file specified in env
@@ -100,6 +103,17 @@ func NewWithConfigForTesting(config *bootstrap.Config, watchExpiryTimeout, autho
 	return cl, grpcsync.OnceFunc(cl.close), nil
 }
 
+func init() {
+	internal.TriggerXDSResourceNameNotFoundClient = triggerXDSResourceNameNotFoundClient
+}
+
+var singletonClientForTesting = atomic.Pointer[clientRefCounted]{}
+
+func triggerXDSResourceNameNotFoundClient(resourceType, resourceName string) error {
+	c := singletonClientForTesting.Load()
+	return internal.TriggerXDSResourceNameNotFoundForTesting.(func(func(xdsresource.Type, string) error, string, string) error)(c.clientImpl.triggerResourceNotFoundForTesting, resourceType, resourceName)
+}
+
 // NewWithBootstrapContentsForTesting returns an xDS client for this config,
 // separate from the global singleton.
 //
@@ -123,12 +137,14 @@ func NewWithBootstrapContentsForTesting(contents []byte) (XDSClient, func(), err
 	if err != nil {
 		return nil, nil, err
 	}
+	singletonClientForTesting.Store(c)
 	return c, grpcsync.OnceFunc(func() {
 		clientsMu.Lock()
 		defer clientsMu.Unlock()
 		if c.decrRef() == 0 {
 			c.close()
 			delete(clients, string(contents))
+			singletonClientForTesting.Store(nil)
 		}
 	}), nil
 }

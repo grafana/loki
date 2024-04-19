@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/clients/pkg/logentry/logql"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/logql"
 )
 
 const (

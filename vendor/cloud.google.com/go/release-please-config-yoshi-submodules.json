@@ -39,6 +39,9 @@
         "appengine": {
             "component": "appengine"
         },
+        "apps": {
+            "component": "apps"
+        },
         "area120": {
             "component": "area120"
         },
@@ -81,6 +84,12 @@
         "clouddms": {
             "component": "clouddms"
         },
+        "cloudprofiler": {
+            "component": "cloudprofiler"
+        },
+        "cloudquotas": {
+            "component": "cloudquotas"
+        },
         "cloudtasks": {
             "component": "cloudtasks"
         },
@@ -95,6 +104,9 @@
         },
         "confidentialcomputing": {
             "component": "confidentialcomputing"
+        },
+        "config": {
+            "component": "config"
         },
         "contactcenterinsights": {
             "component": "contactcenterinsights"
@@ -152,6 +164,9 @@
         },
         "edgecontainer": {
             "component": "edgecontainer"
+        },
+        "edgenetwork": {
+            "component": "edgenetwork"
         },
         "essentialcontacts": {
             "component": "essentialcontacts"
@@ -303,11 +318,17 @@
         "secretmanager": {
             "component": "secretmanager"
         },
+        "securesourcemanager": {
+            "component": "securesourcemanager"
+        },
         "security": {
             "component": "security"
         },
         "securitycenter": {
             "component": "securitycenter"
+        },
+        "securitycentermanagement": {
+            "component": "securitycentermanagement"
         },
         "servicecontrol": {
             "component": "servicecontrol"
@@ -324,6 +345,9 @@
         "shell": {
             "component": "shell"
         },
+        "shopping": {
+            "component": "shopping"
+        },
         "speech": {
             "component": "speech"
         },
@@ -338,6 +362,9 @@
         },
         "talent": {
             "component": "talent"
+        },
+        "telcoautomation": {
+            "component": "telcoautomation"
         },
         "texttospeech": {
             "component": "texttospeech"

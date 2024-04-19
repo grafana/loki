@@ -273,6 +273,7 @@
           "color": {
             "mode": "palette-classic"
           },
+          "unit": "s",
           "custom": {
             "axisLabel": "",
             "axisPlacement": "auto",

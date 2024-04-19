@@ -10,8 +10,8 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 
-	storage_errors "github.com/grafana/loki/pkg/storage/errors"
-	"github.com/grafana/loki/pkg/validation"
+	storage_errors "github.com/grafana/loki/v3/pkg/storage/errors"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // TranslateToPromqlAPIError converts error to one of promql.Errors for consumption in PromQL API.

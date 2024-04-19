@@ -13,7 +13,7 @@ import (
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/slices"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 )
 
 var (

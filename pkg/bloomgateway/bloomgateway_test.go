@@ -10,9 +10,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/kv"
-	"github.com/grafana/dskit/kv/consul"
-	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
@@ -20,17 +17,17 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/storage"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
-	bloomshipperconfig "github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/storage"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.GroupedChunkRefs {
@@ -62,8 +59,8 @@ func setupBloomStore(t *testing.T) *bloomshipper.BloomStore {
 				Period: 24 * time.Hour,
 			},
 		},
-		IndexType:  config.TSDBType,
-		ObjectType: config.StorageTypeFileSystem,
+		IndexType:  types.TSDBType,
+		ObjectType: types.StorageTypeFileSystem,
 		Schema:     "v13",
 		RowShards:  16,
 	}
@@ -72,9 +69,12 @@ func setupBloomStore(t *testing.T) *bloomshipper.BloomStore {
 	}
 	storageCfg := storage.Config{
 		BloomShipperConfig: bloomshipperconfig.Config{
-			WorkingDirectory: t.TempDir(),
-			BlocksDownloadingQueue: bloomshipperconfig.DownloadingQueueConfig{
-				WorkersCount: 1,
+			WorkingDirectory:    []string{t.TempDir()},
+			DownloadParallelism: 1,
+			BlocksCache: bloomshipperconfig.BlocksCacheConfig{
+				SoftLimit: flagext.Bytes(10 << 20),
+				HardLimit: flagext.Bytes(20 << 20),
+				TTL:       time.Hour,
 			},
 		},
 		FSConfig: local.FSConfig{
@@ -83,7 +83,8 @@ func setupBloomStore(t *testing.T) *bloomshipper.BloomStore {
 	}
 
 	reg := prometheus.NewRegistry()
-	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, nil, nil, reg, logger)
+	blocksCache := bloomshipper.NewFsBlocksCache(storageCfg.BloomShipperConfig.BlocksCache, nil, logger)
+	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, nil, blocksCache, reg, logger)
 	require.NoError(t, err)
 	t.Cleanup(store.Stop)
 
@@ -95,20 +96,8 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 	reg := prometheus.NewRegistry()
 
 	t.Run("start and stop bloom gateway", func(t *testing.T) {
-		kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), logger, reg)
-		t.Cleanup(func() {
-			closer.Close()
-		})
-
 		cfg := Config{
-			Enabled: true,
-			Ring: lokiring.RingConfig{
-				KVStore: kv.Config{
-					Mock: kvStore,
-				},
-				ReplicationFactor: 1,
-				NumTokens:         16,
-			},
+			Enabled:                 true,
 			WorkerConcurrency:       4,
 			MaxOutstandingPerTenant: 1024,
 		}
@@ -132,25 +121,11 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	tenantID := "test"
 
-	store := setupBloomStore(t)
 	logger := log.NewNopLogger()
-	reg := prometheus.NewRegistry()
-
-	kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), logger, reg)
-	t.Cleanup(func() {
-		closer.Close()
-	})
-
 	cfg := Config{
-		Enabled: true,
-		Ring: lokiring.RingConfig{
-			KVStore: kv.Config{
-				Mock: kvStore,
-			},
-			ReplicationFactor: 1,
-			NumTokens:         16,
-		},
-		WorkerConcurrency:       4,
+		Enabled:                 true,
+		WorkerConcurrency:       2,
+		BlockQueryConcurrency:   2,
 		MaxOutstandingPerTenant: 1024,
 	}
 
@@ -243,7 +218,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, store, logger, reg)
+		gw, err := New(cfg, newMockBloomStore(nil, nil), logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -288,7 +263,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, store, logger, reg)
+		gw, err := New(cfg, newMockBloomStore(nil, nil), logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -327,15 +302,13 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	t.Run("use fuse queriers to filter chunks", func(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
-		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, store, logger, reg)
-		require.NoError(t, err)
-
 		// replace store implementation and re-initialize workers and sub-services
 		_, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 
-		gw.bloomStore = newMockBloomStore(queriers, metas)
-		err = gw.initServices()
+		reg := prometheus.NewRegistry()
+		store := newMockBloomStore(queriers, metas)
+
+		gw, err := New(cfg, store, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)

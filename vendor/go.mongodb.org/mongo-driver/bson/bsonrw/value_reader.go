@@ -739,8 +739,7 @@ func (vr *valueReader) ReadValue() (ValueReader, error) {
 		return nil, ErrEOA
 	}
 
-	_, err = vr.readCString()
-	if err != nil {
+	if err := vr.skipCString(); err != nil {
 		return nil, err
 	}
 
@@ -792,6 +791,15 @@ func (vr *valueReader) readByte() (byte, error) {
 
 	vr.offset++
 	return vr.d[vr.offset-1], nil
+}
+
+func (vr *valueReader) skipCString() error {
+	idx := bytes.IndexByte(vr.d[vr.offset:], 0x00)
+	if idx < 0 {
+		return io.EOF
+	}
+	vr.offset += int64(idx) + 1
+	return nil
 }
 
 func (vr *valueReader) readCString() (string, error) {

@@ -3,6 +3,7 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 type DNS struct {
 	logger        log.Logger
 	cleanupPeriod time.Duration
-	address       string
+	addresses     []string
 	stop          chan struct{}
 	done          sync.WaitGroup
 	once          sync.Once
@@ -27,7 +28,7 @@ func NewDNS(logger log.Logger, cleanupPeriod time.Duration, address string, reg 
 	d := &DNS{
 		logger:        logger,
 		cleanupPeriod: cleanupPeriod,
-		address:       address,
+		addresses:     strings.Split(address, ","),
 		stop:          make(chan struct{}),
 		done:          sync.WaitGroup{},
 		dnsProvider:   dnsProvider,
@@ -70,10 +71,10 @@ func (d *DNS) discoveryLoop() {
 }
 
 func (d *DNS) runDiscovery() {
-	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, fmt.Errorf("DNS lookup timeout: %s", d.address))
+	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, fmt.Errorf("DNS lookup timeout: %v", d.addresses))
 	defer cancel()
-	err := d.dnsProvider.Resolve(ctx, []string{d.address})
+	err := d.dnsProvider.Resolve(ctx, d.addresses)
 	if err != nil {
-		level.Error(d.logger).Log("msg", "failed to resolve index gateway address", "err", err)
+		level.Error(d.logger).Log("msg", "failed to resolve server addresses", "err", err)
 	}
 }

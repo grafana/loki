@@ -7,10 +7,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 func parseDayTime(s string) config.DayTime {
@@ -135,6 +135,26 @@ func TestPartitionTasks(t *testing.T) {
 			require.Len(t, res.tasks, 1)
 			require.Len(t, res.tasks[0].series, 90)
 		}
+	})
+
+	t.Run("block series before and after task series", func(t *testing.T) {
+		bounds := []bloomshipper.BlockRef{
+			mkBlockRef(100, 200),
+		}
+
+		tasks := []Task{
+			{
+				series: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 50},
+					{Fingerprint: 75},
+					{Fingerprint: 250},
+					{Fingerprint: 300},
+				},
+			},
+		}
+
+		results := partitionTasks(tasks, bounds)
+		require.Len(t, results, 0)
 	})
 }
 
@@ -334,7 +354,7 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		// 	}
 		// }
 		querier := &bloomshipper.CloseableBlockQuerier{
-			BlockQuerier: v1.NewBlockQuerier(block),
+			BlockQuerier: v1.NewBlockQuerier(block, false, v1.DefaultMaxPageSize),
 			BlockRef:     blockRef,
 		}
 		queriers = append(queriers, querier)

@@ -7,7 +7,7 @@ import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
 import "pkg/logproto/logproto.proto";
 
-option go_package = "github.com/grafana/loki/pkg/ruler/rulespb";
+option go_package = "github.com/grafana/loki/v3/pkg/ruler/rulespb";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
@@ -42,10 +42,10 @@ message RuleDesc {
   ];
   repeated logproto.LegacyLabelPair labels = 5 [
     (gogoproto.nullable) = false,
-    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.LabelAdapter"
   ];
   repeated logproto.LegacyLabelPair annotations = 6 [
     (gogoproto.nullable) = false,
-    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.LabelAdapter"
   ];
 }

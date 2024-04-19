@@ -244,7 +244,7 @@ func (p Proc) FileDescriptorTargets() ([]string, error) {
 // a process.
 func (p Proc) FileDescriptorsLen() (int, error) {
 	// Use fast path if available (Linux v6.2): https://github.com/torvalds/linux/commit/f1f1f2569901
-	if p.fs.real {
+	if p.fs.isReal {
 		stat, err := os.Stat(p.path("fd"))
 		if err != nil {
 			return 0, err

@@ -12,13 +12,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/exp/slices"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 func Test(t *testing.T) {
@@ -193,7 +193,7 @@ func Test(t *testing.T) {
 			assert.NoError(t, chunkClient.PutChunks(context.Background(), test.storeStart))
 
 			// Build fetcher
-			f, err := New(c1, c2, false, sc, chunkClient, 1, 1, test.handoff)
+			f, err := New(c1, c2, false, sc, chunkClient, test.handoff)
 			assert.NoError(t, err)
 
 			// Run the test
@@ -290,7 +290,7 @@ func BenchmarkFetch(b *testing.B) {
 	_ = chunkClient.PutChunks(context.Background(), test.storeStart)
 
 	// Build fetcher
-	f, _ := New(c1, c2, false, sc, chunkClient, 1, 1, test.handoff)
+	f, _ := New(c1, c2, false, sc, chunkClient, test.handoff)
 
 	for i := 0; i < b.N; i++ {
 		_, err := f.FetchChunks(context.Background(), test.fetch)

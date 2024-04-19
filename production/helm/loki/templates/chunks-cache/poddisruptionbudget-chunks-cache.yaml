@@ -1,0 +1,16 @@
+{{- if .Values.chunksCache.enabled }}
+apiVersion: {{ include "loki.pdb.apiVersion" . }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "loki.fullname" . }}-memcached-chunks-cache
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: memcached-chunks-cache
+spec:
+  selector:
+    matchLabels:
+      {{- include "loki.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: memcached-chunks-cache
+  maxUnavailable: 1
+{{- end -}}

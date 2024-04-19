@@ -91,6 +91,7 @@ func (fq *FusedQuerier) Run() error {
 					Removals: nil,
 				}
 			}
+			continue
 		}
 
 		// Now that we've found the series, we need to find the unpack the bloom

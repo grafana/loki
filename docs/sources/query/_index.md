@@ -137,6 +137,38 @@ Same as above, but vectors have their values set to `1` if they pass the compari
 sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))
 ```
 
+### Pattern match filter operators
+
+- `|>` (line match pattern)
+- `!>` (line match not pattern)
+
+Pattern Filter not only enhances efficiency but also simplifies the process of writing LogQL queries. By eliminating the need for complex regex patterns, users can create queries using a more intuitive syntax, reducing the cognitive load and potential for errors.
+
+Within the pattern syntax the `<_>` serves as a wildcard, representing any arbitrary text. This allows the query to match log lines where the specified pattern occurs, such as log lines containing static content, with variable content in between.
+
+Line match pattern example:
+
+```logql
+{service_name=`distributor`} |> `<_> caller=http.go:194 level=debug <_> msg="POST /push.v1.PusherService/Push <_>`
+```
+
+Line match not pattern example:
+
+```logql
+{service_name=`distributor`} !> `<_> caller=http.go:194 level=debug <_> msg="POST /push.v1.PusherService/Push <_>`
+```
+
+For example, the example queries above will respectively match and not match the following log line from the `distributor` service:
+
+```log
+ts=2024-04-05T08:40:13.585911094Z caller=http.go:194 level=debug traceID=23e54a271db607cc orgID=3648 msg="POST /push.v1.PusherService/Push (200) 12.684035ms"
+ts=2024-04-05T08:41:06.551403339Z caller=http.go:194 level=debug traceID=54325a1a15b42e2d orgID=1218 msg="POST /push.v1.PusherService/Push (200) 1.664285ms"
+ts=2024-04-05T08:41:06.506524777Z caller=http.go:194 level=debug traceID=69d4271da1595bcb orgID=1218 msg="POST /push.v1.PusherService/Push (200) 1.783818ms"
+ts=2024-04-05T08:41:06.473740396Z caller=http.go:194 level=debug traceID=3b8ec973e6397814 orgID=3648 msg="POST /push.v1.PusherService/Push (200) 1.893987ms"
+ts=2024-04-05T08:41:05.88999067Z caller=http.go:194 level=debug traceID=6892d7ef67b4d65c orgID=3648 msg="POST /push.v1.PusherService/Push (200) 2.314337ms"
+ts=2024-04-05T08:41:05.826266414Z caller=http.go:194 level=debug traceID=0bb76e910cfd008d orgID=3648 msg="POST /push.v1.PusherService/Push (200) 3.625744ms"
+```
+
 ### Order of operations
 
 When chaining or combining operators, you have to consider operator precedence:

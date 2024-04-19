@@ -41,7 +41,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
         .addRow(
           grafana.row.new(if $._config.ssd.enabled then 'Write path' else 'Ingester')
           .addPanel(
-            $.panel('In-memory streams') +
+            $.newQueryPanel('In-memory streams') +
             $.queryPanel(
               'sum by(%s) (loki_ingester_memory_streams{%s})' % [$._config.per_instance_label, $.jobMatcher(ingester_job_matcher)],
               '{{%s}}' % $._config.per_instance_label
@@ -60,22 +60,20 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.goHeapInUsePanel('Memory (go heap inuse)', ingester_job_matcher),
           )
           .addPanel(
-            $.panel('Disk Writes') +
+            $.newQueryPanel('Disk Writes', 'Bps') +
             $.queryPanel(
               'sum by(%s, %s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(ingester_pod_matcher)],
               '{{%s}} - {{device}}' % $._config.per_instance_label
             ) +
-            $.stack +
-            { yaxes: $.yaxes('Bps') },
+            $.withStacking,
           )
           .addPanel(
-            $.panel('Disk Reads') +
+            $.newQueryPanel('Disk Reads', 'Bps') +
             $.queryPanel(
               'sum by(%s, %s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(ingester_pod_matcher)],
               '{{%s}} - {{device}}' % $._config.per_instance_label
             ) +
-            $.stack +
-            { yaxes: $.yaxes('Bps') },
+            $.withStacking,
           )
           .addPanel(
             $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', ingester_job_matcher),

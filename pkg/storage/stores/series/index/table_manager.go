@@ -20,8 +20,8 @@ import (
 	"github.com/prometheus/common/model"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (

@@ -119,6 +119,7 @@ func (t *Client) Credential(ctx context.Context, authParams authority.AuthParams
 			return accesstokens.TokenResponse{}, err
 		}
 		return accesstokens.TokenResponse{
+			TokenType:   authParams.AuthnScheme.AccessTokenType(),
 			AccessToken: tr.AccessToken,
 			ExpiresOn: internalTime.DurationTime{
 				T: now.Add(time.Duration(tr.ExpiresInSeconds) * time.Second),

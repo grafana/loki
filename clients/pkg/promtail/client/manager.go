@@ -9,9 +9,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/limit"
-	"github.com/grafana/loki/clients/pkg/promtail/wal"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/limit"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/wal"
 )
 
 // WriterEventsNotifier implements a notifier that's received by the Manager, to which wal.Watcher can subscribe for

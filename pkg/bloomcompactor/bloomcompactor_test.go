@@ -14,13 +14,14 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/bloomutils"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/config"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
-	util_ring "github.com/grafana/loki/pkg/util/ring"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/bloomutils"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	util_ring "github.com/grafana/loki/v3/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestCompactor_ownsTenant(t *testing.T) {
@@ -148,6 +149,14 @@ type mockLimits struct {
 	shardSize int
 }
 
+func (m mockLimits) RetentionPeriod(_ string) time.Duration {
+	panic("implement me")
+}
+
+func (m mockLimits) StreamRetention(_ string) []validation.StreamRetention {
+	panic("implement me")
+}
+
 func (m mockLimits) AllByUserID() map[string]*validation.Limits {
 	panic("implement me")
 }
@@ -178,6 +187,10 @@ func (m mockLimits) BloomNGramSkip(_ string) int {
 
 func (m mockLimits) BloomFalsePositiveRate(_ string) float64 {
 	panic("implement me")
+}
+
+func (m mockLimits) BloomBlockEncoding(_ string) string {
+	return chunkenc.EncNone.String()
 }
 
 func (m mockLimits) BloomCompactorMaxBlockSize(_ string) int {

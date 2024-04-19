@@ -23,7 +23,7 @@ metadata:
     features.operators.openshift.io/token-auth-aws: "true"
     features.operators.openshift.io/token-auth-azure: "true"
     features.operators.openshift.io/token-auth-gcp: "false"
-    olm.skipRange: '>=5.7.0-0 <5.9.0'
+    olm.skipRange: '>=5.8.0-0 <6.0.0'
     operatorframework.io/cluster-monitoring: "true"
     operatorframework.io/suggested-namespace: openshift-operators-redhat
     operators.openshift.io/valid-subscription: '["OpenShift Container Platform", "OpenShift

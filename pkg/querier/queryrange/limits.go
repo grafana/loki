@@ -22,18 +22,19 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"golang.org/x/sync/semaphore"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	queryrange_limits "github.com/grafana/loki/pkg/querier/queryrange/limits"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/spanlogger"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 const (
@@ -350,7 +351,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		level.Error(log).Log("msg", "failed to get schema config, not applying querySizeLimit", "err", err)
 		return q.next.Do(ctx, r)
 	}
-	if schemaCfg.IndexType != config.TSDBType {
+	if schemaCfg.IndexType != types.TSDBType {
 		return q.next.Do(ctx, r)
 	}
 
@@ -605,7 +606,7 @@ func WeightedParallelism(
 	// the active configuration
 	if start.Equal(end) {
 		switch configs[i].IndexType {
-		case config.TSDBType:
+		case types.TSDBType:
 			return l.TSDBMaxQueryParallelism(ctx, user)
 		}
 		return l.MaxQueryParallelism(ctx, user)
@@ -626,7 +627,7 @@ func WeightedParallelism(
 		if i+1 < len(configs) && configs[i+1].From.Time.Before(end) {
 			dur = configs[i+1].From.Time.Sub(from)
 		}
-		if ty := configs[i].IndexType; ty == config.TSDBType {
+		if ty := configs[i].IndexType; ty == types.TSDBType {
 			tsdbDur += dur
 		} else {
 			otherDur += dur

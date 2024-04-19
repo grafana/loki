@@ -19,14 +19,11 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: filesystem
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /tmp/loki/index
-    cache_location: /tmp/loki/index_cache
   filesystem:
     directory: /tmp/loki/chunks

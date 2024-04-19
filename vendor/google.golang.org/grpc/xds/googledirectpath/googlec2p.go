@@ -133,16 +133,12 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 		return nil, fmt.Errorf("failed to start xDS client: %v", err)
 	}
 
-	// Create and return an xDS resolver.
-	t.URL.Scheme = xdsName
-	if envconfig.XDSFederation {
-		t = resolver.Target{
-			URL: url.URL{
-				Scheme: xdsName,
-				Host:   c2pAuthority,
-				Path:   t.URL.Path,
-			},
-		}
+	t = resolver.Target{
+		URL: url.URL{
+			Scheme: xdsName,
+			Host:   c2pAuthority,
+			Path:   t.URL.Path,
+		},
 	}
 	xdsR, err := resolver.Get(xdsName).Build(t, cc, opts)
 	if err != nil {
@@ -197,11 +193,7 @@ func newNode(zone string, ipv6Capable bool) *v3corepb.Node {
 
 // runDirectPath returns whether this resolver should use direct path.
 //
-// direct path is enabled if this client is running on GCE, and the normal xDS
-// is not used (bootstrap env vars are not set) or federation is enabled.
+// direct path is enabled if this client is running on GCE.
 func runDirectPath() bool {
-	if !onGCE() {
-		return false
-	}
-	return envconfig.XDSFederation || envconfig.XDSBootstrapFileName == "" && envconfig.XDSBootstrapFileContent == ""
+	return onGCE()
 }
