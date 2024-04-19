@@ -926,7 +926,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API]({{< relref "../../reference/api#ingest-logs" >}}) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ingest-logs) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
@@ -1940,7 +1940,7 @@ users with thousands of services it can be more efficient to use the Consul API
 directly which has basic support for filtering nodes (currently by node
 metadata and a single tag).
 
-### docker_sd_config
+### docker_sd_configs
 
 Docker service discovery allows retrieving targets from a Docker daemon.
 It will only watch containers of the Docker daemon referenced with the host parameter. Docker

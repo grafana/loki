@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func TestLabelsBuilder_Get(t *testing.T) {
@@ -66,6 +66,89 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 
 	// make sure the original labels is unchanged.
 	require.Equal(t, labels.FromStrings("already", "in"), lbs)
+}
+
+func TestLabelsBuilder_LabelsErrorFromAdd(t *testing.T) {
+	lbs := labels.FromStrings("already", "in")
+	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+	b.Reset()
+
+	// This works for any category
+	b.Add(StructuredMetadataLabel, labels.FromStrings(logqlmodel.ErrorLabel, "test error", logqlmodel.ErrorDetailsLabel, "test details")...)
+	lbsWithErr := b.LabelsResult()
+
+	expectedLbs := labels.FromStrings(
+		logqlmodel.ErrorLabel, "test error",
+		logqlmodel.ErrorDetailsLabel, "test details",
+		"already", "in",
+	)
+	require.Equal(t, expectedLbs, lbsWithErr.Labels())
+	require.Equal(t, expectedLbs.String(), lbsWithErr.String())
+	require.Equal(t, expectedLbs.Hash(), lbsWithErr.Hash())
+	require.Equal(t, labels.FromStrings("already", "in"), lbsWithErr.Stream())
+	require.Nil(t, lbsWithErr.StructuredMetadata())
+	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "test error", logqlmodel.ErrorDetailsLabel, "test details"), lbsWithErr.Parsed())
+
+	// make sure the original labels is unchanged.
+	require.Equal(t, labels.FromStrings("already", "in"), lbs)
+}
+
+func TestLabelsBuilder_IntoMap(t *testing.T) {
+	strs := []string{
+		"namespace", "loki",
+		"job", "us-central1/loki",
+		"cluster", "us-central1",
+		"ToReplace", "text",
+	}
+	lbs := labels.FromStrings(strs...)
+
+	t.Run("it still copies the map after a Reset", func(t *testing.T) {
+		b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+
+		m := map[string]string{}
+		b.IntoMap(m)
+
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m)
+
+		b.Reset()
+
+		m2 := map[string]string{}
+		b.IntoMap(m2)
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m2)
+	})
+
+	t.Run("it can copy the map several times", func(t *testing.T) {
+		b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+
+		m := map[string]string{}
+		b.IntoMap(m)
+
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m)
+
+		m2 := map[string]string{}
+		b.IntoMap(m2)
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m2)
+	})
 }
 
 func TestLabelsBuilder_LabelsResult(t *testing.T) {

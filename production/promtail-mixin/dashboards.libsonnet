@@ -13,7 +13,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     local dashboards = self,
 
     local labelsSelector = dashboard._config.per_cluster_label + '=~"$cluster", namespace=~"$namespace"',
-    local quantileLabelSelector = dashboard._config.per_cluster_label + '=~"$cluster", job=~"$namespace/promtail"',
+    local quantileLabelSelector = dashboard._config.per_cluster_label + '=~"$cluster", job=~"$namespace/promtail.*"',
 
     'promtail.json': {
                        local cfg = self,
@@ -44,7 +44,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                        .addPanel(
                          g.panel('Bps') +
                          g.queryPanel(
-                           'sum(rate(promtail_read_bytes_total{%s}[1m]))' % labelsSelector,
+                           'sum(rate(promtail_read_bytes_total{%s}[$__rate_interval]))' % labelsSelector,
                            'logs read',
                          ) +
                          { yaxes: g.yaxes('Bps') },
@@ -52,7 +52,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                        .addPanel(
                          g.panel('Lines') +
                          g.queryPanel(
-                           'sum(rate(promtail_read_lines_total{%s}[1m]))' % labelsSelector,
+                           'sum(rate(promtail_read_lines_total{%s}[$__rate_interval]))' % labelsSelector,
                            'lines read',
                          ),
                        )

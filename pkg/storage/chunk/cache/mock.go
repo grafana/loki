@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 type MockCache interface {
@@ -12,6 +12,7 @@ type MockCache interface {
 	NumKeyUpdates() int
 	GetInternal() map[string][]byte
 	KeysRequested() int
+	GetKeys() []string
 }
 
 type mockCache struct {
@@ -60,6 +61,17 @@ func (m *mockCache) NumKeyUpdates() int {
 
 func (m *mockCache) GetInternal() map[string][]byte {
 	return m.cache
+}
+
+func (m *mockCache) GetKeys() []string {
+	m.Lock()
+	defer m.Unlock()
+
+	keys := make([]string, 0, len(m.cache))
+	for key := range m.cache {
+		keys = append(keys, key)
+	}
+	return keys
 }
 
 func (m *mockCache) KeysRequested() int {

@@ -7,9 +7,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 // BitPrefixInvertedIndex is another inverted index implementation
@@ -48,7 +48,7 @@ func NewBitPrefixWithShards(totalShards uint32) (*BitPrefixInvertedIndex, error)
 	}, nil
 }
 
-func (ii *BitPrefixInvertedIndex) getShards(shard *astmapper.ShardAnnotation) ([]*indexShard, bool) {
+func (ii *BitPrefixInvertedIndex) getShards(shard *logql.Shard) ([]*indexShard, bool) {
 	if shard == nil {
 		return ii.shards, false
 	}
@@ -63,13 +63,18 @@ func (ii *BitPrefixInvertedIndex) getShards(shard *astmapper.ShardAnnotation) ([
 	// Conversely, if the requested shard is 1_of_2, but the index has a factor of 4,
 	// we can _exactly_ match ob1 => (ob10, ob11) and know all fingerprints in those
 	// resulting shards have the requested ob1 prefix (don't need to filter).
-	var filter bool
-	if shard.Of > len(ii.shards) {
-		filter = true
+	// NB(owen-d): this only applies when using the old power-of-two shards,
+	// which are superseded by the new bounded sharding strategy.
+	filter := true
+
+	switch shard.Variant() {
+	case logql.PowerOfTwoVersion:
+		if int(shard.PowerOfTwo.Of) <= len(ii.shards) {
+			filter = false
+		}
 	}
 
-	requestedShard := shard.TSDB()
-	minFp, maxFp := requestedShard.Bounds()
+	minFp, maxFp := shard.GetFromThrough()
 
 	// Determine how many bits we need to take from
 	// the requested shard's min/max fingerprint values
@@ -102,12 +107,17 @@ func (ii *BitPrefixInvertedIndex) shardForFP(fp model.Fingerprint) int {
 	return int(fp >> (64 - localShard.RequiredBits()))
 }
 
-func (ii *BitPrefixInvertedIndex) validateShard(shard *astmapper.ShardAnnotation) error {
+func (ii *BitPrefixInvertedIndex) validateShard(shard *logql.Shard) error {
 	if shard == nil {
 		return nil
 	}
 
-	return shard.TSDB().Validate()
+	switch shard.Variant() {
+	case logql.PowerOfTwoVersion:
+		return shard.PowerOfTwo.Validate()
+	}
+	return nil
+
 }
 
 // Add a fingerprint under the specified labels.
@@ -119,7 +129,7 @@ func (ii *BitPrefixInvertedIndex) Add(labels []logproto.LabelAdapter, fp model.F
 }
 
 // Lookup all fingerprints for the provided matchers.
-func (ii *BitPrefixInvertedIndex) Lookup(matchers []*labels.Matcher, shard *astmapper.ShardAnnotation) ([]model.Fingerprint, error) {
+func (ii *BitPrefixInvertedIndex) Lookup(matchers []*labels.Matcher, shard *logql.Shard) ([]model.Fingerprint, error) {
 	if err := ii.validateShard(shard); err != nil {
 		return nil, err
 	}
@@ -143,7 +153,7 @@ func (ii *BitPrefixInvertedIndex) Lookup(matchers []*labels.Matcher, shard *astm
 	// Because bit prefix order is also ascending order,
 	// the merged fingerprints from ascending shards are also in order.
 	if filter {
-		minFP, maxFP := shard.TSDB().Bounds()
+		minFP, maxFP := shard.GetFromThrough()
 		minIdx := sort.Search(len(result), func(i int) bool {
 			return result[i] >= minFP
 		})
@@ -159,7 +169,7 @@ func (ii *BitPrefixInvertedIndex) Lookup(matchers []*labels.Matcher, shard *astm
 }
 
 // LabelNames returns all label names.
-func (ii *BitPrefixInvertedIndex) LabelNames(shard *astmapper.ShardAnnotation) ([]string, error) {
+func (ii *BitPrefixInvertedIndex) LabelNames(shard *logql.Shard) ([]string, error) {
 	if err := ii.validateShard(shard); err != nil {
 		return nil, err
 	}
@@ -171,7 +181,6 @@ func (ii *BitPrefixInvertedIndex) LabelNames(shard *astmapper.ShardAnnotation) (
 	// Therefore it's more performant to request shard factors lower or equal to the
 	// inverted index factor
 	if filter {
-		s := shard.TSDB()
 
 		extractor = func(x unlockIndex) (results []string) {
 
@@ -179,7 +188,7 @@ func (ii *BitPrefixInvertedIndex) LabelNames(shard *astmapper.ShardAnnotation) (
 			for name, entry := range x {
 				for _, valEntry := range entry.fps {
 					for _, fp := range valEntry.fps {
-						if s.Match(fp) {
+						if shard.Match(fp) {
 							results = append(results, name)
 							continue outer
 						}
@@ -201,7 +210,7 @@ func (ii *BitPrefixInvertedIndex) LabelNames(shard *astmapper.ShardAnnotation) (
 }
 
 // LabelValues returns the values for the given label.
-func (ii *BitPrefixInvertedIndex) LabelValues(name string, shard *astmapper.ShardAnnotation) ([]string, error) {
+func (ii *BitPrefixInvertedIndex) LabelValues(name string, shard *logql.Shard) ([]string, error) {
 	if err := ii.validateShard(shard); err != nil {
 		return nil, err
 	}
@@ -209,7 +218,6 @@ func (ii *BitPrefixInvertedIndex) LabelValues(name string, shard *astmapper.Shar
 	var extractor func(indexEntry) []string
 	shards, filter := ii.getShards(shard)
 	if filter {
-		s := shard.TSDB()
 
 		extractor = func(x indexEntry) []string {
 			results := make([]string, 0, len(x.fps))
@@ -217,7 +225,7 @@ func (ii *BitPrefixInvertedIndex) LabelValues(name string, shard *astmapper.Shar
 		outer:
 			for val, valEntry := range x.fps {
 				for _, fp := range valEntry.fps {
-					if s.Match(fp) {
+					if shard.Match(fp) {
 						results = append(results, val)
 						continue outer
 					}

@@ -11,7 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // Cache byte arrays by key.
@@ -38,11 +38,6 @@ type Config struct {
 
 	// For tests to inject specific implementations.
 	Cache Cache `yaml:"-"`
-
-	// AsyncCacheWriteBackConcurrency specifies the number of goroutines to use when asynchronously writing chunks fetched from the store to the chunk cache.
-	AsyncCacheWriteBackConcurrency int `yaml:"async_cache_write_back_concurrency"`
-	// AsyncCacheWriteBackBufferSize specifies the maximum number of fetched chunks to buffer for writing back to the chunk cache.
-	AsyncCacheWriteBackBufferSize int `yaml:"async_cache_write_back_buffer_size"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -52,8 +47,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	cfg.MemcacheClient.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Redis.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.EmbeddedCache.RegisterFlagsWithPrefix(prefix+"embedded-cache.", description, f)
-	f.IntVar(&cfg.AsyncCacheWriteBackConcurrency, prefix+"max-async-cache-write-back-concurrency", 16, "The maximum number of concurrent asynchronous writeback cache can occur.")
-	f.IntVar(&cfg.AsyncCacheWriteBackBufferSize, prefix+"max-async-cache-write-back-buffer-size", 500, "The maximum number of enqueued asynchronous writeback cache allowed.")
 	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
 
 	cfg.Prefix = prefix

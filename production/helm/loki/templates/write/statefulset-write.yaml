@@ -92,10 +92,10 @@ spec:
             {{- end }}
           ports:
             - name: http-metrics
-              containerPort: 3100
+              containerPort: {{ .Values.loki.server.http_listen_port }}
               protocol: TCP
             - name: grpc
-              containerPort: 9095
+              containerPort: {{ .Values.loki.server.grpc_listen_port }}
               protocol: TCP
             - name: http-memberlist
               containerPort: 7946
@@ -132,7 +132,7 @@ spec:
             {{- if .Values.enterprise.enabled }}
             - name: license
               mountPath: /etc/loki/license
-            {{- end}}
+            {{- end }}
             {{- with .Values.write.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -143,7 +143,7 @@ spec:
         {{- end }}
       {{- with .Values.write.affinity }}
       affinity:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.write.dnsConfig }}
       dnsConfig:
@@ -167,12 +167,7 @@ spec:
         {{- toYaml .Values.write.persistence.dataVolumeParameters | nindent 10 }}
         {{- end}}
         - name: config
-          {{- if .Values.loki.existingSecretForConfig }}
-          secret:
-            secretName: {{ .Values.loki.existingSecretForConfig }}
-          {{- else }}
           {{- include "loki.configVolume" . | nindent 10 }}
-          {{- end }}
         - name: runtime-config
           configMap:
             name: {{ template "loki.name" . }}-runtime

@@ -34,12 +34,12 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/ruler/config"
-	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/ruler/rulestore"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/ruler/config"
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -799,32 +799,78 @@ func RemoveRuleTokenFromGroupName(name string) string {
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
-func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
+func (r *Ruler) GetRules(ctx context.Context, req *RulesRequest) ([]*GroupStateDesc, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
 	if r.cfg.EnableSharding {
-		return r.getShardedRules(ctx, userID)
+		return r.getShardedRules(ctx, userID, req)
 	}
 
-	return r.getLocalRules(userID)
+	return r.getLocalRules(userID, req)
 }
 
-func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
+type StringFilterSet map[string]struct{}
+
+func makeStringFilterSet(values []string) StringFilterSet {
+	set := make(map[string]struct{}, len(values))
+	for _, v := range values {
+		set[v] = struct{}{}
+	}
+	return set
+}
+
+// IsFiltered returns whether to filter the value or not.
+// If the set is empty, then nothing is filtered.
+func (fs StringFilterSet) IsFiltered(val string) bool {
+	if len(fs) == 0 {
+		return false
+	}
+	_, ok := fs[val]
+	return !ok
+}
+
+func (r *Ruler) getLocalRules(userID string, req *RulesRequest) ([]*GroupStateDesc, error) {
+	var getRecordingRules, getAlertingRules bool
+
+	switch req.Filter {
+	case AlertingRule:
+		getAlertingRules = true
+	case RecordingRule:
+		getRecordingRules = true
+	case AnyRule:
+		getAlertingRules = true
+		getRecordingRules = true
+	default:
+		return nil, fmt.Errorf("unexpected rule filter %s", req.Filter)
+	}
+
+	fileSet := makeStringFilterSet(req.File)
+	groupSet := makeStringFilterSet(req.RuleGroup)
+	ruleSet := makeStringFilterSet(req.RuleName)
+
 	groups := r.manager.GetRules(userID)
 
 	groupDescs := make([]*GroupStateDesc, 0, len(groups))
 	prefix := filepath.Join(r.cfg.RulePath, userID) + "/"
 
 	for _, group := range groups {
+		if groupSet.IsFiltered(group.Name()) {
+			continue
+		}
+
 		interval := group.Interval()
 
 		// The mapped filename is url path escaped encoded to make handling `/` characters easier
 		decodedNamespace, err := url.PathUnescape(strings.TrimPrefix(group.File(), prefix))
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to decode rule filename")
+		}
+
+		if fileSet.IsFiltered(decodedNamespace) {
+			continue
 		}
 
 		groupDesc := &GroupStateDesc{
@@ -840,6 +886,10 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 			EvaluationDuration:  group.GetEvaluationTime(),
 		}
 		for _, r := range group.Rules() {
+			if ruleSet.IsFiltered(r.Name()) {
+				continue
+			}
+
 			lastError := ""
 			if r.LastError() != nil {
 				lastError = r.LastError().Error()
@@ -848,6 +898,10 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 			var ruleDesc *RuleStateDesc
 			switch rule := r.(type) {
 			case *promRules.AlertingRule:
+				if !getAlertingRules {
+					continue
+				}
+
 				rule.ActiveAlerts()
 				alerts := []*AlertStateDesc{}
 				for _, a := range rule.ActiveAlerts() {
@@ -879,6 +933,10 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 					EvaluationDuration:  rule.GetEvaluationDuration(),
 				}
 			case *promRules.RecordingRule:
+				if !getRecordingRules {
+					continue
+				}
+
 				ruleDesc = &RuleStateDesc{
 					Rule: &rulespb.RuleDesc{
 						Record: rule.Name(),
@@ -895,12 +953,16 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 			}
 			groupDesc.ActiveRules = append(groupDesc.ActiveRules, ruleDesc)
 		}
-		groupDescs = append(groupDescs, groupDesc)
+
+		// Prometheus does not return a rule group if it has no rules after filtering.
+		if len(groupDesc.ActiveRules) > 0 {
+			groupDescs = append(groupDescs, groupDesc)
+		}
 	}
 	return groupDescs, nil
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupStateDesc, error) {
+func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesReq *RulesRequest) ([]*GroupStateDesc, error) {
 	ring := ring.ReadRing(r.ring)
 
 	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
@@ -933,7 +995,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 			return errors.Wrapf(err, "unable to get client for ruler %s", addr)
 		}
 
-		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{})
+		newGrps, err := rulerClient.Rules(ctx, rulesReq)
 		if err != nil || newGrps == nil {
 			return fmt.Errorf("unable to retrieve rules from ruler %s: %w", addr, err)
 		}
@@ -975,13 +1037,13 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 }
 
 // Rules implements the rules service
-func (r *Ruler) Rules(ctx context.Context, _ *RulesRequest) (*RulesResponse, error) {
+func (r *Ruler) Rules(ctx context.Context, req *RulesRequest) (*RulesResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
-	groupDescs, err := r.getLocalRules(userID)
+	groupDescs, err := r.getLocalRules(userID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -1033,7 +1095,7 @@ func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Reque
 
 	err = r.store.DeleteNamespace(req.Context(), userID, "") // Empty namespace = delete all rule groups.
 	if err != nil && !errors.Is(err, rulestore.ErrGroupNamespaceNotFound) {
-		respondError(logger, w, err.Error())
+		respondServerError(logger, w, err.Error())
 		return
 	}
 

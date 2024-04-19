@@ -9,9 +9,9 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"gopkg.in/yaml.v2"
 
-	ruler "github.com/grafana/loki/pkg/ruler/base"
-	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
-	"github.com/grafana/loki/pkg/ruler/storage/instance"
+	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/cleaner"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
 )
 
 type Config struct {
@@ -56,6 +56,7 @@ type RemoteWriteConfig struct {
 	Clients             map[string]config.RemoteWriteConfig `yaml:"clients,omitempty" doc:"description=Configure remote write clients. A map with remote client id as key."`
 	Enabled             bool                                `yaml:"enabled"`
 	ConfigRefreshPeriod time.Duration                       `yaml:"config_refresh_period"`
+	AddOrgIDHeader      bool                                `yaml:"add_org_id_header" doc:"description=Add X-Scope-OrgID header in remote write requests."`
 }
 
 func (c *RemoteWriteConfig) Validate() error {
@@ -108,6 +109,7 @@ func (c *RemoteWriteConfig) Clone() (*RemoteWriteConfig, error) {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (c *RemoteWriteConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&c.AddOrgIDHeader, "ruler.remote-write.add-org-id-header", true, "Add X-Scope-OrgID header in remote write requests.")
 	f.BoolVar(&c.Enabled, "ruler.remote-write.enabled", false, "Enable remote-write functionality.")
 	f.DurationVar(&c.ConfigRefreshPeriod, "ruler.remote-write.config-refresh-period", 10*time.Second, "Minimum period to wait between refreshing remote-write reconfigurations. This should be greater than or equivalent to -limits.per-user-override-period.")
 

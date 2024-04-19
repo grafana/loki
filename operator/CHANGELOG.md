@@ -1,6 +1,32 @@
 ## Main
 
 - [11708](https://github.com/grafana/loki/pull/11708) **btaani**: Add support for Swift TLS CA configuration
+
+## 0.6.0 (2024-03-19)
+
+- [12228](https://github.com/grafana/loki/pull/12228) **xperimental**: Restructure LokiStack metrics
+- [12164](https://github.com/grafana/loki/pull/12164) **periklis**: Use safe bearer token authentication to scrape operator metrics
+- [12216](https://github.com/grafana/loki/pull/12216) **xperimental**: Fix duplicate operator metrics due to ServiceMonitor selector
+- [12212](https://github.com/grafana/loki/pull/12212) **xperimental**: Keep credentialMode in status when updating schemas
+- [12165](https://github.com/grafana/loki/pull/12165) **JoaoBraveCoding**: Change attribute value used for CCO-based credential mode
+- [12157](https://github.com/grafana/loki/pull/12157) **periklis**: Fix managed auth features annotation for community-openshift bundle
+- [12104](https://github.com/grafana/loki/pull/12104) **periklis**: Upgrade build and runtime dependencies
+- [11928](https://github.com/grafana/loki/pull/11928) **periklis**: Fix remote write client timeout config rename
+- [12097](https://github.com/grafana/loki/pull/12097) **btaani**: Fix encoding of blocked query pattern in configuration
+- [12106](https://github.com/grafana/loki/pull/12106) **xperimental**: Allow setting explicit CredentialMode in LokiStack storage spec
+- [11968](https://github.com/grafana/loki/pull/11968) **xperimental**: Extend status to show difference between running and ready
+- [12007](https://github.com/grafana/loki/pull/12007) **xperimental**: Extend Azure secret validation
+- [12008](https://github.com/grafana/loki/pull/12008) **xperimental**: Support using multiple buckets with AWS STS
+- [11964](https://github.com/grafana/loki/pull/11964) **xperimental**: Provide Azure region for managed credentials using environment variable
+- [11920](https://github.com/grafana/loki/pull/11920) **xperimental**: Refactor handling of credentials in managed-auth mode
+- [11869](https://github.com/grafana/loki/pull/11869) **periklis**: Add support for running with Google Workload Identity
+- [11868](https://github.com/grafana/loki/pull/11868) **xperimental**: Integrate support for OpenShift-managed credentials in Azure
+- [11854](https://github.com/grafana/loki/pull/11854) **periklis**: Allow custom audience for managed-auth on STS
+- [11802](https://github.com/grafana/loki/pull/11802) **xperimental**: Add support for running with Azure Workload Identity
+- [11824](https://github.com/grafana/loki/pull/11824) **xperimental**: Improve messages for errors in storage secret
+- [11524](https://github.com/grafana/loki/pull/11524) **JoaoBraveCoding**, **periklis**: Add OpenShift cloud credentials support for AWS STS
+- [11513](https://github.com/grafana/loki/pull/11513) **btaani**: Add a custom metric that collects Lokistacks requiring a schema upgrade
+- [11718](https://github.com/grafana/loki/pull/11718) **periklis**: Upgrade k8s.io, sigs.k8s.io and openshift deps
 - [11671](https://github.com/grafana/loki/pull/11671) **JoaoBraveCoding**: Update mixins to fix structured metadata dashboards
 - [11624](https://github.com/grafana/loki/pull/11624) **xperimental**: React to changes in ConfigMap used for storage CA
 - [11481](https://github.com/grafana/loki/pull/11481) **JoaoBraveCoding**: Adds AWS STS support

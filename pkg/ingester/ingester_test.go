@@ -28,23 +28,24 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/ingester/index"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/ingester/index"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestPrepareShutdownMarkerPathNotSet(t *testing.T) {
@@ -404,11 +405,14 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 	require.NoError(t, err)
 
 	req.Streams[0].Labels = `{foo="bar",bar="baz2"}`
+	// The labels in error messages are sorted lexicographically and cleaned up via Push -> ParseLabels.
+	expectedLabels, _ := syntax.ParseLabels(req.Streams[0].Labels)
 
 	_, err = i.Push(ctx, &req)
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding metrics per user, got %v", err)
 	}
+	require.Contains(t, err.Error(), expectedLabels.String())
 }
 
 type mockStore struct {
@@ -476,6 +480,14 @@ func (s *mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 		Bytes:   25,
 		Entries: 100,
 	}, nil
+}
+
+func (s *mockStore) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {
+	return nil, nil
+}
+
+func (s *mockStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
+	return nil, false
 }
 
 func (s *mockStore) Volume(_ context.Context, _ string, _, _ model.Time, limit int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {

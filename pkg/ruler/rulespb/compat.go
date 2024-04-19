@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"gopkg.in/yaml.v3"
 
-	"github.com/grafana/loki/pkg/logproto" //lint:ignore faillint allowed to import other protobuf
+	"github.com/grafana/loki/v3/pkg/logproto" //lint:ignore faillint allowed to import other protobuf
 )
 
 // ToProto transforms a formatted prometheus rulegroup to a rule group protobuf

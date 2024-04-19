@@ -23,18 +23,17 @@ import (
 	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/integration/util"
+	"github.com/grafana/loki/v3/integration/util"
 
-	"github.com/grafana/loki/pkg/loki"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/cfg"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/cfg"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-var (
-	configTemplate = template.Must(template.New("").Parse(`
+var configTemplate = template.Must(template.New("").Parse(`
 auth_enabled: true
 
 server:
@@ -62,6 +61,13 @@ limits_config:
   ingestion_burst_size_mb: 50
   reject_old_samples: false
   allow_structured_metadata: true
+  discover_service_name:
+  discover_log_levels: false
+  otlp_config:
+    resource_attributes:
+      attributes_config:
+        - action: index_label
+          attributes: ["service.name"]
 
 storage_config:
   named_stores:
@@ -76,15 +82,12 @@ storage_config:
     cache_location: {{.dataPath}}/tsdb-cache
   bloom_shipper:
     working_directory: {{.dataPath}}/bloom-shipper
-    blocks_downloading_queue:
-      workers_count: 1
 
 bloom_gateway:
   enabled: false
 
 bloom_compactor:
   enabled: false
-  working_directory: {{.dataPath}}/bloom-compactor
 
 compactor:
   working_directory: {{.dataPath}}/compactor
@@ -117,7 +120,6 @@ ruler:
       directory: {{.sharedDataPath}}/rules
   rule_path: {{.sharedDataPath}}/prom-rule
 `))
-)
 
 func resetMetricRegistry() {
 	registry := &wrappedRegisterer{Registry: prometheus.NewRegistry()}
@@ -171,7 +173,7 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 
 	overridesFile := filepath.Join(sharedPath, "loki-overrides.yaml")
 
-	err = os.WriteFile(overridesFile, []byte(`overrides:`), 0777)
+	err = os.WriteFile(overridesFile, []byte(`overrides:`), 0o777)
 	if err != nil {
 		panic(fmt.Errorf("error creating overrides file: %w", err))
 	}
@@ -343,7 +345,7 @@ func (c *Component) writeConfig() error {
 		return fmt.Errorf("error getting merged config: %w", err)
 	}
 
-	if err := os.WriteFile(configFile.Name(), mergedConfig, 0644); err != nil {
+	if err := os.WriteFile(configFile.Name(), mergedConfig, 0o644); err != nil {
 		return fmt.Errorf("error writing config file: %w", err)
 	}
 
@@ -410,7 +412,7 @@ func (c *Component) run() error {
 
 	var config loki.ConfigWrapper
 
-	var flagset = flag.NewFlagSet("test-flags", flag.ExitOnError)
+	flagset := flag.NewFlagSet("test-flags", flag.ExitOnError)
 
 	if err := cfg.DynamicUnmarshal(&config, append(
 		c.flags,
@@ -519,7 +521,7 @@ func (c *Component) SetTenantLimits(tenant string, limits validation.Limits) err
 		return err
 	}
 
-	return os.WriteFile(c.overridesFile, config, 0777)
+	return os.WriteFile(c.overridesFile, config, 0o777)
 }
 
 func (c *Component) GetTenantLimits(tenant string) validation.Limits {
