@@ -596,6 +596,7 @@ func RecordDetectedLabelsQueryMetrics(ctx context.Context, log log.Logger, start
 	rangeType := "range"
 
 	level.Info(logger).Log(
+		"api", "detected_labels",
 		"latency", latencyType,
 		"query_type", queryType,
 		"query", query,

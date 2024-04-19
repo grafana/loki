@@ -250,6 +250,19 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
+	detectedLabelsTripperware, err := NewDetectedLabelsTripperware(
+		cfg,
+		engineOpts,
+		log,
+		limits,
+		schema,
+		metrics,
+		indexStatsTripperware,
+		metricsNamespace)
+
+	if err != nil {
+		return nil, nil, err
+	}
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		var (
 			metricRT         = metricsTripperware.Wrap(next)
@@ -261,11 +274,39 @@ func NewMiddleware(
 			statsRT          = indexStatsTripperware.Wrap(next)
 			seriesVolumeRT   = seriesVolumeTripperware.Wrap(next)
 			detectedFieldsRT = detectedFieldsTripperware.Wrap(next)
-			detectedLabelsRT = next // TODO(shantanu): add middlewares
+			detectedLabelsRT = detectedLabelsTripperware.Wrap(next)
 		)
 
 		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, detectedFieldsRT, detectedLabelsRT, limits)
 	}), StopperWrapper{resultsCache, statsCache, volumeCache}, nil
+}
+
+func NewDetectedLabelsTripperware(cfg Config, opts logql.EngineOpts, logger log.Logger, l Limits, schema config.SchemaConfig, metrics *Metrics, mw base.Middleware, namespace string) (base.Middleware, error) {
+	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		statsHandler := mw.Wrap(next)
+
+		queryRangeMiddleware := []base.Middleware{
+			StatsCollectorMiddleware(),
+			NewLimitsMiddleware(l),
+			NewQuerySizeLimiterMiddleware(schema.Configs, opts, logger, l, statsHandler),
+			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
+		}
+
+		// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
+		// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewQuerierSizeLimiterMiddleware(schema.Configs, opts, logger, l, statsHandler),
+		)
+
+		if cfg.MaxRetries > 0 {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+				base.NewRetryMiddleware(logger, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, namespace),
+			)
+		}
+
+		return NewLimitedRoundTripper(next, l, schema.Configs, queryRangeMiddleware...)
+	}), nil
 }
 
 type roundTripper struct {
