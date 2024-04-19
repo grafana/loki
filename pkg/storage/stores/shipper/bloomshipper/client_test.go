@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -13,9 +14,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/config"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 func parseTime(s string) model.Time {
@@ -340,4 +342,69 @@ func TestBloomClient_DeleteBlocks(t *testing.T) {
 		_, found = stored[c.Block(b3.BlockRef).Addr()]
 		require.False(t, found)
 	})
+}
+
+type mockListClient struct {
+	client.ObjectClient
+	counter int
+}
+
+func (c *mockListClient) List(_ context.Context, prefix string, _ string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+	c.counter++
+	objects := []client.StorageObject{
+		{Key: path.Join(path.Base(prefix), "object")},
+	}
+	prefixes := []client.StorageCommonPrefix{
+		client.StorageCommonPrefix(prefix),
+	}
+	return objects, prefixes, nil
+}
+
+func (c *mockListClient) Stop() {
+}
+
+func TestBloomClient_CachedListOpObjectClient(t *testing.T) {
+
+	t.Run("list call with delimiter returns error", func(t *testing.T) {
+		downstreamClient := &mockListClient{}
+		c := newCachedListOpObjectClient(downstreamClient, 100*time.Millisecond, 10*time.Millisecond)
+		t.Cleanup(c.Stop)
+
+		_, _, err := c.List(context.Background(), "prefix/", "/")
+		require.Error(t, err)
+	})
+
+	t.Run("list calls are cached by prefix", func(t *testing.T) {
+		downstreamClient := &mockListClient{}
+		c := newCachedListOpObjectClient(downstreamClient, 100*time.Millisecond, 10*time.Millisecond)
+		t.Cleanup(c.Stop)
+
+		// cache miss
+		res, _, err := c.List(context.Background(), "a/", "")
+		require.NoError(t, err)
+		require.Equal(t, 1, downstreamClient.counter)
+		require.Equal(t, []client.StorageObject{{Key: "a/object"}}, res)
+
+		// cache miss
+		res, _, err = c.List(context.Background(), "b/", "")
+		require.NoError(t, err)
+		require.Equal(t, 2, downstreamClient.counter)
+		require.Equal(t, []client.StorageObject{{Key: "b/object"}}, res)
+
+		// cache hit
+		res, _, err = c.List(context.Background(), "a/", "")
+		require.NoError(t, err)
+		require.Equal(t, 2, downstreamClient.counter)
+		require.Equal(t, []client.StorageObject{{Key: "a/object"}}, res)
+
+		// wait for >=ttl so items are expired
+		time.Sleep(150 * time.Millisecond)
+
+		// cache miss
+		res, _, err = c.List(context.Background(), "a/", "")
+		require.NoError(t, err)
+		require.Equal(t, 3, downstreamClient.counter)
+		require.Equal(t, []client.StorageObject{{Key: "a/object"}}, res)
+	})
+
 }

@@ -7,9 +7,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -240,33 +240,21 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 
 		case syntax.OpTypeAvg:
 			// avg(x) -> sum(x)/count(x), which is parallelizable
-			lhs, lhsBytesPerShard, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
-				Left:      expr.Left,
-				Grouping:  expr.Grouping,
-				Operation: syntax.OpTypeSum,
-			}, r, false)
-			if err != nil {
-				return nil, 0, err
+			binOp := &syntax.BinOpExpr{
+				SampleExpr: &syntax.VectorAggregationExpr{
+					Left:      expr.Left,
+					Grouping:  expr.Grouping,
+					Operation: syntax.OpTypeSum,
+				},
+				RHS: &syntax.VectorAggregationExpr{
+					Left:      expr.Left,
+					Grouping:  expr.Grouping,
+					Operation: syntax.OpTypeCount,
+				},
+				Op: syntax.OpTypeDiv,
 			}
 
-			rhs, rhsBytesPerShard, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
-				Left:      expr.Left,
-				Grouping:  expr.Grouping,
-				Operation: syntax.OpTypeCount,
-			}, r, false)
-			if err != nil {
-				return nil, 0, err
-			}
-
-			// We take the maximum bytes per shard of both sides of the operation
-			bytesPerShard := uint64(max(int(lhsBytesPerShard), int(rhsBytesPerShard)))
-
-			return &syntax.BinOpExpr{
-				SampleExpr: lhs,
-				RHS:        rhs,
-				Op:         syntax.OpTypeDiv,
-			}, bytesPerShard, nil
-
+			return m.mapBinOpExpr(binOp, r, topLevel)
 		case syntax.OpTypeCount:
 			if syntax.ReducesLabels(expr.Left) {
 				// skip sharding optimizations at this level. If labels are reduced,

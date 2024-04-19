@@ -17,7 +17,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.33.0-amd64
+    - 0.33.1-amd64
     username:
       from_secret: docker_username
   when:
@@ -54,7 +54,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.33.0-arm64
+    - 0.33.1-arm64
     username:
       from_secret: docker_username
   when:
@@ -86,7 +86,7 @@ steps:
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest-build-image.tmpl
-    target: loki-build-image:0.33.0
+    target: loki-build-image:0.33.1
     username:
       from_secret: docker_username
   when:
@@ -132,38 +132,6 @@ workspace:
   path: loki
 ---
 kind: pipeline
-name: mixins
-steps:
-- commands:
-  - make BUILD_IN_CONTAINER=false lint-jsonnet
-  depends_on:
-  - clone
-  environment: {}
-  image: grafana/jsonnet-build:c8b75df
-  name: lint-jsonnet
-- commands:
-  - make BUILD_IN_CONTAINER=false loki-mixin-check
-  depends_on:
-  - clone
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: loki-mixin-check
-  when:
-    event:
-    - pull_request
-    paths:
-    - production/loki-mixin/**
-trigger:
-  ref:
-  - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
-  - refs/pull/*/head
-workspace:
-  base: /src
-  path: loki
----
-kind: pipeline
 name: documentation-checks
 steps:
 - commands:
@@ -171,7 +139,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.33.0
+  image: grafana/loki-build-image:0.33.1
   name: documentation-helm-reference-check
 trigger:
   ref:
@@ -1070,28 +1038,6 @@ trigger:
   - refs/tags/v*
 ---
 kind: pipeline
-name: promtail-windows
-platform:
-  arch: amd64
-  os: windows
-  version: "1809"
-steps:
-- commands:
-  - Write-Output $env:DRONE_RUNNER_NAME
-  image: golang:1.21.3-windowsservercore-1809
-  name: identify-runner
-- commands:
-  - go test .\clients\pkg\promtail\targets\windows\... -v
-  image: golang:1.21.3-windowsservercore-1809
-  name: test
-trigger:
-  ref:
-  - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
-  - refs/pull/*/head
----
-kind: pipeline
 name: logql-analyzer
 platform:
   arch: amd64
@@ -1139,7 +1085,7 @@ steps:
       from_secret: docker_password
     DOCKER_USERNAME:
       from_secret: docker_username
-  image: grafana/loki-build-image:0.33.0
+  image: grafana/loki-build-image:0.33.1
   name: build and push
   privileged: true
   volumes:
@@ -1362,6 +1308,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 32b44aecaad0258ed9494225595e1016a56bea960bcd0b15b2db3449bed957e0
+hmac: e0940674c7a2b5ae47c6509b0bc97dc594a054e5b881fd1962b81837d6b1dee6
 
 ...

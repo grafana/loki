@@ -1,13 +1,14 @@
 package v1
 
 import (
-	"github.com/grafana/regexp"
-	regexpsyntax "github.com/grafana/regexp/syntax"
+	"unicode/utf8"
 
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/log/pattern"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/regexp"
+
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 )
 
 type BloomTest interface {
@@ -70,6 +71,7 @@ func ExtractTestableLineFilters(expr syntax.Expr) []syntax.LineFilterExpr {
 // Use ExtractTestableLineFilters to extract testable line filters from an expression.
 // TODO(owen-d): limits the number of bloom lookups run.
 // An arbitrarily high number can overconsume cpu and is a DoS vector.
+// TODO(owen-d): use for loop not recursion to protect callstack
 func FiltersToBloomTest(b NGramBuilder, filters ...syntax.LineFilterExpr) BloomTest {
 	tests := make(BloomTests, 0, len(filters))
 	for _, f := range filters {
@@ -100,21 +102,7 @@ func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest
 	case log.LineMatchEqual:
 		return newStringTest(b, filter.Match)
 	case log.LineMatchRegexp:
-		reg, err := regexpsyntax.Parse(filter.Match, regexpsyntax.Perl)
-		if err != nil {
-			// TODO: log error
-			return MatchAll
-		}
-		reg = reg.Simplify()
-
-		simplifier := log.NewRegexSimplifier(newStringFilterFunc(b), newStringFilterFunc(b))
-		matcher, ok := simplifier.Simplify(reg, false)
-		if !ok {
-			// If the regex simplifier fails, we default to MatchAll
-			return MatchAll
-		}
-
-		return matcherFilterWrapper{filter: matcher}
+		return MatchAll
 	case log.LineMatchPattern:
 		return newPatternTest(b, filter.Match)
 	default:
@@ -189,21 +177,47 @@ func (n matchAllTest) MatchesWithPrefixBuf(_ filter.Checker, _ []byte, _ int) bo
 // TODO: This should be moved to tokenizer.go
 type NGramBuilder interface {
 	Tokens(line string) Iterator[[]byte]
+	N() int
+	SkipFactor() int
 }
 
 type stringTest struct {
 	ngrams [][]byte
 }
 
-func newStringTest(b NGramBuilder, search string) stringTest {
-	var test stringTest
-	it := b.Tokens(search)
-	for it.Next() {
-		ngram := make([]byte, len(it.At()))
-		copy(ngram, it.At())
-		test.ngrams = append(test.ngrams, ngram)
+func newStringTest(b NGramBuilder, search string) (res BloomTest) {
+	// search string must be longer than the combined ngram length and skip factor
+	// in order for all possible skip offsets to have at least 1 ngram
+	skip := b.SkipFactor()
+	if ct := utf8.RuneCountInString(search); ct < b.N()+skip {
+		return MatchAll
 	}
-	return test
+
+	tests := make([]stringTest, 0, skip)
+
+	for i := 0; i < skip+1; i++ {
+		searchWithOffset := search
+		for j := 0; j < i; j++ {
+			_, size := utf8.DecodeRuneInString(searchWithOffset)
+			// NB(owen-d): small bounds check for invalid utf8
+			searchWithOffset = searchWithOffset[min(size, len(searchWithOffset)):]
+		}
+
+		var test stringTest
+		it := b.Tokens(searchWithOffset)
+		for it.Next() {
+			ngram := make([]byte, len(it.At()))
+			copy(ngram, it.At())
+			test.ngrams = append(test.ngrams, ngram)
+		}
+		tests = append(tests, test)
+	}
+
+	res = tests[0]
+	for _, t := range tests[1:] {
+		res = newOrTest(res, t)
+	}
+	return res
 }
 
 // Matches implements the BloomTest interface
@@ -228,7 +242,7 @@ func (b stringTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefi
 }
 
 type stringMatcherFilter struct {
-	test stringTest
+	test BloomTest
 }
 
 // Matches implements the log.Filterer interface
@@ -244,26 +258,24 @@ func newStringFilterFunc(b NGramBuilder) log.NewMatcherFiltererFunc {
 	}
 }
 
-type notTest struct {
-	BloomTest
-}
-
-func newNotTest(test BloomTest) BloomTest {
-	return notTest{BloomTest: test}
-}
-
-func (b notTest) Matches(bloom filter.Checker) bool {
-	return !b.BloomTest.Matches(bloom)
-}
-
-func (b notTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
-	return !b.BloomTest.MatchesWithPrefixBuf(bloom, buf, prefixLen)
-}
-
 type orTest struct {
 	left, right BloomTest
 }
 
+// In addition to common `|= "foo" or "bar"`,
+// orTest is particularly useful when testing skip-factors>0, which
+// can result in different "sequences" of ngrams for a particular line
+// and if either sequence matches the filter, the chunk is considered a match.
+// For instance, with n=3,skip=1, the line "foobar" generates ngrams:
+// ["foo", "oob", "oba", "bar"]
+// Now let's say we want to search for the same "foobar".
+// Note: we don't know which offset in the line this match may be,
+// so we check every possible offset. The filter will match the ngrams:
+// offset_0 creates ["foo", "oba"]
+// offset_1 creates ["oob", "bar"]
+// If either sequences are found in the bloom filter, the chunk is considered a match.
+// Expanded, this is
+// match == (("foo" && "oba") || ("oob" && "bar"))
 func newOrTest(left, right BloomTest) orTest {
 	return orTest{
 		left:  left,
@@ -284,14 +296,11 @@ func newPatternTest(b NGramBuilder, match string) BloomTest {
 	if err != nil {
 		return MatchAll
 	}
-	var test stringTest
+
+	var res BloomTests
+
 	for _, l := range lit {
-		it := b.Tokens(string(l))
-		for it.Next() {
-			ngram := make([]byte, len(it.At()))
-			copy(ngram, it.At())
-			test.ngrams = append(test.ngrams, ngram)
-		}
+		res = append(res, newStringTest(b, string(l)))
 	}
-	return test
+	return res
 }

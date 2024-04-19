@@ -1,6 +1,6 @@
 ## Main
 
-- [12333](https://github.com/grafana/loki/pull/12333) **periklis**: Bump max OpenShift version to next release
+- [11708](https://github.com/grafana/loki/pull/11708) **btaani**: Add support for Swift TLS CA configuration
 
 ## 0.6.0 (2024-03-19)
 

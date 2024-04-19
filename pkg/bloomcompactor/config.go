@@ -7,7 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 const (
@@ -68,6 +68,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
+	if !cfg.Enabled {
+		return nil
+	}
+
 	if err := cfg.RetentionConfig.Validate(); err != nil {
 		return err
 	}

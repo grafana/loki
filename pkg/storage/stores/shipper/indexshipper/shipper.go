@@ -14,14 +14,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/gatewayclient"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/uploads"
+	"github.com/grafana/loki/v3/pkg/indexgateway"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/uploads"
 )
 
 type Mode string
@@ -58,12 +58,12 @@ type IndexShipper interface {
 }
 
 type Config struct {
-	ActiveIndexDirectory     string                                 `yaml:"active_index_directory"`
-	CacheLocation            string                                 `yaml:"cache_location"`
-	CacheTTL                 time.Duration                          `yaml:"cache_ttl"`
-	ResyncInterval           time.Duration                          `yaml:"resync_interval"`
-	QueryReadyNumDays        int                                    `yaml:"query_ready_num_days"`
-	IndexGatewayClientConfig gatewayclient.IndexGatewayClientConfig `yaml:"index_gateway_client"`
+	ActiveIndexDirectory     string                    `yaml:"active_index_directory"`
+	CacheLocation            string                    `yaml:"cache_location"`
+	CacheTTL                 time.Duration             `yaml:"cache_ttl"`
+	ResyncInterval           time.Duration             `yaml:"resync_interval"`
+	QueryReadyNumDays        int                       `yaml:"query_ready_num_days"`
+	IndexGatewayClientConfig indexgateway.ClientConfig `yaml:"index_gateway_client"`
 
 	IngesterName           string
 	Mode                   Mode

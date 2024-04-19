@@ -15,16 +15,17 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	storageconfig "github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/storage"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var testTime = parseDayTime("2024-12-31").ModelTime()
@@ -773,7 +774,7 @@ func NewMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*bloomshipper.B
 	schemaCfg := storageconfig.SchemaConfig{
 		Configs: []storageconfig.PeriodConfig{
 			{
-				ObjectType: storageconfig.StorageTypeFileSystem,
+				ObjectType: types.StorageTypeFileSystem,
 				From: storageconfig.DayTime{
 					Time: testTime.Add(-2 * 365 * 24 * time.Hour), // -2 year
 				},
@@ -784,7 +785,7 @@ func NewMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*bloomshipper.B
 					}},
 			},
 			{
-				ObjectType: storageconfig.StorageTypeFileSystem,
+				ObjectType: types.StorageTypeFileSystem,
 				From: storageconfig.DayTime{
 					Time: testTime.Add(-365 * 24 * time.Hour), // -1 year
 				},

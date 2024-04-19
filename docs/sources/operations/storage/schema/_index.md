@@ -14,6 +14,32 @@ Loki uses the defined schemas to determine which format to use when storing and 
 
 Use of a schema allows Loki to iterate over the storage layer without requiring migration of existing data.
 
+## New Loki installs
+For a new Loki install with no previous data, here is an example schema configuration with recommended values
+
+```
+schema_config:
+  configs:
+    - from: 2024-04-01
+      object_store: s3
+      store: tsdb
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+```
+
+
+| Property     | Description                                                                                                                                            |
+|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| from         | for a new install, this must be a date in the past, use a recent date. Format is YYYY-MM-DD.                                                           |
+| object_store | s3, azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (see [StorageConfig](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config)). |
+| store        | `tsdb` is the current and only recommended value for store.                                                                                            |
+| schema       | `v13` is the most recent schema and recommended value.                                                                                                 |
+| prefix:      | any value without spaces is acceptable.                                                                                                                |
+| period:      | must be `24h`.                                                                                                                                         |
+
+
 ## Changing the schema
 
 Here are items to consider when changing the schema; if schema changes are not done properly, a scenario can be created which prevents data from being read.
@@ -33,19 +59,19 @@ Here are items to consider when changing the schema; if schema changes are not d
 
 ```
 schema_config:
-    configs:
-        - from: "2020-07-31"
-          index:
-            period: 24h
-            prefix: loki_ops_index_
-          object_store: gcs
-          schema: v11
-          store: tsdb
-        - from: "2022-01-20"
-          index:
-            period: 24h
-            prefix: loki_ops_index_
-          object_store: gcs
-          schema: v13
-          store: tsdb
+  configs:
+    - from: "2020-07-31"
+      index:
+        period: 24h
+        prefix: loki_ops_index_
+      object_store: gcs
+      schema: v11
+      store: tsdb
+    - from: "2022-01-20"
+      index:
+        period: 24h
+        prefix: loki_ops_index_
+      object_store: gcs
+      schema: v13
+      store: tsdb
 ```

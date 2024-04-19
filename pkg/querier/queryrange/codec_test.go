@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/axiomhq/hyperloglog"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go/mocktracer"
@@ -24,16 +25,16 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 func init() {
@@ -1174,6 +1175,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 			[]queryrangebase.Response{
 				&LokiResponse{
 					Status:    loghttp.QueryStatusSuccess,
+					Warnings:  []string{"warning"},
 					Direction: logproto.BACKWARD,
 					Limit:     100,
 					Version:   1,
@@ -1226,6 +1228,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
+				Warnings:   []string{"warning"},
 				Direction:  logproto.BACKWARD,
 				Limit:      100,
 				Version:    1,
@@ -1620,6 +1623,102 @@ func Test_codec_MergeResponse(t *testing.T) {
 	}
 }
 
+func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
+	buildDetctedField := func(label string, cardinality uint64) *logproto.DetectedField {
+		fooSketch := hyperloglog.New()
+
+		for i := 0; i < int(cardinality); i++ {
+			fooSketch.Insert([]byte(fmt.Sprintf("value %d", i)))
+		}
+		marshalledSketch, err := fooSketch.MarshalBinary()
+		require.NoError(t, err)
+
+		return &logproto.DetectedField{
+			Label:       label,
+			Type:        logproto.DetectedFieldString,
+			Cardinality: cardinality,
+			Sketch:      marshalledSketch,
+		}
+	}
+
+	t.Run("merges the responses", func(t *testing.T) {
+		responses := []queryrangebase.Response{
+			&DetectedFieldsResponse{
+				Response: &logproto.DetectedFieldsResponse{
+					Fields: []*logproto.DetectedField{
+						buildDetctedField("foo", 1),
+					},
+					FieldLimit: 2,
+				},
+			},
+			&DetectedFieldsResponse{
+				Response: &logproto.DetectedFieldsResponse{
+					Fields: []*logproto.DetectedField{
+						buildDetctedField("foo", 3),
+					},
+					FieldLimit: 2,
+				},
+			},
+		}
+
+		got, err := DefaultCodec.MergeResponse(responses...)
+		require.Nil(t, err)
+		response := got.(*DetectedFieldsResponse).Response
+		require.Equal(t, 1, len(response.Fields))
+
+		foo := response.Fields[0]
+		require.Equal(t, foo.Label, "foo")
+		require.Equal(t, foo.Type, logproto.DetectedFieldString)
+		require.Equal(t, foo.Cardinality, uint64(3))
+	})
+
+	t.Run("merges the responses, enforcing the limit", func(t *testing.T) {
+		responses := []queryrangebase.Response{
+			&DetectedFieldsResponse{
+				Response: &logproto.DetectedFieldsResponse{
+					Fields: []*logproto.DetectedField{
+						buildDetctedField("foo", 1),
+						buildDetctedField("bar", 42),
+					},
+					FieldLimit: 2,
+				},
+			},
+			&DetectedFieldsResponse{
+				Response: &logproto.DetectedFieldsResponse{
+					Fields: []*logproto.DetectedField{
+						buildDetctedField("foo", 27),
+						buildDetctedField("baz", 3),
+					},
+					FieldLimit: 2,
+				},
+			},
+		}
+
+		got, err := DefaultCodec.MergeResponse(responses...)
+		require.Nil(t, err)
+		response := got.(*DetectedFieldsResponse).Response
+		require.Equal(t, 2, len(response.Fields))
+
+		var foo *logproto.DetectedField
+		var baz *logproto.DetectedField
+		for _, f := range response.Fields {
+			if f.Label == "foo" {
+				foo = f
+			}
+			if f.Label == "baz" {
+				baz = f
+			}
+		}
+
+		require.Equal(t, foo.Label, "foo")
+		require.Equal(t, foo.Type, logproto.DetectedFieldString)
+		require.Equal(t, 27, int(foo.Cardinality))
+
+		require.Nil(t, baz)
+	})
+
+}
+
 type badResponse struct{}
 
 func (badResponse) Reset()                                                 {}
@@ -1689,7 +1788,8 @@ var (
 		},
 		"index": {
 			"postFilterChunks": 0,
-			"totalChunks": 0
+			"totalChunks": 0,
+			"shardsDuration": 0
 		},
 		"cache": {
 			"chunk": {

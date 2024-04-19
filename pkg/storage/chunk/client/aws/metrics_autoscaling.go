@@ -13,8 +13,8 @@ import (
 	promV1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/storage/config"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (

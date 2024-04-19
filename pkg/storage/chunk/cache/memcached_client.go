@@ -21,7 +21,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sony/gobreaker"
 
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/jumphash"
 )
 
 // MemcachedClient interface exists for mocking memcacheClient.
@@ -113,7 +114,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Registerer, logger log.Logger, metricsNamespace string) MemcachedClient {
 	var selector serverSelector
 	if cfg.ConsistentHash {
-		selector = DefaultMemcachedJumpHashSelector()
+		selector = jumphash.DefaultSelector()
 	} else {
 		selector = &memcache.ServerList{}
 	}

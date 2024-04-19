@@ -17,22 +17,22 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange"
-	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/marshal"
-	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
-	serverutil "github.com/grafana/loki/pkg/util/server"
-	"github.com/grafana/loki/pkg/util/spanlogger"
-	util_validation "github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	loghttp_legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
+	marshal_legacy "github.com/grafana/loki/v3/pkg/util/marshal/legacy"
+	serverutil "github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 const (
@@ -382,8 +382,25 @@ func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.De
 		return nil, err
 	}
 	if resp == nil { // Some stores don't implement this
+		level.Debug(spanlogger.FromContext(ctx)).Log(
+			"msg", "queried store for detected fields that does not support it, no response from querier.DetectedFields",
+		)
 		return &logproto.DetectedFieldsResponse{
-			Fields: []*logproto.DetectedField{},
+			Fields:     []*logproto.DetectedField{},
+			FieldLimit: req.GetFieldLimit(),
+		}, nil
+	}
+	return resp, nil
+}
+
+func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	resp, err := q.querier.Patterns(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil { // Some stores don't implement this
+		return &logproto.QueryPatternsResponse{
+			Series: []*logproto.PatternSeries{},
 		}, nil
 	}
 	return resp, nil

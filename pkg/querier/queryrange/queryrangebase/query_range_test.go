@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestResponse(t *testing.T) {
@@ -120,6 +120,7 @@ func TestMergeAPIResponses(t *testing.T) {
 			name: "Basic merging of two responses.",
 			input: []Response{
 				&PrometheusResponse{
+					Warnings: []string{"warning1", "warning2"},
 					Data: PrometheusData{
 						ResultType: matrix,
 						Result: []SampleStream{
@@ -134,6 +135,7 @@ func TestMergeAPIResponses(t *testing.T) {
 					},
 				},
 				&PrometheusResponse{
+					Warnings: []string{"warning2", "warning3"},
 					Data: PrometheusData{
 						ResultType: matrix,
 						Result: []SampleStream{
@@ -149,7 +151,8 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 			expected: &PrometheusResponse{
-				Status: StatusSuccess,
+				Status:   StatusSuccess,
+				Warnings: []string{"warning1", "warning2", "warning3"},
 				Data: PrometheusData{
 					ResultType: matrix,
 					Result: []SampleStream{
