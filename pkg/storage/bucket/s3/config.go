@@ -67,7 +67,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "S3 access key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "S3 secret access key")
 	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "S3 session token")
-	f.StringVar(&cfg.BucketName, prefix+"s3.bucket-name", "", "S3 bucket name")
+	f.StringVar(&cfg.BucketName, prefix+"s3.bucket-name", "", "Comma separated list of bucket names to evenly distribute chunks over.")
 	f.StringVar(&cfg.Region, prefix+"s3.region", "", "S3 region. If unset, the client will issue a S3 GetBucketLocation API call to autodetect it.")
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "The S3 bucket endpoint. It could be an AWS S3 endpoint listed at https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an S3-compatible service in hostname:port format.")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
@@ -78,13 +78,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate() error {
-	if cfg.Endpoint != "" {
-		endpoint := strings.Split(cfg.Endpoint, ".")
-		if cfg.BucketName != "" && endpoint[0] != "" && endpoint[0] == cfg.BucketName {
-			return errInvalidEndpointPrefix
-		}
-	}
-
 	if err := aws.ValidateStorageClass(cfg.StorageClass); err != nil {
 		return err
 	}
