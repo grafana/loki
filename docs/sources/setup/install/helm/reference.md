@@ -5250,7 +5250,8 @@ null
     "query_timeout": "300s",
     "reject_old_samples": true,
     "reject_old_samples_max_age": "168h",
-    "split_queries_by_interval": "15m"
+    "split_queries_by_interval": "15m",
+    "volume_enabled": true
   },
   "memberlistConfig": {},
   "memcached": {
@@ -5594,7 +5595,8 @@ null
   "query_timeout": "300s",
   "reject_old_samples": true,
   "reject_old_samples_max_age": "168h",
-  "split_queries_by_interval": "15m"
+  "split_queries_by_interval": "15m",
+  "volume_enabled": true
 }
 </pre>
 </td>
