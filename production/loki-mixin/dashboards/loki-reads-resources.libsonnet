@@ -2,11 +2,19 @@ local grafana = import 'grafonnet/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  local index_gateway_pod_matcher = if $._config.ssd.enabled then 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher else 'container="index-gateway"',
-  local index_gateway_job_matcher = if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'index-gateway',
+  local index_gateway_pod_matcher = if $._config.meta_monitoring.enabled
+                            then 'container=~"loki|index-gateway", pod=~"(index-gateway.*|%s-read.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
+                            else if $._config.ssd.enabled then 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher else 'container="index-gateway"',
+  local index_gateway_job_matcher = if $._config.meta_monitoring.enabled
+                            then '(index-gateway.*|%s-read.*|loki-single-binary)' % $._config.ssd.pod_prefix_matcher
+                            else if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'index-gateway',
 
-  local ingester_pod_matcher = if $._config.ssd.enabled then 'container="loki", pod=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher else 'container="ingester"',
-  local ingester_job_matcher = if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.+',
+  local ingester_pod_matcher = if $._config.meta_monitoring.enabled
+                            then 'container=~"loki|ingester", pod=~"(ingester.*|%s-write.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
+                            else if $._config.ssd.enabled then 'container="loki", pod=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher else 'container="ingester"',
+  local ingester_job_matcher = if $._config.meta_monitoring.enabled
+                            then '(ingester.+|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher
+                            else if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.+',
 
   grafanaDashboards+::
     {

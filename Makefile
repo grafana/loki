@@ -259,6 +259,7 @@ clients/cmd/promtail/promtail-debug:
 MIXIN_PATH := production/loki-mixin
 MIXIN_OUT_PATH := production/loki-mixin-compiled
 MIXIN_OUT_PATH_SSD := production/loki-mixin-compiled-ssd
+MIXIN_OUT_PATH_META_MONITORING := production/loki-mixin-compiled-meta-monitoring
 
 loki-mixin: ## compile the loki mixin
 ifeq ($(BUILD_IN_CONTAINER),true)
@@ -273,12 +274,17 @@ else
 	@rm -rf $(MIXIN_OUT_PATH_SSD) && mkdir $(MIXIN_OUT_PATH_SSD)
 	@cd $(MIXIN_PATH) && jb install
 	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH_SSD)/alerts.yaml --output-rules $(MIXIN_OUT_PATH_SSD)/rules.yaml --directory $(MIXIN_OUT_PATH_SSD)/dashboards ${MIXIN_PATH}/mixin-ssd.libsonnet
+
+	@rm -rf $(MIXIN_OUT_PATH_META_MONITORING) && mkdir $(MIXIN_OUT_PATH_META_MONITORING)
+	@cd $(MIXIN_PATH) && jb install
+	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH_CPMBINED)/alerts.yaml --output-rules $(MIXIN_OUT_PATH_META_MONITORING)/rules.yaml --directory $(MIXIN_OUT_PATH_META_MONITORING)/dashboards ${MIXIN_PATH}/mixin-meta-monitoring.libsonnet
 endif
 
 loki-mixin-check: loki-mixin ## check the loki mixin is up to date
 	@echo "Checking diff"
 	@git diff --exit-code -- $(MIXIN_OUT_PATH) || (echo "Please build mixin by running 'make loki-mixin'" && false)
 	@git diff --exit-code -- $(MIXIN_OUT_PATH_SSD) || (echo "Please build mixin by running 'make loki-mixin'" && false)
+	@git diff --exit-code -- $(MIXIN_OUT_PATH_META_MONITORING) || (echo "Please build mixin by running 'make loki-mixin'" && false)
 
 ###############
 # Migrate #
