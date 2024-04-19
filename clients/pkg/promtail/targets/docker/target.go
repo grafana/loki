@@ -34,6 +34,7 @@ type Target struct {
 	labels        model.LabelSet
 	relabelConfig []*relabel.Config
 	metrics       *Metrics
+	maxLineSize   int
 
 	cancel  context.CancelFunc
 	client  client.APIClient
@@ -51,6 +52,7 @@ func NewTarget(
 	labels model.LabelSet,
 	relabelConfig []*relabel.Config,
 	client client.APIClient,
+	maxLineSize int,
 ) (*Target, error) {
 
 	pos, err := position.Get(positions.CursorKey(containerName))
@@ -71,6 +73,7 @@ func NewTarget(
 		labels:        labels,
 		relabelConfig: relabelConfig,
 		metrics:       metrics,
+		maxLineSize:   maxLineSize,
 
 		client:  client,
 		running: atomic.NewBool(false),
@@ -161,16 +164,21 @@ func (t *Target) process(frames chan []byte, logStream string) {
 		t.wg.Done()
 	}()
 
-	// softMaxBuffer is to prevent unlimited memory growth.
-	// In principle this introduces the same issue that we are compensating for,
-	// i.e. split messages, however there should be some limit and so this number
-	// is chosen to be "very high" just not "OOM high" (which admittedly is not
-	// a universally defined threshold).
-	const softMaxBuffer = 16 * 1024 * 1024
 	var (
-		payloadAcc = new(strings.Builder)
-		curTs      = time.Now()
+		sizeLimit            = t.maxLineSize
+		discardRemainingLine = false
+		payloadAcc           = new(strings.Builder)
+		curTs                = time.Now()
 	)
+
+	// If max_line_size is disabled (set to 0), we can in theory have infinite buffer growth.
+	// We can't guarantee that there's any bound on Docker logs, they could be an infinite stream
+	// without newlines for all we know. To protect promtail from OOM in that case, we introduce
+	// this safety limit.
+	if sizeLimit == 0 {
+		sizeLimit = 256 * 1024
+	}
+
 	for frame := range frames {
 		// Split frame into timestamp and payload
 		ts, payload, err := extractTs(string(frame))
@@ -185,24 +193,43 @@ func (t *Target) process(frames chan []byte, logStream string) {
 			ts = curTs
 		}
 
+		// If time has changed, we are looking at a new event (although we should have seen a new line..),
+		// so flush the buffer if we have one.
+		if ts != curTs {
+			discardRemainingLine = false
+			if payloadAcc.Len() > 0 {
+				t.handleOutput(logStream, curTs, payloadAcc.String())
+				payloadAcc = new(strings.Builder)
+			}
+		}
+
+		// Check if we have the end of the event
+		var isEol = strings.HasSuffix(payload, "\n")
+
+		// If we are currently discarding a line (due to size limits), skip ahead, but don't skip the next
+		// frame if we saw the end of the line.
+		if discardRemainingLine {
+			discardRemainingLine = !isEol
+			continue
+		}
+
+		// Strip newline ending if we have it
+		payload = strings.TrimRight(payload, "\r\n")
+
 		// Fast path: Most log lines are a single frame. If we have a full line in frame and buffer is empty,
 		// then don't use the buffer at all.
-		if payloadAcc.Len() == 0 && strings.HasSuffix(payload, "\n") {
+		if payloadAcc.Len() == 0 && isEol {
 			t.handleOutput(logStream, ts, payload)
 			continue
 		}
 
-		// If time has changed, we are looking at a different event (although we should have seen a new line..),
-		// so flush the buffer.
-		if payloadAcc.Len() > 0 && ts != curTs {
-			t.handleOutput(logStream, curTs, payloadAcc.String())
-			payloadAcc = new(strings.Builder)
-		}
 		// Add to buffer
 		payloadAcc.WriteString(payload)
 		curTs = ts
+
 		// Send immediately if line ended or we built a very large event
-		if strings.HasSuffix(payload, "\n") || payloadAcc.Len() >= softMaxBuffer {
+		if isEol || payloadAcc.Len() > sizeLimit {
+			discardRemainingLine = !isEol
 			t.handleOutput(logStream, curTs, payloadAcc.String())
 			payloadAcc = new(strings.Builder)
 		}
@@ -210,9 +237,6 @@ func (t *Target) process(frames chan []byte, logStream string) {
 }
 
 func (t *Target) handleOutput(logStream string, ts time.Time, payload string) {
-	// We don't output trailing newlines
-	payload = strings.TrimSuffix(payload, "\n")
-	payload = strings.TrimSuffix(payload, "\r")
 	// Add all labels from the config, relabel and filter them.
 	lb := labels.NewBuilder(nil)
 	for k, v := range t.labels {

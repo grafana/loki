@@ -85,6 +85,7 @@ func Test_DockerTarget(t *testing.T) {
 		model.LabelSet{"job": "docker"},
 		[]*relabel.Config{},
 		client,
+		0,
 	)
 	require.NoError(t, err)
 
@@ -149,6 +150,7 @@ func doTestPartial(t *testing.T, tty bool) {
 		model.LabelSet{"job": "docker"},
 		[]*relabel.Config{},
 		client,
+		0,
 	)
 	require.NoError(t, err)
 
