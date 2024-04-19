@@ -489,6 +489,8 @@ func (g *Gateway) getShardsWithBlooms(
 		"target_bytes_per_shard", datasize.ByteSize(req.TargetBytesPerShard).HumanReadable(),
 		"precomputed_refs", refCt,
 		"matchers", ms.String(),
+		"from", req.From.Time().String(),
+		"through", req.Through.Time().String(),
 	)
 
 	// 3) build shards
