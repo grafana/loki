@@ -107,8 +107,8 @@ func (t *Target) processLoop(ctx context.Context) {
 	}
 
 	// Start transferring
-	cstdout := make(chan []byte, 1)
-	cstderr := make(chan []byte, 1)
+	cstdout := make(chan []byte)
+	cstderr := make(chan []byte)
 	t.wg.Add(1)
 	go func() {
 		defer func() {
