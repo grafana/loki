@@ -1907,8 +1907,7 @@ distributor:
   # -- Node selector for distributor pods
   nodeSelector: {}
   # -- Tolerations for distributor pods
-  tolerations:
-    []
+  tolerations: []
     # -- Adds the appProtocol field to the distributor service. This allows distributor to work with istio protocol selection.
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
@@ -2775,8 +2774,7 @@ ruler:
   appProtocol:
     grpc: ""
   # -- Directories containing rules files
-  directories:
-    {}
+  directories: {}
     # tenant_foo:
     #   rules1.txt: |
     #     groups:
