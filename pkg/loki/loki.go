@@ -725,6 +725,12 @@ func (t *Loki) setupModuleManager() error {
 		}
 	}
 
+	// Add BloomStore dependency to IndexGateway in case bloom gateway component is enabled.
+	// This is needed because the blocks for the bloom gateway are resolved on the index gateway.
+	if t.Cfg.BloomGateway.Enabled {
+		deps[IndexGateway] = append(deps[IndexGateway], BloomStore)
+	}
+
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.
 	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(Backend) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
