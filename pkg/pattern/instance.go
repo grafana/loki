@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/httpgrpc"
@@ -78,10 +79,14 @@ func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequ
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
+	step := req.Step
+	if step < 10*time.Second.Milliseconds() {
+		step = 10 * time.Second.Milliseconds()
+	}
 
 	var iters []iter.Iterator
 	err = i.forMatchingStreams(matchers, func(s *stream) error {
-		iter, err := s.Iterator(ctx, from, through)
+		iter, err := s.Iterator(ctx, from, through, model.Time(step))
 		if err != nil {
 			return err
 		}

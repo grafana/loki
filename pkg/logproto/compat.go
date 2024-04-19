@@ -448,8 +448,6 @@ func (m *ShardsRequest) LogToSpan(sp opentracing.Span) {
 
 func (m *QueryPatternsRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
 
-func (m *QueryPatternsRequest) GetStep() int64 { return 0 }
-
 func (m *QueryPatternsRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	clone := *m
 	clone.Start = start

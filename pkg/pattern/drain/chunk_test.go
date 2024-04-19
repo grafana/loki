@@ -30,7 +30,7 @@ func TestIterator(t *testing.T) {
 	cks.Add(2*timeResolution + 1)
 	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + timeResolution + 1)
 
-	it := cks.Iterator("test", model.Time(0), model.Time(time.Hour.Nanoseconds()))
+	it := cks.Iterator("test", model.Time(0), model.Time(time.Hour.Nanoseconds()), timeResolution)
 	require.NotNil(t, it)
 
 	var samples []logproto.PatternSample
@@ -64,9 +64,9 @@ func TestForRange(t *testing.T) {
 		{
 			name: "No Overlap",
 			c: &Chunk{Samples: []logproto.PatternSample{
-				{Timestamp: 1, Value: 2},
-				{Timestamp: 3, Value: 4},
-				{Timestamp: 5, Value: 6},
+				{Timestamp: 2, Value: 2},
+				{Timestamp: 4, Value: 4},
+				{Timestamp: 6, Value: 6},
 			}},
 			start:    10,
 			end:      20,
@@ -75,83 +75,116 @@ func TestForRange(t *testing.T) {
 		{
 			name: "Complete Overlap",
 			c: &Chunk{Samples: []logproto.PatternSample{
-				{Timestamp: 1, Value: 2},
-				{Timestamp: 3, Value: 4},
-				{Timestamp: 5, Value: 6},
+				{Timestamp: 2, Value: 2},
+				{Timestamp: 4, Value: 4},
+				{Timestamp: 6, Value: 6},
 			}},
 			start: 0,
 			end:   10,
 			expected: []logproto.PatternSample{
-				{Timestamp: 1, Value: 2},
-				{Timestamp: 3, Value: 4},
-				{Timestamp: 5, Value: 6},
+				{Timestamp: 2, Value: 2},
+				{Timestamp: 4, Value: 4},
+				{Timestamp: 6, Value: 6},
 			},
 		},
 		{
 			name: "Partial Overlap",
 			c: &Chunk{Samples: []logproto.PatternSample{
-				{Timestamp: 1, Value: 2},
-				{Timestamp: 3, Value: 4},
-				{Timestamp: 5, Value: 6},
+				{Timestamp: 2, Value: 2},
+				{Timestamp: 4, Value: 4},
+				{Timestamp: 6, Value: 6},
 			}},
-			start:    2,
-			end:      4,
-			expected: []logproto.PatternSample{{Timestamp: 3, Value: 4}},
+			start:    3,
+			end:      5,
+			expected: []logproto.PatternSample{{Timestamp: 4, Value: 4}},
 		},
 		{
 			name: "Single Element in Range",
 			c: &Chunk{Samples: []logproto.PatternSample{
-				{Timestamp: 1, Value: 2},
-				{Timestamp: 3, Value: 4},
-				{Timestamp: 5, Value: 6},
+				{Timestamp: 2, Value: 2},
+				{Timestamp: 4, Value: 4},
+				{Timestamp: 6, Value: 6},
 			}},
-			start:    3,
-			end:      4,
-			expected: []logproto.PatternSample{{Timestamp: 3, Value: 4}},
+			start:    4,
+			end:      5,
+			expected: []logproto.PatternSample{{Timestamp: 4, Value: 4}},
 		},
 		{
 			name: "Start Before First Element",
 			c: &Chunk{Samples: []logproto.PatternSample{
-				{Timestamp: 1, Value: 2},
-				{Timestamp: 3, Value: 4},
-				{Timestamp: 5, Value: 6},
+				{Timestamp: 2, Value: 2},
+				{Timestamp: 4, Value: 4},
+				{Timestamp: 6, Value: 6},
 			}},
 			start: 0,
-			end:   4,
+			end:   5,
 			expected: []logproto.PatternSample{
-				{Timestamp: 1, Value: 2},
-				{Timestamp: 3, Value: 4},
+				{Timestamp: 2, Value: 2},
+				{Timestamp: 4, Value: 4},
 			},
 		},
 		{
 			name: "End After Last Element",
 			c: &Chunk{Samples: []logproto.PatternSample{
-				{Timestamp: 1, Value: 2},
-				{Timestamp: 3, Value: 4},
-				{Timestamp: 5, Value: 6},
+				{Timestamp: 2, Value: 2},
+				{Timestamp: 4, Value: 4},
+				{Timestamp: 6, Value: 6},
 			}},
-			start: 4,
+			start: 5,
 			end:   10,
 			expected: []logproto.PatternSample{
-				{Timestamp: 5, Value: 6},
+				{Timestamp: 6, Value: 6},
 			},
 		},
 		{
 			name: "Start and End Before First Element",
 			c: &Chunk{Samples: []logproto.PatternSample{
-				{Timestamp: 1, Value: 2},
-				{Timestamp: 3, Value: 4},
-				{Timestamp: 5, Value: 6},
+				{Timestamp: 2, Value: 2},
+				{Timestamp: 4, Value: 4},
+				{Timestamp: 6, Value: 6},
 			}},
 			start:    0,
-			end:      1,
+			end:      2,
 			expected: nil,
+		},
+		{
+			name: "Higher resolution samples down-sampled to preceding step bucket",
+			c: &Chunk{Samples: []logproto.PatternSample{
+				{Timestamp: 1, Value: 2},
+				{Timestamp: 2, Value: 4},
+				{Timestamp: 3, Value: 6},
+				{Timestamp: 4, Value: 8},
+				{Timestamp: 5, Value: 10},
+				{Timestamp: 6, Value: 12},
+			}},
+			start: 1,
+			end:   6,
+			expected: []logproto.PatternSample{
+				{Timestamp: 0, Value: 2},
+				{Timestamp: 2, Value: 10},
+				{Timestamp: 4, Value: 18},
+				{Timestamp: 6, Value: 12},
+			},
+		},
+		{
+			name: "Low resolution samples insert 0 values for empty steps",
+			c: &Chunk{Samples: []logproto.PatternSample{
+				{Timestamp: 1, Value: 2},
+				{Timestamp: 5, Value: 10},
+			}},
+			start: 1,
+			end:   6,
+			expected: []logproto.PatternSample{
+				{Timestamp: 0, Value: 2},
+				{Timestamp: 2, Value: 0},
+				{Timestamp: 4, Value: 10},
+			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := tc.c.ForRange(tc.start, tc.end)
+			result := tc.c.ForRange(tc.start, tc.end, model.Time(2))
 			if !reflect.DeepEqual(result, tc.expected) {
 				t.Errorf("Expected %v, got %v", tc.expected, result)
 			}

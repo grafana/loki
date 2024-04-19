@@ -43,9 +43,9 @@ func (c Chunk) spaceFor(ts model.Time) bool {
 }
 
 // ForRange returns samples with only the values
-// in the given range [start:end).
-// start and end are in milliseconds since epoch.
-func (c Chunk) ForRange(start, end model.Time) []logproto.PatternSample {
+// in the given range [start:end) and aggregates them by step duration.
+// start and end are in milliseconds since epoch. step is a duration in milliseconds.
+func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 	if len(c.Samples) == 0 {
 		return nil
 	}
@@ -66,11 +66,34 @@ func (c Chunk) ForRange(start, end model.Time) []logproto.PatternSample {
 			return c.Samples[i].Timestamp >= end
 		})
 	}
-	return c.Samples[lo:hi]
+
+	// Re-scale samples into step-sized buckets
+	currentStep := truncateTimestamp(c.Samples[lo].Timestamp, step)
+	outputSamples := []logproto.PatternSample{
+		{
+			Timestamp: currentStep,
+			Value:     0,
+		},
+	}
+	for _, sample := range c.Samples[lo:hi] {
+		if sample.Timestamp >= currentStep+step {
+			stepForSample := truncateTimestamp(sample.Timestamp, step)
+			for i := currentStep + step; i <= stepForSample; i += step {
+				outputSamples = append(outputSamples, logproto.PatternSample{
+					Timestamp: i,
+					Value:     0,
+				})
+			}
+			currentStep = stepForSample
+		}
+		outputSamples[len(outputSamples)-1].Value += sample.Value
+	}
+
+	return outputSamples
 }
 
 func (c *Chunks) Add(ts model.Time) {
-	t := truncateTimestamp(ts)
+	t := truncateTimestamp(ts, timeResolution)
 
 	if len(*c) == 0 {
 		*c = append(*c, newChunk(t))
@@ -91,10 +114,10 @@ func (c *Chunks) Add(ts model.Time) {
 	})
 }
 
-func (c Chunks) Iterator(pattern string, from, through model.Time) iter.Iterator {
+func (c Chunks) Iterator(pattern string, from, through, step model.Time) iter.Iterator {
 	iters := make([]iter.Iterator, 0, len(c))
 	for _, chunk := range c {
-		samples := chunk.ForRange(from, through)
+		samples := chunk.ForRange(from, through, step)
 		if len(samples) == 0 {
 			continue
 		}
@@ -173,4 +196,4 @@ func (c *Chunks) size() int {
 	return size
 }
 
-func truncateTimestamp(ts model.Time) model.Time { return ts - ts%timeResolution }
+func truncateTimestamp(ts, step model.Time) model.Time { return ts - ts%step }
