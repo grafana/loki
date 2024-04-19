@@ -473,6 +473,10 @@ func (g *Gateway) getShardsWithBlooms(
 
 	sp.LogKV("msg", "send shards response", "shards", len(resp.Shards))
 
+	var refCt int
+	for _, grp := range resp.ChunkGroups {
+		refCt += len(grp.Refs)
+	}
 	level.Debug(logger).Log(
 		"msg", "send shards response",
 		"total_chunks", statistics.Index.TotalChunks,
@@ -480,6 +484,7 @@ func (g *Gateway) getShardsWithBlooms(
 		"shards", len(resp.Shards),
 		"query", req.Query,
 		"target_bytes_per_shard", datasize.ByteSize(req.TargetBytesPerShard).HumanReadable(),
+		"precomputed_refs", refCt,
 	)
 
 	// 3) build shards

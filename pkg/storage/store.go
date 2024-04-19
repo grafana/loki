@@ -402,7 +402,7 @@ func (s *LokiStore) SetPipelineWrapper(wrapper lokilog.PipelineWrapper) {
 	s.pipelineWrapper = wrapper
 }
 
-// lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
+// lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them.
 func (s *LokiStore) lazyChunks(
 	ctx context.Context,
 	from, through model.Time,
