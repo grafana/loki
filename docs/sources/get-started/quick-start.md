@@ -21,6 +21,14 @@ The Docker Compose configuration instantiates the following components, each in 
 
 {{< figure max-width="75%" src="/media/docs/loki/get-started-flog-v2.png" caption="Getting started sample application" alt="Getting started sample application">}}
 
+## Interactive Learning Environment
+
+Try out this demo within our interactive learning environment: [Loki Quickstart Sandbox](https://killercoda.com/grafana-labs/course/loki/loki-quickstart) 
+
+- A free Killercoda account is required to verify you are not a bot.
+- Tutorial instructions are located on the left-hand side of the screen. Click to move on to the next section.
+- All commands run inside the interactive terminal. Grafana can also be accessed via the URL links provided within the sandbox.  
+
 ## Installing Loki and collecting sample logs
 
 Prerequisites
