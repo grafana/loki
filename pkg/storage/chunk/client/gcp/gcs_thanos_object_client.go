@@ -14,9 +14,9 @@ import (
 	"google.golang.org/api/googleapi"
 	amnet "k8s.io/apimachinery/pkg/util/net"
 
-	"github.com/grafana/loki/pkg/storage/bucket"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 type GCSThanosObjectClient struct {
@@ -90,7 +90,7 @@ func (s *GCSThanosObjectClient) List(ctx context.Context, prefix, delimiter stri
 		iterParams = append(iterParams, objstore.WithRecursiveIter)
 	}
 
-	s.client.Iter(ctx, prefix, func(objectKey string) error {
+	err := s.client.Iter(ctx, prefix, func(objectKey string) error {
 		// CommonPrefixes are keys that have the prefix and have the delimiter
 		// as a suffix
 		if delimiter != "" && strings.HasSuffix(objectKey, delimiter) {
@@ -110,6 +110,9 @@ func (s *GCSThanosObjectClient) List(ctx context.Context, prefix, delimiter stri
 		return nil
 
 	}, iterParams...)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	return storageObjects, commonPrefixes, nil
 }

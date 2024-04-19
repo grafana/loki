@@ -20,15 +20,16 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
-	"github.com/grafana/loki/clients/pkg/promtail/config"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/utils"
-	"github.com/grafana/loki/clients/pkg/promtail/wal"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/config"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/utils"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/wal"
 
 	"github.com/grafana/loki/pkg/push"
-	util_log "github.com/grafana/loki/pkg/util/log"
+
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -58,19 +59,25 @@ func TestPromtailWithWAL_SingleTenant(t *testing.T) {
 	// create receive channel and start a collect routine
 	receivedCh := make(chan utils.RemoteWriteRequest)
 	received := map[string][]push.Entry{}
+	var mu sync.Mutex
+	// Create a channel for log messages
+	logCh := make(chan string, 100) // Buffered channel to avoid blocking
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for req := range receivedCh {
+			mu.Lock()
 			// Add some observability to the requests received in the remote write endpoint
 			var counts []string
 			for _, str := range req.Request.Streams {
 				counts = append(counts, fmt.Sprint(len(str.Entries)))
 			}
-			t.Logf("received request: %s", counts)
+			logCh <- fmt.Sprintf("received request: %s", counts)
 			for _, stream := range req.Request.Streams {
 				received[stream.Labels] = append(received[stream.Labels], stream.Entries...)
 			}
+			mu.Unlock()
 		}
 	}()
 
@@ -119,14 +126,23 @@ func TestPromtailWithWAL_SingleTenant(t *testing.T) {
 		for i := 0; i < entriesToWrite; i++ {
 			_, err = logsFile.WriteString(fmt.Sprintf("log line # %d\n", i))
 			if err != nil {
-				t.Logf("error writing to log file. Err: %s", err.Error())
+				logCh <- fmt.Sprintf("error writing to log file. Err: %s", err.Error())
 			}
 			// not overkill log file
 			time.Sleep(1 * time.Millisecond)
 		}
 	}()
 
+	// Goroutine to handle log messages
+	go func() {
+		for msg := range logCh {
+			t.Log(msg)
+		}
+	}()
+
 	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
 		if seen, ok := received[expectedLabelSet]; ok {
 			return len(seen) == entriesToWrite
 		}
@@ -157,11 +173,13 @@ func TestPromtailWithWAL_MultipleTenants(t *testing.T) {
 	receivedCh := make(chan utils.RemoteWriteRequest)
 	// received is a mapping from tenant, string-formatted label set to received entries
 	received := map[string]map[string][]push.Entry{}
+	var mu sync.Mutex
 	var totalReceived = 0
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for req := range receivedCh {
+			mu.Lock()
 			// start received label entries map if first time tenant is seen
 			if _, ok := received[req.TenantID]; !ok {
 				received[req.TenantID] = map[string][]push.Entry{}
@@ -172,6 +190,7 @@ func TestPromtailWithWAL_MultipleTenants(t *testing.T) {
 				// increment total count
 				totalReceived += len(stream.Entries)
 			}
+			mu.Unlock()
 		}
 	}()
 
@@ -249,15 +268,19 @@ func TestPromtailWithWAL_MultipleTenants(t *testing.T) {
 
 	// wait for all entries to be remote written
 	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
 		return totalReceived == entriesToWrite
 	}, time.Second*20, time.Second, "timed out waiting for entries to be remote written")
 
 	// assert over received entries
 	require.Len(t, received, expectedTenantCounts, "not expected tenant count")
+	mu.Lock()
 	for tenantID := 0; tenantID < expectedTenantCounts; tenantID++ {
 		// we should've received at least entriesToWrite / expectedTenantCounts
 		require.GreaterOrEqual(t, len(received[fmt.Sprint(tenantID)][expectedLabelSet]), entriesToWrite/expectedTenantCounts)
 	}
+	mu.Unlock()
 
 	pr.Shutdown()
 	close(receivedCh)

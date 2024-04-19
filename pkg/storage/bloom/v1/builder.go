@@ -9,13 +9,13 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
-	"github.com/grafana/loki/pkg/util/encoding"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
 var (
-	DefaultBlockOptions = NewBlockOptions(4, 1, 50<<20) // 50MB
+	DefaultBlockOptions = NewBlockOptions(0, 4, 1, 50<<20) // EncNone, 50MB
 )
 
 type BlockOptions struct {
@@ -70,9 +70,10 @@ type BlockBuilder struct {
 	blooms *BloomBlockBuilder
 }
 
-func NewBlockOptions(NGramLength, NGramSkip, MaxBlockSizeBytes uint64) BlockOptions {
+func NewBlockOptions(enc chunkenc.Encoding, NGramLength, NGramSkip, MaxBlockSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
 		version:     byte(1),
+		encoding:    enc,
 		nGramLength: NGramLength,
 		nGramSkip:   NGramSkip,
 	})

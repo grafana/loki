@@ -1,13 +1,13 @@
 ---
-title: Quick start to run Loki locally
-menuTitle: Loki quick start
-weight: 550
+title: Quickstart to run Loki locally
+menuTitle: Loki quickstart
+weight: 200
 description: How to create and use a simple local Loki cluster for testing and evaluation purposes.
 ---
 
-# Quick start to run Loki locally
+# Quickstart to run Loki locally
 
-If you want to experiment with Loki, you can run Loki locally using the Docker Compose file that ships with Loki. It runs Loki in a [monolithic deployment](https://grafana.com/docs/loki/latest/get-started/deployment-modes/#monolithic-mode) mode and includes a sample application to generate logs.
+If you want to experiment with Loki, you can run Loki locally using the Docker Compose file that ships with Loki. It runs Loki in a [monolithic deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) mode and includes a sample application to generate logs.
 
 The Docker Compose configuration instantiates the following components, each in its own container:
 
@@ -24,11 +24,12 @@ The Docker Compose configuration instantiates the following components, each in 
 ## Installing Loki and collecting sample logs
 
 Prerequisites
+
 - [Docker](https://docs.docker.com/install)
 - [Docker Compose](https://docs.docker.com/compose/install)
 
 {{% admonition type="note" %}}
-This quick start assumes you are running Linux.
+This quickstart assumes you are running Linux.
 {{% /admonition %}}
 
 **To install Loki locally, follow these steps:**
@@ -57,6 +58,7 @@ This quick start assumes you are running Linux.
     ```
 
     You should see something similar to the following:
+
     ```bash
     ✔ Network evaluate-loki_loki          Created      0.1s 
     ✔ Container evaluate-loki-minio-1     Started      0.6s 
@@ -74,7 +76,7 @@ This quick start assumes you are running Linux.
 
 ## Viewing your logs in Grafana
 
-Once you have collected logs, you will want to view them.  You can view your logs using the command line interface, [LogCLI](/docs/loki/latest/query/logcli/), but the easiest way to view your logs is with Grafana.
+Once you have collected logs, you will want to view them.  You can view your logs using the command line interface, [LogCLI](/docs/loki/<LOKI_VERSION>/query/logcli/), but the easiest way to view your logs is with Grafana.
 
 1. Use Grafana to query the Loki data source.  
 
@@ -84,7 +86,7 @@ Once you have collected logs, you will want to view them.  You can view your log
 
 1. From the Grafana main menu, click the **Explore** icon (1) to launch the Explore tab. To learn more about Explore, refer the [Explore](https://grafana.com/docs/grafana/latest/explore/) documentation.
 
-1. From the menu in the dashboard header, select the Loki data source (2).  This displays the Loki query editor. In the query editor you use the Loki query language, [LogQL](https://grafana.com/docs/loki/latest/query/), to query your logs.
+1. From the menu in the dashboard header, select the Loki data source (2).  This displays the Loki query editor. In the query editor you use the Loki query language, [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query/), to query your logs.
     To learn more about the query editor, refer to the [query editor documentation](https://grafana.com/docs/grafana/latest/datasources/loki/query-editor/).
 
 1. The Loki query editor has two modes (3):
@@ -99,30 +101,37 @@ Once you have collected logs, you will want to view them.  You can view your log
     Here are some basic sample queries to get you started using LogQL.  Note that these queries assume that you followed the instructions to create a directory called `evaluate-loki`. If you installed in a different directory, you’ll need to modify these queries to match your installation directory.  After copying any of these queries into the query editor, click **Run Query** (4) to execute the query.
 
     1. View all the log lines which have the container label "flog":
+
         ```bash
         {container="evaluate-loki-flog-1"}
         ```
-        In Loki, this is called a log stream. Loki uses [labels](https://grafana.com/docs/loki/latest/get-started/labels/) as metadata to describe log streams.  Loki queries always start with a label selector.  In the query above, the label selector is `container`.
+
+        In Loki, this is called a log stream. Loki uses [labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/) as metadata to describe log streams.  Loki queries always start with a label selector.  In the query above, the label selector is `container`.
 
     1. To view all the log lines which have the container label "grafana":
+
         ```bash
         {container="evaluate-loki-grafana-1"}
         ```
 
     1. Find all the log lines in the container=flog stream that contain the string "status":
+
         ```bash
         {container="evaluate-loki-flog-1"} |= `status`
         ```
 
     1. Find all the log lines in the container=flog stream where the JSON field "status" is "404":
+
         ```bash
         {container="evaluate-loki-flog-1"} | json | status=`404`
         ```
 
     1. Calculate the number of logs per second where the JSON field "status" is "404":
+
         ```bash
         sum by(container) (rate({container="evaluate-loki-flog-1"} | json | status=`404` [$__auto]))        
         ```
+
     The final query above is a metric query which returns a time series. This will trigger Grafana to draw a graph of the results.  You can change the type of graph for a different view of the data.  Click **Bars** to view a bar graph of the data.
 
 1. Click the **Builder** tab (3) to return to Builder mode in the query editor.
@@ -131,38 +140,45 @@ Once you have collected logs, you will want to view them.  You can view your log
     1. Select the first choice, **Parse log lines with logfmt parser**, by clicking **Use this query**.
     1. On the Explore tab, click **Label browser**, in the dialog select a container and click **Show logs**.
 
-For a thorough introduction to LogQL, refer to the [LogQL reference](https://grafana.com/docs/loki/latest/query/).
+For a thorough introduction to LogQL, refer to the [LogQL reference](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
 
 ## Sample queries (code view)
+
 Here are some more sample queries that you can run using the Flog sample data.
 
 To see all the log lines that flog has generated, enter the LogQL query:
+
 ```bash
 {container="evaluate-loki-flog-1"}|= ``
 ```
-The flog app generates log lines for simulated HTTP requests. 
+
+The flog app generates log lines for simulated HTTP requests.
 
 To see all `GET` log lines, enter the LogQL query:
+
 ```bash
 {container="evaluate-loki-flog-1"} |= "GET"
 ```
 
 To see all `POST` methods, enter the LogQL query:
+
 ```bash
 {container="evaluate-loki-flog-1"} |= "POST"
 ```
 
 To see every log line with a 401 status (unauthorized error), enter the LogQL query:
+
 ```bash
 {container="evaluate-loki-flog-1"} | json | status="401"
 ```
 
 To see every log line that does not contain the value 401:
+
 ```bash
 {container="evaluate-loki-flog-1"} != "401"
 ```
 
-For more examples, refer to the [query documentation](https://grafana.com/docs/loki/latest/query/query_examples/).
+For more examples, refer to the [query documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_examples/).
 
 ## Complete metrics, logs, traces, and profiling example
 

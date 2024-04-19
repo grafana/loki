@@ -6,7 +6,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	bucket_http "github.com/grafana/loki/pkg/storage/bucket/http"
+	bucket_http "github.com/grafana/loki/v3/pkg/storage/bucket/http"
 )
 
 // HTTPConfig stores the http.Transport configuration for the s3 minio client.

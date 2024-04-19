@@ -3,95 +3,25 @@ package bloomshipper
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 var (
 	logger = log.NewNopLogger()
 )
 
-func TestBlocksCacheConfig_Validate(t *testing.T) {
-	for _, tc := range []struct {
-		desc string
-		cfg  BlocksCacheConfig
-		err  error
-	}{
-		{
-			desc: "not enabled does not yield error when incorrectly configured",
-			cfg:  BlocksCacheConfig{Enabled: false},
-			err:  nil,
-		},
-		{
-			desc: "ttl not set",
-			cfg: BlocksCacheConfig{
-				Enabled:   true,
-				SoftLimit: 1,
-				HardLimit: 2,
-			},
-			err: errors.New("blocks cache ttl must not be 0"),
-		},
-		{
-			desc: "soft limit not set",
-			cfg: BlocksCacheConfig{
-				Enabled:   true,
-				TTL:       1,
-				HardLimit: 2,
-			},
-			err: errors.New("blocks cache soft_limit must not be 0"),
-		},
-		{
-			desc: "hard limit not set",
-			cfg: BlocksCacheConfig{
-				Enabled:   true,
-				TTL:       1,
-				SoftLimit: 1,
-			},
-			err: errors.New("blocks cache soft_limit must not be greater than hard_limit"),
-		},
-		{
-			desc: "soft limit greater than hard limit",
-			cfg: BlocksCacheConfig{
-				Enabled:   true,
-				TTL:       1,
-				SoftLimit: 2,
-				HardLimit: 1,
-			},
-			err: errors.New("blocks cache soft_limit must not be greater than hard_limit"),
-		},
-		{
-			desc: "all good",
-			cfg: BlocksCacheConfig{
-				Enabled:   true,
-				TTL:       1,
-				SoftLimit: 1,
-				HardLimit: 2,
-			},
-			err: nil,
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			err := tc.cfg.Validate()
-			if tc.err != nil {
-				require.ErrorContains(t, err, tc.err.Error())
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
 func TestBlocksCache_ErrorCases(t *testing.T) {
-	cfg := BlocksCacheConfig{
-		Enabled:   true,
+	cfg := config.BlocksCacheConfig{
 		TTL:       time.Hour,
 		SoftLimit: flagext.Bytes(100),
 		HardLimit: flagext.Bytes(200),
@@ -163,8 +93,7 @@ func CacheValue(path string, size int64) BlockDirectory {
 }
 
 func TestBlocksCache_PutAndGet(t *testing.T) {
-	cfg := BlocksCacheConfig{
-		Enabled:   true,
+	cfg := config.BlocksCacheConfig{
 		TTL:       time.Hour,
 		SoftLimit: flagext.Bytes(10),
 		HardLimit: flagext.Bytes(20),
@@ -194,7 +123,9 @@ func TestBlocksCache_PutAndGet(t *testing.T) {
 	_, found = cache.Get(ctx, "a")
 	require.True(t, found)
 
-	require.Equal(t, 3, cache.lru.Len())
+	l, ok := cache.len()
+	require.True(t, ok)
+	require.Equal(t, 3, l)
 
 	// check LRU order
 	elem := cache.lru.Front()
@@ -230,8 +161,7 @@ func TestBlocksCache_PutAndGet(t *testing.T) {
 }
 
 func TestBlocksCache_TTLEviction(t *testing.T) {
-	cfg := BlocksCacheConfig{
-		Enabled:   true,
+	cfg := config.BlocksCacheConfig{
 		TTL:       100 * time.Millisecond,
 		SoftLimit: flagext.Bytes(10),
 		HardLimit: flagext.Bytes(20),
@@ -259,13 +189,13 @@ func TestBlocksCache_TTLEviction(t *testing.T) {
 	_, found = cache.Get(ctx, "b")
 	require.True(t, found)
 
-	require.Equal(t, 1, cache.lru.Len())
-	require.Equal(t, 1, len(cache.entries))
+	l, ok := cache.len()
+	require.True(t, ok)
+	require.Equal(t, 1, l)
 }
 
 func TestBlocksCache_LRUEviction(t *testing.T) {
-	cfg := BlocksCacheConfig{
-		Enabled:   true,
+	cfg := config.BlocksCacheConfig{
 		TTL:       time.Hour,
 		SoftLimit: flagext.Bytes(15),
 		HardLimit: flagext.Bytes(20),
@@ -297,8 +227,9 @@ func TestBlocksCache_LRUEviction(t *testing.T) {
 
 	time.Sleep(time.Second)
 
-	require.Equal(t, 3, cache.lru.Len())
-	require.Equal(t, 3, len(cache.entries))
+	l, ok := cache.len()
+	require.True(t, ok)
+	require.Equal(t, 3, l)
 
 	// key "b" was evicted because it was the oldest
 	// and it had no ref counts
@@ -309,8 +240,7 @@ func TestBlocksCache_LRUEviction(t *testing.T) {
 }
 
 func TestBlocksCache_RefCounter(t *testing.T) {
-	cfg := BlocksCacheConfig{
-		Enabled:   true,
+	cfg := config.BlocksCacheConfig{
 		TTL:       time.Hour,
 		SoftLimit: flagext.Bytes(10),
 		HardLimit: flagext.Bytes(20),
@@ -342,13 +272,9 @@ func prepareBenchmark(b *testing.B) map[string]BlockDirectory {
 	for i := 0; i < 1000; i++ {
 		key := fmt.Sprintf("block-%04x", i)
 		entries[key] = BlockDirectory{
-			BlockRef:                    BlockRef{},
-			Path:                        fmt.Sprintf("blooms/%s", key),
-			removeDirectoryTimeout:      time.Minute,
-			refCount:                    atomic.NewInt32(0),
-			logger:                      logger,
-			activeQueriersCheckInterval: time.Minute,
-			size:                        4 << 10,
+			BlockRef: BlockRef{},
+			Path:     fmt.Sprintf("blooms/%s", key),
+			size:     4 << 10,
 		}
 	}
 	return entries
@@ -364,7 +290,11 @@ func Benchmark_BlocksCacheOld(b *testing.B) {
 		TTL:           time.Hour,
 		PurgeInterval: time.Hour,
 	}
-	cache := NewBlocksCache(cfg, nil, logger)
+	cache := cache.NewTypedEmbeddedCache[string, BlockDirectory](
+		"blocks-cache", cfg, nil, logger, stats.BloomBlocksCache,
+		func(entry *cache.Entry[string, BlockDirectory]) uint64 { return uint64(entry.Value.Size()) },
+		func(_ string, value BlockDirectory) { os.RemoveAll(value.Path) },
+	)
 	entries := prepareBenchmark(b)
 	ctx := context.Background()
 	b.ReportAllocs()
@@ -387,8 +317,7 @@ func Benchmark_BlocksCacheOld(b *testing.B) {
 func Benchmark_BlocksCacheNew(b *testing.B) {
 	prepareBenchmark(b)
 	b.StopTimer()
-	cfg := BlocksCacheConfig{
-		Enabled:       true,
+	cfg := config.BlocksCacheConfig{
 		SoftLimit:     100 << 20,
 		HardLimit:     120 << 20,
 		TTL:           time.Hour,

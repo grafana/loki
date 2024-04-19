@@ -10,24 +10,24 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	promRules "github.com/prometheus/prometheus/rules"
 
-	configClient "github.com/grafana/loki/pkg/configs/client"
-	"github.com/grafana/loki/pkg/ruler/rulestore"
-	"github.com/grafana/loki/pkg/ruler/rulestore/bucketclient"
-	"github.com/grafana/loki/pkg/ruler/rulestore/configdb"
-	"github.com/grafana/loki/pkg/ruler/rulestore/local"
-	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/bucket"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
-	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
-	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
-	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
-	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
-	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
-	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
-	utilLog "github.com/grafana/loki/pkg/util/log"
+	configClient "github.com/grafana/loki/v3/pkg/configs/client"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore/bucketclient"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore/configdb"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore/objectclient"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/azure"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/baidubce"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/ibmcloud"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // RuleStoreConfig configures a rule store.
@@ -99,7 +99,7 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, cfgProvider bucket.TenantConfigProv
 	var client client.ObjectClient
 
 	if cfg.ThanosObjStore {
-		return NewRuleStore(context.Background(), cfg.ObjStoreConf, cfgProvider, loader, utilLog.Logger, prometheus.DefaultRegisterer)
+		return NewRuleStore(context.Background(), cfg.ObjStoreConf, cfgProvider, loader, util_log.Logger, prometheus.DefaultRegisterer)
 	}
 
 	switch cfg.Type {

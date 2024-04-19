@@ -4,8 +4,8 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/grafana/loki/pkg/chunkenc/testdata"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/chunkenc/testdata"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func logprotoEntry(ts int64, line string) *logproto.Entry {

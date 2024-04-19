@@ -7,10 +7,10 @@ import (
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
 
-	"github.com/grafana/loki/pkg/logproto"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 func getDayTime(ts model.Time) time.Time {
@@ -78,7 +78,7 @@ func partitionTasks(tasks []Task, blocks []bloomshipper.BlockRef) []blockWithTas
 			})
 
 			// All fingerprints fall outside of the consumer's range
-			if min == len(refs) || max == 0 {
+			if min == len(refs) || max == 0 || min == max {
 				continue
 			}
 

@@ -7,7 +7,10 @@ type BloomQuerier interface {
 }
 
 type LazyBloomIter struct {
+	usePool bool
+
 	b *Block
+	m int // max page size in bytes
 
 	// state
 	initialized  bool
@@ -16,9 +19,16 @@ type LazyBloomIter struct {
 	curPage      *BloomPageDecoder
 }
 
-func NewLazyBloomIter(b *Block) *LazyBloomIter {
+// NewLazyBloomIter returns a new lazy bloom iterator.
+// If pool is true, the underlying byte slice of the bloom page
+// will be returned to the pool for efficiency.
+// This can only safely be used when the underlying bloom
+// bytes don't escape the decoder.
+func NewLazyBloomIter(b *Block, pool bool, maxSize int) *LazyBloomIter {
 	return &LazyBloomIter{
-		b: b,
+		usePool: pool,
+		b:       b,
+		m:       maxSize,
 	}
 }
 
@@ -32,13 +42,6 @@ func (it *LazyBloomIter) ensureInit() {
 	}
 }
 
-func (it *LazyBloomIter) setPage(dec *BloomPageDecoder) {
-	if it.curPage != nil {
-		it.curPage.Close()
-	}
-	it.curPage = dec
-}
-
 func (it *LazyBloomIter) Seek(offset BloomOffset) {
 	it.ensureInit()
 
@@ -46,21 +49,26 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 	// load the desired page
 	if it.curPageIndex != offset.Page || it.curPage == nil {
 
+		// drop the current page if it exists and
+		// we're using the pool
+		if it.curPage != nil && it.usePool {
+			it.curPage.Relinquish()
+		}
+
 		r, err := it.b.reader.Blooms()
 		if err != nil {
 			it.err = errors.Wrap(err, "getting blooms reader")
-			it.setPage(nil)
 			return
 		}
-		decoder, err := it.b.blooms.BloomPageDecoder(r, offset.Page)
+		decoder, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.m, it.b.metrics)
 		if err != nil {
 			it.err = errors.Wrap(err, "loading bloom page")
-			it.setPage(nil)
 			return
 		}
 
 		it.curPageIndex = offset.Page
-		it.setPage(decoder)
+		it.curPage = decoder
+
 	}
 
 	it.curPage.Seek(offset.ByteOffset)
@@ -88,26 +96,33 @@ func (it *LazyBloomIter) next() bool {
 				return false
 			}
 
-			decoder, err := it.b.blooms.BloomPageDecoder(r, it.curPageIndex)
+			it.curPage, err = it.b.blooms.BloomPageDecoder(
+				r,
+				it.curPageIndex,
+				it.m,
+				it.b.metrics,
+			)
 			if err != nil {
 				it.err = err
-				it.setPage(nil)
 				return false
 			}
-			it.setPage(decoder)
 			continue
 		}
 
 		if !it.curPage.Next() {
 			// there was an error
 			if it.curPage.Err() != nil {
-				it.err = it.curPage.Err()
-				it.setPage(nil)
 				return false
 			}
+
 			// we've exhausted the current page, progress to next
 			it.curPageIndex++
-			it.setPage(nil)
+			// drop the current page if it exists and
+			// we're using the pool
+			if it.usePool {
+				it.curPage.Relinquish()
+			}
+			it.curPage = nil
 			continue
 		}
 
@@ -115,7 +130,6 @@ func (it *LazyBloomIter) next() bool {
 	}
 
 	// finished last page
-	it.setPage(nil)
 	return false
 }
 

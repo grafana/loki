@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/bucket/filesystem"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 )
 
 func TestGCSThanosObjStore_List(t *testing.T) {
