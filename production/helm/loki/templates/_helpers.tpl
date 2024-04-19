@@ -601,7 +601,7 @@ Create the service endpoint including port for MinIO.
 */}}
 {{- define "loki.minio" -}}
 {{- if .Values.minio.enabled -}}
-{{- printf "%s-%s.%s.svc:%s" .Release.Name "minio" .Release.Namespace (.Values.minio.service.port | toString) -}}
+{{- .Values.minio.address | default (printf "%s-%s.%s.svc:%s" .Release.Name "minio" .Release.Namespace (.Values.minio.service.port | toString)) -}}
 {{- end -}}
 {{- end -}}
 
@@ -986,5 +986,16 @@ Return the appropriate apiVersion for PodDisruptionBudget.
     {{- print "policy/v1" -}}
   {{- else -}}
     {{- print "policy/v1beta1" -}}
+  {{- end -}}
+{{- end -}}
+
+{{/*
+Return the object store type for use with the test schema.
+*/}}
+{{- define "loki.testSchemaObjectStore" -}}
+  {{- if .Values.minio.enabled -}}
+    s3
+  {{- else -}}
+    filesystem
   {{- end -}}
 {{- end -}}
