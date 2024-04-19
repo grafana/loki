@@ -235,6 +235,21 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
+	detectedFieldsTripperware, err := NewDetectedFieldsTripperware(
+		cfg,
+		engineOpts,
+		log,
+		limits,
+		schema,
+		codec,
+		iqo,
+		metrics,
+		indexStatsTripperware,
+		metricsNamespace)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		var (
 			metricRT         = metricsTripperware.Wrap(next)
@@ -245,7 +260,7 @@ func NewMiddleware(
 			instantRT        = instantMetricTripperware.Wrap(next)
 			statsRT          = indexStatsTripperware.Wrap(next)
 			seriesVolumeRT   = seriesVolumeTripperware.Wrap(next)
-			detectedFieldsRT = next // TODO(twhitney): add middlewares for detected fields
+			detectedFieldsRT = detectedFieldsTripperware.Wrap(next)
 			detectedLabelsRT = next // TODO(shantanu): add middlewares
 		)
 
@@ -372,11 +387,14 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 	case *DetectedFieldsRequest:
 		level.Info(logger).Log(
 			"msg", "executing query",
-			"type", "detected fields",
-			"query", op.Query,
-			"length", op.End.Sub(op.Start),
-			"start", op.Start,
+			"type", "detected_fields",
 			"end", op.End,
+			"field_limit", op.FieldLimit,
+			"length", op.End.Sub(op.Start),
+			"line_limit", op.LineLimit,
+			"query", op.Query,
+			"start", op.Start,
+			"step", op.Step,
 		)
 
 		return r.detectedFields.Do(ctx, req)
@@ -1095,5 +1113,46 @@ func sharedIndexTripperware(
 		}
 
 		return base.MergeMiddlewares(middlewares...).Wrap(next)
+	}), nil
+}
+
+// NewDetectedFieldsTripperware creates a new frontend tripperware responsible for handling detected field requests, which are basically log filter requests with a bit more processing.
+func NewDetectedFieldsTripperware(
+	cfg Config,
+	engineOpts logql.EngineOpts,
+	log log.Logger,
+	limits Limits,
+	schema config.SchemaConfig,
+	merger base.Merger,
+	iqo util.IngesterQueryOptions,
+	metrics *Metrics,
+	indexStatsTripperware base.Middleware,
+	metricsNamespace string,
+) (base.Middleware, error) {
+	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		statsHandler := indexStatsTripperware.Wrap(next)
+
+		queryRangeMiddleware := []base.Middleware{
+			StatsCollectorMiddleware(),
+			NewLimitsMiddleware(limits),
+			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, newDefaultSplitter(limits, iqo), metrics.SplitByMetrics),
+		}
+
+		// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
+		// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+		)
+
+		if cfg.MaxRetries > 0 {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
+			)
+		}
+
+		return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 	}), nil
 }
