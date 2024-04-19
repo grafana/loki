@@ -54,16 +54,20 @@ func newQuerierMetrics(registerer prometheus.Registerer, namespace, subsystem st
 // BloomQuerier is a store-level abstraction on top of Client
 // It is used by the index gateway to filter ChunkRefs based on given line fiter expression.
 type BloomQuerier struct {
-	c       Client
-	logger  log.Logger
-	metrics *querierMetrics
+	c             Client
+	logger        log.Logger
+	metrics       *querierMetrics
+	limits        Limits
+	blockResolver BlockResolver
 }
 
-func NewQuerier(c Client, r prometheus.Registerer, logger log.Logger) *BloomQuerier {
+func NewQuerier(c Client, limits Limits, resolver BlockResolver, r prometheus.Registerer, logger log.Logger) *BloomQuerier {
 	return &BloomQuerier{
-		c:       c,
-		metrics: newQuerierMetrics(r, constants.Loki, querierMetricsSubsystem),
-		logger:  logger,
+		c:             c,
+		logger:        logger,
+		metrics:       newQuerierMetrics(r, constants.Loki, querierMetricsSubsystem),
+		limits:        limits,
+		blockResolver: resolver,
 	}
 }
 
@@ -73,7 +77,7 @@ func convertToShortRef(ref *logproto.ChunkRef) *logproto.ShortRef {
 
 func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, queryPlan plan.QueryPlan) ([]*logproto.ChunkRef, error) {
 	// Shortcut that does not require any filtering
-	if len(chunkRefs) == 0 || len(v1.ExtractTestableLineFilters(queryPlan.AST)) == 0 {
+	if !bq.limits.BloomGatewayEnabled(tenant) || len(chunkRefs) == 0 || len(v1.ExtractTestableLineFilters(queryPlan.AST)) == 0 {
 		return chunkRefs, nil
 	}
 
@@ -91,7 +95,12 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	// We can perform requests sequentially, because most of the time the request
 	// only covers a single day, and if not, it's at most two days.
 	for _, s := range partitionSeriesByDay(from, through, grouped) {
-		refs, err := bq.c.FilterChunks(ctx, tenant, s.interval.Start, s.interval.End, s.series, queryPlan)
+		blocks, err := bq.blockResolver.Resolve(ctx, tenant, s.day, s.series)
+		if err != nil {
+			return nil, err
+		}
+
+		refs, err := bq.c.FilterChunks(ctx, tenant, s.interval, blocks, queryPlan)
 		if err != nil {
 			return nil, err
 		}

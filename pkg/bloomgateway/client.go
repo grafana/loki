@@ -14,7 +14,6 @@ import (
 	ringclient "github.com/grafana/dskit/ring/client"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -24,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/queue"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/discovery"
 )
@@ -111,12 +111,11 @@ func (i *ClientConfig) Validate() error {
 }
 
 type Client interface {
-	FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error)
+	FilterChunks(ctx context.Context, tenant string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error)
 }
 
 type GatewayClient struct {
 	cfg         ClientConfig
-	limits      Limits
 	logger      log.Logger
 	metrics     *clientMetrics
 	pool        *JumpHashClientPool
@@ -188,7 +187,6 @@ func NewClient(
 	return &GatewayClient{
 		cfg:         cfg,
 		logger:      logger,
-		limits:      limits,
 		metrics:     metrics,
 		pool:        pool,
 		dnsProvider: dnsProvider, // keep reference so we can stop it when the client is closed
@@ -201,26 +199,41 @@ func (c *GatewayClient) Close() {
 }
 
 // FilterChunkRefs implements Client
-func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
-	if !c.limits.BloomGatewayEnabled(tenant) || len(groups) == 0 {
-		return groups, nil
+func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
+	// no block and therefore no series with chunks
+	if len(blocks) == 0 {
+		return nil, nil
 	}
 
-	clients := make(map[string][]*logproto.GroupedChunkRefs)
-	for _, g := range groups {
-		addr, err := c.pool.AddrForFingerprint(g.Fingerprint)
+	firstFp, lastFp := uint64(math.MaxUint64), uint64(0)
+	pos := make(map[string]int)
+	servers := make([]addrWithGroups, 0, len(blocks))
+	for _, blockWithSeries := range blocks {
+		addr, err := c.pool.Addr(blockWithSeries.block.String())
 		if err != nil {
-			return nil, errors.Wrap(err, "server address for fingerprint")
+			return nil, errors.Wrapf(err, "server address for block: %s", blockWithSeries.block)
 		}
-		clients[addr] = append(clients[addr], g)
-	}
 
-	servers := make([]addrWithGroups, 0, len(clients))
-	for k, v := range clients {
-		servers = append(servers, addrWithGroups{
-			groups: v,
-			addr:   k,
-		})
+		// min/max fingerprint needed for the cache locality score
+		first, last := getFirstLast(blockWithSeries.series)
+		if first.Fingerprint < firstFp {
+			firstFp = first.Fingerprint
+		}
+		if last.Fingerprint > lastFp {
+			lastFp = last.Fingerprint
+		}
+
+		if idx, found := pos[addr]; found {
+			servers[idx].groups = append(servers[idx].groups, blockWithSeries.series...)
+			servers[idx].blocks = append(servers[idx].blocks, blockWithSeries.block.String())
+		} else {
+			pos[addr] = len(servers)
+			servers = append(servers, addrWithGroups{
+				addr:   addr,
+				blocks: []string{blockWithSeries.block.String()},
+				groups: blockWithSeries.series,
+			})
+		}
 	}
 
 	if len(servers) > 0 {
@@ -229,7 +242,6 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 		// but can be less if the keyspace is not evenly distributed across instances. Ideal operation will see the range of
 		// `1-2/num_instances` -> `1`, where the former represents slight
 		// overlap on instances to the left and right of the range.
-		firstFp, lastFp := groups[0].Fingerprint, groups[len(groups)-1].Fingerprint
 		pctKeyspace := float64(lastFp-firstFp) / float64(math.MaxUint64)
 		pctInstances := float64(len(servers)) / float64(max(1, len(c.pool.Addrs())))
 		cacheLocalityScore := pctKeyspace / pctInstances
@@ -243,20 +255,20 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 
 		level.Info(c.logger).Log(
 			"msg", "do FilterChunkRefs for addresses",
-			"progress", fmt.Sprintf("%d/%d", i+1, len(servers)),
+			"part", fmt.Sprintf("%d/%d", i+1, len(servers)),
 			"addr", rs.addr,
-			"from", from.Time(),
-			"through", through.Time(),
-			"num_refs", len(rs.groups),
-			"plan", plan.String(),
-			"plan_hash", plan.Hash(),
+			"from", interval.Start.Time(),
+			"through", interval.End.Time(),
+			"series", len(rs.groups),
+			"blocks", len(rs.blocks),
 		)
 
 		return c.doForAddrs([]string{rs.addr}, func(client logproto.BloomGatewayClient) error {
 			req := &logproto.FilterChunkRefRequest{
-				From:    from,
-				Through: through,
+				From:    interval.Start,
+				Through: interval.End,
 				Refs:    rs.groups,
+				Blocks:  rs.blocks,
 				Plan:    plan,
 			}
 			resp, err := client.FilterChunkRefs(ctx, req)
@@ -308,5 +320,6 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 
 type addrWithGroups struct {
 	addr   string
+	blocks []string
 	groups []*logproto.GroupedChunkRefs
 }

@@ -2,6 +2,7 @@ package bloomgateway
 
 import (
 	"context"
+	"sort"
 	"testing"
 	"time"
 
@@ -13,6 +14,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 type noopClient struct {
@@ -21,18 +25,47 @@ type noopClient struct {
 }
 
 // FilterChunks implements Client.
-func (c *noopClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) { // nolint:revive
+func (c *noopClient) FilterChunks(ctx context.Context, tenant string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) (result []*logproto.GroupedChunkRefs, err error) {
+	for _, block := range blocks {
+		result = append(result, block.series...)
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		return result[i].Fingerprint < result[j].Fingerprint
+	})
+
 	c.callCount++
-	return groups, c.err
+	return result, c.err
 }
+
+type mockBlockResolver struct{}
+
+// Resolve implements BlockResolver.
+func (*mockBlockResolver) Resolve(_ context.Context, tenant string, interval config.DayTime, series []*logproto.GroupedChunkRefs) ([]blockWithSeries, error) {
+	first, last := getFirstLast(series)
+	block := bloomshipper.BlockRef{
+		Ref: bloomshipper.Ref{
+			TenantID:       tenant,
+			TableName:      "table",
+			Bounds:         v1.NewBounds(model.Fingerprint(first.Fingerprint), model.Fingerprint(last.Fingerprint)),
+			StartTimestamp: interval.Time,
+			EndTimestamp:   interval.Add(Day),
+			Checksum:       0,
+		},
+	}
+	return []blockWithSeries{{block: block, series: series}}, nil
+}
+
+var _ BlockResolver = &mockBlockResolver{}
 
 func TestBloomQuerier(t *testing.T) {
 	logger := log.NewNopLogger()
+	limits := newLimits()
+	resolver := &mockBlockResolver{}
 	tenant := "fake"
 
 	t.Run("client not called when filters are empty", func(t *testing.T) {
 		c := &noopClient{}
-		bq := NewQuerier(c, nil, logger)
+		bq := NewQuerier(c, limits, resolver, nil, logger)
 
 		ctx := context.Background()
 		through := model.Now()
@@ -52,7 +85,7 @@ func TestBloomQuerier(t *testing.T) {
 
 	t.Run("client not called when chunkRefs are empty", func(t *testing.T) {
 		c := &noopClient{}
-		bq := NewQuerier(c, nil, logger)
+		bq := NewQuerier(c, limits, resolver, nil, logger)
 
 		ctx := context.Background()
 		through := model.Now()
@@ -65,9 +98,10 @@ func TestBloomQuerier(t *testing.T) {
 		require.Equal(t, chunkRefs, res)
 		require.Equal(t, 0, c.callCount)
 	})
+
 	t.Run("querier propagates error from client", func(t *testing.T) {
 		c := &noopClient{err: errors.New("something went wrong")}
-		bq := NewQuerier(c, nil, logger)
+		bq := NewQuerier(c, limits, resolver, nil, logger)
 
 		ctx := context.Background()
 		through := model.Now()
@@ -86,7 +120,7 @@ func TestBloomQuerier(t *testing.T) {
 
 	t.Run("client called once for each day of the interval", func(t *testing.T) {
 		c := &noopClient{}
-		bq := NewQuerier(c, nil, logger)
+		bq := NewQuerier(c, limits, resolver, nil, logger)
 
 		ctx := context.Background()
 		from := mktime("2024-04-16 22:00")
