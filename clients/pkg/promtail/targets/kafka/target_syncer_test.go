@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ import (
 
 func Test_TopicDiscovery(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	group := &testConsumerGroupHandler{}
+	group := &testConsumerGroupHandler{mu: &sync.Mutex{}}
 	TopicPollInterval = time.Microsecond
 	var closed bool
 	client := &mockKafkaClient{
@@ -52,21 +53,28 @@ func Test_TopicDiscovery(t *testing.T) {
 	}
 
 	ts.loop()
+	tmpTopics := []string{}
 	require.Eventually(t, func() bool {
 		if !group.consuming.Load() {
 			return false
 		}
+		group.mu.Lock()
+		defer group.mu.Unlock()
+		tmpTopics = group.topics
 		return reflect.DeepEqual([]string{"topic1"}, group.topics)
-	}, 200*time.Millisecond, time.Millisecond, "expected topics: %v, got: %v", []string{"topic1"}, group.topics)
+	}, 200*time.Millisecond, time.Millisecond, "expected topics: %v, got: %v", []string{"topic1"}, tmpTopics)
 
+	client.mu.Lock()
 	client.topics = []string{"topic1", "topic2"} // introduce new topics
+	client.mu.Unlock()
 
 	require.Eventually(t, func() bool {
 		if !group.consuming.Load() {
 			return false
 		}
+		tmpTopics = group.topics
 		return reflect.DeepEqual([]string{"topic1", "topic2"}, group.topics)
-	}, 200*time.Millisecond, time.Millisecond, "expected topics: %v, got: %v", []string{"topic1", "topic2"}, group.topics)
+	}, 200*time.Millisecond, time.Millisecond, "expected topics: %v, got: %v", []string{"topic1", "topic2"}, tmpTopics)
 
 	require.NoError(t, ts.Stop())
 	require.True(t, closed)
