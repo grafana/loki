@@ -462,6 +462,7 @@ func (g *Gateway) getShardsWithBlooms(
 				Stats:  &logproto.IndexStatsResponse{},
 			},
 		}
+
 	} else {
 		shards, chunkGrps, err := accumulateChunksToShards(ctx, instanceID, forSeries, req, p, filtered)
 		if err != nil {
@@ -477,6 +478,8 @@ func (g *Gateway) getShardsWithBlooms(
 	for _, grp := range resp.ChunkGroups {
 		refCt += len(grp.Refs)
 	}
+
+	ms := syntax.MatchersExpr{Mts: p.Matchers}
 	level.Debug(logger).Log(
 		"msg", "send shards response",
 		"total_chunks", statistics.Index.TotalChunks,
@@ -485,6 +488,7 @@ func (g *Gateway) getShardsWithBlooms(
 		"query", req.Query,
 		"target_bytes_per_shard", datasize.ByteSize(req.TargetBytesPerShard).HumanReadable(),
 		"precomputed_refs", refCt,
+		"matchers", ms.String(),
 	)
 
 	// 3) build shards
@@ -547,12 +551,13 @@ func accumulateChunksToShards(
 		v1.NewBounds(filtered[0].FingerprintModel(), filtered[len(filtered)-1].FingerprintModel()),
 		req.From, req.Through,
 		func(l labels.Labels, fp model.Fingerprint, chks []tsdb_index.ChunkMeta) (stop bool) {
+			mtx.Lock()
+			defer mtx.Unlock()
+
 			// check if this is a fingerprint we need
 			if _, ok := filteredM[fp]; !ok {
 				return false
 			}
-			mtx.Lock()
-			defer mtx.Unlock()
 
 			filteredChks := filteredM[fp]
 			var j int
