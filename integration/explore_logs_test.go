@@ -148,6 +148,7 @@ func Test_ExploreLogsApis(t *testing.T) {
 			u.Path = "/loki/api/v1/detected_fields"
 			u.RawQuery = v.Encode()
 			dfResp, err := cliQueryFrontend.Get(u.String())
+			require.NoError(t, err)
 			defer dfResp.Body.Close()
 
 			buf, err := io.ReadAll(dfResp.Body)
@@ -155,6 +156,7 @@ func Test_ExploreLogsApis(t *testing.T) {
 
 			var detectedFieldResponse DetectedFieldResponse
 			err = json.Unmarshal(buf, &detectedFieldResponse)
+			require.NoError(t, err)
 
 			require.Equal(t, 2, len(detectedFieldResponse.Fields))
 
@@ -188,6 +190,7 @@ func Test_ExploreLogsApis(t *testing.T) {
 			u.Path = "/loki/api/v1/detected_fields"
 			u.RawQuery = v.Encode()
 			dfResp, err := cliQueryFrontend.Get(u.String())
+			require.NoError(t, err)
 			defer dfResp.Body.Close()
 
 			buf, err := io.ReadAll(dfResp.Body)
@@ -195,6 +198,7 @@ func Test_ExploreLogsApis(t *testing.T) {
 
 			var detectedFieldResponse DetectedFieldResponse
 			err = json.Unmarshal(buf, &detectedFieldResponse)
+			require.NoError(t, err)
 
 			require.Equal(t, 2, len(detectedFieldResponse.Fields))
 
