@@ -22,7 +22,7 @@ type GRPCConfig struct {
 
 // RegisterFlags registers flags.
 func (cfg *GRPCConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("compactor.grpc-client", f)
 }
 
 type compactorGRPCClient struct {

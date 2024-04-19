@@ -354,6 +354,140 @@ pattern_ingester:
 # shards for performance.
 [compactor: <compactor>]
 
+compactor_grpc_client:
+  # gRPC client max receive message size (bytes).
+  # CLI flag: -compactor.grpc-client.grpc-max-recv-msg-size
+  [max_recv_msg_size: <int> | default = 104857600]
+
+  # gRPC client max send message size (bytes).
+  # CLI flag: -compactor.grpc-client.grpc-max-send-msg-size
+  [max_send_msg_size: <int> | default = 104857600]
+
+  # Use compression when sending messages. Supported values are: 'gzip',
+  # 'snappy' and '' (disable compression)
+  # CLI flag: -compactor.grpc-client.grpc-compression
+  [grpc_compression: <string> | default = ""]
+
+  # Rate limit for gRPC client; 0 means disabled.
+  # CLI flag: -compactor.grpc-client.grpc-client-rate-limit
+  [rate_limit: <float> | default = 0]
+
+  # Rate limit burst for gRPC client.
+  # CLI flag: -compactor.grpc-client.grpc-client-rate-limit-burst
+  [rate_limit_burst: <int> | default = 0]
+
+  # Enable backoff and retry when we hit rate limits.
+  # CLI flag: -compactor.grpc-client.backoff-on-ratelimits
+  [backoff_on_ratelimits: <boolean> | default = false]
+
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -compactor.grpc-client.backoff-min-period
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum delay when backing off.
+    # CLI flag: -compactor.grpc-client.backoff-max-period
+    [max_period: <duration> | default = 10s]
+
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -compactor.grpc-client.backoff-retries
+    [max_retries: <int> | default = 10]
+
+  # Initial stream window size. Values less than the default are not supported
+  # and are ignored. Setting this to a value other than the default disables the
+  # BDP estimator.
+  # CLI flag: -compactor.grpc-client.initial-stream-window-size
+  [initial_stream_window_size: <int> | default = 63KiB1023B]
+
+  # Initial connection window size. Values less than the default are not
+  # supported and are ignored. Setting this to a value other than the default
+  # disables the BDP estimator.
+  # CLI flag: -compactor.grpc-client.initial-connection-window-size
+  [initial_connection_window_size: <int> | default = 63KiB1023B]
+
+  # Enable TLS in the gRPC client. This flag needs to be enabled when any other
+  # TLS flag is set. If set to false, insecure connection to gRPC server will be
+  # used.
+  # CLI flag: -compactor.grpc-client.tls-enabled
+  [tls_enabled: <boolean> | default = false]
+
+  # Path to the client certificate, which will be used for authenticating with
+  # the server. Also requires the key path to be configured.
+  # CLI flag: -compactor.grpc-client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to the key for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -compactor.grpc-client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # Path to the CA certificates to validate server certificate against. If not
+  # set, the host's root CA certificates are used.
+  # CLI flag: -compactor.grpc-client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
+  # Override the expected name on the server certificate.
+  # CLI flag: -compactor.grpc-client.tls-server-name
+  [tls_server_name: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -compactor.grpc-client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # Override the default cipher suite list (separated by commas). Allowed
+  # values:
+  # 
+  # Secure Ciphers:
+  # - TLS_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_RSA_WITH_AES_256_GCM_SHA384
+  # - TLS_AES_128_GCM_SHA256
+  # - TLS_AES_256_GCM_SHA384
+  # - TLS_CHACHA20_POLY1305_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
+  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+  # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+  # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+  # 
+  # Insecure Ciphers:
+  # - TLS_RSA_WITH_RC4_128_SHA
+  # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_CBC_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
+  # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
+  # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+  # CLI flag: -compactor.grpc-client.tls-cipher-suites
+  [tls_cipher_suites: <string> | default = ""]
+
+  # Override the default minimum TLS version. Allowed values: VersionTLS10,
+  # VersionTLS11, VersionTLS12, VersionTLS13
+  # CLI flag: -compactor.grpc-client.tls-min-version
+  [tls_min_version: <string> | default = ""]
+
+  # The maximum amount of time to establish a connection. A value of 0 means
+  # default gRPC client connect timeout and backoff.
+  # CLI flag: -compactor.grpc-client.connect-timeout
+  [connect_timeout: <duration> | default = 5s]
+
+  # Initial backoff delay after first connection failure. Only relevant if
+  # ConnectTimeout > 0.
+  # CLI flag: -compactor.grpc-client.connect-backoff-base-delay
+  [connect_backoff_base_delay: <duration> | default = 1s]
+
+  # Maximum backoff delay when establishing a connection. Only relevant if
+  # ConnectTimeout > 0.
+  # CLI flag: -compactor.grpc-client.connect-backoff-max-delay
+  [connect_backoff_max_delay: <duration> | default = 5s]
+
 # The limits_config block configures global and per-tenant limits in Loki. The
 # values here can be overridden in the `overrides` section of the runtime_config
 # file
