@@ -9,7 +9,7 @@ RUN make clean && make BUILD_IN_CONTAINER=false PROMTAIL_JOURNAL_ENABLED=true pr
 FROM debian:12.5-slim
 # tzdata required for the timestamp stage to work
 RUN apt-get update && \
-  apt-get install -qy tzdata ca-certificates libsystemd-dev && \
+  apt-get install -qy tzdata ca-certificates wget libsystemd-dev && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 COPY --from=build /src/loki/clients/cmd/promtail/promtail /usr/bin/promtail
 COPY clients/cmd/promtail/promtail-local-config.yaml /etc/promtail/local-config.yaml
