@@ -96,7 +96,7 @@ type Config struct {
 	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
 	CompactorConfig     compactor.Config           `yaml:"compactor,omitempty"`
 	CompactorHTTPClient compactorclient.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
-	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty" doc:"hidden"`
+	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty"`
 	LimitsConfig        validation.Limits          `yaml:"limits_config,omitempty"`
 	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
 	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
