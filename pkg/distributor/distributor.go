@@ -67,6 +67,7 @@ const (
 	logLevelFatal    = "fatal"
 	logLevelCritical = "critical"
 	logLevelTrace    = "trace"
+	logLevelUnknown  = "unknown"
 )
 
 var (
@@ -866,7 +867,11 @@ func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.
 		if err != nil {
 			return logLevelInfo
 		}
-		if otlpSeverityNumber <= int(plog.SeverityNumberDebug4) {
+		if otlpSeverityNumber == int(plog.SeverityNumberUnspecified) {
+			return logLevelUnknown
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberTrace4) {
+			return logLevelTrace
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberDebug4) {
 			return logLevelDebug
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberInfo4) {
 			return logLevelInfo
@@ -877,7 +882,7 @@ func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberFatal4) {
 			return logLevelFatal
 		}
-		return logLevelInfo
+		return logLevelUnknown
 	}
 
 	return extractLogLevelFromLogLine(entry.Line)
@@ -907,7 +912,7 @@ func extractLogLevelFromLogLine(log string) string {
 	if firstNonSpaceChar == '{' && lastNonSpaceChar == '}' {
 		levelIndex := strings.Index(log, `"level":`)
 		if levelIndex == -1 {
-			return logLevelInfo
+			return logLevelUnknown
 		}
 		compareString := log[levelIndex:min(len(log), levelIndex+20)]
 
@@ -917,19 +922,19 @@ func extractLogLevelFromLogLine(log string) string {
 		if strings.Contains(strings.ToLower(compareString), `:"error"`) || strings.Contains(strings.ToLower(compareString), `:"err"`) {
 			return logLevelError
 		}
-		if strings.Contains(strings.ToLower(compareString), `:"warning"`) || strings.Contains(strings.ToLower(compareString), `:"warn"`) {
+		if strings.Contains(strings.ToLower(compareString), `:"warning"`) || strings.Contains(strings.ToLower(compareString), `:"warn"`) || strings.Contains(strings.ToLower(compareString), `:"wrn"`) {
 			return logLevelWarn
 		}
 		if strings.Contains(strings.ToLower(compareString), `:"critical"`) {
 			return logLevelCritical
 		}
-		if strings.Contains(strings.ToLower(compareString), `:"debug"`) {
+		if strings.Contains(strings.ToLower(compareString), `:"debug"`) || strings.Contains(strings.ToLower(compareString), `:"dbg"`) {
 			return logLevelDebug
 		}
-		if strings.Contains(strings.ToLower(compareString), `:"info"`) {
+		if strings.Contains(strings.ToLower(compareString), `:"info"`) || strings.Contains(strings.ToLower(compareString), `:"inf"`) {
 			return logLevelInfo
 		}
-		if strings.Contains(strings.ToLower(compareString), `:"trace"`) {
+		if strings.Contains(strings.ToLower(compareString), `:"trace"`) || strings.Contains(strings.ToLower(compareString), `:"trc"`) {
 			return logLevelTrace
 		}
 	}
@@ -942,21 +947,25 @@ func extractLogLevelFromLogLine(log string) string {
 		if strings.Contains(strings.ToLower(compareString), "=fatal") {
 			return logLevelFatal
 		}
-		if strings.Contains(strings.ToLower(compareString), "=error") || strings.Contains(strings.ToLower(compareString), "err") {
+		if strings.Contains(strings.ToLower(compareString), "=error") || strings.Contains(strings.ToLower(compareString), "=err") {
 			return logLevelError
 		}
-		if strings.Contains(strings.ToLower(compareString), "=warning") || strings.Contains(strings.ToLower(compareString), "warn") {
+		if strings.Contains(strings.ToLower(compareString), "=warning") || strings.Contains(strings.ToLower(compareString), "warn") || strings.Contains(strings.ToLower(compareString), "=wrn") {
 			return logLevelWarn
 		}
 		if strings.Contains(strings.ToLower(compareString), "=critical") {
 			return logLevelCritical
 		}
-		if strings.Contains(strings.ToLower(compareString), "=debug") {
+		if strings.Contains(strings.ToLower(compareString), "=debug") || strings.Contains(strings.ToLower(compareString), "=dbg") {
 			return logLevelDebug
 		}
-		if strings.Contains(strings.ToLower(compareString), "=info") {
+		if strings.Contains(strings.ToLower(compareString), "=info") || strings.Contains(strings.ToLower(compareString), "=inf") {
 			return logLevelInfo
 		}
+		if strings.Contains(strings.ToLower(compareString), "=trace") || strings.Contains(strings.ToLower(compareString), "=trc") {
+			return logLevelTrace
+		}
+
 	}
 
 	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
@@ -974,6 +983,5 @@ func extractLogLevelFromLogLine(log string) string {
 		return logLevelDebug
 	}
 
-	// Default to info if no specific level is found
-	return logLevelInfo
+	return logLevelUnknown
 }

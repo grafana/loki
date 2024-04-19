@@ -1625,7 +1625,7 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 			entry: logproto.Entry{
 				Line: "foo",
 			},
-			expectedLogLevel: logLevelInfo,
+			expectedLogLevel: logLevelUnknown,
 		},
 		{
 			name: "non otlp with log level keywords in log line",
@@ -1670,6 +1670,20 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 			expectedLogLevel: logLevelWarn,
 		},
 		{
+			name: "logfmt log line with a trace",
+			entry: logproto.Entry{
+				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=Trace`,
+			},
+			expectedLogLevel: logLevelTrace,
+		},
+		{
+			name: "logfmt log line with some other level returns unknown log level",
+			entry: logproto.Entry{
+				Line: `foo=bar msg="message with keyword but it should not get picked up" level=NA`,
+			},
+			expectedLogLevel: logLevelUnknown,
+		},
+		{
 			name: "logfmt log line with a info with non standard case",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=inFO`,
@@ -1699,6 +1713,6 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		level := extractLogLevelFromLogLine(logLine)
-		require.Equal(b, logLevelInfo, level)
+		require.Equal(b, logLevelUnknown, level)
 	}
 }
