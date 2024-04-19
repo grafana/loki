@@ -64,11 +64,11 @@ func (fs FS) PSIStatsForResource(resource string) (PSIStats, error) {
 		return PSIStats{}, fmt.Errorf("%s: psi_stats: unavailable for %q: %w", ErrFileRead, resource, err)
 	}
 
-	return parsePSIStats(resource, bytes.NewReader(data))
+	return parsePSIStats(bytes.NewReader(data))
 }
 
 // parsePSIStats parses the specified file for pressure stall information.
-func parsePSIStats(resource string, r io.Reader) (PSIStats, error) {
+func parsePSIStats(r io.Reader) (PSIStats, error) {
 	psiStats := PSIStats{}
 
 	scanner := bufio.NewScanner(r)

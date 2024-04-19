@@ -62,6 +62,7 @@
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     k.util.resourcesRequests('4', '2Gi') +
+    k.util.resourcesLimits(null, '4Gi') +
     container.withEnvMixin($._config.commonEnvs)
   else {},
 

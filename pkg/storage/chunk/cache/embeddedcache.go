@@ -13,8 +13,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
@@ -23,11 +23,21 @@ const (
 
 	defaultPurgeInterval = 1 * time.Minute
 
-	expiredReason  string = "expired" //nolint:staticcheck
-	fullReason            = "full"
-	tooBigReason          = "object too big"
-	replacedReason        = "replaced"
+	expiredReason  = "expired"
+	fullReason     = "full"
+	tooBigReason   = "object too big"
+	replacedReason = "replaced"
 )
+
+// Interface for EmbeddedCache
+// Matches the interface from cache.Cache but has generics
+type TypedCache[K comparable, V any] interface {
+	Store(ctx context.Context, keys []K, values []V) error
+	Fetch(ctx context.Context, keys []K) (found []K, values []V, missing []K, err error)
+	Stop()
+	// GetCacheType returns a string indicating the cache "type" for the purpose of grouping cache usage statistics
+	GetCacheType() stats.CacheType
+}
 
 // EmbeddedCache is a simple (comparable -> any) cache which uses a fifo slide to
 // manage evictions.  O(1) inserts and updates, O(1) gets.
@@ -249,11 +259,12 @@ func (c *EmbeddedCache[K, V]) GetCacheType() stats.CacheType {
 
 func (c *EmbeddedCache[K, V]) remove(key K, element *list.Element, reason string) {
 	entry := c.lru.Remove(element).(*Entry[K, V])
+	sz := c.cacheEntrySizeCalculator(entry)
 	delete(c.entries, key)
 	if c.onEntryRemoved != nil {
 		c.onEntryRemoved(entry.Key, entry.Value)
 	}
-	c.currSizeBytes -= c.cacheEntrySizeCalculator(entry)
+	c.currSizeBytes -= sz
 	c.entriesCurrent.Dec()
 	c.entriesEvicted.WithLabelValues(reason).Inc()
 }
@@ -323,4 +334,25 @@ func sizeOf(item *Entry[string, []byte]) uint64 {
 		cap(item.Value) + // size of Value
 		elementSize + // size of the element in linked list
 		elementPrtSize) // size of the pointer to an element in the map
+}
+
+func NewNoopTypedCache[K comparable, V any]() TypedCache[K, V] {
+	return &noopEmbeddedCache[K, V]{}
+}
+
+type noopEmbeddedCache[K comparable, V any] struct{}
+
+func (noopEmbeddedCache[K, V]) Store(_ context.Context, _ []K, _ []V) error {
+	return nil
+}
+
+func (noopEmbeddedCache[K, V]) Fetch(_ context.Context, keys []K) ([]K, []V, []K, error) {
+	return []K{}, []V{}, keys, nil
+}
+
+func (noopEmbeddedCache[K, V]) Stop() {
+}
+
+func (noopEmbeddedCache[K, V]) GetCacheType() stats.CacheType {
+	return "noop"
 }

@@ -7,7 +7,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 const MaxInternedStrings = 1024
@@ -135,6 +135,7 @@ type BaseLabelsBuilder struct {
 	errDetails string
 
 	groups                       []string
+	baseMap                      map[string]string
 	parserKeyHints               ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
 	without, noLabels            bool
 	referencedStructuredMetadata bool
@@ -146,7 +147,6 @@ type BaseLabelsBuilder struct {
 // LabelsBuilder is the same as labels.Builder but tailored for this package.
 type LabelsBuilder struct {
 	base          labels.Labels
-	baseMap       map[string]string
 	buf           labels.Labels
 	currentResult LabelsResult
 	groupedResult LabelsResult
@@ -211,6 +211,7 @@ func (b *BaseLabelsBuilder) Reset() {
 	}
 	b.err = ""
 	b.errDetails = ""
+	b.baseMap = nil
 	b.parserKeyHints.Reset()
 }
 
@@ -362,6 +363,17 @@ func (b *LabelsBuilder) Add(category LabelCategory, labels ...labels.Label) *Lab
 		if b.BaseHas(name) {
 			name = fmt.Sprintf("%s%s", name, duplicateSuffix)
 		}
+
+		if name == logqlmodel.ErrorLabel {
+			b.err = l.Value
+			continue
+		}
+
+		if name == logqlmodel.ErrorDetailsLabel {
+			b.errDetails = l.Value
+			continue
+		}
+
 		b.Set(category, name, l.Value)
 	}
 	return b
@@ -481,9 +493,9 @@ func (b *LabelsBuilder) IntoMap(m map[string]string) {
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
 		if b.baseMap == nil {
 			b.baseMap = b.base.Map()
-			for k, v := range b.baseMap {
-				m[k] = v
-			}
+		}
+		for k, v := range b.baseMap {
+			m[k] = v
 		}
 		return
 	}

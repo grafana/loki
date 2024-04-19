@@ -12,9 +12,9 @@ import (
 
 	gokitlog "github.com/go-kit/log"
 
-	"github.com/grafana/loki/pkg/iter"
-	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/iter"
+	loghttp "github.com/grafana/loki/v3/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 const (
@@ -389,7 +389,7 @@ func readFromTailer(tailer *Tailer, maxEntries int) ([]*loghttp.TailResponse, er
 	timeoutTicker := time.NewTicker(timeout)
 	defer timeoutTicker.Stop()
 
-	for !tailer.stopped && entriesCount < maxEntries {
+	for !tailer.stopped.Load() && entriesCount < maxEntries {
 		select {
 		case <-timeoutTicker.C:
 			return nil, errors.New("timeout expired while reading responses from Tailer")

@@ -223,6 +223,9 @@ type ResourceMetrics struct {
 	Resource v1.Resource `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource"`
 	// A list of metrics that originate from a resource.
 	ScopeMetrics []*ScopeMetrics `protobuf:"bytes,2,rep,name=scope_metrics,json=scopeMetrics,proto3" json:"scope_metrics,omitempty"`
+	// The Schema URL, if known. This is the identifier of the Schema that the resource data
+	// is recorded in. To learn more about Schema URL see
+	// https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
 	// This schema_url applies to the data in the "resource" field. It does not apply
 	// to the data in the "scope_metrics" field which have their own schema_url field.
 	SchemaUrl string `protobuf:"bytes,3,opt,name=schema_url,json=schemaUrl,proto3" json:"schema_url,omitempty"`
@@ -297,6 +300,9 @@ type ScopeMetrics struct {
 	Scope v11.InstrumentationScope `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope"`
 	// A list of metrics that originate from an instrumentation library.
 	Metrics []*Metric `protobuf:"bytes,2,rep,name=metrics,proto3" json:"metrics,omitempty"`
+	// The Schema URL, if known. This is the identifier of the Schema that the metric data
+	// is recorded in. To learn more about Schema URL see
+	// https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
 	// This schema_url applies to all metrics in the "metrics" field.
 	SchemaUrl string `protobuf:"bytes,3,opt,name=schema_url,json=schemaUrl,proto3" json:"schema_url,omitempty"`
 }
@@ -443,7 +449,7 @@ func (m *ScopeMetrics) GetSchemaUrl() string {
 // when the start time is truly unknown, setting StartTimeUnixNano is
 // strongly encouraged.
 type Metric struct {
-	// name of the metric, including its DNS name prefix. It must be unique.
+	// name of the metric.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// description of the metric, which can be used in documentation.
 	Description string `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`

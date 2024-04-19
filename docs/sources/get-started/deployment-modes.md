@@ -2,7 +2,7 @@
 menuTitle: Deployment modes
 title: Loki deployment modes
 description: Describes the three different Loki deployment models.
-weight: 400
+weight: 600
 aliases:
     - ../fundamentals/architecture/deployment-modes
 ---
@@ -33,7 +33,7 @@ The three execution paths in simple scalable mode are each activated by appendin
 - `-target=write` - The write target is stateful and is controlled by a Kubernetes StatefulSet. It contains the following components:
 -- Distributor
 -- Ingester
-- `-target=read` - The read target is stateless and can be run as a Kubernetes Deployment that can be scaled automatically. It contains the following components:
+- `-target=read` - The read target is stateless and can be run as a Kubernetes Deployment that can be scaled automatically (Note that in the official helm chart it is currently deployed as a stateful set). It contains the following components:
 -- Query front end
 -- Queriers
 - `-target=backend` - The backend target is stateful, and is controlled by a Kubernetes StatefulSet. Contains the following components:
@@ -52,7 +52,7 @@ The simplest mode of operation is the monolithic deployment mode. You enable mon
 
 Monolithic mode is useful for getting started quickly to experiment with Loki, as well as for small read/write volumes of up to approximately 20GB per day.
 
-You can horizontally scale a monolithic mode deployment to more instances by using a shared object store, and by configuring the [`ring` section]({{< relref "../configure#common" >}}) of the `loki.yaml` file to share state between all instances, but the recommendation is to use simple scalable mode if you need to scale your deployment.
+You can horizontally scale a monolithic mode deployment to more instances by using a shared object store, and by configuring the [`ring` section](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#common) of the `loki.yaml` file to share state between all instances, but the recommendation is to use simple scalable mode if you need to scale your deployment.
 
 You can configure high availability by running two Loki instances using `memberlist_config` configuration and a shared object store and setting the `replication_factor` to `3`. You route traffic to all the Loki instances in a round robin fashion.
 

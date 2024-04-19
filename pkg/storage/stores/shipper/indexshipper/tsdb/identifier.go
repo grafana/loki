@@ -2,12 +2,14 @@ package tsdb
 
 import (
 	"fmt"
+	"hash"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 )
 
@@ -23,7 +25,7 @@ type Identifier interface {
 // identifierFromPath will detect whether this is a single or multitenant TSDB
 func identifierFromPath(p string) (Identifier, error) {
 	// try parsing as single tenant since the filename is more deterministic without an arbitrary nodename for uploader
-	id, ok := parseSingleTenantTSDBPath(p)
+	id, ok := ParseSingleTenantTSDBPath(p)
 	if ok {
 		return NewPrefixedIdentifier(id, filepath.Dir(p), ""), nil
 	}
@@ -62,16 +64,33 @@ func (p prefixedIdentifier) Name() string {
 // Identifier has all the information needed to resolve a TSDB index
 // Notably this abstracts away OS path separators, etc.
 type SingleTenantTSDBIdentifier struct {
-	TS            time.Time
-	From, Through model.Time
-	Checksum      uint32
+	// exportTSInSecs tells whether creation timestamp should be exported in unix seconds instead of nanoseconds.
+	// timestamp in filename could be a unix second or a unix nanosecond so
+	// helps us to be able to reproduce filename back from parsed identifier.
+	// Should be true ideally for older files with creation timestamp in seconds.
+	exportTSInSecs bool
+	TS             time.Time
+	From, Through  model.Time
+	Checksum       uint32
+}
+
+// implement Hash
+func (i SingleTenantTSDBIdentifier) Hash(h hash.Hash32) (err error) {
+	_, err = h.Write([]byte(i.str()))
+	return errors.Wrap(err, "writing SingleTenantTSDBIdentifier")
 }
 
 // str builds filename with format <file-creation-ts> + `-` + `compactor` + `-` + <oldest-chunk-start-ts> + `-` + <latest-chunk-end-ts> `-` + <index-checksum>
 func (i SingleTenantTSDBIdentifier) str() string {
+	ts := int64(0)
+	if i.exportTSInSecs {
+		ts = i.TS.Unix()
+	} else {
+		ts = i.TS.UnixNano()
+	}
 	return fmt.Sprintf(
 		"%d-%s-%d-%d-%x.tsdb",
-		i.TS.Unix(),
+		ts,
 		compactedFileUploader,
 		i.From,
 		i.Through,
@@ -87,7 +106,7 @@ func (i SingleTenantTSDBIdentifier) Path() string {
 	return i.str()
 }
 
-func parseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool) {
+func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool) {
 	// parsing as multitenant didn't work, so try single tenant
 
 	// incorrect suffix
@@ -101,7 +120,7 @@ func parseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 		return
 	}
 
-	ts, err := strconv.Atoi(elems[0])
+	ts, err := strconv.ParseInt(elems[0], 10, 64)
 	if err != nil {
 		return
 	}
@@ -120,16 +139,23 @@ func parseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 		return
 	}
 
-	checksum, err := strconv.ParseInt(elems[4], 16, 32)
+	checksum, err := strconv.ParseUint(elems[4], 16, 32)
 	if err != nil {
 		return
 	}
 
+	var parsedTS time.Time
+	if len(elems[0]) <= 10 {
+		parsedTS = time.Unix(ts, 0)
+	} else {
+		parsedTS = time.Unix(0, ts)
+	}
 	return SingleTenantTSDBIdentifier{
-		TS:       time.Unix(int64(ts), 0),
-		From:     model.Time(from),
-		Through:  model.Time(through),
-		Checksum: uint32(checksum),
+		exportTSInSecs: len(elems[0]) <= 10,
+		TS:             parsedTS,
+		From:           model.Time(from),
+		Through:        model.Time(through),
+		Checksum:       uint32(checksum),
 	}, true
 
 }

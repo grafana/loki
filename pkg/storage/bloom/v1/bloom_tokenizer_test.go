@@ -1,21 +1,24 @@
 package v1
 
 import (
+	"context"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/push"
-	"github.com/grafana/loki/pkg/storage/chunk"
+
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -31,9 +34,10 @@ var (
 )
 
 func TestPrefixedKeyCreation(t *testing.T) {
+	t.Parallel()
 	var ones uint64 = 0xffffffffffffffff
 
-	ref := logproto.ChunkRef{
+	ref := ChunkRef{
 		From:     0,
 		Through:  model.Time(int64(ones)),
 		Checksum: 0xffffffff,
@@ -54,7 +58,7 @@ func TestPrefixedKeyCreation(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			token, prefixLn := prefixedToken(tc.ngram, ref)
+			token, prefixLn := prefixedToken(tc.ngram, ref, nil)
 			require.Equal(t, 20, prefixLn)
 			require.Equal(t, tc.expLen, len(token))
 			// first 8 bytes should be zeros from `from`
@@ -74,19 +78,21 @@ func TestPrefixedKeyCreation(t *testing.T) {
 }
 
 func TestSetLineTokenizer(t *testing.T) {
+	t.Parallel()
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 
 	// Validate defaults
-	require.Equal(t, bt.lineTokenizer.N, DefaultNGramLength)
-	require.Equal(t, bt.lineTokenizer.Skip, DefaultNGramSkip)
+	require.Equal(t, bt.lineTokenizer.N(), DefaultNGramLength)
+	require.Equal(t, bt.lineTokenizer.SkipFactor(), DefaultNGramSkip)
 
 	// Set new tokenizer, and validate against that
-	bt.SetLineTokenizer(NewNGramTokenizer(6, 7))
-	require.Equal(t, bt.lineTokenizer.N, 6)
-	require.Equal(t, bt.lineTokenizer.Skip, 7)
+	bt.lineTokenizer = NewNGramTokenizer(6, 7)
+	require.Equal(t, bt.lineTokenizer.N(), 6)
+	require.Equal(t, bt.lineTokenizer.SkipFactor(), 7)
 }
 
-func TestPopulateSeriesWithBloom(t *testing.T) {
+func TestTokenizerPopulate(t *testing.T) {
+	t.Parallel()
 	var testLine = "this is a log line"
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 
@@ -94,23 +100,19 @@ func TestPopulateSeriesWithBloom(t *testing.T) {
 	var lbsList []labels.Labels
 	lbsList = append(lbsList, labels.FromStrings("foo", "bar"))
 
-	var fpList []model.Fingerprint
-	for i := range lbsList {
-		fpList = append(fpList, model.Fingerprint(lbsList[i].Hash()))
-	}
-
-	var memChunks = make([]*chunkenc.MemChunk, 0)
-	memChunk0 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
-	_ = memChunk0.Append(&push.Entry{
+	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+	_ = memChunk.Append(&push.Entry{
 		Timestamp: time.Unix(0, 1),
 		Line:      testLine,
 	})
-	memChunks = append(memChunks, memChunk0)
-
-	var chunks = make([]chunk.Chunk, 0)
-	for i := range memChunks {
-		chunks = append(chunks, chunk.NewChunk("user", fpList[i], lbsList[i], chunkenc.NewFacade(memChunks[i], 256000, 1500000), model.TimeFromUnixNano(0), model.TimeFromUnixNano(1)))
-	}
+	itr, err := memChunk.Iterator(
+		context.Background(),
+		time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
+		time.Unix(0, math.MaxInt64),
+		logproto.FORWARD,
+		log.NewNoopPipeline().ForStream(nil),
+	)
+	require.Nil(t, err)
 
 	bloom := Bloom{
 		ScalableBloomFilter: *sbf,
@@ -123,12 +125,12 @@ func TestPopulateSeriesWithBloom(t *testing.T) {
 		Series: &series,
 	}
 
-	err := bt.PopulateSeriesWithBloom(&swb, NewSliceIter([][]chunk.Chunk{chunks}))
+	_, err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
 	require.NoError(t, err)
 	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
-	itr := tokenizer.Tokens(testLine)
-	for itr.Next() {
-		token := itr.At()
+	toks := tokenizer.Tokens(testLine)
+	for toks.Next() {
+		token := toks.At()
 		require.True(t, swb.Bloom.Test(token))
 	}
 }
@@ -142,23 +144,19 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 		var lbsList []labels.Labels
 		lbsList = append(lbsList, labels.FromStrings("foo", "bar"))
 
-		var fpList []model.Fingerprint
-		for i := range lbsList {
-			fpList = append(fpList, model.Fingerprint(lbsList[i].Hash()))
-		}
-
-		var memChunks = make([]*chunkenc.MemChunk, 0)
-		memChunk0 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
-		_ = memChunk0.Append(&push.Entry{
+		memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+		_ = memChunk.Append(&push.Entry{
 			Timestamp: time.Unix(0, 1),
 			Line:      testLine,
 		})
-		memChunks = append(memChunks, memChunk0)
-
-		var chunks = make([]chunk.Chunk, 0)
-		for i := range memChunks {
-			chunks = append(chunks, chunk.NewChunk("user", fpList[i], lbsList[i], chunkenc.NewFacade(memChunks[i], 256000, 1500000), model.TimeFromUnixNano(0), model.TimeFromUnixNano(1)))
-		}
+		itr, err := memChunk.Iterator(
+			context.Background(),
+			time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
+			time.Unix(0, math.MaxInt64),
+			logproto.FORWARD,
+			log.NewNoopPipeline().ForStream(nil),
+		)
+		require.Nil(b, err)
 
 		bloom := Bloom{
 			ScalableBloomFilter: *sbf,
@@ -171,7 +169,7 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 			Series: &series,
 		}
 
-		err := bt.PopulateSeriesWithBloom(&swb, NewSliceIter([][]chunk.Chunk{chunks}))
+		_, err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
 		require.NoError(b, err)
 	}
 }

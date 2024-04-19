@@ -409,6 +409,18 @@ bool
 <p>Dashboards enables the loki-mixin dashboards into the OpenShift Console</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>TokenCCOAuthEnv</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<p>TokenCCOAuthEnv is true when OpenShift-functions are enabled and the operator has detected
+that it is running with some kind of &ldquo;workload identity&rdquo; (AWS STS, Azure WIF) enabled.</p>
+</td>
+</tr>
 </tbody>
 </table>
 

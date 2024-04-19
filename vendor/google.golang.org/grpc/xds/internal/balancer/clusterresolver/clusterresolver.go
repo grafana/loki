@@ -32,7 +32,6 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/internal/balancer/nop"
 	"google.golang.org/grpc/internal/buffer"
-	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/pretty"
@@ -118,20 +117,18 @@ func (bb) ParseConfig(j json.RawMessage) (serviceconfig.LoadBalancingConfig, err
 		return nil, fmt.Errorf("unable to unmarshal balancer config %s into cluster-resolver config, error: %v", string(j), err)
 	}
 
-	if envconfig.XDSOutlierDetection {
-		for i, dm := range cfg.DiscoveryMechanisms {
-			lbCfg, err := odParser.ParseConfig(dm.OutlierDetection)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing Outlier Detection config %v: %v", dm.OutlierDetection, err)
-			}
-			odCfg, ok := lbCfg.(*outlierdetection.LBConfig)
-			if !ok {
-				// Shouldn't happen, Parser built at build time with Outlier Detection
-				// builder pulled from gRPC LB Registry.
-				return nil, fmt.Errorf("odParser returned config with unexpected type %T: %v", lbCfg, lbCfg)
-			}
-			cfg.DiscoveryMechanisms[i].outlierDetection = *odCfg
+	for i, dm := range cfg.DiscoveryMechanisms {
+		lbCfg, err := odParser.ParseConfig(dm.OutlierDetection)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing Outlier Detection config %v: %v", dm.OutlierDetection, err)
 		}
+		odCfg, ok := lbCfg.(*outlierdetection.LBConfig)
+		if !ok {
+			// Shouldn't happen, Parser built at build time with Outlier Detection
+			// builder pulled from gRPC LB Registry.
+			return nil, fmt.Errorf("odParser returned config with unexpected type %T: %v", lbCfg, lbCfg)
+		}
+		cfg.DiscoveryMechanisms[i].outlierDetection = *odCfg
 	}
 	if err := json.Unmarshal(cfg.XDSLBPolicy, &cfg.xdsLBPolicy); err != nil {
 		// This will never occur, valid configuration is emitted from the xDS

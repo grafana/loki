@@ -5,10 +5,10 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 type splitter interface {
@@ -75,6 +75,15 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 				Matchers: r.GetMatchers(),
 			})
 		}
+	case *logproto.ShardsRequest:
+		factory = func(start, end time.Time) {
+			reqs = append(reqs, &logproto.ShardsRequest{
+				From:                model.TimeFromUnix(start.Unix()),
+				Through:             model.TimeFromUnix(end.Unix()),
+				Query:               r.Query,
+				TargetBytesPerShard: r.TargetBytesPerShard,
+			})
+		}
 	case *logproto.VolumeRequest:
 		factory = func(start, end time.Time) {
 			reqs = append(reqs, &logproto.VolumeRequest{
@@ -86,36 +95,75 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 				AggregateBy:  r.AggregateBy,
 			})
 		}
+	case *DetectedFieldsRequest:
+		factory = func(start, end time.Time) {
+			reqs = append(reqs, &DetectedFieldsRequest{
+				DetectedFieldsRequest: logproto.DetectedFieldsRequest{
+					Start:      start,
+					End:        end,
+					Query:      r.GetQuery(),
+					LineLimit:  r.GetLineLimit(),
+					FieldLimit: r.GetFieldLimit(),
+					Step:       r.GetStep(),
+				},
+				path: r.path,
+			})
+		}
 	default:
 		return nil, nil
 	}
 
 	var (
-		ingesterSplits []queryrangebase.Request
-		origStart      = req.GetStart().UTC()
-		origEnd        = req.GetEnd().UTC()
+		splitsBeforeRebound []queryrangebase.Request
+		origStart           = req.GetStart().UTC()
+		origEnd             = req.GetEnd().UTC()
+		start, end          = origStart, origEnd
+
+		reboundOrigQuery           bool
+		splitIntervalBeforeRebound time.Duration
 	)
 
-	start, end, needsIngesterSplits := ingesterQueryBounds(execTime, s.iqo, req)
+	switch req.(type) {
+	// not applying `split_ingester_queries_by_interval` for metadata queries since it solves a different problem of reducing the subqueries sent to the ingesters.
+	// we instead prefer `split_recent_metadata_queries_by_interval` for metadata queries which favours shorter subqueries to improve cache effectiveness.
+	// even though the number of subqueries increase, caching should deamplify it overtime.
+	case *LokiSeriesRequest, *LabelRequest:
+		var (
+			recentMetadataQueryWindow        = validation.MaxDurationOrZeroPerTenant(tenantIDs, s.limits.RecentMetadataQueryWindow)
+			recentMetadataQuerySplitInterval = validation.MaxDurationOrZeroPerTenant(tenantIDs, s.limits.RecentMetadataQuerySplitDuration)
+		)
 
-	if ingesterQueryInterval := validation.MaxDurationOrZeroPerTenant(tenantIDs, s.limits.IngesterQuerySplitDuration); ingesterQueryInterval != 0 && needsIngesterSplits {
-		// perform splitting using special interval (`split_ingester_queries_by_interval`)
-		util.ForInterval(ingesterQueryInterval, start, end, endTimeInclusive, factory)
+		// if either of them are not configured, we fallback to the default split interval for the entire query length.
+		if recentMetadataQueryWindow == 0 || recentMetadataQuerySplitInterval == 0 {
+			break
+		}
 
-		// rebound after ingester queries have been split out
+		start, end, reboundOrigQuery = recentMetadataQueryBounds(execTime, recentMetadataQueryWindow, req)
+		splitIntervalBeforeRebound = recentMetadataQuerySplitInterval
+	default:
+		if ingesterQueryInterval := validation.MaxDurationOrZeroPerTenant(tenantIDs, s.limits.IngesterQuerySplitDuration); ingesterQueryInterval != 0 {
+			start, end, reboundOrigQuery = ingesterQueryBounds(execTime, s.iqo, req)
+			splitIntervalBeforeRebound = ingesterQueryInterval
+		}
+	}
+
+	if reboundOrigQuery {
+		util.ForInterval(splitIntervalBeforeRebound, start, end, endTimeInclusive, factory)
+
+		// rebound after query portion within ingester query window or recent metadata query window has been split out
 		end = start
-		start = req.GetStart().UTC()
+		start = origStart
 		if endTimeInclusive {
 			end = end.Add(-util.SplitGap)
 		}
 
-		// query only overlaps ingester query window, nothing more to do
+		// query only overlaps ingester query window or recent metadata query window, nothing more to do
 		if start.After(end) || start.Equal(end) {
 			return reqs, nil
 		}
 
 		// copy the splits, reset the results
-		ingesterSplits = reqs
+		splitsBeforeRebound = reqs
 		reqs = nil
 	} else {
 		start = origStart
@@ -123,10 +171,10 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 	}
 
 	// perform splitting over the rest of the time range
-	util.ForInterval(interval, origStart, end, endTimeInclusive, factory)
+	util.ForInterval(interval, start, end, endTimeInclusive, factory)
 
-	// move the ingester splits to the end to maintain correct order
-	reqs = append(reqs, ingesterSplits...)
+	// move the ingester or recent metadata splits to the end to maintain correct order
+	reqs = append(reqs, splitsBeforeRebound...)
 	return reqs, nil
 }
 
@@ -268,6 +316,22 @@ func (s *metricQuerySplitter) buildMetricSplits(step int64, interval time.Durati
 		}
 		factory(splStart, splEnd)
 	}
+}
+
+func recentMetadataQueryBounds(execTime time.Time, recentMetadataQueryWindow time.Duration, req queryrangebase.Request) (time.Time, time.Time, bool) {
+	start, end := req.GetStart().UTC(), req.GetEnd().UTC()
+	windowStart := execTime.UTC().Add(-recentMetadataQueryWindow)
+
+	// rebound only if the query end is strictly inside the window
+	if !windowStart.Before(end) {
+		return start, end, false
+	}
+
+	if windowStart.Before(start) {
+		windowStart = start
+	}
+
+	return windowStart, end, true
 }
 
 // ingesterQueryBounds determines if we need to split time ranges overlapping the ingester query window (`query_ingesters_within`)

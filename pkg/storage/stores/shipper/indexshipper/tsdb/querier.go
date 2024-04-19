@@ -22,7 +22,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 // Bitmap used by func isRegexMetaCharacter to check whether a character needs to be escaped.
@@ -61,7 +61,7 @@ type IndexReader interface {
 	// The Postings here contain the offsets to the series inside the index.
 	// Found IDs are not strictly required to point to a valid Series, e.g.
 	// during background garbage collections. Input values must be sorted.
-	Postings(name string, shard *index.ShardAnnotation, values ...string) (index.Postings, error)
+	Postings(name string, fpFilter index.FingerprintFilter, values ...string) (index.Postings, error)
 
 	// Series populates the given labels and chunk metas for the series identified
 	// by the reference.
@@ -89,7 +89,7 @@ type IndexReader interface {
 
 // PostingsForMatchers assembles a single postings iterator against the index reader
 // based on the given matchers. The resulting postings are not ordered by series.
-func PostingsForMatchers(ix IndexReader, shard *index.ShardAnnotation, ms ...*labels.Matcher) (index.Postings, error) {
+func PostingsForMatchers(ix IndexReader, fpFilter index.FingerprintFilter, ms ...*labels.Matcher) (index.Postings, error) {
 	var its, notIts []index.Postings
 	// See which label must be non-empty.
 	// Optimization for case like {l=~".", l!="1"}.
@@ -113,7 +113,7 @@ func PostingsForMatchers(ix IndexReader, shard *index.ShardAnnotation, ms ...*la
 					return nil, err
 				}
 
-				it, err := postingsForMatcher(ix, shard, inverse)
+				it, err := postingsForMatcher(ix, fpFilter, inverse)
 				if err != nil {
 					return nil, err
 				}
@@ -126,14 +126,14 @@ func PostingsForMatchers(ix IndexReader, shard *index.ShardAnnotation, ms ...*la
 					return nil, err
 				}
 
-				it, err := inversePostingsForMatcher(ix, shard, inverse)
+				it, err := inversePostingsForMatcher(ix, fpFilter, inverse)
 				if err != nil {
 					return nil, err
 				}
 				its = append(its, it)
 			} else { // l="a"
 				// Non-Not matcher, use normal postingsForMatcher.
-				it, err := postingsForMatcher(ix, shard, m)
+				it, err := postingsForMatcher(ix, fpFilter, m)
 				if err != nil {
 					return nil, err
 				}
@@ -144,7 +144,7 @@ func PostingsForMatchers(ix IndexReader, shard *index.ShardAnnotation, ms ...*la
 			// the series which don't have the label name set too. See:
 			// https://github.com/prometheus/prometheus/issues/3575 and
 			// https://github.com/prometheus/prometheus/pull/3578#issuecomment-351653555
-			it, err := inversePostingsForMatcher(ix, shard, m)
+			it, err := inversePostingsForMatcher(ix, fpFilter, m)
 			if err != nil {
 				return nil, err
 			}
@@ -155,7 +155,7 @@ func PostingsForMatchers(ix IndexReader, shard *index.ShardAnnotation, ms ...*la
 	// If there's nothing to subtract from, add in everything and remove the notIts later.
 	if len(its) == 0 && len(notIts) != 0 {
 		k, v := index.AllPostingsKey()
-		allPostings, err := ix.Postings(k, shard, v)
+		allPostings, err := ix.Postings(k, fpFilter, v)
 		if err != nil {
 			return nil, err
 		}
@@ -171,12 +171,12 @@ func PostingsForMatchers(ix IndexReader, shard *index.ShardAnnotation, ms ...*la
 	return it, nil
 }
 
-func postingsForMatcher(ix IndexReader, shard *index.ShardAnnotation, m *labels.Matcher) (index.Postings, error) {
+func postingsForMatcher(ix IndexReader, fpFilter index.FingerprintFilter, m *labels.Matcher) (index.Postings, error) {
 	// This method will not return postings for missing labels.
 
 	// Fast-path for equal matching.
 	if m.Type == labels.MatchEqual {
-		return ix.Postings(m.Name, shard, m.Value)
+		return ix.Postings(m.Name, fpFilter, m.Value)
 	}
 
 	// Fast-path for set matching.
@@ -184,7 +184,7 @@ func postingsForMatcher(ix IndexReader, shard *index.ShardAnnotation, m *labels.
 		setMatches := findSetMatches(m.GetRegexString())
 		if len(setMatches) > 0 {
 			sort.Strings(setMatches)
-			return ix.Postings(m.Name, shard, setMatches...)
+			return ix.Postings(m.Name, fpFilter, setMatches...)
 		}
 	}
 
@@ -212,11 +212,27 @@ func postingsForMatcher(ix IndexReader, shard *index.ShardAnnotation, m *labels.
 	if !isSorted {
 		sort.Strings(res)
 	}
-	return ix.Postings(m.Name, shard, res...)
+	return ix.Postings(m.Name, fpFilter, res...)
 }
 
 // inversePostingsForMatcher returns the postings for the series with the label name set but not matching the matcher.
-func inversePostingsForMatcher(ix IndexReader, shard *index.ShardAnnotation, m *labels.Matcher) (index.Postings, error) {
+func inversePostingsForMatcher(ix IndexReader, fpFilter index.FingerprintFilter, m *labels.Matcher) (index.Postings, error) {
+	// Fast-path for MatchNotRegexp matching.
+	// Inverse of a MatchNotRegexp is MatchRegexp (double negation).
+	// Fast-path for set matching.
+	if m.Type == labels.MatchNotRegexp {
+		setMatches := findSetMatches(m.GetRegexString())
+		if len(setMatches) > 0 {
+			return ix.Postings(m.Name, fpFilter, setMatches...)
+		}
+	}
+
+	// Fast-path for MatchNotEqual matching.
+	// Inverse of a MatchNotEqual is MatchEqual (double negation).
+	if m.Type == labels.MatchNotEqual {
+		return ix.Postings(m.Name, fpFilter, m.Value)
+	}
+
 	vals, err := ix.LabelValues(m.Name)
 	if err != nil {
 		return nil, err
@@ -237,7 +253,7 @@ func inversePostingsForMatcher(ix IndexReader, shard *index.ShardAnnotation, m *
 	if !isSorted {
 		sort.Strings(res)
 	}
-	return ix.Postings(m.Name, shard, res...)
+	return ix.Postings(m.Name, fpFilter, res...)
 }
 
 func findSetMatches(pattern string) []string {

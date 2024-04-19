@@ -7,8 +7,9 @@ import (
 // Options is used to configure Loki to integrate with
 // supported object storages.
 type Options struct {
-	Schemas     []lokiv1.ObjectStorageSchema
-	SharedStore lokiv1.ObjectStorageSecretType
+	Schemas        []lokiv1.ObjectStorageSchema
+	SharedStore    lokiv1.ObjectStorageSecretType
+	CredentialMode lokiv1.CredentialMode
 
 	Azure        *AzureStorageConfig
 	GCS          *GCSStorageConfig
@@ -16,33 +17,38 @@ type Options struct {
 	Swift        *SwiftStorageConfig
 	AlibabaCloud *AlibabaCloudStorageConfig
 
-	SecretName       string
-	SecretSHA1       string
-	TLS              *TLSConfig
-	OpenShiftEnabled bool
+	SecretName string
+	SecretSHA1 string
+	TLS        *TLSConfig
+
+	OpenShift OpenShiftOptions
 }
 
 // AzureStorageConfig for Azure storage config
 type AzureStorageConfig struct {
-	Env            string
-	Container      string
-	EndpointSuffix string
+	Env              string
+	Container        string
+	EndpointSuffix   string
+	Audience         string
+	WorkloadIdentity bool
 }
 
 // GCSStorageConfig for GCS storage config
 type GCSStorageConfig struct {
-	Bucket string
+	Bucket           string
+	Audience         string
+	WorkloadIdentity bool
 }
 
 // S3StorageConfig for S3 storage config
 type S3StorageConfig struct {
-	Endpoint             string
-	Region               string
-	Buckets              string
-	WebIdentityTokenFile string
-	Audience             string
-	STS                  bool
-	SSE                  S3SSEConfig
+	Endpoint       string
+	Region         string
+	Buckets        string
+	Audience       string
+	STS            bool
+	SSE            S3SSEConfig
+	ForcePathStyle bool
 }
 
 type S3SSEType string
@@ -85,4 +91,18 @@ type AlibabaCloudStorageConfig struct {
 type TLSConfig struct {
 	CA  string
 	Key string
+}
+
+type OpenShiftOptions struct {
+	Enabled          bool
+	CloudCredentials CloudCredentials
+}
+
+type CloudCredentials struct {
+	SecretName string
+	SHA1       string
+}
+
+func (o OpenShiftOptions) TokenCCOAuthEnabled() bool {
+	return o.CloudCredentials.SecretName != "" && o.CloudCredentials.SHA1 != ""
 }

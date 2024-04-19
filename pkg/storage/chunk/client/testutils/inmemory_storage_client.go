@@ -12,10 +12,10 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type MockStorageMode int
@@ -33,14 +33,34 @@ const (
 
 // MockStorage is a fake in-memory StorageClient.
 type MockStorage struct {
+	*InMemoryObjectClient
+
 	mtx       sync.RWMutex
 	tables    map[string]*mockTable
-	objects   map[string][]byte
 	schemaCfg config.SchemaConfig
 
 	numIndexWrites int
 	numChunkWrites int
 	mode           MockStorageMode
+}
+
+// compiler check
+var _ client.ObjectClient = &InMemoryObjectClient{}
+
+type InMemoryObjectClient struct {
+	objects map[string][]byte
+	mtx     sync.RWMutex
+	mode    MockStorageMode
+}
+
+func NewInMemoryObjectClient() *InMemoryObjectClient {
+	return &InMemoryObjectClient{
+		objects: make(map[string][]byte),
+	}
+}
+
+func (m *InMemoryObjectClient) Internals() map[string][]byte {
+	return m.objects
 }
 
 type mockTable struct {
@@ -64,6 +84,7 @@ func ResetMockStorage() {
 func NewMockStorage() *MockStorage {
 	if singleton == nil {
 		singleton = &MockStorage{
+			InMemoryObjectClient: NewInMemoryObjectClient(),
 			schemaCfg: config.SchemaConfig{
 				Configs: []config.PeriodConfig{
 					{
@@ -73,8 +94,7 @@ func NewMockStorage() *MockStorage {
 					},
 				},
 			},
-			tables:  map[string]*mockTable{},
-			objects: map[string][]byte{},
+			tables: map[string]*mockTable{},
 		}
 	}
 	return singleton
@@ -109,6 +129,7 @@ func (*MockStorage) Stop() {
 
 func (m *MockStorage) SetMode(mode MockStorageMode) {
 	m.mode = mode
+	m.InMemoryObjectClient.mode = mode
 }
 
 // ListTables implements StorageClient.
@@ -370,7 +391,8 @@ func (m *MockStorage) query(ctx context.Context, query index.Query, callback fun
 	return nil
 }
 
-func (m *MockStorage) ObjectExists(_ context.Context, objectKey string) (bool, error) {
+// ObjectExists implments client.ObjectClient
+func (m *InMemoryObjectClient) ObjectExists(_ context.Context, objectKey string) (bool, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -386,7 +408,8 @@ func (m *MockStorage) ObjectExists(_ context.Context, objectKey string) (bool, e
 	return true, nil
 }
 
-func (m *MockStorage) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
+// GetObject implements client.ObjectClient.
+func (m *InMemoryObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -402,7 +425,8 @@ func (m *MockStorage) GetObject(_ context.Context, objectKey string) (io.ReadClo
 	return io.NopCloser(bytes.NewReader(buf)), int64(len(buf)), nil
 }
 
-func (m *MockStorage) PutObject(_ context.Context, objectKey string, object io.ReadSeeker) error {
+// PutObject implements client.ObjectClient.
+func (m *InMemoryObjectClient) PutObject(_ context.Context, objectKey string, object io.ReadSeeker) error {
 	buf, err := io.ReadAll(object)
 	if err != nil {
 		return err
@@ -419,7 +443,8 @@ func (m *MockStorage) PutObject(_ context.Context, objectKey string, object io.R
 	return nil
 }
 
-func (m *MockStorage) IsObjectNotFoundErr(err error) bool {
+// IsObjectNotFoundErr implements client.ObjectClient.
+func (m *InMemoryObjectClient) IsObjectNotFoundErr(err error) bool {
 	return errors.Is(err, errStorageObjectNotFound)
 }
 
@@ -427,9 +452,11 @@ func (m *MockStorage) IsChunkNotFoundErr(err error) bool {
 	return m.IsObjectNotFoundErr(err)
 }
 
-func (m *MockStorage) IsRetryableErr(error) bool { return false }
+// IsRetryableErr implements client.ObjectClient.
+func (m *InMemoryObjectClient) IsRetryableErr(error) bool { return false }
 
-func (m *MockStorage) DeleteObject(_ context.Context, objectKey string) error {
+// DeleteObject implements client.ObjectClient.
+func (m *InMemoryObjectClient) DeleteObject(_ context.Context, objectKey string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -446,7 +473,7 @@ func (m *MockStorage) DeleteObject(_ context.Context, objectKey string) error {
 }
 
 // List implements chunk.ObjectClient.
-func (m *MockStorage) List(_ context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+func (m *InMemoryObjectClient) List(_ context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -492,6 +519,10 @@ func (m *MockStorage) List(_ context.Context, prefix, delimiter string) ([]clien
 	})
 
 	return storageObjects, commonPrefixes, nil
+}
+
+// Stop implements client.ObjectClient
+func (*InMemoryObjectClient) Stop() {
 }
 
 type mockWriteBatch struct {

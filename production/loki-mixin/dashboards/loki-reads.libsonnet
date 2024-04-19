@@ -6,41 +6,26 @@ local utils = import 'mixin-utils/utils.libsonnet';
     local showBigTable = false,
 
     local http_routes = 'loki_api_v1_series|api_prom_series|api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_labels|loki_api_v1_label_name_values',
-    local grpc_routes = '/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs',
+    local grpc_routes = '/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs|/logproto.BloomGateway/FilterChunkRefs',
+
+    local latencyPanelWithExtraGrouping(metricName, selector, multiplier='1e3', extra_grouping='') = {
+      nullPointMode: 'null as zero',
+      targets: [
+        {
+          expr: 'histogram_quantile(0.99, sum(rate(%s_bucket%s[$__rate_interval])) by (le,%s)) * %s' % [metricName, selector, extra_grouping, multiplier],
+          format: 'time_series',
+          intervalFactor: 2,
+          refId: 'A',
+          step: 10,
+          interval: '1m',
+          legendFormat: '__auto',
+        },
+      ],
+    },
 
     local p99LatencyByPod(metric, selectorStr) =
-      $.panel('Per Pod Latency (p99)') +
-      {
-        targets: [
-          {
-            expr:
-              |||
-                histogram_quantile(0.99,
-                  sum(
-                   rate(%s%s[$__rate_interval])
-                   ) by (pod, le)
-                 )
-              ||| % [metric, selectorStr],
-            instant: false,
-            legendFormat: '__auto',
-            range: true,
-            refId: 'A',
-          },
-        ],
-        fieldConfig+: {
-          defaults+: {
-            custom+: {
-              fillOpacity: 50,
-              showPoints: 'never',
-              stacking: {
-                group: 'A',
-                mode: 'normal',
-              },
-            },
-            unit: 's',
-          },
-        },
-      },
+      $.newQueryPanel('Per Pod Latency (p99)', 'ms') +
+      latencyPanelWithExtraGrouping(metric, selectorStr, '1e3', 'pod'),
 
     'loki-reads.json': {
                          local cfg = self,
@@ -60,6 +45,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
                            ingesterZoneAware: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*'))],
                            querierOrIndexGateway: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else '(querier|index-gateway)'))],
+                           bloomGateway: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-backend' % $._config.ssd.pod_prefix_matcher else 'bloom-gateway'))],
                          },
 
                          local selector(matcherId) =
@@ -74,6 +60,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          ingesterSelector:: selector('ingester'),
                          ingesterZoneSelector:: selector('ingesterZoneAware'),
                          querierOrIndexGatewaySelector:: selector('querierOrIndexGateway'),
+                         bloomGatewaySelector:: selector('bloomGateway'),
                        } +
                        $.dashboard('Loki / Reads', uid='reads')
                        .addCluster()
@@ -83,11 +70,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          $._config.internal_components,
                          $.row('Frontend (cortex_gw)')
                          .addPanel(
-                           $.panel('QPS') +
-                           $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].cortexGwSelector, http_routes])
+                           $.newQueryPanel('QPS') +
+                           $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].cortexGwSelector, http_routes])
                          )
                          .addPanel(
-                           $.panel('Latency') +
+                           $.newQueryPanel('Latency', 'ms') +
                            utils.latencyRecordingRulePanel(
                              'loki_request_duration_seconds',
                              dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.cortexgateway + [utils.selector.re('route', http_routes)],
@@ -96,11 +83,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          )
                          .addPanel(
                            p99LatencyByPod(
-                             'loki_request_duration_seconds_bucket',
+                             'loki_request_duration_seconds',
                              $.toPrometheusSelector(
-                               dashboards['loki-reads.json'].clusterMatchers +
-                               dashboards['loki-reads.json'].matchers.cortexgateway +
-                               [utils.selector.re('route', http_routes)]
+                               dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.cortexgateway + [utils.selector.re('route', http_routes)]
                              ),
                            )
                          )
@@ -108,11 +93,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                        .addRow(
                          $.row(if $._config.ssd.enabled then 'Read Path' else 'Frontend (query-frontend)')
                          .addPanel(
-                           $.panel('QPS') +
-                           $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].queryFrontendSelector, http_routes])
+                           $.newQueryPanel('QPS') +
+                           $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].queryFrontendSelector, http_routes])
                          )
                          .addPanel(
-                           $.panel('Latency') +
+                           $.newQueryPanel('Latency', 'ms') +
                            utils.latencyRecordingRulePanel(
                              'loki_request_duration_seconds',
                              dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.queryFrontend + [utils.selector.re('route', http_routes)],
@@ -121,7 +106,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          )
                          .addPanel(
                            p99LatencyByPod(
-                             'loki_request_duration_seconds_bucket',
+                             'loki_request_duration_seconds',
                              $.toPrometheusSelector(
                                dashboards['loki-reads.json'].clusterMatchers +
                                dashboards['loki-reads.json'].matchers.queryFrontend +
@@ -134,11 +119,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          !$._config.ssd.enabled,
                          $.row('Querier')
                          .addPanel(
-                           $.panel('QPS') +
-                           $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].querierSelector, http_routes])
+                           $.newQueryPanel('QPS') +
+                           $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].querierSelector, http_routes])
                          )
                          .addPanel(
-                           $.panel('Latency') +
+                           $.newQueryPanel('Latency', 'ms') +
                            utils.latencyRecordingRulePanel(
                              'loki_request_duration_seconds',
                              dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.querier + [utils.selector.re('route', http_routes)],
@@ -147,7 +132,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          )
                          .addPanel(
                            p99LatencyByPod(
-                             'loki_request_duration_seconds_bucket',
+                             'loki_request_duration_seconds',
                              $.toPrometheusSelector(
                                dashboards['loki-reads.json'].clusterMatchers +
                                dashboards['loki-reads.json'].matchers.querier +
@@ -160,11 +145,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          !$._config.ssd.enabled,
                          $.row('Ingester')
                          .addPanel(
-                           $.panel('QPS') +
-                           $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].ingesterSelector, grpc_routes])
+                           $.newQueryPanel('QPS') +
+                           $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].ingesterSelector, grpc_routes])
                          )
                          .addPanel(
-                           $.panel('Latency') +
+                           $.newQueryPanel('Latency', 'ms') +
                            utils.latencyRecordingRulePanel(
                              'loki_request_duration_seconds',
                              dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.ingester + [utils.selector.re('route', grpc_routes)],
@@ -173,7 +158,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          )
                          .addPanel(
                            p99LatencyByPod(
-                             'loki_request_duration_seconds_bucket',
+                             'loki_request_duration_seconds',
                              $.toPrometheusSelector(
                                dashboards['loki-reads.json'].clusterMatchers +
                                dashboards['loki-reads.json'].matchers.ingester +
@@ -187,11 +172,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          !$._config.ssd.enabled,
                          $.row('Ingester - Zone Aware')
                          .addPanel(
-                           $.panel('QPS') +
-                           $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].ingesterZoneSelector, grpc_routes])
+                           $.newQueryPanel('QPS') +
+                           $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].ingesterZoneSelector, grpc_routes])
                          )
                          .addPanel(
-                           $.panel('Latency') +
+                           $.newQueryPanel('Latency', 'ms') +
                            utils.latencyRecordingRulePanel(
                              'loki_request_duration_seconds',
                              dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.ingesterZoneAware + [utils.selector.re('route', grpc_routes)],
@@ -200,7 +185,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          )
                          .addPanel(
                            p99LatencyByPod(
-                             'loki_request_duration_seconds_bucket',
+                             'loki_request_duration_seconds',
                              $.toPrometheusSelector(
                                dashboards['loki-reads.json'].clusterMatchers +
                                dashboards['loki-reads.json'].matchers.ingesterZoneAware +
@@ -213,17 +198,43 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          !$._config.ssd.enabled,
                          $.row('Index')
                          .addPanel(
-                           $.panel('QPS') +
-                           $.qpsPanel('loki_index_request_duration_seconds_count{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector)
+                           $.newQueryPanel('QPS') +
+                           $.newQpsPanel('loki_index_request_duration_seconds_count{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector)
                          )
                          .addPanel(
-                           $.panel('Latency') +
+                           $.newQueryPanel('Latency', 'ms') +
                            $.latencyPanel('loki_index_request_duration_seconds', '{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector)
                          )
                          .addPanel(
                            p99LatencyByPod(
-                             'loki_index_request_duration_seconds_bucket',
+                             'loki_index_request_duration_seconds',
                              '{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector
+                           )
+                         )
+                       )
+                       .addRowIf(
+                         !$._config.ssd.enabled,
+                         $.row('Bloom Gateway')
+                         .addPanel(
+                           $.newQueryPanel('QPS') +
+                           $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].bloomGatewaySelector, grpc_routes])
+                         )
+                         .addPanel(
+                           $.newQueryPanel('Latency', 'ms') +
+                           utils.latencyRecordingRulePanel(
+                             'loki_request_duration_seconds',
+                             dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.bloomGateway + [utils.selector.re('route', grpc_routes)],
+                             sum_by=['route']
+                           )
+                         )
+                         .addPanel(
+                           p99LatencyByPod(
+                             'loki_request_duration_seconds',
+                             $.toPrometheusSelector(
+                               dashboards['loki-reads.json'].clusterMatchers +
+                               dashboards['loki-reads.json'].matchers.bloomGateway +
+                               [utils.selector.re('route', grpc_routes)]
+                             ),
                            )
                          )
                        )
@@ -231,11 +242,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          showBigTable,
                          $.row('BigTable')
                          .addPanel(
-                           $.panel('QPS') +
-                           $.qpsPanel('loki_bigtable_request_duration_seconds_count{%s operation="/google.bigtable.v2.Bigtable/ReadRows"}' % dashboards['loki-reads.json'].querierSelector)
+                           $.newQueryPanel('QPS') +
+                           $.newQpsPanel('loki_bigtable_request_duration_seconds_count{%s operation="/google.bigtable.v2.Bigtable/ReadRows"}' % dashboards['loki-reads.json'].querierSelector)
                          )
                          .addPanel(
-                           $.panel('Latency') +
+                           $.newQueryPanel('Latency', 'ms') +
                            utils.latencyRecordingRulePanel(
                              'loki_bigtable_request_duration_seconds',
                              dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.querier + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/ReadRows')]
@@ -245,16 +256,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
                        .addRow(
                          $.row('BoltDB Shipper')
                          .addPanel(
-                           $.panel('QPS') +
-                           $.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="Shipper.Query"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
+                           $.newQueryPanel('QPS') +
+                           $.newQpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="Shipper.Query"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
                          )
                          .addPanel(
-                           $.panel('Latency') +
+                           $.newQueryPanel('Latency', 'ms') +
                            $.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="Shipper.Query"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
                          )
                          .addPanel(
                            p99LatencyByPod(
-                             'loki_boltdb_shipper_request_duration_seconds_bucket',
+                             'loki_boltdb_shipper_request_duration_seconds',
                              '{%s operation="Shipper.Query"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector
                            )
                          )

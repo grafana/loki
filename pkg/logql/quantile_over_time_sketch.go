@@ -10,11 +10,10 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/sketch"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/queue"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/sketch"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 const (
@@ -116,7 +115,6 @@ func (m ProbabilisticQuantileMatrix) Release() {
 	for _, vec := range m {
 		vec.Release()
 	}
-	quantileVectorPool.Put(m)
 }
 
 func (m ProbabilisticQuantileMatrix) ToProto() *logproto.QuantileSketchMatrix {
@@ -238,24 +236,20 @@ func probabilisticQuantileSampleFromProto(proto *logproto.QuantileSketchSample) 
 
 type quantileSketchBatchRangeVectorIterator struct {
 	*batchRangeVectorIterator
-	at []ProbabilisticQuantileSample
 }
 
 func (r *quantileSketchBatchRangeVectorIterator) At() (int64, StepResult) {
-	if r.at == nil {
-		r.at = make([]ProbabilisticQuantileSample, 0, len(r.window))
-	}
-	r.at = r.at[:0]
+	at := make([]ProbabilisticQuantileSample, 0, len(r.window))
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
 	ts := r.current/1e+6 + r.offset/1e+6
 	for _, series := range r.window {
-		r.at = append(r.at, ProbabilisticQuantileSample{
+		at = append(at, ProbabilisticQuantileSample{
 			F:      r.agg(series.Floats),
 			T:      ts,
 			Metric: series.Metric,
 		})
 	}
-	return ts, ProbabilisticQuantileVector(r.at)
+	return ts, ProbabilisticQuantileVector(at)
 }
 
 func (r *quantileSketchBatchRangeVectorIterator) agg(samples []promql.FPoint) sketch.QuantileSketch {
@@ -268,14 +262,15 @@ func (r *quantileSketchBatchRangeVectorIterator) agg(samples []promql.FPoint) sk
 	return s
 }
 
-// quantileVectorPool slice of ProbabilisticQuantileVector [64, 128, 256, ..., 65536]
-var quantileVectorPool = queue.NewSlicePool[ProbabilisticQuantileVector](1<<6, 1<<16, 2)
-
-// JoinQuantileSketchVector joins the results from stepEvaluator into a ProbabilisticQuantileMatrix.
-func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
+// MergeQuantileSketchVector joins the results from stepEvaluator into a ProbabilisticQuantileMatrix.
+func MergeQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
 	vec := r.QuantileSketchVec()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
+	}
+
+	if GetRangeType(params) == InstantType {
+		return ProbabilisticQuantileMatrix{vec}, nil
 	}
 
 	stepCount := int(math.Ceil(float64(params.End().Sub(params.Start()).Nanoseconds()) / float64(params.Step().Nanoseconds())))
@@ -283,8 +278,7 @@ func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluat
 		stepCount = 1
 	}
 
-	// The result is released to the pool when the matrix is serialized.
-	result := quantileVectorPool.Get(stepCount)
+	result := make(ProbabilisticQuantileMatrix, 0, stepCount)
 
 	for next {
 		result = append(result, vec)
@@ -295,7 +289,7 @@ func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluat
 		}
 	}
 
-	return ProbabilisticQuantileMatrix(result), stepEvaluator.Error()
+	return result, stepEvaluator.Error()
 }
 
 // QuantileSketchMatrixStepEvaluator steps through a matrix of quantile sketch

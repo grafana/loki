@@ -14,7 +14,7 @@ import (
 	"github.com/pierrec/lz4/v4"
 	"github.com/prometheus/prometheus/util/pool"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // WriterPool is a pool of io.Writer
@@ -349,6 +349,9 @@ func (pool *SnappyPool) GetReader(src io.Reader) (io.Reader, error) {
 
 // PutReader places back in the pool a CompressionReader
 func (pool *SnappyPool) PutReader(reader io.Reader) {
+	r := reader.(*snappy.Reader)
+	// Reset to free reference to the underlying reader
+	r.Reset(nil)
 	pool.readers.Put(reader)
 }
 

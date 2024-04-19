@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -17,10 +16,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
 )
 
 func Test_DockerTarget(t *testing.T) {
@@ -77,15 +77,6 @@ func Test_DockerTarget(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.Eventually(t, func() bool {
-		return len(entryHandler.Received()) >= 5
-	}, 5*time.Second, 100*time.Millisecond)
-
-	received := entryHandler.Received()
-	sort.Slice(received, func(i, j int) bool {
-		return received[i].Timestamp.Before(received[j].Timestamp)
-	})
-
 	expectedLines := []string{
 		"5.3.69.55 - - [09/Dec/2021:09:15:02 +0000] \"HEAD /brand/users/clicks-and-mortar/front-end HTTP/2.0\" 503 27087",
 		"101.54.183.185 - - [09/Dec/2021:09:15:03 +0000] \"POST /next-generation HTTP/1.0\" 416 11468",
@@ -93,27 +84,15 @@ func Test_DockerTarget(t *testing.T) {
 		"28.104.242.74 - - [09/Dec/2021:09:15:03 +0000] \"PATCH /value-added/cultivate/systems HTTP/2.0\" 405 11843",
 		"150.187.51.54 - satterfield1852 [09/Dec/2021:09:15:03 +0000] \"GET /incentivize/deliver/innovative/cross-platform HTTP/1.1\" 301 13032",
 	}
-	actualLines := make([]string, 0, 5)
-	for _, entry := range received[:5] {
-		actualLines = append(actualLines, entry.Line)
-	}
-	require.ElementsMatch(t, actualLines, expectedLines)
 
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertExpectedLog(c, entryHandler, expectedLines)
+	}, 5*time.Second, 100*time.Millisecond, "Expected log lines were not found within the time limit.")
+
+	target.Stop()
+	entryHandler.Clear()
 	// restart target to simulate container restart
 	target.startIfNotRunning()
-	entryHandler.Clear()
-	require.Eventually(t, func() bool {
-		return len(entryHandler.Received()) >= 5
-	}, 5*time.Second, 100*time.Millisecond)
-
-	receivedAfterRestart := entryHandler.Received()
-	sort.Slice(receivedAfterRestart, func(i, j int) bool {
-		return receivedAfterRestart[i].Timestamp.Before(receivedAfterRestart[j].Timestamp)
-	})
-	actualLinesAfterRestart := make([]string, 0, 5)
-	for _, entry := range receivedAfterRestart[:5] {
-		actualLinesAfterRestart = append(actualLinesAfterRestart, entry.Line)
-	}
 	expectedLinesAfterRestart := []string{
 		"243.115.12.215 - - [09/Dec/2023:09:16:57 +0000] \"DELETE /morph/exploit/granular HTTP/1.0\" 500 26468",
 		"221.41.123.237 - - [09/Dec/2023:09:16:57 +0000] \"DELETE /user-centric/whiteboard HTTP/2.0\" 205 22487",
@@ -121,5 +100,33 @@ func Test_DockerTarget(t *testing.T) {
 		"62.180.191.187 - - [09/Dec/2023:09:16:57 +0000] \"DELETE /cultivate/integrate/technologies HTTP/2.0\" 302 12979",
 		"156.249.2.192 - - [09/Dec/2023:09:16:57 +0000] \"POST /revolutionize/mesh/metrics HTTP/2.0\" 401 5297",
 	}
-	require.ElementsMatch(t, actualLinesAfterRestart, expectedLinesAfterRestart)
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertExpectedLog(c, entryHandler, expectedLinesAfterRestart)
+	}, 5*time.Second, 100*time.Millisecond, "Expected log lines after restart were not found within the time limit.")
+}
+
+// assertExpectedLog will verify that all expectedLines were received, in any order, without duplicates.
+func assertExpectedLog(c *assert.CollectT, entryHandler *fake.Client, expectedLines []string) {
+	logLines := entryHandler.Received()
+	testLogLines := make(map[string]int)
+	for _, l := range logLines {
+		if containsString(expectedLines, l.Line) {
+			testLogLines[l.Line]++
+		}
+	}
+	// assert that all log lines were received
+	assert.Len(c, testLogLines, len(expectedLines))
+	// assert that there are no duplicated log lines
+	for _, v := range testLogLines {
+		assert.Equal(c, v, 1)
+	}
+}
+
+func containsString(slice []string, str string) bool {
+	for _, item := range slice {
+		if item == str {
+			return true
+		}
+	}
+	return false
 }

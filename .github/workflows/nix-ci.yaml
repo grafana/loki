@@ -29,7 +29,7 @@ jobs:
       - uses: cachix/install-nix-action@v22
         with:
           nix_path: nixpkgs=channel:nixos-unstable
+      - run: nix build --print-build-logs .#promtail
       - run: nix build --print-build-logs .#logcli
       - run: nix build --print-build-logs .#loki
       - run: nix build --print-build-logs .#loki-canary
-      - run: nix build --print-build-logs .#promtail

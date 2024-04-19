@@ -11,9 +11,9 @@ import (
 	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 )
 
 const (
@@ -46,6 +46,7 @@ func newCacheKeyGen(limits CacheLimits) keyGen {
 	return keyGen{limits}
 }
 
+// TODO(owen-d): need to implement our own key-generation which accounts for fingerprint ranges requested.
 func (k keyGen) GenerateCacheKey(ctx context.Context, tenant string, r resultscache.Request) string {
 	return resultscache.ConstSplitter(k.BloomGatewayCacheKeyInterval(tenant)).GenerateCacheKey(ctx, tenant, r)
 }
@@ -182,6 +183,7 @@ func NewBloomGatewayClientCacheMiddleware(
 		},
 		cacheGen,
 		retentionEnabled,
+		false,
 	)
 
 	return &ClientCache{
