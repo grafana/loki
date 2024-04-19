@@ -217,6 +217,22 @@ func postingsForMatcher(ix IndexReader, fpFilter index.FingerprintFilter, m *lab
 
 // inversePostingsForMatcher returns the postings for the series with the label name set but not matching the matcher.
 func inversePostingsForMatcher(ix IndexReader, fpFilter index.FingerprintFilter, m *labels.Matcher) (index.Postings, error) {
+	// Fast-path for MatchNotRegexp matching.
+	// Inverse of a MatchNotRegexp is MatchRegexp (double negation).
+	// Fast-path for set matching.
+	if m.Type == labels.MatchNotRegexp {
+		setMatches := findSetMatches(m.GetRegexString())
+		if len(setMatches) > 0 {
+			return ix.Postings(m.Name, fpFilter, setMatches...)
+		}
+	}
+
+	// Fast-path for MatchNotEqual matching.
+	// Inverse of a MatchNotEqual is MatchEqual (double negation).
+	if m.Type == labels.MatchNotEqual {
+		return ix.Postings(m.Name, fpFilter, m.Value)
+	}
+
 	vals, err := ix.LabelValues(m.Name)
 	if err != nil {
 		return nil, err

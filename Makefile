@@ -205,6 +205,15 @@ cmd/querytee/querytee:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
 ############
+# lokitool #
+############
+.PHONY: cmd/lokitool/lokitool
+lokitool: cmd/lokitool/lokitool ## build lokitool executable
+
+cmd/lokitool/lokitool:
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/lokitool
+
+############
 # Promtail #
 ############
 

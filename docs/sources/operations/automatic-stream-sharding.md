@@ -12,23 +12,28 @@ existing streams. When properly tuned, this should eliminate issues where log pr
 per-stream rate limit.
 
 **To enable automatic stream sharding:**
-1. Edit the global [limits_config]({{< relref "../configure#limits_config" >}}) of the Loki configuration file:
+1. Edit the global [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) of the Loki configuration file:
+
    ```yaml
    limits_config:
      shard_streams:
          enabled: true
    ```
+
 1. Optionally lower the `desired_rate` in bytes if you find that the system is still hitting the `per_stream_rate_limit`:
+
    ```yaml
    limits_config:
      shard_streams:
        enabled: true
        desired_rate: 2097152 #2MiB
    ```
-1. Optionally enable `logging_enabled` for debugging stream sharding. 
+
+1. Optionally enable `logging_enabled` for debugging stream sharding.
   {{% admonition type="note" %}}
   This may affect the ingestion performance of Loki.
   {{% /admonition %}}
+
    ```yaml
    limits_config:
      shard_streams:
