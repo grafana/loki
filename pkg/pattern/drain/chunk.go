@@ -66,10 +66,13 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 			return c.Samples[i].Timestamp >= end
 		})
 	}
+	if step == timeResolution {
+		return c.Samples[lo:hi]
+	}
 
 	// Re-scale samples into step-sized buckets
 	currentStep := truncateTimestamp(c.Samples[lo].Timestamp, step)
-	outputSamples := []logproto.PatternSample{
+	aggregatedSamples := []logproto.PatternSample{
 		{
 			Timestamp: currentStep,
 			Value:     0,
@@ -79,17 +82,17 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 		if sample.Timestamp >= currentStep+step {
 			stepForSample := truncateTimestamp(sample.Timestamp, step)
 			for i := currentStep + step; i <= stepForSample; i += step {
-				outputSamples = append(outputSamples, logproto.PatternSample{
+				aggregatedSamples = append(aggregatedSamples, logproto.PatternSample{
 					Timestamp: i,
 					Value:     0,
 				})
 			}
 			currentStep = stepForSample
 		}
-		outputSamples[len(outputSamples)-1].Value += sample.Value
+		aggregatedSamples[len(aggregatedSamples)-1].Value += sample.Value
 	}
 
-	return outputSamples
+	return aggregatedSamples
 }
 
 func (c *Chunks) Add(ts model.Time) {
