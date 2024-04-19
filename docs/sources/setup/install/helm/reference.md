@@ -6420,6 +6420,7 @@ false
     },
     "tenant": {
       "name": "self-monitoring",
+      "password": null,
       "secretNamespace": "{{ .Release.Namespace }}"
     }
   },
