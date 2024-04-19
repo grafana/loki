@@ -167,7 +167,7 @@ ruler:
       url: http://localhost:9090/api/v1/write
 ```
 
-Further configuration options can be found under [ruler]({{< relref "../configure#ruler" >}}).
+Further configuration options can be found under [ruler](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#ruler).
 
 ### Operations
 

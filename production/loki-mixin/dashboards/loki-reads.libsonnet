@@ -6,7 +6,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     local showBigTable = false,
 
     local http_routes = 'loki_api_v1_series|api_prom_series|api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_labels|loki_api_v1_label_name_values',
-    local grpc_routes = '/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs',
+    local grpc_routes = '/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs|/logproto.BloomGateway/FilterChunkRefs',
 
     local latencyPanelWithExtraGrouping(metricName, selector, multiplier='1e3', extra_grouping='') = {
       nullPointMode: 'null as zero',
@@ -44,6 +44,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
                            ingesterZoneAware: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*'))],
                            querierOrIndexGateway: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else '(querier|index-gateway)'))],
+                           bloomGateway: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-backend' % $._config.ssd.pod_prefix_matcher else 'bloom-gateway'))],
                          },
 
                          local selector(matcherId) =
@@ -58,6 +59,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          ingesterSelector:: selector('ingester'),
                          ingesterZoneSelector:: selector('ingesterZoneAware'),
                          querierOrIndexGatewaySelector:: selector('querierOrIndexGateway'),
+                         bloomGatewaySelector:: selector('bloomGateway'),
                        } +
                        $.dashboard('Loki / Reads', uid='reads')
                        .addCluster()
@@ -206,6 +208,32 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            p99LatencyByPod(
                              'loki_index_request_duration_seconds',
                              '{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector
+                           )
+                         )
+                       )
+                       .addRowIf(
+                         !$._config.ssd.enabled,
+                         $.row('Bloom Gateway')
+                         .addPanel(
+                           $.newQueryPanel('QPS') +
+                           $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].bloomGatewaySelector, grpc_routes])
+                         )
+                         .addPanel(
+                           $.newQueryPanel('Latency', 'ms') +
+                           utils.latencyRecordingRulePanel(
+                             'loki_request_duration_seconds',
+                             dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.bloomGateway + [utils.selector.re('route', grpc_routes)],
+                             sum_by=['route']
+                           )
+                         )
+                         .addPanel(
+                           p99LatencyByPod(
+                             'loki_request_duration_seconds',
+                             $.toPrometheusSelector(
+                               dashboards['loki-reads.json'].clusterMatchers +
+                               dashboards['loki-reads.json'].matchers.bloomGateway +
+                               [utils.selector.re('route', grpc_routes)]
+                             ),
                            )
                          )
                        )

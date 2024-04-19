@@ -416,7 +416,7 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "sum(rate(loki_chunk_store_index_entries_per_chunk_sum{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[5m])) / sum(rate(loki_chunk_store_index_entries_per_chunk_count{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[5m]))",
+                        "expr": "sum(rate(loki_chunk_store_index_entries_per_chunk_sum{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[$__rate_interval])) / sum(rate(loki_chunk_store_index_entries_per_chunk_count{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "Index Entries",
                         "legendLink": null
@@ -981,19 +981,19 @@
                   "span": 12,
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_ingester_chunk_size_bytes_bucket{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[1m])) by (le))",
+                        "expr": "histogram_quantile(0.99, sum(rate(loki_ingester_chunk_size_bytes_bucket{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[$__rate_interval])) by (le))",
                         "format": "time_series",
                         "legendFormat": "p99",
                         "legendLink": null
                      },
                      {
-                        "expr": "histogram_quantile(0.90, sum(rate(loki_ingester_chunk_size_bytes_bucket{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[1m])) by (le))",
+                        "expr": "histogram_quantile(0.90, sum(rate(loki_ingester_chunk_size_bytes_bucket{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[$__rate_interval])) by (le))",
                         "format": "time_series",
                         "legendFormat": "p90",
                         "legendLink": null
                      },
                      {
-                        "expr": "histogram_quantile(0.50, sum(rate(loki_ingester_chunk_size_bytes_bucket{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[1m])) by (le))",
+                        "expr": "histogram_quantile(0.50, sum(rate(loki_ingester_chunk_size_bytes_bucket{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[$__rate_interval])) by (le))",
                         "format": "time_series",
                         "legendFormat": "p50",
                         "legendLink": null
@@ -1052,19 +1052,19 @@
                   "span": 12,
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.5, sum(rate(loki_ingester_chunk_bounds_hours_bucket{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[5m])) by (le))",
+                        "expr": "histogram_quantile(0.5, sum(rate(loki_ingester_chunk_bounds_hours_bucket{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[$__rate_interval])) by (le))",
                         "format": "time_series",
                         "legendFormat": "p50",
                         "legendLink": null
                      },
                      {
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_ingester_chunk_bounds_hours_bucket{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[5m])) by (le))",
+                        "expr": "histogram_quantile(0.99, sum(rate(loki_ingester_chunk_bounds_hours_bucket{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[$__rate_interval])) by (le))",
                         "format": "time_series",
                         "legendFormat": "p99",
                         "legendLink": null
                      },
                      {
-                        "expr": "sum(rate(loki_ingester_chunk_bounds_hours_sum{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[5m])) / sum(rate(loki_ingester_chunk_bounds_hours_count{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[5m]))",
+                        "expr": "sum(rate(loki_ingester_chunk_bounds_hours_sum{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[$__rate_interval])) / sum(rate(loki_ingester_chunk_bounds_hours_count{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "avg",
                         "legendLink": null
