@@ -70,9 +70,9 @@ RUN GO111MODULE=on go install gotest.tools/gotestsum@v1.8.2
 
 # Install tools used to compile jsonnet.
 FROM golang:1.21.9-bullseye as jsonnet
-RUN GO111MODULE=on go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.4.0
-RUN GO111MODULE=on go install github.com/monitoring-mixins/mixtool/cmd/mixtool@bca3066
-RUN GO111MODULE=on go install github.com/google/go-jsonnet/cmd/jsonnet@v0.18.0
+RUN GO111MODULE=on go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.5.1
+RUN GO111MODULE=on go install github.com/monitoring-mixins/mixtool/cmd/mixtool@16dc166166d91e93475b86b9355a4faed2400c18
+RUN GO111MODULE=on go install github.com/google/go-jsonnet/cmd/jsonnet@v0.20.0
 
 FROM aquasec/trivy as trivy
 
