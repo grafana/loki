@@ -612,11 +612,11 @@ func RecordDetectedLabelsQueryMetrics(ctx context.Context, log log.Logger, start
 		"splits", stats.Summary.Splits,
 		"total_entries", stats.Summary.TotalEntriesReturned,
 		// cache is accumulated by middleware used by the frontend only; logs from the queriers will not show cache stats
-		"cache_volume_results_req", stats.Caches.VolumeResult.EntriesRequested,
-		"cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
-		"cache_volume_results_stored", stats.Caches.VolumeResult.EntriesStored,
-		"cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
-		"cache_volume_results_query_length_served", stats.Caches.VolumeResult.CacheQueryLengthServed(),
+		//"cache_volume_results_req", stats.Caches.VolumeResult.EntriesRequested,
+		//"cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
+		//"cache_volume_results_stored", stats.Caches.VolumeResult.EntriesStored,
+		//"cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
+		//"cache_volume_results_query_length_served", stats.Caches.VolumeResult.CacheQueryLengthServed(),
 	)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
