@@ -8,23 +8,23 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/azureeventhubs"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/cloudflare"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/docker"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/gcplog"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/gelf"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/heroku"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/journal"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/kafka"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/lokipush"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/stdin"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/syslog"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/windows"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/azureeventhubs"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/cloudflare"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/docker"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/file"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/gcplog"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/gelf"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/heroku"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/journal"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/kafka"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/lokipush"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/stdin"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/syslog"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/windows"
 )
 
 const (
@@ -37,7 +37,6 @@ const (
 	KafkaConfigs                = "kafkaConfigs"
 	GelfConfigs                 = "gelfConfigs"
 	CloudflareConfigs           = "cloudflareConfigs"
-	DockerConfigs               = "dockerConfigs"
 	DockerSDConfigs             = "dockerSDConfigs"
 	HerokuDrainConfigs          = "herokuDrainConfigs"
 	AzureEventHubsScrapeConfigs = "azureeventhubsScrapeConfigs"
@@ -150,7 +149,7 @@ func NewTargetManagers(
 	if len(targetScrapeConfigs[CloudflareConfigs]) > 0 && cloudflareMetrics == nil {
 		cloudflareMetrics = cloudflare.NewMetrics(reg)
 	}
-	if (len(targetScrapeConfigs[DockerConfigs]) > 0 || len(targetScrapeConfigs[DockerSDConfigs]) > 0) && dockerMetrics == nil {
+	if (len(targetScrapeConfigs[DockerSDConfigs]) > 0) && dockerMetrics == nil {
 		dockerMetrics = docker.NewMetrics(reg)
 	}
 	if len(targetScrapeConfigs[JournalScrapeConfigs]) > 0 && journalMetrics == nil {
@@ -267,16 +266,6 @@ func NewTargetManagers(
 			cfTargetManager, err := cloudflare.NewTargetManager(cloudflareMetrics, logger, pos, client, scrapeConfigs)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to make cloudflare target manager")
-			}
-			targetManagers = append(targetManagers, cfTargetManager)
-		case DockerConfigs:
-			pos, err := getPositionFile()
-			if err != nil {
-				return nil, err
-			}
-			cfTargetManager, err := docker.NewTargetManager(dockerMetrics, logger, pos, client, scrapeConfigs)
-			if err != nil {
-				return nil, errors.Wrap(err, "failed to make Docker target manager")
 			}
 			targetManagers = append(targetManagers, cfTargetManager)
 		case DockerSDConfigs:

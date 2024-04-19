@@ -8,11 +8,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 type mockCache struct {
@@ -155,7 +155,7 @@ func TestChunkWriter_PutOne(t *testing.T) {
 			idx := &mockIndexWriter{}
 			client := &mockChunksClient{}
 
-			f, err := fetcher.New(cache, nil, false, schemaConfig, client, 1, 1, 0)
+			f, err := fetcher.New(cache, nil, false, schemaConfig, client, 0)
 			require.NoError(t, err)
 
 			cw := NewChunkWriter(f, schemaConfig, idx, true)

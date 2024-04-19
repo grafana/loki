@@ -19,9 +19,9 @@ import (
 	google_http "google.golang.org/api/transport/http"
 	amnet "k8s.io/apimachinery/pkg/util/net"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 )
 
 type ClientFactory func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error)
@@ -319,8 +319,7 @@ func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool, 
 	transportOptions := []option.ClientOption{option.WithScopes(scope)}
 	if insecure {
 		customTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-		// When using `insecure` (testing only), we add a fake API key as well to skip credential chain lookups.
-		transportOptions = append(transportOptions, option.WithAPIKey("insecure"))
+		transportOptions = append(transportOptions, option.WithoutAuthentication())
 	}
 	if serviceAccount.String() != "" {
 		transportOptions = append(transportOptions, option.WithCredentialsJSON([]byte(serviceAccount.String())))

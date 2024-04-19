@@ -12,15 +12,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
-	"github.com/grafana/loki/pkg/util/constants"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/cassandra"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestFactoryStop(t *testing.T) {
@@ -213,15 +214,15 @@ func TestNamedStores_populateStoreType(t *testing.T) {
 
 		storeType, ok := ns.storeType["store-1"]
 		assert.True(t, ok)
-		assert.Equal(t, config.StorageTypeAWS, storeType)
+		assert.Equal(t, types.StorageTypeAWS, storeType)
 
 		storeType, ok = ns.storeType["store-2"]
 		assert.True(t, ok)
-		assert.Equal(t, config.StorageTypeAWS, storeType)
+		assert.Equal(t, types.StorageTypeAWS, storeType)
 
 		storeType, ok = ns.storeType["store-3"]
 		assert.True(t, ok)
-		assert.Equal(t, config.StorageTypeGCS, storeType)
+		assert.Equal(t, types.StorageTypeGCS, storeType)
 
 		_, ok = ns.storeType["store-4"]
 		assert.False(t, ok)

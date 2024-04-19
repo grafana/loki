@@ -1,4 +1,4 @@
-{{- if not .Values.loki.existingSecretForConfig -}}
+{{- if .Values.loki.generatedConfigObjectName -}}
 apiVersion: v1
 {{- if eq .Values.loki.configStorageType "Secret" }}
 kind: Secret
@@ -6,7 +6,7 @@ kind: Secret
 kind: ConfigMap
 {{- end }}
 metadata:
-  name: {{ tpl .Values.loki.externalConfigSecretName . }}
+  name: {{ tpl .Values.loki.generatedConfigObjectName . }}
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}

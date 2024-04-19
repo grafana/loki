@@ -9,9 +9,43 @@ import (
 	"github.com/grafana/regexp"
 	"github.com/grafana/regexp/syntax"
 
-	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
+	"github.com/grafana/loki/v3/pkg/util"
 )
+
+// LineMatchType is an enum for line matching types.
+type LineMatchType int
+
+// Possible LineMatchTypes.
+const (
+	LineMatchEqual LineMatchType = iota
+	LineMatchNotEqual
+	LineMatchRegexp
+	LineMatchNotRegexp
+	LineMatchPattern
+	LineMatchNotPattern
+)
+
+func (t LineMatchType) String() string {
+	switch t {
+	case LineMatchEqual:
+		return "|="
+	case LineMatchNotEqual:
+		return "!="
+	case LineMatchRegexp:
+		return "|~"
+	case LineMatchNotRegexp:
+		return "!~"
+	case LineMatchPattern:
+		return "|>"
+	case LineMatchNotPattern:
+		return "!>"
+	default:
+		return ""
+	}
+}
 
 // Checker is an interface that matches against the input line or regexp.
 type Checker interface {
@@ -516,16 +550,20 @@ func (f containsAllFilter) Matches(test Checker) bool {
 }
 
 // NewFilter creates a new line filter from a match string and type.
-func NewFilter(match string, mt labels.MatchType) (Filterer, error) {
+func NewFilter(match string, mt LineMatchType) (Filterer, error) {
 	switch mt {
-	case labels.MatchRegexp:
+	case LineMatchRegexp:
 		return parseRegexpFilter(match, true, false)
-	case labels.MatchNotRegexp:
+	case LineMatchNotRegexp:
 		return parseRegexpFilter(match, false, false)
-	case labels.MatchEqual:
+	case LineMatchEqual:
 		return newContainsFilter([]byte(match), false), nil
-	case labels.MatchNotEqual:
+	case LineMatchNotEqual:
 		return NewNotFilter(newContainsFilter([]byte(match), false)), nil
+	case LineMatchPattern:
+		return newPatternFilterer([]byte(match), true)
+	case LineMatchNotPattern:
+		return newPatternFilterer([]byte(match), false)
 	default:
 		return nil, fmt.Errorf("unknown matcher: %v", match)
 	}
@@ -755,4 +793,38 @@ func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []
 		return curr, true
 	}
 	return nil, false
+}
+
+type patternFilter struct {
+	matcher *pattern.Matcher
+	pattern []byte
+}
+
+func newPatternFilterer(p []byte, match bool) (MatcherFilterer, error) {
+	m, err := pattern.ParseLineFilter(p)
+	if err != nil {
+		return nil, err
+	}
+	filter := &patternFilter{
+		matcher: m,
+		pattern: p,
+	}
+	if !match {
+		return NewNotFilter(filter), nil
+	}
+	return filter, nil
+}
+
+func (f *patternFilter) Filter(line []byte) bool { return f.matcher.Test(line) }
+
+func (f *patternFilter) Matches(test Checker) bool {
+	return test.Test(f.pattern, false, false)
+}
+
+func (f *patternFilter) ToStage() Stage {
+	return StageFunc{
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+			return line, f.Filter(line)
+		},
+	}
 }

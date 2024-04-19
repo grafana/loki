@@ -10,9 +10,9 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	querier_worker "github.com/grafana/loki/pkg/querier/worker"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	querier_worker "github.com/grafana/loki/v3/pkg/querier/worker"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type WorkerServiceConfig struct {
