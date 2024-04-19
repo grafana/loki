@@ -6420,6 +6420,7 @@ false
     },
     "tenant": {
       "name": "self-monitoring",
+      "password": null,
       "secretNamespace": "{{ .Release.Namespace }}"
     }
   },
@@ -6697,6 +6698,7 @@ null
 			<td><pre lang="json">
 {
   "name": "self-monitoring",
+  "password": null,
   "secretNamespace": "{{ .Release.Namespace }}"
 }
 </pre>
@@ -6708,6 +6710,15 @@ null
 			<td>Name of the tenant</td>
 			<td><pre lang="json">
 "self-monitoring"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.tenant.password</td>
+			<td>string</td>
+			<td>Password of the gateway for Basic auth</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>

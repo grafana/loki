@@ -3261,6 +3261,8 @@ monitoring:
     tenant:
       # -- Name of the tenant
       name: "self-monitoring"
+      # -- Password of the gateway for Basic auth
+      password: null
       # -- Namespace to create additional tenant token secret in. Useful if your Grafana instance
       # is in a separate namespace. Token will still be created in the canary namespace.
       secretNamespace: "{{ .Release.Namespace }}"
