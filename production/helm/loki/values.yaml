@@ -619,7 +619,7 @@ test:
     # -- Docker image repository
     repository: grafana/loki-helm-test
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: "ewelch-distributed-helm-chart-17db5ee"
+    tag: null
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
