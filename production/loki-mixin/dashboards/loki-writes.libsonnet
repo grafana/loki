@@ -19,17 +19,17 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           matchers:: {
                             cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
                             distributor: if $._config.meta_monitoring.enabled
-                                         then [utils.selector.re('job', '($namespace)/(distributor|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                         else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
+                            then [utils.selector.re('job', '($namespace)/(distributor|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
                             ingester: if $._config.meta_monitoring.enabled
-                                      then [utils.selector.re('job', '($namespace)/(ingester|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                      else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
+                            then [utils.selector.re('job', '($namespace)/(ingester|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
                             ingester_zone: if $._config.meta_monitoring.enabled
-                                           then [utils.selector.re('job', '($namespace)/(ingester-zone.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*'))],
+                            then [utils.selector.re('job', '($namespace)/(ingester-zone.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*'))],
                             any_ingester: if $._config.meta_monitoring.enabled
-                                          then [utils.selector.re('job', '($namespace)/(ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                          else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
+                            then [utils.selector.re('job', '($namespace)/(ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
                           },
 
                           local selector(matcherId) =
