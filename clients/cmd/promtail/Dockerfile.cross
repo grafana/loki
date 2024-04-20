@@ -2,7 +2,7 @@ ARG BUILD_IMAGE=grafana/loki-build-image:0.33.1
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intended to be called from the root like so:
 # docker build -t grafana/promtail -f clients/cmd/promtail/Dockerfile .
-FROM golang:1.21.9-alpine as goenv
+FROM 1.22.2-alpine as goenv
 RUN go env GOARCH > /goarch && \
   go env GOARM > /goarm
 
@@ -16,7 +16,7 @@ RUN make clean && GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAI
 FROM debian:12.5-slim
 # tzdata required for the timestamp stage to work
 RUN apt-get update && \
-  apt-get install -qy tzdata ca-certificates libsystemd-dev && \
+  apt-get install -qy tzdata ca-certificates wget libsystemd-dev && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 COPY --from=build /src/loki/clients/cmd/promtail/promtail /usr/bin/promtail
 COPY clients/cmd/promtail/promtail-local-config.yaml /etc/promtail/local-config.yaml
