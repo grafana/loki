@@ -9,13 +9,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/prometheus/common/model"
 )
 
 type BlockResolver interface {
-	Resolve(context.Context, string, config.DayTime, []*logproto.GroupedChunkRefs) ([]blockWithSeries, error)
+	Resolve(context.Context, string, bloomshipper.Interval, []*logproto.GroupedChunkRefs) ([]blockWithSeries, error)
 }
 
 type blockWithSeries struct {
@@ -28,10 +27,8 @@ type defaultBlockResolver struct {
 	logger log.Logger
 }
 
-func (r *defaultBlockResolver) Resolve(ctx context.Context, tenant string, day config.DayTime, series []*logproto.GroupedChunkRefs) ([]blockWithSeries, error) {
-	dayFrom, dayThrough := day.Bounds()
+func (r *defaultBlockResolver) Resolve(ctx context.Context, tenant string, interval bloomshipper.Interval, series []*logproto.GroupedChunkRefs) ([]blockWithSeries, error) {
 	minFp, maxFp := getFirstLast(series)
-	interval := bloomshipper.NewInterval(dayFrom, dayThrough)
 	metaSearch := bloomshipper.MetaSearchParams{
 		TenantID: tenant,
 		Interval: interval,

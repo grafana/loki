@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
@@ -40,15 +39,16 @@ func (c *noopClient) FilterChunks(ctx context.Context, tenant string, interval b
 type mockBlockResolver struct{}
 
 // Resolve implements BlockResolver.
-func (*mockBlockResolver) Resolve(_ context.Context, tenant string, interval config.DayTime, series []*logproto.GroupedChunkRefs) ([]blockWithSeries, error) {
+func (*mockBlockResolver) Resolve(_ context.Context, tenant string, interval bloomshipper.Interval, series []*logproto.GroupedChunkRefs) ([]blockWithSeries, error) {
+	day := truncateDay(interval.Start)
 	first, last := getFirstLast(series)
 	block := bloomshipper.BlockRef{
 		Ref: bloomshipper.Ref{
 			TenantID:       tenant,
 			TableName:      "table",
 			Bounds:         v1.NewBounds(model.Fingerprint(first.Fingerprint), model.Fingerprint(last.Fingerprint)),
-			StartTimestamp: interval.Time,
-			EndTimestamp:   interval.Add(Day),
+			StartTimestamp: day,
+			EndTimestamp:   day.Add(Day),
 			Checksum:       0,
 		},
 	}
