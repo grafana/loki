@@ -48,7 +48,8 @@ func (r *defaultBlockResolver) Resolve(ctx context.Context, tenant string, inter
 }
 
 func blocksMatchingSeries(metas []bloomshipper.Meta, interval bloomshipper.Interval, series []*logproto.GroupedChunkRefs) []blockWithSeries {
-	refs := make([]blockWithSeries, 0, len(metas))
+	result := make([]blockWithSeries, 0, len(metas))
+
 	for _, meta := range metas {
 		for _, block := range meta.Blocks {
 
@@ -72,18 +73,14 @@ func blocksMatchingSeries(metas []bloomshipper.Meta, interval bloomshipper.Inter
 
 			// At least one fingerprint is within bounds of the blocks
 			// so append to results
-			refs = append(refs, blockWithSeries{
+			result = append(result, blockWithSeries{
 				block:  block,
 				series: series[min:max],
 			})
 		}
 	}
 
-	sort.Slice(refs, func(i, j int) bool {
-		return refs[i].block.Bounds.Less(refs[j].block.Bounds)
-	})
-
-	return refs
+	return result
 }
 
 func NewBlockResolver(store bloomshipper.Store, logger log.Logger) BlockResolver {
