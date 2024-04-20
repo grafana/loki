@@ -131,23 +131,23 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 }
 
 func groupChunkRefs(chunkRefs []*logproto.ChunkRef, grouped []*logproto.GroupedChunkRefs) []*logproto.GroupedChunkRefs {
-	// Sort the chunkRefs by their stream fingerprint
-	// so we can easily append them to the target slice by iterating over them.
-	sort.Slice(chunkRefs, func(i, j int) bool {
-		return chunkRefs[i].Fingerprint < chunkRefs[j].Fingerprint
-	})
-
+	seen := make(map[uint64]int, len(grouped))
 	for _, chunkRef := range chunkRefs {
-		idx := len(grouped) - 1
-		if idx == -1 || grouped[idx].Fingerprint < chunkRef.Fingerprint {
+		if idx, found := seen[chunkRef.Fingerprint]; found {
+			grouped[idx].Refs = append(grouped[idx].Refs, convertToShortRef(chunkRef))
+		} else {
+			seen[chunkRef.Fingerprint] = len(grouped)
 			grouped = append(grouped, &logproto.GroupedChunkRefs{
 				Fingerprint: chunkRef.Fingerprint,
 				Tenant:      chunkRef.UserID,
 				Refs:        []*logproto.ShortRef{convertToShortRef(chunkRef)},
 			})
-			continue
 		}
-		grouped[idx].Refs = append(grouped[idx].Refs, convertToShortRef(chunkRef))
 	}
+
+	sort.Slice(grouped, func(i, j int) bool {
+		return grouped[i].Fingerprint < grouped[j].Fingerprint
+	})
+
 	return grouped
 }

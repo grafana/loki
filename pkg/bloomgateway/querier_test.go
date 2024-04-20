@@ -2,6 +2,7 @@ package bloomgateway
 
 import (
 	"context"
+	"math/rand"
 	"sort"
 	"testing"
 	"time"
@@ -138,4 +139,61 @@ func TestBloomQuerier(t *testing.T) {
 		require.Equal(t, 2, c.callCount)
 	})
 
+}
+
+func TestGroupChunkRefs(t *testing.T) {
+	chunkRefs := []*logproto.ChunkRef{
+		{Fingerprint: 0x01, UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59"), Checksum: 2},
+		{Fingerprint: 0x00, UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59"), Checksum: 1},
+		{Fingerprint: 0x02, UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59"), Checksum: 3},
+		{Fingerprint: 0x00, UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59"), Checksum: 4},
+		{Fingerprint: 0x02, UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59"), Checksum: 5},
+		{Fingerprint: 0x01, UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59"), Checksum: 6},
+	}
+
+	result := groupChunkRefs(chunkRefs, nil)
+	require.Equal(t, []*logproto.GroupedChunkRefs{
+		{Fingerprint: 0x00, Tenant: "tenant", Refs: []*logproto.ShortRef{
+			{From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59"), Checksum: 1},
+			{From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59"), Checksum: 4},
+		}},
+		{Fingerprint: 0x01, Tenant: "tenant", Refs: []*logproto.ShortRef{
+			{From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59"), Checksum: 2},
+			{From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59"), Checksum: 6},
+		}},
+		{Fingerprint: 0x02, Tenant: "tenant", Refs: []*logproto.ShortRef{
+			{From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59"), Checksum: 3},
+			{From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59"), Checksum: 5},
+		}},
+	}, result)
+}
+
+func BenchmarkGroupChunkRefs(b *testing.B) {
+	b.StopTimer()
+
+	n := 1000  // num series
+	m := 10000 // num chunks per series
+	chunkRefs := make([]*logproto.ChunkRef, 0, n*m)
+
+	for i := 0; i < n; i++ {
+		for j := 0; j < m; j++ {
+			chunkRefs = append(chunkRefs, &logproto.ChunkRef{
+				Fingerprint: uint64(n),
+				UserID:      "tenant",
+				From:        mktime("2024-04-20 00:00"),
+				Through:     mktime("2024-04-20 00:59"),
+				Checksum:    uint32((i << 20) + j),
+			})
+		}
+	}
+
+	rand.Shuffle(n*m, func(i, j int) {
+		chunkRefs[i], chunkRefs[j] = chunkRefs[j], chunkRefs[i]
+	})
+
+	b.ReportAllocs()
+	b.StartTimer()
+
+	groups := make([]*logproto.GroupedChunkRefs, 0, n)
+	groupChunkRefs(chunkRefs, groups)
 }
