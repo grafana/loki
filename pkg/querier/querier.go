@@ -1084,7 +1084,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 
 	// TODO(twhitney): converting from a step to a duration should be abstracted and reused,
 	// doing this in a few places now.
-	streams, err := streamsForFieldDetection(iters, req.LineLimit, time.Duration(req.Step))
+	streams, err := streamsForFieldDetection(iters, req.LineLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -1252,11 +1252,11 @@ func parseLine(line string) map[string][]string {
 	return result
 }
 
-// readStreams reads the streams from the iterator and returns them sorted.
+// streamsForFieldDetection reads the streams from the iterator and returns them sorted.
 // If categorizeLabels is true, the stream labels contains just the stream labels and entries inside each stream have their
 // structuredMetadata and parsed fields populated with structured metadata labels plus the parsed labels respectively.
 // Otherwise, the stream labels are the whole series labels including the stream labels, structured metadata labels and parsed labels.
-func streamsForFieldDetection(i iter.EntryIterator, size uint32, interval time.Duration) (logqlmodel.Streams, error) {
+func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
 	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
@@ -1265,14 +1265,12 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32, interval time.D
 	for respSize < size && i.Next() {
 		streamLabels, entry := i.Labels(), i.Entry()
 
-		// Always going backward
-		shouldOutput := entry.Timestamp.Equal(lastEntry.Add(-interval)) ||
-			entry.Timestamp.Before(lastEntry.Add(-interval))
+		// Always going backward as the direction for field detection is hard-coded to BACKWARD
+		shouldOutput := entry.Timestamp.Equal(lastEntry) || entry.Timestamp.Before(lastEntry)
 
-		// If step == 0 output every line.
 		// If lastEntry.Unix < 0 this is the first pass through the loop and we should output the line.
 		// Then check to see if the entry is equal to, or past a forward step
-		if interval == 0 || lastEntry.Unix() < 0 || shouldOutput {
+		if lastEntry.Unix() < 0 || shouldOutput {
 			stream, ok := streams[streamLabels]
 			if !ok {
 				stream = &logproto.Stream{

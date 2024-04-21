@@ -1598,7 +1598,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		return &DetectedFieldsResponse{
 			Response: &logproto.DetectedFieldsResponse{
 				Fields:     mergedFields,
-				FieldLimit: fieldLimit,
+				FieldLimit: 0,
 			},
 			Headers: headers,
 		}, nil
