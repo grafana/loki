@@ -1655,7 +1655,7 @@ go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
 go.uber.org/zap/zapgrpc
-# go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
+# go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 ## explicit; go 1.18
 go4.org/netipx
 # golang.org/x/crypto v0.21.0
