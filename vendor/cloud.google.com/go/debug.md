@@ -1,6 +1,6 @@
 # Logging, Debugging and Telemetry
 
-**Warning:The OpenCensus project is obsolete and was archived on July 31st,
+**Warning: The OpenCensus project is obsolete and was archived on July 31st,
 2023.** This means that any security vulnerabilities that are found will not be
 patched. We recommend that you begin migrating to OpenCensus tracing to
 OpenTelemetry, the successor project. See [OpenCensus](#opencensus) below for
@@ -16,7 +16,7 @@ into a system's health.
 
 ## Logging and debugging
 
-While working with the Go Client libraries you may run into some situations
+While working with the Go Client Libraries you may run into some situations
 where you need a deeper level of understanding about what is going on in order
 to solve your problem. Here are some tips and tricks that you can use in these
 cases. *Note* that many of the tips in this section will have a performance
@@ -179,7 +179,7 @@ func main() {
 
 ## Telemetry
 
-**Warning:The OpenCensus project is obsolete and was archived on July 31st,
+**Warning: The OpenCensus project is obsolete and was archived on July 31st,
 2023.** This means that any security vulnerabilities that are found will not be
 patched. We recommend that you begin migrating to OpenCensus tracing to
 OpenTelemetry, the successor project. See [OpenCensus](#opencensus) below for
@@ -211,7 +211,7 @@ OpenTelemetry support via an environment variable, as described below.
 
 #### OpenCensus
 
-**Warning:The OpenCensus project is obsolete and was archived on July 31st,
+**Warning: The OpenCensus project is obsolete and was archived on July 31st,
 2023.** This means that any security vulnerabilities that are found will not be
 patched. We recommend that you begin migrating to OpenCensus tracing to
 OpenTelemetry, the successor project.
@@ -251,6 +251,15 @@ Please refer to the following resources:
 * [OpenTelemetry-Go - OpenCensus Bridge](https://pkg.go.dev/go.opentelemetry.io/otel/bridge/opencensus)
 
 #### OpenTelemetry
+
+**Warning: OpenTelemetry-Go ensures
+[compatibility](https://github.com/open-telemetry/opentelemetry-go/tree/main?tab=readme-ov-file#compatibility)
+with ONLY the current supported versions of the [Go
+language](https://go.dev/doc/devel/release#policy). This support may be narrower
+than the support that has been offered historically by the Go Client Libraries.
+Ensure that your Go runtime version is supported by the OpenTelemetry-Go
+[compatibility](https://github.com/open-telemetry/opentelemetry-go/tree/main?tab=readme-ov-file#compatibility)
+policy before enabling OpenTelemetry instrumentation.**
 
 To opt-in to experimental OpenTelemetry tracing currently available in the
 clients listed above, set the environment variable

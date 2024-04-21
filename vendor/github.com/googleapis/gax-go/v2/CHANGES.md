@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.12.3](https://github.com/googleapis/gax-go/compare/v2.12.2...v2.12.3) (2024-03-14)
+
+
+### Bug Fixes
+
+* bump protobuf dep to v1.33 ([#333](https://github.com/googleapis/gax-go/issues/333)) ([2892b22](https://github.com/googleapis/gax-go/commit/2892b22c1ae8a70dec3448d82e634643fe6c1be2))
+
 ## [2.12.2](https://github.com/googleapis/gax-go/compare/v2.12.1...v2.12.2) (2024-02-23)
 
 

@@ -11,9 +11,14 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 ## Unreleased
 
 ### Fixed
+- [#115](https://github.com/thanos-io/objstore/pull/115) GCS: Fix creation of bucket with GRPC connections. Also update storage client to `v1.40.0`.
+- [#102](https://github.com/thanos-io/objstore/pull/102) Azure: bump azblob sdk to get concurrency fixes.
 - [#33](https://github.com/thanos-io/objstore/pull/33) Tracing: Add `ContextWithTracer()` to inject the tracer into the context.
 - [#34](https://github.com/thanos-io/objstore/pull/34) Fix ignored options when creating shared credential Azure client.
 - [#62](https://github.com/thanos-io/objstore/pull/62) S3: Fix ignored context cancellation in `Iter` method.
+- [#77](https://github.com/thanos-io/objstore/pull/77) Fix buckets wrapped with metrics from being unable to determine object sizes in `Upload`.
+- [#78](https://github.com/thanos-io/objstore/pull/78) S3: Fix possible concurrent modification of the PutUserMetadata map.
+- [#79](https://github.com/thanos-io/objstore/pull/79) Metrics: Fix `objstore_bucket_operation_duration_seconds` for `iter` operations.
 
 ### Added
 - [#15](https://github.com/thanos-io/objstore/pull/15) Add Oracle Cloud Infrastructure Object Storage Bucket support.
@@ -27,9 +32,18 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#61](https://github.com/thanos-io/objstore/pull/61) Add OpenTelemetry TracingBucket.
     > This also changes the behaviour of `client.NewBucket`. Now it returns, uninstrumented and untraced bucket.
     You can combine `objstore.WrapWithMetrics` and `tracing/{opentelemetry,opentracing}.WrapWithTraces` to have old behavior.
+- [#69](https://github.com/thanos-io/objstore/pull/69) [#66](https://github.com/thanos-io/objstore/pull/66) Add `objstore_bucket_operation_transferred_bytes` that counts the number of total bytes read from the bucket operation Get/GetRange and also counts the number of total bytes written to the bucket operation Upload.
 - [#64](https://github.com/thanos-io/objstore/pull/64) OCI: OKE Workload Identity support.
 - [#73](https://github.com/thanos-io/objstore/pull/73) Аdded file path to erros from DownloadFile
 - [#51](https://github.com/thanos-io/objstore/pull/51) Azure: Support using connection string authentication.
+- [#76](https://github.com/thanos-io/objstore/pull/76) GCS: Query for object names only in `Iter` to possibly improve performance when listing objects.
+- [#85](https://github.com/thanos-io/objstore/pull/85) S3: Allow checksum algorithm to be configured
+- [#92](https://github.com/thanos-io/objstore/pull/92) GCS: Allow using a gRPC client.
+- [#94](https://github.com/thanos-io/objstore/pull/94) Allow timingReadCloser to be seeker
+- [#96](https://github.com/thanos-io/objstore/pull/96) Allow nopCloserWithObjectSize to be seeker
+- [#86](https://github.com/thanos-io/objstore/pull/86) GCS: Add HTTP Config to GCS
+- [#99](https://github.com/thanos-io/objstore/pull/99) Swift: Add HTTP_Config
+- [#108](https://github.com/thanos-io/objstore/pull/108) Metrics: Add native histogram definitions to histograms
 
 ### Changed
 - [#38](https://github.com/thanos-io/objstore/pull/38) *: Upgrade minio-go version to `v7.0.45`.
@@ -38,4 +52,5 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#65](https://github.com/thanos-io/objstore/pull/65) *: Upgrade minio-go version to `v7.0.61`.
 - [#70](https://github.com/thanos-io/objstore/pull/70) GCS: Update cloud.google.com/go/storage version to `v1.27.0`.
 - [#71](https://github.com/thanos-io/objstore/pull/71) Replace method `IsCustomerManagedKeyError` for a more generic `IsAccessDeniedErr` on the bucket interface.
+- [#89](https://github.com/thanos-io/objstore/pull/89) GCS: Upgrade cloud.google.com/go/storage version to `v1.35.1`.
 ### Removed

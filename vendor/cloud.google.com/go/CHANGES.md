@@ -1,5 +1,17 @@
 # Changes
 
+## [0.112.1](https://github.com/googleapis/google-cloud-go/compare/v0.112.0...v0.112.1) (2024-02-26)
+
+
+### Bug Fixes
+
+* **internal/postprocessor:** Handle googleapis link in commit body ([#9251](https://github.com/googleapis/google-cloud-go/issues/9251)) ([1dd3515](https://github.com/googleapis/google-cloud-go/commit/1dd35157bff871a2b3e5b0e3cac33502737fd631))
+
+
+### Documentation
+
+* **main:** Add OpenTelemetry-Go compatibility warning to debug.md ([#9268](https://github.com/googleapis/google-cloud-go/issues/9268)) ([18f9bb9](https://github.com/googleapis/google-cloud-go/commit/18f9bb94fbc239255a873b29462fc7c2eac3c0aa)), refs [#9267](https://github.com/googleapis/google-cloud-go/issues/9267)
+
 ## [0.112.0](https://github.com/googleapis/google-cloud-go/compare/v0.111.0...v0.112.0) (2024-01-11)
 
 
