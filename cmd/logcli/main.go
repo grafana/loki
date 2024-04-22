@@ -423,7 +423,7 @@ func main() {
 			index.GetVolume(volumeQuery, queryClient, out, *statistics)
 		}
 	case detectedFieldsCmd.FullCommand():
-		detectedFieldsQuery.Do(queryClient, *statistics)
+		detectedFieldsQuery.Do(queryClient, *statistics, *outputMode)
 	}
 }
 
