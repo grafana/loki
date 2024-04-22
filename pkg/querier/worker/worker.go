@@ -30,7 +30,9 @@ type Config struct {
 
 	QuerierID string `yaml:"id"`
 
-	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
+	QueryFrontendGRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
+
+	QuerySchedulerGRPCClientConfig grpcclient.Config `yaml:"query_scheduler_grpc_client_config"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -39,14 +41,19 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.DNSLookupPeriod, "querier.dns-lookup-period", 3*time.Second, "How often to query DNS for query-frontend or query-scheduler address. Also used to determine how often to poll the scheduler-ring for addresses if the scheduler-ring is configured.")
 	f.StringVar(&cfg.QuerierID, "querier.id", "", "Querier ID, sent to frontend service to identify requests from the same querier. Defaults to hostname.")
 
-	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
+	cfg.QueryFrontendGRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
+	cfg.QuerySchedulerGRPCClientConfig.RegisterFlagsWithPrefix("querier.scheduler-client", f)
 }
 
 func (cfg *Config) Validate() error {
 	if cfg.FrontendAddress != "" && cfg.SchedulerAddress != "" {
 		return errors.New("frontend address and scheduler address are mutually exclusive, please use only one")
 	}
-	return cfg.GRPCClientConfig.Validate()
+	if err := cfg.QueryFrontendGRPCClientConfig.Validate(); err != nil {
+		return err
+	}
+
+	return cfg.QuerySchedulerGRPCClientConfig.Validate()
 }
 
 // Handler for HTTP requests wrapped in protobuf messages.
@@ -80,7 +87,7 @@ type processor interface {
 type querierWorker struct {
 	*services.BasicService
 
-	cfg    Config
+	// cfg    Config
 	logger log.Logger
 
 	processor processor
@@ -92,6 +99,9 @@ type querierWorker struct {
 	managers map[string]*processorManager
 
 	metrics *Metrics
+
+	grpcClientConfig      grpcclient.Config
+	maxConcurrentRequests int
 }
 
 func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, logger log.Logger, reg prometheus.Registerer, codec RequestCodec) (services.Service, error) {
@@ -105,12 +115,14 @@ func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, log
 
 	metrics := NewMetrics(cfg, reg)
 	var processor processor
+	var grpcCfg grpcclient.Config
 	var servs []services.Service
 	var address string
 
 	switch {
 	case rng != nil:
 		level.Info(logger).Log("msg", "Starting querier worker using query-scheduler and scheduler ring for addresses")
+		grpcCfg = cfg.QuerySchedulerGRPCClientConfig
 		processor, servs = newSchedulerProcessor(cfg, handler, logger, metrics, codec)
 	case cfg.SchedulerAddress != "":
 		level.Info(logger).Log("msg", "Starting querier worker connected to query-scheduler", "scheduler", cfg.SchedulerAddress)
@@ -122,26 +134,28 @@ func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, log
 		level.Info(logger).Log("msg", "Starting querier worker connected to query-frontend", "frontend", cfg.FrontendAddress)
 
 		address = cfg.FrontendAddress
+		grpcCfg = cfg.QueryFrontendGRPCClientConfig
 		processor = newFrontendProcessor(cfg, handler, logger, codec)
 	default:
 		return nil, errors.New("unable to start the querier worker, need to configure one of frontend_address, scheduler_address, or a ring config in the query_scheduler config block")
 	}
 
-	return newQuerierWorkerWithProcessor(cfg, metrics, logger, processor, address, rng, servs)
+	return newQuerierWorkerWithProcessor(grpcCfg, cfg.MaxConcurrent, cfg.DNSLookupPeriod, metrics, logger, processor, address, rng, servs)
 }
 
-func newQuerierWorkerWithProcessor(cfg Config, metrics *Metrics, logger log.Logger, processor processor, address string, ring ring.ReadRing, servs []services.Service) (*querierWorker, error) {
+func newQuerierWorkerWithProcessor(grpcCfg grpcclient.Config, maxConcReq int, dnsLookupPeriod time.Duration, metrics *Metrics, logger log.Logger, processor processor, address string, ring ring.ReadRing, servs []services.Service) (*querierWorker, error) {
 	f := &querierWorker{
-		cfg:       cfg,
-		logger:    logger,
-		managers:  map[string]*processorManager{},
-		processor: processor,
-		metrics:   metrics,
+		maxConcurrentRequests: maxConcReq,
+		grpcClientConfig:      grpcCfg,
+		logger:                logger,
+		managers:              map[string]*processorManager{},
+		processor:             processor,
+		metrics:               metrics,
 	}
 
 	// Empty address is only used in tests, where individual targets are added manually.
 	if address != "" {
-		w, err := util.NewDNSWatcher(address, cfg.DNSLookupPeriod, f)
+		w, err := util.NewDNSWatcher(address, dnsLookupPeriod, f)
 		if err != nil {
 			return nil, err
 		}
@@ -150,7 +164,7 @@ func newQuerierWorkerWithProcessor(cfg Config, metrics *Metrics, logger log.Logg
 	}
 
 	if ring != nil {
-		w, err := util.NewRingWatcher(log.With(logger, "component", "querier-scheduler-worker"), ring, cfg.DNSLookupPeriod, f)
+		w, err := util.NewRingWatcher(log.With(logger, "component", "querier-scheduler-worker"), ring, dnsLookupPeriod, f)
 		if err != nil {
 			return nil, err
 		}
@@ -245,17 +259,17 @@ func (w *querierWorker) resetConcurrency() {
 	}()
 
 	for _, m := range w.managers {
-		concurrency := w.cfg.MaxConcurrent / len(w.managers)
+		concurrency := w.maxConcurrentRequests / len(w.managers)
 
 		// If max concurrency does not evenly divide into our frontends a subset will be chosen
 		// to receive an extra connection.  Frontend addresses were shuffled above so this will be a
 		// random selection of frontends.
-		if index < w.cfg.MaxConcurrent%len(w.managers) {
+		if index < w.maxConcurrentRequests%len(w.managers) {
 			level.Warn(w.logger).Log("msg", "max concurrency is not evenly divisible across targets, adding an extra connection", "addr", m.address)
 			concurrency++
 		}
 
-		// If concurrency is 0 then MaxConcurrentRequests is less than the total number of
+		// If concurrency is 0 then maxConcurrentRequests is less than the total number of
 		// frontends/schedulers. In order to prevent accidentally starving a frontend or scheduler we are just going to
 		// always connect once to every target.  This is dangerous b/c we may start exceeding LogQL
 		// max concurrency.
@@ -271,7 +285,7 @@ func (w *querierWorker) resetConcurrency() {
 
 func (w *querierWorker) connect(ctx context.Context, address string) (*grpc.ClientConn, error) {
 	// Because we only use single long-running method, it doesn't make sense to inject user ID, send over tracing or add metrics.
-	opts, err := w.cfg.GRPCClientConfig.DialOption(nil, nil)
+	opts, err := w.grpcClientConfig.DialOption(nil, nil)
 	if err != nil {
 		return nil, err
 	}
