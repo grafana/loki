@@ -13,24 +13,24 @@ import (
 
 func TestAdd(t *testing.T) {
 	cks := Chunks{}
-	cks.Add(timeResolution + 1)
-	cks.Add(timeResolution + 2)
-	cks.Add(2*timeResolution + 1)
+	cks.Add(TimeResolution + 1)
+	cks.Add(TimeResolution + 2)
+	cks.Add(2*TimeResolution + 1)
 	require.Equal(t, 1, len(cks))
 	require.Equal(t, 2, len(cks[0].Samples))
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + timeResolution + 1)
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + TimeResolution + 1)
 	require.Equal(t, 2, len(cks))
 	require.Equal(t, 1, len(cks[1].Samples))
 }
 
 func TestIterator(t *testing.T) {
 	cks := Chunks{}
-	cks.Add(timeResolution + 1)
-	cks.Add(timeResolution + 2)
-	cks.Add(2*timeResolution + 1)
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + timeResolution + 1)
+	cks.Add(TimeResolution + 1)
+	cks.Add(TimeResolution + 2)
+	cks.Add(2*TimeResolution + 1)
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + TimeResolution + 1)
 
-	it := cks.Iterator("test", model.Time(0), model.Time(time.Hour.Nanoseconds()), timeResolution)
+	it := cks.Iterator("test", model.Time(0), model.Time(time.Hour.Nanoseconds()), TimeResolution)
 	require.NotNil(t, it)
 
 	var samples []logproto.PatternSample
@@ -188,6 +188,7 @@ func TestForRange(t *testing.T) {
 			if !reflect.DeepEqual(result, tc.expected) {
 				t.Errorf("Expected %v, got %v", tc.expected, result)
 			}
+			require.Equal(t, len(result), cap(result), "Returned slice wasn't created at the correct capacity")
 		})
 	}
 }

@@ -335,6 +335,7 @@ func (m *VolumeRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("query", m.GetQuery()),
 		otlog.String("start", timestamp.Time(int64(m.From)).String()),
 		otlog.String("end", timestamp.Time(int64(m.Through)).String()),
+		otlog.String("step", time.Duration(m.Step).String()),
 	)
 }
 
@@ -467,9 +468,10 @@ func (m *QueryPatternsRequest) WithStartEndForCache(start, end time.Time) result
 
 func (m *QueryPatternsRequest) LogToSpan(sp opentracing.Span) {
 	fields := []otlog.Field{
+		otlog.String("query", m.GetQuery()),
 		otlog.String("start", m.Start.String()),
 		otlog.String("end", m.End.String()),
-		otlog.String("query", m.GetQuery()),
+		otlog.String("step", time.Duration(m.Step).String()),
 	}
 	sp.LogFields(fields...)
 }

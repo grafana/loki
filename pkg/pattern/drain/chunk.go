@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	timeResolution = model.Time(int64(time.Second*10) / 1e6)
+	TimeResolution = model.Time(int64(time.Second*10) / 1e6)
 
 	defaultVolumeSize = 500
 
@@ -25,7 +25,7 @@ type Chunk struct {
 }
 
 func newChunk(ts model.Time) Chunk {
-	maxSize := int(maxChunkTime.Nanoseconds()/timeResolution.UnixNano()) + 1
+	maxSize := int(maxChunkTime.Nanoseconds()/TimeResolution.UnixNano()) + 1
 	v := Chunk{Samples: make([]logproto.PatternSample, 1, maxSize)}
 	v.Samples[0] = logproto.PatternSample{
 		Timestamp: ts,
@@ -66,18 +66,17 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 			return c.Samples[i].Timestamp >= end
 		})
 	}
-	if step == timeResolution {
+	if step == TimeResolution {
 		return c.Samples[lo:hi]
 	}
 
 	// Re-scale samples into step-sized buckets
 	currentStep := truncateTimestamp(c.Samples[lo].Timestamp, step)
-	aggregatedSamples := []logproto.PatternSample{
-		{
-			Timestamp: currentStep,
-			Value:     0,
-		},
-	}
+	aggregatedSamples := make([]logproto.PatternSample, 0, ((c.Samples[hi-1].Timestamp-currentStep)/step)+1)
+	aggregatedSamples = append(aggregatedSamples, logproto.PatternSample{
+		Timestamp: currentStep,
+		Value:     0,
+	})
 	for _, sample := range c.Samples[lo:hi] {
 		if sample.Timestamp >= currentStep+step {
 			stepForSample := truncateTimestamp(sample.Timestamp, step)
@@ -96,7 +95,7 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 }
 
 func (c *Chunks) Add(ts model.Time) {
-	t := truncateTimestamp(ts, timeResolution)
+	t := truncateTimestamp(ts, TimeResolution)
 
 	if len(*c) == 0 {
 		*c = append(*c, newChunk(t))
