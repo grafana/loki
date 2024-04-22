@@ -1731,25 +1731,7 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 	}
 }
 
-func Benchmark_parseBothExtractLogLevelFromLogLineJson(b *testing.B) {
-	logLine := `{"msg": "something" , "level": "error", "id": "1"}`
-
-	for i := 0; i < b.N; i++ {
-		level := parseBothAndExtractLogLevelFromLogLine(logLine)
-		require.Equal(b, logLevelError, level)
-	}
-}
-
-func Benchmark_parseBothExtractLogLevelFromLogLineLogfmt(b *testing.B) {
-	logLine := `FOO=bar MSG="message with keyword error but it should not get picked up" LEVEL=inFO`
-
-	for i := 0; i < b.N; i++ {
-		level := parseBothAndExtractLogLevelFromLogLine(logLine)
-		require.Equal(b, logLevelInfo, level)
-	}
-}
-
-func Benchmark_noParseExtractLogLevelFromLogLineJson(b *testing.B) {
+func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 	logLine := `{"msg": "something" , "level": "error", "id": "1"}`
 
 	for i := 0; i < b.N; i++ {
@@ -1758,7 +1740,7 @@ func Benchmark_noParseExtractLogLevelFromLogLineJson(b *testing.B) {
 	}
 }
 
-func Benchmark_noParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
+func Benchmark_optParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
 	logLine := `FOO=bar MSG="message with keyword error but it should not get picked up" LEVEL=inFO`
 
 	for i := 0; i < b.N; i++ {

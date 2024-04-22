@@ -12,14 +12,14 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/buger/jsonparser"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/go-logfmt/logfmt"
 	"github.com/gogo/status"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"google.golang.org/grpc/codes"
-
-	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
@@ -891,11 +891,58 @@ func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.
 }
 
 func extractLogLevelFromLogLine(log string) string {
-	// check for log levels in known log formats to avoid any false detection
+	allowedLabels := map[string]struct{}{"level": {}, "LEVEL": {}, "Level": {}, "severity": {}, "SEVERITY": {}, "Severity": {}}
+	var v string
+	if isJSON(log) {
+		v = getValueUsingJSONParser(log, allowedLabels)
+	} else {
+		v = getValueUsingLogfmtParser(log, allowedLabels)
+	}
 
-	// json logs:
+	switch strings.ToLower(v) {
+	case "trace", "trc":
+		return logLevelTrace
+	case "debug", "dbg":
+		return logLevelDebug
+	case "info", "inf":
+		return logLevelInfo
+	case "warn", "wrn":
+		return logLevelWarn
+	case "error", "err":
+		return logLevelError
+	case "critical":
+		return logLevelCritical
+	case "fatal":
+		return logLevelFatal
+	default:
+		return detectLevelFromLogLine(log)
+	}
+}
+
+func getValueUsingLogfmtParser(line string, allowedLabels map[string]struct{}) string {
+	d := logfmt.NewDecoder(strings.NewReader(line))
+	d.ScanRecord()
+	for d.ScanKeyval() {
+		if _, ok := allowedLabels[string(d.Key())]; ok {
+			return string(d.Value())
+		}
+	}
+	return ""
+}
+
+func getValueUsingJSONParser(log string, allowedLabels map[string]struct{}) string {
+	for allowedLabel := range allowedLabels {
+		l, err := jsonparser.GetString([]byte(log), allowedLabel)
+		if err == nil {
+			return l
+		}
+	}
+	return ""
+}
+
+func isJSON(line string) bool {
 	var firstNonSpaceChar rune
-	for _, char := range log {
+	for _, char := range line {
 		if !unicode.IsSpace(char) {
 			firstNonSpaceChar = char
 			break
@@ -903,139 +950,15 @@ func extractLogLevelFromLogLine(log string) string {
 	}
 
 	var lastNonSpaceChar rune
-	for i := len(log) - 1; i >= 0; i-- {
-		char := rune(log[i])
+	for i := len(line) - 1; i >= 0; i-- {
+		char := rune(line[i])
 		if !unicode.IsSpace(char) {
 			lastNonSpaceChar = char
 			break
 		}
 	}
 
-	if firstNonSpaceChar == '{' && lastNonSpaceChar == '}' {
-		levelIndex := strings.Index(log, `"level":`)
-		if levelIndex == -1 {
-			levelIndex = strings.Index(log, `"LEVEL":`)
-			if levelIndex == -1 {
-				return logLevelUnknown
-			}
-		}
-		compareString := log[levelIndex:min(len(log), levelIndex+20)]
-
-		if strings.Contains(strings.ToLower(compareString), `:"fatal"`) {
-			return logLevelFatal
-		}
-		if strings.Contains(strings.ToLower(compareString), `:"error"`) || strings.Contains(strings.ToLower(compareString), `:"err"`) {
-			return logLevelError
-		}
-		if strings.Contains(strings.ToLower(compareString), `:"warning"`) || strings.Contains(strings.ToLower(compareString), `:"warn"`) || strings.Contains(strings.ToLower(compareString), `:"wrn"`) {
-			return logLevelWarn
-		}
-		if strings.Contains(strings.ToLower(compareString), `:"critical"`) {
-			return logLevelCritical
-		}
-		if strings.Contains(strings.ToLower(compareString), `:"debug"`) || strings.Contains(strings.ToLower(compareString), `:"dbg"`) {
-			return logLevelDebug
-		}
-		if strings.Contains(strings.ToLower(compareString), `:"info"`) || strings.Contains(strings.ToLower(compareString), `:"inf"`) {
-			return logLevelInfo
-		}
-		if strings.Contains(strings.ToLower(compareString), `:"trace"`) || strings.Contains(strings.ToLower(compareString), `:"trc"`) {
-			return logLevelTrace
-		}
-	}
-
-	// logfmt logs:
-	levelIndex := strings.Index(log, "LEVEL=")
-	if levelIndex == -1 {
-		levelIndex = strings.Index(log, "level=")
-	}
-	if levelIndex != -1 {
-		compareString := log[levelIndex:min(len(log), levelIndex+20)]
-
-		if strings.Contains(strings.ToLower(compareString), "=fatal") {
-			return logLevelFatal
-		}
-		if strings.Contains(strings.ToLower(compareString), "=error") || strings.Contains(strings.ToLower(compareString), "=err") {
-			return logLevelError
-		}
-		if strings.Contains(strings.ToLower(compareString), "=warning") || strings.Contains(strings.ToLower(compareString), "warn") || strings.Contains(strings.ToLower(compareString), "=wrn") {
-			return logLevelWarn
-		}
-		if strings.Contains(strings.ToLower(compareString), "=critical") {
-			return logLevelCritical
-		}
-		if strings.Contains(strings.ToLower(compareString), "=debug") || strings.Contains(strings.ToLower(compareString), "=dbg") {
-			return logLevelDebug
-		}
-		if strings.Contains(strings.ToLower(compareString), "=info") || strings.Contains(strings.ToLower(compareString), "=inf") {
-			return logLevelInfo
-		}
-		if strings.Contains(strings.ToLower(compareString), "=trace") || strings.Contains(strings.ToLower(compareString), "=trc") {
-			return logLevelTrace
-		}
-
-	}
-
-	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
-		strings.Contains(log, "error") || strings.Contains(log, "ERROR") {
-		return logLevelError
-	}
-	if strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
-		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
-		return logLevelWarn
-	}
-	if strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") {
-		return logLevelCritical
-	}
-	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
-		return logLevelDebug
-	}
-
-	return logLevelUnknown
-}
-
-func parseBothAndExtractLogLevelFromLogLine(log string) string {
-	logFmtParser := logql_log.NewLogfmtParser(true, false)
-	jsonParser := logql_log.NewJSONParser()
-
-	allLabels := logql_log.NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
-	_, logfmtSuccess := logFmtParser.Process(0, []byte(log), allLabels)
-	if !logfmtSuccess || allLabels.HasErr() {
-		allLabels.Reset()
-		_, jsonSuccess := jsonParser.Process(0, []byte(log), allLabels)
-		if !jsonSuccess || allLabels.HasErr() {
-			return detectLevelFromLogLine(log)
-		}
-	}
-
-	// This is a special case as a line with no labels is also treated a valid logfmt line by the parser
-	if allLabels.LabelsResult().Labels().IsEmpty() {
-		return detectLevelFromLogLine(log)
-	}
-
-	for _, l := range allLabels.LabelsResult().Labels() {
-		if strings.ToLower(l.Name) == "level" || strings.ToLower(l.Name) == "severity" {
-			switch strings.ToLower(l.Value) {
-			case "fatal":
-				return logLevelFatal
-			case "error", "err":
-				return logLevelError
-			case "warn", "wrn":
-				return logLevelWarn
-			case "info", "inf":
-				return logLevelInfo
-			case "debug", "dbg":
-				return logLevelDebug
-			case "trace", "trc":
-				return logLevelTrace
-			case "critical":
-				return logLevelCritical
-			default:
-				return logLevelUnknown
-			}
-		}
-	}
-	return logLevelUnknown
+	return firstNonSpaceChar == '{' && lastNonSpaceChar == '}'
 }
 
 func detectLevelFromLogLine(log string) string {
