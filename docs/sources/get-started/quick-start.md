@@ -20,7 +20,7 @@ The Docker Compose configuration instantiates the following components, each in 
 - **Minio** an S3-compatible object store which Loki uses to store its index and chunks.
 - **Grafana** which provides visualization of the log lines captured within Loki.
 
-{{< figure max-width="75%" src="/media/docs/loki/get-started-flog-v2.png" caption="Getting started sample application" alt="Getting started sample application">}}
+{{< figure max-width="75%" src="/media/docs/loki/get-started-flog-v3.png" caption="Getting started sample application" alt="Getting started sample application">}}
 
 ## Installing Loki and collecting sample logs
 
