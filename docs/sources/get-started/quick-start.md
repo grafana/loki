@@ -14,9 +14,9 @@ The Docker Compose configuration instantiates the following components, each in 
 - **flog** a sample application which generates log lines.  [flog](https://github.com/mingrammer/flog) is a log generator for common log formats.
 - **Promtail** which scrapes the log lines from flog, and pushes them to Loki through the gateway.
 - **Gateway** (NGINX) which receives requests and redirects them to the appropriate container based on the request's URL.
-- One Loki **read** component.
-- One Loki **write** component.
-- One Loki **backend** component.
+- One Loki **read** component (Query Frontend, Querier).
+- One Loki **write** component (Distributor, Ingester).
+- One Loki **backend** component (Index Gateway, Compactor, Ruler, Bloom Compactor (Experimental), Bloom Gateway (Experimental)).
 - **Minio** an S3-compatible object store which Loki uses to store its index and chunks.
 - **Grafana** which provides visualization of the log lines captured within Loki.
 
