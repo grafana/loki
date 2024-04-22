@@ -167,7 +167,7 @@ ruler:
       url: http://localhost:9090/api/v1/write
 ```
 
-Further configuration options can be found under [ruler]({{< relref "../configure#ruler" >}}).
+Further configuration options can be found under [ruler](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#ruler).
 
 ### Operations
 
@@ -360,7 +360,7 @@ ruler:
 
 The Ruler supports the following types of storage: `azure`, `gcs`, `s3`, `swift`, `cos` and `local`. Most kinds of storage work with the sharded Ruler configuration in an obvious way, that is, configure all Rulers to use the same backend.
 
-The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API]({{< relref "../reference/api#ruler" >}}). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
+The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ruler). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
 
 A typical local configuration might look something like:
 ```

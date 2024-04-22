@@ -13,12 +13,12 @@ import (
 	"github.com/thanos-io/objstore"
 	objstoretracing "github.com/thanos-io/objstore/tracing/opentracing"
 
-	"github.com/grafana/loki/pkg/storage/bucket/azure"
-	"github.com/grafana/loki/pkg/storage/bucket/filesystem"
-	"github.com/grafana/loki/pkg/storage/bucket/gcs"
-	"github.com/grafana/loki/pkg/storage/bucket/s3"
-	"github.com/grafana/loki/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/azure"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (

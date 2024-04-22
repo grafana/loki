@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/util/encoding"
+	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
 func TestBloomOffsetEncoding(t *testing.T) {

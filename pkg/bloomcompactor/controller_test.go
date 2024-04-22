@@ -2,15 +2,16 @@ package bloomcompactor
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
 func Test_findGaps(t *testing.T) {
@@ -101,6 +102,27 @@ func Test_findGaps(t *testing.T) {
 			metas: []v1.FingerprintBounds{
 				v1.NewBounds(3, 5),
 				v1.NewBounds(6, 7),
+			},
+		},
+		{
+			desc:           "full ownership range with single meta",
+			err:            false,
+			exp:            nil,
+			ownershipRange: v1.NewBounds(0, math.MaxUint64),
+			metas: []v1.FingerprintBounds{
+				v1.NewBounds(0, math.MaxUint64),
+			},
+		},
+		{
+			desc:           "full ownership range with multiple metas",
+			err:            false,
+			exp:            nil,
+			ownershipRange: v1.NewBounds(0, math.MaxUint64),
+			// Three metas covering the whole 0 - MaxUint64
+			metas: []v1.FingerprintBounds{
+				v1.NewBounds(0, math.MaxUint64/3),
+				v1.NewBounds(math.MaxUint64/3+1, math.MaxUint64/2),
+				v1.NewBounds(math.MaxUint64/2+1, math.MaxUint64),
 			},
 		},
 	} {

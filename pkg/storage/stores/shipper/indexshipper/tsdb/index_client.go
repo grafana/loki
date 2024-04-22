@@ -2,22 +2,27 @@ package tsdb
 
 import (
 	"context"
+	"sort"
+	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/logql"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // implements stores.Index
@@ -33,6 +38,9 @@ type IndexClientOptions struct {
 	// duplicates when chunks are written to multiple
 	// index buckets, which is of use in the (index-gateway|querier)
 	// but not worth the memory costs in the ingesters.
+	// NB(owen-d): This is NOT the bloom-filter feature developed late 2023 onwards,
+	// but a smaller bloom filter used internally for probabalistic deduping of series counts
+	// in the index stats() method across index buckets (which can have the same series)
 	UseBloomFilters bool
 }
 
@@ -65,6 +73,20 @@ func NewIndexClient(idx Index, opts IndexClientOptions, l Limits) *IndexClient {
 	}
 }
 
+func shardFromMatchers(matchers []*labels.Matcher) (cleaned []*labels.Matcher, res logql.Shard, found bool, err error) {
+	for i, matcher := range matchers {
+		if matcher.Name == astmapper.ShardLabel && matcher.Type == labels.MatchEqual {
+			shard, _, err := logql.ParseShard(matcher.Value)
+			if err != nil {
+				return nil, shard, true, err
+			}
+			return append(matchers[:i], matchers[i+1:]...), shard, true, nil
+		}
+	}
+
+	return matchers, logql.Shard{}, false, nil
+}
+
 // TODO(owen-d): This is a hack for compatibility with how the current query-mapping works.
 // Historically, Loki will read the index shard factor and the query planner will inject shard
 // labels accordingly.
@@ -74,23 +96,10 @@ func NewIndexClient(idx Index, opts IndexClientOptions, l Limits) *IndexClient {
 func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, index.FingerprintFilter, error) {
 	// first use withoutNameLabel to make a copy with the name label removed
 	matchers = withoutNameLabel(matchers)
-	s, shardLabelIndex, err := astmapper.ShardFromMatchers(matchers)
+
+	matchers, shard, found, err := shardFromMatchers(matchers)
 	if err != nil {
 		return nil, nil, err
-	}
-
-	var fpFilter index.FingerprintFilter
-	if s != nil {
-		matchers = append(matchers[:shardLabelIndex], matchers[shardLabelIndex+1:]...)
-		shard := index.ShardAnnotation{
-			Shard: uint32(s.Shard),
-			Of:    uint32(s.Of),
-		}
-		fpFilter = shard
-
-		if err := shard.Validate(); err != nil {
-			return nil, nil, err
-		}
 	}
 
 	if len(matchers) == 0 {
@@ -98,8 +107,10 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, index.Finger
 		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	}
 
-	return matchers, fpFilter, err
-
+	if found {
+		return matchers, &shard, nil
+	}
+	return matchers, nil, nil
 }
 
 // TODO(owen-d): synchronize logproto.ChunkRef and tsdb.ChunkRef so we don't have to convert.
@@ -269,6 +280,45 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 	return acc.Volumes(), nil
 }
 
+func (c *IndexClient) GetShards(ctx context.Context, userID string, from, through model.Time, targetBytesPerShard uint64, predicate chunk.Predicate) (*logproto.ShardsResponse, error) {
+
+	// TODO(owen-d): perf, this is expensive :(
+	var mtx sync.Mutex
+
+	m := make(map[model.Fingerprint]index.ChunkMetas, 1024)
+	if err := c.idx.ForSeries(ctx, userID, v1.FullBounds, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+		mtx.Lock()
+		m[fp] = append(m[fp], chks...)
+		mtx.Unlock()
+		return false
+	}, predicate.Matchers...); err != nil {
+		return nil, err
+	}
+
+	resp := &logproto.ShardsResponse{}
+
+	series := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(m)))
+	defer sharding.SizedFPsPool.Put(series)
+
+	for fp, chks := range m {
+		x := sharding.SizedFP{Fp: fp}
+		deduped := chks.Finalize()
+		x.Stats.Chunks = uint64(len(deduped))
+		resp.Statistics.Index.TotalChunks += int64(len(deduped))
+
+		for _, chk := range deduped {
+			x.Stats.Entries += uint64(chk.Entries)
+			x.Stats.Bytes += uint64(chk.KB << 10)
+		}
+
+		series = append(series, x)
+	}
+	sort.Sort(series)
+	resp.Shards = series.ShardsFor(targetBytesPerShard)
+
+	return resp, nil
+}
+
 // SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
 // This is only used for GetSeries implementation.
 // Todo we might want to pass it as a parameter to GetSeries instead.
@@ -292,4 +342,8 @@ func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
 	}
 
 	return dst
+}
+
+func (c *IndexClient) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
+	return c.idx, true
 }

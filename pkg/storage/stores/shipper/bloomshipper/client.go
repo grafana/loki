@@ -8,18 +8,20 @@ import (
 	"hash"
 	"io"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
-	"github.com/grafana/loki/pkg/util/encoding"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
 const (
@@ -241,6 +243,7 @@ type Client interface {
 	MetaClient
 	BlockClient
 	IsObjectNotFoundErr(err error) bool
+	ObjectClient() client.ObjectClient
 	Stop()
 }
 
@@ -256,13 +259,22 @@ type BloomClient struct {
 }
 
 func NewBloomClient(cfg bloomStoreConfig, client client.ObjectClient, logger log.Logger) (*BloomClient, error) {
+	fsResolver, err := NewShardedPrefixedResolver(cfg.workingDirs, defaultKeyResolver{})
+	if err != nil {
+		return nil, errors.Wrap(err, "creating fs resolver")
+	}
+
 	return &BloomClient{
 		KeyResolver: defaultKeyResolver{}, // TODO(owen-d): hook into schema, similar to `{,Parse}ExternalKey`
-		fsResolver:  NewPrefixedResolver(cfg.workingDir, defaultKeyResolver{}),
+		fsResolver:  fsResolver,
 		concurrency: cfg.numWorkers,
 		client:      client,
 		logger:      logger,
 	}, nil
+}
+
+func (b *BloomClient) ObjectClient() client.ObjectClient {
+	return b.client
 }
 
 func (b *BloomClient) IsObjectNotFoundErr(err error) bool {
@@ -311,7 +323,7 @@ func (b *BloomClient) GetBlock(ctx context.Context, ref BlockRef) (BlockDirector
 		return BlockDirectory{}, fmt.Errorf("failed to extract block file %s: %w", key, err)
 	}
 
-	return NewBlockDirectory(ref, path, b.logger), nil
+	return NewBlockDirectory(ref, path), nil
 }
 
 func (b *BloomClient) GetBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
@@ -406,4 +418,89 @@ func findPeriod(configs []config.PeriodConfig, ts model.Time) (config.DayTime, e
 		}
 	}
 	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", ts)
+}
+
+type listOpResult struct {
+	ts       time.Time
+	objects  []client.StorageObject
+	prefixes []client.StorageCommonPrefix
+}
+
+type listOpCache map[string]listOpResult
+
+type cachedListOpObjectClient struct {
+	client.ObjectClient
+	cache         listOpCache
+	mtx           sync.RWMutex
+	ttl, interval time.Duration
+	done          chan struct{}
+}
+
+func newCachedListOpObjectClient(oc client.ObjectClient, ttl, interval time.Duration) *cachedListOpObjectClient {
+	client := &cachedListOpObjectClient{
+		ObjectClient: oc,
+		cache:        make(listOpCache),
+		done:         make(chan struct{}),
+		ttl:          ttl,
+		interval:     interval,
+	}
+
+	go func(c *cachedListOpObjectClient) {
+		ticker := time.NewTicker(c.interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-c.done:
+				return
+			case <-ticker.C:
+				c.mtx.Lock()
+				for k := range c.cache {
+					if time.Since(c.cache[k].ts) > c.ttl {
+						delete(c.cache, k)
+					}
+				}
+				c.mtx.Unlock()
+			}
+		}
+	}(client)
+
+	return client
+}
+
+func (c *cachedListOpObjectClient) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+	if delimiter != "" {
+		return nil, nil, fmt.Errorf("does not support LIST calls with delimiter: %s", delimiter)
+	}
+	c.mtx.RLock()
+	cached, found := c.cache[prefix]
+	c.mtx.RUnlock()
+	if found {
+		return cached.objects, cached.prefixes, nil
+	}
+
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	objects, prefixes, err := c.ObjectClient.List(ctx, prefix, delimiter)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	c.cache[prefix] = listOpResult{
+		ts:       time.Now(),
+		objects:  objects,
+		prefixes: prefixes,
+	}
+
+	return objects, prefixes, err
+}
+
+func (c *cachedListOpObjectClient) Stop() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	close(c.done)
+	c.cache = nil
+	c.ObjectClient.Stop()
 }

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/storage/bucket/http"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/http"
 )
 
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
@@ -69,7 +69,7 @@ http:
 				ContainerName:           "test-container-name",
 				Endpoint:                "test-endpoint-suffix",
 				MaxRetries:              1,
-				MaxRetryDelay: 500000000,
+				MaxRetryDelay:           500000000,
 				HTTP: HTTPConfig{
 					Config: http.Config{
 						IdleConnTimeout:       2 * time.Second,

@@ -10,10 +10,10 @@ import (
 
 	"github.com/grafana/dskit/multierror"
 
-	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/iter"
 
-	"github.com/grafana/loki/pkg/util/encoding"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/encoding"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 /*
@@ -48,12 +48,12 @@ func NewBloomTokenizer(nGramLen, nGramSkip int, metrics *Metrics) *BloomTokenize
 	}
 }
 
-func (bt *BloomTokenizer) GetNGramLength() uint64 {
-	return uint64(bt.lineTokenizer.N)
+func (bt *BloomTokenizer) N() uint64 {
+	return uint64(bt.lineTokenizer.N())
 }
 
-func (bt *BloomTokenizer) GetNGramSkip() uint64 {
-	return uint64(bt.lineTokenizer.Skip)
+func (bt *BloomTokenizer) SkipFactor() uint64 {
+	return uint64(bt.lineTokenizer.SkipFactor())
 }
 
 func clearCache(cache map[string]interface{}) {
@@ -115,7 +115,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 			chk                    = chks.At()
 			itr                    = chk.Itr
 		)
-		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N, chk.Ref, tokenBuf)
+		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N(), chk.Ref, tokenBuf)
 
 		// Iterate over lines in the chunk
 		for itr.Next() && itr.Error() == nil {
