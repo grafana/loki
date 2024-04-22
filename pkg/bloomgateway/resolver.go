@@ -7,10 +7,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/prometheus/common/model"
 )
 
 type BlockResolver interface {
