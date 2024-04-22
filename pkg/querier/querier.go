@@ -13,34 +13,32 @@ import (
 	"github.com/axiomhq/hyperloglog"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
-	"github.com/opentracing/opentracing-go"
-	"golang.org/x/exp/slices"
-
-	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/storage/stores/index"
-	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/indexgateway"
-
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/exp/slices"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	listutil "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
@@ -1020,27 +1018,39 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 
 	// TODO(twhitney): converting from a step to a duration should be abstracted and reused,
 	// doing this in a few places now.
-	streams, err := streamsForFieldDetection(iters, req.LineLimit, time.Duration(req.Step*1e6))
+	streams, err := streamsForFieldDetection(iters, req.LineLimit)
 	if err != nil {
 		return nil, err
 	}
 
 	detectedFields := parseDetectedFields(ctx, req.FieldLimit, streams)
 
+	//TODO: detected field needs to contain the sketch
+	// make sure response to frontend is GRPC
+	//only want cardinality in JSON
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
 	for k, v := range detectedFields {
+		sketch, err := v.sketch.MarshalBinary()
+		if err != nil {
+			level.Warn(q.logger).Log("msg", "failed to marshal hyperloglog sketch", "err", err)
+			continue
+		}
+
 		fields[fieldCount] = &logproto.DetectedField{
 			Label:       k,
 			Type:        v.fieldType,
 			Cardinality: v.Estimate(),
+			Sketch:      sketch,
 		}
 
 		fieldCount++
 	}
 
+	//TODO: detected fields response needs to include the sketch
 	return &logproto.DetectedFieldsResponse{
-		Fields: fields,
+		Fields:     fields,
+		FieldLimit: req.GetFieldLimit(),
 	}, nil
 }
 
@@ -1064,6 +1074,10 @@ func (p *parsedFields) Insert(value string) {
 
 func (p *parsedFields) Estimate() uint64 {
 	return p.sketch.Estimate()
+}
+
+func (p *parsedFields) Marshal() ([]byte, error) {
+	return p.sketch.MarshalBinary()
 }
 
 func (p *parsedFields) DetermineType(value string) {
@@ -1100,7 +1114,6 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 	fieldCount := uint32(0)
 
 	for _, stream := range streams {
-
 		level.Debug(spanlogger.FromContext(ctx)).Log(
 			"detected_fields", "true",
 			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
@@ -1108,12 +1121,15 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 		for _, entry := range stream.Entries {
 			detected := parseLine(entry.Line)
 			for k, vals := range detected {
-				if fieldCount >= limit {
-					return detectedFields
+				df, ok := detectedFields[k]
+				if !ok && fieldCount < limit {
+					df = newParsedFields()
+					detectedFields[k] = df
+					fieldCount++
 				}
 
-				if _, ok := detectedFields[k]; !ok {
-					detectedFields[k] = newParsedFields()
+				if df == nil {
+					continue
 				}
 
 				for _, v := range vals {
@@ -1128,8 +1144,6 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 				level.Debug(spanlogger.FromContext(ctx)).Log(
 					"detected_fields", "true",
 					"msg", fmt.Sprintf("detected field %s with %d values", k, len(vals)))
-
-				fieldCount++
 			}
 		}
 	}
@@ -1172,11 +1186,11 @@ func parseLine(line string) map[string][]string {
 	return result
 }
 
-// readStreams reads the streams from the iterator and returns them sorted.
+// streamsForFieldDetection reads the streams from the iterator and returns them sorted.
 // If categorizeLabels is true, the stream labels contains just the stream labels and entries inside each stream have their
 // structuredMetadata and parsed fields populated with structured metadata labels plus the parsed labels respectively.
 // Otherwise, the stream labels are the whole series labels including the stream labels, structured metadata labels and parsed labels.
-func streamsForFieldDetection(i iter.EntryIterator, size uint32, interval time.Duration) (logqlmodel.Streams, error) {
+func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
 	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
@@ -1185,14 +1199,12 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32, interval time.D
 	for respSize < size && i.Next() {
 		streamLabels, entry := i.Labels(), i.Entry()
 
-		// Always going backward
-		shouldOutput := entry.Timestamp.Equal(lastEntry.Add(-interval)) ||
-			entry.Timestamp.Before(lastEntry.Add(-interval))
+		// Always going backward as the direction for field detection is hard-coded to BACKWARD
+		shouldOutput := entry.Timestamp.Equal(lastEntry) || entry.Timestamp.Before(lastEntry)
 
-		// If step == 0 output every line.
 		// If lastEntry.Unix < 0 this is the first pass through the loop and we should output the line.
 		// Then check to see if the entry is equal to, or past a forward step
-		if interval == 0 || lastEntry.Unix() < 0 || shouldOutput {
+		if lastEntry.Unix() < 0 || shouldOutput {
 			stream, ok := streams[streamLabels]
 			if !ok {
 				stream = &logproto.Stream{

@@ -17,6 +17,7 @@ import (
 	"golang.org/x/exp/maps"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/storage/detected"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/grafana/dskit/httpgrpc"
@@ -972,9 +973,12 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		return req.WithContext(ctx), nil
 	case *DetectedFieldsRequest:
 		params := url.Values{
-			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
-			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
-			"query": []string{request.GetQuery()},
+			"query":       []string{request.GetQuery()},
+			"start":       []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":         []string{fmt.Sprintf("%d", request.End.UnixNano())},
+			"line_limit":  []string{fmt.Sprintf("%d", request.GetLineLimit())},
+			"field_limit": []string{fmt.Sprintf("%d", request.GetFieldLimit())},
+			"step":        []string{fmt.Sprintf("%d", request.GetStep())},
 		}
 
 		u := &url.URL{
@@ -1587,6 +1591,29 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Response: seriesvolume.Merge(resps, resp0.Response.Limit),
 			Headers:  headers,
 		}, nil
+	case *DetectedFieldsResponse:
+		resp0 := responses[0].(*DetectedFieldsResponse)
+		headers := resp0.Headers
+		fieldLimit := resp0.Response.GetFieldLimit()
+
+		fields := []*logproto.DetectedField{}
+		for _, r := range responses {
+			fields = append(fields, r.(*DetectedFieldsResponse).Response.Fields...)
+		}
+
+		mergedFields, err := detected.MergeFields(fields, fieldLimit)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return &DetectedFieldsResponse{
+			Response: &logproto.DetectedFieldsResponse{
+				Fields:     mergedFields,
+				FieldLimit: 0,
+			},
+			Headers: headers,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unknown response type (%T) in merging responses", responses[0])
 	}
@@ -1781,8 +1808,12 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 		return &paramsStatsWrapper{
 			IndexStatsRequest: r,
 		}, nil
+	case *DetectedFieldsRequest:
+		return &paramsDetectedFieldsWrapper{
+			DetectedFieldsRequest: r,
+		}, nil
 	default:
-		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got (%T)", r)
+		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, *DetectedFieldsRequest, got (%T)", r)
 	}
 }
 
@@ -1950,6 +1981,47 @@ func (p paramsStatsWrapper) Shards() []string {
 	return make([]string, 0)
 }
 
+type paramsDetectedFieldsWrapper struct {
+	*DetectedFieldsRequest
+}
+
+func (p paramsDetectedFieldsWrapper) QueryString() string {
+	return p.GetQuery()
+}
+
+func (p paramsDetectedFieldsWrapper) GetExpression() syntax.Expr {
+	expr, err := syntax.ParseExpr(p.GetQuery())
+	if err != nil {
+		return nil
+	}
+
+	return expr
+}
+
+func (p paramsDetectedFieldsWrapper) Start() time.Time {
+	return p.GetStartTs()
+}
+
+func (p paramsDetectedFieldsWrapper) End() time.Time {
+	return p.GetEndTs()
+}
+
+func (p paramsDetectedFieldsWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+
+func (p paramsDetectedFieldsWrapper) Interval() time.Duration {
+	return 0
+}
+
+func (p paramsDetectedFieldsWrapper) Direction() logproto.Direction {
+	return logproto.BACKWARD
+}
+func (p paramsDetectedFieldsWrapper) Limit() uint32 { return p.DetectedFieldsRequest.LineLimit }
+func (p paramsDetectedFieldsWrapper) Shards() []string {
+	return make([]string, 0)
+}
+
 func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryrangebase.PrometheusResponseHeader {
 	var promHeaders []queryrangebase.PrometheusResponseHeader
 	for h, hv := range httpHeaders {
@@ -2071,12 +2143,15 @@ type DetectedFieldsRequest struct {
 	path string
 }
 
-func NewDetectedFieldsRequest(start, end time.Time, query, path string) *DetectedFieldsRequest {
+func NewDetectedFieldsRequest(start, end time.Time, lineLimit, fieldLimit uint32, step int64, query, path string) *DetectedFieldsRequest {
 	return &DetectedFieldsRequest{
 		DetectedFieldsRequest: logproto.DetectedFieldsRequest{
-			Start: start,
-			End:   end,
-			Query: query,
+			Start:      start,
+			End:        end,
+			Query:      query,
+			LineLimit:  lineLimit,
+			FieldLimit: fieldLimit,
+			Step:       step,
 		},
 		path: path,
 	}
@@ -2103,7 +2178,15 @@ func (r *DetectedFieldsRequest) GetStartTs() time.Time {
 }
 
 func (r *DetectedFieldsRequest) GetStep() int64 {
-	return 0
+	return r.Step
+}
+
+func (r *DetectedFieldsRequest) GetLineLimit() uint32 {
+	return r.LineLimit
+}
+
+func (r *DetectedFieldsRequest) GetFieldLimit() uint32 {
+	return r.FieldLimit
 }
 
 func (r *DetectedFieldsRequest) Path() string {
@@ -2132,6 +2215,11 @@ func (r *DetectedFieldsRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
 		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+		otlog.String("query", r.GetQuery()),
+		otlog.Int64("step (ms)", r.GetStep()),
+		otlog.Int64("line_limit", int64(r.GetLineLimit())),
+		otlog.Int64("field_limit", int64(r.GetFieldLimit())),
+		otlog.String("step", fmt.Sprintf("%d", r.GetStep())),
 	)
 }
 

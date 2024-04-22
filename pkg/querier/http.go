@@ -386,7 +386,8 @@ func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.De
 			"msg", "queried store for detected fields that does not support it, no response from querier.DetectedFields",
 		)
 		return &logproto.DetectedFieldsResponse{
-			Fields: []*logproto.DetectedField{},
+			Fields:     []*logproto.DetectedField{},
+			FieldLimit: req.GetFieldLimit(),
 		}, nil
 	}
 	return resp, nil
