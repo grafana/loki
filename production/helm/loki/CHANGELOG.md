@@ -393,6 +393,10 @@ Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs)
 
 - [BUGFIX] Add missing OTLP endpoint to nginx config
 
+## 6.3.4
+
+- [BUGFIX] Updated the DNS Egress CiliumNetworkPolicy to correctly allow DNS traffic.
+
 ## 6.3.3
 
 - [ENHANCEMENT] make the singlebinary set 0 the replicas number of backend, write,read.
