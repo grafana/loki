@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
+	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"google.golang.org/grpc/codes"
@@ -989,5 +990,67 @@ func extractLogLevelFromLogLine(log string) string {
 		return logLevelDebug
 	}
 
+	return logLevelUnknown
+}
+
+func parseBothAndExtractLogLevelFromLogLine(log string) string {
+	logFmtParser := logql_log.NewLogfmtParser(true, false)
+	jsonParser := logql_log.NewJSONParser()
+
+	allLabels := logql_log.NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
+	_, logfmtSuccess := logFmtParser.Process(0, []byte(log), allLabels)
+	if !logfmtSuccess || allLabels.HasErr() {
+		allLabels.Reset()
+		_, jsonSuccess := jsonParser.Process(0, []byte(log), allLabels)
+		if !jsonSuccess || allLabels.HasErr() {
+			return detectLevelFromLogLine(log)
+		}
+	}
+
+	// This is a special case as a line with no labels is also treated a valid logfmt line by the parser
+	if allLabels.LabelsResult().Labels().IsEmpty() {
+		return detectLevelFromLogLine(log)
+	}
+
+	for _, l := range allLabels.LabelsResult().Labels() {
+		if strings.ToLower(l.Name) == "level" || strings.ToLower(l.Name) == "severity" {
+			switch strings.ToLower(l.Value) {
+			case "fatal":
+				return logLevelFatal
+			case "error", "err":
+				return logLevelError
+			case "warn", "wrn":
+				return logLevelWarn
+			case "info", "inf":
+				return logLevelInfo
+			case "debug", "dbg":
+				return logLevelDebug
+			case "trace", "trc":
+				return logLevelTrace
+			case "critical":
+				return logLevelCritical
+			default:
+				return logLevelUnknown
+			}
+		}
+	}
+	return logLevelUnknown
+}
+
+func detectLevelFromLogLine(log string) string {
+	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
+		strings.Contains(log, "error") || strings.Contains(log, "ERROR") {
+		return logLevelError
+	}
+	if strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
+		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
+		return logLevelWarn
+	}
+	if strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") {
+		return logLevelCritical
+	}
+	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
+		return logLevelDebug
+	}
 	return logLevelUnknown
 }

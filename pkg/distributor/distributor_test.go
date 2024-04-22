@@ -1637,28 +1637,28 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 		{
 			name: "json log line with an error",
 			entry: logproto.Entry{
-				Line: `{"foo":"bar",msg:"message with keyword error but it should not get picked up","level":"critical"}`,
+				Line: `{"foo":"bar","msg":"message with keyword error but it should not get picked up","level":"critical"}`,
 			},
 			expectedLogLevel: logLevelCritical,
 		},
 		{
 			name: "json log line with an error",
 			entry: logproto.Entry{
-				Line: `{"FOO":"bar",MSG:"message with keyword error but it should not get picked up","LEVEL":"Critical"}`,
+				Line: `{"FOO":"bar","MSG":"message with keyword error but it should not get picked up","LEVEL":"Critical"}`,
 			},
 			expectedLogLevel: logLevelCritical,
 		},
 		{
 			name: "json log line with an warning",
 			entry: logproto.Entry{
-				Line: `{"foo":"bar",msg:"message with keyword warn but it should not get picked up","level":"warn"}`,
+				Line: `{"foo":"bar","msg":"message with keyword warn but it should not get picked up","level":"warn"}`,
 			},
 			expectedLogLevel: logLevelWarn,
 		},
 		{
 			name: "json log line with an error in block case",
 			entry: logproto.Entry{
-				Line: `{"foo":"bar",msg:"message with keyword warn but it should not get picked up","level":"ERR"}`,
+				Line: `{"foo":"bar","msg":"message with keyword warn but it should not get picked up","level":"ERR"}`,
 			},
 			expectedLogLevel: logLevelError,
 		},
@@ -1728,5 +1728,41 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		level := extractLogLevelFromLogLine(logLine)
 		require.Equal(b, logLevelUnknown, level)
+	}
+}
+
+func Benchmark_parseBothExtractLogLevelFromLogLineJson(b *testing.B) {
+	logLine := `{"msg": "something" , "level": "error", "id": "1"}`
+
+	for i := 0; i < b.N; i++ {
+		level := parseBothAndExtractLogLevelFromLogLine(logLine)
+		require.Equal(b, logLevelError, level)
+	}
+}
+
+func Benchmark_parseBothExtractLogLevelFromLogLineLogfmt(b *testing.B) {
+	logLine := `FOO=bar MSG="message with keyword error but it should not get picked up" LEVEL=inFO`
+
+	for i := 0; i < b.N; i++ {
+		level := parseBothAndExtractLogLevelFromLogLine(logLine)
+		require.Equal(b, logLevelInfo, level)
+	}
+}
+
+func Benchmark_noParseExtractLogLevelFromLogLineJson(b *testing.B) {
+	logLine := `{"msg": "something" , "level": "error", "id": "1"}`
+
+	for i := 0; i < b.N; i++ {
+		level := extractLogLevelFromLogLine(logLine)
+		require.Equal(b, logLevelError, level)
+	}
+}
+
+func Benchmark_noParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
+	logLine := `FOO=bar MSG="message with keyword error but it should not get picked up" LEVEL=inFO`
+
+	for i := 0; i < b.N; i++ {
+		level := extractLogLevelFromLogLine(logLine)
+		require.Equal(b, logLevelInfo, level)
 	}
 }
