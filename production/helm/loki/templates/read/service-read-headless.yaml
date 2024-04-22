@@ -1,5 +1,5 @@
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{ if $isSimpleScalable }}
+{{- if and $isSimpleScalable (not (include "loki.deployment.isSingleBinary" .)) }}
 ---
 apiVersion: v1
 kind: Service
