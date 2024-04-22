@@ -5,12 +5,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - name: Get changed files
-      # we need continue on error because the git diff | grep pipe can return a non-zero error code if no result is found
-      continue-on-error: true
-      id: changed-files
-      run: |
-            echo "changed_files=$(git diff --name-only main --  .github/workflows/ | grep releases | xargs)" >> $GITHUB_OUTPUT
     - name: setup go
       uses: actions/setup-go@v5
       with:
