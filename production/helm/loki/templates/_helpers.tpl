@@ -31,6 +31,13 @@ singleBinary fullname
 {{- end -}}
 
 {{/*
+Return true if deployment mode is SingleBinary
+*/}}
+{{- define "loki.deployment.isSingleBinary" -}}
+  {{- eq .Values.deploymentMode "SingleBinary" }}
+{{- end -}}
+
+{{/*
 Resource name template
 Params:
   ctx = . context
