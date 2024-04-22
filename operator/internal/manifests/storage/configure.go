@@ -29,23 +29,17 @@ var (
 // based on the object storage type. Currently supported amendments:
 // - All: Ensure object storage secret mounted and auth projected as env vars.
 // - GCS: Ensure env var GOOGLE_APPLICATION_CREDENTIALS in container
-// - S3 & Swift: Ensure mounting custom CA configmap if any TLSConfig given
+// - S3: Ensure mounting custom CA configmap if any TLSConfig given
 func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 	switch opts.SharedStore {
-	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS:
+	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS, lokiv1.ObjectStorageSecretSwift:
 		return configureDeployment(d, opts)
 	case lokiv1.ObjectStorageSecretS3:
 		err := configureDeployment(d, opts)
 		if err != nil {
 			return err
 		}
-		return configureDeploymentCA(d, opts.TLS, lokiv1.ObjectStorageSecretS3)
-	case lokiv1.ObjectStorageSecretSwift:
-		err := configureDeployment(d, opts)
-		if err != nil {
-			return err
-		}
-		return configureDeploymentCA(d, opts.TLS, lokiv1.ObjectStorageSecretSwift)
+		return configureDeploymentCA(d, opts.TLS)
 	default:
 		return nil
 	}
@@ -55,21 +49,16 @@ func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 // based on the object storage type. Currently supported amendments:
 // - All: Ensure object storage secret mounted and auth projected as env vars.
 // - GCS: Ensure env var GOOGLE_APPLICATION_CREDENTIALS in container
-// - S3 & Swift: Ensure mounting custom CA configmap if any TLSConfig given
+// - S3: Ensure mounting custom CA configmap if any TLSConfig given
 func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
 	switch opts.SharedStore {
-	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS:
+	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS, lokiv1.ObjectStorageSecretSwift:
 		return configureStatefulSet(d, opts)
 	case lokiv1.ObjectStorageSecretS3:
 		if err := configureStatefulSet(d, opts); err != nil {
 			return err
 		}
-		return configureStatefulSetCA(d, opts.TLS, lokiv1.ObjectStorageSecretS3)
-	case lokiv1.ObjectStorageSecretSwift:
-		if err := configureStatefulSet(d, opts); err != nil {
-			return err
-		}
-		return configureStatefulSetCA(d, opts.TLS, lokiv1.ObjectStorageSecretSwift)
+		return configureStatefulSetCA(d, opts.TLS)
 	default:
 		return nil
 	}
@@ -86,22 +75,16 @@ func configureDeployment(d *appsv1.Deployment, opts Options) error {
 	return nil
 }
 
-// ConfigureDeploymentCA merges a S3 or Swift CA ConfigMap volume into the deployment spec.
-func configureDeploymentCA(d *appsv1.Deployment, tls *TLSConfig, secretType lokiv1.ObjectStorageSecretType) error {
+// ConfigureDeploymentCA merges a S3 CA ConfigMap volume into the deployment spec.
+func configureDeploymentCA(d *appsv1.Deployment, tls *TLSConfig) error {
 	if tls == nil {
 		return nil
 	}
 
-	var p corev1.PodSpec
-	switch secretType {
-	case lokiv1.ObjectStorageSecretS3:
-		p = ensureCAForObjectStorage(&d.Spec.Template.Spec, tls, lokiv1.ObjectStorageSecretS3)
-	case lokiv1.ObjectStorageSecretSwift:
-		p = ensureCAForObjectStorage(&d.Spec.Template.Spec, tls, lokiv1.ObjectStorageSecretSwift)
-	}
+	p := ensureCAForS3(&d.Spec.Template.Spec, tls)
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
-		return kverrors.Wrap(err, "failed to merge object storage ca options ")
+		return kverrors.Wrap(err, "failed to merge s3 object storage ca options ")
 	}
 
 	return nil
@@ -118,22 +101,16 @@ func configureStatefulSet(s *appsv1.StatefulSet, opts Options) error {
 	return nil
 }
 
-// ConfigureStatefulSetCA merges a S3 or Swift CA ConfigMap volume into the statefulset spec.
-func configureStatefulSetCA(s *appsv1.StatefulSet, tls *TLSConfig, secretType lokiv1.ObjectStorageSecretType) error {
+// ConfigureStatefulSetCA merges a S3 CA ConfigMap volume into the statefulset spec.
+func configureStatefulSetCA(s *appsv1.StatefulSet, tls *TLSConfig) error {
 	if tls == nil {
 		return nil
 	}
-	var p corev1.PodSpec
 
-	switch secretType {
-	case lokiv1.ObjectStorageSecretS3:
-		p = ensureCAForObjectStorage(&s.Spec.Template.Spec, tls, lokiv1.ObjectStorageSecretS3)
-	case lokiv1.ObjectStorageSecretSwift:
-		p = ensureCAForObjectStorage(&s.Spec.Template.Spec, tls, lokiv1.ObjectStorageSecretSwift)
-	}
+	p := ensureCAForS3(&s.Spec.Template.Spec, tls)
 
 	if err := mergo.Merge(&s.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
-		return kverrors.Wrap(err, "failed to merge object storage ca options ")
+		return kverrors.Wrap(err, "failed to merge s3 object storage ca options ")
 	}
 
 	return nil
@@ -269,7 +246,7 @@ func serverSideEncryption(opts Options) []corev1.EnvVar {
 	}
 }
 
-func ensureCAForObjectStorage(p *corev1.PodSpec, tls *TLSConfig, secretType lokiv1.ObjectStorageSecretType) corev1.PodSpec {
+func ensureCAForS3(p *corev1.PodSpec, tls *TLSConfig) corev1.PodSpec {
 	container := p.Containers[0].DeepCopy()
 	volumes := p.Volumes
 
@@ -290,16 +267,9 @@ func ensureCAForObjectStorage(p *corev1.PodSpec, tls *TLSConfig, secretType loki
 		MountPath: caDirectory,
 	})
 
-	switch secretType {
-	case lokiv1.ObjectStorageSecretS3:
-		container.Args = append(container.Args,
-			fmt.Sprintf("-s3.http.ca-file=%s", path.Join(caDirectory, tls.Key)),
-		)
-	case lokiv1.ObjectStorageSecretSwift:
-		container.Args = append(container.Args,
-			fmt.Sprintf("-swift.http.ca-file=%s", path.Join(caDirectory, tls.Key)),
-		)
-	}
+	container.Args = append(container.Args,
+		fmt.Sprintf("-s3.http.ca-file=%s", path.Join(caDirectory, tls.Key)),
+	)
 
 	return corev1.PodSpec{
 		Containers: []corev1.Container{
