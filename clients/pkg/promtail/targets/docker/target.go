@@ -174,7 +174,8 @@ func (t *Target) process(frames chan []byte, logStream string) {
 	// If max_line_size is disabled (set to 0), we can in theory have infinite buffer growth.
 	// We can't guarantee that there's any bound on Docker logs, they could be an infinite stream
 	// without newlines for all we know. To protect promtail from OOM in that case, we introduce
-	// this safety limit.
+	// this safety limit into the Docker target, inspired by the default Loki max_line_size value:
+	// https://grafana.com/docs/loki/latest/configure/#limits_config
 	if sizeLimit == 0 {
 		sizeLimit = 256 * 1024
 	}
