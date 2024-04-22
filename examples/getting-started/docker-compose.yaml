@@ -6,7 +6,7 @@ networks:
 
 services:
   read:
-    image: grafana/loki:2.9.2
+    image: grafana/loki:3.0.0
     command: "-config.file=/etc/loki/config.yaml -target=read"
     ports:
       - 3101:3100
@@ -27,7 +27,7 @@ services:
           - loki
 
   write:
-    image: grafana/loki:2.9.2
+    image: grafana/loki:3.0.0
     command: "-config.file=/etc/loki/config.yaml -target=write"
     ports:
       - 3102:3100
@@ -46,7 +46,7 @@ services:
       <<: *loki-dns
 
   promtail:
-    image: grafana/promtail:2.9.2
+    image: grafana/promtail:3.0.0
     volumes:
       - ./promtail-local-config.yaml:/etc/promtail/config.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
@@ -118,6 +118,20 @@ services:
     networks:
       - loki
 
+  backend:
+    image: grafana/loki:3.0.0
+    volumes:
+      - ./loki-config.yaml:/etc/loki/config.yaml
+    ports:
+      - "3100"
+      - "7946"
+    command: "-config.file=/etc/loki/config.yaml -target=backend -legacy-read-mode=false"
+    depends_on:
+      - gateway
+    networks:
+      - loki
+    
+
   gateway:
     image: nginx:latest
     depends_on:
@@ -186,6 +200,7 @@ services:
       retries: 5
     networks:
       - loki
+  
 
   flog:
     image: mingrammer/flog
