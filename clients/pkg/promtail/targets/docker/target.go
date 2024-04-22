@@ -167,7 +167,7 @@ func (t *Target) process(frames chan []byte, logStream string) {
 	var (
 		sizeLimit            = t.maxLineSize
 		discardRemainingLine = false
-		payloadAcc           = new(strings.Builder)
+		payloadAcc           strings.Builder
 		curTs                = time.Now()
 	)
 
@@ -199,7 +199,7 @@ func (t *Target) process(frames chan []byte, logStream string) {
 			discardRemainingLine = false
 			if payloadAcc.Len() > 0 {
 				t.handleOutput(logStream, curTs, payloadAcc.String())
-				payloadAcc = new(strings.Builder)
+				payloadAcc.Reset()
 			}
 		}
 
@@ -231,7 +231,7 @@ func (t *Target) process(frames chan []byte, logStream string) {
 		if isEol || payloadAcc.Len() > sizeLimit {
 			discardRemainingLine = !isEol
 			t.handleOutput(logStream, curTs, payloadAcc.String())
-			payloadAcc = new(strings.Builder)
+			payloadAcc.Reset()
 		}
 	}
 }
