@@ -1,5 +1,5 @@
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{- if and $isSimpleScalable (gt (int .Values.backend.replicas) 1) (not .Values.read.legacyReadTarget ) }}
+{{- if and $isSimpleScalable (gt (int .Values.backend.replicas) 1) (not .Values.read.legacyReadTarget ) (not (include "loki.deployment.isSingleBinary" .)) }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

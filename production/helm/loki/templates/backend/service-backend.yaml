@@ -1,5 +1,5 @@
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) }}
+{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) (not (include "loki.deployment.isSingleBinary" .)) }}
 ---
 apiVersion: v1
 kind: Service

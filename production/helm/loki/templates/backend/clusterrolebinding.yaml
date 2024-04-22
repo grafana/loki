@@ -1,5 +1,5 @@
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{- if and $isSimpleScalable (not .Values.rbac.namespaced) }}
+{{- if and $isSimpleScalable (not .Values.rbac.namespaced) (not (include "loki.deployment.isSingleBinary" .)) }}
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:

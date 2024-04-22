@@ -1,6 +1,6 @@
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- $autoscalingv2 := .Capabilities.APIVersions.Has "autoscaling/v2" -}}
-{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) ( .Values.backend.autoscaling.enabled ) }}
+{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) ( .Values.backend.autoscaling.enabled ) (not (include "loki.deployment.isSingleBinary" .)) }}
 {{- if $autoscalingv2 }}
 apiVersion: autoscaling/v2
 {{- else }}
