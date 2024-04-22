@@ -30,11 +30,11 @@ type Config struct {
 
 	QuerierID string `yaml:"id"`
 
-	QueryFrontendGRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
+	QueryFrontendGRPCClientConfig grpcclient.Config `yaml:"grpc_client_config" doc:"description=Configures the gRPC client used to communicate between the querier and the query-frontend. If 'use_separated_clients' is false, this config is used for communicating with both frontend and scheduler."`
 
-	QuerySchedulerGRPCClientConfig grpcclient.Config `yaml:"query_scheduler_grpc_client_config"`
+	QuerySchedulerGRPCClientConfig grpcclient.Config `yaml:"query_scheduler_grpc_client_config" doc:"description=Configures the gRPC client used to communicate between the querier and the query-scheduler. If 'use_separated_clients' is false, this config is ignored."`
 
-	UseSeparatedClients bool `yaml:"uses_separated_clients"`
+	UseSeparatedClients bool `yaml:"uses_separated_clients" doc:"description=If set to true, querier will use 'query_scheduler_grpc_client_config' to communicate with the scheduler. Otherwise, 'query_scheduler_grpc_client_config' is ignored and 'grpc_client_config' is used instead."`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -42,7 +42,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.FrontendAddress, "querier.frontend-address", "", "Address of query frontend service, in host:port format. If -querier.scheduler-address is set as well, querier will use scheduler instead. Only one of -querier.frontend-address or -querier.scheduler-address can be set. If neither is set, queries are only received via HTTP endpoint.")
 	f.DurationVar(&cfg.DNSLookupPeriod, "querier.dns-lookup-period", 3*time.Second, "How often to query DNS for query-frontend or query-scheduler address. Also used to determine how often to poll the scheduler-ring for addresses if the scheduler-ring is configured.")
 	f.StringVar(&cfg.QuerierID, "querier.id", "", "Querier ID, sent to frontend service to identify requests from the same querier. Defaults to hostname.")
-	f.BoolVar(&cfg.UseSeparatedClients, "querier.use-separated-clients", false, "Wether to use separated clients for frontend and scheduler. If set to true, querier will use separated clients for frontend and scheduler. If set to false, querier will use the same client for both frontend and scheduler.")
+	f.BoolVar(&cfg.UseSeparatedClients, "querier.use-separated-clients", false, "Whether to use separated clients for frontend and scheduler. If set to true, querier will use separated clients for frontend and scheduler. If set to false, querier will use the same client for both frontend and scheduler.")
 
 	cfg.QueryFrontendGRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
 	cfg.QuerySchedulerGRPCClientConfig.RegisterFlagsWithPrefix("querier.scheduler-client", f)
