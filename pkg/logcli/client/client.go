@@ -28,16 +28,17 @@ import (
 )
 
 const (
-	queryPath         = "/loki/api/v1/query"
-	queryRangePath    = "/loki/api/v1/query_range"
-	labelsPath        = "/loki/api/v1/labels"
-	labelValuesPath   = "/loki/api/v1/label/%s/values"
-	seriesPath        = "/loki/api/v1/series"
-	tailPath          = "/loki/api/v1/tail"
-	statsPath         = "/loki/api/v1/index/stats"
-	volumePath        = "/loki/api/v1/index/volume"
-	volumeRangePath   = "/loki/api/v1/index/volume_range"
-	defaultAuthHeader = "Authorization"
+	queryPath          = "/loki/api/v1/query"
+	queryRangePath     = "/loki/api/v1/query_range"
+	labelsPath         = "/loki/api/v1/labels"
+	labelValuesPath    = "/loki/api/v1/label/%s/values"
+	seriesPath         = "/loki/api/v1/series"
+	tailPath           = "/loki/api/v1/tail"
+	statsPath          = "/loki/api/v1/index/stats"
+	volumePath         = "/loki/api/v1/index/volume"
+	volumeRangePath    = "/loki/api/v1/index/volume_range"
+	detectedFieldsPath = "/loki/api/v1/detected_fields"
+	defaultAuthHeader  = "Authorization"
 )
 
 var userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
@@ -54,6 +55,7 @@ type Client interface {
 	GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error)
 	GetVolume(query *volume.Query) (*loghttp.QueryResponse, error)
 	GetVolumeRange(query *volume.Query) (*loghttp.QueryResponse, error)
+	GetDetectedFields(queryStr string, fieldLimit, lineLimit int, start, end time.Time, step time.Duration, quiet bool) (*loghttp.DetectedFieldsResponse, error)
 }
 
 // Tripperware can wrap a roundtripper.
@@ -224,7 +226,36 @@ func (c *DefaultClient) getVolume(path string, query *volume.Query) (*loghttp.Qu
 	return &resp, nil
 }
 
-func (c *DefaultClient) doQuery(path string, query string, quiet bool) (*loghttp.QueryResponse, error) {
+func (c *DefaultClient) GetDetectedFields(
+	queryStr string,
+	fieldLimit, lineLimit int,
+	start, end time.Time,
+  step time.Duration,
+	quiet bool,
+) (*loghttp.DetectedFieldsResponse, error) {
+	qsb := util.NewQueryStringBuilder()
+	qsb.SetString("query", queryStr)
+	qsb.SetInt("field_limit", int64(fieldLimit))
+	qsb.SetInt("line_limit", int64(lineLimit))
+	qsb.SetInt("start", start.UnixNano())
+	qsb.SetInt("end", end.UnixNano())
+	qsb.SetString("step", step.String())
+
+	var err error
+	var r loghttp.DetectedFieldsResponse
+
+	if err = c.doRequest(detectedFieldsPath, qsb.Encode(), quiet, &r); err != nil {
+		return nil, err
+	}
+
+	return &r, nil
+}
+
+func (c *DefaultClient) doQuery(
+	path string,
+	query string,
+	quiet bool,
+) (*loghttp.QueryResponse, error) {
 	var err error
 	var r loghttp.QueryResponse
 
