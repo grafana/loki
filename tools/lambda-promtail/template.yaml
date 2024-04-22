@@ -13,6 +13,10 @@ Parameters:
     Description: The maximum of concurrent executions you want to reserve for the function.
     Type: Number
     Default: 2
+  MaximumEventAgeInSeconds:
+    Description: The maximum age of a request that Lambda sends to a function for processing.
+    Type: Number
+    Default: 21600
   Username:
     Description: The basic auth username, necessary if writing directly to Grafana Cloud Loki.
     Type: String
@@ -119,6 +123,7 @@ Resources:
     Properties:
       FunctionName: !Ref LambdaPromtailFunction
       MaximumRetryAttempts: 2
+      MaximumEventAgeInSeconds: !Ref MaximumEventAgeInSeconds
       Qualifier: !GetAtt LambdaPromtailVersion.Version
   # Copy this block and modify as required to create Subscription Filters for
   # additional CloudWatch Log Groups.
