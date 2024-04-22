@@ -15,10 +15,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
-	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"google.golang.org/grpc/codes"
+
+	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
