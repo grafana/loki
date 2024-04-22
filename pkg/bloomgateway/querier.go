@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -96,6 +97,12 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 
 	parted := partitionSeriesByDay(from, through, grouped)
 	sp.LogKV("series", len(grouped), "chunks", len(chunkRefs), "days", len(parted))
+	level.Debug(bq.logger).Log(
+		"msg", "bloomquerier.FilterChunkRefs",
+		"series", len(grouped),
+		"chunks", len(chunkRefs),
+		"days", len(parted),
+	)
 
 	// We can perform requests sequentially, because most of the time the request
 	// only covers a single day, and if not, it's at most two days.
@@ -104,11 +111,24 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		if err != nil {
 			return nil, err
 		}
+		var chunks int
+		for i := range s.series {
+			chunks += len(s.series[i].Refs)
+		}
 		sp.LogKV(
 			"day", s.day.Time.Time(),
 			"from", s.interval.Start.Time(),
 			"through", s.interval.End.Time(),
 			"series", len(s.series),
+			"chunks", chunks,
+			"blocks", len(blocks),
+		)
+		level.Debug(bq.logger).Log(
+			"day", s.day.Time.Time(),
+			"from", s.interval.Start.Time(),
+			"through", s.interval.End.Time(),
+			"series", len(s.series),
+			"chunks", chunks,
 			"blocks", len(blocks),
 		)
 
@@ -131,8 +151,16 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		}
 	}
 
-	postFilterChunks := len(result)
-	postFilterSeries := len(seriesSeen)
+	level.Debug(bq.logger).Log(
+		"preFilterChunks", preFilterChunks,
+		"postFilterChunks", len(result),
+		"preFilterSeries", preFilterSeries,
+		"postFilterSeries", len(seriesSeen),
+	)
+
+	// FIXME(chaudum)
+	postFilterChunks := min(len(result), preFilterChunks)
+	postFilterSeries := min(len(seriesSeen), preFilterSeries)
 
 	bq.metrics.chunksTotal.Add(float64(preFilterChunks))
 	bq.metrics.chunksFiltered.Add(float64(preFilterChunks - postFilterChunks))
