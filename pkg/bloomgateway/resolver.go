@@ -38,7 +38,17 @@ func (r *defaultBlockResolver) Resolve(ctx context.Context, tenant string, inter
 	startMetas := time.Now()
 	metas, err := r.store.FetchMetas(ctx, metaSearch)
 	duration := time.Since(startMetas)
-	level.Debug(r.logger).Log("msg", "fetched metas", "count", len(metas), "duration", duration, "err", err)
+	level.Debug(r.logger).Log(
+		"msg", "fetched metas",
+		"tenant", tenant,
+		"from", interval.Start.Time(),
+		"through", interval.End.Time(),
+		"minFp", minFp.Fingerprint,
+		"maxFp", maxFp.Fingerprint,
+		"count", len(metas),
+		"duration", duration,
+		"err", err,
+	)
 
 	if err != nil {
 		return nil, err

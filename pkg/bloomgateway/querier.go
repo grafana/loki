@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
@@ -107,7 +108,8 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	// We can perform requests sequentially, because most of the time the request
 	// only covers a single day, and if not, it's at most two days.
 	for _, s := range parted {
-		blocks, err := bq.blockResolver.Resolve(ctx, tenant, s.interval, s.series)
+		day := bloomshipper.NewInterval(s.day.Time, s.day.Time.Add(Day))
+		blocks, err := bq.blockResolver.Resolve(ctx, tenant, day, s.series)
 		if err != nil {
 			return nil, err
 		}
