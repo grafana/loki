@@ -382,9 +382,6 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	})
 }
 
-func TestBloomGateway_FilterChunkRefs_WithBlocks(t *testing.T) {
-}
-
 func TestFilterChunkRefsForSeries(t *testing.T) {
 	mkInput := func(xs []uint32) *logproto.GroupedChunkRefs {
 		out := &logproto.GroupedChunkRefs{Refs: make([]*logproto.ShortRef, len(xs))}
