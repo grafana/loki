@@ -24,18 +24,6 @@ This guide assumes Loki will be installed in one of the modes above and that a `
 
 1. Configure the storage client under `loki.storage.azure`, `loki.storage.gcs`, or `loki.storage.s3`.
 
-
-**To install Minio alongside Loki:**
-
-1. Change the configuration in `values.yaml`:
-
-    - Enable Minio
-
-    ```yaml
-    minio:
-      enabled: true
-    ```
-
 **To grant access to S3 via an IAM role without providing credentials:**
 
 1. Provision an IAM role, policy and S3 bucket as described in [Storage](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#aws-deployment-s3-single-store).
