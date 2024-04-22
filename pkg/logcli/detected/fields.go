@@ -13,7 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 )
 
-type DetectedFieldsQuery struct {
+type FieldsQuery struct {
 	QueryString   string
 	Start         time.Time
 	End           time.Time
@@ -25,7 +25,7 @@ type DetectedFieldsQuery struct {
 }
 
 // DoQuery executes the query and prints out the results
-func (q *DetectedFieldsQuery) Do(c client.Client, statistics bool, outputMode string) {
+func (q *FieldsQuery) Do(c client.Client, outputMode string) {
 	var resp *loghttp.DetectedFieldsResponse
 	var err error
 

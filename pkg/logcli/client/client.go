@@ -230,7 +230,7 @@ func (c *DefaultClient) GetDetectedFields(
 	queryStr string,
 	fieldLimit, lineLimit int,
 	start, end time.Time,
-  step time.Duration,
+	step time.Duration,
 	quiet bool,
 ) (*loghttp.DetectedFieldsResponse, error) {
 	qsb := util.NewQueryStringBuilder()

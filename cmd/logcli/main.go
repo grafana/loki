@@ -423,7 +423,7 @@ func main() {
 			index.GetVolume(volumeQuery, queryClient, out, *statistics)
 		}
 	case detectedFieldsCmd.FullCommand():
-		detectedFieldsQuery.Do(queryClient, *statistics, *outputMode)
+		detectedFieldsQuery.Do(queryClient, *outputMode)
 	}
 }
 
@@ -689,12 +689,12 @@ func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *volume.Query {
 	return q
 }
 
-func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.DetectedFieldsQuery {
+func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.FieldsQuery {
 	// calculate query range from cli params
 	var from, to string
 	var since time.Duration
 
-	q := &detected.DetectedFieldsQuery{}
+	q := &detected.FieldsQuery{}
 
 	// executed after all command flags are parsed
 	cmd.Action(func(c *kingpin.ParseContext) error {
