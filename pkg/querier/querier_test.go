@@ -1419,7 +1419,7 @@ func TestQuerier_isLabelRelevant(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			querier := &SingleTenantQuerier{cfg: mockQuerierConfig()}
-			assert.Equal(t, tc.expected, querier.isLabelRelevant(tc.label, tc.values, []string{"host", "cluster", "namespace", "instance", "pod"}))
+			assert.Equal(t, tc.expected, querier.isLabelRelevant(tc.label, tc.values, map[string]struct{}{"host": {}, "cluster": {}, "namespace": {}, "instance": {}, "pod": {}}))
 		})
 
 	}
