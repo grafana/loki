@@ -136,6 +136,7 @@ func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, log
 	case cfg.SchedulerAddress != "":
 		level.Info(logger).Log("msg", "Starting querier worker connected to query-scheduler", "scheduler", cfg.SchedulerAddress)
 
+		grpcCfg = cfg.QuerySchedulerGRPCClientConfig
 		address = cfg.SchedulerAddress
 		processor, servs = newSchedulerProcessor(cfg, handler, logger, metrics, codec)
 
