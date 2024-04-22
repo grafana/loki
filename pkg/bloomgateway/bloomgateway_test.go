@@ -30,6 +30,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
+func stringSlice[T fmt.Stringer](s []T) []string {
+	res := make([]string, len(s))
+	for i := range res {
+		res[i] = s[i].String()
+	}
+	return res
+}
+
 func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.GroupedChunkRefs {
 	t.Helper()
 	grouped := make([]*logproto.GroupedChunkRefs, 0, len(chunkRefs))
@@ -130,10 +138,45 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		MaxOutstandingPerTenant: 1024,
 	}
 
-	t.Run("shipper error is propagated", func(t *testing.T) {
+	t.Run("request fails when providing invalid block", func(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		_, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
+		mockStore := newMockBloomStore(queriers, metas)
+
+		reg := prometheus.NewRegistry()
+		gw, err := New(cfg, mockStore, logger, reg)
+		require.NoError(t, err)
+
+		err = services.StartAndAwaitRunning(context.Background(), gw)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			err = services.StopAndAwaitTerminated(context.Background(), gw)
+			require.NoError(t, err)
+		})
+
+		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
+
+		expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+		require.NoError(t, err)
+
+		req := &logproto.FilterChunkRefRequest{
+			From:    now.Add(-24 * time.Hour),
+			Through: now,
+			Refs:    groupRefs(t, chunkRefs),
+			Plan:    plan.QueryPlan{AST: expr},
+			Blocks:  []string{"bloom/invalid/block.tar.gz"},
+		}
+
+		ctx := user.InjectOrgID(context.Background(), tenantID)
+		res, err := gw.FilterChunkRefs(ctx, req)
+		require.ErrorContainsf(t, err, "could not parse block key", "%+v", res)
+	})
+
+	t.Run("shipper error is propagated", func(t *testing.T) {
+		now := mktime("2023-10-03 10:00")
+
+		refs, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 		mockStore := newMockBloomStore(queriers, metas)
 		mockStore.err = errors.New("request failed")
 
@@ -161,6 +204,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				Through: now,
 				Refs:    groupRefs(t, chunkRefs),
 				Plan:    plan.QueryPlan{AST: expr},
+				Blocks:  stringSlice(refs),
 			}
 
 			ctx, cancelFn := context.WithTimeout(context.Background(), 10*time.Second)
@@ -176,7 +220,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2024-01-25 10:00")
 
 		// replace store implementation and re-initialize workers and sub-services
-		_, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
+		refs, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 		mockStore := newMockBloomStore(queriers, metas)
 		mockStore.delay = 2000 * time.Millisecond
 
@@ -204,6 +248,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				Through: now,
 				Refs:    groupRefs(t, chunkRefs),
 				Plan:    plan.QueryPlan{AST: expr},
+				Blocks:  stringSlice(refs),
 			}
 
 			ctx, cancelFn := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -285,6 +330,16 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 					Checksum:    uint32(idx),
 				},
 			}
+			ref := bloomshipper.BlockRef{
+				Ref: bloomshipper.Ref{
+					TenantID:       tenantID,
+					TableName:      "table_1",
+					Bounds:         v1.NewBounds(0, 10000),
+					StartTimestamp: now.Add(-24 * time.Hour),
+					EndTimestamp:   now,
+					Checksum:       uint32(idx),
+				},
+			}
 			expr, err := syntax.ParseExpr(`{foo="bar"} |= "foo"`)
 			require.NoError(t, err)
 			req := &logproto.FilterChunkRefRequest{
@@ -292,6 +347,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				Through: now,
 				Refs:    groupRefs(t, chunkRefs),
 				Plan:    plan.QueryPlan{AST: expr},
+				Blocks:  stringSlice([]bloomshipper.BlockRef{ref}),
 			}
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 			_, err = gw.FilterChunkRefs(ctx, req)
@@ -304,7 +360,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		// replace store implementation and re-initialize workers and sub-services
-		_, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
+		refs, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 
 		reg := prometheus.NewRegistry()
 		store := newMockBloomStore(queriers, metas)
@@ -330,6 +386,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				Through: now,
 				Refs:    inputChunkRefs,
 				Plan:    plan.QueryPlan{AST: expr},
+				Blocks:  stringSlice(refs),
 			}
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 			res, err := gw.FilterChunkRefs(ctx, req)
@@ -362,6 +419,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				Through: now,
 				Refs:    inputChunkRefs,
 				Plan:    plan.QueryPlan{AST: expr},
+				Blocks:  stringSlice(refs),
 			}
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 			res, err := gw.FilterChunkRefs(ctx, req)

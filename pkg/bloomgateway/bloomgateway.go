@@ -249,13 +249,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	// Shortcut if request does not contain blocks
-	// TOOD(chaudum): Comment out when blocks are resolved on index gateways
-	// if len(blocks) == 0 {
-	// 	stats.Status = labelSuccess
-	// 	return &logproto.FilterChunkRefResponse{
-	// 		ChunkRefs: req.Refs,
-	// 	}, nil
-	// }
+	if len(blocks) == 0 {
+		stats.Status = labelSuccess
+		return &logproto.FilterChunkRefResponse{
+			ChunkRefs: req.Refs,
+		}, nil
+	}
 
 	// TODO(chaudum): I intentionally keep the logic for handling multiple tasks,
 	// so that the PR does not explode in size. This should be cleaned up at some point.
