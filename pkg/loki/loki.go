@@ -683,7 +683,7 @@ func (t *Loki) setupModuleManager() error {
 		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
 		TableManager:             {Server, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
-		IndexGateway:             {Server, Store, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
+		IndexGateway:             {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
 		BloomGateway:             {Server, BloomStore, Analytics},
 		BloomCompactor:           {Server, BloomStore, BloomCompactorRing, Analytics, Store},
 		PatternIngester:          {Server, MemberlistKV, Analytics},
@@ -723,12 +723,6 @@ func (t *Loki) setupModuleManager() error {
 		if err := mm.AddDependency(Server, QueryLimitsInterceptors); err != nil {
 			return err
 		}
-	}
-
-	// Add BloomStore dependency to IndexGateway in case bloom gateway component is enabled.
-	// This is needed because the blocks for the bloom gateway are resolved on the index gateway.
-	if t.Cfg.BloomGateway.Enabled {
-		deps[IndexGateway] = append(deps[IndexGateway], BloomStore)
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.

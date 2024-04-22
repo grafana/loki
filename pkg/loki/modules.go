@@ -714,6 +714,12 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 
 	t.updateConfigForShipperStore()
 
+	// BloomStore is a dependency of IndexGateway, even when the BloomGateway is not enabled.
+	// Do not instantiate store and do not create a service.
+	if !t.Cfg.BloomGateway.Enabled {
+		return nil, nil
+	}
+
 	var err error
 	logger := log.With(util_log.Logger, "component", "bloomstore")
 
