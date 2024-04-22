@@ -40,8 +40,7 @@ func stringSlice[T fmt.Stringer](s []T) []string {
 
 func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.GroupedChunkRefs {
 	t.Helper()
-	grouped := make([]*logproto.GroupedChunkRefs, 0, len(chunkRefs))
-	return groupChunkRefs(chunkRefs, grouped)
+	return groupChunkRefs(chunkRefs, nil)
 }
 
 func newLimits() *validation.Overrides {
@@ -274,11 +273,12 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			require.NoError(t, err)
 		})
 
+		// input chunks need to be sorted by their fingerprint
 		chunkRefs := []*logproto.ChunkRef{
-			{Fingerprint: 3000, UserID: tenantID, From: now.Add(-24 * time.Hour), Through: now.Add(-23 * time.Hour), Checksum: 1},
 			{Fingerprint: 1000, UserID: tenantID, From: now.Add(-22 * time.Hour), Through: now.Add(-21 * time.Hour), Checksum: 2},
-			{Fingerprint: 2000, UserID: tenantID, From: now.Add(-20 * time.Hour), Through: now.Add(-19 * time.Hour), Checksum: 3},
 			{Fingerprint: 1000, UserID: tenantID, From: now.Add(-23 * time.Hour), Through: now.Add(-22 * time.Hour), Checksum: 4},
+			{Fingerprint: 2000, UserID: tenantID, From: now.Add(-20 * time.Hour), Through: now.Add(-19 * time.Hour), Checksum: 3},
+			{Fingerprint: 3000, UserID: tenantID, From: now.Add(-24 * time.Hour), Through: now.Add(-23 * time.Hour), Checksum: 1},
 		}
 		req := &logproto.FilterChunkRefRequest{
 			From:    now.Add(-24 * time.Hour),

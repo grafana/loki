@@ -143,27 +143,27 @@ func TestBloomQuerier(t *testing.T) {
 
 func TestGroupChunkRefs(t *testing.T) {
 	chunkRefs := []*logproto.ChunkRef{
-		{Fingerprint: 0x01, UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59"), Checksum: 2},
-		{Fingerprint: 0x00, UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59"), Checksum: 1},
-		{Fingerprint: 0x02, UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59"), Checksum: 3},
-		{Fingerprint: 0x00, UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59"), Checksum: 4},
-		{Fingerprint: 0x02, UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59"), Checksum: 5},
-		{Fingerprint: 0x01, UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59"), Checksum: 6},
+		{Fingerprint: 0x00, UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
+		{Fingerprint: 0x00, UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
+		{Fingerprint: 0x01, UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
+		{Fingerprint: 0x01, UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
+		{Fingerprint: 0x02, UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
+		{Fingerprint: 0x02, UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
 	}
 
 	result := groupChunkRefs(chunkRefs, nil)
 	require.Equal(t, []*logproto.GroupedChunkRefs{
 		{Fingerprint: 0x00, Tenant: "tenant", Refs: []*logproto.ShortRef{
-			{From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59"), Checksum: 1},
-			{From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59"), Checksum: 4},
+			{From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
+			{From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
 		}},
 		{Fingerprint: 0x01, Tenant: "tenant", Refs: []*logproto.ShortRef{
-			{From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59"), Checksum: 2},
-			{From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59"), Checksum: 6},
+			{From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
+			{From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
 		}},
 		{Fingerprint: 0x02, Tenant: "tenant", Refs: []*logproto.ShortRef{
-			{From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59"), Checksum: 3},
-			{From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59"), Checksum: 5},
+			{From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
+			{From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
 		}},
 	}, result)
 }

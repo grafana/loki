@@ -2,7 +2,6 @@ package bloomgateway
 
 import (
 	"context"
-	"sort"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -154,6 +153,10 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	return result, nil
 }
 
+// groupChunkRefs takes a slice of chunk refs sorted by their fingerprint and
+// groups them by fingerprint.
+// The second argument `grouped` can be used to pass a buffer to avoid allocations.
+// If it's nil, the returned slice will be allocated.
 func groupChunkRefs(chunkRefs []*logproto.ChunkRef, grouped []*logproto.GroupedChunkRefs) []*logproto.GroupedChunkRefs {
 	seen := make(map[uint64]int, len(grouped))
 	for _, chunkRef := range chunkRefs {
@@ -168,10 +171,5 @@ func groupChunkRefs(chunkRefs []*logproto.ChunkRef, grouped []*logproto.GroupedC
 			})
 		}
 	}
-
-	sort.Slice(grouped, func(i, j int) bool {
-		return grouped[i].Fingerprint < grouped[j].Fingerprint
-	})
-
 	return grouped
 }
