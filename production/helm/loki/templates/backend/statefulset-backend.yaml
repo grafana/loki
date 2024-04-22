@@ -19,12 +19,8 @@ metadata:
     {{- end }}
   {{- end }}
 spec:
-{{- if not .Values.write.autoscaling.enabled }}
-  {{- if eq .Values.deploymentMode "SingleBinary" }}
-  replicas: 0
-  {{- else }}
-  replicas: {{ .Values.write.replicas }}
-  {{- end }}
+{{- if not .Values.backend.autoscaling.enabled }}
+  replicas: {{ .Values.backend.replicas }}
 {{- end }}
   podManagementPolicy: {{ .Values.backend.podManagementPolicy }}
   updateStrategy:
