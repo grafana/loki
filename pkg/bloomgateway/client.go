@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -252,6 +253,10 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, interva
 	count := 0
 	err := concurrency.ForEachJob(ctx, len(servers), len(servers), func(ctx context.Context, i int) error {
 		rs := servers[i]
+
+		sort.Slice(rs.groups, func(i, j int) bool {
+			return rs.groups[i].Fingerprint < rs.groups[j].Fingerprint
+		})
 
 		level.Info(c.logger).Log(
 			"msg", "do FilterChunkRefs for addresses",

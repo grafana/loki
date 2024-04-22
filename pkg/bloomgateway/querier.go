@@ -96,18 +96,9 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	result := make([]*logproto.ChunkRef, 0, len(chunkRefs))
 	seriesSeen := make(map[uint64]struct{}, len(grouped))
 
-	parted := partitionSeriesByDay(from, through, grouped)
-	sp.LogKV("series", len(grouped), "chunks", len(chunkRefs), "days", len(parted))
-	level.Debug(bq.logger).Log(
-		"msg", "bloomquerier.FilterChunkRefs",
-		"series", len(grouped),
-		"chunks", len(chunkRefs),
-		"days", len(parted),
-	)
-
 	// We can perform requests sequentially, because most of the time the request
 	// only covers a single day, and if not, it's at most two days.
-	for _, s := range parted {
+	for _, s := range partitionSeriesByDay(from, through, grouped) {
 		day := bloomshipper.NewInterval(s.day.Time, s.day.Time.Add(Day))
 		blocks, err := bq.blockResolver.Resolve(ctx, tenant, day, s.series)
 		if err != nil {
@@ -118,14 +109,6 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 			chunks += len(s.series[i].Refs)
 		}
 		sp.LogKV(
-			"day", s.day.Time.Time(),
-			"from", s.interval.Start.Time(),
-			"through", s.interval.End.Time(),
-			"series", len(s.series),
-			"chunks", chunks,
-			"blocks", len(blocks),
-		)
-		level.Debug(bq.logger).Log(
 			"day", s.day.Time.Time(),
 			"from", s.interval.Start.Time(),
 			"through", s.interval.End.Time(),
@@ -160,9 +143,8 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		"postFilterSeries", len(seriesSeen),
 	)
 
-	// FIXME(chaudum)
-	postFilterChunks := min(len(result), preFilterChunks)
-	postFilterSeries := min(len(seriesSeen), preFilterSeries)
+	postFilterChunks := len(result)
+	postFilterSeries := len(seriesSeen)
 
 	bq.metrics.chunksTotal.Add(float64(preFilterChunks))
 	bq.metrics.chunksFiltered.Add(float64(preFilterChunks - postFilterChunks))

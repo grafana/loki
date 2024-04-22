@@ -83,9 +83,11 @@ func blocksMatchingSeries(metas []bloomshipper.Meta, interval bloomshipper.Inter
 
 			// At least one fingerprint is within bounds of the blocks
 			// so append to results
+			dst := make([]*logproto.GroupedChunkRefs, max-min)
+			_ = copy(dst, series[min:max])
 			result = append(result, blockWithSeries{
 				block:  block,
-				series: series[min:max],
+				series: dst,
 			})
 		}
 	}
