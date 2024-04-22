@@ -2,6 +2,10 @@
 
 ## Versions
 
+### 0.33.2
+
+- Update to go 1.22.2
+
 ### 0.33.1-golangci.1.51.2
 
 - Update to Go version 1.21.9 but restore golangci-lint to v1.51.2
