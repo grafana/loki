@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
@@ -31,6 +32,7 @@ import (
 	seriesindex "github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -412,7 +414,7 @@ func (g *Gateway) getShardsWithBlooms(
 	// as getting it _very_ wrong could harm some cache locality benefits on the bloom-gws by
 	// sending multiple requests to the entire keyspace).
 
-	logger := log.With(g.log, "tenant", instanceID)
+	logger := util_log.WithContext(ctx, g.log)
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "indexgateway.getShardsWithBlooms")
 	defer sp.Finish()
 
@@ -491,6 +493,8 @@ func (g *Gateway) getShardsWithBlooms(
 		"matchers", ms.String(),
 		"from", req.From.Time().String(),
 		"through", req.Through.Time().String(),
+		"length", req.Through.Time().Sub(req.From.Time()).String(),
+		"end_delta", time.Since(req.Through.Time()).String(),
 	)
 
 	// 3) build shards
