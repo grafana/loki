@@ -87,7 +87,6 @@ type processor interface {
 type querierWorker struct {
 	*services.BasicService
 
-	// cfg    Config
 	logger log.Logger
 
 	processor processor
