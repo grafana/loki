@@ -72,36 +72,6 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		blocksRefs = append(blocksRefs, task.blocks...)
 	}
 
-	// fallback to existing block resolving
-	// TODO(chaudum): Remove once client side block resolving is implemented
-	if len(blocksRefs) == 0 {
-		minFpRange, maxFpRange := getFirstLast(keyspaces)
-		interval := bloomshipper.NewInterval(day.Bounds())
-		metaSearch := bloomshipper.MetaSearchParams{
-			TenantID: tenant,
-			Interval: interval,
-			Keyspace: v1.NewBounds(minFpRange.Min, maxFpRange.Max),
-		}
-
-		startMetas := time.Now()
-		metas, err := p.store.FetchMetas(ctx, metaSearch)
-		duration = time.Since(startMetas)
-		level.Debug(p.logger).Log("msg", "fetched metas", "count", len(metas), "duration", duration, "err", err)
-
-		for _, t := range tasks {
-			FromContext(t.ctx).AddMetasFetchTime(duration)
-		}
-
-		if err != nil {
-			return err
-		}
-
-		blocksRefs = bloomshipper.BlocksForMetas(metas, interval, keyspaces)
-
-		// resolveDuration is the time spent resolving blocks for a given set of tasks
-		p.metrics.resolveDuration.WithLabelValues(p.id).Observe(time.Since(startMetas).Seconds())
-	}
-
 	data := partitionTasks(tasks, blocksRefs)
 
 	refs := make([]bloomshipper.BlockRef, 0, len(data))

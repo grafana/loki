@@ -27,7 +27,6 @@ func newMockBloomStore(bqs []*bloomshipper.CloseableBlockQuerier, metas []blooms
 	return &dummyStore{
 		querieres: bqs,
 		metas:     metas,
-		callCount: make(map[string]int),
 	}
 }
 
@@ -39,15 +38,9 @@ type dummyStore struct {
 	delay time.Duration
 	// mock response error when serving block queriers in ForEach
 	err error
-
-	// keep track of call counts
-	mtx       sync.Mutex
-	callCount map[string]int
 }
 
 func (s *dummyStore) ResolveMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([][]bloomshipper.MetaRef, []*bloomshipper.Fetcher, error) {
-	defer s.increaseCallCount("ResolveMetas")
-
 	time.Sleep(s.delay)
 
 	//TODO(chaudum) Filter metas based on search params
@@ -59,8 +52,6 @@ func (s *dummyStore) ResolveMetas(_ context.Context, _ bloomshipper.MetaSearchPa
 }
 
 func (s *dummyStore) FetchMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([]bloomshipper.Meta, error) {
-	defer s.increaseCallCount("FetchMetas")
-
 	//TODO(chaudum) Filter metas based on search params
 	return s.metas, nil
 }
@@ -81,8 +72,6 @@ func (s *dummyStore) Stop() {
 }
 
 func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef, _ ...bloomshipper.FetchOption) ([]*bloomshipper.CloseableBlockQuerier, error) {
-	defer s.increaseCallCount("FetchBlocks")
-
 	result := make([]*bloomshipper.CloseableBlockQuerier, 0, len(s.querieres))
 
 	if s.err != nil {
@@ -101,12 +90,6 @@ func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef
 	time.Sleep(s.delay)
 
 	return result, nil
-}
-
-func (s *dummyStore) increaseCallCount(method string) {
-	s.mtx.Lock()
-	s.callCount[method]++
-	s.mtx.Unlock()
 }
 
 func TestProcessor(t *testing.T) {
@@ -162,11 +145,7 @@ func TestProcessor(t *testing.T) {
 		err := p.run(ctx, tasks)
 		wg.Wait()
 		require.NoError(t, err)
-		require.Equal(t, int64(len(swb.series)), results.Load())
-
-		// assert that we fetch metas
-		require.Equal(t, 1, mockStore.callCount["FetchMetas"])
-		require.Equal(t, 1, mockStore.callCount["FetchBlocks"])
+		require.Equal(t, int64(0), results.Load())
 	})
 
 	t.Run("success case - with blocks", func(t *testing.T) {
@@ -219,10 +198,6 @@ func TestProcessor(t *testing.T) {
 		wg.Wait()
 		require.NoError(t, err)
 		require.Equal(t, int64(len(swb.series)), results.Load())
-
-		// assert that we don't resolve/fetch metas, but instead use the provided blocks
-		require.Equal(t, 0, mockStore.callCount["FetchMetas"])
-		require.Equal(t, 1, mockStore.callCount["FetchBlocks"])
 	})
 
 	t.Run("failure case", func(t *testing.T) {
