@@ -1,21 +1,31 @@
 ***********************************************************************
  Welcome to Grafana Loki
  Chart version: {{ .Chart.Version }}
+ Chart Name: {{ .Chart.Name }}
  Loki version: {{ .Chart.AppVersion }}
 ***********************************************************************
 
+** Please be patient while the chart is being deployed **
+
+Tip:
+
+  Watch the deployment status using the command: kubectl get pods -w --namespace {{ $.Release.Namespace }}
+
+***********************************************************************
 Installed components:
+***********************************************************************
+
 {{- if .Values.monitoring.selfMonitoring.enabled }}
 * grafana-agent-operator
 {{- end }}
 {{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
-* loki 
+* loki
 {{- else -}}
 {{- if .Values.gateway.enabled }}
 * gateway
 {{- end }}
 {{- if .Values.minio.enabled }}
-* minio 
+* minio
 {{- end }}
 {{- if eq (include "loki.deployment.isScalable" .) "true" }}
 * read
@@ -33,4 +43,54 @@ Installed components:
 * querier
 * query frontend
 {{- end }}
+{{- end }}
+
+
+{{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
+
+Loki has been deployed as a single binary.
+This means a single pod is handling reads and writes. You can scale that pod vertically by adding more CPU and memory resources.
+
+{{- end }}
+
+
+{{- if eq (.Values.gateway.enable) true }}
+***********************************************************************
+Sending logs to Loki
+***********************************************************************
+
+Loki has been configured with a gateway (nginx) to support reads and write from a single component.
+
+You can send logs from inside the cluster using the cluster DNS:
+
+http://{{ include "loki.gatewayFullname" . }}.{{ $.Release.Namespace }}.svc.cluster.local/loki/api/v1/push
+
+Or from outside by port-forwarding the gateway to your local machine:
+
+  kubectl port-forward --namespace {{ include "common.names.namespace" . }} svc/ {{ .Values.metrics.service.port }}:{{ .Values.metrics.service.port }} &
+
+And then using http://127.0.0.1:/loki/api/v1/push
+
+
+{{- end }}
+
+{{- if eq (.Values.loki.auth_enabled) true }}
+***********************************************************************
+Multi-tenancy
+***********************************************************************
+
+Loki is configured with auth enabled (multi-tenancy) and expects tenant headers (`X-Scope-OrgID`) to be set for all API calls.
+
+Grafana's Loki datasource should be configured using the `HTTP Headers` section with the `X-Scope-OrgID` to target a specific tenant.
+For each tenant, you can create a different datasource.
+
+The agent of your choice should also be configured to propagate this header.
+For example, when using Promtail you can use the `tenant` stage. https://grafana.com/docs/loki/latest/send-data/promtail/stages/tenant/
+
+When not providing the `X-Scope-OrgID` while the auth is enabled, Loki will reject reads and writes with a 404 status code `no org id`.
+
+You can also use a reverse proxy, to automatically add the `X-Scope-OrgID` header as suggested by https://grafana.com/docs/loki/latest/operations/authentication/
+
+For more information, read our documentation about multi-tenancy: https://grafana.com/docs/loki/latest/operations/multi-tenancy/
+
 {{- end }}
