@@ -311,9 +311,15 @@ func TestPartitionRequest(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			result := partitionRequest(tc.inp)
 			require.Equal(t, tc.exp, result)
+
+			// Run each partition throught the same partitioning process again to make sure results are still the same
+			for i := range result {
+				result2 := partitionSeriesByDay(result[i].interval.Start, result[i].interval.End, result[i].series)
+				require.Len(t, result2, 1)
+				require.Equal(t, result[i], result2[0])
+			}
 		})
 	}
-
 }
 
 func Test_SpansMultipleDays(t *testing.T) {
