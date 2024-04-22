@@ -266,6 +266,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, interva
 			"through", interval.End.Time(),
 			"series", len(rs.groups),
 			"blocks", len(rs.blocks),
+			"tenant", tenant,
 		)
 
 		return c.doForAddrs([]string{rs.addr}, func(client logproto.BloomGatewayClient) error {
