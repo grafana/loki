@@ -402,6 +402,7 @@ memberlist:
 
 ```
 
+
 ## 16-Azure-Account-Name-Example.yaml
 
 ```yaml
@@ -423,6 +424,7 @@ storage_config:
     #connection_string: <connection-string>
 
 ```
+
 
 ## 17-Azure-Service-Principal-Example.yaml
 
