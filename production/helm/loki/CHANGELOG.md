@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.3.4
 
 - [BUGFIX] Fixed helm helper functions to include missing `loki.hpa.apiVersion`  #12716
+- [BUGFIX] Add missing OTLP endpoint to nginx config
 
 ## 6.3.3
 
