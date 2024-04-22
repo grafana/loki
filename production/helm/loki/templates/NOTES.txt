@@ -11,6 +11,8 @@ Tip:
 
   Watch the deployment status using the command: kubectl get pods -w --namespace {{ $.Release.Namespace }}
 
+If pods are too long to schedule make sure pod affinity can be fulfilled in the current cluster.
+
 ***********************************************************************
 Installed components:
 ***********************************************************************
@@ -54,27 +56,81 @@ This means a single pod is handling reads and writes. You can scale that pod ver
 {{- end }}
 
 
-{{- if eq (.Values.gateway.enable) true }}
 ***********************************************************************
 Sending logs to Loki
 ***********************************************************************
 
-Loki has been configured with a gateway (nginx) to support reads and write from a single component.
+{{- if .Values.gateway.enabled }}
 
-You can send logs from inside the cluster using the cluster DNS:
-
-http://{{ include "loki.gatewayFullname" . }}.{{ $.Release.Namespace }}.svc.cluster.local/loki/api/v1/push
-
-Or from outside by port-forwarding the gateway to your local machine:
-
-  kubectl port-forward --namespace {{ include "common.names.namespace" . }} svc/ {{ .Values.metrics.service.port }}:{{ .Values.metrics.service.port }} &
-
-And then using http://127.0.0.1:/loki/api/v1/push
-
+Loki has been configured with a gateway (nginx) to support reads and writes from a single component.
 
 {{- end }}
 
-{{- if eq (.Values.loki.auth_enabled) true }}
+You can send logs from inside the cluster using the cluster DNS:
+
+{{- if .Values.gateway.enabled }}
+
+http://{{ include "loki.gatewayFullname" . }}.{{ $.Release.Namespace }}.svc.cluster.local/loki/api/v1/push
+
+{{- else }}
+{{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
+
+http://{{ include "loki.singleBinaryFullname" . }}.{{ $.Release.Namespace }}.svc.cluster.local:{{ .Values.loki.server.http_listen_port }}/loki/api/v1/push
+
+{{- end}}
+{{- if eq (include "loki.deployment.isScalable" .) "true" }}
+
+http://{{ include "loki.writeFullname" . }}.{{ $.Release.Namespace }}.svc.cluster.local:{{ .Values.loki.server.http_listen_port }}/loki/api/v1/push
+
+{{- end }}
+{{- if eq (include "loki.deployment.isDistributed" .) "true" }}
+
+http://{{ include "loki.distributorFullname" . }}.{{ $.Release.Namespace }}.svc.cluster.local:3100/loki/api/v1/push
+
+{{- end }}
+{{- end }}
+
+You can test to send data from outside the cluster by port-forwarding the gateway to your local machine:
+{{- if .Values.gateway.enabled }}
+
+  kubectl port-forward --namespace {{ $.Release.Namespace }} svc/{{ include "loki.gatewayFullname" . }} 3100:{{ .Values.gateway.service.port }} &
+
+{{- else }}
+{{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
+
+  kubectl port-forward --namespace {{ $.Release.Namespace }} svc/{{ include "loki.singleBinaryFullname" . }} 3100:{{ .Values.loki.server.http_listen_port }} &
+
+{{- end}}
+{{- if eq (include "loki.deployment.isScalable" .) "true" }}
+
+  kubectl port-forward --namespace {{ $.Release.Namespace }} svc/{{ include "loki.writeFullname" . }} 3100:{{ .Values.loki.server.http_listen_port }} &
+
+{{- end }}
+{{- if eq (include "loki.deployment.isDistributed" .) "true" }}
+
+  kubectl port-forward --namespace {{ $.Release.Namespace }} svc/{{ include "loki.distributorFullname" . }} 3100:3100 &
+
+{{- end }}
+{{- end }}
+
+And then using http://127.0.0.1:3100/loki/api/v1/push URL as shown below:
+
+```
+curl -H "Content-Type: application/json" -XPOST -s "http://127.0.0.1:3100/loki/api/v1/push"  \
+--data-raw "{\"streams\": [{\"stream\": {\"job\": \"test\"}, \"values\": [[\"$(date +%s)000000000\", \"fizzbuzz\"]]}]}"
+{{- if .Values.loki.auth_enabled }} \
+-H X-Scope-OrgId:foo
+{{- end}}
+```
+
+Then verify that Loki did received the data using the following command:
+
+```
+curl "http://127.0.0.1:3100/loki/api/v1/query_range" --data-urlencode 'query={job="test"}' {{- if .Values.loki.auth_enabled }} -H X-Scope-OrgId:foo {{- end}} | jq .data.result
+```
+
+{{- if .Values.loki.auth_enabled }}
+
 ***********************************************************************
 Multi-tenancy
 ***********************************************************************
@@ -92,5 +148,7 @@ When not providing the `X-Scope-OrgID` while the auth is enabled, Loki will reje
 You can also use a reverse proxy, to automatically add the `X-Scope-OrgID` header as suggested by https://grafana.com/docs/loki/latest/operations/authentication/
 
 For more information, read our documentation about multi-tenancy: https://grafana.com/docs/loki/latest/operations/multi-tenancy/
+
+> When using curl you can pass `X-Scope-OrgId` header using `-H X-Scope-OrgId:foo` option, where foo can be replaced with the tenant of your choice.
 
 {{- end }}
