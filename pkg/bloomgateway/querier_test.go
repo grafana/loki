@@ -25,7 +25,7 @@ type noopClient struct {
 }
 
 // FilterChunks implements Client.
-func (c *noopClient) FilterChunks(ctx context.Context, tenant string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) (result []*logproto.GroupedChunkRefs, err error) {
+func (c *noopClient) FilterChunks(_ context.Context, _ string, _ bloomshipper.Interval, blocks []blockWithSeries, _ plan.QueryPlan) (result []*logproto.GroupedChunkRefs, err error) {
 	for _, block := range blocks {
 		result = append(result, block.series...)
 	}
