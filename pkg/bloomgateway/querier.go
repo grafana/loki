@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/go-kit/log"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -80,8 +81,9 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	if !bq.limits.BloomGatewayEnabled(tenant) || len(chunkRefs) == 0 || len(v1.ExtractTestableLineFilters(queryPlan.AST)) == 0 {
 		return chunkRefs, nil
 	}
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomquerier.FilterChunkRefs")
+	defer sp.Finish()
 
-	// The indexes of the chunks slice correspond to the indexes of the fingerprint slice.
 	grouped := groupedChunksRefPool.Get(len(chunkRefs))
 	defer groupedChunksRefPool.Put(grouped)
 	grouped = groupChunkRefs(chunkRefs, grouped)
@@ -92,13 +94,23 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	result := make([]*logproto.ChunkRef, 0, len(chunkRefs))
 	seriesSeen := make(map[uint64]struct{}, len(grouped))
 
+	parted := partitionSeriesByDay(from, through, grouped)
+	sp.LogKV("series", len(grouped), "chunks", len(chunkRefs), "days", len(parted))
+
 	// We can perform requests sequentially, because most of the time the request
 	// only covers a single day, and if not, it's at most two days.
-	for _, s := range partitionSeriesByDay(from, through, grouped) {
+	for _, s := range parted {
 		blocks, err := bq.blockResolver.Resolve(ctx, tenant, s.interval, s.series)
 		if err != nil {
 			return nil, err
 		}
+		sp.LogKV(
+			"day", s.day.Time.Time(),
+			"from", s.interval.Start.Time(),
+			"through", s.interval.End.Time(),
+			"series", len(s.series),
+			"blocks", len(blocks),
+		)
 
 		refs, err := bq.c.FilterChunks(ctx, tenant, s.interval, blocks, queryPlan)
 		if err != nil {
