@@ -16,6 +16,7 @@ The Docker Compose configuration instantiates the following components, each in 
 - **Gateway** (NGINX) which receives requests and redirects them to the appropriate container based on the request's URL.
 - One Loki **read** component.
 - One Loki **write** component.
+- One Loki **backend** component.
 - **Minio** an S3-compatible object store which Loki uses to store its index and chunks.
 - **Grafana** which provides visualization of the log lines captured within Loki.
 
@@ -63,11 +64,12 @@ This quickstart assumes you are running Linux.
     ✔ Network evaluate-loki_loki          Created      0.1s 
     ✔ Container evaluate-loki-minio-1     Started      0.6s 
     ✔ Container evaluate-loki-flog-1      Started      0.6s 
+    ✔ Container evaluate-loki-backend-1   Started      0.8s 
     ✔ Container evaluate-loki-write-1     Started      0.8s 
     ✔ Container evaluate-loki-read-1      Started      0.8s 
     ✔ Container evaluate-loki-gateway-1   Started      1.1s 
     ✔ Container evaluate-loki-grafana-1   Started      1.4s 
-    ✔ Container evaluate-loki-promtail-1  Started      1.4s 
+    ✔ Container evaluate-loki-promtail-1  Started      1.4s
     ```
 
 1. (Optional) Verify that the Loki cluster is up and running.
