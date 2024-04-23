@@ -1395,7 +1395,6 @@ func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.Detected
 		if err != nil {
 			return nil, err
 		}
-		level.Info(i.logger).Log("msg", matchers)
 	}
 
 	labelMap, err := instance.LabelsWithValues(ctx, *req.Start, matchers...)

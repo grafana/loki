@@ -270,32 +270,35 @@ func TestPartitionRequest(t *testing.T) {
 					{
 						Fingerprint: 0x00,
 						Refs: []*logproto.ShortRef{
+							{From: ts.Add(-14 * time.Hour), Through: ts.Add(-13 * time.Hour)},
 							{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)},
+							{From: ts.Add(-11 * time.Hour), Through: ts.Add(-10 * time.Hour)},
 						},
 					},
 				},
 			},
 			exp: []seriesWithInterval{
 				{
-					interval: bloomshipper.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
+					interval: bloomshipper.Interval{Start: ts.Add(-14 * time.Hour), End: ts.Add(-11 * time.Hour)},
 					day:      config.NewDayTime(mktime("2024-01-23 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
 							Refs: []*logproto.ShortRef{
+								{From: ts.Add(-14 * time.Hour), Through: ts.Add(-13 * time.Hour)},
 								{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)},
 							},
 						},
 					},
 				},
 				{
-					interval: bloomshipper.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
+					interval: bloomshipper.Interval{Start: ts.Add(-11 * time.Hour), End: ts.Add(-10 * time.Hour)},
 					day:      config.NewDayTime(mktime("2024-01-24 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
 							Refs: []*logproto.ShortRef{
-								{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)},
+								{From: ts.Add(-11 * time.Hour), Through: ts.Add(-10 * time.Hour)},
 							},
 						},
 					},
@@ -308,9 +311,15 @@ func TestPartitionRequest(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			result := partitionRequest(tc.inp)
 			require.Equal(t, tc.exp, result)
+
+			// Run each partition through the same partitioning process again to make sure results are still the same
+			for i := range result {
+				result2 := partitionSeriesByDay(result[i].interval.Start, result[i].interval.End, result[i].series)
+				require.Len(t, result2, 1)
+				require.Equal(t, result[i], result2[0])
+			}
 		})
 	}
-
 }
 
 func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, minFp, maxFp model.Fingerprint) ([]bloomshipper.BlockRef, []bloomshipper.Meta, []*bloomshipper.CloseableBlockQuerier, [][]v1.SeriesWithBloom) {

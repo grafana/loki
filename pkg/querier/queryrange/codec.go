@@ -267,18 +267,6 @@ type DetectedLabelsRequest struct {
 	logproto.DetectedLabelsRequest
 }
 
-// NewDetectedLabelsRequest creates a new request for detected labels
-func NewDetectedLabelsRequest(start, end time.Time, query, path string) *DetectedLabelsRequest {
-	return &DetectedLabelsRequest{
-		DetectedLabelsRequest: logproto.DetectedLabelsRequest{
-			Start: &start,
-			End:   &end,
-			Query: query,
-		},
-		path: path,
-	}
-}
-
 func (r *DetectedLabelsRequest) AsProto() *logproto.DetectedLabelsRequest {
 	return &r.DetectedLabelsRequest
 }
@@ -1553,7 +1541,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		return &DetectedFieldsResponse{
 			Response: &logproto.DetectedFieldsResponse{
 				Fields:     mergedFields,
-				FieldLimit: fieldLimit,
+				FieldLimit: 0,
 			},
 			Headers: headers,
 		}, nil

@@ -117,6 +117,38 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', index_gateway_job_matcher),
           )
         )
+        .addRowIf(
+          !$._config.ssd.enabled,
+          grafana.row.new('Bloom Gateway')
+          .addPanel(
+            $.containerCPUUsagePanel('CPU', 'bloom-gateway'),
+          )
+          .addPanel(
+            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'bloom-gateway'),
+          )
+          .addPanel(
+            $.goHeapInUsePanel('Memory (go heap inuse)', 'bloom-gateway'),
+          )
+          .addPanel(
+            $.newQueryPanel('Disk Writes', 'Bps') +
+            $.queryPanel(
+              'sum by(%s, %s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDiskContainer('bloom-gateway')],
+              '{{%s}} - {{device}}' % $._config.per_instance_label
+            ) +
+            $.withStacking,
+          )
+          .addPanel(
+            $.newQueryPanel('Disk Reads', 'Bps') +
+            $.queryPanel(
+              'sum by(%s, %s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDiskContainer('bloom-gateway')],
+              '{{%s}} - {{device}}' % $._config.per_instance_label
+            ) +
+            $.withStacking,
+          )
+          .addPanel(
+            $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'bloom-gateway'),
+          )
+        )
         .addRow(
           $.row('Ingester')
           .addPanel(

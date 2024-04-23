@@ -3,6 +3,7 @@ package kafka
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,7 +35,7 @@ func (f *fakeTarget) Details() interface{}             { return nil }
 
 func Test_ComsumerConsume(t *testing.T) {
 	var (
-		group       = &testConsumerGroupHandler{}
+		group       = &testConsumerGroupHandler{mu: &sync.Mutex{}}
 		session     = &testSession{}
 		ctx, cancel = context.WithCancel(context.Background())
 		c           = &consumer{
@@ -86,6 +87,7 @@ func Test_ComsumerConsume(t *testing.T) {
 func Test_ComsumerRetry(_ *testing.T) {
 	var (
 		group = &testConsumerGroupHandler{
+			mu:        &sync.Mutex{},
 			returnErr: errors.New("foo"),
 		}
 		ctx, cancel = context.WithCancel(context.Background())

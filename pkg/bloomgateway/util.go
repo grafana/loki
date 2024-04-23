@@ -100,20 +100,24 @@ type seriesWithInterval struct {
 }
 
 func partitionRequest(req *logproto.FilterChunkRefRequest) []seriesWithInterval {
+	return partitionSeriesByDay(req.From, req.Through, req.Refs)
+}
+
+func partitionSeriesByDay(from, through model.Time, seriesWithChunks []*logproto.GroupedChunkRefs) []seriesWithInterval {
 	result := make([]seriesWithInterval, 0)
 
-	fromDay, throughDay := truncateDay(req.From), truncateDay(req.Through)
+	fromDay, throughDay := truncateDay(from), truncateDay(through)
 
 	for day := fromDay; day.Equal(throughDay) || day.Before(throughDay); day = day.Add(Day) {
 		minTs, maxTs := model.Latest, model.Earliest
 		nextDay := day.Add(Day)
-		res := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
+		res := make([]*logproto.GroupedChunkRefs, 0, len(seriesWithChunks))
 
-		for _, series := range req.Refs {
+		for _, series := range seriesWithChunks {
 			chunks := series.Refs
 
 			min := sort.Search(len(chunks), func(i int) bool {
-				return chunks[i].Through >= day
+				return chunks[i].From >= day
 			})
 
 			max := sort.Search(len(chunks), func(i int) bool {

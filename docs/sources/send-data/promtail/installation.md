@@ -15,13 +15,13 @@ or there is a Helm chart to install it in a Kubernetes cluster.
 ## Install the binary
 
 Every Grafana Loki release includes binaries for Promtail which can be found on the
-[Releases page](https://github.com/grafana/loki/releases) as part of the release assets. 
+[Releases page](https://github.com/grafana/loki/releases) as part of the release assets.
 
 ## Install using APT or RPM package manager
 
-See the instructions [here](https://grafana.com/docs/loki//setup/install/local/#install-using-apt-or-rpm-package-manager). 
+See the instructions [here](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/local/#install-using-apt-or-rpm-package-manager).
 
-## Install using Docker 
+## Install using Docker
 
 ```bash
 # modify tag to most recent version
@@ -45,6 +45,7 @@ helm repo update
 ```
 
 Create the configuration file `values.yaml`. The example below illustrates a connection to the locally deployed loki server:
+
 ```yaml
 config:
   # publish data to loki
