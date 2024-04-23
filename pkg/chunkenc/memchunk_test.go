@@ -945,7 +945,6 @@ func TestGenerateDataSize(t *testing.T) {
 
 			bytesRead := uint64(0)
 			for _, c := range chunks {
-				//fmt.Printf("chunk size: %v\n", c.CompressedSize())
 				noopStreamPipeline := log.NewNoopPipeline().ForStream(labels.Labels{})
 				// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
 				iterator, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Now(), logproto.FORWARD, noopStreamPipeline)
