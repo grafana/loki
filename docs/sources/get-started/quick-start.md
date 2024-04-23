@@ -69,7 +69,7 @@ This quickstart assumes you are running Linux.
     ✔ Container evaluate-loki-read-1      Started      0.8s 
     ✔ Container evaluate-loki-gateway-1   Started      1.1s 
     ✔ Container evaluate-loki-grafana-1   Started      1.4s 
-    ✔ Container evaluate-loki-alloy-1  Started      1.4s
+    ✔ Container evaluate-loki-alloy-1     Started      1.4s
     ```
 
 1. (Optional) Verify that the Loki cluster is up and running.
