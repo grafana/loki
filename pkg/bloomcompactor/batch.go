@@ -9,12 +9,12 @@ import (
 	"github.com/grafana/dskit/multierror"
 	"golang.org/x/exp/slices"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-	logql_log "github.com/grafana/loki/pkg/logql/log"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 type Fetcher[A, B any] interface {
@@ -141,8 +141,8 @@ func newBatchedChunkLoader(
 
 		return v1.ChunkRefWithIter{
 			Ref: v1.ChunkRef{
-				Start:    c.From,
-				End:      c.Through,
+				From:     c.From,
+				Through:  c.Through,
 				Checksum: c.Checksum,
 			},
 			Itr: itr,
@@ -251,7 +251,7 @@ func (i *blockLoadingIter) loadNext() bool {
 
 		iters := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(blockRefs))
 		for filtered.Next() {
-			bq := loader.At()
+			bq := filtered.At()
 			i.loaded[bq] = struct{}{}
 			iter, err := bq.SeriesIter()
 			if err != nil {

@@ -61,8 +61,8 @@
     withEnv: function(env) {
       env: env,
     },
-    withSecrets: function(env) {
-      secrets: env,
+    withSecrets: function(secrets) {
+      secrets: secrets,
     },
   },
 
@@ -86,6 +86,7 @@
     + $.step.with({
       repository: 'grafana/loki-release',
       path: 'lib',
+      ref: '${{ env.RELEASE_LIB_REF }}',
     }),
 
   setupNode: $.step.new('setup node', 'actions/setup-node@v4')
@@ -121,4 +122,39 @@
                        + $.step.withRun(|||
                          git config --global --add safe.directory "$GITHUB_WORKSPACE"
                        |||),
+
+  githubAppToken: $.step.new('get github app token', 'actions/create-github-app-token@v1')
+                  + $.step.withId('get_github_app_token')
+                  + $.step.withIf('${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}')
+                  + $.step.with({
+                    'app-id': '${{ secrets.APP_ID }}',
+                    'private-key': '${{ secrets.APP_PRIVATE_KEY }}',
+                    // By setting owner, we should get access to all repositories in current owner's installation: https://github.com/marketplace/actions/create-github-app-token#create-a-token-for-all-repositories-in-the-current-owners-installation
+                    owner: '${{ github.repository_owner }}',
+                  }),
+
+  setToken: $.step.new('set github token')
+            + $.step.withId('github_app_token')
+            + $.step.withRun(|||
+              if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
+                echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+              else
+                echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
+              fi
+            |||),
+
+  validationJob: function(useGCR=false)
+    $.job.new()
+    + $.job.withContainer({
+      image: '${{ inputs.build_image }}',
+    } + if useGCR then {
+      credentials: {
+        username: '_json_key',
+        password: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
+      },
+    } else {})
+    + $.job.withEnv({
+      BUILD_IN_CONTAINER: false,
+      SKIP_VALIDATION: '${{ inputs.skip_validation }}',
+    }),
 }

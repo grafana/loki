@@ -13,12 +13,12 @@ type AzureEnvironment struct {
 	Region         string
 }
 
-type ManagedAuthConfig struct {
+type TokenCCOAuthConfig struct {
 	AWS   *AWSEnvironment
 	Azure *AzureEnvironment
 }
 
-func discoverManagedAuthConfig() *ManagedAuthConfig {
+func discoverTokenCCOAuthConfig() *TokenCCOAuthConfig {
 	// AWS
 	roleARN := os.Getenv("ROLEARN")
 
@@ -30,13 +30,13 @@ func discoverManagedAuthConfig() *ManagedAuthConfig {
 
 	switch {
 	case roleARN != "":
-		return &ManagedAuthConfig{
+		return &TokenCCOAuthConfig{
 			AWS: &AWSEnvironment{
 				RoleARN: roleARN,
 			},
 		}
 	case clientID != "" && tenantID != "" && subscriptionID != "":
-		return &ManagedAuthConfig{
+		return &TokenCCOAuthConfig{
 			Azure: &AzureEnvironment{
 				ClientID:       clientID,
 				SubscriptionID: subscriptionID,

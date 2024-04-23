@@ -43,6 +43,13 @@ For more detailed information on configuring how to discover and scrape logs fro
 targets, see [Scraping]({{< relref "./scraping" >}}). For more information on transforming logs
 from scraped targets, see [Pipelines]({{< relref "./pipelines" >}}).
 
+## Reload at runtime
+
+Promtail can reload its configuration at runtime. If the new configuration
+is not well-formed, the changes will not be applied.
+A configuration reload is triggered by sending a `SIGHUP` to the Promtail process or
+sending a HTTP POST request to the `/reload` endpoint (when the `--server.enable-runtime-reload` flag is enabled).
+
 ### Use environment variables in the configuration
 
 You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
@@ -926,7 +933,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API]({{< relref "../../reference/api#ingest-logs" >}}) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ingest-logs) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 

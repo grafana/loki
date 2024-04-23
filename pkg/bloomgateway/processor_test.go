@@ -7,16 +7,18 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 var _ bloomshipper.Store = &dummyStore{}
@@ -54,6 +56,10 @@ func (s *dummyStore) FetchMetas(_ context.Context, _ bloomshipper.MetaSearchPara
 	return s.metas, nil
 }
 
+func (s *dummyStore) TenantFilesForInterval(_ context.Context, _ bloomshipper.Interval, _ func(tenant string, object client.StorageObject) bool) (map[string][]client.StorageObject, error) {
+	return nil, nil
+}
+
 func (s *dummyStore) Fetcher(_ model.Time) (*bloomshipper.Fetcher, error) {
 	return nil, nil
 }
@@ -65,7 +71,7 @@ func (s *dummyStore) Client(_ model.Time) (bloomshipper.Client, error) {
 func (s *dummyStore) Stop() {
 }
 
-func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef) ([]*bloomshipper.CloseableBlockQuerier, error) {
+func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef, _ ...bloomshipper.FetchOption) ([]*bloomshipper.CloseableBlockQuerier, error) {
 	result := make([]*bloomshipper.CloseableBlockQuerier, 0, len(s.querieres))
 
 	if s.err != nil {
@@ -88,15 +94,18 @@ func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef
 
 func TestProcessor(t *testing.T) {
 	ctx := context.Background()
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "TestProcessor")
+	t.Cleanup(sp.Finish)
+
 	tenant := "fake"
 	now := mktime("2024-01-27 12:00")
 	metrics := newWorkerMetrics(prometheus.NewPedanticRegistry(), constants.Loki, "bloom_gatway")
 
-	t.Run("success case", func(t *testing.T) {
+	t.Run("success case - without blocks", func(t *testing.T) {
 		_, metas, queriers, data := createBlocks(t, tenant, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 
 		mockStore := newMockBloomStore(queriers, metas)
-		p := newProcessor("worker", mockStore, log.NewNopLogger(), metrics)
+		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
 		swb := seriesWithInterval{
@@ -117,7 +126,59 @@ func TestProcessor(t *testing.T) {
 		}
 
 		t.Log("series", len(swb.series))
-		task, _ := NewTask(ctx, "fake", swb, filters)
+		task, _ := NewTask(ctx, "fake", swb, filters, nil)
+		tasks := []Task{task}
+
+		results := atomic.NewInt64(0)
+		var wg sync.WaitGroup
+		for i := range tasks {
+			wg.Add(1)
+			go func(ta Task) {
+				defer wg.Done()
+				for range ta.resCh {
+					results.Inc()
+				}
+				t.Log("done", results.Load())
+			}(tasks[i])
+		}
+
+		err := p.run(ctx, tasks)
+		wg.Wait()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), results.Load())
+	})
+
+	t.Run("success case - with blocks", func(t *testing.T) {
+		_, metas, queriers, data := createBlocks(t, tenant, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
+		blocks := make([]bloomshipper.BlockRef, 0, len(metas))
+		for _, meta := range metas {
+			// we can safely append all block refs from the meta, because it only contains a single one
+			blocks = append(blocks, meta.Blocks...)
+		}
+
+		mockStore := newMockBloomStore(queriers, metas)
+		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
+
+		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
+		swb := seriesWithInterval{
+			series: groupRefs(t, chunkRefs),
+			interval: bloomshipper.Interval{
+				Start: now.Add(-1 * time.Hour),
+				End:   now,
+			},
+			day: config.NewDayTime(truncateDay(now)),
+		}
+		filters := []syntax.LineFilterExpr{
+			{
+				LineFilter: syntax.LineFilter{
+					Ty:    0,
+					Match: "no match",
+				},
+			},
+		}
+
+		t.Log("series", len(swb.series))
+		task, _ := NewTask(ctx, "fake", swb, filters, blocks)
 		tasks := []Task{task}
 
 		results := atomic.NewInt64(0)
@@ -145,7 +206,7 @@ func TestProcessor(t *testing.T) {
 		mockStore := newMockBloomStore(queriers, metas)
 		mockStore.err = errors.New("store failed")
 
-		p := newProcessor("worker", mockStore, log.NewNopLogger(), metrics)
+		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
 		swb := seriesWithInterval{
@@ -166,7 +227,7 @@ func TestProcessor(t *testing.T) {
 		}
 
 		t.Log("series", len(swb.series))
-		task, _ := NewTask(ctx, "fake", swb, filters)
+		task, _ := NewTask(ctx, "fake", swb, filters, nil)
 		tasks := []Task{task}
 
 		results := atomic.NewInt64(0)

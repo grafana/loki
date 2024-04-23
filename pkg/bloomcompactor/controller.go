@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 
@@ -12,10 +13,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
 type SimpleBloomController struct {
@@ -285,7 +287,7 @@ func (s *SimpleBloomController) loadWorkForGap(
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
-) (v1.CloseableIterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBloom], error) {
+) (v1.Iterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBloom], error) {
 	// load a series iterator for the gap
 	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.bounds)
 	if err != nil {
@@ -298,7 +300,22 @@ func (s *SimpleBloomController) loadWorkForGap(
 		return nil, nil, errors.Wrap(err, "failed to get fetcher")
 	}
 
-	f := FetchFunc[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier](fetcher.FetchBlocks)
+	// NB(owen-d): we filter out nil blocks here to avoid panics in the bloom generator since the fetcher
+	// input->output length and indexing in its contract
+	// NB(chaudum): Do we want to fetch in strict mode and fail instead?
+	f := FetchFunc[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier](func(ctx context.Context, refs []bloomshipper.BlockRef) ([]*bloomshipper.CloseableBlockQuerier, error) {
+		blks, err := fetcher.FetchBlocks(ctx, refs, bloomshipper.WithFetchAsync(false), bloomshipper.WithIgnoreNotFound(true))
+		if err != nil {
+			return nil, err
+		}
+		exists := make([]*bloomshipper.CloseableBlockQuerier, 0, len(blks))
+		for _, blk := range blks {
+			if blk != nil {
+				exists = append(exists, blk)
+			}
+		}
+		return exists, nil
+	})
 	blocksIter := newBlockLoadingIter(ctx, gap.blocks, f, 10)
 
 	return seriesItr, blocksIter, nil
@@ -324,13 +341,18 @@ func (s *SimpleBloomController) buildGaps(
 	// With these in hand, we can download the old blocks and use them to
 	// accelerate bloom generation for the new blocks.
 
+	blockEnc, err := chunkenc.ParseEncoding(s.limits.BloomBlockEncoding(tenant))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse block encoding")
+	}
+
 	var (
 		blockCt      int
 		tsdbCt       = len(work)
 		nGramSize    = uint64(s.limits.BloomNGramLength(tenant))
 		nGramSkip    = uint64(s.limits.BloomNGramSkip(tenant))
 		maxBlockSize = uint64(s.limits.BloomCompactorMaxBlockSize(tenant))
-		blockOpts    = v1.NewBlockOptions(nGramSize, nGramSkip, maxBlockSize)
+		blockOpts    = v1.NewBlockOptions(blockEnc, nGramSize, nGramSkip, maxBlockSize)
 		created      []bloomshipper.Meta
 		totalSeries  int
 		bytesAdded   int
@@ -714,7 +736,11 @@ func findGaps(ownershipRange v1.FingerprintBounds, metas []v1.FingerprintBounds)
 
 		searchRange := ownershipRange.Slice(leftBound, clippedMeta.Max)
 		// update the left bound for the next iteration
-		leftBound = min(clippedMeta.Max+1, ownershipRange.Max+1)
+		// We do the max to prevent the max bound to overflow from MaxUInt64 to 0
+		leftBound = min(
+			max(clippedMeta.Max+1, clippedMeta.Max),
+			max(ownershipRange.Max+1, ownershipRange.Max),
+		)
 
 		// since we've already ensured that the meta is within the ownership range,
 		// we know the xor will be of length zero (when the meta is equal to the ownership range)
@@ -729,8 +755,11 @@ func findGaps(ownershipRange v1.FingerprintBounds, metas []v1.FingerprintBounds)
 		gaps = append(gaps, xors[0])
 	}
 
-	if leftBound <= ownershipRange.Max {
-		// There is a gap between the last meta and the end of the ownership range.
+	// If the leftBound is less than the ownership range max, and it's smaller than MaxUInt64,
+	// There is a gap between the last meta and the end of the ownership range.
+	// Note: we check `leftBound < math.MaxUint64` since in the loop above we clamp the
+	// leftBound to MaxUint64 to prevent an overflow to 0: `max(clippedMeta.Max+1, clippedMeta.Max)`
+	if leftBound < math.MaxUint64 && leftBound <= ownershipRange.Max {
 		gaps = append(gaps, v1.NewBounds(leftBound, ownershipRange.Max))
 	}
 

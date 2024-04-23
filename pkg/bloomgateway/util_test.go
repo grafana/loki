@@ -7,10 +7,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 func parseDayTime(s string) config.DayTime {
@@ -136,6 +136,26 @@ func TestPartitionTasks(t *testing.T) {
 			require.Len(t, res.tasks[0].series, 90)
 		}
 	})
+
+	t.Run("block series before and after task series", func(t *testing.T) {
+		bounds := []bloomshipper.BlockRef{
+			mkBlockRef(100, 200),
+		}
+
+		tasks := []Task{
+			{
+				series: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 50},
+					{Fingerprint: 75},
+					{Fingerprint: 250},
+					{Fingerprint: 300},
+				},
+			},
+		}
+
+		results := partitionTasks(tasks, bounds)
+		require.Len(t, results, 0)
+	})
 }
 
 func TestPartitionRequest(t *testing.T) {
@@ -250,32 +270,35 @@ func TestPartitionRequest(t *testing.T) {
 					{
 						Fingerprint: 0x00,
 						Refs: []*logproto.ShortRef{
+							{From: ts.Add(-14 * time.Hour), Through: ts.Add(-13 * time.Hour)},
 							{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)},
+							{From: ts.Add(-11 * time.Hour), Through: ts.Add(-10 * time.Hour)},
 						},
 					},
 				},
 			},
 			exp: []seriesWithInterval{
 				{
-					interval: bloomshipper.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
+					interval: bloomshipper.Interval{Start: ts.Add(-14 * time.Hour), End: ts.Add(-11 * time.Hour)},
 					day:      config.NewDayTime(mktime("2024-01-23 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
 							Refs: []*logproto.ShortRef{
+								{From: ts.Add(-14 * time.Hour), Through: ts.Add(-13 * time.Hour)},
 								{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)},
 							},
 						},
 					},
 				},
 				{
-					interval: bloomshipper.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
+					interval: bloomshipper.Interval{Start: ts.Add(-11 * time.Hour), End: ts.Add(-10 * time.Hour)},
 					day:      config.NewDayTime(mktime("2024-01-24 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
 							Refs: []*logproto.ShortRef{
-								{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)},
+								{From: ts.Add(-11 * time.Hour), Through: ts.Add(-10 * time.Hour)},
 							},
 						},
 					},
@@ -288,9 +311,15 @@ func TestPartitionRequest(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			result := partitionRequest(tc.inp)
 			require.Equal(t, tc.exp, result)
+
+			// Run each partition through the same partitioning process again to make sure results are still the same
+			for i := range result {
+				result2 := partitionSeriesByDay(result[i].interval.Start, result[i].interval.End, result[i].series)
+				require.Len(t, result2, 1)
+				require.Equal(t, result[i], result2[0])
+			}
 		})
 	}
-
 }
 
 func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, minFp, maxFp model.Fingerprint) ([]bloomshipper.BlockRef, []bloomshipper.Meta, []*bloomshipper.CloseableBlockQuerier, [][]v1.SeriesWithBloom) {
@@ -334,7 +363,7 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		// 	}
 		// }
 		querier := &bloomshipper.CloseableBlockQuerier{
-			BlockQuerier: v1.NewBlockQuerier(block),
+			BlockQuerier: v1.NewBlockQuerier(block, false, v1.DefaultMaxPageSize),
 			BlockRef:     blockRef,
 		}
 		queriers = append(queriers, querier)
@@ -356,8 +385,8 @@ func createQueryInputFromBlockData(t *testing.T, tenant string, data [][]v1.Seri
 				res = append(res, &logproto.ChunkRef{
 					Fingerprint: uint64(data[i][j].Series.Fingerprint),
 					UserID:      tenant,
-					From:        chk.Start,
-					Through:     chk.End,
+					From:        chk.From,
+					Through:     chk.Through,
 					Checksum:    chk.Checksum,
 				})
 			}

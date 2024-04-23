@@ -24,11 +24,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/xds/matcher"
 	"google.golang.org/grpc/xds/internal/clusterspecifier"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	v3routepb "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
@@ -75,13 +74,9 @@ func unmarshalRouteConfigResource(r *anypb.Any) (string, RouteConfigUpdate, erro
 // we are looking for.
 func generateRDSUpdateFromRouteConfiguration(rc *v3routepb.RouteConfiguration) (RouteConfigUpdate, error) {
 	vhs := make([]*VirtualHost, 0, len(rc.GetVirtualHosts()))
-	csps := make(map[string]clusterspecifier.BalancerConfig)
-	if envconfig.XDSRLS {
-		var err error
-		csps, err = processClusterSpecifierPlugins(rc.ClusterSpecifierPlugins)
-		if err != nil {
-			return RouteConfigUpdate{}, fmt.Errorf("received route is invalid: %v", err)
-		}
+	csps, err := processClusterSpecifierPlugins(rc.ClusterSpecifierPlugins)
+	if err != nil {
+		return RouteConfigUpdate{}, fmt.Errorf("received route is invalid: %v", err)
 	}
 	// cspNames represents all the cluster specifiers referenced by Route
 	// Actions - any cluster specifiers not referenced by a Route Action can be
@@ -309,13 +304,11 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 			action := r.GetRoute()
 
 			// Hash Policies are only applicable for a Ring Hash LB.
-			if envconfig.XDSRingHash {
-				hp, err := hashPoliciesProtoToSlice(action.HashPolicy)
-				if err != nil {
-					return nil, nil, err
-				}
-				route.HashPolicies = hp
+			hp, err := hashPoliciesProtoToSlice(action.HashPolicy)
+			if err != nil {
+				return nil, nil, err
 			}
+			route.HashPolicies = hp
 
 			switch a := action.GetClusterSpecifier().(type) {
 			case *v3routepb.RouteAction_Cluster:
@@ -356,10 +349,6 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 				// This means that if this env var is not set, we should treat
 				// it as if it we didn't know about the cluster_specifier_plugin
 				// at all.
-				if !envconfig.XDSRLS {
-					logger.Warningf("Ignoring route %+v with unsupported route_action field: cluster_specifier_plugin", r)
-					continue
-				}
 				if _, ok := csps[a.ClusterSpecifierPlugin]; !ok {
 					// "When processing RouteActions, if any action includes a
 					// cluster_specifier_plugin value that is not in
@@ -389,7 +378,6 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 				route.MaxStreamDuration = &d
 			}
 
-			var err error
 			route.RetryConfig, err = generateRetryConfig(action.GetRetryPolicy())
 			if err != nil {
 				return nil, nil, fmt.Errorf("route %+v, action %+v: %v", r, action, err)

@@ -1,11 +1,12 @@
 name: Snyk Monitor Scanning
 on:
  release:
-   types: [published] 
+   types: [published]
  push:
     branches:
-      - 'main' 
+      - 'main'
       - 'master'
+      - 'release-[0-9]+.[0-9]+.x'
  workflow_dispatch:
 
 jobs:

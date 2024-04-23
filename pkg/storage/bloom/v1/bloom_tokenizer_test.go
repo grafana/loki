@@ -9,15 +9,16 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/push"
+
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -37,8 +38,8 @@ func TestPrefixedKeyCreation(t *testing.T) {
 	var ones uint64 = 0xffffffffffffffff
 
 	ref := ChunkRef{
-		Start:    0,
-		End:      model.Time(int64(ones)),
+		From:     0,
+		Through:  model.Time(int64(ones)),
 		Checksum: 0xffffffff,
 	}
 	for _, tc := range []struct {
@@ -81,13 +82,13 @@ func TestSetLineTokenizer(t *testing.T) {
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 
 	// Validate defaults
-	require.Equal(t, bt.lineTokenizer.N, DefaultNGramLength)
-	require.Equal(t, bt.lineTokenizer.Skip, DefaultNGramSkip)
+	require.Equal(t, bt.lineTokenizer.N(), DefaultNGramLength)
+	require.Equal(t, bt.lineTokenizer.SkipFactor(), DefaultNGramSkip)
 
 	// Set new tokenizer, and validate against that
 	bt.lineTokenizer = NewNGramTokenizer(6, 7)
-	require.Equal(t, bt.lineTokenizer.N, 6)
-	require.Equal(t, bt.lineTokenizer.Skip, 7)
+	require.Equal(t, bt.lineTokenizer.N(), 6)
+	require.Equal(t, bt.lineTokenizer.SkipFactor(), 7)
 }
 
 func TestTokenizerPopulate(t *testing.T) {

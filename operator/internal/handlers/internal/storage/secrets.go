@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"sort"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -38,6 +40,11 @@ var (
 	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
 	errAzureInvalidAccountKey         = errors.New("azure account key is not valid base64")
 
+	errS3EndpointUnparseable       = errors.New("can not parse S3 endpoint as URL")
+	errS3EndpointNoURL             = errors.New("endpoint for S3 must be an HTTP or HTTPS URL")
+	errS3EndpointUnsupportedScheme = errors.New("scheme of S3 endpoint URL is unsupported")
+	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 must include correct region")
+
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
 
@@ -49,12 +56,15 @@ var (
 	}
 )
 
-const gcpAccountTypeExternal = "external_account"
+const (
+	awsEndpointSuffix      = ".amazonaws.com"
+	gcpAccountTypeExternal = "external_account"
+)
 
 func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
 	var (
-		storageSecret     corev1.Secret
-		managedAuthSecret corev1.Secret
+		storageSecret      corev1.Secret
+		tokenCCOAuthSecret corev1.Secret
 	)
 
 	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
@@ -69,27 +79,27 @@ func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg c
 		return nil, nil, fmt.Errorf("failed to lookup lokistack storage secret: %w", err)
 	}
 
-	if fg.OpenShift.ManagedAuthEnv {
+	if fg.OpenShift.TokenCCOAuthEnv {
 		secretName := storage.ManagedCredentialsSecretName(stack.Name)
-		managedAuthCredsKey := client.ObjectKey{Name: secretName, Namespace: stack.Namespace}
-		if err := k.Get(ctx, managedAuthCredsKey, &managedAuthSecret); err != nil {
+		tokenCCOAuthCredsKey := client.ObjectKey{Name: secretName, Namespace: stack.Namespace}
+		if err := k.Get(ctx, tokenCCOAuthCredsKey, &tokenCCOAuthSecret); err != nil {
 			if apierrors.IsNotFound(err) {
 				// We don't know if this is an error yet, need to wait for evaluation of CredentialMode
 				// For now we go with empty "managed secret", the eventual DegradedError will be returned later.
 				return &storageSecret, nil, nil
 			}
-			return nil, nil, fmt.Errorf("failed to lookup OpenShift CCO managed authentication credentials secret: %w", err)
+			return nil, nil, fmt.Errorf("failed to lookup OpenShift CCO token authentication credentials secret: %w", err)
 		}
 
-		return &storageSecret, &managedAuthSecret, nil
+		return &storageSecret, &tokenCCOAuthSecret, nil
 	}
 
 	return &storageSecret, nil, nil
 }
 
 // extractSecrets reads the k8s obj storage secret into a manifest object storage struct if valid.
-// The managed auth is also read into the manifest object under the right circumstances.
-func extractSecrets(secretSpec lokiv1.ObjectStorageSecretSpec, objStore, managedAuth *corev1.Secret, fg configv1.FeatureGates) (storage.Options, error) {
+// The token cco auth is also read into the manifest object under the right circumstances.
+func extractSecrets(secretSpec lokiv1.ObjectStorageSecretSpec, objStore, tokenCCOAuth *corev1.Secret, fg configv1.FeatureGates) (storage.Options, error) {
 	hash, err := hashSecretData(objStore)
 	if err != nil {
 		return storage.Options{}, errSecretHashError
@@ -98,16 +108,16 @@ func extractSecrets(secretSpec lokiv1.ObjectStorageSecretSpec, objStore, managed
 	openShiftOpts := storage.OpenShiftOptions{
 		Enabled: fg.OpenShift.Enabled,
 	}
-	if managedAuth != nil {
-		var managedAuthHash string
-		managedAuthHash, err = hashSecretData(managedAuth)
+	if tokenCCOAuth != nil {
+		var tokenCCOAuthHash string
+		tokenCCOAuthHash, err = hashSecretData(tokenCCOAuth)
 		if err != nil {
 			return storage.Options{}, errSecretHashError
 		}
 
 		openShiftOpts.CloudCredentials = storage.CloudCredentials{
-			SecretName: managedAuth.Name,
-			SHA1:       managedAuthHash,
+			SecretName: tokenCCOAuth.Name,
+			SHA1:       tokenCCOAuthHash,
 		}
 	}
 
@@ -161,9 +171,9 @@ func determineCredentialMode(spec lokiv1.ObjectStorageSecretSpec, secret *corev1
 		return spec.CredentialMode, nil
 	}
 
-	if fg.OpenShift.ManagedAuthEnv {
-		// Default to managed credential mode on a managed-auth installation
-		return lokiv1.CredentialModeManaged, nil
+	if fg.OpenShift.TokenCCOAuthEnv {
+		// Default to token cco credential mode on a token-cco-auth installation
+		return lokiv1.CredentialModeTokenCCO, nil
 	}
 
 	switch spec.Type {
@@ -298,7 +308,7 @@ func validateAzureCredentials(s *corev1.Secret, credentialMode lokiv1.Credential
 		}
 
 		return true, nil
-	case lokiv1.CredentialModeManaged:
+	case lokiv1.CredentialModeTokenCCO:
 		if len(accountKey) > 0 || len(clientID) > 0 || len(tenantID) > 0 || len(subscriptionID) > 0 {
 			return false, errAzureManagedIdentityNoOverride
 		}
@@ -370,7 +380,7 @@ func extractGCSConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMo
 			WorkloadIdentity: true,
 			Audience:         audience,
 		}, nil
-	case lokiv1.CredentialModeManaged:
+	case lokiv1.CredentialModeTokenCCO:
 		return nil, fmt.Errorf("%w: type: %s credentialMode: %s", errSecretUnsupportedCredentialMode, lokiv1.ObjectStorageSecretGCS, credentialMode)
 	default:
 	}
@@ -394,7 +404,8 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		roleArn  = s.Data[storage.KeyAWSRoleArn]
 		audience = s.Data[storage.KeyAWSAudience]
 		// Optional fields
-		region = s.Data[storage.KeyAWSRegion]
+		region         = s.Data[storage.KeyAWSRegion]
+		forcePathStyle = !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
 	)
 
 	sseCfg, err := extractS3SSEConfig(s.Data)
@@ -403,30 +414,31 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 	}
 
 	cfg := &storage.S3StorageConfig{
-		Buckets: string(buckets),
-		Region:  string(region),
-		SSE:     sseCfg,
+		Buckets:        string(buckets),
+		Region:         string(region),
+		SSE:            sseCfg,
+		ForcePathStyle: forcePathStyle,
 	}
 
 	switch credentialMode {
-	case lokiv1.CredentialModeManaged:
+	case lokiv1.CredentialModeTokenCCO:
 		cfg.STS = true
 		cfg.Audience = string(audience)
 		// Do not allow users overriding the role arn provided on Loki Operator installation
 		if len(roleArn) != 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAWSRoleArn)
 		}
+
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}
-
 		return cfg, nil
 	case lokiv1.CredentialModeStatic:
 		cfg.Endpoint = string(endpoint)
 
-		if len(endpoint) == 0 {
-			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSEndpoint)
+		if err := validateS3Endpoint(string(endpoint), string(region)); err != nil {
+			return nil, err
 		}
 		if len(id) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSAccessKeyID)
@@ -448,6 +460,38 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 	default:
 		return nil, fmt.Errorf("%w: %s", errSecretUnknownCredentialMode, credentialMode)
 	}
+}
+
+func validateS3Endpoint(endpoint string, region string) error {
+	if len(endpoint) == 0 {
+		return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSEndpoint)
+	}
+
+	parsedURL, err := url.Parse(endpoint)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errS3EndpointUnparseable, err)
+	}
+
+	if parsedURL.Scheme == "" {
+		// Assume "just a hostname" when scheme is empty and produce a clearer error message
+		return errS3EndpointNoURL
+	}
+
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("%w: %s", errS3EndpointUnsupportedScheme, parsedURL.Scheme)
+	}
+
+	if strings.HasSuffix(endpoint, awsEndpointSuffix) {
+		if len(region) == 0 {
+			return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
+		}
+
+		validEndpoint := fmt.Sprintf("https://s3.%s%s", region, awsEndpointSuffix)
+		if endpoint != validEndpoint {
+			return fmt.Errorf("%w: %s", errS3EndpointAWSInvalid, validEndpoint)
+		}
+	}
+	return nil
 }
 
 func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {

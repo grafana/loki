@@ -103,7 +103,7 @@ func (c *FloatHistogramChunk) Appender() (Appender, error) {
 	// To get an appender, we must know the state it would have if we had
 	// appended all existing data from scratch. We iterate through the end
 	// and populate via the iterator's state.
-	for it.Next() == ValFloatHistogram { // nolint:revive
+	for it.Next() == ValFloatHistogram {
 	}
 	if err := it.Err(); err != nil {
 		return nil, err
@@ -527,7 +527,7 @@ func (a *FloatHistogramAppender) recode(
 	numPositiveBuckets, numNegativeBuckets := countSpans(positiveSpans), countSpans(negativeSpans)
 
 	for it.Next() == ValFloatHistogram {
-		tOld, hOld := it.AtFloatHistogram()
+		tOld, hOld := it.AtFloatHistogram(nil)
 
 		// We have to newly allocate slices for the modified buckets
 		// here because they are kept by the appender until the next
@@ -605,10 +605,10 @@ func (a *FloatHistogramAppender) AppendFloatHistogram(prev *FloatHistogramAppend
 		pForwardInserts, nForwardInserts, okToAppend, counterReset := a.appendable(h)
 		if !okToAppend || counterReset {
 			if appendOnly {
-				if !okToAppend {
-					return nil, false, a, fmt.Errorf("float histogram schema change")
+				if counterReset {
+					return nil, false, a, fmt.Errorf("float histogram counter reset")
 				}
-				return nil, false, a, fmt.Errorf("float histogram counter reset")
+				return nil, false, a, fmt.Errorf("float histogram schema change")
 			}
 			newChunk := NewFloatHistogramChunk()
 			app, err := newChunk.Appender()
@@ -728,27 +728,50 @@ func (it *floatHistogramIterator) At() (int64, float64) {
 	panic("cannot call floatHistogramIterator.At")
 }
 
-func (it *floatHistogramIterator) AtHistogram() (int64, *histogram.Histogram) {
+func (it *floatHistogramIterator) AtHistogram(*histogram.Histogram) (int64, *histogram.Histogram) {
 	panic("cannot call floatHistogramIterator.AtHistogram")
 }
 
-func (it *floatHistogramIterator) AtFloatHistogram() (int64, *histogram.FloatHistogram) {
+func (it *floatHistogramIterator) AtFloatHistogram(fh *histogram.FloatHistogram) (int64, *histogram.FloatHistogram) {
 	if value.IsStaleNaN(it.sum.value) {
 		return it.t, &histogram.FloatHistogram{Sum: it.sum.value}
 	}
-	it.atFloatHistogramCalled = true
-	return it.t, &histogram.FloatHistogram{
-		CounterResetHint: counterResetHint(it.counterResetHeader, it.numRead),
-		Count:            it.cnt.value,
-		ZeroCount:        it.zCnt.value,
-		Sum:              it.sum.value,
-		ZeroThreshold:    it.zThreshold,
-		Schema:           it.schema,
-		PositiveSpans:    it.pSpans,
-		NegativeSpans:    it.nSpans,
-		PositiveBuckets:  it.pBuckets,
-		NegativeBuckets:  it.nBuckets,
+	if fh == nil {
+		it.atFloatHistogramCalled = true
+		return it.t, &histogram.FloatHistogram{
+			CounterResetHint: counterResetHint(it.counterResetHeader, it.numRead),
+			Count:            it.cnt.value,
+			ZeroCount:        it.zCnt.value,
+			Sum:              it.sum.value,
+			ZeroThreshold:    it.zThreshold,
+			Schema:           it.schema,
+			PositiveSpans:    it.pSpans,
+			NegativeSpans:    it.nSpans,
+			PositiveBuckets:  it.pBuckets,
+			NegativeBuckets:  it.nBuckets,
+		}
 	}
+
+	fh.CounterResetHint = counterResetHint(it.counterResetHeader, it.numRead)
+	fh.Schema = it.schema
+	fh.ZeroThreshold = it.zThreshold
+	fh.ZeroCount = it.zCnt.value
+	fh.Count = it.cnt.value
+	fh.Sum = it.sum.value
+
+	fh.PositiveSpans = resize(fh.PositiveSpans, len(it.pSpans))
+	copy(fh.PositiveSpans, it.pSpans)
+
+	fh.NegativeSpans = resize(fh.NegativeSpans, len(it.nSpans))
+	copy(fh.NegativeSpans, it.nSpans)
+
+	fh.PositiveBuckets = resize(fh.PositiveBuckets, len(it.pBuckets))
+	copy(fh.PositiveBuckets, it.pBuckets)
+
+	fh.NegativeBuckets = resize(fh.NegativeBuckets, len(it.nBuckets))
+	copy(fh.NegativeBuckets, it.nBuckets)
+
+	return it.t, fh
 }
 
 func (it *floatHistogramIterator) AtT() int64 {

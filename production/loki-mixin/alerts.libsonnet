@@ -17,7 +17,8 @@
               severity: 'critical',
             },
             annotations: {
-              message: |||
+              summary: 'Loki request error rate is high.',
+              description: |||
                 {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
               |||,
             },
@@ -31,7 +32,8 @@
               severity: 'critical',
             },
             annotations: {
-              message: |||
+              summary: 'Loki requests are causing code panics.',
+              description: |||
                 {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}% increase of panics.
               |||,
             },
@@ -46,7 +48,8 @@
               severity: 'critical',
             },
             annotations: {
-              message: |||
+              summary: 'Loki request error latency is high.',
+              description: |||
                 {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
               |||,
             },
@@ -54,16 +57,17 @@
           {
             alert: 'LokiTooManyCompactorsRunning',
             expr: |||
-              sum(loki_boltdb_shipper_compactor_running) by (namespace, cluster) > 1
-            |||,
+              sum(loki_boltdb_shipper_compactor_running) by (namespace, %s) > 1
+            ||| % $._config.per_cluster_label,
             'for': '5m',
             labels: {
               severity: 'warning',
             },
             annotations: {
-              message: |||
+              summary: 'Loki deployment is running more than one compactor.',
+              description: std.strReplace(|||
                 {{ $labels.cluster }} {{ $labels.namespace }} has had {{ printf "%.0f" $value }} compactors running for more than 5m. Only one compactor should run at a time.
-              |||,
+              |||, 'cluster', $._config.per_cluster_label),
             },
           },
         ],

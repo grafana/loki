@@ -3,10 +3,11 @@ package bloomcompactor
 import (
 	"testing"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 func mkTblRange(tenant string, tbl config.DayTime, from, through model.Fingerprint) *tenantTableRange {

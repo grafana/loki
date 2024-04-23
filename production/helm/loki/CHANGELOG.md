@@ -13,6 +13,111 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.3.4
+
+- [BUGFIX] Add missing OTLP endpoint to nginx config
+
+## 6.3.3
+
+- [ENHANCEMENT] make the singlebinary set 0 the replicas number of backend, write,read.
+
+## 6.3.2
+
+- [BUGFIX] Missing password for Loki-Canary when loki.auth_enabled is true
+
+## 6.3.1
+
+- [BUGFIX] Fixed Typo in Ingester templates for zoneAwareReplication
+
+## 6.3.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v3.0.0
+
+## 6.2.5
+
+- [BUGFIX] Add missing toleration blocks to bloom components.
+
+## 6.2.4
+
+- [ENHANCEMENT] Activate the volume endpoint by default.
+
+## 6.2.3
+
+- [ENHANCEMENT] Allow minio address to be overridden.
+- [CHANGE] `query-scheduler-discovery` service will now be prefixed by query scheduler full name.
+- [BUGFIX] Fix `helm-tests` Go source which was missing a param following #12245.
+
+## 6.2.2
+
+- [FEATURE] Add support for enabling pattern ingester config via `loki.pattern_ingester.enabled`.
+
+## 6.2.1
+
+- [BUGFIX] Removed duplicate bucketNames from documentation and fixed key name `deploymentMode`
+
+## 6.2.0
+
+- [FEATURE] Add a headless service to the bloom gateway component.
+
+## 6.1.0
+
+- [CHANGE] Only default bucket names in helm when using minio.
+
+## 6.0.0
+
+- [FEATURE] added a new `Distributed` mode of deployment.
+- [CHANGE] the lokiCanary section was moved from under monitoring to be under the root of the file.
+- [CHANGE] the definitions for topologySpreadConstraints and podAffinity were converted from string templates to objects. Also removed the soft constraint on zone.
+- [CHANGE] the externalConfigSecretName was replaced with more generic configs
+
+## 5.47.2
+
+- [ENHANCEMENT] Allow for additional pipeline stages to be configured on the `selfMonitoring` `Podlogs` resource.
+
+## 5.47.1
+
+- [BUGFIX] Increase default value of backend minReplicas to 3
+
+## 5.47.0
+
+- [CHANGE] Changed version of Loki to 2.9.6
+
+## 5.46.0
+
+- [CHANGE] Changed version of Loki to 2.9.5
+
+## 5.45.0
+
+- [CHANGE] Add extraContainers parameter for the read pod
+
+## 5.44.4
+
+- [ENHANCEMENT] Use http_listen_port for `compactorAddress`.
+
+## 5.44.3
+
+- [BUGFIX] Fix template error: `<.Values.loki.server.http_listen_port>: can't evaluate field Values in type interface {}`
+
+## 5.44.2
+
+- [BUGFIX] Fix usage of `http_listen_port` and `grpc_listen_port` field in template.
+
+## 5.44.1
+
+- [BUGFIX] Fix `compactorAddress` field: add protocol and port.
+
+## 5.44.0
+
+- [FEATURE] Modified helm template to use parameters http_listen_port and grpc_listen_port instead of hardcoded values.
+
+## 5.43.7
+
+- [BUGFIX] allow to configure http_config for ruler
+
+## 5.43.6
+
+- [ENHANCEMENT] Add `ciliumnetworkpolicy` with egress to world for table-manager if enabled.
+
 ## 5.43.5
 
 - [BUGFIX] Add `---` before the `backend-kubeapiserver-egress` ciliumnetworkpolicy to prevent the `backend-world-egress` one from being dumped if both are enabled.
@@ -133,7 +238,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.33.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.4
-
 
 ## 5.32.0
 
@@ -386,11 +490,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.7.2
 
-
 ## 5.4.0
 
 - [CHANGE] Changed version of Loki to 2.8.2
-
 
 - [CHANGE] Change default GEL and Loki versions to 1.7.1 and 2.8.1 respectively
 - [BUGFIX] Fix dns port in network-policy
@@ -401,11 +503,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Add projected volume type to psp
 
-
 ## 4.9.0
 
 - [CHANGE] Changed version of Loki to 2.7.5
-
 
 - [BUGFIX] Fix role/PSP mapping
 

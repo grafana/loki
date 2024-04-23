@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type CompactorClient interface {
@@ -98,22 +98,23 @@ func (c *deleteRequestsClient) updateLoop() {
 	for {
 		select {
 		case <-t.C:
-			c.updateCache()
+			if err := c.updateCache(); err != nil {
+				level.Error(log.Logger).Log("msg", "error reloading cached delete requests", "err", err)
+			}
 		case <-c.stopChan:
 			return
 		}
 	}
 }
 
-func (c *deleteRequestsClient) updateCache() {
+func (c *deleteRequestsClient) updateCache() error {
 	userIDs := c.currentUserIDs()
 
 	newCache := make(map[string][]DeleteRequest)
 	for _, userID := range userIDs {
 		deleteReq, err := c.compactorClient.GetAllDeleteRequestsForUser(context.Background(), userID)
 		if err != nil {
-			level.Error(log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
-			continue
+			return err
 		}
 		newCache[userID] = deleteReq
 	}
@@ -121,6 +122,8 @@ func (c *deleteRequestsClient) updateCache() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.cache = newCache
+
+	return nil
 }
 
 func (c *deleteRequestsClient) currentUserIDs() []string {

@@ -3,8 +3,11 @@ package bloomgateway
 import (
 	"time"
 
+	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type metrics struct {
@@ -12,9 +15,44 @@ type metrics struct {
 	*serverMetrics
 }
 
+type clientMetrics struct {
+	cacheLocalityScore prometheus.Histogram
+	requestLatency     *prometheus.HistogramVec
+	clients            prometheus.Gauge
+}
+
+func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
+	return &clientMetrics{
+		cacheLocalityScore: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Subsystem: "bloom_gateway_client",
+			Name:      "cache_locality_score",
+			Help:      "Cache locality score of the bloom filter, as measured by % of keyspace touched / % of bloom_gws required",
+			Buckets:   prometheus.LinearBuckets(0.01, 0.2, 5),
+		}),
+		requestLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Subsystem: "bloom_gateway_client",
+			Name:      "request_duration_seconds",
+			Help:      "Time (in seconds) spent serving requests when using the bloom gateway",
+			Buckets:   instrument.DefBuckets,
+		}, []string{"operation", "status_code"}),
+		clients: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Subsystem: "bloom_gateway",
+			Name:      "clients",
+			Help:      "The current number of bloom gateway clients.",
+		}),
+	}
+}
+
 type serverMetrics struct {
 	inflightRequests prometheus.Summary
-	chunkRemovals    *prometheus.CounterVec
+	requestedSeries  prometheus.Histogram
+	filteredSeries   prometheus.Histogram
+	requestedChunks  prometheus.Histogram
+	filteredChunks   prometheus.Histogram
+	receivedFilters  prometheus.Histogram
 }
 
 func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -35,12 +73,41 @@ func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			MaxAge:     time.Minute,
 			AgeBuckets: 6,
 		}),
-		chunkRemovals: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		requestedSeries: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "chunk_removals_total",
-			Help:      "Total amount of removals received from the block querier partitioned by state. The state 'accepted' means that the removals are processed, the state 'dropped' means that the removals were received after the task context was done (e.g. client timeout, etc).",
-		}, []string{"state"}),
+			Name:      "requested_series",
+			Help:      "Total amount of series refs sent to bloom-gateway for querying",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 100e3, 10),
+		}),
+		filteredSeries: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "filtered_series",
+			Help:      "Total amount of series refs filtered by bloom-gateway",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 100e3, 10),
+		}),
+		requestedChunks: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "requested_chunks",
+			Help:      "Total amount of chunk refs sent to bloom-gateway for querying",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 100e3, 10),
+		}),
+		filteredChunks: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "filtered_chunks",
+			Help:      "Total amount of chunk refs filtered by bloom-gateway",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 100e3, 10),
+		}),
+		receivedFilters: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "request_filters",
+			Help:      "Number of filters per request.",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 9), // 1 -> 256
+		}),
 	}
 }
 
@@ -90,9 +157,8 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 		blockQueryLatency: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			// TODO(owen-d): rename to block_query_latency_seconds
-			Name: "block_query_latency",
-			Help: "Time spent running searches against a bloom block",
+			Name:      "block_query_latency_seconds",
+			Help:      "Time spent running searches against a bloom block",
 		}, append(labels, "status")),
 	}
 }
