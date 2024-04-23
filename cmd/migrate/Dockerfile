@@ -1,4 +1,4 @@
-FROM golang:1.21.9 as build
+FROM golang:1.22.2 as build
 COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false migrate

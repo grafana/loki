@@ -1997,7 +1997,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\"} | logfmt | level=\"error\"[$__rate_interval]))",
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\"} | logfmt | level=\"error\"[$__auto]))",
                         "refId": "A"
                      }
                   ],
@@ -3224,7 +3224,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\"} | logfmt |  level=\"error\"[$__rate_interval]))",
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\"} | logfmt |  level=\"error\"[$__auto]))",
                         "refId": "A"
                      }
                   ],
