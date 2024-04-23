@@ -419,7 +419,7 @@ github.com/dimchansky/utfbom
 ## explicit
 github.com/docker/distribution/digestset
 github.com/docker/distribution/reference
-# github.com/docker/docker v20.10.23+incompatible => github.com/docker/docker v24.0.7+incompatible
+# github.com/docker/docker v24.0.9+incompatible => github.com/docker/docker v24.0.9+incompatible
 ## explicit
 github.com/docker/docker/api
 github.com/docker/docker/api/types
@@ -2053,4 +2053,4 @@ sigs.k8s.io/yaml
 # github.com/grafana/loki/pkg/push => ./pkg/push
 # go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp => go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.44.0
 # github.com/docker/distribution => github.com/docker/distribution v2.8.2-beta.1+incompatible
-# github.com/docker/docker => github.com/docker/docker v24.0.7+incompatible
+# github.com/docker/docker => github.com/docker/docker v24.0.9+incompatible
