@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/iter"
 )
 
 // newFirstWithTimestampIterator returns an iterator the returns the first value

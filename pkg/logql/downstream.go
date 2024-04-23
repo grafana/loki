@@ -301,7 +301,6 @@ func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
 	}
 }
 
-<<<<<<< HEAD
 type MergeFirstOverTimeExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
@@ -358,8 +357,6 @@ func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
 	}
 }
 
-=======
->>>>>>> main
 type Downstreamable interface {
 	Downstreamer(context.Context) Downstreamer
 }
@@ -559,7 +556,8 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			queries[i] = qry
 		}
 
-		results, err := ev.Downstream(ctx, queries)
+		acc := NewBufferedAccumulator(len(queries))
+		results, err := ev.Downstream(ctx, queries, acc)
 		if err != nil {
 			return nil, err
 		}
@@ -595,7 +593,8 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			queries[i] = qry
 		}
 
-		results, err := ev.Downstream(ctx, queries)
+		acc := NewBufferedAccumulator(len(queries))
+		results, err := ev.Downstream(ctx, queries, acc)
 		if err != nil {
 			return nil, err
 		}
