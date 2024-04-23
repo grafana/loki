@@ -43,6 +43,13 @@ For more detailed information on configuring how to discover and scrape logs fro
 targets, see [Scraping]({{< relref "./scraping" >}}). For more information on transforming logs
 from scraped targets, see [Pipelines]({{< relref "./pipelines" >}}).
 
+## Reload at runtime
+
+Promtail can reload its configuration at runtime. If the new configuration
+is not well-formed, the changes will not be applied.
+A configuration reload is triggered by sending a `SIGHUP` to the Promtail process or
+sending a HTTP POST request to the `/reload` endpoint (when the `--server.enable-runtime-reload` flag is enabled).
+
 ### Use environment variables in the configuration
 
 You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
