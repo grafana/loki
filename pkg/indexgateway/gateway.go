@@ -69,19 +69,21 @@ type Gateway struct {
 	bloomQuerier BloomQuerier
 	metrics      *Metrics
 
-	cfg Config
-	log log.Logger
+	cfg    Config
+	limits Limits
+	log    log.Logger
 }
 
 // NewIndexGateway instantiates a new Index Gateway and start its services.
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, r prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier) (*Gateway, error) {
+func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		bloomQuerier: bloomQuerier,
 		cfg:          cfg,
+		limits:       limits,
 		log:          log,
 		indexClients: indexClients,
 		metrics:      NewMetrics(r),
@@ -370,11 +372,12 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 		return err
 	}
 
-	// Shards were requested, but blooms are not enabled or cannot be used due to lack of filters.
-	// That's ok; we can still return shard ranges without filtering
-	// which will be more effective than guessing power-of-2 shard ranges.
 	forSeries, ok := g.indexQuerier.HasForSeries(request.From, request.Through)
-	if g.bloomQuerier == nil || len(syntax.ExtractLineFilters(p.Plan().AST)) == 0 || !ok {
+	if !ok {
+		sp.LogKV(
+			"msg", "index does not support forSeries",
+			"action", "falling back to indexQuerier.GetShards impl",
+		)
 		shards, err := g.indexQuerier.GetShards(
 			ctx,
 			instanceID,
@@ -390,11 +393,11 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 		return server.Send(shards)
 	}
 
-	return g.getShardsWithBlooms(ctx, request, server, instanceID, p, forSeries)
+	return g.boundedShards(ctx, request, server, instanceID, p, forSeries)
 }
 
-// getShardsWithBlooms is a helper function to get shards with blooms enabled.
-func (g *Gateway) getShardsWithBlooms(
+// boundedShards handles bounded shard requests, optionally using blooms and/or returning precomputed chunks.
+func (g *Gateway) boundedShards(
 	ctx context.Context,
 	req *logproto.ShardsRequest,
 	server logproto.IndexGateway_GetShardsServer,
@@ -437,11 +440,16 @@ func (g *Gateway) getShardsWithBlooms(
 		}
 	}
 
-	// 2) filter via blooms
-	filtered, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
-	if err != nil {
-		return err
+	filtered := refs
+
+	// 2) filter via blooms if enabled
+	if g.bloomQuerier != nil {
+		filtered, err = g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
+		if err != nil {
+			return err
+		}
 	}
+
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(len(filtered)))
 
@@ -471,7 +479,12 @@ func (g *Gateway) getShardsWithBlooms(
 			return err
 		}
 		resp.Shards = shards
-		resp.ChunkGroups = chunkGrps
+
+		// If the index gateway is configured to precompute chunks, we can return the chunk groups
+		// alongside the shards, otherwise discarding them
+		if g.limits.TSDBPrecomputeChunks(instanceID) {
+			resp.ChunkGroups = chunkGrps
+		}
 	}
 
 	sp.LogKV("msg", "send shards response", "shards", len(resp.Shards))
