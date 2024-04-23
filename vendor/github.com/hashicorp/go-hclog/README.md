@@ -17,7 +17,7 @@ JSON output mode for production.
 
 ## Stability Note
 
-This library has reached 1.0 stability. It's API can be considered solidified
+This library has reached 1.0 stability. Its API can be considered solidified
 and promised through future versions.
 
 ## Installation and Docs
