@@ -708,6 +708,12 @@ func (t *Loki) initStore() (services.Service, error) {
 }
 
 func (t *Loki) initBloomStore() (services.Service, error) {
+	// BloomStore is a dependency of IndexGateway, even when the BloomGateway is not enabled.
+	// Do not instantiate store and do not create a service.
+	if !t.Cfg.BloomGateway.Enabled {
+		return nil, nil
+	}
+
 	if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
 		return nil, errors.New("not using shipper index type")
 	}
@@ -1430,7 +1436,8 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		if err != nil {
 			return nil, err
 		}
-		bloomQuerier = bloomgateway.NewQuerier(bloomGatewayClient, prometheus.DefaultRegisterer, logger)
+		resolver := bloomgateway.NewBlockResolver(t.BloomStore, logger)
+		bloomQuerier = bloomgateway.NewQuerier(bloomGatewayClient, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
 	}
 
 	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier)
