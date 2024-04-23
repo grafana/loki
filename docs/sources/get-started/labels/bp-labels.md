@@ -33,12 +33,12 @@ What you want to avoid is splitting a log file into streams, which result in chu
 
 It’s not critical that every chunk be full when flushed, but it will improve many aspects of operation. As such, our current guidance here is to avoid dynamic labels as much as possible and instead favor filter expressions. For example, don’t add a `level` dynamic label, just `|= "level=debug"` instead.
 
-*Developer Tip:* Below are some best practices for using dynamic labels with Loki:
-- *Ensure the labels have low cardinality, ideally limited to tens of values.*
-- *Use labels with long-lived values, such as the initial segment of an HTTP path: `/load`, `/save`, `/update`.*
-  - *Do not extract ephemeral values like a trace ID or an order ID into a label; the values should be static, not dynamic.*
-- *Only add labels that users will frequently use in their queries.*
-  - *Don’t increase the size of the index and fragment your log streams if nobody is actually using these labels. This will degrade performance.* 
+Here are some best practices for using dynamic labels with Loki:
+- Ensure the labels have low cardinality, ideally limited to tens of values.
+- Use labels with long-lived values, such as the initial segment of an HTTP path: `/load`, `/save`, `/update`.
+  - Do not extract ephemeral values like a trace ID or an order ID into a label; the values should be static, not dynamic.
+- Only add labels that users will frequently use in their queries.
+  - Don’t increase the size of the index and fragment your log streams if nobody is actually using these labels. This will degrade performance. 
 
 ### Bloom Filters (Experimental)
 
