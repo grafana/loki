@@ -50,7 +50,7 @@ If you are dynamically setting labels, never use a label which can have unbounde
 
 Try to keep values bounded to as small a set as possible. We don't have perfect guidance as to what Loki can handle, but think single digits, or maybe 10’s of values for a dynamic label. This is less critical for static labels. For example, if you have 1,000 hosts in your environment it's going to be just fine to have a host label with 1,000 values.
 
-As a general rule, you should try to keep any single tenant in Loki to less than **100,000 active streams**, and less than a million streams in a 24-hour period.  These values are for HUGE tenants, sending more than **10 TB** a day. If your tenant is 10x smaller, you should have at least 10x less labels.
+As a general rule, you should try to keep any single tenant in Loki to less than **100,000 active streams**, and less than a million streams in a 24-hour period.  These values are for HUGE tenants, sending more than **10 TB** a day. If your tenant is 10x smaller, you should have at least 10x fewer labels.
 
 ## Be aware of dynamic labels applied by clients
 
