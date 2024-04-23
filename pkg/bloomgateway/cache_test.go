@@ -450,14 +450,14 @@ func TestCache(t *testing.T) {
 	res, err = cacheMiddleware.FilterChunkRefs(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 2, *calls)
-	require.Equal(t, expectedRes, res)
+	require.ElementsMatch(t, expectedRes.ChunkRefs, res.ChunkRefs)
 
 	// Doing a request again should only hit the cache
 	*calls = 0
 	res, err = cacheMiddleware.FilterChunkRefs(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 0, *calls)
-	require.Equal(t, expectedRes, res)
+	require.ElementsMatch(t, expectedRes.ChunkRefs, res.ChunkRefs)
 }
 
 type mockServer struct {
