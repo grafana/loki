@@ -77,6 +77,10 @@ func (r BlockRef) String() string {
 	return defaultKeyResolver{}.Block(r).Addr()
 }
 
+func BlockRefFromKey(k string) (BlockRef, error) {
+	return defaultKeyResolver{}.ParseBlockKey(key(k))
+}
+
 type MetaRef struct {
 	Ref
 }
