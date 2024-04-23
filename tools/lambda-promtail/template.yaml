@@ -55,6 +55,10 @@ Parameters:
     Description: Determines whether to verify the TLS certificate
     Type: String
     Default: "false"
+  LogGroupName:
+    Description: Name of the CloudWatch Log Group to subscribe from.
+    Type: String
+    Default: "/aws/lambda/some-lamda-log-group"
 
 Resources:
   LambdaPromtailRole:
@@ -133,7 +137,7 @@ Resources:
     Properties:
       DestinationArn: !GetAtt LambdaPromtailFunction.Arn
       FilterPattern: ""
-      LogGroupName: "/aws/lambda/some-lamda-log-group"
+      LogGroupName: !Ref LogGroupName
 
 Outputs:
   LambdaPromtailFunction:
