@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+
 	"github.com/grafana/loki/v3/pkg/logcli/client"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 )
