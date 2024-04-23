@@ -12,7 +12,7 @@ Grafana Loki is under active development, and we are constantly working to impro
 
 ## Static labels are good
 
-Things like regions, clusters, servers, applications, namespaces, and environments. They will be fixed for a given system/app and have bounded values. Use static labels to make it easier to query your logs in a logical sense (e.g. show me all the logs for a given application and specific environment, or show me all the logs for all the apps on a specific host).
+Use labels for things like regions, clusters, servers, applications, namespaces, and environments. They will be fixed for a given system/app and have bounded values. Use static labels to make it easier to query your logs in a logical sense (for example, show me all the logs for a given application and specific environment, or show me all the logs for all the apps on a specific host).
 
 ## Use dynamic labels sparingly
 
