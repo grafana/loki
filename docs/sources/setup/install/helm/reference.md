@@ -2630,7 +2630,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "v1.8.6"
+  "version": "v3.0.0"
 }
 </pre>
 </td>
@@ -3457,7 +3457,7 @@ null
 			<td>string</td>
 			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
 			<td><pre lang="json">
-"{{ if .Values.loki.tenants }}\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
+"{{ if .Values.loki.tenants }}\n\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
 </pre>
 </td>
 		</tr>
@@ -6420,6 +6420,7 @@ false
     },
     "tenant": {
       "name": "self-monitoring",
+      "password": null,
       "secretNamespace": "{{ .Release.Namespace }}"
     }
   },
@@ -6697,6 +6698,7 @@ null
 			<td><pre lang="json">
 {
   "name": "self-monitoring",
+  "password": null,
   "secretNamespace": "{{ .Release.Namespace }}"
 }
 </pre>
@@ -6708,6 +6710,15 @@ null
 			<td>Name of the tenant</td>
 			<td><pre lang="json">
 "self-monitoring"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.tenant.password</td>
+			<td>string</td>
+			<td>Password of the gateway for Basic auth</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>

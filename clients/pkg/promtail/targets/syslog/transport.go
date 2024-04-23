@@ -1,6 +1,7 @@
 package syslog
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -380,16 +381,32 @@ func (t *UDPTransport) handleRcv(c *ConnPipe) {
 	defer t.openConnections.Done()
 
 	lbs := t.connectionLabels(c.addr.String())
-	err := syslogparser.ParseStream(c, func(result *syslog.Result) {
-		if err := result.Error; err != nil {
-			t.handleMessageError(err)
-		} else {
-			t.handleMessage(lbs.Copy(), result.Message)
-		}
-	}, t.maxMessageLength())
 
-	if err != nil {
-		level.Warn(t.logger).Log("msg", "error parsing syslog stream", "err", err)
+	for {
+		datagram := make([]byte, t.maxMessageLength())
+		n, err := c.Read(datagram)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			level.Warn(t.logger).Log("msg", "error reading from pipe", "err", err)
+			continue
+		}
+
+		r := bytes.NewReader(datagram[:n])
+
+		err = syslogparser.ParseStream(r, func(result *syslog.Result) {
+			if err := result.Error; err != nil {
+				t.handleMessageError(err)
+			} else {
+				t.handleMessage(lbs.Copy(), result.Message)
+			}
+		}, t.maxMessageLength())
+
+		if err != nil {
+			level.Warn(t.logger).Log("msg", "error parsing syslog stream", "err", err)
+		}
 	}
 }
 
