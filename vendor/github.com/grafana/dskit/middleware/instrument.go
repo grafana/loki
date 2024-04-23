@@ -5,6 +5,7 @@
 package middleware
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"regexp"
@@ -28,13 +29,29 @@ type RouteMatcher interface {
 	Match(*http.Request, *mux.RouteMatch) bool
 }
 
+// PerTenantCallback is a function that returns a tenant ID for a given request. When the returned tenant ID is not empty, it is used to label the duration histogram.
+type PerTenantCallback func(context.Context) string
+
+func (f PerTenantCallback) shouldInstrument(ctx context.Context) (string, bool) {
+	if f == nil {
+		return "", false
+	}
+	tenantID := f(ctx)
+	if tenantID == "" {
+		return "", false
+	}
+	return tenantID, true
+}
+
 // Instrument is a Middleware which records timings for every HTTP request
 type Instrument struct {
-	RouteMatcher     RouteMatcher
-	Duration         *prometheus.HistogramVec
-	RequestBodySize  *prometheus.HistogramVec
-	ResponseBodySize *prometheus.HistogramVec
-	InflightRequests *prometheus.GaugeVec
+	RouteMatcher      RouteMatcher
+	Duration          *prometheus.HistogramVec
+	PerTenantDuration *prometheus.HistogramVec
+	PerTenantCallback PerTenantCallback
+	RequestBodySize   *prometheus.HistogramVec
+	ResponseBodySize  *prometheus.HistogramVec
+	InflightRequests  *prometheus.GaugeVec
 }
 
 // IsWSHandshakeRequest returns true if the given request is a websocket handshake request.
@@ -77,7 +94,19 @@ func (i Instrument) Wrap(next http.Handler) http.Handler {
 		i.RequestBodySize.WithLabelValues(r.Method, route).Observe(float64(rBody.read))
 		i.ResponseBodySize.WithLabelValues(r.Method, route).Observe(float64(respMetrics.Written))
 
-		instrument.ObserveWithExemplar(r.Context(), i.Duration.WithLabelValues(r.Method, route, strconv.Itoa(respMetrics.Code), isWS), respMetrics.Duration.Seconds())
+		labelValues := []string{
+			r.Method,
+			route,
+			strconv.Itoa(respMetrics.Code),
+			isWS,
+			"", // this is a placeholder for the tenant ID
+		}
+		labelValues = labelValues[:len(labelValues)-1]
+		instrument.ObserveWithExemplar(r.Context(), i.Duration.WithLabelValues(labelValues...), respMetrics.Duration.Seconds())
+		if tenantID, ok := i.PerTenantCallback.shouldInstrument(r.Context()); ok {
+			labelValues = append(labelValues, tenantID)
+			instrument.ObserveWithExemplar(r.Context(), i.PerTenantDuration.WithLabelValues(labelValues...), respMetrics.Duration.Seconds())
+		}
 	})
 }
 
