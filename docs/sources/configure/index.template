@@ -36,13 +36,6 @@ is especially useful in making sure your config files and flags are being read a
 `-log-config-reverse-order` is the flag we run Loki with in all our environments, the config entries are reversed so
 that the order of configs reads correctly top to bottom when viewed in Grafana's Explore.
 
-## Reload at runtime
-
-Promtail can reload its configuration at runtime. If the new configuration
-is not well-formed, the changes will not be applied.
-A configuration reload is triggered by sending a `SIGHUP` to the Promtail process or
-sending a HTTP POST request to the `/reload` endpoint (when the `--server.enable-runtime-reload` flag is enabled).
-
 ## Configuration file reference
 
 To specify which configuration file to load, pass the `-config.file` flag at the
