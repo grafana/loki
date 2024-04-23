@@ -3139,6 +3139,12 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -limits.tsdb-sharding-strategy
 [tsdb_sharding_strategy: <string> | default = "power_of_two"]
 
+# Precompute chunks for TSDB queries. This can improve query performance at the
+# cost of increased memory usage by computing chunks once during planning,
+# reducing index calls.
+# CLI flag: -querier.tsdb-precompute-chunks
+[tsdb_precompute_chunks: <boolean> | default = false]
+
 # Cardinality limit for index queries.
 # CLI flag: -store.cardinality-limit
 [cardinality_limit: <int> | default = 100000]
