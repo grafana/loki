@@ -920,6 +920,10 @@ func extractLogLevelFromLogLine(log string) string {
 }
 
 func getValueUsingLogfmtParser(line string, allowedLabels map[string]struct{}) string {
+	equalIndex := strings.Index(line, "=")
+	if len(line) == 0 || equalIndex == -1 {
+		return ""
+	}
 	d := logfmt.NewDecoder(strings.NewReader(line))
 	d.ScanRecord()
 	for d.ScanKeyval() {
