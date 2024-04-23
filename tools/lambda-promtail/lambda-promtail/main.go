@@ -26,9 +26,9 @@ const (
 
 	maxErrMsgLen = 1024
 
-	invalidExtraLabelsError  = "invalid value for environment variable EXTRA_LABELS. Expected a comma separated list with an even number of entries. "
-	invalidEvenExtraHeadersError = "invalid value for environment variable EXTRA_HTTP_HEADERS. Expected a comma separated list with an even number of entries."
-	invalidRegexExtraHeadersError = "invalid value for environment variable EXTRA_HTTP_HEADERS. Header key must conform with regex /[-A-Za-z0-9]+/ "
+	invalidExtraLabelsError       = "invalid value for environment variable EXTRA_LABELS. Expected a comma separated list with an even number of entries. "
+	invalidEvenExtraHeadersError  = "invalid value for environment variable EXTRA_HTTP_HEADERS. Expected a comma separated list with an even number of entries."
+	invalidRegexExtraHeadersError = "invalid value for environment variable EXTRA_HTTP_HEADERS. Header key must conform with regex"
 )
 
 var (
@@ -215,7 +215,7 @@ func parseExtraHeaders(extraHeadersRaw string) (map[string]string, error) {
 
 	for i := 0; i < len(extraHeadersSplit); i += 2 {
 		if !httpHeaderKeyRegex.MatchString(extraHeadersSplit[i]) {
-			return nil, fmt.Errorf("%s: %s", invalidRegexExtraHeadersError, extraHeadersSplit[i])
+			return nil, fmt.Errorf("%s %s: %s", invalidRegexExtraHeadersError, httpHeaderKeyRegex.String(), extraHeadersSplit[i])
 		}
 		extractedHeaders[extraHeadersSplit[i]] = extraHeadersSplit[i+1]
 	}
