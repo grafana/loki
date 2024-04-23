@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.3.5
+
+- [BUGFIX] Remove unexisting command argument `ingester.ring.instance-availability-zone` in ingester statfulset
+
 ## 6.3.4
 
 - [BUGFIX] Add missing OTLP endpoint to nginx config
