@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -127,10 +128,13 @@ func TestManager_WALEnabled(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "wal:test-client", manager.Name())
 
+	var mu sync.Mutex
 	receivedRequests := []utils.RemoteWriteRequest{}
 	go func() {
 		for req := range rwReceivedReqs {
+			mu.Lock()
 			receivedRequests = append(receivedRequests, req)
+			mu.Unlock()
 		}
 	}()
 
@@ -155,17 +159,21 @@ func TestManager_WALEnabled(t *testing.T) {
 	}
 
 	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
 		return len(receivedRequests) == totalLines
 	}, 5*time.Second, time.Second, "timed out waiting for requests to be received")
 
 	var seenEntries = map[string]struct{}{}
 	// assert over rw client received entries
+	mu.Lock()
 	for _, req := range receivedRequests {
 		require.Len(t, req.Request.Streams, 1, "expected 1 stream requests to be received")
 		require.Len(t, req.Request.Streams[0].Entries, 1, "expected 1 entry in the only stream received per request")
 		require.Equal(t, `{wal_enabled="true"}`, req.Request.Streams[0].Labels)
 		seenEntries[req.Request.Streams[0].Entries[0].Line] = struct{}{}
 	}
+	mu.Unlock()
 	require.Len(t, seenEntries, totalLines)
 }
 
@@ -182,10 +190,13 @@ func TestManager_WALDisabled(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "multi:test-client", manager.Name())
 
+	var mu sync.Mutex
 	receivedRequests := []utils.RemoteWriteRequest{}
 	go func() {
 		for req := range rwReceivedReqs {
+			mu.Lock()
 			receivedRequests = append(receivedRequests, req)
+			mu.Unlock()
 		}
 	}()
 
@@ -209,17 +220,21 @@ func TestManager_WALDisabled(t *testing.T) {
 	}
 
 	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
 		return len(receivedRequests) == totalLines
 	}, 5*time.Second, time.Second, "timed out waiting for requests to be received")
 
 	var seenEntries = map[string]struct{}{}
 	// assert over rw client received entries
+	mu.Lock()
 	for _, req := range receivedRequests {
 		require.Len(t, req.Request.Streams, 1, "expected 1 stream requests to be received")
 		require.Len(t, req.Request.Streams[0].Entries, 1, "expected 1 entry in the only stream received per request")
 		require.Equal(t, `{pizza-flavour="fugazzeta"}`, req.Request.Streams[0].Labels)
 		seenEntries[req.Request.Streams[0].Entries[0].Line] = struct{}{}
 	}
+	mu.Unlock()
 	require.Len(t, seenEntries, totalLines)
 }
 
@@ -250,15 +265,20 @@ func TestManager_WALDisabled_MultipleConfigs(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "multi:test-client,test-client-2", manager.Name())
 
+	var mu sync.Mutex
 	receivedRequests := []utils.RemoteWriteRequest{}
 	ctx, cancel := context.WithCancel(context.Background())
 	go func(ctx context.Context) {
 		for {
 			select {
 			case req := <-rwReceivedReqs:
+				mu.Lock()
 				receivedRequests = append(receivedRequests, req)
+				mu.Unlock()
 			case req := <-rwReceivedReqs2:
+				mu.Lock()
 				receivedRequests = append(receivedRequests, req)
+				mu.Unlock()
 			case <-ctx.Done():
 				return
 			}
@@ -289,16 +309,20 @@ func TestManager_WALDisabled_MultipleConfigs(t *testing.T) {
 	// times 2 due to clients being run
 	expectedTotalLines := totalLines * 2
 	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
 		return len(receivedRequests) == expectedTotalLines
 	}, 5*time.Second, time.Second, "timed out waiting for requests to be received")
 
 	var seenEntries = map[string]struct{}{}
 	// assert over rw client received entries
+	mu.Lock()
 	for _, req := range receivedRequests {
 		require.Len(t, req.Request.Streams, 1, "expected 1 stream requests to be received")
 		require.Len(t, req.Request.Streams[0].Entries, 1, "expected 1 entry in the only stream received per request")
 		seenEntries[fmt.Sprintf("%s-%s", req.Request.Streams[0].Labels, req.Request.Streams[0].Entries[0].Line)] = struct{}{}
 	}
+	mu.Unlock()
 	require.Len(t, seenEntries, expectedTotalLines)
 }
 
