@@ -54,7 +54,7 @@ As a general rule, you should try to keep any single tenant in Loki to less than
 
 ## Be aware of dynamic labels applied by clients
 
-Loki has several client options: [Grafana Alloy](https://grafana.com/docs/alloy/latest/), [Promtail]({{< relref "../../send-data/promtail" >}}) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd]({{< relref "../../send-data/fluentd" >}}), [Fluent Bit]({{< relref "../../send-data/fluentbit" >}}), a [Docker plugin](/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
+Loki has several client options: [Grafana Alloy](https://grafana.com/docs/alloy/latest/), [Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentd/), [Fluent Bit](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentbit/), a [Docker plugin](https://grafana.com/docs/loki/MLOKI_VERSION>/send-data/docker-driver/), and more.
 
 Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied.
 Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality.
