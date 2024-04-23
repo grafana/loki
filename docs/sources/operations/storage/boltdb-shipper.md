@@ -4,13 +4,17 @@ description: Single Store (boltdb-shipper)
 ---
 # Single Store (boltdb-shipper)
 
+BoltDB is the recommended store for Loki 2.0 through 2.7.x. Starting with Loki v2.8, [TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) is the Loki recommended store.
+
 BoltDB Shipper lets you run Grafana Loki without any dependency on NoSQL stores for storing index.
 It locally stores the index in BoltDB files instead and keeps shipping those files to a shared object store i.e the same object store which is being used for storing chunks.
 It also keeps syncing BoltDB files from shared object store to a configured local directory for getting index entries created by other services of same Loki cluster.
 This helps run Loki with one less dependency and also saves costs in storage since object stores are likely to be much cheaper compared to cost of a hosted NoSQL store or running a self hosted instance of Cassandra.
 
-**Note:** BoltDB shipper works best with 24h periodic index files. It is a requirement to have index period set to 24h for either active or upcoming usage of boltdb-shipper.
-          If boltdb-shipper already has created index files with 7 days period, and you want to retain previous data then just add a new schema config using boltdb-shipper with a future date and index files period set to 24h.
+{{< admonition type="note" >}}
+BoltDB shipper works best with 24h periodic index files. It is a requirement to have index period set to 24h for either active or upcoming usage of boltdb-shipper.
+If boltdb-shipper already has created index files with 7 days period, and you want to retain previous data then just add a new schema config using boltdb-shipper with a future date and index files period set to 24h.
+{{< /admonition >}}
 
 ## Example Configuration
 
@@ -68,7 +72,10 @@ they both having shipped files for day `18371` and `18372` with prefix `loki_ind
         └── ingester-1-1587254400.gz
         ...
 ```
-**Note:** We also add a timestamp to names of the files to randomize the names to avoid overwriting files when running Ingesters with same name and not have a persistent storage. Timestamps not shown here for simplification.
+
+{{< admonition type="note" >}}
+We also add a timestamp to names of the files to randomize the names to avoid overwriting files when running Ingesters with same name and not have a persistent storage. Timestamps not shown here for simplification.
+{{< /admonition >}}
 
 Let us talk about more in depth about how both Ingesters and Queriers work when running them with BoltDB Shipper.
 
@@ -142,5 +149,3 @@ storage_config:
   gcs:
     bucket_name: GCS_BUCKET_NAME
 ```
-
-
