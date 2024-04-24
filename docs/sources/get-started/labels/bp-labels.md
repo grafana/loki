@@ -40,10 +40,6 @@ Here are some best practices for using dynamic labels with Loki:
 - Only add labels that users will frequently use in their queries.
   - Don’t increase the size of the index and fragment your log streams if nobody is actually using these labels. This will degrade performance. 
 
-### Bloom Filters (Experimental)
-
-As of Loki 3.0, we have also introduced [Bloom Filters]({{< relref "../../operations/query-acceleration-blooms" >}}). Loki 3.0 leverages bloom filters to speed up queries by reducing the amount of data Loki needs to load from the store and iterate through. Loki is often used to run “needle in a haystack” queries. 
-
 ## Label values must always be bounded
 
 If you are dynamically setting labels, never use a label which can have unbounded or infinite values. This will always result in big problems for Loki.
