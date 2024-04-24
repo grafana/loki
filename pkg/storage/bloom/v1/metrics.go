@@ -18,6 +18,9 @@ type Metrics struct {
 	tokensTotal         prometheus.Counter
 	insertsTotal        *prometheus.CounterVec
 
+	blockSize        prometheus.Histogram
+	blockFlushReason *prometheus.CounterVec
+
 	pagesRead    *prometheus.CounterVec
 	pagesSkipped *prometheus.CounterVec
 	bytesRead    *prometheus.CounterVec
@@ -33,6 +36,9 @@ const (
 	collisionTypeFalse     = "false"
 	collisionTypeTrue      = "true"
 	collisionTypeCache     = "cache"
+
+	blockFlushReasonFull     = "full"
+	blockFlushReasonFinished = "finished"
 
 	pageTypeBloom  = "bloom"
 	pageTypeSeries = "series"
@@ -93,6 +99,18 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Name:      "bloom_inserts_total",
 			Help:      "Number of inserts into the bloom filter. collision type may be `false` (no collision), `cache` (found in token cache) or true (found in bloom filter). token_type may be either `raw` (the original ngram) or `chunk_prefixed` (the ngram with the chunk prefix)",
 		}, []string{"token_type", "collision"}),
+
+		blockSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_block_size",
+			Help:      "Size of the bloom block in bytes",
+			Buckets:   prometheus.ExponentialBucketsRange(1<<20, 1<<30, 8),
+		}),
+		blockFlushReason: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_block_flush_reason_total",
+			Help:      "Reason the block was finished. Can be either `full` (the block hit its maximum size) or `finished` (the block was finished due to the end of the series).",
+		}, []string{"reason"}),
 
 		pagesRead: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
