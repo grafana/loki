@@ -31,11 +31,11 @@ Single Store refers to using object storage as the storage medium for both Loki'
 
 ### TSDB (recommended)
 
-Starting in Loki 2.8, the [TSDB index store](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper".
+Starting in Loki 2.8, the [TSDB index store](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper". TSDB is the recommended index store for Loki 2.8 and newer.
 
 ### BoltDB (deprecated)
 
-Also known as "boltdb-shipper" during development (and is still the schema `store` name). The single store configurations for Loki utilize the chunk store for both chunks and the index, requiring just one store to run Loki.
+Also known as "boltdb-shipper" during development (and is still the schema `store` name). The single store configurations for Loki utilize the chunk store for both chunks and the index, requiring just one store to run Loki. BoldDB is the recommended index store for Loki v2.0.0 through v2.7x.
 
 Performance is comparable to a dedicated index type while providing a much less expensive and less complicated deployment.
 When using Single Store, no extra [Chunk storage](#chunk-storage) and [Index storage](#index-storage) are necessary.
@@ -172,7 +172,7 @@ For more information, see the [table manager](https://grafana.com/docs/loki/<LOK
 
 In the case of AWS DynamoDB, you'll likely want to tune the provisioned throughput for your tables as well. This is to prevent your tables being rate limited on one hand and assuming unnecessary cost on the other. By default Loki uses a [provisioned capacity](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html) strategy for DynamoDB tables like so:
 
-```
+```yaml
 table_manager:
   index_tables_provisioning:
     # Read/write throughput requirements for the current table
@@ -194,6 +194,7 @@ When a new schema is released and you want to gain the advantages it provides, y
 First, you'll want to create a new [period_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) entry in your [schema_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#schema_config). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This allows the table manager to create the required table in advance of writes and ensures that existing data isn't queried as if it adheres to the new schema.
 
 As an example, let's say it's 2023-07-14 and we want to start using the `v13` schema on the 20th:
+
 ```yaml
 schema_config:
   configs:
@@ -222,7 +223,6 @@ With the exception of the `filesystem` chunk store, Loki will not delete old chu
 We're interested in adding targeted deletion in future Loki releases (think tenant or stream level granularity) and may include other strategies as well.
 
 For more information, see the [retention configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/) documentation.
-
 
 ## Examples
 
@@ -314,7 +314,7 @@ The role should have a policy with the following permissions attached.
 }
 ```
 
-**To setup an S3 bucket and an IAM role and policy:** 
+**To setup an S3 bucket and an IAM role and policy:**
 
 This guide assumes a provisioned EKS cluster.
 
@@ -324,14 +324,14 @@ This guide assumes a provisioned EKS cluster.
 
 3. Export the AWS profile and region if not done so:
 
-   ```
+   ```bash
    export AWS_PROFILE=<profile in ~/.aws/config>
    export AWS_REGION=<region of EKS cluster>
    ```
 
 4. Save the OIDC provider in an environment variable:
 
-   ```
+   ```bash
    oidc_provider=$(aws eks describe-cluster --name <EKS cluster> --query "cluster.identity.oidc.issuer" --output text | sed -e "s/^https:\/\///")
    ```
 
@@ -341,7 +341,6 @@ This guide assumes a provisioned EKS cluster.
 
    Note, the bucket name defaults to `loki-data` but can be changed via the
    `bucket_name` variable.
-
 
 ### Azure deployment (Azure Blob Storage Single Store)
 
