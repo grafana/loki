@@ -40,7 +40,7 @@ func (c *noopClient) FilterChunks(_ context.Context, _ string, _ bloomshipper.In
 type mockBlockResolver struct{}
 
 // Resolve implements BlockResolver.
-func (*mockBlockResolver) Resolve(_ context.Context, tenant string, interval bloomshipper.Interval, series []*logproto.GroupedChunkRefs) ([]blockWithSeries, error) {
+func (*mockBlockResolver) Resolve(_ context.Context, tenant string, interval bloomshipper.Interval, series []*logproto.GroupedChunkRefs) ([]blockWithSeries, []*logproto.GroupedChunkRefs, error) {
 	day := truncateDay(interval.Start)
 	first, last := getFirstLast(series)
 	block := bloomshipper.BlockRef{
@@ -53,7 +53,7 @@ func (*mockBlockResolver) Resolve(_ context.Context, tenant string, interval blo
 			Checksum:       0,
 		},
 	}
-	return []blockWithSeries{{block: block, series: series}}, nil
+	return []blockWithSeries{{block: block, series: series}}, nil, nil
 }
 
 var _ BlockResolver = &mockBlockResolver{}

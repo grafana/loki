@@ -11,18 +11,22 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
+func makeBlockRef(minFp, maxFp model.Fingerprint, from, through model.Time) bloomshipper.BlockRef {
+	return bloomshipper.BlockRef{
+		Ref: bloomshipper.Ref{
+			TenantID:       "tenant",
+			TableName:      "table",
+			Bounds:         v1.NewBounds(minFp, maxFp),
+			StartTimestamp: from,
+			EndTimestamp:   through,
+		},
+	}
+}
+
 func makeMeta(minFp, maxFp model.Fingerprint, from, through model.Time) bloomshipper.Meta {
 	return bloomshipper.Meta{
 		Blocks: []bloomshipper.BlockRef{
-			{
-				Ref: bloomshipper.Ref{
-					TenantID:       "tenant",
-					TableName:      "table",
-					Bounds:         v1.NewBounds(minFp, maxFp),
-					StartTimestamp: from,
-					EndTimestamp:   through,
-				},
-			},
+			makeBlockRef(minFp, maxFp, from, through),
 		},
 	}
 }
@@ -112,4 +116,138 @@ func TestBlockResolver_BlocksMatchingSeries(t *testing.T) {
 		}
 		require.Equal(t, expected, res)
 	})
+}
+
+func TestBlockResolver_UnassignedSeries(t *testing.T) {
+	series := []*logproto.GroupedChunkRefs{
+		{Fingerprint: 0x00},
+		{Fingerprint: 0x20},
+		{Fingerprint: 0x40},
+		{Fingerprint: 0x60},
+		{Fingerprint: 0x80},
+		{Fingerprint: 0xa0},
+		{Fingerprint: 0xc0},
+		{Fingerprint: 0xe0},
+	}
+
+	testCases := []struct {
+		desc     string
+		mapped   []blockWithSeries
+		expected []*logproto.GroupedChunkRefs
+	}{
+		{
+			desc:     "no blocks - all unassigned",
+			mapped:   []blockWithSeries{},
+			expected: series,
+		},
+		{
+			desc: "block has no overlapping series - all unassigned",
+			mapped: []blockWithSeries{
+				{
+					series: []*logproto.GroupedChunkRefs{
+						{Fingerprint: 0xf0},
+						{Fingerprint: 0xff},
+					},
+				},
+			},
+			expected: series,
+		},
+		{
+			desc: "single block covering all series - no unassigned",
+			mapped: []blockWithSeries{
+				{
+					series: []*logproto.GroupedChunkRefs{
+						{Fingerprint: 0x00},
+						{Fingerprint: 0x20},
+						{Fingerprint: 0x40},
+						{Fingerprint: 0x60},
+						{Fingerprint: 0x80},
+						{Fingerprint: 0xa0},
+						{Fingerprint: 0xc0},
+						{Fingerprint: 0xe0},
+					},
+				},
+			},
+			expected: []*logproto.GroupedChunkRefs{},
+		},
+		{
+			desc: "multiple blocks covering all series - no unassigned",
+			mapped: []blockWithSeries{
+				{
+					series: []*logproto.GroupedChunkRefs{
+						{Fingerprint: 0x00},
+						{Fingerprint: 0x20},
+						{Fingerprint: 0x40},
+						{Fingerprint: 0x60},
+					},
+				},
+				{
+					series: []*logproto.GroupedChunkRefs{
+						{Fingerprint: 0x40},
+						{Fingerprint: 0x60},
+						{Fingerprint: 0x80},
+						{Fingerprint: 0xa0},
+					},
+				},
+				{
+					series: []*logproto.GroupedChunkRefs{
+						{Fingerprint: 0x80},
+						{Fingerprint: 0xa0},
+						{Fingerprint: 0xc0},
+						{Fingerprint: 0xe0},
+					},
+				},
+			},
+			expected: []*logproto.GroupedChunkRefs{},
+		},
+		{
+			desc: "single block overlapping some series",
+			mapped: []blockWithSeries{
+				{
+					series: []*logproto.GroupedChunkRefs{
+						{Fingerprint: 0x00},
+						{Fingerprint: 0x20},
+						{Fingerprint: 0x40},
+						{Fingerprint: 0x60},
+					},
+				},
+			},
+			expected: []*logproto.GroupedChunkRefs{
+				{Fingerprint: 0x80},
+				{Fingerprint: 0xa0},
+				{Fingerprint: 0xc0},
+				{Fingerprint: 0xe0},
+			},
+		},
+		{
+			desc: "multiple blocks overlapping some series",
+			mapped: []blockWithSeries{
+				{
+					series: []*logproto.GroupedChunkRefs{
+						{Fingerprint: 0x20},
+						{Fingerprint: 0x40},
+						{Fingerprint: 0x60},
+					},
+				},
+				{
+					series: []*logproto.GroupedChunkRefs{
+						{Fingerprint: 0x80},
+						{Fingerprint: 0xa0},
+						{Fingerprint: 0xc0},
+					},
+				},
+			},
+			expected: []*logproto.GroupedChunkRefs{
+				{Fingerprint: 0x00},
+				{Fingerprint: 0xe0},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			result := unassignedSeries(tc.mapped, series)
+			require.Equal(t, result, tc.expected)
+		})
+	}
 }
