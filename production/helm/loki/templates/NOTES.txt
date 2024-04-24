@@ -11,7 +11,7 @@ Tip:
 
   Watch the deployment status using the command: kubectl get pods -w --namespace {{ $.Release.Namespace }}
 
-If pods are too long to schedule make sure pod affinity can be fulfilled in the current cluster.
+If pods are taking too long to schedule make sure pod affinity can be fulfilled in the current cluster.
 
 ***********************************************************************
 Installed components:
