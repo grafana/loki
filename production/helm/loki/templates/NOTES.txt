@@ -170,7 +170,7 @@ Loki is configured with auth enabled (multi-tenancy) and expects tenant headers 
 You must configure Grafana's Loki datasource using the `HTTP Headers` section with the `X-Scope-OrgID` to target a specific tenant.
 For each tenant, you can create a different datasource.
 
-The agent of your choice should also be configured to propagate this header.
+The agent of your choice must also be configured to propagate this header.
 For example, when using Promtail you can use the `tenant` stage. https://grafana.com/docs/loki/latest/send-data/promtail/stages/tenant/
 
 When not providing the `X-Scope-OrgID` while the auth is enabled, Loki will reject reads and writes with a 404 status code `no org id`.
