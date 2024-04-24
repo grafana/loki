@@ -194,6 +194,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeFalse).Add(float64(chunkSuccessfulInserts))
 		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeCache).Add(float64(chunkCachedInserts))
 		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeTrue).Add(float64(chunkCollisionInserts))
+		bt.metrics.sourceBytesAdded.Add(float64(sourceBytes))
 	}
 
 	if err := chks.Err(); err != nil {
