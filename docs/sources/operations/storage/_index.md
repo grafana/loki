@@ -30,9 +30,8 @@ For more information:
 
 ### ✅ Supported index stores
 
-- [Single Store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) index store which stores TSDB index files in the object store.
-  **This is the recommended index store for Loki 2.8 and newer.**
-- [Single Store BoltDB (boltdb-shipper)](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) index store which stores boltdb index files in the object store.
+- [Single Store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) index store which stores TSDB index files in the object store. This is the recommended index store for Loki 2.8 and newer.
+- [Single Store BoltDB (boltdb-shipper)](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) index store which stores boltdb index files in the object store. Recommended store for Loki 2.0 through 2.7.x.
 
 ### ❌ Deprecated index stores
 
@@ -60,7 +59,6 @@ For more information:
 - [Amazon DynamoDB](https://aws.amazon.com/dynamodb). Support for this is deprecated and will be removed in a future release.
 - [Google Bigtable](https://cloud.google.com/bigtable). Support for this is deprecated and will be removed in a future release.
 - [Apache Cassandra](https://cassandra.apache.org). Support for this is deprecated and will be removed in a future release.
-
 
 ## Cloud Storage Permissions
 
@@ -128,7 +126,6 @@ Resources: `*`
 
 Resources: `arn:aws:iam::<aws_account_id>:role/<role_name>`
 
-
 ### IBM Cloud Object Storage
 
 When using IBM Cloud Object Storage (COS) as object storage, IAM `Writer` role is needed.
@@ -164,4 +161,3 @@ See the [IBM Cloud Object Storage section](https://grafana.com/docs/loki/<LOKI_V
   |           metasOffset - offset to the point with #blocks        |
   -------------------------------------------------------------------
 ```
-
