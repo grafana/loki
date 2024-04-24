@@ -85,10 +85,10 @@ Resources:
           Statement:
           - Effect: Allow
             Action:
-              - logs:CreateLogGroup
-              - logs:CreateLogStream
-              - logs:PutLogEvents
-              - logs:PutSubscriptionFilter
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            - logs:PutSubscriptionFilter
             Resource: arn:aws:logs:*:*:*
       RoleName: !Ref IAMRoleName
   LambdaPromtailFunction:
