@@ -277,7 +277,7 @@ else
 
 	@rm -rf $(MIXIN_OUT_PATH_META_MONITORING) && mkdir $(MIXIN_OUT_PATH_META_MONITORING)
 	@cd $(MIXIN_PATH) && jb install
-	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH_CPMBINED)/alerts.yaml --output-rules $(MIXIN_OUT_PATH_META_MONITORING)/rules.yaml --directory $(MIXIN_OUT_PATH_META_MONITORING)/dashboards ${MIXIN_PATH}/mixin-meta-monitoring.libsonnet
+	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH_META_MONITORING)/alerts.yaml --output-rules $(MIXIN_OUT_PATH_META_MONITORING)/rules.yaml --directory $(MIXIN_OUT_PATH_META_MONITORING)/dashboards ${MIXIN_PATH}/mixin-meta-monitoring.libsonnet
 endif
 
 loki-mixin-check: loki-mixin ## check the loki mixin is up to date
