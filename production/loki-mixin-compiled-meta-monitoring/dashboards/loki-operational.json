@@ -1997,7 +1997,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(distributor|(loki|enterprise-logs)-write|loki-single-binary\"} | logfmt | level=\"error\"[$__rate_interval]))",
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(distributor|(loki|enterprise-logs)-write|loki-single-binary\"} | logfmt | level=\"error\"[$__auto]))",
                         "refId": "A"
                      }
                   ],
@@ -2690,7 +2690,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(ingester|(loki|enterprise-logs)-write|loki-single-binary\"} | logfmt | level=\"error\"[$__rate_interval]))",
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(ingester|(loki|enterprise-logs)-write|loki-single-binary\"} | logfmt | level=\"error\"[$__auto]))",
                         "refId": "A"
                      }
                   ],
@@ -3635,7 +3635,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(querier|(loki|enterprise-logs)-read|loki-single-binary\"} | logfmt |  level=\"error\"[$__rate_interval]))",
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(querier|(loki|enterprise-logs)-read|loki-single-binary\"} | logfmt |  level=\"error\"[$__auto]))",
                         "refId": "A"
                      }
                   ],

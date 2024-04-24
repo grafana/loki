@@ -103,19 +103,19 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=(compactor.*|(loki|enterprise-logs)-backend.*|loki-single-binary)}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~(compactor.*|(loki|enterprise-logs)-backend.*|loki-single-binary)}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=(compactor.*|(loki|enterprise-logs)-backend.*|loki-single-binary), resource=\"cpu\"} > 0)",
+                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~(compactor.*|(loki|enterprise-logs)-backend.*|loki-single-binary), resource=\"cpu\"} > 0)",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_cpu_quota{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=(compactor.*|(loki|enterprise-logs)-backend.*|loki-single-binary)} / container_spec_cpu_period{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=(compactor.*|(loki|enterprise-logs)-backend.*|loki-single-binary)})",
+                        "expr": "min(container_spec_cpu_quota{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~(compactor.*|(loki|enterprise-logs)-backend.*|loki-single-binary)} / container_spec_cpu_period{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~(compactor.*|(loki|enterprise-logs)-backend.*|loki-single-binary)})",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -204,19 +204,19 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=(compactor.*|(loki|enterprise-logs)-backend.*|loki-single-binary)})",
+                        "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~(compactor.*|(loki|enterprise-logs)-backend.*|loki-single-binary)})",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=(compactor.*|(loki|enterprise-logs)-backend.*|loki-single-binary), resource=\"memory\"} > 0)",
+                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~(compactor.*|(loki|enterprise-logs)-backend.*|loki-single-binary), resource=\"memory\"} > 0)",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_memory_limit_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=(compactor.*|(loki|enterprise-logs)-backend.*|loki-single-binary)} > 0)",
+                        "expr": "min(container_spec_memory_limit_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~(compactor.*|(loki|enterprise-logs)-backend.*|loki-single-binary)} > 0)",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
