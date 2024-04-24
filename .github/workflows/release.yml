@@ -46,7 +46,7 @@ jobs:
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
-      uses: "actions/github-app-token@v1"
+      uses: "actions/create-github-app-token@v1"
       with:
         app-id: "${{ secrets.APP_ID }}"
         owner: "${{ github.repository_owner }}"
@@ -158,7 +158,7 @@ jobs:
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
-      uses: "actions/github-app-token@v1"
+      uses: "actions/create-github-app-token@v1"
       with:
         app-id: "${{ secrets.APP_ID }}"
         owner: "${{ github.repository_owner }}"
