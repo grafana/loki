@@ -1364,6 +1364,29 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 	return distributors, ingesters
 }
 
+func makeWriteRequestWithLabelsWithLevel(lines, size int, labels []string, level string) *logproto.PushRequest {
+	streams := make([]logproto.Stream, len(labels))
+	for i := 0; i < len(labels); i++ {
+		stream := logproto.Stream{Labels: labels[i]}
+
+		for j := 0; j < lines; j++ {
+			// Construct the log line, honoring the input size
+			line := "msg=" + strconv.Itoa(j) + strings.Repeat("0", size) + " severity=" + level
+
+			stream.Entries = append(stream.Entries, logproto.Entry{
+				Timestamp: time.Now().Add(time.Duration(j) * time.Millisecond),
+				Line:      line,
+			})
+		}
+
+		streams[i] = stream
+	}
+
+	return &logproto.PushRequest{
+		Streams: streams,
+	}
+}
+
 func makeWriteRequestWithLabels(lines, size int, labels []string) *logproto.PushRequest {
 	streams := make([]logproto.Stream, len(labels))
 	for i := 0; i < len(labels); i++ {
@@ -1547,8 +1570,25 @@ func Test_DetectLogLevels(t *testing.T) {
 		require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
 		require.Equal(t, push.LabelsAdapter{
 			{
-				Name:  labelLevel,
+				Name:  levelLabel,
 				Value: logLevelUnknown,
+			},
+		}, topVal.Streams[0].Entries[0].StructuredMetadata)
+	})
+
+	t.Run("log level detection enabled and warn logs", func(t *testing.T) {
+		limits, ingester := setup(true)
+		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		writeReq := makeWriteRequestWithLabelsWithLevel(1, 10, []string{`{foo="bar"}`}, "warn")
+		_, err := distributors[0].Push(ctx, writeReq)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
+		require.Equal(t, push.LabelsAdapter{
+			{
+				Name:  levelLabel,
+				Value: logLevelWarn,
 			},
 		}, topVal.Streams[0].Entries[0].StructuredMetadata)
 	})
@@ -1572,7 +1612,7 @@ func Test_DetectLogLevels(t *testing.T) {
 		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`})
 		writeReq.Streams[0].Entries[0].StructuredMetadata = push.LabelsAdapter{
 			{
-				Name:  labelLevel,
+				Name:  "severity",
 				Value: logLevelWarn,
 			},
 		}
@@ -1582,7 +1622,7 @@ func Test_DetectLogLevels(t *testing.T) {
 		require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
 		require.Equal(t, push.LabelsAdapter{
 			{
-				Name:  labelLevel,
+				Name:  "severity",
 				Value: logLevelWarn,
 			},
 		}, topVal.Streams[0].Entries[0].StructuredMetadata)

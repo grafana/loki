@@ -61,7 +61,7 @@ const (
 
 	labelServiceName = "service_name"
 	serviceUnknown   = "unknown_service"
-	labelLevel       = "level"
+	levelLabel       = "detected-level"
 	logLevelDebug    = "debug"
 	logLevelInfo     = "info"
 	logLevelWarn     = "warn"
@@ -76,6 +76,8 @@ var (
 	maxLabelCacheSize = 100000
 	rfStats           = analytics.NewInt("distributor_replication_factor")
 )
+
+var allowedLabelsForLevel = map[string]struct{}{"level": {}, "LEVEL": {}, "Level": {}, "severity": {}, "SEVERITY": {}, "Severity": {}}
 
 // Config for a Distributor.
 type Config struct {
@@ -380,7 +382,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			n := 0
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
-			addLogLevel := validationContext.allowStructuredMetadata && validationContext.discoverLogLevels && !lbs.Has(labelLevel)
+
+			addLogLevel := validationContext.allowStructuredMetadata && validationContext.discoverLogLevels && !hasAnyLevelLabels(lbs)
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
@@ -389,10 +392,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-				if addLogLevel && !structuredMetadata.Has(labelLevel) {
+				if addLogLevel && !hasAnyLevelLabels(structuredMetadata) {
 					logLevel := detectLogLevelFromLogEntry(entry, structuredMetadata)
 					entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
-						Name:  labelLevel,
+						Name:  levelLabel,
 						Value: logLevel,
 					})
 				}
@@ -539,6 +542,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+func hasAnyLevelLabels(l labels.Labels) bool {
+	for lbl := range allowedLabelsForLevel {
+		if l.Has(lbl) {
+			return true
+		}
+	}
+	return false
 }
 
 // shardStream shards (divides) the given stream into N smaller streams, where
@@ -891,12 +903,11 @@ func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.
 }
 
 func extractLogLevelFromLogLine(log string) string {
-	allowedLabels := map[string]struct{}{"level": {}, "LEVEL": {}, "Level": {}, "severity": {}, "SEVERITY": {}, "Severity": {}}
 	var v string
 	if isJSON(log) {
-		v = getValueUsingJSONParser(log, allowedLabels)
+		v = getValueUsingJSONParser(log, "level")
 	} else {
-		v = getValueUsingLogfmtParser(log, allowedLabels)
+		v = getValueUsingLogfmtParser(log, "level")
 	}
 
 	switch strings.ToLower(v) {
@@ -919,29 +930,36 @@ func extractLogLevelFromLogLine(log string) string {
 	}
 }
 
-func getValueUsingLogfmtParser(line string, allowedLabels map[string]struct{}) string {
+func getValueUsingLogfmtParser(line string, suggestedLabel string) string {
 	equalIndex := strings.Index(line, "=")
 	if len(line) == 0 || equalIndex == -1 {
-		return ""
+		return logLevelUnknown
 	}
 	d := logfmt.NewDecoder(strings.NewReader(line))
 	d.ScanRecord()
 	for d.ScanKeyval() {
-		if _, ok := allowedLabels[string(d.Key())]; ok {
+		if suggestedLabel == string(d.Key()) {
+			return string(d.Value())
+		}
+		if _, ok := allowedLabelsForLevel[string(d.Key())]; ok {
 			return string(d.Value())
 		}
 	}
-	return ""
+	return logLevelUnknown
 }
 
-func getValueUsingJSONParser(log string, allowedLabels map[string]struct{}) string {
-	for allowedLabel := range allowedLabels {
+func getValueUsingJSONParser(log string, suggestedLabel string) string {
+	if lvl, err := jsonparser.GetString([]byte(log), suggestedLabel); err == nil {
+		return lvl
+	}
+
+	for allowedLabel := range allowedLabelsForLevel {
 		l, err := jsonparser.GetString([]byte(log), allowedLabel)
 		if err == nil {
 			return l
 		}
 	}
-	return ""
+	return logLevelUnknown
 }
 
 func isJSON(line string) bool {
