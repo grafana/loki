@@ -242,12 +242,34 @@ func TestBlockResolver_UnassignedSeries(t *testing.T) {
 				{Fingerprint: 0xe0},
 			},
 		},
+		{
+			desc: "block overlapping single remaining series",
+			mapped: []blockWithSeries{
+				{
+					series: []*logproto.GroupedChunkRefs{
+						{Fingerprint: 0x00},
+						{Fingerprint: 0x20},
+						{Fingerprint: 0x40},
+						{Fingerprint: 0x60},
+						{Fingerprint: 0x80},
+						{Fingerprint: 0xa0},
+						{Fingerprint: 0xc0},
+					},
+				},
+				{
+					series: []*logproto.GroupedChunkRefs{
+						{Fingerprint: 0xe0},
+					},
+				},
+			},
+			expected: []*logproto.GroupedChunkRefs{},
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
 			result := unassignedSeries(tc.mapped, series)
-			require.Equal(t, result, tc.expected)
+			require.Equal(t, tc.expected, result)
 		})
 	}
 }
