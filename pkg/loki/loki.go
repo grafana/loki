@@ -340,33 +340,33 @@ type Loki struct {
 	deps          map[string][]string
 	SignalHandler *signals.Handler
 
-	Server                   *server.Server
-	InternalServer           *server.Server
-	ring                     *ring.Ring
-	Overrides                limiter.CombinedLimits
-	tenantConfigs            *runtime.TenantConfigs
-	TenantLimits             validation.TenantLimits
-	distributor              *distributor.Distributor
-	Ingester                 ingester.Interface
-	Querier                  querier.Querier
-	cacheGenerationLoader    queryrangebase.CacheGenNumberLoader
-	querierAPI               *querier.QuerierAPI
-	ingesterQuerier          *querier.IngesterQuerier
-	Store                    storage.Store
-	tableManager             *index.TableManager
-	frontend                 Frontend
-	ruler                    *base_ruler.Ruler
-	RulerStorage             rulestore.RuleStore
-	rulerAPI                 *base_ruler.API
-	stopper                  queryrange.Stopper
-	runtimeConfig            *runtimeconfig.Manager
-	MemberlistKV             *memberlist.KVInitService
-	compactor                *compactor.Compactor
-	QueryFrontEndTripperware basetripper.Tripperware
-	queryScheduler           *scheduler.Scheduler
+	Server                    *server.Server
+	InternalServer            *server.Server
+	ring                      *ring.Ring
+	Overrides                 limiter.CombinedLimits
+	tenantConfigs             *runtime.TenantConfigs
+	TenantLimits              validation.TenantLimits
+	distributor               *distributor.Distributor
+	Ingester                  ingester.Interface
+	Querier                   querier.Querier
+	cacheGenerationLoader     queryrangebase.CacheGenNumberLoader
+	querierAPI                *querier.QuerierAPI
+	ingesterQuerier           *querier.IngesterQuerier
+	Store                     storage.Store
+	tableManager              *index.TableManager
+	frontend                  Frontend
+	ruler                     *base_ruler.Ruler
+	RulerStorage              rulestore.RuleStore
+	rulerAPI                  *base_ruler.API
+	stopper                   queryrange.Stopper
+	runtimeConfig             *runtimeconfig.Manager
+	MemberlistKV              *memberlist.KVInitService
+	compactor                 *compactor.Compactor
+	QueryFrontEndTripperware  basetripper.Tripperware
+	queryScheduler            *scheduler.Scheduler
 	querySchedulerRingManager *scheduler.RingManager
-	usageReport              *usagestats.Reporter
-	indexGatewayRingManager  *indexgateway.RingManager
+	usageReport               *usagestats.Reporter
+	indexGatewayRingManager   *indexgateway.RingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
