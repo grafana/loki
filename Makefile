@@ -668,7 +668,8 @@ ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	false;
 endif
 	echo ${DOCKER_PASSWORD} | docker login --username ${DOCKER_USERNAME} --password-stdin
-	$(SUDO) $(BUILD_OCI) -o type=registry -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
+	$(SUDO) DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker buildx build $(OCI_PLATFORMS) \
+		-o type=registry -t $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) ./loki-build-image
 
 # loki-operator
 loki-operator-image:
