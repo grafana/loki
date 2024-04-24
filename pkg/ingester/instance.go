@@ -10,7 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
@@ -26,28 +28,28 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester/index"
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/loghttp/push"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/deletion"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	mathutil "github.com/grafana/loki/pkg/util/math"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/index"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/deletion"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	mathutil "github.com/grafana/loki/v3/pkg/util/math"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -92,7 +94,7 @@ type instance struct {
 	streams *streamsMap
 
 	index  *index.Multi
-	mapper *fpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
+	mapper *FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
 
 	instanceID string
 
@@ -173,7 +175,7 @@ func newInstance(
 		writeFailures: writeFailures,
 		schemaconfig:  &c,
 	}
-	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
+	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
 	return i, err
 }
 
@@ -303,7 +305,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		if i.customStreamsTracker != nil {
 			i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))
 		}
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, i.instanceID)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, labels, i.instanceID)
 	}
 
 	fp := i.getHashForLabels(labels)
@@ -381,7 +383,6 @@ func (i *instance) chunkFormatAt(at model.Time) (byte, chunkenc.HeadBlockFmt, er
 	}
 
 	return chunkFormat, headblock, nil
-
 }
 
 // getOrCreateStream returns the stream or creates it.
@@ -409,7 +410,7 @@ func (i *instance) removeStream(s *stream) {
 func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
 	var fp uint64
 	fp, i.buf = ls.HashWithoutLabels(i.buf, []string(nil)...)
-	return i.mapper.mapFP(model.Fingerprint(fp), ls)
+	return i.mapper.MapFP(model.Fingerprint(fp), ls)
 }
 
 // Return labels associated with given fingerprint. Used by fingerprint mapper.
@@ -581,6 +582,54 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	return &logproto.LabelResponse{
 		Values: labels.Strings(),
 	}, nil
+}
+
+type UniqueValues map[string]struct{}
+
+// LabelsWithValues returns the label names with all the unique values depending on the request
+func (i *instance) LabelsWithValues(ctx context.Context, startTime time.Time, matchers ...*labels.Matcher) (map[string]UniqueValues, error) {
+	labelMap := make(map[string]UniqueValues)
+	if len(matchers) == 0 {
+		labelsFromIndex, err := i.index.LabelNames(startTime, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, label := range labelsFromIndex {
+			values, err := i.index.LabelValues(startTime, label, nil)
+			if err != nil {
+				return nil, err
+			}
+			existingValues, exists := labelMap[label]
+			if !exists {
+				existingValues = make(map[string]struct{})
+			}
+			for _, v := range values {
+				existingValues[v] = struct{}{}
+			}
+			labelMap[label] = existingValues
+		}
+
+		return labelMap, nil
+	}
+
+	err := i.forMatchingStreams(ctx, startTime, matchers, nil, func(s *stream) error {
+		for _, label := range s.labels {
+			v, exists := labelMap[label.Name]
+			if !exists {
+				v = make(map[string]struct{})
+			}
+			if label.Value != "" {
+				v[label.Value] = struct{}{}
+			}
+			labelMap[label.Name] = v
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return labelMap, nil
 }
 
 func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
@@ -953,6 +1002,7 @@ type QuerierQueryServer interface {
 
 func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) error {
 	stats := stats.FromContext(ctx)
+	metadata := metadata.FromContext(ctx)
 
 	// send until the limit is reached.
 	for limit != 0 && !isDone(ctx) {
@@ -971,6 +1021,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
+		batch.Warnings = metadata.Warnings()
 
 		if isDone(ctx) {
 			break
@@ -985,6 +1036,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		}
 
 		stats.Reset()
+		metadata.Reset()
 	}
 	return nil
 }
@@ -993,6 +1045,7 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 	sp := opentracing.SpanFromContext(ctx)
 
 	stats := stats.FromContext(ctx)
+	metadata := metadata.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
 		if err != nil {
@@ -1001,6 +1054,8 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
+		batch.Warnings = metadata.Warnings()
+
 		if isDone(ctx) {
 			break
 		}
@@ -1014,6 +1069,8 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		}
 
 		stats.Reset()
+		metadata.Reset()
+
 		if sp != nil {
 			sp.LogKV("event", "sent batch", "size", size)
 		}

@@ -56,12 +56,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/queue"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/queue"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
@@ -108,6 +109,7 @@ func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
 
 // New returns a new instance of the Bloom Gateway.
 func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
+	utillog.WarnExperimentalUse("Bloom Gateway", logger)
 	g := &Gateway{
 		cfg:     cfg,
 		logger:  logger,
@@ -236,31 +238,49 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}, nil
 	}
 
-	seriesByDay := partitionRequest(req)
-	stats.NumTasks = len(seriesByDay)
+	blocks := make([]bloomshipper.BlockRef, 0, len(req.Blocks))
+	for _, key := range req.Blocks {
+		block, err := bloomshipper.BlockRefFromKey(key)
+		if err != nil {
+			stats.Status = labelFailure
+			return nil, errors.New("could not parse block key")
+		}
+		blocks = append(blocks, block)
+	}
 
-	// no tasks --> empty response
-	if len(seriesByDay) == 0 {
+	// Shortcut if request does not contain blocks
+	if len(blocks) == 0 {
 		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
-			ChunkRefs: []*logproto.GroupedChunkRefs{},
+			ChunkRefs: req.Refs,
 		}, nil
 	}
+
+	// TODO(chaudum): I intentionally keep the logic for handling multiple tasks,
+	// so that the PR does not explode in size. This should be cleaned up at some point.
+
+	seriesByDay := partitionRequest(req)
+	stats.NumTasks = len(seriesByDay)
 
 	sp.LogKV(
 		"filters", len(filters),
 		"days", len(seriesByDay),
+		"blocks", len(req.Blocks),
 		"series_requested", len(req.Refs),
 	)
+
+	if len(seriesByDay) != 1 {
+		stats.Status = labelFailure
+		return nil, errors.New("request time range must span exactly one day")
+	}
 
 	tasks := make([]Task, 0, len(seriesByDay))
 	responses := make([][]v1.Output, 0, len(seriesByDay))
 	for _, seriesForDay := range seriesByDay {
-		task, err := NewTask(ctx, tenantID, seriesForDay, filters)
+		task, err := NewTask(ctx, tenantID, seriesForDay, filters, blocks)
 		if err != nil {
 			return nil, err
 		}
-
 		// TODO(owen-d): include capacity in constructor?
 		task.responses = responsesPool.Get(len(seriesForDay.series))
 		tasks = append(tasks, task)

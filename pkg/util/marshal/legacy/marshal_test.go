@@ -9,9 +9,9 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/stretchr/testify/require"
 
-	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	loghttp "github.com/grafana/loki/v3/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 // covers responses from /api/prom/query
@@ -58,7 +58,8 @@ var queryTests = []struct {
 			"stats" : {
 				"index": {
 					"postFilterChunks": 0,
-					"totalChunks": 0
+					"totalChunks": 0,
+					"shardsDuration": 0
 				},
 				"ingester" : {
 					"store": {
@@ -68,6 +69,7 @@ var queryTests = []struct {
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
 						"queryReferencedStructuredMetadata": false,
+				 		"pipelineWrapperFilteredLines": 0,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
@@ -93,6 +95,7 @@ var queryTests = []struct {
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
 						"queryReferencedStructuredMetadata": false,
+				                "pipelineWrapperFilteredLines": 0,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,

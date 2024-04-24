@@ -30,15 +30,12 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: filesystem
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /tmp/loki/index
-    cache_location: /tmp/loki/index_cache
   filesystem:
     directory: /tmp/loki/chunks
 
@@ -71,7 +68,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: s3
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
@@ -127,7 +124,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: gcs
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
@@ -148,21 +145,20 @@ storage_config:
 
 # This is a partial configuration to deploy Loki backed by Baidu Object Storage (BOS).
 # The index will be shipped to the storage via tsdb-shipper.
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:
     - from: 2020-05-15
       store: tsdb
       object_store: bos
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
   bos:
     bucket_name: bucket_name_1
     endpoint: bj.bcebos.com
@@ -190,6 +186,9 @@ compactor:
 
 ```yaml
 
+common:
+  path_prefix: /tmp/loki
+
 schema_config:
   configs:
     # Starting from 2018-04-15 Loki should store indexes on BoltDB with the v11 schema
@@ -203,12 +202,12 @@ schema_config:
         period: 24h
         prefix: index_
 
-  # Starting from 2023-6-15 Loki should store indexes on TSDB with the v12 schema
+  # Starting from 2023-6-15 Loki should store indexes on TSDB with the v13 schema
   # using daily periodic tables and chunks on AWS S3.
   - from: "2023-06-15"
     store: tsdb
     object_store: s3
-    schema: v12
+    schema: v13
     index:
         period: 24h
         prefix: index_
@@ -221,13 +220,15 @@ schema_config:
 ```yaml
 
 # This partial configuration uses Alibaba for chunk storage.
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:
   - from: 2020-05-15
     store: tsdb
     object_store: alibabacloud
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
@@ -291,21 +292,20 @@ storage_config:
 ```yaml
 
 # This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. HMAC will be used for authenticating with COS.
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:
     - from: 2020-10-01
       store: tsdb
       object_store: cos
-      schema: v12
+      schema: v13
       index:
         period: 24h
         prefix: index_
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -321,21 +321,20 @@ storage_config:
 ```yaml
 
 # This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. APIKey will be used for authenticating with COS.
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:
     - from: 2020-10-01
       store: tsdb
       object_store: cos
-      schema: v12
+      schema: v13
       index:
         period: 24h
         prefix: index_
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -358,21 +357,20 @@ storage_config:
 # the same trusted profile.
 # In order to use trusted profile authentication we need to follow an additional step to create a trusted profile.
 # For more details about creating a trusted profile, see https://cloud.ibm.com/docs/account?topic=account-create-trusted-profile&interface=ui.
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:
     - from: 2020-10-01
       store: tsdb
       object_store: cos
-      schema: v12
+      schema: v13
       index:
         period: 24h
         prefix: index_
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -405,60 +403,46 @@ memberlist:
 ```
 
 
-## 16-(Deprecated)-Cassandra-Snippet.yaml
+## 16-Azure-Account-Name-Example.yaml
 
 ```yaml
 
-# This is a partial config that uses the local filesystem for chunk storage and Cassandra for index storage
-# WARNING - DEPRECATED: The Cassandra index store is deprecated and will be removed in a future release.
-
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: cassandra
-    object_store: filesystem
-    schema: v12
-    index:
-      prefix: cassandra_table
-      period: 168h
-
+# This partial configuration uses Azure for chunk storage
 storage_config:
-  cassandra:
-    username: cassandra
-    password: cassandra
-    addresses: 127.0.0.1
-    auth: true
-    keyspace: lokiindex
-
-  filesystem:
-    directory: /tmp/loki/chunks
-    
+  azure:
+    # For the account-key, see docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
+    account_key: <azure_blob_access_key>
+    account_name: <azure_account_name>
+    container_name: <azure_storage_bucket_name>
+    use_managed_identity: false
+    # Providing a user assigned ID will override use_managed_identity
+    #user_assigned_id: <user-assigned-identity-id>
+    request_timeout: 0
+    # Configure `endpoint_suffix` if you are using private azure cloud like azure stack hub and will use this endpoint suffix to compose container and blob storage URL. Ex: https://account_name.endpoint_suffix/container_name/blob_name
+    #endpoint_suffix: <endpoint-suffix>
+    # If `connection_string` is set, the `account_name` and `endpoint_suffix` values will not be used. Use this method over `account_key` if you need to authenticate via an SAS token. Or if you use the Azurite emulator.
+    #connection_string: <connection-string>
 
 ```
 
 
-## 17-(Deprecated)-S3-And-DynamoDB-Snippet.yaml
+## 17-Azure-Service-Principal-Example.yaml
 
 ```yaml
 
-# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage
-# WARNING - DEPRECATED: The DynamoDB index store is deprecated and will be removed in a future release.
-
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: aws
-    object_store: s3
-    schema: v12
-    index:
-      prefix: loki_
-
+# This partial configuration uses Azure for chunk storage and a service principal for authentication
 storage_config:
-  aws:
-    s3: s3://access_key:secret_access_key@region/bucket_name
-    dynamodb:
-      dynamodb_url: dynamodb://access_key:secret_access_key@region
-      
+  azure:
+    use_service_principal: true
+    # Azure tenant ID used to authenticate through Azure OAuth
+    tenant_id: <tenant-id>
+    # Azure Service Principal ID
+    client_id: <client-id>
+    # Azure Service Principal secret key
+    client_secret: <client-secret>
+    # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
+    container_name: <azure_storage_bucket_name>
+    request_timeout: 0
 
 ```
 

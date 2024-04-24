@@ -28,24 +28,24 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/ingester/index"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/ingester/index"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestPrepareShutdownMarkerPathNotSet(t *testing.T) {
@@ -405,11 +405,14 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 	require.NoError(t, err)
 
 	req.Streams[0].Labels = `{foo="bar",bar="baz2"}`
+	// The labels in error messages are sorted lexicographically and cleaned up via Push -> ParseLabels.
+	expectedLabels, _ := syntax.ParseLabels(req.Streams[0].Labels)
 
 	_, err = i.Push(ctx, &req)
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding metrics per user, got %v", err)
 	}
+	require.Contains(t, err.Error(), expectedLabels.String())
 }
 
 type mockStore struct {
@@ -779,6 +782,129 @@ func Test_InMemoryLabels(t *testing.T) {
 	res, err = i.Label(ctx, &logproto.LabelRequest{Start: &start})
 	require.NoError(t, err)
 	require.Equal(t, []string{"bar", "foo"}, res.Values)
+}
+
+func TestIngester_GetDetectedLabels(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	store := &mockStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Push labels
+	req := logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: `{foo="bar",bar="baz1"}`,
+			},
+			{
+				Labels: `{foo="bar",bar="baz2"}`,
+			},
+			{
+				Labels: `{foo="bar1",bar="baz3"}`,
+			},
+			{
+				Labels: `{foo="foo1",bar="baz1"}`,
+			},
+			{
+				Labels: `{foo="foo",bar="baz1"}`,
+			},
+		},
+	}
+	for i := 0; i < 10; i++ {
+		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      fmt.Sprintf("line %d", i),
+		})
+		req.Streams[1].Entries = append(req.Streams[1].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      fmt.Sprintf("line %d", i),
+		})
+	}
+
+	_, err = i.Push(ctx, &req)
+	require.NoError(t, err)
+
+	res, err := i.GetDetectedLabels(ctx, &logproto.DetectedLabelsRequest{
+		Start: &[]time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
+		End:   nil,
+		Query: "",
+	})
+
+	require.NoError(t, err)
+	fooValues, ok := res.Labels["foo"]
+	require.True(t, ok)
+	barValues, ok := res.Labels["bar"]
+	require.True(t, ok)
+	require.Equal(t, 4, len(fooValues.Values))
+	require.Equal(t, 3, len(barValues.Values))
+}
+
+func TestIngester_GetDetectedLabelsWithQuery(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	store := &mockStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Push labels
+	req := logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: `{foo="bar",bar="baz1"}`,
+			},
+			{
+				Labels: `{foo="bar",bar="baz2"}`,
+			},
+			{
+				Labels: `{foo="bar1",bar="baz3"}`,
+			},
+			{
+				Labels: `{foo="foo1",bar="baz4"}`,
+			},
+		},
+	}
+	for i := 0; i < 10; i++ {
+		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      fmt.Sprintf("line %d", i),
+		})
+		req.Streams[1].Entries = append(req.Streams[1].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      fmt.Sprintf("line %d", i),
+		})
+	}
+
+	_, err = i.Push(ctx, &req)
+	require.NoError(t, err)
+
+	res, err := i.GetDetectedLabels(ctx, &logproto.DetectedLabelsRequest{
+		Start: &[]time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
+		End:   nil,
+		Query: `{foo="bar"}`,
+	})
+
+	require.NoError(t, err)
+	fooValues, ok := res.Labels["foo"]
+	require.True(t, ok)
+	barValues, ok := res.Labels["bar"]
+	require.True(t, ok)
+	require.Equal(t, 1, len(fooValues.Values))
+	require.Equal(t, 2, len(barValues.Values))
 }
 
 func Test_DedupeIngester(t *testing.T) {

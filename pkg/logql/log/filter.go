@@ -11,7 +11,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // LineMatchType is an enum for line matching types.
@@ -23,6 +24,8 @@ const (
 	LineMatchNotEqual
 	LineMatchRegexp
 	LineMatchNotRegexp
+	LineMatchPattern
+	LineMatchNotPattern
 )
 
 func (t LineMatchType) String() string {
@@ -35,6 +38,10 @@ func (t LineMatchType) String() string {
 		return "|~"
 	case LineMatchNotRegexp:
 		return "!~"
+	case LineMatchPattern:
+		return "|>"
+	case LineMatchNotPattern:
+		return "!>"
 	default:
 		return ""
 	}
@@ -553,6 +560,10 @@ func NewFilter(match string, mt LineMatchType) (Filterer, error) {
 		return newContainsFilter([]byte(match), false), nil
 	case LineMatchNotEqual:
 		return NewNotFilter(newContainsFilter([]byte(match), false)), nil
+	case LineMatchPattern:
+		return newPatternFilterer([]byte(match), true)
+	case LineMatchNotPattern:
+		return newPatternFilterer([]byte(match), false)
 	default:
 		return nil, fmt.Errorf("unknown matcher: %v", match)
 	}
@@ -782,4 +793,38 @@ func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []
 		return curr, true
 	}
 	return nil, false
+}
+
+type patternFilter struct {
+	matcher *pattern.Matcher
+	pattern []byte
+}
+
+func newPatternFilterer(p []byte, match bool) (MatcherFilterer, error) {
+	m, err := pattern.ParseLineFilter(p)
+	if err != nil {
+		return nil, err
+	}
+	filter := &patternFilter{
+		matcher: m,
+		pattern: p,
+	}
+	if !match {
+		return NewNotFilter(filter), nil
+	}
+	return filter, nil
+}
+
+func (f *patternFilter) Filter(line []byte) bool { return f.matcher.Test(line) }
+
+func (f *patternFilter) Matches(test Checker) bool {
+	return test.Test(f.pattern, false, false)
+}
+
+func (f *patternFilter) ToStage() Stage {
+	return StageFunc{
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+			return line, f.Filter(line)
+		},
+	}
 }

@@ -19,8 +19,12 @@ metadata:
     {{- end }}
   {{- end }}
 spec:
-{{- if not .Values.read.autoscaling.enabled }}
-  replicas: {{ .Values.read.replicas }}
+{{- if not .Values.write.autoscaling.enabled }}
+  {{- if eq .Values.deploymentMode "SingleBinary" }}
+  replicas: 0
+  {{- else }}
+  replicas: {{ .Values.write.replicas }}
+  {{- end }}
 {{- end }}
   podManagementPolicy: {{ .Values.read.podManagementPolicy }}
   updateStrategy:
@@ -133,7 +137,7 @@ spec:
         {{- end }}
       {{- with .Values.read.affinity }}
       affinity:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.read.dnsConfig }}
       dnsConfig:
@@ -155,13 +159,7 @@ spec:
         - name: tmp
           emptyDir: {}
         - name: config
-          {{- if .Values.loki.existingSecretForConfig }}
-          secret:
-            secretName: {{ .Values.loki.existingSecretForConfig }}
-          {{- else }}
-          configMap:
-            name: {{ include "loki.name" . }}
-          {{- end }}
+          {{- include "loki.configVolume" . | nindent 10 }}
         - name: runtime-config
           configMap:
             name: {{ template "loki.name" . }}-runtime

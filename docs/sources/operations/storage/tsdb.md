@@ -29,7 +29,7 @@ schema_config:
         period: 24h
         prefix: index_
       object_store: gcs
-      schema: v12
+      schema: v13
       store: tsdb
 
 storage_config:
@@ -73,7 +73,7 @@ We've added a user per-tenant limit called `tsdb_max_query_parallelism` in the `
 
 ### Dynamic Query Sharding
 
-Previously we would statically shard queries based on the index row shards configured [here]({{< relref "../../configure#period_config" >}}).
+Previously we would statically shard queries based on the index row shards configured [here](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config).
 TSDB does Dynamic Query Sharding based on how much data a query is going to be processing.
 We additionally store size(KB) and number of lines for each chunk in the TSDB index which is then used by the [Query Frontend]({{< relref "../../get-started/components#query-frontend" >}}) for planning the query.
 Based on our experience from operating many Loki clusters, we have configured TSDB to aim for processing 300-600 MBs of data per query shard.
@@ -81,4 +81,4 @@ This means with TSDB we will be running more, smaller queries.
 
 ### Index Caching not required
 
-TSDB is a compact and optimized format. Loki does not currently use an index cache for TSDB. If you are already using Loki with other index types, it is recommended to keep the index caching until all of your existing data falls out of [retention]({{< relref "./retention" >}}) or your configured `max_query_lookback` under [limits_config]({{< relref "../../configure#limits_config" >}}). After that, we suggest running without an index cache (it isn't used in TSDB).
+TSDB is a compact and optimized format. Loki does not currently use an index cache for TSDB. If you are already using Loki with other index types, it is recommended to keep the index caching until all of your existing data falls out of [retention](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/)) or your configured `max_query_lookback` under [limits_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). After that, we suggest running without an index cache (it isn't used in TSDB).

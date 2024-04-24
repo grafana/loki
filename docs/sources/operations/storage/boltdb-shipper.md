@@ -7,7 +7,7 @@ weight: 200
 # Single Store BoltDB (boltdb-shipper)
 
 {{% admonition type="note" %}}
-Single store BoltDB Shipper is a legacy storage option and is not recommended for new deployments. The [TSDB]({{< relref "./tsdb" >}}) index is the recommended index.
+Single store BoltDB Shipper is a legacy storage option recommended for Loki 2.0 through 2.7.x and is not recommended for new deployments. The [TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) is the recommended index for Loki 2.8 and newer.
 {{% /admonition %}}
 
 BoltDB Shipper lets you run Grafana Loki without any dependency on NoSQL stores for storing index.
@@ -117,14 +117,14 @@ Within Kubernetes, if you are not using an Index Gateway, we recommend running Q
 An Index Gateway downloads and synchronizes the BoltDB index from the Object Storage in order to serve index queries to the Queriers and Rulers over gRPC.
 This avoids running Queriers and Rulers with a disk for persistence. Disks can become costly in a big cluster.
 
-To run an Index Gateway, configure [StorageConfig]({{< relref "../../configure#storage_config" >}}) and set the `-target` CLI flag to `index-gateway`.
-To connect Queriers and Rulers to the Index Gateway, set the address (with gRPC port) of the Index Gateway with the `-boltdb.shipper.index-gateway-client.server-address` CLI flag or its equivalent YAML value under [StorageConfig]({{< relref "../../configure#storage_config" >}}).
+To run an Index Gateway, configure [StorageConfig](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config) and set the `-target` CLI flag to `index-gateway`.
+To connect Queriers and Rulers to the Index Gateway, set the address (with gRPC port) of the Index Gateway with the `-boltdb.shipper.index-gateway-client.server-address` CLI flag or its equivalent YAML value under [StorageConfig](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config).
 
 When using the Index Gateway within Kubernetes, we recommend using a StatefulSet with persistent storage for downloading and querying index files. This can obtain better read performance, avoids [noisy neighbor problems](https://en.wikipedia.org/wiki/Cloud_computing_issues#Performance_interference_and_noisy_neighbors) by not using the node disk, and avoids the time consuming index downloading step on startup after rescheduling to a new node.
 
 ### Write Deduplication disabled
 
-Loki does write deduplication of chunks and index using Chunks and WriteDedupe cache respectively, configured with [ChunkStoreConfig]({{< relref "../../configure#chunk_store_config" >}}).
+Loki does write deduplication of chunks and index using Chunks and WriteDedupe cache respectively, configured with [ChunkStoreConfig](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#chunk_store_config).
 The problem with write deduplication when using `boltdb-shipper` though is ingesters only keep uploading boltdb files periodically to make them available to all the other services which means there would be a brief period where some of the services would not have received updated index yet.
 The problem due to that is if an ingester which first wrote the chunks and index goes down and all the other ingesters which were part of replication scheme skipped writing those chunks and index due to deduplication, we would end up missing those logs from query responses since only the ingester which had the index went down.
 This problem would be faced even during rollouts which is quite common.
@@ -155,5 +155,3 @@ storage_config:
   gcs:
     bucket_name: GCS_BUCKET_NAME
 ```
-
-

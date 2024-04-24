@@ -16,13 +16,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/bloomutils"
-	"github.com/grafana/loki/pkg/storage"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
-	util_ring "github.com/grafana/loki/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/bloomutils"
+	"github.com/grafana/loki/v3/pkg/storage"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	util_ring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 var (
@@ -72,6 +73,7 @@ func New(
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Compactor, error) {
+	utillog.WarnExperimentalUse("Bloom Compactor", logger)
 	c := &Compactor{
 		cfg:        cfg,
 		schemaCfg:  schemaCfg,

@@ -9,11 +9,11 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 const (
@@ -65,6 +65,8 @@ type Task struct {
 	series []*logproto.GroupedChunkRefs
 	// filters of the original request
 	filters []syntax.LineFilterExpr
+	// blocks that were resolved on the index gateway and sent with the request
+	blocks []bloomshipper.BlockRef
 	// from..through date of the task's chunks
 	interval bloomshipper.Interval
 	// the context from the request
@@ -80,7 +82,7 @@ type Task struct {
 // NewTask returns a new Task that can be enqueued to the task queue.
 // In addition, it returns a result and an error channel, as well
 // as an error if the instantiation fails.
-func NewTask(ctx context.Context, tenantID string, refs seriesWithInterval, filters []syntax.LineFilterExpr) (Task, error) {
+func NewTask(ctx context.Context, tenantID string, refs seriesWithInterval, filters []syntax.LineFilterExpr, blocks []bloomshipper.BlockRef) (Task, error) {
 	key, err := ulid.New(ulid.Now(), entropy)
 	if err != nil {
 		return Task{}, err
@@ -92,6 +94,7 @@ func NewTask(ctx context.Context, tenantID string, refs seriesWithInterval, filt
 		err:      new(wrappedError),
 		resCh:    make(chan v1.Output),
 		filters:  filters,
+		blocks:   blocks,
 		series:   refs.series,
 		interval: refs.interval,
 		table:    refs.day,
@@ -133,6 +136,7 @@ func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 		err:      t.err,
 		resCh:    t.resCh,
 		filters:  t.filters,
+		blocks:   t.blocks,
 		series:   series,
 		interval: t.interval,
 		table:    t.table,

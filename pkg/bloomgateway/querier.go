@@ -2,17 +2,19 @@ package bloomgateway
 
 import (
 	"context"
-	"sort"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/plan"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type querierMetrics struct {
@@ -20,6 +22,7 @@ type querierMetrics struct {
 	chunksFiltered prometheus.Counter
 	seriesTotal    prometheus.Counter
 	seriesFiltered prometheus.Counter
+	seriesSkipped  prometheus.Counter
 }
 
 func newQuerierMetrics(registerer prometheus.Registerer, namespace, subsystem string) *querierMetrics {
@@ -48,22 +51,32 @@ func newQuerierMetrics(registerer prometheus.Registerer, namespace, subsystem st
 			Name:      "series_filtered_total",
 			Help:      "Total amount of series that have been filtered out. Does not count series in failed requests.",
 		}),
+		seriesSkipped: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "series_skipped_total",
+			Help:      "Total amount of series that have been skipped and returned unfiltered, because no block matched the series.",
+		}),
 	}
 }
 
 // BloomQuerier is a store-level abstraction on top of Client
 // It is used by the index gateway to filter ChunkRefs based on given line fiter expression.
 type BloomQuerier struct {
-	c       Client
-	logger  log.Logger
-	metrics *querierMetrics
+	c             Client
+	logger        log.Logger
+	metrics       *querierMetrics
+	limits        Limits
+	blockResolver BlockResolver
 }
 
-func NewQuerier(c Client, r prometheus.Registerer, logger log.Logger) *BloomQuerier {
+func NewQuerier(c Client, limits Limits, resolver BlockResolver, r prometheus.Registerer, logger log.Logger) *BloomQuerier {
 	return &BloomQuerier{
-		c:       c,
-		metrics: newQuerierMetrics(r, constants.Loki, querierMetricsSubsystem),
-		logger:  logger,
+		c:             c,
+		logger:        logger,
+		metrics:       newQuerierMetrics(r, constants.Loki, querierMetricsSubsystem),
+		limits:        limits,
+		blockResolver: resolver,
 	}
 }
 
@@ -73,11 +86,12 @@ func convertToShortRef(ref *logproto.ChunkRef) *logproto.ShortRef {
 
 func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, queryPlan plan.QueryPlan) ([]*logproto.ChunkRef, error) {
 	// Shortcut that does not require any filtering
-	if len(chunkRefs) == 0 || len(v1.ExtractTestableLineFilters(queryPlan.AST)) == 0 {
+	if !bq.limits.BloomGatewayEnabled(tenant) || len(chunkRefs) == 0 || len(v1.ExtractTestableLineFilters(queryPlan.AST)) == 0 {
 		return chunkRefs, nil
 	}
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomquerier.FilterChunkRefs")
+	defer sp.Finish()
 
-	// The indexes of the chunks slice correspond to the indexes of the fingerprint slice.
 	grouped := groupedChunksRefPool.Get(len(chunkRefs))
 	defer groupedChunksRefPool.Put(grouped)
 	grouped = groupChunkRefs(chunkRefs, grouped)
@@ -85,27 +99,63 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	preFilterChunks := len(chunkRefs)
 	preFilterSeries := len(grouped)
 
-	refs, err := bq.c.FilterChunks(ctx, tenant, from, through, grouped, queryPlan)
-	if err != nil {
-		return nil, err
-	}
-
-	// Flatten response from client and return
 	result := make([]*logproto.ChunkRef, 0, len(chunkRefs))
-	for i := range refs {
-		for _, ref := range refs[i].Refs {
-			result = append(result, &logproto.ChunkRef{
-				Fingerprint: refs[i].Fingerprint,
-				UserID:      tenant,
-				From:        ref.From,
-				Through:     ref.Through,
-				Checksum:    ref.Checksum,
-			})
+	seriesSeen := make(map[uint64]struct{}, len(grouped))
+
+	// We can perform requests sequentially, because most of the time the request
+	// only covers a single day, and if not, it's at most two days.
+	for _, s := range partitionSeriesByDay(from, through, grouped) {
+		day := bloomshipper.NewInterval(s.day.Time, s.day.Time.Add(Day))
+		blocks, skipped, err := bq.blockResolver.Resolve(ctx, tenant, day, s.series)
+		if err != nil {
+			return nil, err
+		}
+		var chunks int
+		for i := range s.series {
+			chunks += len(s.series[i].Refs)
+		}
+		sp.LogKV(
+			"day", s.day.Time.Time(),
+			"from", s.interval.Start.Time(),
+			"through", s.interval.End.Time(),
+			"series", len(s.series),
+			"chunks", chunks,
+			"blocks", len(blocks),
+			"skipped", len(skipped),
+		)
+
+		refs, err := bq.c.FilterChunks(ctx, tenant, s.interval, blocks, queryPlan)
+		if err != nil {
+			return nil, err
+		}
+
+		// add chunk refs from series that were not mapped to any blocks
+		refs = append(refs, skipped...)
+		bq.metrics.seriesSkipped.Add(float64(len(skipped)))
+
+		for i := range refs {
+			seriesSeen[refs[i].Fingerprint] = struct{}{}
+			for _, ref := range refs[i].Refs {
+				result = append(result, &logproto.ChunkRef{
+					Fingerprint: refs[i].Fingerprint,
+					UserID:      tenant,
+					From:        ref.From,
+					Through:     ref.Through,
+					Checksum:    ref.Checksum,
+				})
+			}
 		}
 	}
 
+	level.Debug(bq.logger).Log(
+		"preFilterChunks", preFilterChunks,
+		"postFilterChunks", len(result),
+		"preFilterSeries", preFilterSeries,
+		"postFilterSeries", len(seriesSeen),
+	)
+
 	postFilterChunks := len(result)
-	postFilterSeries := len(refs)
+	postFilterSeries := len(seriesSeen)
 
 	bq.metrics.chunksTotal.Add(float64(preFilterChunks))
 	bq.metrics.chunksFiltered.Add(float64(preFilterChunks - postFilterChunks))
@@ -115,24 +165,23 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	return result, nil
 }
 
+// groupChunkRefs takes a slice of chunk refs sorted by their fingerprint and
+// groups them by fingerprint.
+// The second argument `grouped` can be used to pass a buffer to avoid allocations.
+// If it's nil, the returned slice will be allocated.
 func groupChunkRefs(chunkRefs []*logproto.ChunkRef, grouped []*logproto.GroupedChunkRefs) []*logproto.GroupedChunkRefs {
-	// Sort the chunkRefs by their stream fingerprint
-	// so we can easily append them to the target slice by iterating over them.
-	sort.Slice(chunkRefs, func(i, j int) bool {
-		return chunkRefs[i].Fingerprint < chunkRefs[j].Fingerprint
-	})
-
+	seen := make(map[uint64]int, len(grouped))
 	for _, chunkRef := range chunkRefs {
-		idx := len(grouped) - 1
-		if idx == -1 || grouped[idx].Fingerprint < chunkRef.Fingerprint {
+		if idx, found := seen[chunkRef.Fingerprint]; found {
+			grouped[idx].Refs = append(grouped[idx].Refs, convertToShortRef(chunkRef))
+		} else {
+			seen[chunkRef.Fingerprint] = len(grouped)
 			grouped = append(grouped, &logproto.GroupedChunkRefs{
 				Fingerprint: chunkRef.Fingerprint,
 				Tenant:      chunkRef.UserID,
 				Refs:        []*logproto.ShortRef{convertToShortRef(chunkRef)},
 			})
-			continue
 		}
-		grouped[idx].Refs = append(grouped[idx].Refs, convertToShortRef(chunkRef))
 	}
 	return grouped
 }

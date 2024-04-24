@@ -5,10 +5,10 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 type splitter interface {
@@ -93,6 +93,20 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 				Limit:        r.Limit,
 				TargetLabels: r.TargetLabels,
 				AggregateBy:  r.AggregateBy,
+			})
+		}
+	case *DetectedFieldsRequest:
+		factory = func(start, end time.Time) {
+			reqs = append(reqs, &DetectedFieldsRequest{
+				DetectedFieldsRequest: logproto.DetectedFieldsRequest{
+					Start:      start,
+					End:        end,
+					Query:      r.GetQuery(),
+					LineLimit:  r.GetLineLimit(),
+					FieldLimit: r.GetFieldLimit(),
+					Step:       r.GetStep(),
+				},
+				path: r.path,
 			})
 		}
 	default:

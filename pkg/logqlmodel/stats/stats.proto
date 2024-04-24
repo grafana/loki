@@ -4,7 +4,7 @@ package stats;
 
 import "gogoproto/gogo.proto";
 
-option go_package = "github.com/grafana/loki/pkg/logqlmodel/stats";
+option go_package = "github.com/grafana/loki/v3/pkg/logqlmodel/stats";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
@@ -108,6 +108,8 @@ message Index {
   int64 totalChunks = 1 [(gogoproto.jsontag) = "totalChunks"];
   // Post-filtered chunks
   int64 postFilterChunks = 2 [(gogoproto.jsontag) = "postFilterChunks"];
+  // Nanosecond duration spent fetching shards
+  int64 shardsDuration = 3 [(gogoproto.jsontag) = "shardsDuration"];
 }
 
 message Querier {
@@ -153,6 +155,9 @@ message Store {
 
   // Time spent being blocked on congestion control.
   int64 congestionControlLatency = 6 [(gogoproto.jsontag) = "congestionControlLatency"];
+
+  // Total number of lines filtered by pipeline wrapper.
+  int64 pipelineWrapperFilteredLines = 7 [(gogoproto.jsontag) = "pipelineWrapperFilteredLines"];
 }
 
 message Chunk {

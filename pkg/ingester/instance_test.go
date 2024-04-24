@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
@@ -23,18 +24,18 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/querier/plan"
-	loki_runtime "github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	loki_runtime "github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func defaultConfig() *Config {
@@ -60,7 +61,7 @@ func MustParseDayTime(s string) config.DayTime {
 var defaultPeriodConfigs = []config.PeriodConfig{
 	{
 		From:      MustParseDayTime("1900-01-01"),
-		IndexType: config.StorageTypeBigTable,
+		IndexType: types.StorageTypeBigTable,
 		Schema:    "v13",
 	},
 }
@@ -1082,8 +1083,8 @@ func TestStreamShardingUsage(t *testing.T) {
 	tenantShardStreamsCfg := limiter.limits.ShardStreams(customTenant1)
 
 	t.Run("test default configuration", func(t *testing.T) {
-		require.Equal(t, false, defaultShardStreamsCfg.Enabled)
-		require.Equal(t, "3MB", defaultShardStreamsCfg.DesiredRate.String())
+		require.Equal(t, true, defaultShardStreamsCfg.Enabled)
+		require.Equal(t, "1536KB", defaultShardStreamsCfg.DesiredRate.String())
 		require.Equal(t, false, defaultShardStreamsCfg.LoggingEnabled)
 	})
 
@@ -1477,6 +1478,55 @@ func insertData(t *testing.T, instance *instance) {
 			}),
 		)
 	}
+}
+
+func TestInstance_LabelsWithValues(t *testing.T) {
+	instance, currentTime, _ := setupTestStreams(t)
+	start := []time.Time{currentTime.Add(11 * time.Nanosecond)}[0]
+	m, err := labels.NewMatcher(labels.MatchEqual, "app", "test")
+	require.NoError(t, err)
+
+	t.Run("label names with no matchers returns all detected labels", func(t *testing.T) {
+		var matchers []*labels.Matcher
+		res, err := instance.LabelsWithValues(context.Background(), start, matchers...)
+		completeResponse := map[string]UniqueValues{
+			"app": map[string]struct{}{
+				"test":  {},
+				"test2": {},
+			},
+			"job": map[string]struct{}{
+				"varlogs":  {},
+				"varlogs2": {},
+			},
+		}
+		require.NoError(t, err)
+		require.Equal(t, completeResponse, res)
+	})
+
+	t.Run("label names with matcher returns response with matching detected labels", func(t *testing.T) {
+		matchers := []*labels.Matcher{m}
+		res, err := instance.LabelsWithValues(context.Background(), start, matchers...)
+		responseWithMatchingLabel := map[string]UniqueValues{
+			"app": map[string]struct{}{
+				"test": {},
+			},
+			"job": map[string]struct{}{
+				"varlogs":  {},
+				"varlogs2": {},
+			},
+		}
+		require.NoError(t, err)
+		require.Equal(t, responseWithMatchingLabel, res)
+	})
+
+	t.Run("label names matchers and no start time returns a empty response", func(t *testing.T) {
+		matchers := []*labels.Matcher{m}
+		var st time.Time
+		res, err := instance.LabelsWithValues(context.Background(), st, matchers...)
+
+		require.NoError(t, err)
+		require.Equal(t, map[string]UniqueValues{}, res)
+	})
 }
 
 type fakeQueryServer func(*logproto.QueryResponse) error

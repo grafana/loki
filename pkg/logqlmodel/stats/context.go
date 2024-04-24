@@ -116,11 +116,6 @@ func (c *Context) Caches() Caches {
 	}
 }
 
-// Index returns the index statistics accumulated so far.
-func (c *Context) Index() Index {
-	return c.index
-}
-
 // Reset clears the statistics.
 func (c *Context) Reset() {
 	c.mtx.Lock()
@@ -170,15 +165,6 @@ func JoinIngesters(ctx context.Context, inc Ingester) {
 	stats.ingester.Merge(inc)
 }
 
-// JoinIndex joins the index statistics in a concurrency-safe manner.
-func JoinIndex(ctx context.Context, index Index) {
-	stats := FromContext(ctx)
-	stats.mtx.Lock()
-	defer stats.mtx.Unlock()
-
-	stats.index.Merge(index)
-}
-
 // ComputeSummary compute the summary of the statistics.
 func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration, totalEntriesReturned int) {
 	r.Summary.TotalBytesProcessed = r.Querier.Store.Chunk.DecompressedBytes + r.Querier.Store.Chunk.HeadChunkBytes +
@@ -206,6 +192,7 @@ func (s *Store) Merge(m Store) {
 	s.TotalChunksRef += m.TotalChunksRef
 	s.TotalChunksDownloaded += m.TotalChunksDownloaded
 	s.CongestionControlLatency += m.CongestionControlLatency
+	s.PipelineWrapperFilteredLines += m.PipelineWrapperFilteredLines
 	s.ChunksDownloadTime += m.ChunksDownloadTime
 	s.ChunkRefsFetchTime += m.ChunkRefsFetchTime
 	s.Chunk.HeadChunkBytes += m.Chunk.HeadChunkBytes
@@ -246,6 +233,7 @@ func (i *Ingester) Merge(m Ingester) {
 func (i *Index) Merge(m Index) {
 	i.TotalChunks += m.TotalChunks
 	i.PostFilterChunks += m.PostFilterChunks
+	i.ShardsDuration += m.ShardsDuration
 }
 
 func (c *Caches) Merge(m Caches) {
@@ -310,6 +298,10 @@ func (r Result) ChunkRefsFetchTime() time.Duration {
 
 func (r Result) CongestionControlLatency() time.Duration {
 	return time.Duration(r.Querier.Store.CongestionControlLatency)
+}
+
+func (r Result) PipelineWrapperFilteredLines() int64 {
+	return r.Querier.Store.PipelineWrapperFilteredLines + r.Ingester.Store.PipelineWrapperFilteredLines
 }
 
 func (r Result) TotalDuplicates() int64 {
@@ -395,6 +387,10 @@ func (c *Context) AddChunkRefsFetchTime(i time.Duration) {
 
 func (c *Context) AddCongestionControlLatency(i time.Duration) {
 	atomic.AddInt64(&c.store.CongestionControlLatency, int64(i))
+}
+
+func (c *Context) AddPipelineWrapperFilterdLines(i int64) {
+	atomic.AddInt64(&c.store.PipelineWrapperFilteredLines, i)
 }
 
 func (c *Context) AddChunksDownloaded(i int64) {

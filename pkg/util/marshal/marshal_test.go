@@ -10,23 +10,25 @@ import (
 	"time"
 
 	json "github.com/json-iterator/go"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 const emptyStats = `{
 	"index": {
 		"postFilterChunks": 0,
-		"totalChunks": 0
+		"totalChunks": 0,
+		"shardsDuration": 0
 	},
 	"ingester" : {
 		"store": {
@@ -36,6 +38,7 @@ const emptyStats = `{
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
+			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
@@ -61,6 +64,7 @@ const emptyStats = `{
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
+			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
@@ -211,6 +215,7 @@ var queryTestWithEncodingFlags = []struct {
 		encodingFlags: httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels),
 		expected: fmt.Sprintf(`{
 			"status": "success",
+			"warnings": ["this is a warning"],
 			"data": {
 				"resultType": "streams",
 				"encodingFlags": ["%s"],
@@ -272,6 +277,7 @@ var queryTests = []struct {
 		},
 		fmt.Sprintf(`{
 			"status": "success",
+			"warnings": ["this is a warning"],
 			"data": {
 				"resultType": "streams",
 				"result": [
@@ -348,7 +354,8 @@ var queryTests = []struct {
 			  ],
 			  "stats" : %s
             },
-			"status": "success"
+			"status": "success",
+			"warnings": ["this is a warning"]
 		  }`, emptyStats),
 	},
 	// matrix test
@@ -430,7 +437,8 @@ var queryTests = []struct {
 			  ],
 			  "stats" : %s
 			},
-			"status": "success"
+			"status": "success",
+			"warnings": ["this is a warning"]
 		  }`, emptyStats),
 	},
 }
@@ -596,14 +604,14 @@ var tailTestWithEncodingFlags = []struct {
 func Test_WriteQueryResponseJSON(t *testing.T) {
 	for i, queryTest := range queryTests {
 		var b bytes.Buffer
-		err := WriteQueryResponseJSON(queryTest.actual, stats.Result{}, &b, nil)
+		err := WriteQueryResponseJSON(queryTest.actual, []string{"this is a warning"}, stats.Result{}, &b, nil)
 		require.NoError(t, err)
 
 		require.JSONEqf(t, queryTest.expected, b.String(), "Query Test %d failed", i)
 	}
 	for i, queryTest := range queryTestWithEncodingFlags {
 		var b bytes.Buffer
-		err := WriteQueryResponseJSON(queryTest.actual, stats.Result{}, &b, queryTest.encodingFlags)
+		err := WriteQueryResponseJSON(queryTest.actual, []string{"this is a warning"}, stats.Result{}, &b, queryTest.encodingFlags)
 		require.NoError(t, err)
 
 		require.JSONEqf(t, queryTest.expected, b.String(), "Query Test %d failed", i)
@@ -635,7 +643,7 @@ func Test_WriteQueryResponseJSONWithError(t *testing.T) {
 		},
 	}
 	var b bytes.Buffer
-	err := WriteQueryResponseJSON(broken.Data, stats.Result{}, &b, nil)
+	err := WriteQueryResponseJSON(broken.Data, nil, stats.Result{}, &b, nil)
 	require.Error(t, err)
 }
 
@@ -894,7 +902,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var b bytes.Buffer
-			err := WriteQueryResponseJSON(inputStream, stats.Result{}, &b, tc.encodeFlags)
+			err := WriteQueryResponseJSON(inputStream, nil, stats.Result{}, &b, tc.encodeFlags)
 			require.NoError(t, err)
 			require.JSONEq(t, tc.expected, b.String())
 		})
@@ -1028,7 +1036,7 @@ func Benchmark_Encode(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		for _, queryTest := range queryTests {
-			require.NoError(b, WriteQueryResponseJSON(queryTest.actual, stats.Result{}, buf, nil))
+			require.NoError(b, WriteQueryResponseJSON(queryTest.actual, nil, stats.Result{}, buf, nil))
 			buf.Reset()
 		}
 	}
@@ -1055,4 +1063,75 @@ func Test_WriteTailResponseJSON(t *testing.T) {
 			nil,
 		),
 	)
+}
+
+func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
+	for i, tc := range []struct {
+		input    *logproto.QueryPatternsResponse
+		expected string
+	}{
+		{
+			&logproto.QueryPatternsResponse{},
+			`{"status":"success","data":[]}`,
+		},
+		{
+			&logproto.QueryPatternsResponse{
+				Series: []*logproto.PatternSeries{
+					{
+						Pattern: "foo <*> bar",
+						Samples: []*logproto.PatternSample{
+							{Timestamp: model.TimeFromUnix(1), Value: 1},
+							{Timestamp: model.TimeFromUnix(2), Value: 2},
+						},
+					},
+				},
+			},
+			`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[[1,1],[2,2]]}]}`,
+		},
+		{
+			&logproto.QueryPatternsResponse{
+				Series: []*logproto.PatternSeries{
+					{
+						Pattern: "foo <*> bar",
+						Samples: []*logproto.PatternSample{
+							{Timestamp: model.TimeFromUnix(1), Value: 1},
+							{Timestamp: model.TimeFromUnix(2), Value: 2},
+						},
+					},
+					{
+						Pattern: "foo <*> buzz",
+						Samples: []*logproto.PatternSample{
+							{Timestamp: model.TimeFromUnix(3), Value: 1},
+							{Timestamp: model.TimeFromUnix(3), Value: 2},
+						},
+					},
+				},
+			},
+			`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[[1,1],[2,2]]},{"pattern":"foo <*> buzz","samples":[[3,1],[3,2]]}]}`,
+		},
+		{
+			&logproto.QueryPatternsResponse{
+				Series: []*logproto.PatternSeries{
+					{
+						Pattern: "foo <*> bar",
+						Samples: []*logproto.PatternSample{},
+					},
+					{
+						Pattern: "foo <*> buzz",
+						Samples: []*logproto.PatternSample{},
+					},
+				},
+			},
+			`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[]},{"pattern":"foo <*> buzz","samples":[]}]}`,
+		},
+	} {
+		tc := tc
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			var b bytes.Buffer
+			err := WriteQueryPatternsResponseJSON(tc.input, &b)
+			require.NoError(t, err)
+			got := b.String()
+			require.JSONEqf(t, tc.expected, got, "Patterns Test %d failed", i)
+		})
+	}
 }

@@ -1,10 +1,7 @@
 local lokiRelease = import 'workflows/main.jsonnet';
 local build = lokiRelease.build;
 
-local releaseLibRef = std.filter(
-  function(dep) dep.source.git.remote == 'https://github.com/grafana/loki-release.git',
-  (import 'jsonnetfile.json').dependencies
-)[0].version;
+local releaseLibRef = 'main';
 
 local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef;
 
@@ -20,7 +17,8 @@ local imageJobs = {
   querytee: build.image('loki-query-tee', 'cmd/querytee', platform=['linux/amd64']),
 };
 
-local buildImage = 'grafana/loki-build-image:0.33.0';
+local buildImageVersion = std.extVar('BUILD_IMAGE_VERSION');
+local buildImage = 'grafana/loki-build-image:%s' % buildImageVersion;
 local golangCiLintVersion = 'v1.55.1';
 
 local imageBuildTimeoutMin = 40;
@@ -63,25 +61,6 @@ local imagePrefix = 'grafana';
       versioningStrategy='always-bump-minor',
     ) + {
       name: 'Prepare Minor Release PR from Weekly',
-    }, false, false
-  ),
-  'three-zero-release.yml': std.manifestYamlDoc(
-    lokiRelease.releasePRWorkflow(
-      branches=['main'],
-      buildImage=buildImage,
-      checkTemplate=checkTemplate,
-      golangCiLintVersion=golangCiLintVersion,
-      imageBuildTimeoutMin=imageBuildTimeoutMin,
-      imageJobs=imageJobs,
-      imagePrefix=imagePrefix,
-      releaseLibRef=releaseLibRef,
-      releaseRepo='grafana/loki',
-      skipArm=false,
-      skipValidation=false,
-      useGitHubAppToken=true,
-      releaseAs='3.0.0-rc.1',
-    ) + {
-      name: 'Prepare Loki 3.0 release',
     }, false, false
   ),
   'release.yml': std.manifestYamlDoc(
