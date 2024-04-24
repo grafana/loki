@@ -173,7 +173,7 @@ For each tenant, you can create a different datasource.
 The agent of your choice must also be configured to propagate this header.
 For example, when using Promtail you can use the `tenant` stage. https://grafana.com/docs/loki/latest/send-data/promtail/stages/tenant/
 
-When not providing the `X-Scope-OrgID` while the auth is enabled, Loki will reject reads and writes with a 404 status code `no org id`.
+When not provided with the `X-Scope-OrgID` while auth is enabled, Loki will reject reads and writes with a 404 status code `no org id`.
 
 You can also use a reverse proxy, to automatically add the `X-Scope-OrgID` header as suggested by https://grafana.com/docs/loki/latest/operations/authentication/
 
