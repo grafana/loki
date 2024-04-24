@@ -99,7 +99,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	// only covers a single day, and if not, it's at most two days.
 	for _, s := range partitionSeriesByDay(from, through, grouped) {
 		day := bloomshipper.NewInterval(s.day.Time, s.day.Time.Add(Day))
-		blocks, err := bq.blockResolver.Resolve(ctx, tenant, day, s.series)
+		blocks, skipped, err := bq.blockResolver.Resolve(ctx, tenant, day, s.series)
 		if err != nil {
 			return nil, err
 		}
@@ -120,6 +120,9 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		if err != nil {
 			return nil, err
 		}
+
+		// add chunk refs from series that were not mapped to any blocks
+		refs = append(refs, skipped...)
 
 		for i := range refs {
 			seriesSeen[refs[i].Fingerprint] = struct{}{}
