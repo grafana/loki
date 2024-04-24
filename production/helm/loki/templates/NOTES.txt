@@ -167,7 +167,7 @@ Multi-tenancy
 
 Loki is configured with auth enabled (multi-tenancy) and expects tenant headers (`X-Scope-OrgID`) to be set for all API calls.
 
-Grafana's Loki datasource should be configured using the `HTTP Headers` section with the `X-Scope-OrgID` to target a specific tenant.
+You must configure Grafana's Loki datasource using the `HTTP Headers` section with the `X-Scope-OrgID` to target a specific tenant.
 For each tenant, you can create a different datasource.
 
 The agent of your choice should also be configured to propagate this header.
