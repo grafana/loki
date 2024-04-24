@@ -157,7 +157,7 @@ func (b *BlockBuilder) AddSeries(series SeriesWithBloom) (bool, error) {
 		return false, errors.Wrapf(err, "writing index for series %v", series.Series.Fingerprint)
 	}
 
-	full, err := b.isBlockFull()
+	full, _, err := b.IsBlockFull()
 	if err != nil {
 		return false, errors.Wrap(err, "checking if block is full")
 	}
@@ -165,18 +165,18 @@ func (b *BlockBuilder) AddSeries(series SeriesWithBloom) (bool, error) {
 	return full, nil
 }
 
-func (b *BlockBuilder) isBlockFull() (bool, error) {
+func (b *BlockBuilder) IsBlockFull() (full bool, size int, err error) {
+	size, err = b.writer.Size()
+	if err != nil {
+		return false, 0, errors.Wrap(err, "getting block size")
+	}
+
 	// if the block size is 0, the max size is unlimited
 	if b.opts.BlockSize == 0 {
-		return false, nil
+		return false, size, nil
 	}
 
-	size, err := b.writer.Size()
-	if err != nil {
-		return false, errors.Wrap(err, "getting block size")
-	}
-
-	return uint64(size) >= b.opts.BlockSize, nil
+	return uint64(size) >= b.opts.BlockSize, size, nil
 }
 
 type BloomBlockBuilder struct {
@@ -656,6 +656,14 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (checksum uint32, totalByte
 	if err := mb.store.Err(); err != nil {
 		return 0, totalBytes, errors.Wrap(err, "iterating store")
 	}
+
+	flushedFor := blockFlushReasonFinished
+	full, sz, _ := builder.IsBlockFull()
+	if full {
+		flushedFor = blockFlushReasonFull
+	}
+	mb.metrics.blockSize.Observe(float64(sz))
+	mb.metrics.blockFlushReason.WithLabelValues(flushedFor).Inc()
 
 	checksum, err = builder.Close()
 	if err != nil {
