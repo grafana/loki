@@ -422,3 +422,68 @@ storage_config:
 
 ```
 
+
+## 15-Memberlist-Ring-Snippet.yaml
+
+```yaml
+
+# This partial configuration uses memberlist for the ring.
+
+common:
+  ring:
+    kvstore:
+      store: memberlist
+  replication_factor: 1
+  path_prefix: /loki
+
+memberlist:
+  join_members:
+    # You can use a headless k8s service for all distributor, ingester and querier components.
+    - loki-gossip-ring.loki.svc.cluster.local:7946 # :7946 is the default memberlist port.
+
+```
+
+
+## 16-Azure-Account-Name-Example.yaml
+
+```yaml
+
+# This partial configuration uses Azure for chunk storage
+storage_config:
+  azure:
+    # For the account-key, see docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
+    account_key: <azure_blob_access_key>
+    account_name: <azure_account_name>
+    container_name: <azure_storage_bucket_name>
+    use_managed_identity: false
+    # Providing a user assigned ID will override use_managed_identity
+    #user_assigned_id: <user-assigned-identity-id>
+    request_timeout: 0
+    # Configure `endpoint_suffix` if you are using private azure cloud like azure stack hub and will use this endpoint suffix to compose container and blob storage URL. Ex: https://account_name.endpoint_suffix/container_name/blob_name
+    #endpoint_suffix: <endpoint-suffix>
+    # If `connection_string` is set, the `account_name` and `endpoint_suffix` values will not be used. Use this method over `account_key` if you need to authenticate via an SAS token. Or if you use the Azurite emulator.
+    #connection_string: <connection-string>
+
+```
+
+
+## 17-Azure-Service-Principal-Example.yaml
+
+```yaml
+
+# This partial configuration uses Azure for chunk storage and a service principal for authentication
+storage_config:
+  azure:
+    use_service_principal: true
+    # Azure tenant ID used to authenticate through Azure OAuth
+    tenant_id: <tenant-id>
+    # Azure Service Principal ID
+    client_id: <client-id>
+    # Azure Service Principal secret key
+    client_secret: <client-secret>
+    # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
+    container_name: <azure_storage_bucket_name>
+    request_timeout: 0
+
+```
+
