@@ -37,7 +37,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION ?= 0.33.1
+BUILD_IMAGE_VERSION ?= 0.33.2
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -906,3 +906,9 @@ scan-vulnerabilities: trivy snyk
 release-workflows:
 	pushd $(CURDIR)/.github && jb update && popd
 	jsonnet -SJ .github/vendor -m .github/workflows .github/release-workflows.jsonnet
+
+.PHONY: release-workflows-check
+release-workflows-check:
+	@$(MAKE) release-workflows
+	@echo "Checking diff"
+	@git diff --exit-code -- ".github/workflows/*release*" || (echo "Please build release workflows by running 'make release-workflows'" && false)

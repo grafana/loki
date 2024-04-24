@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,12 +22,14 @@ import (
 	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 const (
@@ -250,6 +253,19 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
+	detectedLabelsTripperware, err := NewDetectedLabelsTripperware(
+		cfg,
+		engineOpts,
+		log,
+		limits,
+		schema,
+		metrics,
+		indexStatsTripperware,
+		metricsNamespace)
+
+	if err != nil {
+		return nil, nil, err
+	}
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		var (
 			metricRT         = metricsTripperware.Wrap(next)
@@ -261,11 +277,39 @@ func NewMiddleware(
 			statsRT          = indexStatsTripperware.Wrap(next)
 			seriesVolumeRT   = seriesVolumeTripperware.Wrap(next)
 			detectedFieldsRT = detectedFieldsTripperware.Wrap(next)
-			detectedLabelsRT = next // TODO(shantanu): add middlewares
+			detectedLabelsRT = detectedLabelsTripperware.Wrap(next)
 		)
 
 		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, detectedFieldsRT, detectedLabelsRT, limits)
 	}), StopperWrapper{resultsCache, statsCache, volumeCache}, nil
+}
+
+func NewDetectedLabelsTripperware(cfg Config, opts logql.EngineOpts, logger log.Logger, l Limits, schema config.SchemaConfig, metrics *Metrics, mw base.Middleware, namespace string) (base.Middleware, error) {
+	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		statsHandler := mw.Wrap(next)
+
+		queryRangeMiddleware := []base.Middleware{
+			StatsCollectorMiddleware(),
+			NewLimitsMiddleware(l),
+			NewQuerySizeLimiterMiddleware(schema.Configs, opts, logger, l, statsHandler),
+			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
+		}
+
+		// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
+		// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewQuerierSizeLimiterMiddleware(schema.Configs, opts, logger, l, statsHandler),
+		)
+
+		if cfg.MaxRetries > 0 {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+				base.NewRetryMiddleware(logger, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, namespace),
+			)
+		}
+
+		return NewLimitedRoundTripper(next, l, schema.Configs, queryRangeMiddleware...)
+	}), nil
 }
 
 type roundTripper struct {
@@ -1132,12 +1176,14 @@ func NewDetectedFieldsTripperware(
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
 
+		splitter := newDefaultSplitter(limits, iqo)
+
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, newDefaultSplitter(limits, iqo), metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
 		}
 
 		// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
@@ -1153,6 +1199,62 @@ func NewDetectedFieldsTripperware(
 			)
 		}
 
-		return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
+		limitedRT := NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
+		return NewSketchRemovingHandler(limitedRT, limits, splitter)
 	}), nil
+}
+
+// NewSketchRemovingHandler returns a handler that removes sketches from detected fields responses before
+// returning them to the user. We only need sketches internally for calculating cardinality for split queries.
+// We're already doing this sanitization in the merge code, so this handler catches non-split queries
+// to make sure their sketches are also removed.
+func NewSketchRemovingHandler(next queryrangebase.Handler, limits Limits, splitter splitter) queryrangebase.Handler {
+	return queryrangebase.HandlerFunc(
+		func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			res, err := next.Do(ctx, req)
+			if err != nil {
+				return nil, err
+			}
+
+			resp, ok := res.(*DetectedFieldsResponse)
+			if !ok {
+				return res, nil
+			}
+
+			tenantIDs, err := tenant.TenantIDs(ctx)
+			if err != nil {
+				return resp, nil
+			}
+
+			interval := validation.SmallestPositiveNonZeroDurationPerTenant(
+				tenantIDs,
+				limits.QuerySplitDuration,
+			)
+
+			// sketeches get cleaned up in the merge code, so we only need catch the cases
+			// where no splitting happened
+			if interval == 0 {
+				return removeSketches(resp), nil
+			}
+
+			intervals, err := splitter.split(time.Now().UTC(), tenantIDs, req, interval)
+			if err != nil || len(intervals) < 2 {
+				return removeSketches(resp), nil
+			}
+
+			// must have been splits, so sketches are already removed
+			return resp, nil
+		},
+	)
+}
+
+// removeSketches removes sketches and field limit from a detected fields response.
+// this is only needed for queries that were not split.
+func removeSketches(resp *DetectedFieldsResponse) *DetectedFieldsResponse {
+	for i := range resp.Response.Fields {
+		resp.Response.Fields[i].Sketch = nil
+	}
+
+	resp.Response.FieldLimit = 0
+	return resp
 }
