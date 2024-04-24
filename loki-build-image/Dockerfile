@@ -49,7 +49,7 @@ RUN curl -L "https://github.com/drone/drone-cli/releases/download/v1.7.0/drone_l
 # github.com/fatih/faillint@v1.5.0 requires golang.org/x/tools@v0.0.0-20200207224406-61798d64f025
 #   (not golang.org/x/tools@v0.0.0-20190918214920-58d531046acd from golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69)
 FROM golang:1.22.2-bookworm as faillint
-RUN GO111MODULE=on go install github.com/fatih/faillint@v1.11.0
+RUN GO111MODULE=on go install github.com/fatih/faillint@v1.12.0
 RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@v0.7.0
 
 FROM golang:1.22.2-bookworm as delve
