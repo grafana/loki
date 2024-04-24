@@ -36,7 +36,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
 
-# ensure you run `make drone` after changing this
+# ensure you run `make drone` and `make release-workflows` after changing this
 BUILD_IMAGE_VERSION ?= 0.33.2
 
 # Docker image info
@@ -899,7 +899,7 @@ scan-vulnerabilities: trivy snyk
 .PHONY: release-workflows
 release-workflows:
 	pushd $(CURDIR)/.github && jb update && popd
-	jsonnet -SJ .github/vendor -m .github/workflows .github/release-workflows.jsonnet
+	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_VERSION) .github/release-workflows.jsonnet
 
 .PHONY: release-workflows-check
 release-workflows-check:
