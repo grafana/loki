@@ -112,6 +112,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 			chunkSuccessfulInserts int
 			chunkCachedInserts     int
 			chunkCollisionInserts  int
+			chunkBytes             int
 			chk                    = chks.At()
 			itr                    = chk.Itr
 		)
@@ -123,7 +124,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 			// raw tokenizer, we could iterate once and just return (prefix, token) pairs from the tokenizer.
 			// Double points for them being different-ln references to the same data.
 			line := itr.Entry().Line
-			sourceBytes += len(line)
+			chunkBytes += len(line)
 			chunkTokenizer := NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(line))
 			for chunkTokenizer.Next() {
 				tok := chunkTokenizer.At()
@@ -174,6 +175,10 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 			}
 
 		}
+
+		// add the recorded chunkbytes to the sourcebytes counter in case we return early via error
+		sourceBytes += chunkBytes
+
 		var es multierror.MultiError
 		if err := itr.Close(); err != nil {
 			es.Add(errors.Wrapf(err, "error closing chunk: %#v", chk.Ref))
@@ -194,7 +199,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeFalse).Add(float64(chunkSuccessfulInserts))
 		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeCache).Add(float64(chunkCachedInserts))
 		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeTrue).Add(float64(chunkCollisionInserts))
-		bt.metrics.sourceBytesAdded.Add(float64(sourceBytes))
+		bt.metrics.sourceBytesAdded.Add(float64(chunkBytes))
 	}
 
 	if err := chks.Err(); err != nil {
