@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -74,12 +75,16 @@ func NewSimpleBloomGenerator(
 	logger log.Logger,
 ) *SimpleBloomGenerator {
 	return &SimpleBloomGenerator{
-		userID:       userID,
-		opts:         opts,
-		store:        store,
-		chunkLoader:  chunkLoader,
-		blocksIter:   blocksIter,
-		logger:       log.With(logger, "component", "bloom_generator"),
+		userID:      userID,
+		opts:        opts,
+		store:       store,
+		chunkLoader: chunkLoader,
+		blocksIter:  blocksIter,
+		logger: log.With(
+			logger,
+			"component", "bloom_generator",
+			"org_id", userID,
+		),
 		readWriterFn: readWriterFn,
 		metrics:      metrics,
 		reporter:     reporter,
@@ -90,6 +95,13 @@ func NewSimpleBloomGenerator(
 
 func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Series, bloom *v1.Bloom) (int, error) {
 	return func(series *v1.Series, bloom *v1.Bloom) (int, error) {
+		start := time.Now()
+		level.Debug(s.logger).Log(
+			"msg", "populating bloom filter",
+			"stage", "before",
+			"fp", series.Fingerprint,
+			"chunks", len(series.Chunks),
+		)
 		chunkItersWithFP, err := s.chunkLoader.Load(ctx, s.userID, series)
 		if err != nil {
 			return 0, errors.Wrapf(err, "failed to load chunks for series: %+v", series)
@@ -101,6 +113,16 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 				Bloom:  bloom,
 			},
 			chunkItersWithFP.itr,
+		)
+
+		level.Debug(s.logger).Log(
+			"msg", "populating bloom filter",
+			"stage", "after",
+			"fp", series.Fingerprint,
+			"chunks", len(series.Chunks),
+			"series_bytes", bytesAdded,
+			"duration", time.Since(start),
+			"err", err,
 		)
 
 		if s.reporter != nil {
