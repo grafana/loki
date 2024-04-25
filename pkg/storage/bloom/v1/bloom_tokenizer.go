@@ -232,6 +232,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 		ty = bloomCreationTypeSkipped
 	}
 	bt.metrics.sbfCreationTime.WithLabelValues(ty).Add(float64(endTime - startTime))
+	bt.metrics.bloomsTotal.WithLabelValues(ty).Inc()
 
 	return sourceBytes, skip, nil
 }

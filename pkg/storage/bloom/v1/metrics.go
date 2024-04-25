@@ -9,6 +9,7 @@ import (
 
 type Metrics struct {
 	// writes
+	bloomsTotal         *prometheus.CounterVec // number of blooms created
 	sbfCreationTime     *prometheus.CounterVec // time spent creating sbfs
 	bloomSize           prometheus.Histogram   // size of the bloom filter in bytes
 	hammingWeightRatio  prometheus.Histogram   // ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter
@@ -55,6 +56,11 @@ const (
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
+		bloomsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "blooms_created_total",
+			Help:      "Number of blooms created",
+		}, []string{"type"}),
 		sbfCreationTime: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "bloom_creation_time_total",
