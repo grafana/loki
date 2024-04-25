@@ -61,7 +61,7 @@ const (
 
 	labelServiceName = "service_name"
 	serviceUnknown   = "unknown_service"
-	levelLabel       = "detected-level"
+	levelLabel       = "detected_level"
 	logLevelDebug    = "debug"
 	logLevelInfo     = "info"
 	logLevelWarn     = "warn"
@@ -77,7 +77,11 @@ var (
 	rfStats           = analytics.NewInt("distributor_replication_factor")
 )
 
-var allowedLabelsForLevel = map[string]struct{}{"level": {}, "LEVEL": {}, "Level": {}, "severity": {}, "SEVERITY": {}, "Severity": {}}
+var allowedLabelsForLevel = map[string]struct{}{
+	"level": {}, "LEVEL": {}, "Level": {},
+	"severity": {}, "SEVERITY": {}, "Severity": {},
+	"lvl": {}, "LVL": {}, "Lvl": {},
+}
 
 // Config for a Distributor.
 type Config struct {
@@ -905,9 +909,9 @@ func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.
 func extractLogLevelFromLogLine(log string) string {
 	var v string
 	if isJSON(log) {
-		v = getValueUsingJSONParser(log, "level")
+		v = getValueUsingJSONParser(log)
 	} else {
-		v = getValueUsingLogfmtParser(log, "level")
+		v = getValueUsingLogfmtParser(log)
 	}
 
 	switch strings.ToLower(v) {
@@ -930,7 +934,7 @@ func extractLogLevelFromLogLine(log string) string {
 	}
 }
 
-func getValueUsingLogfmtParser(line string, suggestedLabel string) string {
+func getValueUsingLogfmtParser(line string) string {
 	equalIndex := strings.Index(line, "=")
 	if len(line) == 0 || equalIndex == -1 {
 		return logLevelUnknown
@@ -938,9 +942,6 @@ func getValueUsingLogfmtParser(line string, suggestedLabel string) string {
 	d := logfmt.NewDecoder(strings.NewReader(line))
 	d.ScanRecord()
 	for d.ScanKeyval() {
-		if suggestedLabel == string(d.Key()) {
-			return string(d.Value())
-		}
 		if _, ok := allowedLabelsForLevel[string(d.Key())]; ok {
 			return string(d.Value())
 		}
@@ -948,11 +949,7 @@ func getValueUsingLogfmtParser(line string, suggestedLabel string) string {
 	return logLevelUnknown
 }
 
-func getValueUsingJSONParser(log string, suggestedLabel string) string {
-	if lvl, err := jsonparser.GetString([]byte(log), suggestedLabel); err == nil {
-		return lvl
-	}
-
+func getValueUsingJSONParser(log string) string {
 	for allowedLabel := range allowedLabelsForLevel {
 		l, err := jsonparser.GetString([]byte(log), allowedLabel)
 		if err == nil {
