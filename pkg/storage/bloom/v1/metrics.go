@@ -17,6 +17,7 @@ type Metrics struct {
 	blockSeriesIterated prometheus.Counter
 	tokensTotal         prometheus.Counter
 	insertsTotal        *prometheus.CounterVec
+	sourceBytesAdded    prometheus.Counter
 
 	blockSize        prometheus.Histogram
 	blockFlushReason *prometheus.CounterVec
@@ -99,6 +100,11 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Name:      "bloom_inserts_total",
 			Help:      "Number of inserts into the bloom filter. collision type may be `false` (no collision), `cache` (found in token cache) or true (found in bloom filter). token_type may be either `raw` (the original ngram) or `chunk_prefixed` (the ngram with the chunk prefix)",
 		}, []string{"token_type", "collision"}),
+		sourceBytesAdded: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_source_bytes_added_total",
+			Help:      "Number of bytes from chunks added to the bloom filter",
+		}),
 
 		blockSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
