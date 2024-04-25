@@ -60,7 +60,7 @@ const (
 	defaultMaxStructuredMetadataSize  = "64kb"
 	defaultMaxStructuredMetadataCount = 128
 	defaultBloomCompactorMaxBlockSize = "200MB"
-	defaultBloomCompactorMaxBloomSize = "100MB"
+	defaultBloomCompactorMaxBloomSize = "128MB"
 )
 
 // Limits describe all the limits for users; can be used to describe global default
