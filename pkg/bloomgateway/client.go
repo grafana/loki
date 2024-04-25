@@ -3,7 +3,6 @@ package bloomgateway
 import (
 	"context"
 	"flag"
-	"fmt"
 	"io"
 	"math"
 	"sort"
@@ -257,17 +256,6 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, interva
 		sort.Slice(rs.groups, func(i, j int) bool {
 			return rs.groups[i].Fingerprint < rs.groups[j].Fingerprint
 		})
-
-		level.Info(c.logger).Log(
-			"msg", "do FilterChunkRefs for addresses",
-			"part", fmt.Sprintf("%d/%d", i+1, len(servers)),
-			"addr", rs.addr,
-			"from", interval.Start.Time(),
-			"through", interval.End.Time(),
-			"series", len(rs.groups),
-			"blocks", len(rs.blocks),
-			"tenant", tenant,
-		)
 
 		return c.doForAddrs([]string{rs.addr}, func(client logproto.BloomGatewayClient) error {
 			req := &logproto.FilterChunkRefRequest{
