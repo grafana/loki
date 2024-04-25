@@ -1686,3 +1686,49 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 		assert.Contains(t, detectedLabels, &logproto.DetectedLabel{Label: "namespace", Cardinality: 60})
 	})
 }
+
+func BenchmarkQuerierDetectedLabels(b *testing.B) {
+	now := time.Now()
+
+	limits, _ := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	conf := mockQuerierConfig()
+	conf.IngesterQueryStoreMaxLookback = 0
+
+	request := logproto.DetectedLabelsRequest{
+		Start: &now,
+		End:   &now,
+		Query: "",
+	}
+	ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+		"cluster":       {Values: []string{"ingester"}},
+		"ingesterLabel": {Values: []string{"abc", "def", "ghi", "abc"}},
+	}}
+
+	ingesterClient := newQuerierClientMock()
+	storeClient := newStoreMock()
+
+	ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(&ingesterResponse, nil)
+	storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]string{"storeLabel"}, nil).
+		On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel", mock.Anything).
+		Return([]string{"val1", "val2"}, nil)
+
+	querier, _ := newQuerier(
+		conf,
+		mockIngesterClientConfig(),
+		newIngesterClientMockFactory(ingesterClient),
+		mockReadRingWithOneActiveIngester(),
+		&mockDeleteGettter{},
+		storeClient, limits)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, err := querier.DetectedLabels(ctx, &request)
+		assert.NoError(b, err)
+	}
+}

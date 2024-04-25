@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"regexp"
 	"sort"
 	"strconv"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
@@ -1046,13 +1046,13 @@ func (q *SingleTenantQuerier) isLabelRelevant(label string, values []string, sta
 
 // containsAllIDTypes filters out all UUID, GUID and numeric types. Returns false if even one value is not of the type
 func containsAllIDTypes(values []string) bool {
-	pattern := `^(?:(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})|(?:(?:\{)?[0-9a-fA-F]{8}(?:-?[0-9a-fA-F]{4}){3}-?[0-9a-fA-F]{12}(?:\})?)|(\d+(?:\.\d+)?))$`
-
-	re := regexp.MustCompile(pattern)
-
 	for _, v := range values {
-		if !re.MatchString(v) {
-			return false
+		_, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			_, err = uuid.Parse(v)
+			if err != nil {
+				return false
+			}
 		}
 	}
 
