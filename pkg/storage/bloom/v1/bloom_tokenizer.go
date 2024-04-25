@@ -47,6 +47,7 @@ func NewBloomTokenizer(nGramLen, nGramSkip int, maxBloomSize int, metrics *Metri
 		metrics:       metrics,
 		cache:         make(map[string]interface{}, cacheSize),
 		lineTokenizer: NewNGramTokenizer(nGramLen, nGramSkip),
+		maxBloomSize:  maxBloomSize,
 	}
 }
 
