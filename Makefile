@@ -36,8 +36,8 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
 
-# ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION ?= 0.33.2
+# ensure you run `make drone` and `make release-workflows` after changing this
+BUILD_IMAGE_VERSION ?= 0.33.3
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -668,7 +668,8 @@ ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	false;
 endif
 	echo ${DOCKER_PASSWORD} | docker login --username ${DOCKER_USERNAME} --password-stdin
-	$(SUDO) $(BUILD_OCI) -o type=registry -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
+	$(SUDO) DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker buildx build $(OCI_PLATFORMS) \
+		-o type=registry -t $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) ./loki-build-image
 
 # loki-operator
 loki-operator-image:
@@ -899,7 +900,7 @@ scan-vulnerabilities: trivy snyk
 .PHONY: release-workflows
 release-workflows:
 	pushd $(CURDIR)/.github && jb update && popd
-	jsonnet -SJ .github/vendor -m .github/workflows .github/release-workflows.jsonnet
+	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_VERSION) .github/release-workflows.jsonnet
 
 .PHONY: release-workflows-check
 release-workflows-check:
