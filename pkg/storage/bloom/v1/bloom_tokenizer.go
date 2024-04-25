@@ -5,6 +5,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
@@ -25,6 +26,7 @@ Bloom filters are utilized for faster lookups of log lines.
 type BloomTokenizer struct {
 	metrics *Metrics
 
+	maxBloomSize  int
 	lineTokenizer *NGramTokenizer
 	cache         map[string]interface{}
 }
@@ -38,7 +40,7 @@ const eightBits = 8
 // 1) The token slices generated must not be mutated externally
 // 2) The token slice must not be used after the next call to `Tokens()` as it will repopulate the slice.
 // 2) This is not thread safe.
-func NewBloomTokenizer(nGramLen, nGramSkip int, metrics *Metrics) *BloomTokenizer {
+func NewBloomTokenizer(nGramLen, nGramSkip int, maxBloomSize int, metrics *Metrics) *BloomTokenizer {
 	// TODO(chaudum): Replace logger
 	level.Info(util_log.Logger).Log("msg", "create new bloom tokenizer", "ngram length", nGramLen, "ngram skip", nGramSkip)
 	return &BloomTokenizer{
@@ -89,7 +91,9 @@ type ChunkRefWithIter struct {
 }
 
 // Populate adds the tokens from the given chunks to the given seriesWithBloom.
-func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefWithIter]) (int, error) {
+// The `skip` return value indicates whether this series should be discarded and is used to short-circuit
+// bloom generation for series that are too large. We will undoubtedly improve this in the future.
+func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefWithIter]) (bytesAdded int, skip bool, err error) {
 	startTime := time.Now().UnixMilli()
 
 	clearCache(bt.cache)
@@ -119,61 +123,53 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N(), chk.Ref, tokenBuf)
 
 		// Iterate over lines in the chunk
+	entries:
 		for itr.Next() && itr.Error() == nil {
 			// TODO(owen-d): rather than iterate over the line twice, once for prefixed tokenizer & once for
 			// raw tokenizer, we could iterate once and just return (prefix, token) pairs from the tokenizer.
 			// Double points for them being different-ln references to the same data.
 			line := itr.Entry().Line
 			chunkBytes += len(line)
-			chunkTokenizer := NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(line))
-			for chunkTokenizer.Next() {
-				tok := chunkTokenizer.At()
-				tokens++
-				// TODO(owen-d): [n]byte this
-				str := string(tok)
-				_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
-				if found {
-					cachedInserts++
-					continue
-				}
 
-				bt.cache[str] = nil
-				collision := swb.Bloom.ScalableBloomFilter.TestAndAdd(tok)
-				if collision {
-					collisionInserts++
-				} else {
-					successfulInserts++
-				}
-
-				if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
-					clearCache(bt.cache)
-				}
+			tokenItrs := []Iterator[[]byte]{
+				// two iterators, one for the raw tokens and one for the chunk prefixed tokens.
+				// Warning: the underlying line tokenizer (used in both iterators) uses the same buffer for tokens.
+				// They are NOT SAFE for concurrent use.
+				NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(line)),
+				bt.lineTokenizer.Tokens(line),
 			}
 
-			lineTokenizer := bt.lineTokenizer.Tokens(line)
-			for lineTokenizer.Next() {
-				tok := lineTokenizer.At()
-				tokens++
-				str := string(tok)
-				_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
-				if found {
-					chunkCachedInserts++
-					continue
-				}
-				bt.cache[str] = nil
+			for _, itr := range tokenItrs {
+				for itr.Next() {
+					tok := itr.At()
+					tokens++
+					// TODO(owen-d): [n]byte this
+					str := string(tok)
+					_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+					if found {
+						cachedInserts++
+						continue
+					}
 
-				collision := swb.Bloom.ScalableBloomFilter.TestAndAdd(tok)
-				if collision {
-					chunkCollisionInserts++
-				} else {
-					chunkSuccessfulInserts++
+					bt.cache[str] = nil
+					collision, sz := swb.Bloom.ScalableBloomFilter.HeavyAdd(tok)
+					if collision {
+						collisionInserts++
+					} else {
+						successfulInserts++
+					}
+
+					if bt.maxBloomSize > 0 && sz > bt.maxBloomSize {
+						skip = true
+						break entries
+					}
+
+					if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+						clearCache(bt.cache)
+					}
 				}
 
-				if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
-					clearCache(bt.cache)
-				}
 			}
-
 		}
 
 		// add the recorded chunkbytes to the sourcebytes counter in case we return early via error
@@ -187,7 +183,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 			es.Add(errors.Wrapf(err, "error iterating chunk: %#v", chk.Ref))
 		}
 		if combined := es.Err(); combined != nil {
-			return sourceBytes, combined
+			return sourceBytes, skip, combined
 		}
 		swb.Series.Chunks = append(swb.Series.Chunks, chk.Ref)
 
@@ -200,12 +196,26 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeCache).Add(float64(chunkCachedInserts))
 		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeTrue).Add(float64(chunkCollisionInserts))
 		bt.metrics.sourceBytesAdded.Add(float64(chunkBytes))
+
+		// Exit early if the series is too large
+		if skip {
+			break
+		}
 	}
 
 	if err := chks.Err(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error downloading chunks batch", "err", err)
-		return sourceBytes, fmt.Errorf("error downloading chunks batch: %w", err)
+		return sourceBytes, skip, fmt.Errorf("error downloading chunks batch: %w", err)
 	}
+
+	level.Debug(util_log.Logger).Log(
+		"msg", "bloom filter populated",
+		"chunks", len(swb.Series.Chunks),
+		"fp", swb.Series.Fingerprint,
+		"sourceBytes", datasize.ByteSize(sourceBytes).HumanReadable(),
+		"bloomSize", datasize.ByteSize(swb.Bloom.Capacity()/8).HumanReadable(),
+		"skipped", skip,
+	)
 
 	endTime := time.Now().UnixMilli()
 
@@ -215,8 +225,14 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 		float64(estimatedCount(swb.Bloom.ScalableBloomFilter.Capacity(), fillRatio)),
 	)
 	bt.metrics.bloomSize.Observe(float64(swb.Bloom.ScalableBloomFilter.Capacity() / eightBits))
-	bt.metrics.sbfCreationTime.Add(float64(endTime - startTime))
-	return sourceBytes, nil
+
+	ty := bloomCreationTypeIndexed
+	if skip {
+		ty = bloomCreationTypeSkipped
+	}
+	bt.metrics.sbfCreationTime.WithLabelValues(ty).Add(float64(endTime - startTime))
+
+	return sourceBytes, skip, nil
 }
 
 // n ≈ −m ln(1 − p).

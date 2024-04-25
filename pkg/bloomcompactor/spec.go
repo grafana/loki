@@ -89,12 +89,17 @@ func NewSimpleBloomGenerator(
 		metrics:      metrics,
 		reporter:     reporter,
 
-		tokenizer: v1.NewBloomTokenizer(opts.Schema.NGramLen(), opts.Schema.NGramSkip(), metrics.bloomMetrics),
+		tokenizer: v1.NewBloomTokenizer(
+			opts.Schema.NGramLen(),
+			opts.Schema.NGramSkip(),
+			int(opts.UnencodedBlockOptions.MaxBloomSizeBytes),
+			metrics.bloomMetrics,
+		),
 	}
 }
 
-func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Series, bloom *v1.Bloom) (int, error) {
-	return func(series *v1.Series, bloom *v1.Bloom) (int, error) {
+func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Series, bloom *v1.Bloom) (int, bool, error) {
+	return func(series *v1.Series, bloom *v1.Bloom) (int, bool, error) {
 		start := time.Now()
 		level.Debug(s.logger).Log(
 			"msg", "populating bloom filter",
@@ -104,10 +109,10 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 		)
 		chunkItersWithFP, err := s.chunkLoader.Load(ctx, s.userID, series)
 		if err != nil {
-			return 0, errors.Wrapf(err, "failed to load chunks for series: %+v", series)
+			return 0, false, errors.Wrapf(err, "failed to load chunks for series: %+v", series)
 		}
 
-		bytesAdded, err := s.tokenizer.Populate(
+		bytesAdded, skip, err := s.tokenizer.Populate(
 			&v1.SeriesWithBloom{
 				Series: series,
 				Bloom:  bloom,
@@ -128,7 +133,7 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 		if s.reporter != nil {
 			s.reporter(series.Fingerprint)
 		}
-		return bytesAdded, err
+		return bytesAdded, skip, err
 	}
 
 }
@@ -174,7 +179,7 @@ type LazyBlockBuilderIterator struct {
 	ctx          context.Context
 	opts         v1.BlockOptions
 	metrics      *Metrics
-	populate     func(*v1.Series, *v1.Bloom) (int, error)
+	populate     func(*v1.Series, *v1.Bloom) (int, bool, error)
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
 	series       v1.PeekingIterator[*v1.Series]
 	blocks       v1.ResettableIterator[*v1.SeriesWithBloom]
@@ -188,7 +193,7 @@ func NewLazyBlockBuilderIterator(
 	ctx context.Context,
 	opts v1.BlockOptions,
 	metrics *Metrics,
-	populate func(*v1.Series, *v1.Bloom) (int, error),
+	populate func(*v1.Series, *v1.Bloom) (int, bool, error),
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	series v1.PeekingIterator[*v1.Series],
 	blocks v1.ResettableIterator[*v1.SeriesWithBloom],

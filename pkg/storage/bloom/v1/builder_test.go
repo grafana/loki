@@ -222,8 +222,8 @@ func TestMergeBuilder(t *testing.T) {
 	}
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(_ *Series, _ *Bloom) (int, error) {
-		return 0, errors.New("not implemented")
+	pop := func(_ *Series, _ *Bloom) (int, bool, error) {
+		return 0, false, errors.New("not implemented")
 	}
 
 	// storage should contain references to all the series we ingested,
@@ -408,9 +408,9 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	mb := NewMergeBuilder(
 		dedupedBlocks(blocks),
 		dedupedStore,
-		func(s *Series, b *Bloom) (int, error) {
+		func(s *Series, b *Bloom) (int, bool, error) {
 			// We're not actually indexing new data in this test
-			return 0, nil
+			return 0, false, nil
 		},
 		NewMetrics(nil),
 	)

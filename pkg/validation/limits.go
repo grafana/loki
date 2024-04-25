@@ -60,6 +60,7 @@ const (
 	defaultMaxStructuredMetadataSize  = "64kb"
 	defaultMaxStructuredMetadataCount = 128
 	defaultBloomCompactorMaxBlockSize = "200MB"
+	defaultBloomCompactorMaxBloomSize = "100MB"
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -201,6 +202,7 @@ type Limits struct {
 	BloomCompactorShardSize    int              `yaml:"bloom_compactor_shard_size" json:"bloom_compactor_shard_size" category:"experimental"`
 	BloomCompactorEnabled      bool             `yaml:"bloom_compactor_enable_compaction" json:"bloom_compactor_enable_compaction" category:"experimental"`
 	BloomCompactorMaxBlockSize flagext.ByteSize `yaml:"bloom_compactor_max_block_size" json:"bloom_compactor_max_block_size" category:"experimental"`
+	BloomCompactorMaxBloomSize flagext.ByteSize `yaml:"bloom_compactor_max_bloom_size" json:"bloom_compactor_max_bloom_size" category:"experimental"`
 
 	BloomNGramLength       int     `yaml:"bloom_ngram_length" json:"bloom_ngram_length" category:"experimental"`
 	BloomNGramSkip         int     `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip" category:"experimental"`
@@ -373,6 +375,14 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		fmt.Sprintf(
 			"Experimental. The maximum bloom block size. A value of 0 sets an unlimited size. Default is %s. The actual block size might exceed this limit since blooms will be added to blocks until the block exceeds the maximum block size.",
 			defaultBloomCompactorMaxBlockSize,
+		),
+	)
+
+	_ = l.BloomCompactorMaxBloomSize.Set(defaultBloomCompactorMaxBloomSize)
+	f.Var(&l.BloomCompactorMaxBloomSize, "bloom-compactor.max-bloom-size",
+		fmt.Sprintf(
+			"Experimental. The maximum bloom size per log stream. A log stream whose generated bloom filter exceeds this size will be discarded. A value of 0 sets an unlimited size. Default is %s.",
+			defaultBloomCompactorMaxBloomSize,
 		),
 	)
 
@@ -964,6 +974,10 @@ func (o *Overrides) BloomNGramSkip(userID string) int {
 
 func (o *Overrides) BloomCompactorMaxBlockSize(userID string) int {
 	return o.getOverridesForUser(userID).BloomCompactorMaxBlockSize.Val()
+}
+
+func (o *Overrides) BloomCompactorMaxBloomSize(userID string) int {
+	return o.getOverridesForUser(userID).BloomCompactorMaxBloomSize.Val()
 }
 
 func (o *Overrides) BloomFalsePositiveRate(userID string) float64 {
