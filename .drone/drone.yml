@@ -139,7 +139,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.33.2
+  image: grafana/loki-build-image:0.33.3
   name: documentation-helm-reference-check
 trigger:
   ref:
@@ -1085,7 +1085,7 @@ steps:
       from_secret: docker_password
     DOCKER_USERNAME:
       from_secret: docker_username
-  image: grafana/loki-build-image:0.33.2
+  image: grafana/loki-build-image:0.33.3
   name: build and push
   privileged: true
   volumes:
@@ -1308,6 +1308,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 87480bff973003712122d81a1575e2a62cff6fd4a42b163487cae6c6a67d8e7c
+hmac: 33b9d2962b6dfcf1136ef7602d29e3f32f03b0d90dfd579652cbaf0a4ef2de4b
 
 ...

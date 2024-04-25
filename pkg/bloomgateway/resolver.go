@@ -15,7 +15,7 @@ import (
 )
 
 type BlockResolver interface {
-	Resolve(context.Context, string, bloomshipper.Interval, []*logproto.GroupedChunkRefs) ([]blockWithSeries, error)
+	Resolve(context.Context, string, bloomshipper.Interval, []*logproto.GroupedChunkRefs) ([]blockWithSeries, []*logproto.GroupedChunkRefs, error)
 }
 
 type blockWithSeries struct {
@@ -28,7 +28,7 @@ type defaultBlockResolver struct {
 	logger log.Logger
 }
 
-func (r *defaultBlockResolver) Resolve(ctx context.Context, tenant string, interval bloomshipper.Interval, series []*logproto.GroupedChunkRefs) ([]blockWithSeries, error) {
+func (r *defaultBlockResolver) Resolve(ctx context.Context, tenant string, interval bloomshipper.Interval, series []*logproto.GroupedChunkRefs) ([]blockWithSeries, []*logproto.GroupedChunkRefs, error) {
 	minFp, maxFp := getFirstLast(series)
 	metaSearch := bloomshipper.MetaSearchParams{
 		TenantID: tenant,
@@ -52,10 +52,12 @@ func (r *defaultBlockResolver) Resolve(ctx context.Context, tenant string, inter
 	)
 
 	if err != nil {
-		return nil, err
+		return nil, series, err
 	}
 
-	return blocksMatchingSeries(metas, interval, series), nil
+	mapped := blocksMatchingSeries(metas, interval, series)
+	skipped := unassignedSeries(mapped, series)
+	return mapped, skipped, nil
 }
 
 func blocksMatchingSeries(metas []bloomshipper.Meta, interval bloomshipper.Interval, series []*logproto.GroupedChunkRefs) []blockWithSeries {
@@ -94,6 +96,31 @@ func blocksMatchingSeries(metas []bloomshipper.Meta, interval bloomshipper.Inter
 	}
 
 	return result
+}
+
+func unassignedSeries(mapped []blockWithSeries, series []*logproto.GroupedChunkRefs) []*logproto.GroupedChunkRefs {
+	skipped := make([]*logproto.GroupedChunkRefs, len(series))
+	_ = copy(skipped, series)
+
+	for _, block := range mapped {
+		minFp, maxFp := getFirstLast(block.series)
+
+		minIdx := sort.Search(len(skipped), func(i int) bool {
+			return skipped[i].Fingerprint >= minFp.Fingerprint
+		})
+
+		maxIdx := sort.Search(len(skipped), func(i int) bool {
+			return skipped[i].Fingerprint > maxFp.Fingerprint
+		})
+
+		if minIdx == len(skipped) || maxIdx == 0 || minIdx == maxIdx {
+			continue
+		}
+
+		skipped = append(skipped[0:minIdx], skipped[maxIdx:]...)
+	}
+
+	return skipped
 }
 
 func NewBlockResolver(store bloomshipper.Store, logger log.Logger) BlockResolver {

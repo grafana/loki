@@ -688,7 +688,8 @@ The metrics stage allows for defining metrics from the extracted data.
 
 Created metrics are not pushed to Loki and are instead exposed via Promtail's
 `/metrics` endpoint. Prometheus should be configured to scrape Promtail to be
-able to retrieve the metrics configured by this stage.
+able to retrieve the metrics configured by this stage. 
+If Promtail's configuration is reloaded, all metrics will be reset.
 
 
 ```yaml
