@@ -85,6 +85,14 @@ func convertToShortRef(ref *logproto.ChunkRef) *logproto.ShortRef {
 	return &logproto.ShortRef{From: ref.From, Through: ref.Through, Checksum: ref.Checksum}
 }
 
+func sum[S ~[]E, E any](s S, fn func(e E) int) int {
+	var count int
+	for i := range s {
+		count += fn(s[i])
+	}
+	return count
+}
+
 func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, queryPlan plan.QueryPlan) ([]*logproto.ChunkRef, error) {
 	// Shortcut that does not require any filtering
 	if !bq.limits.BloomGatewayEnabled(tenant) || len(chunkRefs) == 0 || len(v1.ExtractTestableLineFilters(queryPlan.AST)) == 0 {
@@ -109,24 +117,25 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		if err != nil {
 			return nil, err
 		}
-		var chunks int
-		for i := range s.series {
-			chunks += len(s.series[i].Refs)
-		}
-		sp.LogKV(
-			"day", s.day.Time.Time(),
-			"from", s.interval.Start.Time(),
-			"through", s.interval.End.Time(),
-			"series", len(s.series),
-			"chunks", chunks,
-			"blocks", len(blocks),
-			"skipped", len(skipped),
-		)
 
 		refs, err := bq.c.FilterChunks(ctx, tenant, s.interval, blocks, queryPlan)
 		if err != nil {
 			return nil, err
 		}
+
+		level.Debug(bq.logger).Log(
+			"msg", "filter series by day",
+			"day", s.day.Time.Time(),
+			"from", s.interval.Start.Time(),
+			"through", s.interval.End.Time(),
+			"series_total", len(s.series),
+			"series_in_blocks", len(blocks),
+			"series_skipped", len(skipped),
+			"series_filtered", len(refs),
+			"chunks_total", sum(s.series, func(e *logproto.GroupedChunkRefs) int { return len(e.Refs) }), // slow
+			"chunks_filtered", sum(refs, func(e *logproto.GroupedChunkRefs) int { return len(e.Refs) }), // slow
+			"chunks_skipped", sum(skipped, func(e *logproto.GroupedChunkRefs) int { return len(e.Refs) }), // slow
+		)
 
 		// add chunk refs from series that were not mapped to any blocks
 		responses = append(responses, refs, skipped)

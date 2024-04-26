@@ -70,3 +70,21 @@ func TestGatewayClient_MergeSeries(t *testing.T) {
 	result, _ := mergeSeries(inputs, nil)
 	require.Equal(t, expected, result)
 }
+
+func TestGatewayClient_MergeChunks(t *testing.T) {
+	inputs := [][]*logproto.ShortRef{
+		{shortRef(2, 3, 2), shortRef(1, 3, 3)},
+		{shortRef(2, 3, 2), shortRef(1, 3, 3), shortRef(1, 2, 1)},
+		{shortRef(1, 3, 3), shortRef(1, 2, 1)},
+		{shortRef(1, 2, 1)},
+	}
+
+	expected := []*logproto.ShortRef{
+		shortRef(1, 2, 1),
+		shortRef(1, 3, 3),
+		shortRef(2, 3, 2),
+	}
+
+	result := mergeChunks(inputs...)
+	require.Equal(t, expected, result)
+}

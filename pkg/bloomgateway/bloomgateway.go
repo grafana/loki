@@ -383,6 +383,8 @@ func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Tas
 		case <-ctx.Done():
 			// do nothing
 		default:
+			// chunks may not be sorted
+			sort.Slice(res.Removals, func(i, j int) bool { return res.Removals[i].Less(res.Removals[j]) })
 			task.responses = append(task.responses, res)
 		}
 	}
@@ -413,7 +415,7 @@ func orderedResponsesByFP(responses [][]v1.Output) v1.Iterator[v1.Output] {
 		itrs = append(itrs, v1.NewPeekingIter(v1.NewSliceIter(r)))
 	}
 	return v1.NewHeapIterator[v1.Output](
-		func(o1, o2 v1.Output) bool { return o1.Fp <= o2.Fp },
+		func(o1, o2 v1.Output) bool { return o1.Fp < o2.Fp },
 		itrs...,
 	)
 }
