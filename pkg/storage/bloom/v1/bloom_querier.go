@@ -45,6 +45,9 @@ func (it *LazyBloomIter) ensureInit() {
 func (it *LazyBloomIter) Seek(offset BloomOffset) {
 	it.ensureInit()
 
+	// reset error from any previous seek/next
+	it.err = nil
+
 	// if we need a different page or the current page hasn't been loaded,
 	// load the desired page
 	if it.curPageIndex != offset.Page || it.curPage == nil {
