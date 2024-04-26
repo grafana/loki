@@ -201,7 +201,7 @@ func (c *GatewayClient) Close() {
 }
 
 // FilterChunkRefs implements Client
-func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
+func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
 	// no block and therefore no series with chunks
 	if len(blocks) == 0 {
 		return nil, nil
@@ -285,7 +285,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, interva
 	return mergeSeries(results, buf)
 }
 
-// mergeSeries combines respones from multiple FilterChunkRefs calls and deduplicates
+// mergeSeries combines response from multiple FilterChunkRefs calls and deduplicates
 // chunks from series that appear in multiple responses.
 // To avoid allocations, an optional slice can be passed as second argument.
 func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedChunkRefs) ([]*logproto.GroupedChunkRefs, error) {
