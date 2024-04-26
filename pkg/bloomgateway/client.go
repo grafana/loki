@@ -285,7 +285,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval blo
 	return mergeSeries(results, buf)
 }
 
-// mergeSeries combines response from multiple FilterChunkRefs calls and deduplicates
+// mergeSeries combines responses from multiple FilterChunkRefs calls and deduplicates
 // chunks from series that appear in multiple responses.
 // To avoid allocations, an optional slice can be passed as second argument.
 func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedChunkRefs) ([]*logproto.GroupedChunkRefs, error) {
