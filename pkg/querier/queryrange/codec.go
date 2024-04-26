@@ -984,9 +984,10 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		return req.WithContext(ctx), nil
 	case *logproto.QueryPatternsRequest:
 		params := url.Values{
+			"query": []string{request.GetQuery()},
 			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
 			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
-			"query": []string{request.GetQuery()},
+			"step":  []string{fmt.Sprintf("%d", request.GetStep())},
 		}
 
 		u := &url.URL{
