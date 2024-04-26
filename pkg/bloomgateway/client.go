@@ -3,9 +3,9 @@ package bloomgateway
 import (
 	"context"
 	"flag"
-	"fmt"
 	"io"
 	"math"
+	"sort"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -14,7 +14,7 @@ import (
 	ringclient "github.com/grafana/dskit/ring/client"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -22,8 +22,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/queue"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/discovery"
 )
@@ -111,12 +113,11 @@ func (i *ClientConfig) Validate() error {
 }
 
 type Client interface {
-	FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error)
+	FilterChunks(ctx context.Context, tenant string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error)
 }
 
 type GatewayClient struct {
 	cfg         ClientConfig
-	limits      Limits
 	logger      log.Logger
 	metrics     *clientMetrics
 	pool        *JumpHashClientPool
@@ -188,7 +189,6 @@ func NewClient(
 	return &GatewayClient{
 		cfg:         cfg,
 		logger:      logger,
-		limits:      limits,
 		metrics:     metrics,
 		pool:        pool,
 		dnsProvider: dnsProvider, // keep reference so we can stop it when the client is closed
@@ -201,26 +201,41 @@ func (c *GatewayClient) Close() {
 }
 
 // FilterChunkRefs implements Client
-func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
-	if !c.limits.BloomGatewayEnabled(tenant) || len(groups) == 0 {
-		return groups, nil
+func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
+	// no block and therefore no series with chunks
+	if len(blocks) == 0 {
+		return nil, nil
 	}
 
-	clients := make(map[string][]*logproto.GroupedChunkRefs)
-	for _, g := range groups {
-		addr, err := c.pool.AddrForFingerprint(g.Fingerprint)
+	firstFp, lastFp := uint64(math.MaxUint64), uint64(0)
+	pos := make(map[string]int)
+	servers := make([]addrWithGroups, 0, len(blocks))
+	for _, blockWithSeries := range blocks {
+		addr, err := c.pool.Addr(blockWithSeries.block.String())
 		if err != nil {
-			return nil, errors.Wrap(err, "server address for fingerprint")
+			return nil, errors.Wrapf(err, "server address for block: %s", blockWithSeries.block)
 		}
-		clients[addr] = append(clients[addr], g)
-	}
 
-	servers := make([]addrWithGroups, 0, len(clients))
-	for k, v := range clients {
-		servers = append(servers, addrWithGroups{
-			groups: v,
-			addr:   k,
-		})
+		// min/max fingerprint needed for the cache locality score
+		first, last := getFirstLast(blockWithSeries.series)
+		if first.Fingerprint < firstFp {
+			firstFp = first.Fingerprint
+		}
+		if last.Fingerprint > lastFp {
+			lastFp = last.Fingerprint
+		}
+
+		if idx, found := pos[addr]; found {
+			servers[idx].groups = append(servers[idx].groups, blockWithSeries.series...)
+			servers[idx].blocks = append(servers[idx].blocks, blockWithSeries.block.String())
+		} else {
+			pos[addr] = len(servers)
+			servers = append(servers, addrWithGroups{
+				addr:   addr,
+				blocks: []string{blockWithSeries.block.String()},
+				groups: blockWithSeries.series,
+			})
+		}
 	}
 
 	if len(servers) > 0 {
@@ -229,7 +244,6 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 		// but can be less if the keyspace is not evenly distributed across instances. Ideal operation will see the range of
 		// `1-2/num_instances` -> `1`, where the former represents slight
 		// overlap on instances to the left and right of the range.
-		firstFp, lastFp := groups[0].Fingerprint, groups[len(groups)-1].Fingerprint
 		pctKeyspace := float64(lastFp-firstFp) / float64(math.MaxUint64)
 		pctInstances := float64(len(servers)) / float64(max(1, len(c.pool.Addrs())))
 		cacheLocalityScore := pctKeyspace / pctInstances
@@ -241,22 +255,16 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 	err := concurrency.ForEachJob(ctx, len(servers), len(servers), func(ctx context.Context, i int) error {
 		rs := servers[i]
 
-		level.Info(c.logger).Log(
-			"msg", "do FilterChunkRefs for addresses",
-			"progress", fmt.Sprintf("%d/%d", i+1, len(servers)),
-			"addr", rs.addr,
-			"from", from.Time(),
-			"through", through.Time(),
-			"num_refs", len(rs.groups),
-			"plan", plan.String(),
-			"plan_hash", plan.Hash(),
-		)
+		sort.Slice(rs.groups, func(i, j int) bool {
+			return rs.groups[i].Fingerprint < rs.groups[j].Fingerprint
+		})
 
 		return c.doForAddrs([]string{rs.addr}, func(client logproto.BloomGatewayClient) error {
 			req := &logproto.FilterChunkRefRequest{
-				From:    from,
-				Through: through,
+				From:    interval.Start,
+				Through: interval.End,
 				Refs:    rs.groups,
+				Blocks:  rs.blocks,
 				Plan:    plan,
 			}
 			resp, err := client.FilterChunkRefs(ctx, req)
@@ -272,15 +280,95 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 	if err != nil {
 		return nil, err
 	}
-	return flatten(results, count), nil
+
+	buf := make([]*logproto.GroupedChunkRefs, 0, count)
+	return mergeSeries(results, buf)
 }
 
-func flatten(input [][]*logproto.GroupedChunkRefs, n int) []*logproto.GroupedChunkRefs {
-	result := make([]*logproto.GroupedChunkRefs, 0, n)
-	for _, res := range input {
-		result = append(result, res...)
+// mergeSeries combines respones from multiple FilterChunkRefs calls and deduplicates
+// chunks from series that appear in multiple responses.
+// To avoid allocations, an optional slice can be passed as second argument.
+func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedChunkRefs) ([]*logproto.GroupedChunkRefs, error) {
+	// clear provided buffer
+	buf = buf[:0]
+
+	iters := make([]v1.PeekingIterator[*logproto.GroupedChunkRefs], 0, len(input))
+	for _, inp := range input {
+		iters = append(iters, v1.NewPeekingIter(v1.NewSliceIter(inp)))
 	}
-	return result
+
+	heapIter := v1.NewHeapIterator[*logproto.GroupedChunkRefs](
+		func(a, b *logproto.GroupedChunkRefs) bool {
+			return a.Fingerprint < b.Fingerprint
+		},
+		iters...,
+	)
+
+	dedupeIter := v1.NewDedupingIter[*logproto.GroupedChunkRefs, *logproto.GroupedChunkRefs](
+		// eq
+		func(a, b *logproto.GroupedChunkRefs) bool { return a.Fingerprint == b.Fingerprint },
+		// from
+		v1.Identity[*logproto.GroupedChunkRefs],
+		// merge
+		func(a, b *logproto.GroupedChunkRefs) *logproto.GroupedChunkRefs {
+			return &logproto.GroupedChunkRefs{
+				Fingerprint: a.Fingerprint,
+				Tenant:      a.Tenant,
+				Refs:        mergeChunks(a.Refs, b.Refs),
+			}
+		},
+		// iterator
+		v1.NewPeekingIter(heapIter),
+	)
+
+	return v1.CollectInto(dedupeIter, buf)
+}
+
+func mergeChunks(inputs ...[]*logproto.ShortRef) []*logproto.ShortRef {
+	if len(inputs) == 0 {
+		return nil
+	}
+
+	if len(inputs) == 1 {
+		slices.SortFunc(
+			inputs[0],
+			func(a, b *logproto.ShortRef) int {
+				if a.Equal(b) {
+					return 0
+				}
+				if a.From.Before(b.From) || (a.From.Equal(b.From) && a.Through.Before(b.Through)) {
+					return -1
+				}
+				return 1
+			},
+		)
+		return inputs[0]
+	}
+
+	iters := make([]v1.PeekingIterator[*logproto.ShortRef], 0, len(inputs))
+	for _, inp := range inputs {
+		iters = append(iters, v1.NewPeekingIter(v1.NewSliceIter(inp)))
+	}
+
+	chunkDedupe := v1.NewDedupingIter[*logproto.ShortRef, *logproto.ShortRef](
+		// eq
+		func(a, b *logproto.ShortRef) bool { return a.Equal(b) },
+		// from
+		v1.Identity[*logproto.ShortRef],
+		// merge
+		func(a, b *logproto.ShortRef) *logproto.ShortRef { return a },
+		// iterator
+		v1.NewPeekingIter[*logproto.ShortRef](
+			v1.NewHeapIterator[*logproto.ShortRef](
+				func(a, b *logproto.ShortRef) bool {
+					return a.From.Before(b.From) || (a.From.Equal(b.From) && a.Through.Before(b.Through))
+				},
+				iters...,
+			),
+		),
+	)
+	merged, _ := v1.Collect(chunkDedupe)
+	return merged
 }
 
 // doForAddrs sequetially calls the provided callback function fn for each
@@ -308,5 +396,6 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 
 type addrWithGroups struct {
 	addr   string
+	blocks []string
 	groups []*logproto.GroupedChunkRefs
 }

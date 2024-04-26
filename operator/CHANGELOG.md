@@ -1,7 +1,5 @@
 ## Main
 
-- [11708](https://github.com/grafana/loki/pull/11708) **btaani**: Add support for Swift TLS CA configuration
-
 ## 0.6.0 (2024-03-19)
 
 - [12228](https://github.com/grafana/loki/pull/12228) **xperimental**: Restructure LokiStack metrics

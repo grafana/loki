@@ -13,6 +13,18 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.3.4
+
+- [BUGFIX] Add missing OTLP endpoint to nginx config
+
+## 6.3.3
+
+- [ENHANCEMENT] make the singlebinary set 0 the replicas number of backend, write,read.
+
+## 6.3.2
+
+- [BUGFIX] Missing password for Loki-Canary when loki.auth_enabled is true
+
 ## 6.3.1
 
 - [BUGFIX] Fixed Typo in Ingester templates for zoneAwareReplication

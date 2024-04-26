@@ -16,7 +16,7 @@ jobs:
   check:
     uses: "grafana/loki-release/.github/workflows/check.yml@main"
     with:
-      build_image: "grafana/loki-build-image:0.33.1"
+      build_image: "grafana/loki-build-image:0.33.3"
       golang_ci_lint_version: "v1.55.1"
       release_lib_ref: "main"
       skip_validation: false
@@ -58,7 +58,7 @@ jobs:
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
-      uses: "actions/github-app-token@v1"
+      uses: "actions/create-github-app-token@v1"
       with:
         app-id: "${{ secrets.APP_ID }}"
         owner: "${{ github.repository_owner }}"
@@ -141,7 +141,7 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "grafana/loki-build-image:0.33.1"
+          --entrypoint /bin/sh "grafana/loki-build-image:0.33.3"
           git config --global --add safe.directory /src/loki
           echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
           make dist packages
@@ -753,7 +753,7 @@ jobs:
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
-      uses: "actions/github-app-token@v1"
+      uses: "actions/create-github-app-token@v1"
       with:
         app-id: "${{ secrets.APP_ID }}"
         owner: "${{ github.repository_owner }}"

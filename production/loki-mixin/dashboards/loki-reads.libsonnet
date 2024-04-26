@@ -5,8 +5,56 @@ local utils = import 'mixin-utils/utils.libsonnet';
     local dashboards = self,
     local showBigTable = false,
 
-    local http_routes = 'loki_api_v1_series|api_prom_series|api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_labels|loki_api_v1_label_name_values',
-    local grpc_routes = '/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs|/logproto.BloomGateway/FilterChunkRefs',
+    // Available HTTP routes can be collected with the following instant query:
+    // count by (route) (loki_request_duration_seconds_count{route!~"/.*"})
+    local http_routes = '(%s)' % std.join(
+      '|', [
+        'api_prom_rules',
+        'api_prom_rules_namespace_groupname',
+        'api_v1_rules',
+        'loki_api_v1_delete',
+        'loki_api_v1_detected_labels',
+        'loki_api_v1_index_stats',
+        'loki_api_v1_index_volume',
+        'loki_api_v1_index_volume_range',
+        'loki_api_v1_label_name_values',
+        'loki_api_v1_label_values',
+        'loki_api_v1_labels',
+        'loki_api_v1_patterns',
+        'loki_api_v1_query',
+        'loki_api_v1_query_range',
+        'loki_api_v1_series',
+        'otlp_v1_logs',
+        'prometheus_api_v1_rules',
+      ]
+    ),
+
+    // Available GRPC routes can be collected with the following instant query:
+    // count by (route) (loki_request_duration_seconds_count{route=~"/.*"})
+    local grpc_routes = '(%s)' % std.join(
+      '|', [
+        '/base.Ruler/Rules',
+        '/indexgatewaypb.IndexGateway/GetChunkRef',
+        '/indexgatewaypb.IndexGateway/GetSeries',
+        '/indexgatewaypb.IndexGateway/GetShards',
+        '/indexgatewaypb.IndexGateway/GetStats',
+        '/indexgatewaypb.IndexGateway/GetVolume',
+        '/indexgatewaypb.IndexGateway/LabelNamesForMetricName',
+        '/indexgatewaypb.IndexGateway/LabelValuesForMetricName',
+        '/indexgatewaypb.IndexGateway/QueryIndex',
+        '/logproto.BloomGateway/FilterChunkRefs',
+        '/logproto.Pattern/Query',
+        '/logproto.Querier/GetChunkIDs',
+        '/logproto.Querier/GetDetectedLabels',
+        '/logproto.Querier/GetStats',
+        '/logproto.Querier/GetVolume',
+        '/logproto.Querier/Label',
+        '/logproto.Querier/Query',
+        '/logproto.Querier/QuerySample',
+        '/logproto.Querier/Series',
+        '/logproto.StreamData/GetStreamRates',
+      ]
+    ),
 
     local latencyPanelWithExtraGrouping(metricName, selector, multiplier='1e3', extra_grouping='') = {
       nullPointMode: 'null as zero',
@@ -31,21 +79,35 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          local cfg = self,
 
                          showMultiCluster:: true,
-                         clusterLabel:: $._config.per_cluster_label,
                          clusterMatchers::
                            if cfg.showMultiCluster then
-                             [utils.selector.re(cfg.clusterLabel, '$cluster')]
+                             [utils.selector.re($._config.per_cluster_label, '$cluster')]
                            else
                              [],
 
                          matchers:: {
                            cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
-                           queryFrontend: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'query-frontend'))],
-                           querier: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'querier'))],
-                           ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
-                           ingesterZoneAware: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*'))],
-                           querierOrIndexGateway: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else '(querier|index-gateway)'))],
-                           bloomGateway: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-backend' % $._config.ssd.pod_prefix_matcher else 'bloom-gateway'))],
+                           queryFrontend: if $._config.meta_monitoring.enabled
+                           then [utils.selector.re('job', '($namespace)/(query-frontend|%s-read|loki-single-binary' % $._config.ssd.pod_prefix_matcher)]
+                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'query-frontend'))],
+                           querier: if $._config.meta_monitoring.enabled
+                           then [utils.selector.re('job', '($namespace)/(querier|%s-read|loki-single-binary' % $._config.ssd.pod_prefix_matcher)]
+                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'querier'))],
+                           ingester: if $._config.meta_monitoring.enabled
+                           then [utils.selector.re('job', '($namespace)/(ingester|%s-write|loki-single-binary' % $._config.ssd.pod_prefix_matcher)]
+                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
+                           ingesterZoneAware: if $._config.meta_monitoring.enabled
+                           then [utils.selector.re('job', '($namespace)/(ingester-zone-.*|%s-write|loki-single-binary' % $._config.ssd.pod_prefix_matcher)]
+                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*'))],
+                           querierOrIndexGateway: if $._config.meta_monitoring.enabled
+                           then [utils.selector.re('job', '($namespace)/(querier|index-gateway|%s-read|loki-single-binary' % $._config.ssd.pod_prefix_matcher)]
+                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else '(querier|index-gateway)'))],
+                           indexGateway: if $._config.meta_monitoring.enabled
+                           then [utils.selector.re('job', '($namespace)/(index-gateway|%s-backend|loki-single-binary' % $._config.ssd.pod_prefix_matcher)]
+                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-backend' % $._config.ssd.pod_prefix_matcher else 'index-gateway'))],
+                           bloomGateway: if $._config.meta_monitoring.enabled
+                           then [utils.selector.re('job', '($namespace)/(bloom-gateway|%s-backend|loki-single-binary' % $._config.ssd.pod_prefix_matcher)]
+                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-backend' % $._config.ssd.pod_prefix_matcher else 'bloom-gateway'))],
                          },
 
                          local selector(matcherId) =
@@ -60,6 +122,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          ingesterSelector:: selector('ingester'),
                          ingesterZoneSelector:: selector('ingesterZoneAware'),
                          querierOrIndexGatewaySelector:: selector('querierOrIndexGateway'),
+                         indexGatewaySelector:: selector('indexGateway'),
                          bloomGatewaySelector:: selector('bloomGateway'),
                        } +
                        $.dashboard('Loki / Reads', uid='reads')
@@ -196,19 +259,27 @@ local utils = import 'mixin-utils/utils.libsonnet';
                        )
                        .addRowIf(
                          !$._config.ssd.enabled,
-                         $.row('Index')
+                         $.row('Index Gateway')
                          .addPanel(
                            $.newQueryPanel('QPS') +
-                           $.newQpsPanel('loki_index_request_duration_seconds_count{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector)
+                           $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].indexGatewaySelector, grpc_routes])
                          )
                          .addPanel(
                            $.newQueryPanel('Latency', 'ms') +
-                           $.latencyPanel('loki_index_request_duration_seconds', '{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector)
+                           utils.latencyRecordingRulePanel(
+                             'loki_request_duration_seconds',
+                             dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.bloomGateway + [utils.selector.re('route', grpc_routes)],
+                             sum_by=['route']
+                           )
                          )
                          .addPanel(
                            p99LatencyByPod(
-                             'loki_index_request_duration_seconds',
-                             '{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector
+                             'loki_request_duration_seconds',
+                             $.toPrometheusSelector(
+                               dashboards['loki-reads.json'].clusterMatchers +
+                               dashboards['loki-reads.json'].matchers.indexGateway +
+                               [utils.selector.re('route', grpc_routes)]
+                             ),
                            )
                          )
                        )
@@ -253,8 +324,27 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            )
                          )
                        )
-                       .addRow(
-                         $.row('BoltDB Shipper')
+                       .addRowIf(
+                         !$._config.ssd.enabled,
+                         $.row('TSBD Index')
+                         .addPanel(
+                           $.newQueryPanel('QPS') +
+                           $.newQpsPanel('loki_index_request_duration_seconds_count{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector)
+                         )
+                         .addPanel(
+                           $.newQueryPanel('Latency', 'ms') +
+                           $.latencyPanel('loki_index_request_duration_seconds', '{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector)
+                         )
+                         .addPanel(
+                           p99LatencyByPod(
+                             'loki_index_request_duration_seconds',
+                             '{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector
+                           )
+                         )
+                       )
+                       .addRowIf(
+                         !$._config.ssd.enabled,
+                         $.row('BoltDB Index')
                          .addPanel(
                            $.newQueryPanel('QPS') +
                            $.newQpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="Shipper.Query"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)

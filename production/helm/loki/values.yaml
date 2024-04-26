@@ -35,6 +35,7 @@ deploymentMode: SimpleScalable
 #
 ######################################################################################################################
 # -- Configuration for running Loki
+# @default -- See values.yaml
 loki:
   # Configures the readiness probe for all of the Loki pods
   readinessProbe:
@@ -1007,10 +1008,11 @@ gateway:
     username: null
     # -- The basic auth password for the gateway
     password: null
-    # -- Uses the specified users from the `loki.tenants` list to create the htpasswd file
-    # if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used
+    # -- Uses the specified users from the `loki.tenants` list to create the htpasswd file.
+    # if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used.
     # The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes
     # high CPU load.
+    # @default -- Either `loki.tenants` or `gateway.basicAuth.username` and `gateway.basicAuth.password`.
     htpasswd: >-
       {{ if .Values.loki.tenants }}
 
@@ -3261,6 +3263,8 @@ monitoring:
     tenant:
       # -- Name of the tenant
       name: "self-monitoring"
+      # -- Password of the gateway for Basic auth
+      password: null
       # -- Namespace to create additional tenant token secret in. Useful if your Grafana instance
       # is in a separate namespace. Token will still be created in the canary namespace.
       secretNamespace: "{{ .Release.Namespace }}"
