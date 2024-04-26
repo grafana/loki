@@ -152,6 +152,10 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
 
+	largeSeries := func(i int) bool {
+		return i%2 == 0
+	}
+
 	numSeries := 4
 	data := make([]SeriesWithBloom, 0, numSeries)
 	tokenizer := NewNGramTokenizer(4, 0)
@@ -170,8 +174,10 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 		bloom.ScalableBloomFilter = *filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 
 		nLines := 10
-		if i == 0 || i == 2 {
-			// Add enough lines to make the bloom page too large for series 1
+		// all even series will have a larger bloom (more than 1 filter)
+		if largeSeries(i) {
+			// Add enough lines to make the bloom page too large and
+			// trigger another filter addition
 			nLines = 10000
 		}
 
@@ -218,14 +224,15 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 		series := querier.series.At()
 		require.Equal(t, fp, series.Fingerprint)
 
-		querier.blooms.Seek(series.Offset)
-
-		if fp == 0 || fp == 2 {
-			require.False(t, querier.blooms.Next())
-			require.Error(t, querier.blooms.Err())
+		seekable := true
+		if largeSeries(int(fp)) {
+			seekable = false
+		}
+		if !seekable {
+			require.False(t, querier.blooms.LoadOffset(series.Offset))
 			continue
 		}
-
+		require.True(t, querier.blooms.LoadOffset(series.Offset))
 		require.True(t, querier.blooms.Next())
 		require.NoError(t, querier.blooms.Err())
 	}
@@ -293,16 +300,6 @@ func BenchmarkBlockQuerying(b *testing.B) {
 	// benchmark
 	b.StartTimer()
 
-	b.Run("single-pass", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			for _, chain := range requestChains {
-				for _, req := range chain {
-					_, _ = querier.CheckChunksForSeries(req.Fp, req.Chks, nil)
-				}
-			}
-		}
-
-	})
 	b.Run("fused", func(b *testing.B) {
 		// spin up some goroutines to consume the responses so they don't block
 		go func() {
