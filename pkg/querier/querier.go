@@ -924,18 +924,18 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
 
-	if *req.Start, *req.End, err = validateQueryTimeRangeLimits(ctx, userID, q.limits, *req.Start, *req.End); err != nil {
+	if req.Start, req.End, err = validateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End); err != nil {
 		return nil, err
 	}
-	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(*req.Start, *req.End)
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.Start, req.End)
 
 	var ingesterLabels *logproto.LabelToValuesResponse
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		g.Go(func() error {
 			var err error
 			splitReq := *req
-			splitReq.Start = &ingesterQueryInterval.start
-			splitReq.End = &ingesterQueryInterval.end
+			splitReq.Start = ingesterQueryInterval.start
+			splitReq.End = ingesterQueryInterval.end
 
 			ingesterLabels, err = q.ingesterQuerier.DetectedLabel(ctx, &splitReq)
 			return err
@@ -979,14 +979,14 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		}, nil
 	}
 
-	// append static labels before so they are in sorted order
-	for l := range staticLabels {
-		if values, present := ingesterLabels.Labels[l]; present {
-			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: l, Cardinality: uint64(len(values.Values))})
-		}
-	}
-
 	if ingesterLabels != nil {
+		// append static labels before so they are in sorted order
+		for l := range staticLabels {
+			if values, present := ingesterLabels.Labels[l]; present {
+				detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: l, Cardinality: uint64(len(values.Values))})
+			}
+		}
+
 		for label, values := range ingesterLabels.Labels {
 			if q.isLabelRelevant(label, values.Values, staticLabels) {
 				combinedValues := values.Values

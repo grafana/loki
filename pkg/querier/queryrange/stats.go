@@ -179,6 +179,10 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &stats.Result{} // TODO: support stats in query patterns
 					totalEntries = len(r.Response.Series)
 					queryType = queryTypeQueryPatterns
+				case *DetectedLabelsResponse:
+					responseStats = &stats.Result{}
+					totalEntries = 1
+					queryType = queryTypeDetectedLabels
 				default:
 					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
 				}

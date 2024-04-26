@@ -1,8 +1,11 @@
 package queryrange
 
 import (
+	"fmt"
 	"time"
 
+	"github.com/go-kit/log/level"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -109,7 +112,19 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 				path: r.path,
 			})
 		}
+	case *DetectedLabelsRequest:
+		factory = func(start, end time.Time) {
+			reqs = append(reqs, &DetectedLabelsRequest{
+				DetectedLabelsRequest: logproto.DetectedLabelsRequest{
+					Start: start,
+					End:   end,
+					Query: r.Query,
+				},
+				path: r.path,
+			})
+		}
 	default:
+		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("splitter: unsupported request type: %T", req))
 		return nil, nil
 	}
 

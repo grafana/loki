@@ -261,7 +261,8 @@ func NewMiddleware(
 		schema,
 		metrics,
 		indexStatsTripperware,
-		metricsNamespace)
+		metricsNamespace,
+		codec, limits, iqo)
 
 	if err != nil {
 		return nil, nil, err
@@ -284,16 +285,17 @@ func NewMiddleware(
 	}), StopperWrapper{resultsCache, statsCache, volumeCache}, nil
 }
 
-func NewDetectedLabelsTripperware(cfg Config, opts logql.EngineOpts, logger log.Logger, l Limits, schema config.SchemaConfig, metrics *Metrics, mw base.Middleware, namespace string) (base.Middleware, error) {
+func NewDetectedLabelsTripperware(cfg Config, opts logql.EngineOpts, logger log.Logger, l Limits, schema config.SchemaConfig, metrics *Metrics, mw base.Middleware, namespace string, merger base.Merger, limits Limits, iqo util.IngesterQueryOptions) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := mw.Wrap(next)
+		splitter := newDefaultSplitter(limits, iqo)
 
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(l),
 			NewQuerySizeLimiterMiddleware(schema.Configs, opts, logger, l, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-		}
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics)}
 
 		// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
 		// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
@@ -442,7 +444,16 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 		)
 
 		return r.detectedFields.Do(ctx, req)
-	// TODO(shantanu): Add DetectedLabels
+	case *DetectedLabelsRequest:
+		level.Info(logger).Log(
+			"msg", "executing query",
+			"type", "detected_label",
+			"end", op.End,
+			"length", op.End.Sub(op.Start),
+			"query", op.Query,
+			"start", op.Start,
+		)
+		return r.detectedLabels.Do(ctx, req)
 	default:
 		return r.next.Do(ctx, req)
 	}
