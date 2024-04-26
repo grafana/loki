@@ -1146,6 +1146,7 @@ ingress:
       - /api/prom/tail
       - /loki/api/v1/tail
       - /loki/api
+    backend:
       - /api/prom/rules
       - /loki/api/v1/rules
       - /prometheus/api/v1/rules
