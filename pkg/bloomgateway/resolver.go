@@ -110,14 +110,14 @@ func unassignedSeries(mapped []blockWithSeries, series []*logproto.GroupedChunkR
 		})
 
 		maxIdx := sort.Search(len(skipped), func(i int) bool {
-			return skipped[i].Fingerprint >= maxFp.Fingerprint
+			return skipped[i].Fingerprint > maxFp.Fingerprint
 		})
 
 		if minIdx == len(skipped) || maxIdx == 0 || minIdx == maxIdx {
 			continue
 		}
 
-		skipped = append(skipped[0:minIdx], skipped[maxIdx+1:]...)
+		skipped = append(skipped[0:minIdx], skipped[maxIdx:]...)
 	}
 
 	return skipped

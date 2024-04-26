@@ -17,7 +17,8 @@ local imageJobs = {
   querytee: build.image('loki-query-tee', 'cmd/querytee', platform=['linux/amd64']),
 };
 
-local buildImage = 'grafana/loki-build-image:0.33.1';
+local buildImageVersion = std.extVar('BUILD_IMAGE_VERSION');
+local buildImage = 'grafana/loki-build-image:%s' % buildImageVersion;
 local golangCiLintVersion = 'v1.55.1';
 
 local imageBuildTimeoutMin = 40;
