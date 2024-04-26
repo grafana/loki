@@ -25,12 +25,12 @@ const (
 	minHexLen            = 12   // 48 bits min for free-standing hex strings (e.g "0123456789ab") or 42 bits for "0xABCDEF1234" strings
 )
 
-var boundryChars = [256]bool{}
+var boundaryChars = [256]bool{}
 
 func init() {
 	for i := 0; i < 128; i++ { // for now, we don't consider non-ASCII chars as boundary
 		if i < '0' || (i > '9' && i < 'A') || (i > 'Z' && i < 'a') || i > 'z' {
-			boundryChars[i] = true
+			boundaryChars[i] = true
 		}
 	}
 
@@ -140,7 +140,7 @@ func (r *replacer) peekNextIsBoundary() bool {
 	if r.head >= len(r.source) {
 		return true // we are at the end of the line
 	}
-	return boundryChars[r.source[r.head]]
+	return boundaryChars[r.source[r.head]]
 }
 
 func (r *replacer) peekFirstNonInt() (c byte) {
@@ -278,7 +278,7 @@ func (r *replacer) advanceDuration() (matched bool) {
 	n := r.peekNext4()
 	if n[0] == 'h' {
 		r.head++
-		if boundryChars[n[1]] {
+		if boundaryChars[n[1]] {
 			return true // e.g. "1h", "123h"
 		}
 		if !r.advanceUintUpTo(60, 2) {
@@ -286,9 +286,9 @@ func (r *replacer) advanceDuration() (matched bool) {
 		}
 		n = r.peekNext4()
 	}
-	if n[0] == 'm' && (boundryChars[n[1]] || n[1] != 's') { // we don't want to match 'ms' here
+	if n[0] == 'm' && (boundaryChars[n[1]] || n[1] != 's') { // we don't want to match 'ms' here
 		r.head++
-		if boundryChars[n[1]] {
+		if boundaryChars[n[1]] {
 			return true // e.g. "2h21m", "121m"
 		}
 		if !(r.advanceUintUpTo(60, 2) && ((r.advanceChar('.') && r.advanceUint()) || true)) {
@@ -297,11 +297,11 @@ func (r *replacer) advanceDuration() (matched bool) {
 		n = r.peekNext4()
 	}
 
-	if n[0] == 's' && boundryChars[n[1]] {
+	if n[0] == 's' && boundaryChars[n[1]] {
 		secsLen = 1
-	} else if n[1] == 's' && (n[0] == 'm' || n[0] == 'n' || n[0] == 'u') && boundryChars[n[2]] {
+	} else if n[1] == 's' && (n[0] == 'm' || n[0] == 'n' || n[0] == 'u') && boundaryChars[n[2]] {
 		secsLen = 2
-	} else if n[2] == 's' && ((n[0] == 0xC2 && n[1] == 0xB5) || (n[0] == 0xCE && n[1] == 0xBC)) && boundryChars[n[3]] {
+	} else if n[2] == 's' && ((n[0] == 0xC2 && n[1] == 0xB5) || (n[0] == 0xCE && n[1] == 0xBC)) && boundaryChars[n[3]] {
 		// This checks for the unicode "µs" (U+00B5 = micro symbol) and "μs" (U+03BC = Greek letter mu)
 		secsLen = 3
 	} else {
@@ -326,11 +326,11 @@ func (r *replacer) advanceBytesize(c1 byte) (matched bool) {
 	n := r.peekNext4()
 
 	var unitLen int // not counting the first character c1, which is already advanced to
-	if (n[0] == 'b' || n[0] == 'B') && boundryChars[n[1]] {
+	if (n[0] == 'b' || n[0] == 'B') && boundaryChars[n[1]] {
 		unitLen = 1
-	} else if n[0] == 'i' && (n[1] == 'b' || n[1] == 'B') && boundryChars[n[2]] {
+	} else if n[0] == 'i' && (n[1] == 'b' || n[1] == 'B') && boundaryChars[n[2]] {
 		unitLen = 2
-	} else if ((n[0] == 'b' && n[1] == 'p' && n[2] == 's') || (n[0] == 'b' && n[1] == 'i' && n[2] == 't')) && boundryChars[n[3]] {
+	} else if ((n[0] == 'b' && n[1] == 'p' && n[2] == 's') || (n[0] == 'b' && n[1] == 'i' && n[2] == 't')) && boundaryChars[n[3]] {
 		unitLen = 3
 	}
 
@@ -487,7 +487,7 @@ func (r *replacer) handleNumberWithDecimal(hasMinusPrefix bool, n1 uint, l1 uint
 	// things like '.', ':', '/', etc.), so the part after the decimal is either
 	// not a real number, or it's some sort of a unit that can support decimals
 	// like size (e.g. 12KB, 3MiB) or durations (e.g. 3.5124s), etc.
-	if !boundryChars[b2] {
+	if !boundaryChars[b2] {
 		return r.handlePotentialUnitWithDecimal(hasMinusPrefix, b2)
 	}
 
@@ -622,7 +622,7 @@ func (r *replacer) handleNumberStart(hasMinusPrefix bool) (endsWithBoundary bool
 	// '.', ' ', '/', etc.), so it's either not a real number or date, or it's
 	// some sort of a unit like a duration (e.g. 3h5m2s), size, (e.g. 12KB,
 	// 3MiB), etc.
-	case !boundryChars[b1]:
+	case !boundaryChars[b1]:
 		return r.handleHexOrUnit(hasMinusPrefix, n1, l1, b1)
 
 	// We have a decimal point, so this can either be a plain number, a unit
@@ -761,7 +761,7 @@ func (r *replacer) wasNumPreservingKeyword() bool {
 		if pPos < -1 {
 			return false // all subsequent keys are longer
 		}
-		if pPos != -1 && !boundryChars[r.source[pPos]] {
+		if pPos != -1 && !boundaryChars[r.source[pPos]] {
 			continue
 		}
 		if bytes.HasPrefix(r.source[pPos+1:], key) {
@@ -782,7 +782,7 @@ func (r *replacer) replaceWithPlaceholders() {
 		// If we're currently not at a boundary, the only thing we need to check
 		// is whether the current char would create a boundary in the next iteration.
 		case !onBoundary:
-			onBoundary = boundryChars[c]
+			onBoundary = boundaryChars[c]
 
 			// We weren't at a boundary and now we are, so check if we match one
 			// of the special keywords that will preserve numbers
@@ -842,7 +842,7 @@ func (r *replacer) replaceWithPlaceholders() {
 		// If we haven't actually matched anything, update whether we're still
 		// on a boundary character and continue onto the next one.
 		default:
-			onBoundary = boundryChars[c]
+			onBoundary = boundaryChars[c]
 		}
 	}
 
