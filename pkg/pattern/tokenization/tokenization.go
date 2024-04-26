@@ -316,7 +316,7 @@ restore: // should be faster than a defer
 	return false
 }
 
-var byteSizes = [256]bool{'k': true, 'K': true, 'm': true, 'M': true, 'g': true, 'G': true, 't': true, 'T': true}
+var byteSizes = [256]bool{'k': true, 'K': true, 'm': true, 'M': true, 'g': true, 'G': true, 't': true, 'T': true, 'p': true, 'P': true}
 
 // Only moves the head forward if it successfully matches a duration
 func (r *replacer) advanceBytesize(c1 byte) (matched bool) {
