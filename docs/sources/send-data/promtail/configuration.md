@@ -43,6 +43,13 @@ For more detailed information on configuring how to discover and scrape logs fro
 targets, see [Scraping]({{< relref "./scraping" >}}). For more information on transforming logs
 from scraped targets, see [Pipelines]({{< relref "./pipelines" >}}).
 
+## Reload at runtime
+
+Promtail can reload its configuration at runtime. If the new configuration
+is not well-formed, the changes will not be applied.
+A configuration reload is triggered by sending a `SIGHUP` to the Promtail process or
+sending a HTTP POST request to the `/reload` endpoint (when the `--server.enable-runtime-reload` flag is enabled).
+
 ### Use environment variables in the configuration
 
 You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
@@ -681,7 +688,8 @@ The metrics stage allows for defining metrics from the extracted data.
 
 Created metrics are not pushed to Loki and are instead exposed via Promtail's
 `/metrics` endpoint. Prometheus should be configured to scrape Promtail to be
-able to retrieve the metrics configured by this stage.
+able to retrieve the metrics configured by this stage. 
+If Promtail's configuration is reloaded, all metrics will be reset.
 
 
 ```yaml
