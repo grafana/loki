@@ -3558,8 +3558,10 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 [id: <string> | default = ""]
 
 # Configures the gRPC client used to communicate between the querier and the
-# query-frontend. If 'use_separated_clients' is false, this config is used for
-# communicating with both frontend and scheduler.
+# query-frontend, and the querier and the query-scheduler. If
+# 'use_separated_clients' is true, this config is only used for communicating
+# with frontend and 'query_scheduler_grpc_client_config' should be used to
+# configuring querier <-> scheduler communication.
 # The CLI flags prefix for this block configuration is: querier.frontend-client
 [grpc_client_config: <grpc_client>]
 
