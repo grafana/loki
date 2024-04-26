@@ -108,7 +108,6 @@ type querierWorker struct {
 
 func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, logger log.Logger, reg prometheus.Registerer, codec RequestCodec) (services.Service, error) {
 	if !cfg.UseSeparatedGRPCClients {
-		level.Warn(logger).Log("msg", "Using the same client for frontend and scheduler. This is deprecated and will be removed in the future. Please use separated clients for frontend and scheduler.")
 		// The frontend client config is the older config and it points to "grpc_client_config" so we
 		// reuse it for the scheduler client config.
 		cfg.QuerySchedulerGRPCClientConfig = cfg.QueryFrontendGRPCClientConfig
