@@ -63,3 +63,4 @@ These third-party clients also enable sending logs to Loki:
 - [Serilog-Sinks-Loki](https://github.com/JosephWoodward/Serilog-Sinks-Loki) (C#)
 - [Vector Loki Sink](https://vector.dev/docs/reference/configuration/sinks/loki/)
 - [winston-loki](https://github.com/JaniAnttonen/winston-loki) (JS)
+- [Rails Loki Exporter](https://github.com/planninghow/rails-loki-exporter) (Rails)
