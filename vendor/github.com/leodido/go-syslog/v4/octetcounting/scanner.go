@@ -10,6 +10,9 @@ import (
 // eof represents a marker byte for the end of the reader
 var eof = byte(0)
 
+// lf represents the NewLine
+var lf = byte(10)
+
 // ws represents the whitespace
 var ws = byte(32)
 
@@ -72,6 +75,12 @@ func (s *Scanner) Scan() (tok Token) {
 		s.ready = false
 		return Token{
 			typ: EOF,
+		}
+	case lf:
+		s.ready = true
+		return Token{
+			typ: LF,
+			lit: []byte{lf},
 		}
 	case ws:
 		s.ready = true

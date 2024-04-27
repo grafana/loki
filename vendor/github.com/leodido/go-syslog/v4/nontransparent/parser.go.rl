@@ -4,8 +4,9 @@ import (
     "io"
 
     parser "github.com/leodido/ragel-machinery/parser"
-    syslog "github.com/influxdata/go-syslog/v3"
-    "github.com/influxdata/go-syslog/v3/rfc5424"
+    syslog "github.com/leodido/go-syslog/v4"
+    "github.com/leodido/go-syslog/v4/rfc5424"
+    "github.com/leodido/go-syslog/v4/rfc3164"
 )
 
 %%{
@@ -78,7 +79,8 @@ func (m *machine) OnCompletion() {
     // Try to parse last chunk as a candidate
     if m.readError != nil && len(m.lastChunk) > 0 {
         res, err := m.internal.Parse(m.lastChunk)
-        if err == nil {
+        if err == nil && !m.bestEffort {
+            res = nil
             err = m.readError
         }
         m.emit(&syslog.Result{
@@ -111,6 +113,32 @@ func NewParser(options ...syslog.ParserOption) syslog.Parser {
 
     return m
 }
+
+func NewParserRFC3164(options ...syslog.ParserOption) syslog.Parser {
+	m := &machine{
+		emit: func(*syslog.Result) { /* noop */ },
+	}
+
+	for _, opt := range options {
+		m = opt(m).(*machine)
+	}
+
+	// No error can happens since during its setting we check the trailer type passed in
+	trailer, _ := m.trailertyp.Value()
+	m.trailer = byte(trailer)
+
+	// Create internal parser depending on options
+	if m.bestEffort {
+		m.internal = rfc3164.NewMachine(rfc3164.WithBestEffort())
+	} else {
+		m.internal = rfc3164.NewMachine()
+	}
+
+	return m
+}
+
+// WithMaxMessageLength does nothing for this parser.
+func (m *machine) WithMaxMessageLength(length int) {}
 
 // HasBestEffort tells whether the receiving parser has best effort mode on or off.
 func (m *machine) HasBestEffort() bool {

@@ -1,14 +1,13 @@
 SHELL := /bin/bash
 RAGEL := ragel -I common
+REMOVECOMMENTS := go run github.com/leodido/go-urn/tools/removecomments@master
+SNAKE2CAMEL := go run github.com/leodido/go-urn/tools/snake2camel@master
+GOFMT := go fmt
 
 export GO_TEST=env GOTRACEBACK=all GO111MODULE=on go test $(GO_ARGS)
 
 .PHONY: build
 build: rfc5424/machine.go rfc5424/builder.go nontransparent/parser.go rfc3164/machine.go
-	@gofmt -w -s ./rfc5424
-	@gofmt -w -s ./rfc3164
-	@gofmt -w -s ./octetcounting
-	@gofmt -w -s ./nontransparent
 
 rfc5424/machine.go: rfc5424/machine.go.rl common/common.rl
 
@@ -20,26 +19,21 @@ nontransparent/parser.go: nontransparent/parser.go.rl
 
 rfc5424/builder.go rfc5424/machine.go:
 	$(RAGEL) -Z -G2 -e -o $@ $<
-	@sed -i '/^\/\/line/d' $@
-	$(MAKE) file=$@ snake2camel
+	$(REMOVECOMMENTS) $@
+	$(SNAKE2CAMEL) $@
+	$(GOFMT) $@
 
 rfc3164/machine.go:
 	$(RAGEL) -Z -G2 -e -o $@ $<
-	@sed -i '/^\/\/line/d' $@
-	$(MAKE) file=$@ snake2camel
+	$(REMOVECOMMENTS) $@
+	$(SNAKE2CAMEL) $@
+	$(GOFMT) $@
 
 nontransparent/parser.go:
 	$(RAGEL) -Z -G2 -e -o $@ $<
-	@sed -i '/^\/\/line/d' $@
-	$(MAKE) file=$@ snake2camel
-
-.PHONY: snake2camel
-snake2camel:
-	@awk -i inplace '{ \
-	while ( match($$0, /(.*)([a-z]+[0-9]*)_([a-zA-Z0-9])(.*)/, cap) ) \
-	$$0 = cap[1] cap[2] toupper(cap[3]) cap[4]; \
-	print \
-	}' $(file)
+	$(REMOVECOMMENTS) $@
+	$(SNAKE2CAMEL) $@
+	$(GOFMT) $@
 
 .PHONY: bench
 bench: rfc5424/*_test.go rfc5424/machine.go octetcounting/performance_test.go

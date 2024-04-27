@@ -1,7 +1,7 @@
 package rfc5424
 
 import (
-	syslog "github.com/influxdata/go-syslog/v3"
+	syslog "github.com/leodido/go-syslog/v4"
 )
 
 // WithBestEffort enables the best effort mode.

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/influxdata/go-syslog/v3"
-	"github.com/influxdata/go-syslog/v3/common"
+	"github.com/leodido/go-syslog/v4"
+	"github.com/leodido/go-syslog/v4/common"
 )
 
 // ColumnPositionTemplate is the template used to communicate the column where errors occur.
@@ -48,7 +48,6 @@ const (
 
 // RFC3339MICRO represents the timestamp format that RFC5424 mandates.
 const RFC3339MICRO = "2006-01-02T15:04:05.999999Z07:00"
-
 const start int = 1
 const firstFinal int = 603
 
@@ -120,11 +119,9 @@ func (m *machine) Parse(input []byte) (syslog.Message, error) {
 	m.eof = len(input)
 	m.err = nil
 	output := &syslogMessage{}
-
 	{
 		m.cs = start
 	}
-
 	{
 		if (m.p) == (m.pe) {
 			goto _testEof
@@ -1729,7 +1726,6 @@ func (m *machine) Parse(input []byte) (syslog.Message, error) {
 
 		output.priority = uint8(common.UnsafeUTF8DecimalCodePointsToInt(m.text()))
 		output.prioritySet = true
-
 		if (m.data)[(m.p)] == 62 {
 			goto st4
 		}
@@ -1755,7 +1751,6 @@ func (m *machine) Parse(input []byte) (syslog.Message, error) {
 	stCase5:
 
 		output.version = uint16(common.UnsafeUTF8DecimalCodePointsToInt(m.text()))
-
 		if (m.data)[(m.p)] == 32 {
 			goto st6
 		}
@@ -9583,7 +9578,6 @@ func (m *machine) Parse(input []byte) (syslog.Message, error) {
 	stCase591:
 
 		output.version = uint16(common.UnsafeUTF8DecimalCodePointsToInt(m.text()))
-
 		if (m.data)[(m.p)] == 32 {
 			goto st6
 		}
@@ -9598,7 +9592,6 @@ func (m *machine) Parse(input []byte) (syslog.Message, error) {
 	stCase592:
 
 		output.version = uint16(common.UnsafeUTF8DecimalCodePointsToInt(m.text()))
-
 		if (m.data)[(m.p)] == 32 {
 			goto st6
 		}
@@ -9616,7 +9609,6 @@ func (m *machine) Parse(input []byte) (syslog.Message, error) {
 
 		output.priority = uint8(common.UnsafeUTF8DecimalCodePointsToInt(m.text()))
 		output.prioritySet = true
-
 		switch (m.data)[(m.p)] {
 		case 57:
 			goto st595
@@ -9640,7 +9632,6 @@ func (m *machine) Parse(input []byte) (syslog.Message, error) {
 
 		output.priority = uint8(common.UnsafeUTF8DecimalCodePointsToInt(m.text()))
 		output.prioritySet = true
-
 		if (m.data)[(m.p)] == 62 {
 			goto st4
 		}
@@ -9656,7 +9647,6 @@ func (m *machine) Parse(input []byte) (syslog.Message, error) {
 
 		output.priority = uint8(common.UnsafeUTF8DecimalCodePointsToInt(m.text()))
 		output.prioritySet = true
-
 		if (m.data)[(m.p)] == 62 {
 			goto st4
 		}
@@ -12025,7 +12015,6 @@ func (m *machine) Parse(input []byte) (syslog.Message, error) {
 				{
 					goto st614
 				}
-
 			}
 		}
 

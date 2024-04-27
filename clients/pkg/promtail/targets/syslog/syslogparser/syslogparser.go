@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/influxdata/go-syslog/v3"
-	"github.com/influxdata/go-syslog/v3/nontransparent"
-	"github.com/influxdata/go-syslog/v3/octetcounting"
+	"github.com/leodido/go-syslog/v4"
+	"github.com/leodido/go-syslog/v4/nontransparent"
+	"github.com/leodido/go-syslog/v4/octetcounting"
 )
 
 // ParseStream parses a rfc5424 syslog stream from the given Reader, calling

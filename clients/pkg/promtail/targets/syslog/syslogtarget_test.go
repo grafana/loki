@@ -12,7 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-kit/log"
-	"github.com/influxdata/go-syslog/v3"
+	"github.com/leodido/go-syslog/v4"
 	promconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"

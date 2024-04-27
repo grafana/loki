@@ -18,7 +18,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/influxdata/go-syslog/v3"
+	"github.com/leodido/go-syslog/v4"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
