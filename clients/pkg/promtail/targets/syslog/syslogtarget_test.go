@@ -916,7 +916,7 @@ func TestParseStream_WithAsyncPipe(t *testing.T) {
 		results = append(results, res)
 	}
 
-	err := syslogparser.ParseStream(pipe, cb, defaultMaxMessageLength)
+	err := syslogparser.ParseStream(false, pipe, cb, defaultMaxMessageLength)
 	require.NoError(t, err)
 	require.Equal(t, 3, len(results))
 }

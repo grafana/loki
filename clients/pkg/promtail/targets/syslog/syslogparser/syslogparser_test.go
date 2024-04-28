@@ -24,7 +24,7 @@ func TestParseStream_OctetCounting(t *testing.T) {
 		results = append(results, res)
 	}
 
-	err := syslogparser.ParseStream(r, cb, defaultMaxMessageLength)
+	err := syslogparser.ParseStream(false, r, cb, defaultMaxMessageLength)
 	require.NoError(t, err)
 
 	require.Equal(t, 2, len(results))
@@ -43,7 +43,7 @@ func TestParseStream_ValidParseError(t *testing.T) {
 		results = append(results, res)
 	}
 
-	err := syslogparser.ParseStream(r, cb, defaultMaxMessageLength)
+	err := syslogparser.ParseStream(false, r, cb, defaultMaxMessageLength)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, len(results))
@@ -59,7 +59,7 @@ func TestParseStream_OctetCounting_LongMessage(t *testing.T) {
 		results = append(results, res)
 	}
 
-	err := syslogparser.ParseStream(r, cb, defaultMaxMessageLength)
+	err := syslogparser.ParseStream(false, r, cb, defaultMaxMessageLength)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, len(results))
@@ -74,7 +74,7 @@ func TestParseStream_NewlineSeparated(t *testing.T) {
 		results = append(results, res)
 	}
 
-	err := syslogparser.ParseStream(r, cb, defaultMaxMessageLength)
+	err := syslogparser.ParseStream(false, r, cb, defaultMaxMessageLength)
 	require.NoError(t, err)
 
 	require.Equal(t, 2, len(results))
@@ -87,13 +87,13 @@ func TestParseStream_NewlineSeparated(t *testing.T) {
 func TestParseStream_InvalidStream(t *testing.T) {
 	r := strings.NewReader("invalid")
 
-	err := syslogparser.ParseStream(r, func(res *syslog.Result) {}, defaultMaxMessageLength)
+	err := syslogparser.ParseStream(false, r, func(res *syslog.Result) {}, defaultMaxMessageLength)
 	require.EqualError(t, err, "invalid or unsupported framing. first byte: 'i'")
 }
 
 func TestParseStream_EmptyStream(t *testing.T) {
 	r := strings.NewReader("")
 
-	err := syslogparser.ParseStream(r, func(res *syslog.Result) {}, defaultMaxMessageLength)
+	err := syslogparser.ParseStream(false, r, func(res *syslog.Result) {}, defaultMaxMessageLength)
 	require.Equal(t, err, io.EOF)
 }

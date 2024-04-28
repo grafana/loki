@@ -202,6 +202,9 @@ type SyslogTargetConfig struct {
 	// message should be pushed to Loki
 	UseRFC5424Message bool `yaml:"use_rfc5424_message"`
 
+	// IsRFC3164Message defines wether the log is formated as RFC3164
+	IsRFC3164Message bool `yaml:"is_rfc3164_message"`
+
 	// MaxMessageLength sets the maximum limit to the length of syslog messages
 	MaxMessageLength int `yaml:"max_message_length"`
 
