@@ -45,7 +45,7 @@ You can use labels of structured metadata to filter log line using a [label filt
 For example, if you have a label `pod` attached to some of your log lines as structured metadata, you can filter log lines using:
 
 ```logql
-{job="example"} | pod="myservice-abc1234-56789"`
+{job="example"} | pod="myservice-abc1234-56789"
 ```
 
 Of course, you can filter by multiple labels of structured metadata at the same time:
