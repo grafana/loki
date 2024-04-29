@@ -352,7 +352,8 @@ func (s *SimpleBloomController) buildGaps(
 		nGramSize    = uint64(s.limits.BloomNGramLength(tenant))
 		nGramSkip    = uint64(s.limits.BloomNGramSkip(tenant))
 		maxBlockSize = uint64(s.limits.BloomCompactorMaxBlockSize(tenant))
-		blockOpts    = v1.NewBlockOptions(blockEnc, nGramSize, nGramSkip, maxBlockSize)
+		maxBloomSize = uint64(s.limits.BloomCompactorMaxBloomSize(tenant))
+		blockOpts    = v1.NewBlockOptions(blockEnc, nGramSize, nGramSkip, maxBlockSize, maxBloomSize)
 		created      []bloomshipper.Meta
 		totalSeries  int
 		bytesAdded   int
