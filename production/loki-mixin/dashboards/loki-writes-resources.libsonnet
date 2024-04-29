@@ -11,7 +11,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
   grafanaDashboards+::
     {
-      'distributorloki-writes-resources.json':
+      'loki-writes-resources.json':
         ($.dashboard('Loki / Writes Resources', uid='writes-resources'))
         .addCluster()
         .addNamespace()
