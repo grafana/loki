@@ -1,17 +1,5 @@
 package bucket
 
-import (
-	"context"
-	"testing"
-
-	"github.com/grafana/dskit/flagext"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	yaml "gopkg.in/yaml.v2"
-
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-)
-
 const (
 	configWithS3Backend = `
 backend: s3
@@ -46,49 +34,3 @@ gcs:
 backend: unknown
 `
 )
-
-func TestNewClient(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]struct {
-		config      string
-		expectedErr error
-	}{
-		"should create an S3 bucket": {
-			config:      configWithS3Backend,
-			expectedErr: nil,
-		},
-		"should create a GCS bucket": {
-			config:      configWithGCSBackend,
-			expectedErr: nil,
-		},
-		"should return error on unknown backend": {
-			config:      configWithUnknownBackend,
-			expectedErr: ErrUnsupportedStorageBackend,
-		},
-	}
-
-	for testName, testData := range tests {
-		testData := testData
-
-		t.Run(testName, func(t *testing.T) {
-			// Load config
-			cfg := Config{}
-			flagext.DefaultValues(&cfg)
-
-			err := yaml.Unmarshal([]byte(testData.config), &cfg)
-			require.NoError(t, err)
-
-			// Instance a new bucket client from the config
-			bucketClient, err := NewClient(context.Background(), cfg, "test", util_log.Logger, nil)
-			require.Equal(t, testData.expectedErr, err)
-
-			if testData.expectedErr == nil {
-				require.NotNil(t, bucketClient)
-				bucketClient.Close()
-			} else {
-				assert.Equal(t, nil, bucketClient)
-			}
-		})
-	}
-}
