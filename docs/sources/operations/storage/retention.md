@@ -199,6 +199,7 @@ The retention period must be a multiple of the index and chunks table
 `period`, configured in the [`period_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) block.
 See the [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/#retention) documentation for
 more information.
+{{% /admonition %}}
 
 {{% admonition type="note" %}}
 To avoid querying of data beyond the retention period,
