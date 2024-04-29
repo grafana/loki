@@ -880,7 +880,7 @@ ts=2024-03-30T23:03:40 caller=grpc_logging.go:66 level=info method=/cortex.Inges
 ts=2024-03-30T23:03:41 caller=grpc_logging.go:66 level=info method=/cortex.Ingester/Push duration=500ms msg=gRPC
 ```
 
-The pattern detected would be:
+The pattern detected might be:
 
 ```log
 ts=<_> caller=grpc_logging.go:66 level=info method=/cortex.Ingester/Push duration=<_> msg=gRPC
@@ -891,6 +891,7 @@ URL query parameters:
 - `query`: The [LogQL]({{< relref "../query" >}}) matchers to check (that is, `{job="foo", env=~".+"}`). This parameter is required.
 - `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is required.
 - `end=<nanosecond Unix epoch>`: End timestamp. This parameter is required.
+- `step=<duration string or float number of seconds>`: Step between samples for occurrences of this pattern. This parameter is optional.
 
 ### Examples
 

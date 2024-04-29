@@ -400,17 +400,17 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		{
 			"series error wrong key type", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"status":"success","data": [{42: "some string"}]}`))},
 			&LokiSeriesRequest{Path: "/loki/api/v1/series"},
-			nil, "error decoding response: ReadObjectCB",
+			nil, "error decoding response: invalid character",
 		},
 		{
 			"series error key decode", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"status":"success","data": [{"\x": "some string"}]}`))},
 			&LokiSeriesRequest{Path: "/loki/api/v1/series"},
-			nil, "invalid escape char after",
+			nil, "invalid character 'x' in string escape code",
 		},
 		{
 			"series error value decode", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"status":"success","data": [{"label": "some string\x"}]}`))},
 			&LokiSeriesRequest{Path: "/loki/api/v1/series"},
-			nil, "invalid escape char after",
+			nil, "invalid character 'x' in string escape code",
 		},
 	}
 	for _, tt := range tests {

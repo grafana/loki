@@ -45,6 +45,7 @@ func ParamsToLokiRequest(params logql.Params) queryrangebase.Request {
 			Plan: &plan.QueryPlan{
 				AST: params.GetExpression(),
 			},
+			StoreChunks: params.GetStoreChunks(),
 		}
 	}
 	return &LokiRequest{
@@ -60,6 +61,7 @@ func ParamsToLokiRequest(params logql.Params) queryrangebase.Request {
 		Plan: &plan.QueryPlan{
 			AST: params.GetExpression(),
 		},
+		StoreChunks: params.GetStoreChunks(),
 	}
 }
 
