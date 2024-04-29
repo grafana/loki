@@ -3,17 +3,17 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
   local index_gateway_pod_matcher = if $._config.meta_monitoring.enabled
-  then 'container=~"loki|index-gateway", pod=~"(index-gateway.*|%s-read.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
+  then 'container=~"loki|index-gateway", pod=~"(.*index-gateway.*|%s-read.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
   else if $._config.ssd.enabled then 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher else 'container="index-gateway"',
   local index_gateway_job_matcher = if $._config.meta_monitoring.enabled
-  then '(index-gateway.*|%s-read.*|loki-single-binary)' % $._config.ssd.pod_prefix_matcher
+  then '(.*index-gateway.*|%s-read.*|loki-single-binary)' % $._config.ssd.pod_prefix_matcher
   else if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'index-gateway',
 
   local ingester_pod_matcher = if $._config.meta_monitoring.enabled
-  then 'container=~"loki|ingester", pod=~"(ingester.*|%s-write.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
+  then 'container=~"loki|ingester", pod=~"(.*ingester.*|%s-write.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
   else if $._config.ssd.enabled then 'container="loki", pod=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher else 'container="ingester"',
   local ingester_job_matcher = if $._config.meta_monitoring.enabled
-  then '(ingester.+|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher
+  then '(.*ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher
   else if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.+',
 
   grafanaDashboards+::
@@ -46,7 +46,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'query-frontend'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'query-frontend'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', '.*query-frontend'),
           )
         )
         .addRowIf(
@@ -59,7 +59,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'query-scheduler'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'query-scheduler'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', '.*query-scheduler'),
           )
         )
         .addRowIf(
@@ -72,7 +72,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'querier'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'querier'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', '.*querier'),
           )
           .addPanel(
             $.newQueryPanel('Disk Writes', 'Bps') +
@@ -135,7 +135,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'bloom-gateway'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'bloom-gateway'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', '.*bloom-gateway'),
           )
           .addPanel(
             $.newQueryPanel('Disk Writes', 'Bps') +

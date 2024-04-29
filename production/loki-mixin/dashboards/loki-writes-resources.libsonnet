@@ -3,15 +3,15 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
   local ingester_pod_matcher = if $._config.meta_monitoring.enabled
-  then 'container=~"loki|ingester", pod=~"(ingester.*|%s-write.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
+  then 'container=~"loki|ingester", pod=~"(.*ingester.*|%s-write.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
   else if $._config.ssd.enabled then 'container="loki", pod=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher else 'container="ingester"',
   local ingester_job_matcher = if $._config.meta_monitoring.enabled
-  then '(ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher
+  then '(.*ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher
   else if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*',
 
   grafanaDashboards+::
     {
-      'loki-writes-resources.json':
+      'distributorloki-writes-resources.json':
         ($.dashboard('Loki / Writes Resources', uid='writes-resources'))
         .addCluster()
         .addNamespace()
@@ -39,7 +39,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'distributor'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'distributor'),
+            $.goHeapInUsePanel('Memory (go heap inuse)',  '.*distributor'),
           )
         )
         .addRow(
