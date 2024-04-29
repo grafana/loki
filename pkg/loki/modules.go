@@ -1156,7 +1156,9 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 			return nil, err
 		}
 	}
-
+	if t.Cfg.Ruler.EnableAPI && t.Cfg.Ruler.StoreConfig.Type == "local" {
+		level.Warn(util_log.Logger).Log("msg", "The Ruler API is enabled when Local storage is being used. Note that the local storage is a read-only backend that does not support the creation and deletion of rules through the Ruler API.")
+	}
 	t.RulerStorage, err = base_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, t.Cfg.StorageConfig.Hedging, t.ClientMetrics, ruler.GroupLoader{}, util_log.Logger)
 
 	return
