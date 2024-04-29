@@ -39,7 +39,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'distributor'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)',  '.*distributor'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', '.*distributor'),
           )
         )
         .addRow(
