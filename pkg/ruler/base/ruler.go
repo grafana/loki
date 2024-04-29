@@ -577,10 +577,12 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 		return
 	}
 
-	err = r.store.LoadRuleGroups(ctx, configs)
-	if err != nil {
-		level.Error(r.logger).Log("msg", "unable to load rules owned by this ruler", "err", err)
-		return
+	if r.cfg.ShardingAlgo == util.ShardingAlgoByGroup {
+		err = r.store.LoadRuleGroups(ctx, configs)
+		if err != nil {
+			level.Error(r.logger).Log("msg", "unable to load rules owned by this ruler", "err", err)
+			return
+		}
 	}
 
 	// This will also delete local group files for users that are no longer in 'configs' map.
@@ -623,6 +625,13 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulesp
 	configs, err := r.store.ListAllRuleGroups(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if r.cfg.ShardingAlgo == util.ShardingAlgoByRule {
+		err = r.store.LoadRuleGroups(ctx, configs)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	filteredConfigs := make(map[string]rulespb.RuleGroupList)
@@ -735,6 +744,9 @@ func filterRules(shardingAlgo string, userID string, ruleGroups []*rulespb.RuleG
 
 		// if we are sharding by rule, we need to create rule groups for each rule to comply with Prometheus' rule engine's expectations
 		case util.ShardingAlgoByRule:
+
+			seenHashes := map[uint32]bool{}
+
 			for _, r := range g.Rules {
 				rlog := log.With(glog, "rule", getRuleIdentifier(r))
 
@@ -751,6 +763,15 @@ func filterRules(shardingAlgo string, userID string, ruleGroups []*rulespb.RuleG
 				}
 
 				level.Debug(rlog).Log("msg", "rule owned")
+
+				hash := tokenForRule(g, r)
+
+				if _, ok := seenHashes[hash]; ok {
+					level.Error(rlog).Log("msg", "encountered duplicate rule", "group", g.Name, "rule", getRuleIdentifier(r))
+					continue
+				} else {
+					seenHashes[hash] = true
+				}
 
 				// clone the group and replace the rules
 				clone := cloneGroupWithRule(g, r)
