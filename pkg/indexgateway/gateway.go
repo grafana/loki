@@ -443,7 +443,7 @@ func (g *Gateway) boundedShards(
 	filtered := refs
 
 	// 2) filter via blooms if enabled
-	if g.bloomQuerier != nil {
+	if g.bloomQuerier != nil && len(syntax.ExtractLineFilters(p.Plan().AST)) > 0 {
 		filtered, err = g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
 		if err != nil {
 			return err
