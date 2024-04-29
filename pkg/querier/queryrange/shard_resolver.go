@@ -3,7 +3,6 @@ package queryrange
 import (
 	"context"
 	"fmt"
-	"net/http"
 	strings "strings"
 	"time"
 
@@ -12,7 +11,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
@@ -264,24 +262,7 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	})
 
 	if err != nil {
-		// check unimplemented to fallback
-		// TODO(owen-d): fix if this isn't right
-		if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && (resp.Code == http.StatusNotFound) {
-			n, bytesPerShard, err := r.Shards(expr)
-			if err != nil {
-				return nil, nil, errors.Wrap(err, "falling back to building linear shards from stats")
-			}
-			level.Debug(log).Log(
-				"msg", "falling back to building linear shards from stats",
-				"bytes_per_shard", bytesPerShard,
-				"shards", n,
-				"query", exprStr,
-			)
-			return sharding.LinearShards(n, uint64(n)*bytesPerShard), nil, nil
-		}
-
 		return nil, nil, errors.Wrapf(err, "failed to get shards for expression, got %T: %+v", err, err)
-
 	}
 
 	casted, ok := resp.(*ShardsResponse)

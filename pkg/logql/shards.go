@@ -204,13 +204,10 @@ func (s Shard) Ptr() *Shard {
 }
 
 func (s Shard) Bind(chunks *logproto.ChunkRefGroup) *ShardWithChunkRefs {
-	res := &ShardWithChunkRefs{
-		Shard: s,
+	return &ShardWithChunkRefs{
+		Shard:  s,
+		chunks: chunks,
 	}
-	if chunks != nil {
-		res.chunks = chunks
-	}
-	return res
 }
 
 func NewBoundedShard(shard logproto.Shard) Shard {

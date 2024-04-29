@@ -331,14 +331,14 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 
 	switch op := getOperation(r.URL.Path); op {
 	case QueryRangeOp:
-		req, err := parseRangeQueryWithStoreChunksExtension(r)
+		req, err := parseRangeQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
 		return req, nil
 	case InstantQueryOp:
-		req, err := parseInstantQueryWithStoreChunksExtension(r)
+		req, err := parseInstantQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -513,14 +513,14 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 
 	switch op := getOperation(httpReq.URL.Path); op {
 	case QueryRangeOp:
-		req, err := parseRangeQueryWithStoreChunksExtension(httpReq)
+		req, err := parseRangeQuery(httpReq)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
 		return req, ctx, nil
 	case InstantQueryOp:
-		req, err := parseInstantQueryWithStoreChunksExtension(httpReq)
+		req, err := parseInstantQuery(httpReq)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -2086,7 +2086,7 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 	}
 }
 
-func parseRangeQueryWithStoreChunksExtension(r *http.Request) (*LokiRequest, error) {
+func parseRangeQuery(r *http.Request) (*LokiRequest, error) {
 	rangeQuery, err := loghttp.ParseRangeQuery(r)
 	if err != nil {
 		return nil, err
@@ -2119,7 +2119,7 @@ func parseRangeQueryWithStoreChunksExtension(r *http.Request) (*LokiRequest, err
 	}, nil
 }
 
-func parseInstantQueryWithStoreChunksExtension(r *http.Request) (*LokiInstantRequest, error) {
+func parseInstantQuery(r *http.Request) (*LokiInstantRequest, error) {
 	req, err := loghttp.ParseInstantQuery(r)
 	if err != nil {
 		return nil, err

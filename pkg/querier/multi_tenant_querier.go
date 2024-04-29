@@ -70,7 +70,7 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	// in case of multiple tenants, we need to filter the store chunks by tenant if they are provided
 	storeOverridesByTenant := make(map[string][]*logproto.ChunkRef)
 	if overrides := params.GetStoreChunks(); overrides != nil {
-		storeOverridesByTenant = partitionChunkRefsByTenant(params.GetStoreChunks().Refs)
+		storeOverridesByTenant = partitionChunkRefsByTenant(overrides.Refs)
 	}
 
 	iters := make([]iter.EntryIterator, len(matchedTenants))
