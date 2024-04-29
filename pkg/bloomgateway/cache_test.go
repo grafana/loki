@@ -289,6 +289,11 @@ func TestMerge(t *testing.T) {
 						Tenant:      "fake",
 						Refs: []*logproto.ShortRef{
 							{
+								From:     700,
+								Through:  1000,
+								Checksum: 40,
+							},
+							{
 								From:     1000,
 								Through:  1500,
 								Checksum: 10,
@@ -302,11 +307,6 @@ func TestMerge(t *testing.T) {
 								From:     2000,
 								Through:  2500,
 								Checksum: 30,
-							},
-							{
-								From:     700,
-								Through:  1000,
-								Checksum: 40,
 							},
 							{
 								From:     2000,

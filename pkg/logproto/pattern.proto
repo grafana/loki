@@ -24,6 +24,7 @@ message QueryPatternsRequest {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
+  int64 step = 4;
 }
 
 message QueryPatternsResponse {
