@@ -8,20 +8,22 @@ import (
 )
 
 type Metrics struct {
-	sbfCreationTime     prometheus.Counter   // time spent creating sbfs
-	bloomSize           prometheus.Histogram // size of the bloom filter in bytes
-	hammingWeightRatio  prometheus.Histogram // ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter
-	estimatedCount      prometheus.Histogram // estimated number of elements in the bloom filter
+	// writes
+	bloomsTotal         *prometheus.CounterVec // number of blooms created
+	sbfCreationTime     *prometheus.CounterVec // time spent creating sbfs
+	bloomSize           prometheus.Histogram   // size of the bloom filter in bytes
+	hammingWeightRatio  prometheus.Histogram   // ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter
+	estimatedCount      prometheus.Histogram   // estimated number of elements in the bloom filter
 	chunksIndexed       *prometheus.CounterVec
 	chunksPerSeries     prometheus.Histogram
 	blockSeriesIterated prometheus.Counter
 	tokensTotal         prometheus.Counter
 	insertsTotal        *prometheus.CounterVec
 	sourceBytesAdded    prometheus.Counter
+	blockSize           prometheus.Histogram
+	blockFlushReason    *prometheus.CounterVec
 
-	blockSize        prometheus.Histogram
-	blockFlushReason *prometheus.CounterVec
-
+	// reads
 	pagesRead    *prometheus.CounterVec
 	pagesSkipped *prometheus.CounterVec
 	bytesRead    *prometheus.CounterVec
@@ -47,15 +49,23 @@ const (
 	skipReasonTooLarge = "too_large"
 	skipReasonErr      = "err"
 	skipReasonOOB      = "out_of_bounds"
+
+	bloomCreationTypeIndexed = "indexed"
+	bloomCreationTypeSkipped = "skipped"
 )
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
-		sbfCreationTime: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		bloomsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "blooms_created_total",
+			Help:      "Number of blooms created",
+		}, []string{"type"}),
+		sbfCreationTime: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "bloom_creation_time_total",
 			Help:      "Time spent creating scalable bloom filters",
-		}),
+		}, []string{"type"}),
 		bloomSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Name:      "bloom_size",

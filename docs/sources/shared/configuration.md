@@ -3333,6 +3333,12 @@ shard_streams:
 # CLI flag: -bloom-compactor.max-block-size
 [bloom_compactor_max_block_size: <int> | default = 200MB]
 
+# Experimental. The maximum bloom size per log stream. A log stream whose
+# generated bloom filter exceeds this size will be discarded. A value of 0 sets
+# an unlimited size. Default is 128MB.
+# CLI flag: -bloom-compactor.max-bloom-size
+[bloom_compactor_max_bloom_size: <int> | default = 128MB]
+
 # Experimental. Length of the n-grams created when computing blooms from log
 # lines.
 # CLI flag: -bloom-compactor.ngram-length
