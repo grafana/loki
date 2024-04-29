@@ -100,7 +100,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	preFilterChunks := len(chunkRefs)
 	preFilterSeries := len(grouped)
 
-	responses := make([][]*logproto.GroupedChunkRefs, 0, 4)
+	responses := make([][]*logproto.GroupedChunkRefs, 0, 2)
 	// We can perform requests sequentially, because most of the time the request
 	// only covers a single day, and if not, it's at most two days.
 	for _, s := range partitionSeriesByDay(from, through, grouped) {
