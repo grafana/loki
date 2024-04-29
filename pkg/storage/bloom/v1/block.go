@@ -144,7 +144,7 @@ func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {
 func (bq *BlockQuerier) Next() bool {
 	for bq.series.Next() {
 		series := bq.series.At()
-		if ok := bq.blooms.LoadOffset(series.Offset); !ok {
+		if skip := bq.blooms.LoadOffset(series.Offset); skip {
 			// can't seek to the desired bloom, likely because the page was too large to load
 			// so we skip this series and move on to the next
 			continue

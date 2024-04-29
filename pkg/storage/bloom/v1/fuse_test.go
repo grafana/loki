@@ -229,10 +229,10 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 			seekable = false
 		}
 		if !seekable {
-			require.False(t, querier.blooms.LoadOffset(series.Offset))
+			require.True(t, querier.blooms.LoadOffset(series.Offset))
 			continue
 		}
-		require.True(t, querier.blooms.LoadOffset(series.Offset))
+		require.False(t, querier.blooms.LoadOffset(series.Offset))
 		require.True(t, querier.blooms.Next())
 		require.NoError(t, querier.blooms.Err())
 	}

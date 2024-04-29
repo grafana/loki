@@ -99,11 +99,12 @@ func (fq *FusedQuerier) Run() error {
 		}
 
 		// Now that we've found the series, we need to find the unpack the bloom
-		ok := fq.bq.blooms.LoadOffset(series.Offset)
-		if !ok {
+		skip := fq.bq.blooms.LoadOffset(series.Offset)
+		if skip {
 			// could not seek to the desired bloom,
 			// likely because the page was too large to load
 			fq.noRemovals(nextBatch, fp)
+			continue
 		}
 
 		if !fq.bq.blooms.Next() {

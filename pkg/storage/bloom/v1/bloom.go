@@ -17,7 +17,6 @@ import (
 // gateways to OOM.
 // Figure out a decent default maximum page size that we can process.
 var DefaultMaxPageSize = 64 << 20 // 64MB
-var ErrPageTooLarge = errors.Errorf("bloom page too large")
 
 type Bloom struct {
 	filter.ScalableBloomFilter
@@ -277,6 +276,7 @@ func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) (uint32, error) {
 
 // BloomPageDecoder returns a decoder for the given page index.
 // It may skip the page if it's too large.
+// NB(owen-d): if `skip` is true, err _must_ be nil.
 func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize int, metrics *Metrics) (res *BloomPageDecoder, skip bool, err error) {
 	if pageIdx < 0 || pageIdx >= len(b.pageHeaders) {
 		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonOOB).Inc()
@@ -290,7 +290,7 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 	if page.Len > maxPageSize {
 		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonTooLarge).Inc()
 		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonTooLarge).Add(float64(page.DecompressedLen))
-		return nil, true, ErrPageTooLarge
+		return nil, true, nil
 	}
 
 	if _, err = r.Seek(int64(page.Offset), io.SeekStart); err != nil {
