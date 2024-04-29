@@ -422,6 +422,7 @@ func orderedResponsesByFP(responses [][]v1.Output) v1.Iterator[v1.Output] {
 
 // TODO(owen-d): improve perf. This can be faster with a more specialized impl
 // NB(owen-d): `req` is mutated in place for performance, but `responses` is not
+// Removals of the outputs must be sorted.
 func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses [][]v1.Output) []*logproto.GroupedChunkRefs {
 	res := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
 
@@ -435,6 +436,7 @@ func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses [][]v1.Outpu
 		// from
 		v1.Identity[v1.Output],
 		// merge two removal sets for the same series, deduping
+		// requires that the removals of the outputs are sorted
 		func(o1, o2 v1.Output) v1.Output {
 			res := v1.Output{Fp: o1.Fp}
 
