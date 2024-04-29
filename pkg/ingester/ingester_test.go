@@ -833,8 +833,8 @@ func TestIngester_GetDetectedLabels(t *testing.T) {
 	require.NoError(t, err)
 
 	res, err := i.GetDetectedLabels(ctx, &logproto.DetectedLabelsRequest{
-		Start: &[]time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
-		End:   nil,
+		Start: []time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
+		End:   []time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
 		Query: "",
 	})
 
@@ -893,8 +893,8 @@ func TestIngester_GetDetectedLabelsWithQuery(t *testing.T) {
 	require.NoError(t, err)
 
 	res, err := i.GetDetectedLabels(ctx, &logproto.DetectedLabelsRequest{
-		Start: &[]time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
-		End:   nil,
+		Start: []time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
+		End:   []time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
 		Query: `{foo="bar"}`,
 	})
 

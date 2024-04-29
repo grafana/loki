@@ -5,8 +5,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/prometheus/common/model"
+
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"

@@ -21,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"golang.org/x/exp/slices"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -915,8 +914,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	if err != nil {
 		return nil, err
 	}
-	var detectedLabels []*logproto.DetectedLabel
-	staticLabels := map[string]struct{}{"cluster": {}, "namespace": {}, "instance": {}, "pod": {}}
+	//staticLabels := map[string]struct{}{"cluster": {}, "namespace": {}, "instance": {}, "pod": {}}
 
 	// Enforce the query timeout while querying backends
 	queryTimeout := q.limits.QueryTimeout(ctx, userID)
@@ -929,6 +927,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	}
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.Start, req.End)
 
+	// Fetch labels from ingesters
 	var ingesterLabels *logproto.LabelToValuesResponse
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		g.Go(func() error {
@@ -942,6 +941,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		})
 	}
 
+	// Fetch labels from the store
 	storeLabelsMap := make(map[string][]string)
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		var matchers []*labels.Matcher
@@ -961,9 +961,9 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 				if err != nil {
 					return err
 				}
-				if q.isLabelRelevant(label, values, staticLabels) {
-					storeLabelsMap[label] = values
-				}
+				//if isLabelRelevant(label, values, staticLabels) {
+				storeLabelsMap[label] = values
+				//}
 			}
 			return err
 		})
@@ -979,40 +979,53 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		}, nil
 	}
 
+	return &logproto.DetectedLabelsResponse{
+		DetectedLabels: countLabelsAndCardinality(storeLabelsMap, ingesterLabels),
+	}, nil
+}
+
+func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabels *logproto.LabelToValuesResponse) []*logproto.DetectedLabel {
+	dlMap := make(map[string]*parsedFields)
+
 	if ingesterLabels != nil {
-		// append static labels before so they are in sorted order
-		for l := range staticLabels {
-			if values, present := ingesterLabels.Labels[l]; present {
-				detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: l, Cardinality: uint64(len(values.Values))})
+		for label, val := range ingesterLabels.Labels {
+			_, ok := dlMap[label]
+			if !ok {
+				dlMap[label] = newParsedFields()
 			}
-		}
 
-		for label, values := range ingesterLabels.Labels {
-			if q.isLabelRelevant(label, values.Values, staticLabels) {
-				combinedValues := values.Values
-				storeValues, storeHasLabel := storeLabelsMap[label]
-				if storeHasLabel {
-					combinedValues = append(combinedValues, storeValues...)
-				}
-
-				slices.Sort(combinedValues)
-				uniqueValues := slices.Compact(combinedValues)
-				// TODO(shantanu): There's a bug here. Unique values can go above 50. Will need a bit of refactoring
-				detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqueValues))})
-				delete(storeLabelsMap, label)
+			parsedFields := dlMap[label]
+			for _, v := range val.Values {
+				parsedFields.Insert(v)
 			}
 		}
 	}
 
 	for label, values := range storeLabelsMap {
-		slices.Sort(values)
-		uniqueValues := slices.Compact(values)
-		detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqueValues))})
-	}
+		_, ok := dlMap[label]
+		if !ok {
+			dlMap[label] = newParsedFields()
+		}
 
-	return &logproto.DetectedLabelsResponse{
-		DetectedLabels: detectedLabels,
-	}, nil
+		parsedFields := dlMap[label]
+		for _, v := range values {
+			parsedFields.Insert(v)
+		}
+	}
+	var detectedLabels []*logproto.DetectedLabel
+	for k, v := range dlMap {
+		sketch, err := v.sketch.MarshalBinary()
+		if err != nil {
+			// TODO: add log here
+			continue
+		}
+		detectedLabels = append(detectedLabels, &logproto.DetectedLabel{
+			Label:       k,
+			Cardinality: v.Estimate(),
+			Sketch:      sketch,
+		})
+	}
+	return detectedLabels
 }
 
 type PatterQuerier interface {
@@ -1033,7 +1046,7 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 
 // isLabelRelevant returns if the label is relevant for logs app. A label is relevant if it is not of any numeric, UUID or GUID type
 // It is also not relevant to return if the values are less than 1 or beyond 50.
-func (q *SingleTenantQuerier) isLabelRelevant(label string, values []string, staticLabels map[string]struct{}) bool {
+func isLabelRelevant(label string, values []string, staticLabels map[string]struct{}) bool {
 	cardinality := len(values)
 	_, isStaticLabel := staticLabels[label]
 	if isStaticLabel || (cardinality < 2 || cardinality > 50) ||
