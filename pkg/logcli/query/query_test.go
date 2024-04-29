@@ -485,6 +485,16 @@ func (t *testQueryClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryRespons
 	panic("not implemented")
 }
 
+func (t *testQueryClient) GetDetectedFields(
+	_ string,
+	_, _ int,
+	_, _ time.Time,
+	_ time.Duration,
+	_ bool,
+) (*loghttp.DetectedFieldsResponse, error) {
+	panic("not implemented")
+}
+
 var legacySchemaConfigContents = `schema_config:
   configs:
   - from: 2020-05-15

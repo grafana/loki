@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/server"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloomcompactor"
@@ -288,3 +289,16 @@ Named store from this example can be used by setting object_store to store-1 in 
 		},
 	}
 )
+
+func init() {
+	slices.SortFunc(RootBlocks, func(a, b RootBlock) int {
+		if a.Name < b.Name {
+			return -1
+		}
+		if a.Name > b.Name {
+			return 1
+		}
+
+		return 0
+	})
+}

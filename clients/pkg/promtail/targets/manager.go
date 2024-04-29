@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/limit"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/azureeventhubs"
@@ -76,6 +77,7 @@ func NewTargetManagers(
 	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *file.Config,
 	watchConfig file.WatchConfig,
+	limitsConfig *limit.Config,
 ) (*TargetManagers, error) {
 	if targetConfig.Stdin {
 		level.Debug(logger).Log("msg", "configured to read from stdin")
@@ -273,7 +275,7 @@ func NewTargetManagers(
 			if err != nil {
 				return nil, err
 			}
-			cfTargetManager, err := docker.NewTargetManager(dockerMetrics, logger, pos, client, scrapeConfigs)
+			cfTargetManager, err := docker.NewTargetManager(dockerMetrics, logger, pos, client, scrapeConfigs, limitsConfig.MaxLineSize.Val())
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to make Docker service discovery target manager")
 			}

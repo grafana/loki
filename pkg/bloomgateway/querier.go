@@ -22,6 +22,7 @@ type querierMetrics struct {
 	chunksFiltered prometheus.Counter
 	seriesTotal    prometheus.Counter
 	seriesFiltered prometheus.Counter
+	seriesSkipped  prometheus.Counter
 }
 
 func newQuerierMetrics(registerer prometheus.Registerer, namespace, subsystem string) *querierMetrics {
@@ -49,6 +50,12 @@ func newQuerierMetrics(registerer prometheus.Registerer, namespace, subsystem st
 			Subsystem: subsystem,
 			Name:      "series_filtered_total",
 			Help:      "Total amount of series that have been filtered out. Does not count series in failed requests.",
+		}),
+		seriesSkipped: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "series_skipped_total",
+			Help:      "Total amount of series that have been skipped and returned unfiltered, because no block matched the series.",
 		}),
 	}
 }
@@ -99,7 +106,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	// only covers a single day, and if not, it's at most two days.
 	for _, s := range partitionSeriesByDay(from, through, grouped) {
 		day := bloomshipper.NewInterval(s.day.Time, s.day.Time.Add(Day))
-		blocks, err := bq.blockResolver.Resolve(ctx, tenant, day, s.series)
+		blocks, skipped, err := bq.blockResolver.Resolve(ctx, tenant, day, s.series)
 		if err != nil {
 			return nil, err
 		}
@@ -114,12 +121,17 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 			"series", len(s.series),
 			"chunks", chunks,
 			"blocks", len(blocks),
+			"skipped", len(skipped),
 		)
 
 		refs, err := bq.c.FilterChunks(ctx, tenant, s.interval, blocks, queryPlan)
 		if err != nil {
 			return nil, err
 		}
+
+		// add chunk refs from series that were not mapped to any blocks
+		refs = append(refs, skipped...)
+		bq.metrics.seriesSkipped.Add(float64(len(skipped)))
 
 		for i := range refs {
 			seriesSeen[refs[i].Fingerprint] = struct{}{}

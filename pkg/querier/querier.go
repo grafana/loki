@@ -909,12 +909,27 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 	return seriesvolume.Merge(responses, req.Limit), nil
 }
 
+// DetectedLabels fetches labels and values from store and ingesters and filters them by relevance criteria as per logs app.
 func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
-	var ingesterLabels *logproto.LabelToValuesResponse
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var detectedLabels []*logproto.DetectedLabel
+	staticLabels := map[string]struct{}{"cluster": {}, "namespace": {}, "instance": {}, "pod": {}}
 
+	// Enforce the query timeout while querying backends
+	queryTimeout := q.limits.QueryTimeout(ctx, userID)
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
-	ingesterQueryInterval, _ := q.buildQueryIntervals(*req.Start, *req.End)
+
+	if *req.Start, *req.End, err = validateQueryTimeRangeLimits(ctx, userID, q.limits, *req.Start, *req.End); err != nil {
+		return nil, err
+	}
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(*req.Start, *req.End)
+
+	var ingesterLabels *logproto.LabelToValuesResponse
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		g.Go(func() error {
 			var err error
@@ -923,7 +938,33 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 			splitReq.End = &ingesterQueryInterval.end
 
 			ingesterLabels, err = q.ingesterQuerier.DetectedLabel(ctx, &splitReq)
-			level.Info(q.logger).Log("msg", ingesterLabels)
+			return err
+		})
+	}
+
+	storeLabelsMap := make(map[string][]string)
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+		var matchers []*labels.Matcher
+		if req.Query != "" {
+			matchers, err = syntax.ParseMatchers(req.Query, true)
+			if err != nil {
+				return nil, err
+			}
+		}
+		g.Go(func() error {
+			var err error
+			start := model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
+			end := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
+			storeLabels, err := q.store.LabelNamesForMetricName(ctx, userID, start, end, "logs")
+			for _, label := range storeLabels {
+				values, err := q.store.LabelValuesForMetricName(ctx, userID, start, end, "logs", label, matchers...)
+				if err != nil {
+					return err
+				}
+				if q.isLabelRelevant(label, values, staticLabels) {
+					storeLabelsMap[label] = values
+				}
+			}
 			return err
 		})
 	}
@@ -932,16 +973,41 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		return nil, err
 	}
 
-	if ingesterLabels == nil {
+	if ingesterLabels == nil && len(storeLabelsMap) == 0 {
 		return &logproto.DetectedLabelsResponse{
 			DetectedLabels: []*logproto.DetectedLabel{},
 		}, nil
 	}
 
-	for label, values := range ingesterLabels.Labels {
-		if q.isLabelRelevant(label, values) {
-			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(values.Values))})
+	// append static labels before so they are in sorted order
+	for l := range staticLabels {
+		if values, present := ingesterLabels.Labels[l]; present {
+			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: l, Cardinality: uint64(len(values.Values))})
 		}
+	}
+
+	if ingesterLabels != nil {
+		for label, values := range ingesterLabels.Labels {
+			if q.isLabelRelevant(label, values.Values, staticLabels) {
+				combinedValues := values.Values
+				storeValues, storeHasLabel := storeLabelsMap[label]
+				if storeHasLabel {
+					combinedValues = append(combinedValues, storeValues...)
+				}
+
+				slices.Sort(combinedValues)
+				uniqueValues := slices.Compact(combinedValues)
+				// TODO(shantanu): There's a bug here. Unique values can go above 50. Will need a bit of refactoring
+				detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqueValues))})
+				delete(storeLabelsMap, label)
+			}
+		}
+	}
+
+	for label, values := range storeLabelsMap {
+		slices.Sort(values)
+		uniqueValues := slices.Compact(values)
+		detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqueValues))})
 	}
 
 	return &logproto.DetectedLabelsResponse{
@@ -965,13 +1031,13 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 	return res, err
 }
 
-func (q *SingleTenantQuerier) isLabelRelevant(label string, values *logproto.UniqueLabelValues) bool {
-	staticLabels := []string{"pod", "namespace", "cluster", "instance"}
-	cardinality := len(values.Values)
-	// TODO(shantanu) make these values configurable
-	if !slices.Contains(staticLabels, label) &&
-		(cardinality < 1 || cardinality > 50) ||
-		containsAllIDTypes(values.Values) {
+// isLabelRelevant returns if the label is relevant for logs app. A label is relevant if it is not of any numeric, UUID or GUID type
+// It is also not relevant to return if the values are less than 1 or beyond 50.
+func (q *SingleTenantQuerier) isLabelRelevant(label string, values []string, staticLabels map[string]struct{}) bool {
+	cardinality := len(values)
+	_, isStaticLabel := staticLabels[label]
+	if isStaticLabel || (cardinality < 2 || cardinality > 50) ||
+		containsAllIDTypes(values) {
 		return false
 	}
 

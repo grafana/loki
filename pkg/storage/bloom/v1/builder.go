@@ -14,9 +14,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
-var (
-	DefaultBlockOptions = NewBlockOptions(0, 4, 1, 50<<20) // EncNone, 50MB
-)
+// Options for the block which are not encoded into it iself.
+type UnencodedBlockOptions struct {
+	MaxBloomSizeBytes uint64
+}
 
 type BlockOptions struct {
 	// Schema determines the Schema of the block and cannot be changed
@@ -31,6 +32,11 @@ type BlockOptions struct {
 	// target size in bytes (decompressed)
 	// of each page type
 	SeriesPageSize, BloomPageSize, BlockSize uint64
+
+	// UnencodedBlockOptions are not encoded into the block's binary format,
+	// but are a helpful way to pass additional options to the block builder.
+	// Thus, they're used during construction but not on reads.
+	UnencodedBlockOptions UnencodedBlockOptions
 }
 
 func (b BlockOptions) Len() int {
@@ -70,14 +76,15 @@ type BlockBuilder struct {
 	blooms *BloomBlockBuilder
 }
 
-func NewBlockOptions(enc chunkenc.Encoding, NGramLength, NGramSkip, MaxBlockSizeBytes uint64) BlockOptions {
+func NewBlockOptions(enc chunkenc.Encoding, nGramLength, nGramSkip, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
 		version:     byte(1),
 		encoding:    enc,
-		nGramLength: NGramLength,
-		nGramSkip:   NGramSkip,
+		nGramLength: nGramLength,
+		nGramSkip:   nGramSkip,
 	})
-	opts.BlockSize = MaxBlockSizeBytes
+	opts.BlockSize = maxBlockSizeBytes
+	opts.UnencodedBlockOptions.MaxBloomSizeBytes = maxBloomSizeBytes
 	return opts
 }
 
@@ -157,7 +164,7 @@ func (b *BlockBuilder) AddSeries(series SeriesWithBloom) (bool, error) {
 		return false, errors.Wrapf(err, "writing index for series %v", series.Series.Fingerprint)
 	}
 
-	full, err := b.isBlockFull()
+	full, _, err := b.IsBlockFull()
 	if err != nil {
 		return false, errors.Wrap(err, "checking if block is full")
 	}
@@ -165,18 +172,18 @@ func (b *BlockBuilder) AddSeries(series SeriesWithBloom) (bool, error) {
 	return full, nil
 }
 
-func (b *BlockBuilder) isBlockFull() (bool, error) {
+func (b *BlockBuilder) IsBlockFull() (full bool, size int, err error) {
+	size, err = b.writer.Size()
+	if err != nil {
+		return false, 0, errors.Wrap(err, "getting block size")
+	}
+
 	// if the block size is 0, the max size is unlimited
 	if b.opts.BlockSize == 0 {
-		return false, nil
+		return false, size, nil
 	}
 
-	size, err := b.writer.Size()
-	if err != nil {
-		return false, errors.Wrap(err, "getting block size")
-	}
-
-	return uint64(size) >= b.opts.BlockSize, nil
+	return uint64(size) >= b.opts.BlockSize, size, nil
 }
 
 type BloomBlockBuilder struct {
@@ -526,7 +533,7 @@ type MergeBuilder struct {
 	// store
 	store Iterator[*Series]
 	// Add chunks to a bloom
-	populate func(*Series, *Bloom) (int, error)
+	populate func(*Series, *Bloom) (sourceBytesAdded int, skipSeries bool, err error)
 	metrics  *Metrics
 }
 
@@ -537,7 +544,7 @@ type MergeBuilder struct {
 func NewMergeBuilder(
 	blocks Iterator[*SeriesWithBloom],
 	store Iterator[*Series],
-	populate func(*Series, *Bloom) (int, error),
+	populate func(*Series, *Bloom) (int, bool, error),
 	metrics *Metrics,
 ) *MergeBuilder {
 	return &MergeBuilder{
@@ -613,8 +620,15 @@ func (mb *MergeBuilder) processNextSeries(
 
 	chunksIndexed += len(chunksToAdd)
 
+	var (
+		err         error
+		skip        bool
+		done        bool
+		sourceBytes int
+	)
+
 	if len(chunksToAdd) > 0 {
-		sourceBytes, err := mb.populate(
+		sourceBytes, skip, err = mb.populate(
 			&Series{
 				Fingerprint: nextInStore.Fingerprint,
 				Chunks:      chunksToAdd,
@@ -628,10 +642,13 @@ func (mb *MergeBuilder) processNextSeries(
 		}
 	}
 
-	done, err := builder.AddSeries(*cur)
-	if err != nil {
-		return nil, bytesAdded, false, false, errors.Wrap(err, "adding series to block")
+	if !skip {
+		done, err = builder.AddSeries(*cur)
+		if err != nil {
+			return nil, bytesAdded, false, false, errors.Wrap(err, "adding series to block")
+		}
 	}
+
 	return nextInBlocks, bytesAdded, blocksFinished, done, nil
 }
 
@@ -656,6 +673,14 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (checksum uint32, totalByte
 	if err := mb.store.Err(); err != nil {
 		return 0, totalBytes, errors.Wrap(err, "iterating store")
 	}
+
+	flushedFor := blockFlushReasonFinished
+	full, sz, _ := builder.IsBlockFull()
+	if full {
+		flushedFor = blockFlushReasonFull
+	}
+	mb.metrics.blockSize.Observe(float64(sz))
+	mb.metrics.blockFlushReason.WithLabelValues(flushedFor).Inc()
 
 	checksum, err = builder.Close()
 	if err != nil {

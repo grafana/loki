@@ -269,18 +269,6 @@ type DetectedLabelsRequest struct {
 	logproto.DetectedLabelsRequest
 }
 
-// NewDetectedLabelsRequest creates a new request for detected labels
-func NewDetectedLabelsRequest(start, end time.Time, query, path string) *DetectedLabelsRequest {
-	return &DetectedLabelsRequest{
-		DetectedLabelsRequest: logproto.DetectedLabelsRequest{
-			Start: &start,
-			End:   &end,
-			Query: query,
-		},
-		path: path,
-	}
-}
-
 func (r *DetectedLabelsRequest) AsProto() *logproto.DetectedLabelsRequest {
 	return &r.DetectedLabelsRequest
 }
@@ -996,9 +984,10 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		return req.WithContext(ctx), nil
 	case *logproto.QueryPatternsRequest:
 		params := url.Values{
+			"query": []string{request.GetQuery()},
 			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
 			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
-			"query": []string{request.GetQuery()},
+			"step":  []string{fmt.Sprintf("%d", request.GetStep())},
 		}
 
 		u := &url.URL{

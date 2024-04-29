@@ -43,6 +43,7 @@ func NewTargetManager(
 	positions positions.Positions,
 	pushClient api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
+	maxLineSize int,
 ) (*TargetManager, error) {
 	noopRegistry := util.NoopRegistry{}
 	noopSdMetrics, err := discovery.CreateAndRegisterSDMetrics(noopRegistry)
@@ -94,6 +95,7 @@ func NewTargetManager(
 						host:             sdConfig.Host,
 						httpClientConfig: sdConfig.HTTPClientConfig,
 						refreshInterval:  sdConfig.RefreshInterval,
+						maxLineSize:      maxLineSize,
 					}
 				}
 				configs[syncerKey] = append(configs[syncerKey], sdConfig)

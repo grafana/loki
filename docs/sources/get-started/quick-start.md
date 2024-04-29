@@ -12,14 +12,15 @@ If you want to experiment with Loki, you can run Loki locally using the Docker C
 The Docker Compose configuration instantiates the following components, each in its own container:
 
 - **flog** a sample application which generates log lines.  [flog](https://github.com/mingrammer/flog) is a log generator for common log formats.
-- **Promtail** which scrapes the log lines from flog, and pushes them to Loki through the gateway.
+- **Grafana Alloy** which scrapes the log lines from flog, and pushes them to Loki through the gateway.
 - **Gateway** (NGINX) which receives requests and redirects them to the appropriate container based on the request's URL.
-- One Loki **read** component.
-- One Loki **write** component.
+- One Loki **read** component (Query Frontend, Querier).
+- One Loki **write** component (Distributor, Ingester).
+- One Loki **backend** component (Index Gateway, Compactor, Ruler, Bloom Compactor (Experimental), Bloom Gateway (Experimental)).
 - **Minio** an S3-compatible object store which Loki uses to store its index and chunks.
 - **Grafana** which provides visualization of the log lines captured within Loki.
 
-{{< figure max-width="75%" src="/media/docs/loki/get-started-flog-v2.png" caption="Getting started sample application" alt="Getting started sample application">}}
+{{< figure max-width="75%" src="/media/docs/loki/get-started-flog-v3.png" caption="Getting started sample application" alt="Getting started sample application">}}
 
 ## Installing Loki and collecting sample logs
 
@@ -41,11 +42,11 @@ This quickstart assumes you are running Linux.
     cd evaluate-loki
     ```
 
-1. Download `loki-config.yaml`, `promtail-local-config.yaml`, and `docker-compose.yaml`:
+1. Download `loki-config.yaml`, `alloy-local-config.yaml`, and `docker-compose.yaml`:
 
     ```bash
     wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/loki-config.yaml -O loki-config.yaml
-    wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/promtail-local-config.yaml -O promtail-local-config.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/alloy-local-config.yaml -O alloy-local-config.yaml
     wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
     ```
 
@@ -63,16 +64,20 @@ This quickstart assumes you are running Linux.
     ✔ Network evaluate-loki_loki          Created      0.1s 
     ✔ Container evaluate-loki-minio-1     Started      0.6s 
     ✔ Container evaluate-loki-flog-1      Started      0.6s 
+    ✔ Container evaluate-loki-backend-1   Started      0.8s 
     ✔ Container evaluate-loki-write-1     Started      0.8s 
     ✔ Container evaluate-loki-read-1      Started      0.8s 
     ✔ Container evaluate-loki-gateway-1   Started      1.1s 
     ✔ Container evaluate-loki-grafana-1   Started      1.4s 
-    ✔ Container evaluate-loki-promtail-1  Started      1.4s 
+    ✔ Container evaluate-loki-alloy-1     Started      1.4s
     ```
 
 1. (Optional) Verify that the Loki cluster is up and running.
     - The read component returns `ready` when you point a web browser at [http://localhost:3101/ready](http://localhost:3101/ready). The message `Query Frontend not ready: not ready: number of schedulers this worker is connected to is 0` will show prior to the read component being ready.
     - The write component returns `ready` when you point a web browser at [http://localhost:3102/ready](http://localhost:3102/ready). The message `Ingester not ready: waiting for 15s after being ready` will show prior to the write component being ready.
+  
+1. (Optional) Verify that Grafana Alloy is running.
+    - Grafana Alloy's UI can be accessed at [http://localhost:12345](http://localhost:12345).  
 
 ## Viewing your logs in Grafana
 

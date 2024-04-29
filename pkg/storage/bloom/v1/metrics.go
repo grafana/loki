@@ -8,16 +8,22 @@ import (
 )
 
 type Metrics struct {
-	sbfCreationTime     prometheus.Counter   // time spent creating sbfs
-	bloomSize           prometheus.Histogram // size of the bloom filter in bytes
-	hammingWeightRatio  prometheus.Histogram // ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter
-	estimatedCount      prometheus.Histogram // estimated number of elements in the bloom filter
+	// writes
+	bloomsTotal         *prometheus.CounterVec // number of blooms created
+	sbfCreationTime     *prometheus.CounterVec // time spent creating sbfs
+	bloomSize           prometheus.Histogram   // size of the bloom filter in bytes
+	hammingWeightRatio  prometheus.Histogram   // ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter
+	estimatedCount      prometheus.Histogram   // estimated number of elements in the bloom filter
 	chunksIndexed       *prometheus.CounterVec
 	chunksPerSeries     prometheus.Histogram
 	blockSeriesIterated prometheus.Counter
 	tokensTotal         prometheus.Counter
 	insertsTotal        *prometheus.CounterVec
+	sourceBytesAdded    prometheus.Counter
+	blockSize           prometheus.Histogram
+	blockFlushReason    *prometheus.CounterVec
 
+	// reads
 	pagesRead    *prometheus.CounterVec
 	pagesSkipped *prometheus.CounterVec
 	bytesRead    *prometheus.CounterVec
@@ -34,21 +40,32 @@ const (
 	collisionTypeTrue      = "true"
 	collisionTypeCache     = "cache"
 
+	blockFlushReasonFull     = "full"
+	blockFlushReasonFinished = "finished"
+
 	pageTypeBloom  = "bloom"
 	pageTypeSeries = "series"
 
 	skipReasonTooLarge = "too_large"
 	skipReasonErr      = "err"
 	skipReasonOOB      = "out_of_bounds"
+
+	bloomCreationTypeIndexed = "indexed"
+	bloomCreationTypeSkipped = "skipped"
 )
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
-		sbfCreationTime: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		bloomsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "blooms_created_total",
+			Help:      "Number of blooms created",
+		}, []string{"type"}),
+		sbfCreationTime: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "bloom_creation_time_total",
 			Help:      "Time spent creating scalable bloom filters",
-		}),
+		}, []string{"type"}),
 		bloomSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Name:      "bloom_size",
@@ -93,6 +110,23 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Name:      "bloom_inserts_total",
 			Help:      "Number of inserts into the bloom filter. collision type may be `false` (no collision), `cache` (found in token cache) or true (found in bloom filter). token_type may be either `raw` (the original ngram) or `chunk_prefixed` (the ngram with the chunk prefix)",
 		}, []string{"token_type", "collision"}),
+		sourceBytesAdded: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_source_bytes_added_total",
+			Help:      "Number of bytes from chunks added to the bloom filter",
+		}),
+
+		blockSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_block_size",
+			Help:      "Size of the bloom block in bytes",
+			Buckets:   prometheus.ExponentialBucketsRange(1<<20, 1<<30, 8),
+		}),
+		blockFlushReason: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_block_flush_reason_total",
+			Help:      "Reason the block was finished. Can be either `full` (the block hit its maximum size) or `finished` (the block was finished due to the end of the series).",
+		}, []string{"reason"}),
 
 		pagesRead: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,

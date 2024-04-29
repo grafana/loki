@@ -111,6 +111,16 @@ func (c *querierClientMock) GetChunkIDs(ctx context.Context, in *logproto.GetChu
 	return res.(*logproto.GetChunkIDsResponse), args.Error(1)
 }
 
+func (c *querierClientMock) GetDetectedLabels(ctx context.Context, in *logproto.DetectedLabelsRequest, opts ...grpc.CallOption) (*logproto.LabelToValuesResponse, error) {
+	args := c.Called(ctx, in, opts)
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.LabelToValuesResponse)(nil), args.Error(1)
+	}
+	return res.(*logproto.LabelToValuesResponse), args.Error(1)
+
+}
+
 func (c *querierClientMock) GetVolume(ctx context.Context, in *logproto.VolumeRequest, opts ...grpc.CallOption) (*logproto.VolumeResponse, error) {
 	args := c.Called(ctx, in, opts)
 	res := args.Get(0)

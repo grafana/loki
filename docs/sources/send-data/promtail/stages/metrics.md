@@ -13,7 +13,8 @@ The `metrics` stage is an action stage that allows for defining and updating
 metrics based on data from the extracted map. Note that created metrics are not
 pushed to Loki and are instead exposed via Promtail's `/metrics` endpoint.
 Prometheus should be configured to scrape Promtail to be able to retrieve the
-metrics configured by this stage.
+metrics configured by this stage. If Promtail's configuration is reloaded, 
+all metrics will be reset.
 
 ## Schema
 

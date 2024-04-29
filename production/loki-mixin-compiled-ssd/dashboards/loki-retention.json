@@ -266,7 +266,7 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/(loki|enterprise-logs)-read\"})",
+                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/(loki|enterprise-logs)-backend\"})",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
@@ -1367,7 +1367,7 @@
                   "span": 12,
                   "targets": [
                      {
-                        "expr": "{cluster=~\"$cluster\", job=~\"($namespace)/(loki|enterprise-logs)-read\"}",
+                        "expr": "{cluster=~\"$cluster\", job=~\"($namespace)/(loki|enterprise-logs)-backend\"}",
                         "refId": "A"
                      }
                   ],

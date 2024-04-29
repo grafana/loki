@@ -123,7 +123,7 @@
                          git config --global --add safe.directory "$GITHUB_WORKSPACE"
                        |||),
 
-  githubAppToken: $.step.new('get github app token', 'actions/github-app-token@v1')
+  githubAppToken: $.step.new('get github app token', 'actions/create-github-app-token@v1')
                   + $.step.withId('get_github_app_token')
                   + $.step.withIf('${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}')
                   + $.step.with({

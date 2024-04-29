@@ -59,6 +59,11 @@ func (c *cri) Name() string {
 	return "cri"
 }
 
+// Cleanup implements Stage.
+func (*cri) Cleanup() {
+	// no-op
+}
+
 // implements Stage interface
 func (c *cri) Run(entry chan Entry) chan Entry {
 	entry = c.base.Run(entry)

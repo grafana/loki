@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -78,10 +79,14 @@ func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequ
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
+	step := model.Time(req.Step)
+	if step < drain.TimeResolution {
+		step = drain.TimeResolution
+	}
 
 	var iters []iter.Iterator
 	err = i.forMatchingStreams(matchers, func(s *stream) error {
-		iter, err := s.Iterator(ctx, from, through)
+		iter, err := s.Iterator(ctx, from, through, step)
 		if err != nil {
 			return err
 		}
