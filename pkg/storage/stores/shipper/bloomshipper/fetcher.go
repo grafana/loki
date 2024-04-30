@@ -129,7 +129,8 @@ func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error
 	}
 	cacheHits, cacheBufs, _, err := f.metasCache.Fetch(ctx, keys)
 	if err != nil {
-		return nil, err
+		level.Error(f.logger).Log("msg", "failed to fetch metas from cache", "err", err)
+		return nil, nil
 	}
 
 	fromCache, missing, err := f.processMetasCacheResponse(ctx, refs, cacheHits, cacheBufs)
