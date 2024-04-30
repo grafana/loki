@@ -931,7 +931,7 @@ enableServiceLinks: false
 {{/* Determine compactor address based on target configuration */}}
 {{- define "loki.compactorAddress" -}}
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true " -}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
 {{- $compactorAddress := include "loki.backendFullname" . -}}
 {{- if and $isSimpleScalable .Values.read.legacyReadTarget -}}
