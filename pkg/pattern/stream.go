@@ -2,12 +2,14 @@ package pattern
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
+	"github.com/grafana/loki/v3/pkg/pattern/tokenization"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -49,7 +51,9 @@ func (s *stream) Push(
 			continue
 		}
 		s.lastTs = entry.Timestamp.UnixNano()
-		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
+		preprocessedContent := tokenization.Preprocess([]byte(entry.Line))
+		preprocessedTokens := strings.Split(string(preprocessedContent), " ")
+		s.patterns.TrainTokens(preprocessedTokens, drain.RemoveNamedVariablesAndConcat, entry.Timestamp.UnixNano())
 	}
 	return nil
 }

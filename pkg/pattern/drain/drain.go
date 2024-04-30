@@ -228,6 +228,15 @@ func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) 
 	return matchCluster
 }
 
+func RemoveNamedVariablesAndConcat(in []string) string {
+	for i, x := range in {
+		if strings.HasPrefix(x, "<") && strings.HasSuffix(x, ">") {
+			in[i] = "<_>"
+		}
+	}
+	return strings.Join(in, " ")
+}
+
 func tokenizePattern(content, param string) []string {
 	return deduplicatePlaceholders(strings.Split(content, " "), param)
 }
