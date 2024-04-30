@@ -42,13 +42,10 @@ func (it *LazyBloomIter) ensureInit() {
 	}
 }
 
-func (it *LazyBloomIter) Seek(offset BloomOffset) {
+// LoadOffset returns whether the bloom page at the given offset should
+// be skipped (due to being too large) _and_ there's no error
+func (it *LazyBloomIter) LoadOffset(offset BloomOffset) (skip bool) {
 	it.ensureInit()
-
-	// reset error from any previous seek/next that yield pages too large
-	if errors.Is(it.err, ErrPageTooLarge) {
-		it.err = nil
-	}
 
 	// if we need a different page or the current page hasn't been loaded,
 	// load the desired page
@@ -63,12 +60,16 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 		r, err := it.b.reader.Blooms()
 		if err != nil {
 			it.err = errors.Wrap(err, "getting blooms reader")
-			return
+			return false
 		}
-		decoder, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.m, it.b.metrics)
+		decoder, skip, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.m, it.b.metrics)
 		if err != nil {
 			it.err = errors.Wrap(err, "loading bloom page")
-			return
+			return false
+		}
+
+		if skip {
+			return true
 		}
 
 		it.curPageIndex = offset.Page
@@ -77,6 +78,7 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 	}
 
 	it.curPage.Seek(offset.ByteOffset)
+	return false
 }
 
 func (it *LazyBloomIter) Next() bool {
@@ -101,17 +103,23 @@ func (it *LazyBloomIter) next() bool {
 				return false
 			}
 
-			it.curPage, err = it.b.blooms.BloomPageDecoder(
+			var skip bool
+			it.curPage, skip, err = it.b.blooms.BloomPageDecoder(
 				r,
 				it.curPageIndex,
 				it.m,
 				it.b.metrics,
 			)
+			// this page wasn't skipped & produced an error, return
 			if err != nil {
 				it.err = err
 				return false
 			}
-			continue
+			if skip {
+				// this page was skipped; check the next
+				it.curPageIndex++
+				continue
+			}
 		}
 
 		if !it.curPage.Next() {

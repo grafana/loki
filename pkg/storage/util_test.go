@@ -244,7 +244,7 @@ func (m *mockChunkStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate, _ *logproto.ChunkRefGroup) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	refs := make([]chunk.Chunk, 0, len(m.chunks))
 	// transform real chunks into ref chunks.
 	for _, c := range m.chunks {

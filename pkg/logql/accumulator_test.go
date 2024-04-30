@@ -51,7 +51,7 @@ func TestDownstreamAccumulatorSimple(t *testing.T) {
 	}
 	// dummy params. Only need to populate direction & limit
 	params, err := NewLiteralParams(
-		`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
+		`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil, nil,
 	)
 	require.NoError(t, err)
 
@@ -110,7 +110,7 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 
 			// dummy params. Only need to populate direction & limit
 			params, err := NewLiteralParams(
-				`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
+				`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil, nil,
 			)
 			require.NoError(t, err)
 
@@ -154,7 +154,7 @@ func BenchmarkAccumulator(b *testing.B) {
 	// dummy params. Only need to populate direction & limit
 	lim := 30
 	params, err := NewLiteralParams(
-		`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, logproto.BACKWARD, uint32(lim), nil,
+		`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, logproto.BACKWARD, uint32(lim), nil, nil,
 	)
 	require.NoError(b, err)
 

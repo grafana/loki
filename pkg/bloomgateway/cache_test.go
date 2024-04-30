@@ -344,7 +344,10 @@ func TestMerge(t *testing.T) {
 			m := newMerger()
 			actual, err := m.MergeResponse(input...)
 			require.NoError(t, err)
-			require.Equal(t, tc.expected, actual)
+
+			resp, ok := actual.(*logproto.FilterChunkRefResponse)
+			require.True(t, ok)
+			require.Equal(t, tc.expected, resp)
 		})
 	}
 }

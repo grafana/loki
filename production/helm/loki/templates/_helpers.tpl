@@ -931,7 +931,7 @@ enableServiceLinks: false
 {{/* Determine compactor address based on target configuration */}}
 {{- define "loki.compactorAddress" -}}
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true "-}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
 {{- $compactorAddress := include "loki.backendFullname" . -}}
 {{- if and $isSimpleScalable .Values.read.legacyReadTarget -}}
@@ -1005,5 +1005,18 @@ Return the object store type for use with the test schema.
     s3
   {{- else -}}
     filesystem
+  {{- end -}}
+{{- end -}}
+
+{{/*
+Return the appropriate apiVersion for HorizontalPodAutoscaler.
+*/}}
+{{- define "loki.hpa.apiVersion" -}}
+  {{- if and (.Capabilities.APIVersions.Has "autoscaling/v2") (semverCompare ">= 1.19-0" .Capabilities.KubeVersion.Version) -}}
+      {{- print "autoscaling/v2" -}}
+  {{- else if .Capabilities.APIVersions.Has "autoscaling/v2beta2" -}}
+    {{- print "autoscaling/v2beta2" -}}
+  {{- else -}}
+    {{- print "autoscaling/v2beta1" -}}
   {{- end -}}
 {{- end -}}

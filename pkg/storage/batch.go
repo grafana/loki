@@ -28,10 +28,11 @@ import (
 )
 
 type ChunkMetrics struct {
-	refs    *prometheus.CounterVec
-	series  *prometheus.CounterVec
-	chunks  *prometheus.CounterVec
-	batches *prometheus.HistogramVec
+	refs         *prometheus.CounterVec
+	refsBypassed prometheus.Counter
+	series       *prometheus.CounterVec
+	chunks       *prometheus.CounterVec
+	batches      *prometheus.HistogramVec
 }
 
 const (
@@ -52,6 +53,12 @@ func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
 			Name:      "chunk_refs_total",
 			Help:      "Number of chunks refs downloaded, partitioned by whether they intersect the query bounds.",
 		}, []string{"status"}),
+		refsBypassed: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Subsystem: "store",
+			Name:      "chunk_ref_lookups_bypassed_total",
+			Help:      "Number of chunk refs that were bypassed due to store overrides: computed during planning to avoid lookups",
+		}),
 		series: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Subsystem: "store",

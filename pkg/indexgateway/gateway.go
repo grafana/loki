@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
@@ -31,6 +32,7 @@ import (
 	seriesindex "github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -67,19 +69,21 @@ type Gateway struct {
 	bloomQuerier BloomQuerier
 	metrics      *Metrics
 
-	cfg Config
-	log log.Logger
+	cfg    Config
+	limits Limits
+	log    log.Logger
 }
 
 // NewIndexGateway instantiates a new Index Gateway and start its services.
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, r prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier) (*Gateway, error) {
+func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		bloomQuerier: bloomQuerier,
 		cfg:          cfg,
+		limits:       limits,
 		log:          log,
 		indexClients: indexClients,
 		metrics:      NewMetrics(r),
@@ -214,7 +218,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	}
 
 	predicate := chunk.NewPredicate(matchers, &req.Plan)
-	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, predicate)
+	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, predicate, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -368,11 +372,12 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 		return err
 	}
 
-	// Shards were requested, but blooms are not enabled or cannot be used due to lack of filters.
-	// That's ok; we can still return shard ranges without filtering
-	// which will be more effective than guessing power-of-2 shard ranges.
 	forSeries, ok := g.indexQuerier.HasForSeries(request.From, request.Through)
-	if g.bloomQuerier == nil || len(syntax.ExtractLineFilters(p.Plan().AST)) == 0 || !ok {
+	if !ok {
+		sp.LogKV(
+			"msg", "index does not support forSeries",
+			"action", "falling back to indexQuerier.GetShards impl",
+		)
 		shards, err := g.indexQuerier.GetShards(
 			ctx,
 			instanceID,
@@ -388,11 +393,11 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 		return server.Send(shards)
 	}
 
-	return g.getShardsWithBlooms(ctx, request, server, instanceID, p, forSeries)
+	return g.boundedShards(ctx, request, server, instanceID, p, forSeries)
 }
 
-// getShardsWithBlooms is a helper function to get shards with blooms enabled.
-func (g *Gateway) getShardsWithBlooms(
+// boundedShards handles bounded shard requests, optionally using blooms and/or returning precomputed chunks.
+func (g *Gateway) boundedShards(
 	ctx context.Context,
 	req *logproto.ShardsRequest,
 	server logproto.IndexGateway_GetShardsServer,
@@ -412,12 +417,12 @@ func (g *Gateway) getShardsWithBlooms(
 	// as getting it _very_ wrong could harm some cache locality benefits on the bloom-gws by
 	// sending multiple requests to the entire keyspace).
 
-	logger := log.With(g.log, "tenant", instanceID)
+	logger := util_log.WithContext(ctx, g.log)
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "indexgateway.getShardsWithBlooms")
 	defer sp.Finish()
 
 	// 1) for all bounds, get chunk refs
-	grps, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, p)
+	grps, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, p, nil)
 	if err != nil {
 		return err
 	}
@@ -435,11 +440,16 @@ func (g *Gateway) getShardsWithBlooms(
 		}
 	}
 
-	// 2) filter via blooms
-	filtered, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
-	if err != nil {
-		return err
+	filtered := refs
+
+	// 2) filter via blooms if enabled
+	if g.bloomQuerier != nil && len(syntax.ExtractLineFilters(p.Plan().AST)) > 0 {
+		filtered, err = g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
+		if err != nil {
+			return err
+		}
 	}
+
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(len(filtered)))
 
@@ -462,16 +472,29 @@ func (g *Gateway) getShardsWithBlooms(
 				Stats:  &logproto.IndexStatsResponse{},
 			},
 		}
+
 	} else {
-		shards, err := accumulateChunksToShards(ctx, instanceID, forSeries, req, p, filtered)
+		shards, chunkGrps, err := accumulateChunksToShards(ctx, instanceID, forSeries, req, p, filtered)
 		if err != nil {
 			return err
 		}
 		resp.Shards = shards
+
+		// If the index gateway is configured to precompute chunks, we can return the chunk groups
+		// alongside the shards, otherwise discarding them
+		if g.limits.TSDBPrecomputeChunks(instanceID) {
+			resp.ChunkGroups = chunkGrps
+		}
 	}
 
 	sp.LogKV("msg", "send shards response", "shards", len(resp.Shards))
 
+	var refCt int
+	for _, grp := range resp.ChunkGroups {
+		refCt += len(grp.Refs)
+	}
+
+	ms := syntax.MatchersExpr{Mts: p.Matchers}
 	level.Debug(logger).Log(
 		"msg", "send shards response",
 		"total_chunks", statistics.Index.TotalChunks,
@@ -479,6 +502,12 @@ func (g *Gateway) getShardsWithBlooms(
 		"shards", len(resp.Shards),
 		"query", req.Query,
 		"target_bytes_per_shard", datasize.ByteSize(req.TargetBytesPerShard).HumanReadable(),
+		"precomputed_refs", refCt,
+		"matchers", ms.String(),
+		"from", req.From.Time().String(),
+		"through", req.Through.Time().String(),
+		"length", req.Through.Time().Sub(req.From.Time()).String(),
+		"end_delta", time.Since(req.Through.Time()).String(),
 	)
 
 	// 3) build shards
@@ -525,7 +554,7 @@ func accumulateChunksToShards(
 	req *logproto.ShardsRequest,
 	p chunk.Predicate,
 	filtered []*logproto.ChunkRef,
-) ([]logproto.Shard, error) {
+) ([]logproto.Shard, []logproto.ChunkRefGroup, error) {
 	// map for looking up post-filtered chunks in O(n) while iterating the index again for sizing info
 	filteredM := make(map[model.Fingerprint][]refWithSizingInfo, 1024)
 	for _, ref := range filtered {
@@ -541,12 +570,13 @@ func accumulateChunksToShards(
 		v1.NewBounds(filtered[0].FingerprintModel(), filtered[len(filtered)-1].FingerprintModel()),
 		req.From, req.Through,
 		func(l labels.Labels, fp model.Fingerprint, chks []tsdb_index.ChunkMeta) (stop bool) {
+			mtx.Lock()
+			defer mtx.Unlock()
+
 			// check if this is a fingerprint we need
 			if _, ok := filteredM[fp]; !ok {
 				return false
 			}
-			mtx.Lock()
-			defer mtx.Unlock()
 
 			filteredChks := filteredM[fp]
 			var j int
@@ -579,7 +609,7 @@ func accumulateChunksToShards(
 		},
 		p.Matchers...,
 	); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	collectedSeries := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(filteredM)))
@@ -597,7 +627,21 @@ func accumulateChunksToShards(
 	}
 	sort.Sort(collectedSeries)
 
-	return collectedSeries.ShardsFor(req.TargetBytesPerShard), nil
+	shards := collectedSeries.ShardsFor(req.TargetBytesPerShard)
+	chkGrps := make([]logproto.ChunkRefGroup, 0, len(shards))
+	for _, s := range shards {
+		from := sort.Search(len(filtered), func(i int) bool {
+			return filtered[i].Fingerprint >= uint64(s.Bounds.Min)
+		})
+		through := sort.Search(len(filtered), func(i int) bool {
+			return filtered[i].Fingerprint > uint64(s.Bounds.Max)
+		})
+		chkGrps = append(chkGrps, logproto.ChunkRefGroup{
+			Refs: filtered[from:through],
+		})
+	}
+
+	return shards, chkGrps, nil
 }
 
 type refWithSizingInfo struct {

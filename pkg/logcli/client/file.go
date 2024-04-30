@@ -77,6 +77,7 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 		direction,
 		uint32(limit),
 		nil,
+		nil,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse query: %w", err)
@@ -117,6 +118,7 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 		interval,
 		direction,
 		uint32(limit),
+		nil,
 		nil,
 	)
 	if err != nil {

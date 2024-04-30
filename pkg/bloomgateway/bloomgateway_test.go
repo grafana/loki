@@ -640,12 +640,12 @@ func TestFilterChunkRefs(t *testing.T) {
 				{
 					{fp: 0, checksums: []uint32{0, 1}},
 					{fp: 0, checksums: []uint32{0, 1, 2}},
-					{fp: 1, checksums: []uint32{1}},
+					{fp: 1, checksums: []uint32{0, 2}},
 					{fp: 2, checksums: []uint32{1}},
 				},
 			},
 			expected: mkResult([]instruction{
-				{fp: 1, checksums: []uint32{0, 2}},
+				{fp: 1, checksums: []uint32{1}},
 				{fp: 2, checksums: []uint32{0, 2}},
 				{fp: 3, checksums: []uint32{0, 1, 2}},
 			}),
@@ -668,6 +668,27 @@ func TestFilterChunkRefs(t *testing.T) {
 				{fp: 1, checksums: []uint32{0, 1, 2}},
 				{fp: 2, checksums: []uint32{0, 2}},
 				{fp: 3, checksums: []uint32{0, 1, 2}},
+			}),
+		},
+		{
+			desc:  "unordered fingerprints",
+			input: mkInput(4, 3),
+			removals: [][]instruction{
+				{
+					{fp: 3, checksums: []uint32{2}},
+					{fp: 0, checksums: []uint32{1, 2}},
+					{fp: 2, checksums: []uint32{1, 2}},
+				},
+				{
+					{fp: 1, checksums: []uint32{1}},
+					{fp: 2, checksums: []uint32{0, 1}},
+					{fp: 3, checksums: []uint32{0}},
+				},
+			},
+			expected: mkResult([]instruction{
+				{fp: 0, checksums: []uint32{0}},
+				{fp: 1, checksums: []uint32{0, 2}},
+				{fp: 3, checksums: []uint32{1}},
 			}),
 		},
 	} {
