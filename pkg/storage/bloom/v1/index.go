@@ -425,6 +425,18 @@ func (r *ChunkRef) Less(other ChunkRef) bool {
 	return r.Checksum < other.Checksum
 }
 
+func (r *ChunkRef) Cmp(other ChunkRef) int {
+	if r.From != other.From {
+		return int(other.From) - int(r.From)
+	}
+
+	if r.Through != other.Through {
+		return int(other.Through) - int(r.Through)
+	}
+
+	return int(other.Checksum) - int(r.Checksum)
+}
+
 func (r *ChunkRef) Encode(enc *encoding.Encbuf, previousEnd model.Time) model.Time {
 	// delta encode start time
 	enc.PutVarint64(int64(r.From - previousEnd))
