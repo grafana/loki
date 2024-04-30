@@ -236,6 +236,7 @@ func TestInstanceFor(t *testing.T) {
 			logproto.BACKWARD,
 			1000,
 			nil,
+			nil,
 		)
 		require.NoError(t, err)
 		return params
@@ -340,6 +341,7 @@ func TestInstanceDownstream(t *testing.T) {
 			logproto.BACKWARD,
 			1000,
 			nil,
+			nil,
 		)
 		require.NoError(t, err)
 		expr, err := syntax.ParseExpr(`{foo="bar"}`)
@@ -411,6 +413,7 @@ func TestInstanceDownstream(t *testing.T) {
 			0,
 			logproto.BACKWARD,
 			1000,
+			nil,
 			nil,
 		)
 		require.NoError(t, err)
