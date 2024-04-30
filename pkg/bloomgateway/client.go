@@ -310,8 +310,13 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 		v1.Identity[*logproto.GroupedChunkRefs],
 		// merge
 		func(a, b *logproto.GroupedChunkRefs) *logproto.GroupedChunkRefs {
-			slices.SortFunc(a.Refs, func(a, b *logproto.ShortRef) int { return a.Cmp(b) })
-			slices.SortFunc(b.Refs, func(a, b *logproto.ShortRef) int { return a.Cmp(b) })
+			// TODO(chaudum): Check if we can assume sorted shortrefs here
+			if !slices.IsSortedFunc(a.Refs, func(a, b *logproto.ShortRef) int { return a.Cmp(b) }) {
+				slices.SortFunc(a.Refs, func(a, b *logproto.ShortRef) int { return a.Cmp(b) })
+			}
+			if !slices.IsSortedFunc(b.Refs, func(a, b *logproto.ShortRef) int { return a.Cmp(b) }) {
+				slices.SortFunc(b.Refs, func(a, b *logproto.ShortRef) int { return a.Cmp(b) })
+			}
 			return &logproto.GroupedChunkRefs{
 				Fingerprint: a.Fingerprint,
 				Tenant:      a.Tenant,
