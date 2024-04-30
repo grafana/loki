@@ -90,6 +90,7 @@ func TestMappingEquivalence(t *testing.T) {
 				logproto.FORWARD,
 				uint32(limit),
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 
@@ -162,6 +163,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 				logproto.FORWARD,
 				uint32(limit),
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 			qry := regular.Query(params)
@@ -196,6 +198,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 				0,
 				logproto.FORWARD,
 				uint32(limit),
+				nil,
 				nil,
 			)
 			require.NoError(t, err)
@@ -263,6 +266,7 @@ func TestShardCounter(t *testing.T) {
 				interval,
 				logproto.FORWARD,
 				uint32(limit),
+				nil,
 				nil,
 			)
 			require.NoError(t, err)
@@ -524,6 +528,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 				logproto.FORWARD,
 				uint32(limit),
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 
@@ -627,7 +632,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 					shard: NewPowerOfTwoShard(index.ShardAnnotation{
 						Shard: 0,
 						Of:    3,
-					}).Ptr(),
+					}).Bind(nil),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeRate,
 						Left: &syntax.LogRange{
@@ -643,7 +648,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 						shard: NewPowerOfTwoShard(index.ShardAnnotation{
 							Shard: 1,
 							Of:    3,
-						}).Ptr(),
+						}).Bind(nil),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
 							Left: &syntax.LogRange{
@@ -659,7 +664,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 1,
 								Of:    3,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.RangeAggregationExpr{
 								Operation: syntax.OpRangeTypeRate,
 								Left: &syntax.LogRange{

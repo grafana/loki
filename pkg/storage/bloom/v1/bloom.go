@@ -17,7 +17,6 @@ import (
 // gateways to OOM.
 // Figure out a decent default maximum page size that we can process.
 var DefaultMaxPageSize = 64 << 20 // 64MB
-var ErrPageTooLarge = errors.Errorf("bloom page too large")
 
 type Bloom struct {
 	filter.ScalableBloomFilter
@@ -275,11 +274,14 @@ func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) (uint32, error) {
 	return checksum, nil
 }
 
-func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize int, metrics *Metrics) (res *BloomPageDecoder, err error) {
+// BloomPageDecoder returns a decoder for the given page index.
+// It may skip the page if it's too large.
+// NB(owen-d): if `skip` is true, err _must_ be nil.
+func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize int, metrics *Metrics) (res *BloomPageDecoder, skip bool, err error) {
 	if pageIdx < 0 || pageIdx >= len(b.pageHeaders) {
 		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonOOB).Inc()
 		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonOOB).Add(float64(b.pageHeaders[pageIdx].DecompressedLen))
-		return nil, fmt.Errorf("invalid page (%d) for bloom page decoding", pageIdx)
+		return nil, false, fmt.Errorf("invalid page (%d) for bloom page decoding", pageIdx)
 	}
 
 	page := b.pageHeaders[pageIdx]
@@ -288,13 +290,13 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 	if page.Len > maxPageSize {
 		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonTooLarge).Inc()
 		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonTooLarge).Add(float64(page.DecompressedLen))
-		return nil, ErrPageTooLarge
+		return nil, true, nil
 	}
 
 	if _, err = r.Seek(int64(page.Offset), io.SeekStart); err != nil {
 		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonErr).Inc()
 		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonErr).Add(float64(page.DecompressedLen))
-		return nil, errors.Wrap(err, "seeking to bloom page")
+		return nil, false, errors.Wrap(err, "seeking to bloom page")
 	}
 
 	if b.schema.encoding == chunkenc.EncNone {
@@ -306,10 +308,10 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 	if err != nil {
 		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonErr).Inc()
 		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonErr).Add(float64(page.DecompressedLen))
-		return nil, errors.Wrap(err, "decoding bloom page")
+		return nil, false, errors.Wrap(err, "decoding bloom page")
 	}
 
 	metrics.pagesRead.WithLabelValues(pageTypeBloom).Inc()
 	metrics.bytesRead.WithLabelValues(pageTypeBloom).Add(float64(page.DecompressedLen))
-	return res, nil
+	return res, false, nil
 }

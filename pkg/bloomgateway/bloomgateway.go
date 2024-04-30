@@ -44,6 +44,7 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -383,6 +384,10 @@ func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Tas
 		case <-ctx.Done():
 			// do nothing
 		default:
+			// chunks may not always be sorted
+			if !slices.IsSortedFunc(res.Removals, func(a, b v1.ChunkRef) int { return a.Cmp(b) }) {
+				slices.SortFunc(res.Removals, func(a, b v1.ChunkRef) int { return a.Cmp(b) })
+			}
 			task.responses = append(task.responses, res)
 		}
 	}
@@ -413,13 +418,14 @@ func orderedResponsesByFP(responses [][]v1.Output) v1.Iterator[v1.Output] {
 		itrs = append(itrs, v1.NewPeekingIter(v1.NewSliceIter(r)))
 	}
 	return v1.NewHeapIterator[v1.Output](
-		func(o1, o2 v1.Output) bool { return o1.Fp <= o2.Fp },
+		func(o1, o2 v1.Output) bool { return o1.Fp < o2.Fp },
 		itrs...,
 	)
 }
 
 // TODO(owen-d): improve perf. This can be faster with a more specialized impl
 // NB(owen-d): `req` is mutated in place for performance, but `responses` is not
+// Removals of the outputs must be sorted.
 func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses [][]v1.Output) []*logproto.GroupedChunkRefs {
 	res := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
 
@@ -433,6 +439,7 @@ func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses [][]v1.Outpu
 		// from
 		v1.Identity[v1.Output],
 		// merge two removal sets for the same series, deduping
+		// requires that the removals of the outputs are sorted
 		func(o1, o2 v1.Output) v1.Output {
 			res := v1.Output{Fp: o1.Fp}
 
