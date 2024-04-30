@@ -13,6 +13,10 @@ Parameters:
     Description: The maximum of concurrent executions you want to reserve for the function.
     Type: Number
     Default: 2
+  MaximumEventAgeInSeconds:
+    Description: The maximum age of a request that Lambda sends to a function for processing.
+    Type: Number
+    Default: 21600
   Username:
     Description: The basic auth username, necessary if writing directly to Grafana Cloud Loki.
     Type: String
@@ -51,6 +55,14 @@ Parameters:
     Description: Determines whether to verify the TLS certificate
     Type: String
     Default: "false"
+  LogGroupName:
+    Description: Name of the CloudWatch Log Group to subscribe from.
+    Type: String
+    Default: "/aws/lambda/some-lamda-log-group"
+  IAMRoleName:
+    Description: Name of the LambdaPromtailRole IAM Role.
+    Type: String
+    Default: "iam_for_lambda"
 
 Resources:
   LambdaPromtailRole:
@@ -78,7 +90,7 @@ Resources:
             - logs:PutLogEvents
             - logs:PutSubscriptionFilter
             Resource: arn:aws:logs:*:*:*
-      RoleName: iam_for_lambda
+      RoleName: !Ref IAMRoleName
   LambdaPromtailFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -119,6 +131,7 @@ Resources:
     Properties:
       FunctionName: !Ref LambdaPromtailFunction
       MaximumRetryAttempts: 2
+      MaximumEventAgeInSeconds: !Ref MaximumEventAgeInSeconds
       Qualifier: !GetAtt LambdaPromtailVersion.Version
   # Copy this block and modify as required to create Subscription Filters for
   # additional CloudWatch Log Groups.
@@ -128,7 +141,7 @@ Resources:
     Properties:
       DestinationArn: !GetAtt LambdaPromtailFunction.Arn
       FilterPattern: ""
-      LogGroupName: "/aws/lambda/some-lamda-log-group"
+      LogGroupName: !Ref LogGroupName
 
 Outputs:
   LambdaPromtailFunction:
