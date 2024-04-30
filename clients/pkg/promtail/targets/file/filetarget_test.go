@@ -410,8 +410,11 @@ func TestFileTarget_StopAbruptly(t *testing.T) {
 	// If FileHandler works well, then it will stop waiting for
 	// the blocked fakeHandler and stop cleanly.
 	// This is why this time we don't drain fakeHandler.
-	target.Stop()
-	ps.Stop()
+	requireEventually(t, func() bool {
+		target.Stop()
+		ps.Stop()
+		return true
+	}, "expected FileTarget not to hang")
 
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
 		# HELP promtail_files_active_total Number of active files.
