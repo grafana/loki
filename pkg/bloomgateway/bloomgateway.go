@@ -44,6 +44,7 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -383,8 +384,10 @@ func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Tas
 		case <-ctx.Done():
 			// do nothing
 		default:
-			// chunks may not be sorted
-			sort.Slice(res.Removals, func(i, j int) bool { return res.Removals[i].Less(res.Removals[j]) })
+			// chunks may not always be sorted
+			if !slices.IsSortedFunc(res.Removals, func(a, b v1.ChunkRef) int { return a.Cmp(b) }) {
+				slices.SortFunc(res.Removals, func(a, b v1.ChunkRef) int { return a.Cmp(b) })
+			}
 			task.responses = append(task.responses, res)
 		}
 	}
