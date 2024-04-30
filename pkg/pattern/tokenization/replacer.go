@@ -57,6 +57,8 @@ type replacer struct {
 	// A somewhat hacky solution that allows us to preserve specific numeric
 	// values we care about, like status and status_code.
 	preserveNextNumbers bool
+
+	replaceNumbers bool
 }
 
 // commit advances the current position marker to the lookahead position, i.e.
@@ -350,12 +352,18 @@ func (r *replacer) advance() (c byte, advanced bool) {
 }
 
 func (r *replacer) emitNumber() {
+	if !r.replaceNumbers {
+		return
+	}
 	r.commit()
 	r.dest = append(r.dest, placeholderNumber...)
 	r.consumeUpToCurrent()
 }
 
 func (r *replacer) emitNumberOrCopyText(hasMinusPrefix bool) {
+	if !r.replaceNumbers {
+		return
+	}
 	r.commit()
 	if !r.preserveNextNumbers {
 		r.dest = append(r.dest, placeholderNumber...)

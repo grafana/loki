@@ -27,6 +27,8 @@ type tokenizer struct {
 	// allocate new memory.
 	line   string
 	tokens []string
+
+	tokeniseWholeQuotes bool
 }
 
 func (t *tokenizer) countOrSaveToken(endTokenPos, skip int) {
@@ -75,14 +77,14 @@ func (t *tokenizer) handleNextToken() bool {
 		// character is also part of the current token. The only special case
 		// here is if the current character is a matching quote, that means
 		// we'll no longer be quoted.
-		case curQuotePos >= 0:
+		case t.tokeniseWholeQuotes && curQuotePos >= 0:
 			if c == curQuoteChar { // end quote
 				curQuotePos = -1
 			}
 
 		// If we encounter a qoute character and we were not already in a quoted
 		// part of the line, mark that we are now in a quote from that type.
-		case c == '"' || c == '\'' || c == '`':
+		case t.tokeniseWholeQuotes && (c == '"' || c == '\'' || c == '`'):
 			curQuoteChar = c
 			curQuotePos = p
 

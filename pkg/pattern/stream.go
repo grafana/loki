@@ -2,7 +2,6 @@ package pattern
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"time"
 
@@ -51,9 +50,9 @@ func (s *stream) Push(
 			continue
 		}
 		s.lastTs = entry.Timestamp.UnixNano()
-		preprocessedContent := tokenization.Preprocess([]byte(entry.Line))
-		preprocessedTokens := strings.Split(string(preprocessedContent), " ")
-		s.patterns.TrainTokens(preprocessedTokens, drain.RemoveNamedVariablesAndConcat, entry.Timestamp.UnixNano())
+		preprocessedContent := tokenization.PreprocessAndTokenize([]byte(entry.Line))
+		//preprocessedTokens := strings.Split(string(preprocessedContent), " ")
+		s.patterns.TrainTokens(preprocessedContent, drain.RemoveNamedVariablesAndConcat, entry.Timestamp.UnixNano())
 	}
 	return nil
 }
