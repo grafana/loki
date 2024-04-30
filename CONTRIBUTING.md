@@ -6,6 +6,8 @@ Loki uses GitHub to manage reviews of pull requests:
 - If you plan to do something more involved, discuss your ideas on the relevant GitHub issue.
 - Make sure to follow the prerequisites below before marking your PR as ready for review.
 
+**Note that promtail is considered to be feature complete, and future development for logs collection will be present in [Grafana Alloy](https://github.com/grafana/alloy)**
+
 ## Loki Improvement Documents (LIDs)
 
 Before creating a large pull request to change or add functionality, please create a _Loki Improvement Document (LID)_. We use LIDs to discuss and vet ideas submitted by maintainers or the community in an open and transparent way. As of Jan 2023, we are starting with a lightweight LID process and we may add more structure, inspired by Python's [PEP](https://peps.python.org/pep-0001/) and Kafka's [KIP](https://cwiki.apache.org/confluence/display/KAFKA/Kafka+Improvement+Proposals) approaches.
