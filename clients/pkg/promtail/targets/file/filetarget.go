@@ -355,9 +355,13 @@ func (t *FileTarget) startTailing(ps []string) {
 			continue
 		}
 
-		fi, err := os.Stat(p)
+		fi, err := os.Lstat(p)
 		if err != nil {
-			level.Error(t.logger).Log("msg", "failed to tail file, stat failed", "error", err, "filename", p)
+			if fi.Mode()&os.ModeSymlink != 0 {
+				level.Error(t.logger).Log("msg", "failed to tail file, file is a symbolic link", "error", err, "filename", p)
+			} else {
+				level.Error(t.logger).Log("msg", "failed to tail file, stat failed", "error", err, "filename", p)
+			}
 			t.metrics.totalBytes.DeleteLabelValues(p)
 			continue
 		}
