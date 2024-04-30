@@ -180,6 +180,13 @@ func (s *ScalableBloomFilter) TestAndAdd(data []byte) bool {
 	return member
 }
 
+// HeavyAdd adds a new element to the filter and returns a few metrics (the "heavy" part)
+func (s *ScalableBloomFilter) HeavyAdd(data []byte) (noop bool, bloomSize int) {
+	noop = s.TestAndAdd(data)
+	sz := s.Capacity() / 8 // convert bits to bytes
+	return noop, int(sz)
+}
+
 // Reset restores the Bloom filter to its original state. It returns the filter
 // to allow for chaining.
 func (s *ScalableBloomFilter) Reset() *ScalableBloomFilter {

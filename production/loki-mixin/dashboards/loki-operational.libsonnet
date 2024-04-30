@@ -88,8 +88,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                      'cluster="$cluster"',
                                      $._config.per_cluster_label + '="$cluster"'
                                    ),
-                                   'cluster_',
-                                   $._config.per_cluster_label + '_'
+                                   'cluster_job',
+                                   $._config.per_cluster_label + '_job'
                                  )
                                  else
                                    std.strReplace(
