@@ -329,7 +329,6 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 func mergeChunkSets(s1, s2 []*logproto.ShortRef) (result []*logproto.ShortRef) {
 	var i, j int
 	for i < len(s1) && j < len(s2) {
-
 		a, b := s1[i], s2[j]
 
 		if a.Equal(b) {
@@ -342,10 +341,11 @@ func mergeChunkSets(s1, s2 []*logproto.ShortRef) (result []*logproto.ShortRef) {
 		if a.Less(b) {
 			result = append(result, a)
 			i++
-		} else {
-			result = append(result, b)
-			j++
+			continue
 		}
+
+		result = append(result, b)
+		j++
 	}
 
 	if i < len(s1) {
