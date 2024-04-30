@@ -19,7 +19,7 @@ metadata:
     {{- end }}
   {{- end }}
 spec:
-{{- if not .Values.write.autoscaling.enabled }}
+{{- if not .Values.backend.autoscaling.enabled }}
   {{- if eq .Values.deploymentMode "SingleBinary" }}
   replicas: 0
   {{- else }}
