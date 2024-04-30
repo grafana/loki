@@ -914,7 +914,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	if err != nil {
 		return nil, err
 	}
-	//staticLabels := map[string]struct{}{"cluster": {}, "namespace": {}, "instance": {}, "pod": {}}
+	staticLabels := map[string]struct{}{"cluster": {}, "namespace": {}, "instance": {}, "pod": {}}
 
 	// Enforce the query timeout while querying backends
 	queryTimeout := q.limits.QueryTimeout(ctx, userID)
@@ -961,9 +961,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 				if err != nil {
 					return err
 				}
-				//if isLabelRelevant(label, values, staticLabels) {
 				storeLabelsMap[label] = values
-				//}
 			}
 			return err
 		})
@@ -980,38 +978,43 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	}
 
 	return &logproto.DetectedLabelsResponse{
-		DetectedLabels: countLabelsAndCardinality(storeLabelsMap, ingesterLabels),
+		DetectedLabels: countLabelsAndCardinality(storeLabelsMap, ingesterLabels, staticLabels),
 	}, nil
 }
 
-func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabels *logproto.LabelToValuesResponse) []*logproto.DetectedLabel {
+func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabels *logproto.LabelToValuesResponse, staticLabels map[string]struct{}) []*logproto.DetectedLabel {
 	dlMap := make(map[string]*parsedFields)
 
 	if ingesterLabels != nil {
 		for label, val := range ingesterLabels.Labels {
+			if _, isStatic := staticLabels[label]; isStatic || !containsAllIDTypes(val.Values) {
+				_, ok := dlMap[label]
+				if !ok {
+					dlMap[label] = newParsedFields()
+				}
+
+				parsedFields := dlMap[label]
+				for _, v := range val.Values {
+					parsedFields.Insert(v)
+				}
+			}
+		}
+	}
+
+	for label, values := range storeLabelsMap {
+		if _, isStatic := staticLabels[label]; isStatic || !containsAllIDTypes(values) {
 			_, ok := dlMap[label]
 			if !ok {
 				dlMap[label] = newParsedFields()
 			}
 
 			parsedFields := dlMap[label]
-			for _, v := range val.Values {
+			for _, v := range values {
 				parsedFields.Insert(v)
 			}
 		}
 	}
 
-	for label, values := range storeLabelsMap {
-		_, ok := dlMap[label]
-		if !ok {
-			dlMap[label] = newParsedFields()
-		}
-
-		parsedFields := dlMap[label]
-		for _, v := range values {
-			parsedFields.Insert(v)
-		}
-	}
 	var detectedLabels []*logproto.DetectedLabel
 	for k, v := range dlMap {
 		sketch, err := v.sketch.MarshalBinary()
@@ -1042,19 +1045,6 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 	}
 	res, err := q.patternQuerier.Patterns(ctx, req)
 	return res, err
-}
-
-// isLabelRelevant returns if the label is relevant for logs app. A label is relevant if it is not of any numeric, UUID or GUID type
-// It is also not relevant to return if the values are less than 1 or beyond 50.
-func isLabelRelevant(label string, values []string, staticLabels map[string]struct{}) bool {
-	cardinality := len(values)
-	_, isStaticLabel := staticLabels[label]
-	if isStaticLabel || (cardinality < 2 || cardinality > 50) ||
-		containsAllIDTypes(values) {
-		return false
-	}
-
-	return true
 }
 
 // containsAllIDTypes filters out all UUID, GUID and numeric types. Returns false if even one value is not of the type

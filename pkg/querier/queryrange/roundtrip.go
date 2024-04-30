@@ -263,7 +263,6 @@ func NewMiddleware(
 		indexStatsTripperware,
 		metricsNamespace,
 		codec, limits, iqo)
-
 	if err != nil {
 		return nil, nil, err
 	}
@@ -309,9 +308,36 @@ func NewDetectedLabelsTripperware(cfg Config, opts logql.EngineOpts, logger log.
 				base.NewRetryMiddleware(logger, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, namespace),
 			)
 		}
-
-		return NewLimitedRoundTripper(next, l, schema.Configs, queryRangeMiddleware...)
+		limitedRt := NewLimitedRoundTripper(next, l, schema.Configs, queryRangeMiddleware...)
+		return NewDetectedLabelsCardinalityFilter(limitedRt)
 	}), nil
+}
+
+func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebase.Handler {
+	return queryrangebase.HandlerFunc(
+		func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			res, err := rt.Do(ctx, req)
+			if err != nil {
+				return nil, err
+			}
+
+			resp, ok := res.(*DetectedLabelsResponse)
+			if !ok {
+				return res, nil
+			}
+
+			var result []*logproto.DetectedLabel
+
+			for _, dl := range resp.Response.DetectedLabels {
+				if dl.Cardinality > 2 && dl.Cardinality < 50 {
+					result = append(result, dl)
+				}
+			}
+			return &DetectedLabelsResponse{
+				Response: &logproto.DetectedLabelsResponse{DetectedLabels: result},
+				Headers:  resp.Headers,
+			}, nil
+		})
 }
 
 type roundTripper struct {

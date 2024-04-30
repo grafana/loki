@@ -1598,106 +1598,78 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 			assert.Equal(t, d.Cardinality, card, "Expected cardinality mismatch for: ", d.Label)
 		}
 	})
-	//
-	//t.Run("id types like uuids, guids and numbers are not relevant detected labels", func(t *testing.T) {
-	//	ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
-	//		"all-ints":   {Values: []string{"1", "2", "3", "4"}},
-	//		"all-floats": {Values: []string{"1.2", "2.3", "3.4", "4.5"}},
-	//		"all-uuids":  {Values: []string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef", "6b7e2663-8ecb-42e1-8bdc-0c5de70185b3", "2e1e67ff-be4f-47b8-aee1-5d67ff1ddabf", "c95b2d62-74ed-4ed7-a8a1-eb72fc67946e"}},
-	//	}}
-	//
-	//	ingesterClient := newQuerierClientMock()
-	//	storeClient := newStoreMock()
-	//
-	//	ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-	//		Return(&ingesterResponse, nil)
-	//	storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-	//		Return([]string{}, nil)
-	//
-	//	querier, err := newQuerier(
-	//		conf,
-	//		mockIngesterClientConfig(),
-	//		newIngesterClientMockFactory(ingesterClient),
-	//		mockReadRingWithOneActiveIngester(),
-	//		&mockDeleteGettter{},
-	//		storeClient, limits)
-	//	require.NoError(t, err)
-	//
-	//	resp, err := querier.DetectedLabels(ctx, &request)
-	//	require.NoError(t, err)
-	//
-	//	detectedLabels := resp.DetectedLabels
-	//	assert.Len(t, detectedLabels, 0)
-	//})
-	//
-	//t.Run("labels with more than required cardinality are not relevant", func(t *testing.T) {
-	//	ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
-	//		"less-than-m-values": {Values: []string{"val1"}},
-	//		"more-than-n-values": {Values: manyValues},
-	//	}}
-	//
-	//	ingesterClient := newQuerierClientMock()
-	//	storeClient := newStoreMock()
-	//
-	//	ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-	//		Return(&ingesterResponse, nil)
-	//	storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-	//		Return([]string{}, nil)
-	//
-	//	querier, err := newQuerier(
-	//		conf,
-	//		mockIngesterClientConfig(),
-	//		newIngesterClientMockFactory(ingesterClient),
-	//		mockReadRingWithOneActiveIngester(),
-	//		&mockDeleteGettter{},
-	//		storeClient, limits)
-	//	require.NoError(t, err)
-	//
-	//	resp, err := querier.DetectedLabels(ctx, &request)
-	//	require.NoError(t, err)
-	//
-	//	detectedLabels := resp.DetectedLabels
-	//	assert.Len(t, detectedLabels, 0)
-	//})
-	//
-	//t.Run("static labels are always returned no matter their cardinality or value types", func(t *testing.T) {
-	//	ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
-	//		"cluster":   {Values: []string{"val1"}},
-	//		"namespace": {Values: manyValues},
-	//		"pod":       {Values: []string{"1", "2", "3", "4"}},
-	//	}}
-	//
-	//	ingesterClient := newQuerierClientMock()
-	//	storeClient := newStoreMock()
-	//
-	//	ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-	//		Return(&ingesterResponse, nil)
-	//	storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-	//		Return([]string{}, nil)
-	//	request := logproto.DetectedLabelsRequest{
-	//		Start: now,
-	//		End:   now,
-	//		Query: "",
-	//	}
-	//
-	//	querier, err := newQuerier(
-	//		conf,
-	//		mockIngesterClientConfig(),
-	//		newIngesterClientMockFactory(ingesterClient),
-	//		mockReadRingWithOneActiveIngester(),
-	//		&mockDeleteGettter{},
-	//		storeClient, limits)
-	//	require.NoError(t, err)
-	//
-	//	resp, err := querier.DetectedLabels(ctx, &request)
-	//	require.NoError(t, err)
-	//
-	//	detectedLabels := resp.DetectedLabels
-	//	assert.Len(t, detectedLabels, 3)
-	//	assert.Contains(t, detectedLabels, &logproto.DetectedLabel{Label: "cluster", Cardinality: 1})
-	//	assert.Contains(t, detectedLabels, &logproto.DetectedLabel{Label: "pod", Cardinality: 4})
-	//	assert.Contains(t, detectedLabels, &logproto.DetectedLabel{Label: "namespace", Cardinality: 60})
-	//})
+
+	t.Run("id types like uuids, guids and numbers are not relevant detected labels", func(t *testing.T) {
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"all-ints":   {Values: []string{"1", "2", "3", "4"}},
+			"all-floats": {Values: []string{"1.2", "2.3", "3.4", "4.5"}},
+			"all-uuids":  {Values: []string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef", "6b7e2663-8ecb-42e1-8bdc-0c5de70185b3", "2e1e67ff-be4f-47b8-aee1-5d67ff1ddabf", "c95b2d62-74ed-4ed7-a8a1-eb72fc67946e"}},
+		}}
+
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(&ingesterResponse, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{}, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+
+		detectedLabels := resp.DetectedLabels
+		assert.Len(t, detectedLabels, 0)
+	})
+
+	t.Run("static labels are always returned no matter their cardinality or value types", func(t *testing.T) {
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"cluster":   {Values: []string{"val1"}},
+			"namespace": {Values: manyValues},
+			"pod":       {Values: []string{"1", "2", "3", "4"}},
+		}}
+
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(&ingesterResponse, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{}, nil)
+		request := logproto.DetectedLabelsRequest{
+			Start: now,
+			End:   now,
+			Query: "",
+		}
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+
+		detectedLabels := resp.DetectedLabels
+		assert.Len(t, detectedLabels, 3)
+		expectedCardinality := map[string]uint64{"cluster": 1, "pod": 4, "namespace": 60}
+		for _, d := range detectedLabels {
+			card := expectedCardinality[d.Label]
+			assert.Equal(t, d.Cardinality, card, "Expected cardinality mismatch for: ", d.Label)
+		}
+	})
 }
 
 func BenchmarkQuerierDetectedLabels(b *testing.B) {
