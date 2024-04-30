@@ -23,7 +23,7 @@ spec:
   {{- if eq .Values.deploymentMode "SingleBinary" }}
   replicas: 0
   {{- else }}
-  replicas: {{ .Values.write.replicas }}
+  replicas: {{ .Values.backend.replicas }}
   {{- end }}
 {{- end }}
   podManagementPolicy: {{ .Values.backend.podManagementPolicy }}
