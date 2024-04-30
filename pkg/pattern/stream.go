@@ -2,6 +2,7 @@ package pattern
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,9 +51,16 @@ func (s *stream) Push(
 			continue
 		}
 		s.lastTs = entry.Timestamp.UnixNano()
-		preprocessedContent := tokenization.PreprocessAndTokenize([]byte(entry.Line))
-		//preprocessedTokens := strings.Split(string(preprocessedContent), " ")
-		s.patterns.TrainTokens(preprocessedContent, drain.RemoveNamedVariablesAndConcat, entry.Timestamp.UnixNano())
+
+		preprocessedContent := string(tokenization.Preprocess([]byte(entry.Line)))
+		spaces := strings.Count(preprocessedContent, " ")
+		commas := strings.Count(preprocessedContent, ",")
+		delimiter := " "
+		if commas > spaces {
+			delimiter = ","
+		}
+		preprocessedTokens := strings.Split(preprocessedContent, delimiter)
+		s.patterns.TrainTokens(preprocessedTokens, func(in []string) string { return strings.Join(in, delimiter) }, 0)
 	}
 	return nil
 }

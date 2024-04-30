@@ -130,7 +130,7 @@ func DefaultConfig() *Config {
 		//  > message are more likely to be constants. Specifically, Drain
 		//  > selects the next internal node by the tokens in the beginning
 		//  > positions of the log message
-		LogClusterDepth: 100,
+		LogClusterDepth: 10,
 		// SimTh is basically a ratio of matching/total in the cluster.
 		// Cluster tokens: "foo <*> bar fred"
 		//       Log line: "foo bar baz qux"
@@ -139,7 +139,7 @@ func DefaultConfig() *Config {
 		// Both SimTh and MaxClusterDepth impact branching factor: the greater
 		// MaxClusterDepth and SimTh, the less the chance that there will be
 		// "similar" clusters, but the greater the footprint.
-		SimTh:       0.6,
+		SimTh:       0.5,
 		MaxChildren: 100,
 		ParamString: `<_>`,
 		MaxClusters: 300,
@@ -234,7 +234,7 @@ func RemoveNamedVariablesAndConcat(in []string) string {
 			in[i] = "<_>"
 		}
 	}
-	return strings.Join(in, " ")
+	return strings.Join(in, "")
 }
 
 func tokenizePattern(content, param string) []string {
