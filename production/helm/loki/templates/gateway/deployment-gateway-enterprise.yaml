@@ -82,10 +82,12 @@ spec:
             {{- if and $isSimpleScalable .Values.enterpriseGateway.useDefaultProxyURLs }}
             - -gateway.proxy.default.url=http://{{ template "enterprise-logs.adminApiFullname" . }}.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.admin-api.url=http://{{ template "enterprise-logs.adminApiFullname" . }}.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.compactor.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.distributor.url=dns:///{{ template "loki.writeFullname" . }}-headless.{{ .Release.Namespace }}.svc:9095
             - -gateway.proxy.ingester.url=http://{{ template "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.query-frontend.url=http://{{ template "loki.readFullname" . }}.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.ruler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.query-scheduler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
             {{- end }}
             {{- range $key, $value := .Values.enterpriseGateway.extraArgs }}
             - "-{{ $key }}={{ $value }}"
