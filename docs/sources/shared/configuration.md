@@ -7,29 +7,42 @@ title: Grafana Loki configuration parameters
 
 ## Printing Loki config at runtime
 
-If you pass Loki the flag `-print-config-stderr` or `-log-config-reverse-order`, (or `-print-config-stderr=true`) Loki will dump the entire config object it has created from the built-in defaults combined first with overrides from config file, and second by overrides from flags.
+If you pass Loki the flag `-print-config-stderr` or `-log-config-reverse-order`, (or `-print-config-stderr=true`)
+Loki will dump the entire config object it has created from the built-in defaults combined first with
+overrides from config file, and second by overrides from flags.
 
 The result is the value for every config object in the Loki config struct, which is very large...
 
-Many values will not be relevant to your install such as storage configs which you are not using and which you did not define, this is expected as every option has a default value if it is being used or not.
+Many values will not be relevant to your install such as storage configs which you are not using and which you did not define,
+this is expected as every option has a default value if it is being used or not.
 
-This config is what Loki will use to run, it can be invaluable for debugging issues related to configuration and is especially useful in making sure your config files and flags are being read and loaded properly.
+This config is what Loki will use to run, it can be invaluable for debugging issues related to configuration and
+is especially useful in making sure your config files and flags are being read and loaded properly.
 
 `-print-config-stderr` is nice when running Loki directly e.g. `./loki ` as you can get a quick output of the entire Loki config.
 
-`-log-config-reverse-order` is the flag we run Loki with in all our environments, the config entries are reversed so that the order of configs reads correctly top to bottom when viewed in Grafana's Explore.
+`-log-config-reverse-order` is the flag we run Loki with in all our environments, the config entries are reversed so
+that the order of configs reads correctly top to bottom when viewed in Grafana's Explore.
 
 ## Configuration file reference
 
-To specify which configuration file to load, pass the `-config.file` flag at the command line. The value can be a list of comma separated paths, then the first file that exists will be used. If no `-config.file` argument is specified, Loki will look up the `config.yaml` in the current working directory and the `config/` subdirectory and try to use that.
+To specify which configuration file to load, pass the `-config.file` flag at the
+command line. The value can be a list of comma separated paths, then the first
+file that exists will be used.
+If no `-config.file` argument is specified, Loki will look up the `config.yaml` in the
+current working directory and the `config/` subdirectory and try to use that.
 
-The file is written in [YAML format](https://en.wikipedia.org/wiki/YAML), defined by the scheme below. Brackets indicate that a parameter is optional. For non-list parameters the value is set to the specified default.
+The file is written in [YAML
+format](https://en.wikipedia.org/wiki/YAML), defined by the scheme below.
+Brackets indicate that a parameter is optional. For non-list parameters the
+value is set to the specified default.
 
 ### Use environment variables in the configuration
 
 > **Note:** This feature is only available in Loki 2.1+.
 
-You can use environment variable references in the configuration file to set values that need to be configurable during deployment. To do this, pass `-config.expand-env=true` and use:
+You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
+To do this, pass `-config.expand-env=true` and use:
 
 ```
 ${VAR}
@@ -37,7 +50,9 @@ ${VAR}
 
 Where VAR is the name of the environment variable.
 
-Each variable reference is replaced at startup by the value of the environment variable. The replacement is case-sensitive and occurs before the YAML file is parsed. References to undefined variables are replaced by empty strings unless you specify a default value or custom error text.
+Each variable reference is replaced at startup by the value of the environment variable.
+The replacement is case-sensitive and occurs before the YAML file is parsed.
+References to undefined variables are replaced by empty strings unless you specify a default value or custom error text.
 
 To specify a default value, use:
 
@@ -414,8 +429,12 @@ compactor_grpc_client:
 
   # Override the default cipher suite list (separated by commas). Allowed
   # values:
-  #
+  # 
   # Secure Ciphers:
+  # - TLS_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_RSA_WITH_AES_256_GCM_SHA384
   # - TLS_AES_128_GCM_SHA256
   # - TLS_AES_256_GCM_SHA384
   # - TLS_CHACHA20_POLY1305_SHA256
@@ -429,15 +448,11 @@ compactor_grpc_client:
   # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
   # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
   # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-  #
+  # 
   # Insecure Ciphers:
   # - TLS_RSA_WITH_RC4_128_SHA
   # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_RSA_WITH_AES_256_CBC_SHA
   # - TLS_RSA_WITH_AES_128_CBC_SHA256
-  # - TLS_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_RSA_WITH_AES_256_GCM_SHA384
   # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
   # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
   # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -480,8 +495,8 @@ compactor_grpc_client:
 
 # Configuration for memberlist client. Only applies if the selected kvstore is
 # memberlist.
-#
-# When a memberlist config with at least 1 join_members is defined, kvstore of
+# 
+# When a memberlist config with atleast 1 join_members is defined, kvstore of
 # type memberlist is automatically selected for all the components that require
 # a ring unless otherwise specified in the component's configuration section.
 [memberlist: <memberlist>]
@@ -1239,8 +1254,12 @@ memcached_client:
 
   # Override the default cipher suite list (separated by commas). Allowed
   # values:
-  #
+  # 
   # Secure Ciphers:
+  # - TLS_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_RSA_WITH_AES_256_GCM_SHA384
   # - TLS_AES_128_GCM_SHA256
   # - TLS_AES_256_GCM_SHA384
   # - TLS_CHACHA20_POLY1305_SHA256
@@ -1254,15 +1273,11 @@ memcached_client:
   # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
   # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
   # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-  #
+  # 
   # Insecure Ciphers:
   # - TLS_RSA_WITH_RC4_128_SHA
   # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_RSA_WITH_AES_256_CBC_SHA
   # - TLS_RSA_WITH_AES_128_CBC_SHA256
-  # - TLS_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_RSA_WITH_AES_256_GCM_SHA384
   # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
   # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
   # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -2052,8 +2067,12 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Override the default cipher suite list (separated by commas). Allowed values:
-#
+# 
 # Secure Ciphers:
+# - TLS_RSA_WITH_AES_128_CBC_SHA
+# - TLS_RSA_WITH_AES_256_CBC_SHA
+# - TLS_RSA_WITH_AES_128_GCM_SHA256
+# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_AES_128_GCM_SHA256
 # - TLS_AES_256_GCM_SHA384
 # - TLS_CHACHA20_POLY1305_SHA256
@@ -2067,15 +2086,11 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
 # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-#
+# 
 # Insecure Ciphers:
 # - TLS_RSA_WITH_RC4_128_SHA
 # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA
-# - TLS_RSA_WITH_AES_256_CBC_SHA
 # - TLS_RSA_WITH_AES_128_CBC_SHA256
-# - TLS_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -2369,8 +2384,12 @@ backoff_config:
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Override the default cipher suite list (separated by commas). Allowed values:
-#
+# 
 # Secure Ciphers:
+# - TLS_RSA_WITH_AES_128_CBC_SHA
+# - TLS_RSA_WITH_AES_256_CBC_SHA
+# - TLS_RSA_WITH_AES_128_GCM_SHA256
+# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_AES_128_GCM_SHA256
 # - TLS_AES_256_GCM_SHA384
 # - TLS_CHACHA20_POLY1305_SHA256
@@ -2384,15 +2403,11 @@ backoff_config:
 # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
 # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-#
+# 
 # Insecure Ciphers:
 # - TLS_RSA_WITH_RC4_128_SHA
 # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA
-# - TLS_RSA_WITH_AES_256_CBC_SHA
 # - TLS_RSA_WITH_AES_128_CBC_SHA256
-# - TLS_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -2710,7 +2725,7 @@ lifecycler:
 [chunk_target_size: <int> | default = 1572864]
 
 # The algorithm to use for compressing chunk. (none, gzip, lz4-64k, snappy,
-# lz4-256k, lz4-1M, lz4, flat, zstd)
+# lz4-256k, lz4-1M, lz4, flate, zstd)
 # CLI flag: -ingester.chunk-encoding
 [chunk_encoding: <string> | default = "gzip"]
 
@@ -3082,7 +3097,7 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # metadata request that falls in this window is split using
 # `split_recent_metadata_queries_by_interval`. The value 0 disables using a
 # different split interval for recent metadata queries.
-#
+# 
 # This is added to improve cacheability of recent metadata queries. Query split
 # interval also determines the interval used in cache key. The default split
 # interval of 24h is useful for caching long queries, each cache key holding 1
@@ -3382,7 +3397,7 @@ The `local_storage_config` block configures the usage of local file system as ob
 
 Configuration for `memberlist` client. Only applies if the selected kvstore is memberlist.
 
-When a memberlist config with at least 1 join_members is defined, kvstore of type memberlist is automatically selected for all the components that require a ring unless otherwise specified in the component's configuration section.
+When a memberlist config with atleast 1 join_members is defined, kvstore of type memberlist is automatically selected for all the components that require a ring unless otherwise specified in the component's configuration section.
 
 ```yaml
 # Name of the node in memberlist cluster. Defaults to hostname.
@@ -3540,8 +3555,12 @@ When a memberlist config with at least 1 join_members is defined, kvstore of typ
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Override the default cipher suite list (separated by commas). Allowed values:
-#
+# 
 # Secure Ciphers:
+# - TLS_RSA_WITH_AES_128_CBC_SHA
+# - TLS_RSA_WITH_AES_256_CBC_SHA
+# - TLS_RSA_WITH_AES_128_GCM_SHA256
+# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_AES_128_GCM_SHA256
 # - TLS_AES_256_GCM_SHA384
 # - TLS_CHACHA20_POLY1305_SHA256
@@ -3555,15 +3574,11 @@ When a memberlist config with at least 1 join_members is defined, kvstore of typ
 # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
 # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-#
+# 
 # Insecure Ciphers:
 # - TLS_RSA_WITH_RC4_128_SHA
 # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA
-# - TLS_RSA_WITH_AES_256_CBC_SHA
 # - TLS_RSA_WITH_AES_128_CBC_SHA256
-# - TLS_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -3580,7 +3595,16 @@ When a memberlist config with at least 1 join_members is defined, kvstore of typ
 
 ### named_stores_config
 
-Configures additional object stores for a given storage provider. Supported stores: aws, azure, bos, filesystem, gcs, swift. Example: storage_config: named_stores: aws: store-1: endpoint: s3://foo-bucket region: us-west1 Named store from this example can be used by setting object_store to store-1 in period_config.
+Configures additional object stores for a given storage provider.
+Supported stores: aws, azure, bos, filesystem, gcs, swift.
+Example:
+storage_config:
+  named_stores:
+    aws:
+      store-1:
+        endpoint: s3://foo-bucket
+        region: us-west1
+Named store from this example can be used by setting object_store to store-1 in period_config.
 
 ```yaml
 [aws: <map of string to aws_storage_config>]
@@ -4115,8 +4139,12 @@ alertmanager_client:
 
   # Override the default cipher suite list (separated by commas). Allowed
   # values:
-  #
+  # 
   # Secure Ciphers:
+  # - TLS_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_RSA_WITH_AES_256_GCM_SHA384
   # - TLS_AES_128_GCM_SHA256
   # - TLS_AES_256_GCM_SHA384
   # - TLS_CHACHA20_POLY1305_SHA256
@@ -4130,15 +4158,11 @@ alertmanager_client:
   # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
   # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
   # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-  #
+  # 
   # Insecure Ciphers:
   # - TLS_RSA_WITH_RC4_128_SHA
   # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_RSA_WITH_AES_256_CBC_SHA
   # - TLS_RSA_WITH_AES_128_CBC_SHA256
-  # - TLS_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_RSA_WITH_AES_256_GCM_SHA384
   # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
   # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
   # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -4391,8 +4415,12 @@ evaluation:
 
     # Override the default cipher suite list (separated by commas). Allowed
     # values:
-    #
+    # 
     # Secure Ciphers:
+    # - TLS_RSA_WITH_AES_128_CBC_SHA
+    # - TLS_RSA_WITH_AES_256_CBC_SHA
+    # - TLS_RSA_WITH_AES_128_GCM_SHA256
+    # - TLS_RSA_WITH_AES_256_GCM_SHA384
     # - TLS_AES_128_GCM_SHA256
     # - TLS_AES_256_GCM_SHA384
     # - TLS_CHACHA20_POLY1305_SHA256
@@ -4406,15 +4434,11 @@ evaluation:
     # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
     # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
     # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-    #
+    # 
     # Insecure Ciphers:
     # - TLS_RSA_WITH_RC4_128_SHA
     # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-    # - TLS_RSA_WITH_AES_128_CBC_SHA
-    # - TLS_RSA_WITH_AES_256_CBC_SHA
     # - TLS_RSA_WITH_AES_128_CBC_SHA256
-    # - TLS_RSA_WITH_AES_128_GCM_SHA256
-    # - TLS_RSA_WITH_AES_256_GCM_SHA384
     # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
     # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
     # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -4665,7 +4689,7 @@ grpc_tls_config:
   # CLI flag: -server.grpc-tls-ca-path
   [client_ca_file: <string> | default = ""]
 
-# Register the instrumentation handlers (/metrics etc).
+# Register the intrumentation handlers (/metrics etc).
 # CLI flag: -server.register-instrumentation
 [register_instrumentation: <boolean> | default = true]
 
@@ -5700,8 +5724,12 @@ The TLS configuration.
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Override the default cipher suite list (separated by commas). Allowed values:
-#
+# 
 # Secure Ciphers:
+# - TLS_RSA_WITH_AES_128_CBC_SHA
+# - TLS_RSA_WITH_AES_256_CBC_SHA
+# - TLS_RSA_WITH_AES_128_GCM_SHA256
+# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_AES_128_GCM_SHA256
 # - TLS_AES_256_GCM_SHA384
 # - TLS_CHACHA20_POLY1305_SHA256
@@ -5715,15 +5743,11 @@ The TLS configuration.
 # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
 # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-#
+# 
 # Insecure Ciphers:
 # - TLS_RSA_WITH_RC4_128_SHA
 # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA
-# - TLS_RSA_WITH_AES_256_CBC_SHA
 # - TLS_RSA_WITH_AES_128_CBC_SHA256
-# - TLS_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_RSA_WITH_AES_256_GCM_SHA384
 # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
@@ -5777,43 +5801,58 @@ overrides:
     max_chunks_per_query: 1000000
 
 multi_kv_config:
-  mirror-enabled: false
-  primary: consul
+    mirror-enabled: false
+    primary: consul
 ```
 
 ## Accept out-of-order writes
 
-Since the beginning of Loki, log entries had to be written to Loki in order by time. This limitation has been lifted. Out-of-order writes are enabled globally by default, but can be disabled/enabled on a cluster or per-tenant basis.
+Since the beginning of Loki, log entries had to be written to Loki in order
+by time.
+This limitation has been lifted.
+Out-of-order writes are enabled globally by default, but can be disabled/enabled
+on a cluster or per-tenant basis.
 
-- To disable out-of-order writes for all tenants, place in the `limits_config` section:
+- To disable out-of-order writes for all tenants,
+place in the `limits_config` section:
 
-      ```
-      limits_config:
-          unordered_writes: false
-      ```
+    ```
+    limits_config:
+        unordered_writes: false
+    ```
 
-- To disable out-of-order writes for specific tenants, configure a runtime configuration file:
+- To disable out-of-order writes for specific tenants,
+configure a runtime configuration file:
 
-      ```
-      runtime_config:
-        file: overrides.yaml
-      ```
+    ```
+    runtime_config:
+      file: overrides.yaml
+    ```
 
-      In the `overrides.yaml` file, add `unordered_writes` for each tenant
-      permitted to have out-of-order writes:
+    In the `overrides.yaml` file, add `unordered_writes` for each tenant
+    permitted to have out-of-order writes:
 
-      ```
-      overrides:
-        "tenantA":
-          unordered_writes: false
-      ```
+    ```
+    overrides:
+      "tenantA":
+        unordered_writes: false
+    ```
 
-How far into the past accepted out-of-order log entries may be is configurable with `max_chunk_age`. `max_chunk_age` defaults to 2 hour. Loki calculates the earliest time that out-of-order entries may have and be accepted with
+How far into the past accepted out-of-order log entries may be
+is configurable with `max_chunk_age`.
+`max_chunk_age` defaults to 2 hour.
+Loki calculates the earliest time that out-of-order entries may have
+and be accepted with
 
 ```
 time_of_most_recent_line - (max_chunk_age/2)
 ```
 
-Log entries with timestamps that are after this earliest time are accepted. Log entries further back in time return an out-of-order error.
+Log entries with timestamps that are after this earliest time are accepted.
+Log entries further back in time return an out-of-order error.
 
-For example, if `max_chunk_age` is 2 hours and the stream `{foo="bar"}` has one entry at `8:00`, Loki will accept data for that stream as far back in time as `7:00`. If another log line is written at `10:00`, Loki will accept data for that stream as far back in time as `9:00`.
+For example, if `max_chunk_age` is 2 hours
+and the stream `{foo="bar"}` has one entry at `8:00`,
+Loki will accept data for that stream as far back in time as `7:00`.
+If another log line is written at `10:00`,
+Loki will accept data for that stream as far back in time as `9:00`.
