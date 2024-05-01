@@ -1255,9 +1255,6 @@ memcached_client:
   # Override the default cipher suite list (separated by commas). Allowed
   # values:
   # 
-  # Override the default cipher suite list (separated by commas). Allowed
-  # values:
-  # 
   # Secure Ciphers:
   # - TLS_AES_128_GCM_SHA256
   # - TLS_AES_256_GCM_SHA384
@@ -3142,8 +3139,7 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 [max_querier_bytes_read: <int> | default = 150GB]
 
 # Enable log-volume endpoints.
-# CLI flag: -limits.volume-enabled
-[volume_enabled: <boolean> | default = true]
+[volume_enabled: <boolean>]
 
 # The maximum number of aggregated series in a log-volume response
 # CLI flag: -limits.volume-max-series
@@ -4417,7 +4413,7 @@ evaluation:
     # CLI flag: -ruler.evaluation.query-frontend.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]
 
-   # Override the default cipher suite list (separated by commas). Allowed
+    # Override the default cipher suite list (separated by commas). Allowed
     # values:
     # 
     # Secure Ciphers:
