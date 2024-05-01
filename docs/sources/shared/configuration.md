@@ -3139,7 +3139,8 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 [max_querier_bytes_read: <int> | default = 150GB]
 
 # Enable log-volume endpoints.
-[volume_enabled: <boolean>]
+# CLI flag: -limits.volume-enabled
+[volume_enabled: <boolean> | default = true]
 
 # The maximum number of aggregated series in a log-volume response
 # CLI flag: -limits.volume-max-series
