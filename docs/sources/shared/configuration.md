@@ -1255,6 +1255,9 @@ memcached_client:
   # Override the default cipher suite list (separated by commas). Allowed
   # values:
   # 
+  # Override the default cipher suite list (separated by commas). Allowed
+  # values:
+  # 
   # Secure Ciphers:
   # - TLS_AES_128_GCM_SHA256
   # - TLS_AES_256_GCM_SHA384
@@ -4414,7 +4417,7 @@ evaluation:
     # CLI flag: -ruler.evaluation.query-frontend.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]
 
-    # Override the default cipher suite list (separated by commas). Allowed
+   # Override the default cipher suite list (separated by commas). Allowed
     # values:
     # 
     # Secure Ciphers:
