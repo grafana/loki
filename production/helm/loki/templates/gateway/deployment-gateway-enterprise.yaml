@@ -1,3 +1,5 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- if and .Values.gateway.enabled .Values.enterprise.enabled .Values.enterprise.gelGateway }}
 apiVersion: apps/v1
 kind: Deployment
@@ -69,13 +71,21 @@ spec:
             - -admin.client.s3.secret-access-key={{ .Values.minio.secretKey }}
             - -admin.client.s3.insecure=true
             {{- end }}
-            {{- if .Values.enterpriseGateway.useDefaultProxyURLs }}
+            {{- if and $isDistributed .Values.enterpriseGateway.useDefaultProxyURLs }}
             - -gateway.proxy.default.url=http://{{ template "loki.fullname" . }}-admin-api.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.admin-api.url=http://{{ template "loki.fullname" . }}-admin-api.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.distributor.url=dns:///{{ template "loki.fullname" . }}-distributor-headless.{{ .Release.Namespace }}.svc:9095
             - -gateway.proxy.ingester.url=http://{{ template "loki.fullname" . }}-ingester.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.query-frontend.url=http://{{ template "loki.fullname" . }}-query-frontend.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.ruler.url=http://{{ template "loki.fullname" . }}-ruler.{{ .Release.Namespace }}.svc:3100
+            {{- end }}
+            {{- if and $isSimpleScalable .Values.enterpriseGateway.useDefaultProxyURLs }}
+            - -gateway.proxy.default.url=http://{{ template "enterprise-logs.adminApiFullname" . }}.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.admin-api.url=http://{{ template "enterprise-logs.adminApiFullname" . }}.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.distributor.url=dns:///{{ template "loki.writeFullname" . }}-headless.{{ .Release.Namespace }}.svc:9095
+            - -gateway.proxy.ingester.url=http://{{ template "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.query-frontend.url=http://{{ template "loki.readFullname" . }}.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.ruler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
             {{- end }}
             {{- range $key, $value := .Values.enterpriseGateway.extraArgs }}
             - "-{{ $key }}={{ $value }}"
