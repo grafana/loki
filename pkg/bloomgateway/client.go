@@ -14,6 +14,7 @@ import (
 	ringclient "github.com/grafana/dskit/ring/client"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -239,7 +240,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval blo
 	}
 
 	results := make([][]*logproto.GroupedChunkRefs, len(servers))
-	count := 0
+	count := atomic.NewInt64(0)
 	err := concurrency.ForEachJob(ctx, len(servers), len(servers), func(ctx context.Context, i int) error {
 		rs := servers[i]
 
@@ -259,7 +260,6 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval blo
 			if err != nil {
 				// We don't want a single bloom-gw failure to fail the entire query,
 				// so instrument & move on
-				c.metrics.clientRequests.WithLabelValues(typeError).Inc()
 				level.Error(c.logger).Log(
 					"msg", "filter failed for instance, skipping",
 					"addr", rs.addr,
@@ -268,12 +268,14 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval blo
 					"err", err,
 				)
 				// filter none of the results on failed request
+				c.metrics.clientRequests.WithLabelValues(typeError).Inc()
 				results[i] = rs.groups
-				return nil
+			} else {
+				c.metrics.clientRequests.WithLabelValues(typeSuccess).Inc()
+				results[i] = resp.ChunkRefs
 			}
-			c.metrics.clientRequests.WithLabelValues(typeSuccess).Inc()
-			results[i] = resp.ChunkRefs
-			count += len(resp.ChunkRefs)
+
+			count.Add(int64(len(results[i])))
 			return nil
 		})
 	})
@@ -282,7 +284,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval blo
 		return nil, err
 	}
 
-	buf := make([]*logproto.GroupedChunkRefs, 0, count)
+	buf := make([]*logproto.GroupedChunkRefs, 0, int(count.Load()))
 	return mergeSeries(results, buf)
 }
 
