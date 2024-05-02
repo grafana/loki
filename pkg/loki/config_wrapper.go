@@ -697,7 +697,7 @@ func applyCommonQuerierWorkerGRPCConfig(cfg, defaults *ConfigWrapper) error {
 			cfg.Worker.NewQueryFrontendGRPCClientConfig = cfg.Worker.OldQueryFrontendGRPCClientConfig
 		} else {
 			// User is using both, old and new way of configuring the grpc client, so we throw an error.
-			return fmt.Errorf("both `grpc_client_config` and `query_frontend_grpc_client` are set at the same time. Please use only one of them.")
+			return fmt.Errorf("both `grpc_client_config` and `query_frontend_grpc_client` are set at the same time. Please use only one of them")
 		}
 
 		if reflect.DeepEqual(cfg.Worker.QuerySchedulerGRPCClientConfig, defaults.Worker.QuerySchedulerGRPCClientConfig) {
