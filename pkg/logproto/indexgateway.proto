@@ -45,7 +45,7 @@ message ShardsRequest {
     (gogoproto.jsontag) = "through"
   ];
   string query = 3 [(gogoproto.jsontag) = "query"];
-  uint64 target_bytes_per_shard = 4 [(gogoproto.jsontag) = "targetBytesPerShard"];
+  uint64 targetBytesPerShard = 4 [(gogoproto.jsontag) = "targetBytesPerShard"];
 }
 
 message ShardsResponse {
@@ -56,6 +56,12 @@ message ShardsResponse {
   stats.Result statistics = 2 [
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "statistics"
+  ];
+  // If present, includes the chunk refs for each shard,
+  // therefore the length will be equal to the length of the `shards` field.
+  repeated logproto.ChunkRefGroup chunkGroups = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "chunkGroups"
   ];
 }
 

@@ -3003,6 +3003,12 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -limits.tsdb-sharding-strategy
 [tsdb_sharding_strategy: <string> | default = "power_of_two"]
 
+# Precompute chunks for TSDB queries. This can improve query performance at the
+# cost of increased memory usage by computing chunks once during planning,
+# reducing index calls.
+# CLI flag: -querier.tsdb-precompute-chunks
+[tsdb_precompute_chunks: <boolean> | default = false]
+
 # Cardinality limit for index queries.
 # CLI flag: -store.cardinality-limit
 [cardinality_limit: <int> | default = 100000]
@@ -3332,6 +3338,12 @@ shard_streams:
 # blooms will be added to blocks until the block exceeds the maximum block size.
 # CLI flag: -bloom-compactor.max-block-size
 [bloom_compactor_max_block_size: <int> | default = 200MB]
+
+# Experimental. The maximum bloom size per log stream. A log stream whose
+# generated bloom filter exceeds this size will be discarded. A value of 0 sets
+# an unlimited size. Default is 128MB.
+# CLI flag: -bloom-compactor.max-bloom-size
+[bloom_compactor_max_bloom_size: <int> | default = 128MB]
 
 # Experimental. Length of the n-grams created when computing blooms from log
 # lines.

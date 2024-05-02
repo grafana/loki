@@ -100,7 +100,6 @@ func (w *worker) running(_ context.Context) error {
 				w.queue.ReleaseRequests(items)
 				return errors.Errorf("failed to cast dequeued item to Task: %v", item)
 			}
-			level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
 			_ = w.pending.Dec()
 			w.metrics.queueDuration.WithLabelValues(w.id).Observe(time.Since(task.enqueueTime).Seconds())
 			FromContext(task.ctx).AddQueueTime(time.Since(task.enqueueTime))

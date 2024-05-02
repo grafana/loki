@@ -121,13 +121,13 @@ func TestSimpleBloomGenerator(t *testing.T) {
 		}{
 			{
 				desc:       "SkipsIncompatibleSchemas",
-				fromSchema: v1.NewBlockOptions(enc, 3, 0, maxBlockSize),
-				toSchema:   v1.NewBlockOptions(enc, 4, 0, maxBlockSize),
+				fromSchema: v1.NewBlockOptions(enc, 3, 0, maxBlockSize, 0),
+				toSchema:   v1.NewBlockOptions(enc, 4, 0, maxBlockSize, 0),
 			},
 			{
 				desc:       "CombinesBlocks",
-				fromSchema: v1.NewBlockOptions(enc, 4, 0, maxBlockSize),
-				toSchema:   v1.NewBlockOptions(enc, 4, 0, maxBlockSize),
+				fromSchema: v1.NewBlockOptions(enc, 4, 0, maxBlockSize, 0),
+				toSchema:   v1.NewBlockOptions(enc, 4, 0, maxBlockSize, 0),
 			},
 		} {
 			t.Run(fmt.Sprintf("%s/%s", tc.desc, enc), func(t *testing.T) {

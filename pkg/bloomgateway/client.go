@@ -201,7 +201,7 @@ func (c *GatewayClient) Close() {
 }
 
 // FilterChunkRefs implements Client
-func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
+func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
 	// no block and therefore no series with chunks
 	if len(blocks) == 0 {
 		return nil, nil
@@ -285,7 +285,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, interva
 	return mergeSeries(results, buf)
 }
 
-// mergeSeries combines respones from multiple FilterChunkRefs calls and deduplicates
+// mergeSeries combines responses from multiple FilterChunkRefs calls and deduplicates
 // chunks from series that appear in multiple responses.
 // To avoid allocations, an optional slice can be passed as second argument.
 func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedChunkRefs) ([]*logproto.GroupedChunkRefs, error) {
@@ -294,13 +294,12 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 
 	iters := make([]v1.PeekingIterator[*logproto.GroupedChunkRefs], 0, len(input))
 	for _, inp := range input {
+		sort.Slice(inp, func(i, j int) bool { return inp[i].Fingerprint < inp[j].Fingerprint })
 		iters = append(iters, v1.NewPeekingIter(v1.NewSliceIter(inp)))
 	}
 
 	heapIter := v1.NewHeapIterator[*logproto.GroupedChunkRefs](
-		func(a, b *logproto.GroupedChunkRefs) bool {
-			return a.Fingerprint < b.Fingerprint
-		},
+		func(a, b *logproto.GroupedChunkRefs) bool { return a.Fingerprint < b.Fingerprint },
 		iters...,
 	)
 
@@ -311,10 +310,17 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 		v1.Identity[*logproto.GroupedChunkRefs],
 		// merge
 		func(a, b *logproto.GroupedChunkRefs) *logproto.GroupedChunkRefs {
+			// TODO(chaudum): Check if we can assume sorted shortrefs here
+			if !slices.IsSortedFunc(a.Refs, func(a, b *logproto.ShortRef) int { return a.Cmp(b) }) {
+				slices.SortFunc(a.Refs, func(a, b *logproto.ShortRef) int { return a.Cmp(b) })
+			}
+			if !slices.IsSortedFunc(b.Refs, func(a, b *logproto.ShortRef) int { return a.Cmp(b) }) {
+				slices.SortFunc(b.Refs, func(a, b *logproto.ShortRef) int { return a.Cmp(b) })
+			}
 			return &logproto.GroupedChunkRefs{
 				Fingerprint: a.Fingerprint,
 				Tenant:      a.Tenant,
-				Refs:        mergeChunks(a.Refs, b.Refs),
+				Refs:        mergeChunkSets(a.Refs, b.Refs),
 			}
 		},
 		// iterator
@@ -324,51 +330,37 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 	return v1.CollectInto(dedupeIter, buf)
 }
 
-func mergeChunks(inputs ...[]*logproto.ShortRef) []*logproto.ShortRef {
-	if len(inputs) == 0 {
-		return nil
+// mergeChunkSets merges and deduplicates two sorted slices of shortRefs
+func mergeChunkSets(s1, s2 []*logproto.ShortRef) (result []*logproto.ShortRef) {
+	var i, j int
+	for i < len(s1) && j < len(s2) {
+		a, b := s1[i], s2[j]
+
+		if a.Equal(b) {
+			result = append(result, a)
+			i++
+			j++
+			continue
+		}
+
+		if a.Less(b) {
+			result = append(result, a)
+			i++
+			continue
+		}
+
+		result = append(result, b)
+		j++
 	}
 
-	if len(inputs) == 1 {
-		slices.SortFunc(
-			inputs[0],
-			func(a, b *logproto.ShortRef) int {
-				if a.Equal(b) {
-					return 0
-				}
-				if a.From.Before(b.From) || (a.From.Equal(b.From) && a.Through.Before(b.Through)) {
-					return -1
-				}
-				return 1
-			},
-		)
-		return inputs[0]
+	if i < len(s1) {
+		result = append(result, s1[i:]...)
+	}
+	if j < len(s2) {
+		result = append(result, s2[j:]...)
 	}
 
-	iters := make([]v1.PeekingIterator[*logproto.ShortRef], 0, len(inputs))
-	for _, inp := range inputs {
-		iters = append(iters, v1.NewPeekingIter(v1.NewSliceIter(inp)))
-	}
-
-	chunkDedupe := v1.NewDedupingIter[*logproto.ShortRef, *logproto.ShortRef](
-		// eq
-		func(a, b *logproto.ShortRef) bool { return a.Equal(b) },
-		// from
-		v1.Identity[*logproto.ShortRef],
-		// merge
-		func(a, b *logproto.ShortRef) *logproto.ShortRef { return a },
-		// iterator
-		v1.NewPeekingIter[*logproto.ShortRef](
-			v1.NewHeapIterator[*logproto.ShortRef](
-				func(a, b *logproto.ShortRef) bool {
-					return a.From.Before(b.From) || (a.From.Equal(b.From) && a.Through.Before(b.Through))
-				},
-				iters...,
-			),
-		),
-	)
-	merged, _ := v1.Collect(chunkDedupe)
-	return merged
+	return result
 }
 
 // doForAddrs sequetially calls the provided callback function fn for each
