@@ -246,7 +246,7 @@ Commands:
     streams. This is helpful to find high cardinality labels.
 ```
 
-### LogCLI query command reference
+### `query` command reference
 
 The output of `logcli help query`:
 
@@ -321,7 +321,7 @@ It will start four workers, and they will each take a job to work on from the qu
 Each job will save a "part" file to the location specified by the --part-path-prefix. Different prefixes can be used to run multiple queries
 at the same time. The timestamp of the start and end of the part is in the file name. While the part is being downloaded, the filename will
 end in ".part", when it is complete, the file will be renamed to remove this ".part" extension. By default, if a completed part file is found,
-that part will not be downloaded again. This can be overridden with the --overwrite-completed-parts flag.
+that part will not be downloaded again. This can be overridden with the `--overwrite-completed-parts` flag.
 
 Part file example using the previous command, adding --keep-parts so they are not deleted:
 
@@ -332,10 +332,10 @@ $ ls -1 /tmp/my_query* /tmp/my_query_20210119T183000_20210119T184500.part.tmp /t
 /tmp/my_query_20210119T190000_20210119T191500.part.tmp /tmp/my_query_20210119T191500_20210119T193000.part.tmp
 /tmp/my_query_20210119T193000_20210119T194500.part /tmp/my_query_20210119T194500_20210119T200000.part
 
-If you do not specify the --merge-parts flag, the part files will be downloaded, and logcli will exit, and you can process the files as you
+If you do not specify the `--merge-parts` flag, the part files will be downloaded, and logcli will exit, and you can process the files as you
 wish. With the flag specified, the part files will be read in order, and the output printed to the terminal. The lines will be printed as
-soon as the next part is complete, you don't have to wait for all the parts to download before getting output. The --merge-parts flag will
-remove the part files when it is done reading each of them. To change this, you can use the --keep-parts flag, and the part files will not be
+soon as the next part is complete, you don't have to wait for all the parts to download before getting output. The `--merge-parts` flag will
+remove the part files when it is done reading each of them. To change this, you can use the `--keep-parts` flag, and the part files will not be
 removed.
 
 Flags:
@@ -413,7 +413,7 @@ Args:
   <query>  eg '{foo="bar",baz=~".*blip"} |~ ".*error.*"'
 ```
 
-### LogCLI instant-query command reference
+### `instant-query` command reference
 
 The output of `logcli help instant-query`:
 
@@ -483,7 +483,7 @@ Args:
   <query>  eg 'rate({foo="bar"} |~ ".*error.*" [5m])'
 ```
 
-### LogCLI labels command reference
+### `labels` command reference
 
 The output of `logcli help labels`:
 
@@ -533,7 +533,7 @@ Args:
   [<label>]  The name of the label.
 ```
 
-### LogCLI series command reference
+### `series` command reference
 
 The output of `logcli help series`:
 
@@ -591,7 +591,7 @@ Args:
   <matcher>  eg '{foo="bar",baz=~".*blip"}'
 ```
 
-### LogCLI fmt command reference
+### `fmt` command reference
 
 The output of `logcli help fmt`:
 
@@ -635,7 +635,7 @@ Flags:
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
 ```
 
-### LogCLI stats command reference
+### `stats` command reference
 
 The output of `logcli help stats`:
 
@@ -702,7 +702,7 @@ Args:
   <query>  eg '{foo="bar",baz=~".*blip"} |~ ".*error.*"'
 ```
 
-### LogCLI volume command reference
+### `volume` command reference
 
 The output of `logcli help volume`:
 
@@ -773,7 +773,7 @@ Args:
   <query>  eg '{foo="bar",baz=~".*blip"}
 ```
 
-### LogCLI volume_range command reference
+### `volume_range` command reference
 
 The output of `logcli help volume_range`:
 
@@ -846,7 +846,7 @@ Args:
   <query>  eg '{foo="bar",baz=~".*blip"}
 ```
 
-### LogCLI `--stdin` usage
+### `--stdin` usage
 
 You can consume log lines from your `stdin` instead of Loki servers.
 
