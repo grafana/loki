@@ -39,8 +39,8 @@ func (e *wrappedError) Set(err error) {
 
 // Task is the data structure that is enqueued to the internal queue and dequeued by query workers
 type Task struct {
-	// Tenant is the tenant ID
-	Tenant string
+	// tenant is the tenant ID
+	tenant string
 
 	// channel to write partial responses to
 	resCh chan v1.Output
@@ -71,9 +71,9 @@ type Task struct {
 	enqueueTime time.Time
 }
 
-func NewTask(ctx context.Context, tenantID string, refs seriesWithInterval, filters []syntax.LineFilterExpr, blocks []bloomshipper.BlockRef) Task {
+func newTask(ctx context.Context, tenantID string, refs seriesWithInterval, filters []syntax.LineFilterExpr, blocks []bloomshipper.BlockRef) Task {
 	return Task{
-		Tenant:   tenantID,
+		tenant:   tenantID,
 		err:      new(wrappedError),
 		resCh:    make(chan v1.Output),
 		filters:  filters,
@@ -113,7 +113,7 @@ func (t Task) CloseWithError(err error) {
 // Copy returns a copy of the existing task but with a new slice of grouped chunk refs
 func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 	return Task{
-		Tenant:   t.Tenant,
+		tenant:   t.tenant,
 		err:      t.err,
 		resCh:    t.resCh,
 		filters:  t.filters,

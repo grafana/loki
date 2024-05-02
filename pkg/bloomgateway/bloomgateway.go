@@ -278,7 +278,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	tasks := make([]Task, 0, len(seriesByDay))
 	responses := make([][]v1.Output, 0, len(seriesByDay))
 	for _, seriesForDay := range seriesByDay {
-		task := NewTask(ctx, tenantID, seriesForDay, filters, blocks)
+		task := newTask(ctx, tenantID, seriesForDay, filters, blocks)
 		// TODO(owen-d): include capacity in constructor?
 		task.responses = responsesPool.Get(len(seriesForDay.series))
 		tasks = append(tasks, task)
