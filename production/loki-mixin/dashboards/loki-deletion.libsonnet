@@ -45,7 +45,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           g.row('Compactor')
           .addPanel(
             $.newQueryPanel('Compactor CPU usage') +
-            g.queryPanel('node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{%s, container="compactor"}' % $.namespaceMatcher(), '{{pod}}'),
+            g.queryPanel('node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{%s, %s}' % [$.namespaceMatcher(), compactor_matcher], '{{pod}}'),
           )
           .addPanel(
             $.newQueryPanel('Compactor memory usage (MiB)') +
