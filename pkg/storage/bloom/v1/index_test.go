@@ -55,7 +55,72 @@ func TestSeriesEncoding(t *testing.T) {
 	require.Equal(t, src, dst)
 }
 
-func TestChunkRefCompare(t *testing.T) {
+func TestChunkRefCmpLess(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		desc        string
+		left, right ChunkRef
+		expCmp      int
+		expLess     bool
+	}{
+		{
+			desc:    "From/Through/Checksum are equal",
+			left:    ChunkRef{0, 0, 0},
+			right:   ChunkRef{0, 0, 0},
+			expCmp:  0,
+			expLess: false,
+		},
+		{
+			desc:    "From is before",
+			left:    ChunkRef{0, 1, 0},
+			right:   ChunkRef{1, 1, 0},
+			expCmp:  1,
+			expLess: true,
+		},
+		{
+			desc:    "From is after",
+			left:    ChunkRef{1, 1, 0},
+			right:   ChunkRef{0, 1, 0},
+			expCmp:  -1,
+			expLess: false,
+		},
+		{
+			desc:    "Through is before",
+			left:    ChunkRef{0, 1, 0},
+			right:   ChunkRef{0, 2, 0},
+			expCmp:  1,
+			expLess: true,
+		},
+		{
+			desc:    "Through is after",
+			left:    ChunkRef{0, 2, 0},
+			right:   ChunkRef{0, 1, 0},
+			expCmp:  -1,
+			expLess: false,
+		},
+		{
+			desc:    "Checksum is smaller",
+			left:    ChunkRef{0, 1, 0},
+			right:   ChunkRef{0, 1, 1},
+			expCmp:  1,
+			expLess: true,
+		},
+		{
+			desc:    "Checksum is bigger",
+			left:    ChunkRef{0, 0, 1},
+			right:   ChunkRef{0, 0, 0},
+			expCmp:  -1,
+			expLess: false,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.expCmp, tc.left.Cmp(tc.right))
+			require.Equal(t, tc.expLess, tc.left.Less(tc.right))
+		})
+	}
+}
+
+func TestChunkRefsCompare(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		desc                              string
