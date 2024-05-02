@@ -733,7 +733,7 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 		lruCfg := cache.EmbeddedCacheConfig{
 			Enabled:       true,
 			MaxSizeMB:     256,
-			MaxSizeItems:  10000,
+			MaxSizeItems:  128000,
 			TTL:           10 * time.Minute,
 			PurgeInterval: 1 * time.Minute,
 		}
