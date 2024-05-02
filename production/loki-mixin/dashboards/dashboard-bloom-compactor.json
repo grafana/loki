@@ -36,7 +36,7 @@
     {
       "gridPos": {
         "h": 8,
-        "w": 16,
+        "w": 14,
         "x": 0,
         "y": 1
       },
@@ -47,38 +47,11 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "## About the Bloom Compactor\nThe compactor iterates through chunks and creates blooms out of them.\nThe size of the resulting blooms depends on the bloom filter settings, the tokenizer settings, the number of ring tokens per compactor and the total number opf compactors.\n\nCompactors are horizontally scalable and uses a ring to:\n- Shard tenants\n- Shard series fingerprints within a tenant subring.\n\nThe blooms for the series are grouped together in blocks which are flushed to object store.\n\n[Design Doc][1]\n\n[1]: https://docs.google.com/document/d/1qtA-D4JmJJRDeAnBosD-7j1rW2NK51Az0JH0nqoirOE/edit#heading=h.5sybau7waq2q",
-        "mode": "markdown"
+        "content": "## About the Bloom Compactor\nThe compactor iterates through chunks and creates blooms out of them.\nThe size of the resulting blooms depends on the bloom filter settings, the tokenizer settings, the number of ring tokens per compactor and the total number opf compactors.\n\nCompactors are horizontally scalable and uses a ring to:\n- Shard tenants\n- Shard series fingerprints within a tenant subring.\n\nThe blooms for the series are grouped together in blocks which are flushed to object store.",        "mode": "markdown"
       },
       "pluginVersion": "11.1.0-70005",
       "transparent": true,
       "type": "text"
-    },
-    {
-      "description": "- \"Loki/Writes\": see the QPS and latency of the ingesters.\n\n- \"Loki/Writes Resources\": see the resource usage of the ingesters.\n\n- \"Loki/Bloom Compactor Autoscaling\": see autoscaling for the bloom-compactor.\n\nTODO: Autoscaling and writes dashs",
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 16,
-        "y": 1
-      },
-      "id": 40,
-      "options": {
-        "folderUID": "b1K5qGQMk",
-        "includeVars": true,
-        "keepTime": true,
-        "maxItems": 10,
-        "query": "",
-        "showHeadings": false,
-        "showRecentlyViewed": false,
-        "showSearch": true,
-        "showStarred": false,
-        "tags": []
-      },
-      "pluginVersion": "11.1.0-70005",
-      "title": "Related dashboards",
-      "transparent": true,
-      "type": "dashlist"
     },
     {
       "datasource": {
@@ -1521,7 +1494,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "description": "TODO: Make restart reason work",
+          "description": "",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -1567,7 +1540,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   },
                   {
                     "color": "red",
@@ -1622,7 +1596,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "description": "TODO: Make restart reason work",
+          "description": "",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -1668,7 +1642,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   },
                   {
                     "color": "red",
@@ -1708,7 +1683,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "(\n    sum by (pod) (\n        increase(\n            kube_pod_container_status_restarts_total{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-compactor\"}[10m]\n        )\n    )\n    * on (pod) group_right\n    max by (pod, reason) (\n        kube_pod_container_status_last_terminated_reason{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-compactor\"} # TODO: Fix reason hardcoded here\n    )\n) > 0",
+              "expr": "(\n    sum by (pod) (\n        increase(\n            kube_pod_container_status_restarts_total{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-compactor\"}[10m]\n        )\n    )\n    * on (pod) group_right\n    max by (pod, reason) (\n        kube_pod_container_status_last_terminated_reason{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-compactor\"}\n    )\n) > 0",
               "instant": false,
               "legendFormat": "{{reason}} / {{pod}}",
               "range": true,
@@ -1797,7 +1772,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 26
+            "y": 55
           },
           "id": 96,
           "options": {
@@ -1910,7 +1885,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 26
+            "y": 55
           },
           "id": 97,
           "options": {
@@ -2010,7 +1985,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 34
+            "y": 63
           },
           "id": 98,
           "options": {
@@ -2136,7 +2111,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 34
+            "y": 63
           },
           "id": 99,
           "options": {
@@ -2232,7 +2207,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               }
@@ -2325,7 +2301,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               }
@@ -2418,7 +2395,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               }
@@ -2429,7 +2407,7 @@
             "h": 7,
             "w": 12,
             "x": 0,
-            "y": 86
+            "y": 79
           },
           "id": 109,
           "options": {
@@ -2524,7 +2502,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               }
@@ -2535,7 +2514,7 @@
             "h": 7,
             "w": 12,
             "x": 0,
-            "y": 73
+            "y": 87
           },
           "id": 108,
           "options": {
@@ -2618,7 +2597,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               }
@@ -2629,7 +2609,7 @@
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 73
+            "y": 87
           },
           "id": 105,
           "options": {
@@ -2680,15 +2660,11 @@
       "panels": [
         {
           "description": "",
-          "fieldConfig": {
-            "defaults": {},
-            "overrides": []
-          },
           "gridPos": {
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 81
+            "y": 95
           },
           "id": 93,
           "options": {
@@ -2700,7 +2676,7 @@
             "content": "",
             "mode": "markdown"
           },
-          "pluginVersion": "11.1.0-69747",
+          "pluginVersion": "11.1.0-70005",
           "title": "We use tenant sharding so each compactor will process a subset of the tenants.",
           "transparent": true,
           "type": "text"
@@ -2752,7 +2728,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               }
@@ -2763,7 +2740,7 @@
             "h": 7,
             "w": 12,
             "x": 0,
-            "y": 82
+            "y": 96
           },
           "id": 83,
           "options": {
@@ -2870,7 +2847,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               }
@@ -2881,7 +2859,7 @@
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 82
+            "y": 96
           },
           "id": 84,
           "options": {
@@ -2917,15 +2895,11 @@
         },
         {
           "description": "",
-          "fieldConfig": {
-            "defaults": {},
-            "overrides": []
-          },
           "gridPos": {
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 89
+            "y": 103
           },
           "id": 86,
           "options": {
@@ -2937,7 +2911,7 @@
             "content": "",
             "mode": "markdown"
           },
-          "pluginVersion": "11.1.0-69747",
+          "pluginVersion": "11.1.0-70005",
           "title": "Number of tenant tables processed. ",
           "transparent": true,
           "type": "text"
@@ -2989,7 +2963,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               }
@@ -3000,7 +2975,7 @@
             "h": 7,
             "w": 12,
             "x": 0,
-            "y": 90
+            "y": 104
           },
           "id": 88,
           "options": {
@@ -3107,7 +3082,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               }
@@ -3118,7 +3094,7 @@
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 90
+            "y": 104
           },
           "id": 89,
           "options": {
@@ -3154,15 +3130,11 @@
         },
         {
           "description": "",
-          "fieldConfig": {
-            "defaults": {},
-            "overrides": []
-          },
           "gridPos": {
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 97
+            "y": 111
           },
           "id": 87,
           "options": {
@@ -3174,7 +3146,7 @@
             "content": "",
             "mode": "markdown"
           },
-          "pluginVersion": "11.1.0-69747",
+          "pluginVersion": "11.1.0-70005",
           "title": "Series per compaction (includes series copied from other blocks)",
           "transparent": true,
           "type": "text"
@@ -3184,7 +3156,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "description": "TODO: Shouldn't these be less or equal to the highest in the per-pod panel?",
+          "description": "",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -3227,7 +3199,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               }
@@ -3238,7 +3211,7 @@
             "h": 7,
             "w": 12,
             "x": 0,
-            "y": 98
+            "y": 112
           },
           "id": 81,
           "options": {
@@ -3345,7 +3318,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               }
@@ -3356,7 +3330,7 @@
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 98
+            "y": 112
           },
           "id": 82,
           "options": {
@@ -3392,15 +3366,11 @@
         },
         {
           "description": "",
-          "fieldConfig": {
-            "defaults": {},
-            "overrides": []
-          },
           "gridPos": {
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 105
+            "y": 119
           },
           "id": 90,
           "options": {
@@ -3412,7 +3382,7 @@
             "content": "",
             "mode": "markdown"
           },
-          "pluginVersion": "11.1.0-69747",
+          "pluginVersion": "11.1.0-70005",
           "title": "Number of bytes from chunks added to blocks during each compaction.",
           "transparent": true,
           "type": "text"
@@ -3464,7 +3434,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               },
@@ -3476,7 +3447,7 @@
             "h": 7,
             "w": 12,
             "x": 0,
-            "y": 106
+            "y": 120
           },
           "id": 91,
           "options": {
@@ -3583,7 +3554,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               },
@@ -3595,7 +3567,7 @@
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 106
+            "y": 120
           },
           "id": 92,
           "options": {
@@ -5109,6 +5081,6 @@
   "timezone": "",
   "title": "Bloom-Compactor New",
   "uid": "bdeqksjzwxqf4e",
-  "version": 57,
+  "version": 62,
   "weekStart": ""
 }
