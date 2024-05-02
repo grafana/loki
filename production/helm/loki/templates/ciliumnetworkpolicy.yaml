@@ -29,12 +29,17 @@ spec:
     matchLabels:
       {{- include "loki.selectorLabels" . | nindent 6 }}
   egress:
-  - toPorts:
-    - ports:
-      - port: dns
-        protocol: UDP
-    toEndpoints:
-    - namespaceSelector: {}
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+          rules:
+            dns:
+              - matchPattern: "*"
 
 ---
 apiVersion: cilium.io/v2
