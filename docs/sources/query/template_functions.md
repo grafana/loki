@@ -308,12 +308,12 @@ Example:
 
 Use this function to test to see if one string is contained inside of another.
 
-Signature: `contains(s string, src string) bool`
+Signature: `contains(s string, src string,) bool`
 
 Examples:
 
 ```template
-`{{ if contains .err "ErrTimeout" }} timeout {{end}}`
+`{{ if contains "ErrTimeout" .err }} timeout {{end}}`
 `{{ if contains "he" "hello" }} yes {{end}}`
 ```
 
@@ -326,8 +326,8 @@ Signature: `eq(s string, src string) bool`
 Examples:
 
 ```template
-`{{ if eq .err "ErrTimeout" }} timeout {{end}}`
-`{{ if eq "he" "hello" }} yes {{end}}`
+`{{ if eq "ErrTimeout" .err }} timeout {{end}}`
+`{{ if eq "hello" "hello" }} yes {{end}}`
 ```
 
 ## hasPrefix and hasSuffix

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -388,7 +389,11 @@ func (b *BloomClient) GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, err
 	err := concurrency.ForEachJob(ctx, len(refs), b.concurrency, func(ctx context.Context, idx int) error {
 		meta, err := b.GetMeta(ctx, refs[idx])
 		if err != nil {
-			return err
+			key := b.KeyResolver.Meta(refs[idx]).Addr()
+			if !b.IsObjectNotFoundErr(err) {
+				return fmt.Errorf("failed to get meta file %s: %w", key, err)
+			}
+			level.Error(b.logger).Log("msg", "failed to get meta file", "ref", key, "err", err)
 		}
 		results[idx] = meta
 		return nil
@@ -396,20 +401,22 @@ func (b *BloomClient) GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, err
 	return results, err
 }
 
+// GetMeta fetches the meta file for given MetaRef from object storage and
+// decodes the JSON data into a Meta.
+// If the meta file is not found in storage or decoding fails, the empty Meta
+// is returned along with the error.
 func (b *BloomClient) GetMeta(ctx context.Context, ref MetaRef) (Meta, error) {
-	meta := Meta{
-		MetaRef: ref,
-	}
+	meta := Meta{MetaRef: ref}
 	key := b.KeyResolver.Meta(ref).Addr()
 	reader, _, err := b.client.GetObject(ctx, key)
 	if err != nil {
-		return Meta{}, fmt.Errorf("failed to get meta file%s: %w", key, err)
+		return meta, err
 	}
 	defer reader.Close()
 
 	err = json.NewDecoder(reader).Decode(&meta)
 	if err != nil {
-		return Meta{}, fmt.Errorf("failed to decode meta file %s: %w", key, err)
+		return meta, errors.Wrap(err, "failed to decode JSON")
 	}
 	return meta, nil
 }
