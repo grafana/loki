@@ -334,7 +334,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(loki_bloom_size_sum{cluster=\"$cluster\", namespace=\"$namespace\"}[$__range]))\n/\nsum(rate(loki_bloomcompactor_chunk_series_size_sum{cluster=\"$cluster\", namespace=\"$namespace\"}[$__range]))",
+          "expr": "sum(rate(loki_bloom_size_sum{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval]))\n/\nsum(rate(loki_bloomcompactor_chunk_series_size_sum{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval]))",
           "hide": false,
           "instant": false,
           "legendFormat": "Ratio over range",

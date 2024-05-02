@@ -8,11 +8,12 @@ local raw = (import './dashboard-bloom-gateway.json');
 (import 'dashboard-utils.libsonnet') {
   grafanaDashboards+:
     {
-      'loki-bloom-compactor.json': raw +
-      $.dashboard('Loki / Bloom Gateway', uid='bloom-gateway')
-      .addCluster()
-      .addNamespace()
-      .addLog()
-      .addTag(),
+      'loki-bloom-gateway.json':
+        raw +
+        $.dashboard('Loki / Bloom Gateway', uid='bloom-gateway')
+        .addCluster()
+        .addNamespace()
+        .addLog()
+        .addTag(),
     },
 }
