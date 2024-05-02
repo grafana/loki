@@ -71,10 +71,7 @@ type Task struct {
 	enqueueTime time.Time
 }
 
-// NewTask returns a new Task that can be enqueued to the task queue.
-// In addition, it returns a result and an error channel, as well
-// as an error if the instantiation fails.
-func NewTask(ctx context.Context, tenantID string, refs seriesWithInterval, filters []syntax.LineFilterExpr, blocks []bloomshipper.BlockRef) (Task, error) {
+func NewTask(ctx context.Context, tenantID string, refs seriesWithInterval, filters []syntax.LineFilterExpr, blocks []bloomshipper.BlockRef) Task {
 	return Task{
 		Tenant:   tenantID,
 		err:      new(wrappedError),
@@ -86,7 +83,7 @@ func NewTask(ctx context.Context, tenantID string, refs seriesWithInterval, filt
 		table:    refs.day,
 		ctx:      ctx,
 		done:     make(chan struct{}),
-	}, nil
+	}
 }
 
 // Bounds implements Bounded
