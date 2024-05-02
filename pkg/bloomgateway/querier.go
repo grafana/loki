@@ -140,19 +140,25 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 
 	postFilterChunks := len(result)
 	postFilterSeries := len(deduped)
-
-	level.Debug(bq.logger).Log(
-		"operation", "bloomquerier.FilterChunkRefs",
+	commonArgs := []interface{}{
 		"tenant", tenant,
 		"from", from.Time(),
 		"through", through.Time(),
 		"responses", len(responses),
 		"preFilterChunks", preFilterChunks,
 		"postFilterChunks", postFilterChunks,
-		"filteredChunks", preFilterChunks-postFilterChunks,
+		"filteredChunks", preFilterChunks - postFilterChunks,
 		"preFilterSeries", preFilterSeries,
 		"postFilterSeries", postFilterSeries,
-		"filteredSeries", preFilterSeries-postFilterSeries,
+		"filteredSeries", preFilterSeries - postFilterSeries,
+	}
+
+	sp.LogKV(commonArgs...)
+	level.Debug(bq.logger).Log(
+		append(
+			commonArgs,
+			"operation", "bloomquerier.FilterChunkRefs",
+		),
 	)
 
 	bq.metrics.chunksTotal.Add(float64(preFilterChunks))
