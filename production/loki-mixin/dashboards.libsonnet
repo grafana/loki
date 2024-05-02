@@ -10,4 +10,5 @@
 (import 'dashboards/loki-deletion.libsonnet') +
 (import 'dashboards/loki-canary-dashboard.libsonnet') +
 (import 'dashboards/recording-rules.libsonnet') +
-(import 'dashboards/loki-bloom-compactor.libsonnet')
+(import 'dashboards/loki-bloom-compactor.libsonnet') +
+(import 'dashboards/loki-bloom-gateway.libsonnet')
