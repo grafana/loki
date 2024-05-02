@@ -298,7 +298,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	for _, task := range tasks {
 		task := task
 		task.enqueueTime = time.Now()
-		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "table", task.table, "series", len(task.series))
 
 		// TODO(owen-d): gracefully handle full queues
 		if err := g.queue.Enqueue(tenantID, nil, task, func() {
@@ -329,7 +328,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			stats.Status = "cancel"
 			return nil, errors.Wrap(ctx.Err(), "request failed")
 		case task := <-tasksCh:
-			level.Info(logger).Log("msg", "task done", "task", task.ID, "err", task.Err())
 			if task.Err() != nil {
 				stats.Status = labelFailure
 				return nil, errors.Wrap(task.Err(), "request failed")
