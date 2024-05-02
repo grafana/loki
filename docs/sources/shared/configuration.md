@@ -5280,6 +5280,26 @@ bloom_shipper:
   # component.
   # The CLI flags prefix for this block configuration is: bloom.metas-cache
   [metas_cache: <cache_config>]
+
+  metas_lru_cache:
+    # In-memory LRU cache for bloom metas. Whether embedded cache is enabled.
+    # CLI flag: -bloom.metas-lru-cache.enabled
+    [enabled: <boolean> | default = false]
+
+    # In-memory LRU cache for bloom metas. Maximum memory size of the cache in
+    # MB.
+    # CLI flag: -bloom.metas-lru-cache.max-size-mb
+    [max_size_mb: <int> | default = 100]
+
+    # In-memory LRU cache for bloom metas. Maximum number of entries in the
+    # cache.
+    # CLI flag: -bloom.metas-lru-cache.max-size-items
+    [max_size_items: <int> | default = 0]
+
+    # In-memory LRU cache for bloom metas. The time to live for items in the
+    # cache before they get purged.
+    # CLI flag: -bloom.metas-lru-cache.ttl
+    [ttl: <duration> | default = 1h]
 ```
 
 ### swift_storage_config

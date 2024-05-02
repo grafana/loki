@@ -730,13 +730,10 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 	if cache.IsCacheConfigured(bsCfg.MetasCache) {
 		metasCache, err = cache.New(bsCfg.MetasCache, reg, logger, stats.BloomMetasCache, constants.Loki)
 
-		lruCfg := cache.EmbeddedCacheConfig{
-			Enabled:       true,
-			MaxSizeMB:     256,
-			MaxSizeItems:  128000,
-			TTL:           10 * time.Minute,
-			PurgeInterval: 1 * time.Minute,
-		}
+		// always enable LRU cache
+		lruCfg := bsCfg.MetasLRUCache
+		lruCfg.Enabled = true
+		lruCfg.PurgeInterval = 1 * time.Minute
 		lruCache := cache.NewEmbeddedCache("inmemory-metas-lru", lruCfg, reg, logger, stats.BloomMetasCache)
 
 		metasCache = cache.NewTiered([]cache.Cache{lruCache, metasCache})
