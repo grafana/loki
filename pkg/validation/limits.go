@@ -480,6 +480,10 @@ func (l *Limits) Validate() error {
 		return err
 	}
 
+	if l.TSDBMaxBytesPerShard <= 0 {
+		return errors.New("querier.tsdb-max-bytes-per-shard must be greater than 0")
+	}
+
 	return nil
 }
 
