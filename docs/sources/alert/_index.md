@@ -212,7 +212,7 @@ As an example, we can use LogQL v2 to help Loki to monitor _itself_, alerting us
 Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via `lokitool`.
 
 {{% admonition type="note" %}}
-lokitool was intended to run against multi-tenant Loki, commands need an `--id=` flag set to the Loki instance ID or set the environment variable `LOKI_TENANT_ID`.  If Loki is running in single tenant mode, the required ID is `fake`.
+lokitool is intended to run against multi-tenant Loki.  The commands need an `--id=` flag set to the Loki instance ID or set the environment variable `LOKI_TENANT_ID`.  If Loki is running in single tenant mode, the required ID is `fake`.
 {{% /admonition %}}
 
 An example workflow is included below:
