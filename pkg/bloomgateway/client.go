@@ -267,6 +267,8 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval blo
 					"blocks", len(rs.blocks),
 					"err", err,
 				)
+				// filter none of the results on failed request
+				results[i] = rs.groups
 				return nil
 			}
 			c.metrics.clientRequests.WithLabelValues(typeSuccess).Inc()
@@ -287,7 +289,6 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval blo
 // mergeSeries combines responses from multiple FilterChunkRefs calls and deduplicates
 // chunks from series that appear in multiple responses.
 // To avoid allocations, an optional slice can be passed as second argument.
-// NB(owen-d): input entries may be nil when a request fails.
 func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedChunkRefs) ([]*logproto.GroupedChunkRefs, error) {
 	// clear provided buffer
 	buf = buf[:0]
