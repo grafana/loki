@@ -2236,22 +2236,20 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 # CLI flag: -querier.id
 [id: <string> | default = ""]
 
-# The grpc_client block configures the gRPC client used to communicate between a
-# client and server component in Loki.
+# Configures the querier gRPC client used to communicate with the
+# query-frontend. Shouldn't be used in conjunction with 'grpc_client_config'.
 # The CLI flags prefix for this block configuration is:
 # querier.frontend-grpc-client
 [query_frontend_grpc_client: <grpc_client>]
 
-# Configures the gRPC client used to communicate between the querier and the
-# query-frontend, and the querier and the query-scheduler. If
-# 'use_separated_clients' is true, this config is only used for communicating
-# with frontend and 'query_scheduler_grpc_client_config' should be used to
-# configuring querier <-> scheduler communication.
+# Configures the querier gRPC client used to communicate with the query-frontend
+# and with the query-scheduler if 'query_scheduler_grpc_client' isn't defined.
+# This shouldn't be used if 'query_frontend_grpc_client' is defined.
 # The CLI flags prefix for this block configuration is: querier.frontend-client
 [grpc_client_config: <grpc_client>]
 
-# Configures the gRPC client used to communicate between the querier and the
-# query-scheduler. If 'use_separated_clients' is false, this config is ignored.
+# Configures the querier gRPC client used to communicate with the
+# query-scheduler. If not defined, 'grpc_client_config' is used instead.
 # The CLI flags prefix for this block configuration is:
 # querier.scheduler-grpc-client
 [query_scheduler_grpc_client: <grpc_client>]

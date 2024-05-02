@@ -30,10 +30,10 @@ type Config struct {
 
 	QuerierID string `yaml:"id"`
 
-	NewQueryFrontendGRPCClientConfig grpcclient.Config `yaml:"query_frontend_grpc_client"`
-	OldQueryFrontendGRPCClientConfig grpcclient.Config `yaml:"grpc_client_config" doc:"description=Configures the gRPC client used to communicate between the querier and the query-frontend, and the querier and the query-scheduler. If 'use_separated_clients' is true, this config is only used for communicating with frontend and 'query_scheduler_grpc_client_config' should be used to configuring querier <-> scheduler communication."`
+	NewQueryFrontendGRPCClientConfig grpcclient.Config `yaml:"query_frontend_grpc_client" doc:"description=Configures the querier gRPC client used to communicate with the query-frontend. Shouldn't be used in conjunction with 'grpc_client_config'."`
+	OldQueryFrontendGRPCClientConfig grpcclient.Config `yaml:"grpc_client_config" doc:"description=Configures the querier gRPC client used to communicate with the query-frontend and with the query-scheduler if 'query_scheduler_grpc_client' isn't defined. This shouldn't be used if 'query_frontend_grpc_client' is defined."`
 
-	QuerySchedulerGRPCClientConfig grpcclient.Config `yaml:"query_scheduler_grpc_client" doc:"description=Configures the gRPC client used to communicate between the querier and the query-scheduler. If 'use_separated_clients' is false, this config is ignored."`
+	QuerySchedulerGRPCClientConfig grpcclient.Config `yaml:"query_scheduler_grpc_client" doc:"description=Configures the querier gRPC client used to communicate with the query-scheduler. If not defined, 'grpc_client_config' is used instead."`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
