@@ -38,9 +38,9 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, m
 		log:            log,
 		handler:        handler,
 		codec:          codec,
-		maxMessageSize: cfg.QueryFrontendGRPCClientConfig.MaxRecvMsgSize,
+		maxMessageSize: cfg.NewQueryFrontendGRPCClientConfig.MaxRecvMsgSize,
 		querierID:      cfg.QuerierID,
-		grpcConfig:     cfg.QueryFrontendGRPCClientConfig,
+		grpcConfig:     cfg.NewQueryFrontendGRPCClientConfig,
 		schedulerClientFactory: func(conn *grpc.ClientConn) schedulerpb.SchedulerForQuerierClient {
 			return schedulerpb.NewSchedulerForQuerierClient(conn)
 		},
