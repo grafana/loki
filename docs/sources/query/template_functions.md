@@ -12,8 +12,7 @@ weight: 30
 The [text template](https://golang.org/pkg/text/template) format used in `| line_format` and `| label_format` support the usage of functions.
 
 {{% admonition type="note" %}}
-In the examples below, we use backticks to quote the template strings. This is because some of the template strings contain double quotes,
-and using backticks allows us to avoid escaping the double quotes.
+In the examples below, we use backticks to quote some of the template strings. This is because those template strings contain double quotes, and using backticks lets us avoid escaping the double quotes.
 If you are using a different quoting style, you may need to escape the double quotes.
 {{% /admonition %}}
 
