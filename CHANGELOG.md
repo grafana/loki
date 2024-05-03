@@ -19,6 +19,14 @@
 ##### Security
 * [11745](https://github.com/grafana/loki/pull/11745) Update `golang.org/x/crypto` to `v0.18.0`
 
+## [2.9.8](https://github.com/grafana/loki/compare/v2.9.7...v2.9.8) (2024-05-02)
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/net to v0.23.0 [security] (release-2.9.x) ([#12865](https://github.com/grafana/loki/issues/12865)) ([94e0029](https://github.com/grafana/loki/commit/94e00299ec9b36ad97c147641566b6922268c54e))
+* Trigger release-please for 2.9.7 ([#12822](https://github.com/grafana/loki/issues/12822)) ([55b747c](https://github.com/grafana/loki/commit/55b747ce4ebfe0b46de674104264e4972284ec7d))
+
 ## [2.9.7](https://github.com/grafana/loki/compare/v2.9.6...v2.9.7) (2024-04-10)
 
 
