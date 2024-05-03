@@ -581,13 +581,13 @@ Signature: `fromJson(v string) interface{}`
 Example:
 
 ```template
-fromJson "{\"foo\": 55}"
+`{{fromJson "{\"foo\": 55}"}}`
 ```
 
 Example of a query to print a newline per queries stored as a json array in the log line:
 
 ```logql
-{job="loki/querier"} |= "finish in prometheus" | logfmt | line_format "{{ range $q := fromJson .queries }} {{ $q.query }} {{ end }}"
+{job="loki/querier"} |= "finish in prometheus" | logfmt | line_format `{{ range $q := fromJson .queries }} {{ $q.query }} {{ end }}`
 ```
 
 ## now
