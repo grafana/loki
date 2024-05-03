@@ -70,17 +70,18 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 	tables := tablesForRange(b.cfg, params.Interval)
 	for _, table := range tables {
 		prefix := path.Join(rootFolder, table, params.TenantID, metasFolder)
+		list, _, err := b.objectClient.List(ctx, prefix, "")
+		if err != nil {
+			return nil, nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
+		}
 		level.Debug(b.fetcher.logger).Log(
 			"msg", "listing metas",
 			"store", b.cfg.From,
 			"table", table,
 			"tenant", params.TenantID,
 			"prefix", prefix,
+			"items", len(list),
 		)
-		list, _, err := b.objectClient.List(ctx, prefix, "")
-		if err != nil {
-			return nil, nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
-		}
 		for _, object := range list {
 			metaRef, err := b.ParseMetaKey(key(object.Key))
 

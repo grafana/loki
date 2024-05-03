@@ -485,11 +485,13 @@ func (c *cachedListOpObjectClient) List(ctx context.Context, prefix string, deli
 		logger   = spanlogger.FromContext(ctx)
 		start    = time.Now()
 		cacheDur time.Duration
+		count    int
 	)
 	defer func() {
 		logger.LogKV(
 			"cache_duration", cacheDur,
 			"total_duration", time.Since(start),
+			"objects", count,
 		)
 	}()
 
@@ -511,6 +513,7 @@ func (c *cachedListOpObjectClient) List(ctx context.Context, prefix string, deli
 	if err != nil {
 		return nil, nil, err
 	}
+	count = len(objects)
 
 	c.cache[prefix] = listOpResult{
 		ts:       time.Now(),
