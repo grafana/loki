@@ -63,7 +63,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
@@ -203,13 +205,15 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, err
 	}
 
-	logger := log.With(g.logger, "tenant", tenantID)
-
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomgateway.FilterChunkRefs")
 	stats, ctx := ContextWithEmptyStats(ctx)
+	logger := spanlogger.FromContextWithFallback(
+		ctx,
+		util_log.WithContext(ctx, g.logger),
+	)
+
 	defer func() {
 		level.Info(logger).Log(stats.KVArgs()...)
-		sp.LogKV(stats.KVArgs()...)
 		sp.Finish()
 	}()
 
@@ -319,6 +323,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		preFilterChunks += len(series.Refs)
 	}
 
+	combinedRecorder := v1.NewBloomRecorder(ctx, "combined")
 	for remaining > 0 {
 		select {
 		case <-ctx.Done():
@@ -330,10 +335,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 				return nil, errors.Wrap(task.Err(), "request failed")
 			}
 			responses = append(responses, task.responses)
+			combinedRecorder.Merge(task.recorder)
 			remaining--
 		}
 	}
 
+	combinedRecorder.Log(util_log.WithContext(ctx, g.logger))
 	sp.LogKV("msg", "received all responses")
 
 	start := time.Now()
@@ -348,7 +355,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	postFilterSeries := len(filtered)
 
-	for _, group := range req.Refs {
+	for _, group := range filtered {
 		postFilterChunks += len(group.Refs)
 	}
 	g.metrics.requestedSeries.Observe(float64(preFilterSeries))
@@ -421,7 +428,10 @@ func orderedResponsesByFP(responses [][]v1.Output) v1.Iterator[v1.Output] {
 // TODO(owen-d): improve perf. This can be faster with a more specialized impl
 // NB(owen-d): `req` is mutated in place for performance, but `responses` is not
 // Removals of the outputs must be sorted.
-func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses [][]v1.Output) []*logproto.GroupedChunkRefs {
+func filterChunkRefs(
+	req *logproto.FilterChunkRefRequest,
+	responses [][]v1.Output,
+) []*logproto.GroupedChunkRefs {
 	res := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
 
 	// dedupe outputs, merging the same series.
