@@ -789,92 +789,92 @@ The `azure_storage_config` block configures the connection to Azure object stora
 ```yaml
 # Azure Cloud environment. Supported values are: AzureGlobal, AzureChinaCloud,
 # AzureGermanCloud, AzureUSGovernment.
-# CLI flag: -azure.environment
+# CLI flag: -<prefix>.azure.environment
 [environment: <string> | default = "AzureGlobal"]
 
 # Azure storage account name.
-# CLI flag: -azure.account-name
+# CLI flag: -<prefix>.azure.account-name
 [account_name: <string> | default = ""]
 
 # Azure storage account key.
-# CLI flag: -azure.account-key
+# CLI flag: -<prefix>.azure.account-key
 [account_key: <string> | default = ""]
 
 # If `connection-string` is set, the values of `account-name` and
 # `endpoint-suffix` values will not be used. Use this method over `account-key`
 # if you need to authenticate via a SAS token. Or if you use the Azurite
 # emulator.
-# CLI flag: -azure.connection-string
+# CLI flag: -<prefix>.azure.connection-string
 [connection_string: <string> | default = ""]
 
 # Name of the storage account blob container used to store chunks. This
 # container must be created before running cortex.
-# CLI flag: -azure.container-name
+# CLI flag: -<prefix>.azure.container-name
 [container_name: <string> | default = "loki"]
 
 # Azure storage endpoint suffix without schema. The storage account name will be
 # prefixed to this value to create the FQDN.
-# CLI flag: -azure.endpoint-suffix
+# CLI flag: -<prefix>.azure.endpoint-suffix
 [endpoint_suffix: <string> | default = ""]
 
 # Use Managed Identity to authenticate to the Azure storage account.
-# CLI flag: -azure.use-managed-identity
+# CLI flag: -<prefix>.azure.use-managed-identity
 [use_managed_identity: <boolean> | default = false]
 
 # Use Federated Token to authenticate to the Azure storage account.
-# CLI flag: -azure.use-federated-token
+# CLI flag: -<prefix>.azure.use-federated-token
 [use_federated_token: <boolean> | default = false]
 
 # User assigned identity ID to authenticate to the Azure storage account.
-# CLI flag: -azure.user-assigned-id
+# CLI flag: -<prefix>.azure.user-assigned-id
 [user_assigned_id: <string> | default = ""]
 
 # Use Service Principal to authenticate through Azure OAuth.
-# CLI flag: -azure.use-service-principal
+# CLI flag: -<prefix>.azure.use-service-principal
 [use_service_principal: <boolean> | default = false]
 
 # Azure Service Principal ID(GUID).
-# CLI flag: -azure.client-id
+# CLI flag: -<prefix>.azure.client-id
 [client_id: <string> | default = ""]
 
 # Azure Service Principal secret key.
-# CLI flag: -azure.client-secret
+# CLI flag: -<prefix>.azure.client-secret
 [client_secret: <string> | default = ""]
 
 # Azure Tenant ID is used to authenticate through Azure OAuth.
-# CLI flag: -azure.tenant-id
+# CLI flag: -<prefix>.azure.tenant-id
 [tenant_id: <string> | default = ""]
 
 # Chunk delimiter for blob ID to be used
-# CLI flag: -azure.chunk-delimiter
+# CLI flag: -<prefix>.azure.chunk-delimiter
 [chunk_delimiter: <string> | default = "-"]
 
 # Preallocated buffer size for downloads.
-# CLI flag: -azure.download-buffer-size
+# CLI flag: -<prefix>.azure.download-buffer-size
 [download_buffer_size: <int> | default = 512000]
 
 # Preallocated buffer size for uploads.
-# CLI flag: -azure.upload-buffer-size
+# CLI flag: -<prefix>.azure.upload-buffer-size
 [upload_buffer_size: <int> | default = 256000]
 
 # Number of buffers used to used to upload a chunk.
-# CLI flag: -azure.download-buffer-count
+# CLI flag: -<prefix>.azure.download-buffer-count
 [upload_buffer_count: <int> | default = 1]
 
 # Timeout for requests made against azure blob storage.
-# CLI flag: -azure.request-timeout
+# CLI flag: -<prefix>.azure.request-timeout
 [request_timeout: <duration> | default = 30s]
 
 # Number of retries for a request which times out.
-# CLI flag: -azure.max-retries
+# CLI flag: -<prefix>.azure.max-retries
 [max_retries: <int> | default = 5]
 
 # Minimum time to wait before retrying a request.
-# CLI flag: -azure.min-retry-delay
+# CLI flag: -<prefix>.azure.min-retry-delay
 [min_retry_delay: <duration> | default = 10ms]
 
 # Maximum time to wait before retrying a request.
-# CLI flag: -azure.max-retry-delay
+# CLI flag: -<prefix>.azure.max-retry-delay
 [max_retry_delay: <duration> | default = 500ms]
 ```
 
@@ -2236,23 +2236,10 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 # CLI flag: -querier.id
 [id: <string> | default = ""]
 
-# Configures the querier gRPC client used to communicate with the
-# query-frontend. Shouldn't be used in conjunction with 'grpc_client_config'.
-# The CLI flags prefix for this block configuration is:
-# querier.frontend-grpc-client
-[query_frontend_grpc_client: <grpc_client>]
-
-# Configures the querier gRPC client used to communicate with the query-frontend
-# and with the query-scheduler if 'query_scheduler_grpc_client' isn't defined.
-# This shouldn't be used if 'query_frontend_grpc_client' is defined.
+# The grpc_client block configures the gRPC client used to communicate between a
+# client and server component in Loki.
 # The CLI flags prefix for this block configuration is: querier.frontend-client
 [grpc_client_config: <grpc_client>]
-
-# Configures the querier gRPC client used to communicate with the
-# query-scheduler. If not defined, 'grpc_client_config' is used instead.
-# The CLI flags prefix for this block configuration is:
-# querier.scheduler-grpc-client
-[query_scheduler_grpc_client: <grpc_client>]
 ```
 
 ### gcs_storage_config
@@ -2310,8 +2297,6 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `ingester.client`
 - `pattern-ingester.client`
 - `querier.frontend-client`
-- `querier.frontend-grpc-client`
-- `querier.scheduler-grpc-client`
 - `query-scheduler.grpc-client-config`
 - `ruler.client`
 - `tsdb.shipper.index-gateway-client.grpc`
@@ -2373,7 +2358,7 @@ backoff_config:
 # TLS flag is set. If set to false, insecure connection to gRPC server will be
 # used.
 # CLI flag: -<prefix>.tls-enabled
-[tls_enabled: <boolean> | default = true]
+[tls_enabled: <boolean> | default = false]
 
 # Path to the client certificate, which will be used for authenticating with the
 # server. Also requires the key path to be configured.
@@ -5328,83 +5313,83 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 
 ```yaml
 # OpenStack Swift authentication API version. 0 to autodetect.
-# CLI flag: -swift.auth-version
+# CLI flag: -<prefix>.swift.auth-version
 [auth_version: <int> | default = 0]
 
 # OpenStack Swift authentication URL
-# CLI flag: -swift.auth-url
+# CLI flag: -<prefix>.swift.auth-url
 [auth_url: <string> | default = ""]
 
 # Set this to true to use the internal OpenStack Swift endpoint URL
-# CLI flag: -swift.internal
+# CLI flag: -<prefix>.swift.internal
 [internal: <boolean> | default = false]
 
 # OpenStack Swift username.
-# CLI flag: -swift.username
+# CLI flag: -<prefix>.swift.username
 [username: <string> | default = ""]
 
 # OpenStack Swift user's domain name.
-# CLI flag: -swift.user-domain-name
+# CLI flag: -<prefix>.swift.user-domain-name
 [user_domain_name: <string> | default = ""]
 
 # OpenStack Swift user's domain ID.
-# CLI flag: -swift.user-domain-id
+# CLI flag: -<prefix>.swift.user-domain-id
 [user_domain_id: <string> | default = ""]
 
 # OpenStack Swift user ID.
-# CLI flag: -swift.user-id
+# CLI flag: -<prefix>.swift.user-id
 [user_id: <string> | default = ""]
 
 # OpenStack Swift API key.
-# CLI flag: -swift.password
+# CLI flag: -<prefix>.swift.password
 [password: <string> | default = ""]
 
 # OpenStack Swift user's domain ID.
-# CLI flag: -swift.domain-id
+# CLI flag: -<prefix>.swift.domain-id
 [domain_id: <string> | default = ""]
 
 # OpenStack Swift user's domain name.
-# CLI flag: -swift.domain-name
+# CLI flag: -<prefix>.swift.domain-name
 [domain_name: <string> | default = ""]
 
 # OpenStack Swift project ID (v2,v3 auth only).
-# CLI flag: -swift.project-id
+# CLI flag: -<prefix>.swift.project-id
 [project_id: <string> | default = ""]
 
 # OpenStack Swift project name (v2,v3 auth only).
-# CLI flag: -swift.project-name
+# CLI flag: -<prefix>.swift.project-name
 [project_name: <string> | default = ""]
 
 # ID of the OpenStack Swift project's domain (v3 auth only), only needed if it
 # differs the from user domain.
-# CLI flag: -swift.project-domain-id
+# CLI flag: -<prefix>.swift.project-domain-id
 [project_domain_id: <string> | default = ""]
 
 # Name of the OpenStack Swift project's domain (v3 auth only), only needed if it
 # differs from the user domain.
-# CLI flag: -swift.project-domain-name
+# CLI flag: -<prefix>.swift.project-domain-name
 [project_domain_name: <string> | default = ""]
 
 # OpenStack Swift Region to use (v2,v3 auth only).
-# CLI flag: -swift.region-name
+# CLI flag: -<prefix>.swift.region-name
 [region_name: <string> | default = ""]
 
 # Name of the OpenStack Swift container to put chunks in.
-# CLI flag: -swift.container-name
+# CLI flag: -<prefix>.swift.container-name
 [container_name: <string> | default = ""]
 
 # Max retries on requests error.
-# CLI flag: -swift.max-retries
+# CLI flag: -<prefix>.swift.max-retries
 [max_retries: <int> | default = 3]
 
 # Time after which a connection attempt is aborted.
-# CLI flag: -swift.connect-timeout
+# CLI flag: -<prefix>.swift.connect-timeout
 [connect_timeout: <duration> | default = 10s]
 
 # Time after which an idle request is aborted. The timeout watchdog is reset
 # each time some data is received, so the timeout triggers after X time no data
 # is received on a request.
-# CLI flag: -swift.request-timeout
+# CLI flag: -<prefix>.swift.request-timeout
 [request_timeout: <duration> | default = 5s]
 ```
 
