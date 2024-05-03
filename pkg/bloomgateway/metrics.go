@@ -15,21 +15,25 @@ type metrics struct {
 	*serverMetrics
 }
 
+const (
+	typeSuccess = "success"
+	typeError   = "error"
+)
+
 type clientMetrics struct {
-	cacheLocalityScore prometheus.Histogram
-	requestLatency     *prometheus.HistogramVec
-	clients            prometheus.Gauge
+	clientRequests *prometheus.CounterVec
+	requestLatency *prometheus.HistogramVec
+	clients        prometheus.Gauge
 }
 
 func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
 	return &clientMetrics{
-		cacheLocalityScore: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+		clientRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Subsystem: "bloom_gateway_client",
-			Name:      "cache_locality_score",
-			Help:      "Cache locality score of the bloom filter, as measured by % of keyspace touched / % of bloom_gws required",
-			Buckets:   prometheus.LinearBuckets(0.01, 0.2, 5),
-		}),
+			Name:      "requests_total",
+			Help:      "Total number of requests made to the bloom gateway",
+		}, []string{"type"}),
 		requestLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Subsystem: "bloom_gateway_client",

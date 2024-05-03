@@ -126,7 +126,7 @@ func TestProcessor(t *testing.T) {
 		}
 
 		t.Log("series", len(swb.series))
-		task, _ := NewTask(ctx, "fake", swb, filters, nil)
+		task := newTask(ctx, "fake", swb, filters, nil)
 		tasks := []Task{task}
 
 		results := atomic.NewInt64(0)
@@ -178,7 +178,7 @@ func TestProcessor(t *testing.T) {
 		}
 
 		t.Log("series", len(swb.series))
-		task, _ := NewTask(ctx, "fake", swb, filters, blocks)
+		task := newTask(ctx, "fake", swb, filters, blocks)
 		tasks := []Task{task}
 
 		results := atomic.NewInt64(0)
@@ -227,7 +227,7 @@ func TestProcessor(t *testing.T) {
 		}
 
 		t.Log("series", len(swb.series))
-		task, _ := NewTask(ctx, "fake", swb, filters, nil)
+		task := newTask(ctx, "fake", swb, filters, nil)
 		tasks := []Task{task}
 
 		results := atomic.NewInt64(0)
