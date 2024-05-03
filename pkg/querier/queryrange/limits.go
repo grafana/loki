@@ -341,7 +341,6 @@ func (q *querySizeLimiter) guessLimitName() string {
 
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	log := spanlogger.FromContext(ctx)
-	defer log.Finish()
 
 	// Only support TSDB
 	schemaCfg, err := q.getSchemaCfg(r)

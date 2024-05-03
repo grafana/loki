@@ -222,7 +222,6 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	error,
 ) {
 	log := spanlogger.FromContext(r.ctx)
-	defer log.Finish()
 
 	adjustedFrom := r.from
 
