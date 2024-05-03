@@ -18,9 +18,9 @@
             },
             annotations: {
               summary: 'Loki request error rate is high.',
-              description: |||
-                {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
-              |||,
+              description: std.strReplace(|||
+                {{ $labels.cluster }} {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
+              |||, 'cluster', $._config.per_cluster_label),
             },
           },
           {
@@ -33,9 +33,9 @@
             },
             annotations: {
               summary: 'Loki requests are causing code panics.',
-              description: |||
-                {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}% increase of panics.
-              |||,
+              description: std.strReplace(|||
+                {{ $labels.cluster }} {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}% increase of panics.
+              |||, 'cluster', $._config.per_cluster_label),
             },
           },
           {
@@ -49,9 +49,9 @@
             },
             annotations: {
               summary: 'Loki request error latency is high.',
-              description: |||
-                {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
-              |||,
+              description: std.strReplace(|||
+                {{ $labels.cluster }} {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
+              |||, 'cluster', $._config.per_cluster_label),
             },
           },
           {

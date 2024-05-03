@@ -4,7 +4,7 @@ groups:
         - alert: LokiRequestErrors
           annotations:
             description: |
-                {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
+                {{ $labels.cluster }} {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
             summary: Loki request error rate is high.
           expr: |
             100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (namespace, job, route)
@@ -17,7 +17,7 @@ groups:
         - alert: LokiRequestPanics
           annotations:
             description: |
-                {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}% increase of panics.
+                {{ $labels.cluster }} {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}% increase of panics.
             summary: Loki requests are causing code panics.
           expr: |
             sum(increase(loki_panic_total[10m])) by (namespace, job) > 0
@@ -26,7 +26,7 @@ groups:
         - alert: LokiRequestLatency
           annotations:
             description: |
-                {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
+                {{ $labels.cluster }} {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
             summary: Loki request error latency is high.
           expr: |
             cluster_namespace_job_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop"} > 1
