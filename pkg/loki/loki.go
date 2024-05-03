@@ -17,6 +17,7 @@ import (
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/middleware"
@@ -77,6 +78,9 @@ type Config struct {
 	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
+	Grpc1 grpcclient.Config `yaml:"grpc1"`
+	Grpc2 grpcclient.Config `yaml:"grpc2"`
+
 	Server              server.Config              `yaml:"server,omitempty"`
 	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
 	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
@@ -120,6 +124,9 @@ type Config struct {
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = constants.Loki
 	c.Server.ExcludeRequestInLog = true
+
+	c.Grpc1.RegisterFlagsWithPrefix("grpc1", f)
+	c.Grpc2.RegisterFlagsWithPrefix("grpc2", f)
 
 	// Set the default module list to 'all'
 	c.Target = []string{All}

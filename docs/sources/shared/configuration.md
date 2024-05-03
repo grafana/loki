@@ -104,6 +104,16 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # CLI flag: -config.ballast-bytes
 [ballast_bytes: <int> | default = 0]
 
+# The grpc_client block configures the gRPC client used to communicate between a
+# client and server component in Loki.
+# The CLI flags prefix for this block configuration is: grpc1
+[grpc1: <grpc_client>]
+
+# The grpc_client block configures the gRPC client used to communicate between a
+# client and server component in Loki.
+# The CLI flags prefix for this block configuration is: grpc2
+[grpc2: <grpc_client>]
+
 # Configures the server of the launched module(s).
 [server: <server>]
 
@@ -2294,6 +2304,8 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`
+- `grpc1`
+- `grpc2`
 - `ingester.client`
 - `pattern-ingester.client`
 - `querier.frontend-client`
@@ -5313,83 +5325,83 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 
 ```yaml
 # OpenStack Swift authentication API version. 0 to autodetect.
-# CLI flag: -<prefix>.swift.auth-version
+# CLI flag: -swift.auth-version
 [auth_version: <int> | default = 0]
 
 # OpenStack Swift authentication URL
-# CLI flag: -<prefix>.swift.auth-url
+# CLI flag: -swift.auth-url
 [auth_url: <string> | default = ""]
 
 # Set this to true to use the internal OpenStack Swift endpoint URL
-# CLI flag: -<prefix>.swift.internal
+# CLI flag: -swift.internal
 [internal: <boolean> | default = false]
 
 # OpenStack Swift username.
-# CLI flag: -<prefix>.swift.username
+# CLI flag: -swift.username
 [username: <string> | default = ""]
 
 # OpenStack Swift user's domain name.
-# CLI flag: -<prefix>.swift.user-domain-name
+# CLI flag: -swift.user-domain-name
 [user_domain_name: <string> | default = ""]
 
 # OpenStack Swift user's domain ID.
-# CLI flag: -<prefix>.swift.user-domain-id
+# CLI flag: -swift.user-domain-id
 [user_domain_id: <string> | default = ""]
 
 # OpenStack Swift user ID.
-# CLI flag: -<prefix>.swift.user-id
+# CLI flag: -swift.user-id
 [user_id: <string> | default = ""]
 
 # OpenStack Swift API key.
-# CLI flag: -<prefix>.swift.password
+# CLI flag: -swift.password
 [password: <string> | default = ""]
 
 # OpenStack Swift user's domain ID.
-# CLI flag: -<prefix>.swift.domain-id
+# CLI flag: -swift.domain-id
 [domain_id: <string> | default = ""]
 
 # OpenStack Swift user's domain name.
-# CLI flag: -<prefix>.swift.domain-name
+# CLI flag: -swift.domain-name
 [domain_name: <string> | default = ""]
 
 # OpenStack Swift project ID (v2,v3 auth only).
-# CLI flag: -<prefix>.swift.project-id
+# CLI flag: -swift.project-id
 [project_id: <string> | default = ""]
 
 # OpenStack Swift project name (v2,v3 auth only).
-# CLI flag: -<prefix>.swift.project-name
+# CLI flag: -swift.project-name
 [project_name: <string> | default = ""]
 
 # ID of the OpenStack Swift project's domain (v3 auth only), only needed if it
 # differs the from user domain.
-# CLI flag: -<prefix>.swift.project-domain-id
+# CLI flag: -swift.project-domain-id
 [project_domain_id: <string> | default = ""]
 
 # Name of the OpenStack Swift project's domain (v3 auth only), only needed if it
 # differs from the user domain.
-# CLI flag: -<prefix>.swift.project-domain-name
+# CLI flag: -swift.project-domain-name
 [project_domain_name: <string> | default = ""]
 
 # OpenStack Swift Region to use (v2,v3 auth only).
-# CLI flag: -<prefix>.swift.region-name
+# CLI flag: -swift.region-name
 [region_name: <string> | default = ""]
 
 # Name of the OpenStack Swift container to put chunks in.
-# CLI flag: -<prefix>.swift.container-name
+# CLI flag: -swift.container-name
 [container_name: <string> | default = ""]
 
 # Max retries on requests error.
-# CLI flag: -<prefix>.swift.max-retries
+# CLI flag: -swift.max-retries
 [max_retries: <int> | default = 3]
 
 # Time after which a connection attempt is aborted.
-# CLI flag: -<prefix>.swift.connect-timeout
+# CLI flag: -swift.connect-timeout
 [connect_timeout: <duration> | default = 10s]
 
 # Time after which an idle request is aborted. The timeout watchdog is reset
 # each time some data is received, so the timeout triggers after X time no data
 # is received on a request.
-# CLI flag: -<prefix>.swift.request-timeout
+# CLI flag: -swift.request-timeout
 [request_timeout: <duration> | default = 5s]
 ```
 
