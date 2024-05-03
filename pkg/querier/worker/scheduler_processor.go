@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	querier_stats "github.com/grafana/loki/v3/pkg/querier/stats"
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
+	httpgrpcutil "github.com/grafana/loki/v3/pkg/util/httpgrpc"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -146,6 +147,15 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			ctx := user.InjectOrgID(ctx, request.UserID)
 
 			sp.metrics.inflightRequests.Inc()
+			tracer := opentracing.GlobalTracer()
+			// Ignore errors here. If we cannot get parent span, we just don't create new one.
+			parentSpanContext, _ := httpgrpcutil.GetParentSpanForRequest(tracer, request)
+			if parentSpanContext != nil {
+				queueSpan, spanCtx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, "querier_processor_runRequest", opentracing.ChildOf(parentSpanContext))
+				defer queueSpan.Finish()
+
+				ctx = spanCtx
+			}
 			logger := util_log.WithContext(ctx, sp.log)
 
 			switch r := request.Request.(type) {
