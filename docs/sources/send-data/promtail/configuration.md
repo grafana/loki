@@ -688,7 +688,8 @@ The metrics stage allows for defining metrics from the extracted data.
 
 Created metrics are not pushed to Loki and are instead exposed via Promtail's
 `/metrics` endpoint. Prometheus should be configured to scrape Promtail to be
-able to retrieve the metrics configured by this stage.
+able to retrieve the metrics configured by this stage. 
+If Promtail's configuration is reloaded, all metrics will be reset.
 
 
 ```yaml
@@ -1958,6 +1959,13 @@ or [journald](https://docs.docker.com/config/containers/logging/journald/) loggi
 Note that the discovery will not pick up finished containers. That means
 Promtail will not scrape the remaining logs from finished containers after a restart.
 
+The Docker target correctly joins log segments if a long line was split into different frames by Docker.
+To avoid hypothetically unlimited line size and out-of-memory errors in Promtail, this target applies
+a default soft line size limit of 256 kiB corresponding to the default max line size in Loki.
+If the buffer increases above this size, then the line will be sent to output immediately, and the rest
+of the line discarded. To change this behaviour, set `limits_config.max_line_size` to a non-zero value
+to apply a hard limit.
+
 The configuration is inherited from [Prometheus' Docker service discovery](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#docker_sd_config).
 
 ```yaml
@@ -2083,6 +2091,8 @@ The optional `limits_config` block configures global limits for this instance of
 [max_streams: <int> | default = 0]
 
 # Maximum log line byte size allowed without dropping. Example: 256kb, 2M. 0 to disable.
+# If disabled, targets may apply default buffer size safety limits. If a target implements
+# a default limit, this will be documented under the `scrape_configs` entry.
 [max_line_size: <int> | default = 0]
 # Whether to truncate lines that exceed max_line_size. No effect if max_line_size is disabled
 [max_line_size_truncate: <bool> | default = false]

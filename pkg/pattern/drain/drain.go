@@ -268,7 +268,6 @@ func (d *Drain) Match(content string) *LogCluster {
 }
 
 func (d *Drain) getContentAsTokens(content string) []string {
-	content = strings.TrimSpace(content)
 	for _, extraDelimiter := range d.config.ExtraDelimiters {
 		content = strings.Replace(content, extraDelimiter, " ", -1)
 	}
