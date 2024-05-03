@@ -407,7 +407,7 @@ enterprise:
     admin_client:
       storage:
         s3:
-          bucket_name: admin
+          bucket_name: {{ .Values.loki.storage.bucketNames.admin }}
     {{- end }}
     {{- end }}
     auth:
