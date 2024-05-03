@@ -33,7 +33,7 @@ It is not recommended to run scalable mode with `filesystem` storage.
 **Prerequisites**
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
-- A running Kubernetes cluster.
+- A running Kubernetes cluster (must have at least 3 nodes).
 - (Optional) A Memcached deployment for better query performance. For information on configuring Memcached, refer to [caching section]({{< relref "../../../../operations/caching" >}}).
 
 
