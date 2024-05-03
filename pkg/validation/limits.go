@@ -60,6 +60,7 @@ const (
 	defaultMaxStructuredMetadataSize  = "64kb"
 	defaultMaxStructuredMetadataCount = 128
 	defaultBloomCompactorMaxBlockSize = "200MB"
+	defaultBloomCompactorMaxBloomSize = "128MB"
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -100,6 +101,7 @@ type Limits struct {
 	TSDBMaxQueryParallelism    int              `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
 	TSDBMaxBytesPerShard       flagext.ByteSize `yaml:"tsdb_max_bytes_per_shard" json:"tsdb_max_bytes_per_shard"`
 	TSDBShardingStrategy       string           `yaml:"tsdb_sharding_strategy" json:"tsdb_sharding_strategy"`
+	TSDBPrecomputeChunks       bool             `yaml:"tsdb_precompute_chunks" json:"tsdb_precompute_chunks"`
 	CardinalityLimit           int              `yaml:"cardinality_limit" json:"cardinality_limit"`
 	MaxStreamsMatchersPerQuery int              `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
 	MaxConcurrentTailRequests  int              `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
@@ -201,6 +203,7 @@ type Limits struct {
 	BloomCompactorShardSize    int              `yaml:"bloom_compactor_shard_size" json:"bloom_compactor_shard_size" category:"experimental"`
 	BloomCompactorEnabled      bool             `yaml:"bloom_compactor_enable_compaction" json:"bloom_compactor_enable_compaction" category:"experimental"`
 	BloomCompactorMaxBlockSize flagext.ByteSize `yaml:"bloom_compactor_max_block_size" json:"bloom_compactor_max_block_size" category:"experimental"`
+	BloomCompactorMaxBloomSize flagext.ByteSize `yaml:"bloom_compactor_max_bloom_size" json:"bloom_compactor_max_bloom_size" category:"experimental"`
 
 	BloomNGramLength       int     `yaml:"bloom_ngram_length" json:"bloom_ngram_length" category:"experimental"`
 	BloomNGramSkip         int     `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip" category:"experimental"`
@@ -299,6 +302,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 			logql.BoundedVersion.String(),
 		),
 	)
+	f.BoolVar(&l.TSDBPrecomputeChunks, "querier.tsdb-precompute-chunks", false, "Precompute chunks for TSDB queries. This can improve query performance at the cost of increased memory usage by computing chunks once during planning, reducing index calls.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Maximum number of stream matchers per query.")
 	f.IntVar(&l.MaxConcurrentTailRequests, "querier.max-concurrent-tail-requests", 10, "Maximum number of concurrent tail requests.")
@@ -373,6 +377,14 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		fmt.Sprintf(
 			"Experimental. The maximum bloom block size. A value of 0 sets an unlimited size. Default is %s. The actual block size might exceed this limit since blooms will be added to blocks until the block exceeds the maximum block size.",
 			defaultBloomCompactorMaxBlockSize,
+		),
+	)
+
+	_ = l.BloomCompactorMaxBloomSize.Set(defaultBloomCompactorMaxBloomSize)
+	f.Var(&l.BloomCompactorMaxBloomSize, "bloom-compactor.max-bloom-size",
+		fmt.Sprintf(
+			"Experimental. The maximum bloom size per log stream. A log stream whose generated bloom filter exceeds this size will be discarded. A value of 0 sets an unlimited size. Default is %s.",
+			defaultBloomCompactorMaxBloomSize,
 		),
 	)
 
@@ -466,6 +478,10 @@ func (l *Limits) Validate() error {
 
 	if _, err := chunkenc.ParseEncoding(l.BloomBlockEncoding); err != nil {
 		return err
+	}
+
+	if l.TSDBMaxBytesPerShard <= 0 {
+		return errors.New("querier.tsdb-max-bytes-per-shard must be greater than 0")
 	}
 
 	return nil
@@ -630,6 +646,10 @@ func (o *Overrides) TSDBMaxBytesPerShard(userID string) int {
 // TSDBShardingStrategy returns the sharding strategy to use in query planning.
 func (o *Overrides) TSDBShardingStrategy(userID string) string {
 	return o.getOverridesForUser(userID).TSDBShardingStrategy
+}
+
+func (o *Overrides) TSDBPrecomputeChunks(userID string) bool {
+	return o.getOverridesForUser(userID).TSDBPrecomputeChunks
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the
@@ -964,6 +984,10 @@ func (o *Overrides) BloomNGramSkip(userID string) int {
 
 func (o *Overrides) BloomCompactorMaxBlockSize(userID string) int {
 	return o.getOverridesForUser(userID).BloomCompactorMaxBlockSize.Val()
+}
+
+func (o *Overrides) BloomCompactorMaxBloomSize(userID string) int {
+	return o.getOverridesForUser(userID).BloomCompactorMaxBloomSize.Val()
 }
 
 func (o *Overrides) BloomFalsePositiveRate(userID string) float64 {

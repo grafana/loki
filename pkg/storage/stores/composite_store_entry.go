@@ -43,7 +43,16 @@ type storeEntry struct {
 	ChunkWriter
 }
 
-func (c *storeEntry) GetChunks(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (c *storeEntry) GetChunks(
+	ctx context.Context,
+	userID string,
+	from,
+	through model.Time,
+	predicate chunk.Predicate,
+	storeChunksOverride *logproto.ChunkRefGroup,
+) ([][]chunk.Chunk,
+	[]*fetcher.Fetcher,
+	error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
@@ -55,16 +64,39 @@ func (c *storeEntry) GetChunks(ctx context.Context, userID string, from, through
 		return nil, nil, nil
 	}
 
-	refs, err := c.indexReader.GetChunkRefs(ctx, userID, from, through, predicate)
-
-	chunks := make([]chunk.Chunk, len(refs))
-	for i, ref := range refs {
-		chunks[i] = chunk.Chunk{
-			ChunkRef: ref,
+	var refs []*logproto.ChunkRef
+	if storeChunksOverride != nil {
+		refs = storeChunksOverride.Refs
+	} else {
+		// TODO(owen-d): fix needless O(n) conversions that stem from difference in store impls (value)
+		// vs proto impls (reference)
+		var values []logproto.ChunkRef
+		values, err = c.indexReader.GetChunkRefs(ctx, userID, from, through, predicate)
+		// convert to refs
+		refs = make([]*logproto.ChunkRef, 0, len(values))
+		for i := range values {
+			refs = append(refs, &values[i])
 		}
 	}
 
+	// Store overrides are passed through from the parent and can reference chunks not owned by this particular store,
+	// so we filter them out based on the requested timerange passed, which is guaranteed to be within the store's timerange.
+	// Otherwise, we'd return chunks that do not belong to the store, which would error during fetching.
+	chunks := filterForTimeRange(refs, from, through)
+
 	return [][]chunk.Chunk{chunks}, []*fetcher.Fetcher{c.fetcher}, err
+}
+
+func filterForTimeRange(refs []*logproto.ChunkRef, from, through model.Time) []chunk.Chunk {
+	filtered := make([]chunk.Chunk, 0, len(refs))
+	for _, ref := range refs {
+		if through >= ref.From && from < ref.Through {
+			filtered = append(filtered, chunk.Chunk{
+				ChunkRef: *ref,
+			})
+		}
+	}
+	return filtered
 }
 
 func (c *storeEntry) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
