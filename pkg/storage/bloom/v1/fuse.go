@@ -6,9 +6,10 @@ import (
 	"github.com/efficientgo/core/errors"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 type Request struct {
