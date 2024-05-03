@@ -2245,11 +2245,6 @@ null
     "useManagedIdentity": false,
     "userAssignedId": null
   },
-  "bucketNames": {
-    "admin": "admin",
-    "chunks": "chunks",
-    "ruler": "ruler"
-  },
   "filesystem": {
     "chunks_directory": "/var/loki/chunks",
     "rules_directory": "/var/loki/rules"
