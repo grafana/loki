@@ -2,6 +2,7 @@ package bloomgateway
 
 import (
 	"context"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -85,6 +86,14 @@ func convertToShortRef(ref *logproto.ChunkRef) *logproto.ShortRef {
 	return &logproto.ShortRef{From: ref.From, Through: ref.Through, Checksum: ref.Checksum}
 }
 
+func StrJoinFunc[E any, S ~[]E](sep string, s S, fn func(e E) string) string {
+	elems := make([]string, 0, len(s))
+	for _, elem := range s {
+		elems = append(elems, fn(elem))
+	}
+	return strings.Join(elems, sep)
+}
+
 func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, queryPlan plan.QueryPlan) ([]*logproto.ChunkRef, error) {
 	// Shortcut that does not require any filtering
 	if !bq.limits.BloomGatewayEnabled(tenant) || len(chunkRefs) == 0 || len(v1.ExtractTestableLineFilters(queryPlan.AST)) == 0 {
@@ -115,6 +124,15 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		if err != nil {
 			return nil, err
 		}
+
+		logger.LogKV(
+			"operation", "filter chunks for day",
+			"day", day.Start.Time(),
+			"series", len(s.series),
+			"blocks", StrJoinFunc(",", blocks, func(e blockWithSeries) string { return e.block.String() }),
+			"skipped_series", StrJoinFunc(",", skipped, func(e *logproto.GroupedChunkRefs) string { return model.Fingerprint(e.Fingerprint).String() }),
+			"filtered_series", StrJoinFunc(",", refs, func(e *logproto.GroupedChunkRefs) string { return model.Fingerprint(e.Fingerprint).String() }),
+		)
 
 		// add chunk refs from series that were not mapped to any blocks
 		responses = append(responses, refs, skipped)
