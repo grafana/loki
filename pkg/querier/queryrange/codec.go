@@ -95,8 +95,6 @@ func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
 	)
 }
 
-func (*LokiRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
-
 func (r *LokiInstantRequest) GetStep() int64 {
 	return 0
 }
@@ -141,8 +139,6 @@ func (r *LokiInstantRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("shards", strings.Join(r.GetShards(), ",")),
 	)
 }
-
-func (*LokiInstantRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
 func (r *LokiSeriesRequest) GetEnd() time.Time {
 	return r.EndTs
@@ -327,6 +323,14 @@ func (*DetectedLabelsRequest) GetCachingOptions() (res queryrangebase.CachingOpt
 func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (queryrangebase.Request, error) {
 	if err := r.ParseForm(); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	cacheControlHeader := "Cache-Control"
+	noCacheVal := "no-cache"
+	disableCacheReq := false
+
+	if strings.ToLower(strings.TrimSpace(r.Header.Get(cacheControlHeader))) == noCacheVal {
+		disableCacheReq = true
 	}
 
 	switch op := getOperation(r.URL.Path); op {

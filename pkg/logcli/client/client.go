@@ -77,6 +77,7 @@ type DefaultClient struct {
 	BearerTokenFile string
 	Retries         int
 	QueryTags       string
+	NoCache         bool
 	AuthHeader      string
 	ProxyURL        string
 	BackoffConfig   BackoffConfig
@@ -373,6 +374,10 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 
 	if c.OrgID != "" {
 		h.Set("X-Scope-OrgID", c.OrgID)
+	}
+
+	if c.NoCache {
+		h.Set("Cache-Control", "no-cache")
 	}
 
 	if c.QueryTags != "" {
