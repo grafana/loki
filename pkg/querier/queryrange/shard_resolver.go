@@ -221,9 +221,7 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	[]logproto.ChunkRefGroup,
 	error,
 ) {
-	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.ShardingRanges")
-	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
+	log := spanlogger.FromContext(r.ctx)
 	defer log.Finish()
 
 	adjustedFrom := r.from
@@ -254,7 +252,7 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	exprStr := expr.String()
 	// try to get shards for the given expression
 	// if it fails, fallback to linearshards based on stats
-	resp, err := r.next.Do(ctx, &logproto.ShardsRequest{
+	resp, err := r.next.Do(r.ctx, &logproto.ShardsRequest{
 		From:                adjustedFrom,
 		Through:             r.through,
 		Query:               expr.String(),
@@ -271,7 +269,7 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	}
 
 	// accumulate stats
-	logqlstats.JoinResults(ctx, casted.Response.Statistics)
+	logqlstats.JoinResults(r.ctx, casted.Response.Statistics)
 
 	var refs int
 	for _, x := range casted.Response.ChunkGroups {
