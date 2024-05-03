@@ -34,7 +34,7 @@ func Test_MergeFields(t *testing.T) {
 			Type:        logproto.DetectedFieldString,
 			Cardinality: 1,
 			Sketch:      marshalledFooSketch,
-			Parser: 	 "logfmt",
+			Parser:      "logfmt",
 		},
 		{
 			Label:       "bar",
