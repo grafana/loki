@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - helm-4.57.3
     paths:
       - 'production/helm/loki/Chart.yaml'
 
