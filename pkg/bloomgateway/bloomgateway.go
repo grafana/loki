@@ -89,7 +89,7 @@ type Gateway struct {
 
 	queue       *queue.RequestQueue
 	activeUsers *util.ActiveUsersCleanupService
-	bloomStore  bloomshipper.Store
+	bloomStore  bloomshipper.StoreWithMetrics
 
 	pendingTasks *atomic.Int64
 
@@ -111,7 +111,7 @@ func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
 }
 
 // New returns a new instance of the Bloom Gateway.
-func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
+func New(cfg Config, store bloomshipper.StoreWithMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
 	utillog.WarnExperimentalUse("Bloom Gateway", logger)
 	g := &Gateway{
 		cfg:     cfg,
@@ -340,7 +340,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}
 	}
 
-	combinedRecorder.Log(util_log.WithContext(ctx, g.logger))
+	combinedRecorder.Report(util_log.WithContext(ctx, g.logger), g.bloomStore.BloomMetrics())
 	sp.LogKV("msg", "received all responses")
 
 	start := time.Now()

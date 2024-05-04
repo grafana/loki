@@ -58,23 +58,49 @@ func (r *BloomRecorder) Merge(other *BloomRecorder) {
 	r.chunksFiltered.Add(other.chunksFiltered.Load())
 }
 
-func (r *BloomRecorder) Log(logger log.Logger) {
+func (r *BloomRecorder) Report(logger log.Logger, metrics *Metrics) {
 	logger = spanlogger.FromContextWithFallback(r.ctx, logger)
+
+	var (
+		seriesFound     = r.seriesFound.Load()
+		seriesSkipped   = r.seriesSkipped.Load()
+		seriesMissed    = r.seriesMissed.Load()
+		seriesRequested = seriesFound + seriesSkipped + seriesMissed
+
+		chunksFound     = r.chunksFound.Load()
+		chunksSkipped   = r.chunksSkipped.Load()
+		chunksMissed    = r.chunksMissed.Load()
+		chunksFiltered  = r.chunksFiltered.Load()
+		chunksRequested = chunksFound + chunksSkipped + chunksMissed
+	)
 	level.Debug(logger).Log(
 		"recorder_msg", "bloom search results",
 		"recorder_id", r.id,
 
-		"recorder_series_requested", r.seriesFound.Load()+r.seriesSkipped.Load()+r.seriesMissed.Load(),
-		"recorder_series_found", r.seriesFound.Load(),
-		"recorder_series_skipped", r.seriesSkipped.Load(),
-		"recorder_series_missed", r.seriesMissed.Load(),
+		"recorder_series_requested", seriesRequested,
+		"recorder_series_found", seriesFound,
+		"recorder_series_skipped", seriesSkipped,
+		"recorder_series_missed", seriesMissed,
 
-		"recorder_chunks_requested", r.chunksFound.Load()+r.chunksSkipped.Load()+r.chunksMissed.Load(),
-		"recorder_chunks_found", r.chunksFound.Load(),
-		"recorder_chunks_skipped", r.chunksSkipped.Load(),
-		"recorder_chunks_missed", r.chunksMissed.Load(),
-		"recorder_chunks_filtered", r.chunksFiltered.Load(),
+		"recorder_chunks_requested", chunksRequested,
+		"recorder_chunks_found", chunksFound,
+		"recorder_chunks_skipped", chunksSkipped,
+		"recorder_chunks_missed", chunksMissed,
+		"recorder_chunks_filtered", chunksFiltered,
 	)
+
+	if metrics != nil {
+		metrics.recorderSeries.WithLabelValues(recorderRequested).Add(float64(seriesRequested))
+		metrics.recorderSeries.WithLabelValues(recorderFound).Add(float64(seriesFound))
+		metrics.recorderSeries.WithLabelValues(recorderSkipped).Add(float64(seriesSkipped))
+		metrics.recorderSeries.WithLabelValues(recorderMissed).Add(float64(seriesMissed))
+
+		metrics.recorderChunks.WithLabelValues(recorderRequested).Add(float64(chunksRequested))
+		metrics.recorderChunks.WithLabelValues(recorderFound).Add(float64(chunksFound))
+		metrics.recorderChunks.WithLabelValues(recorderSkipped).Add(float64(chunksSkipped))
+		metrics.recorderChunks.WithLabelValues(recorderMissed).Add(float64(chunksMissed))
+		metrics.recorderChunks.WithLabelValues(recorderFiltered).Add(float64(chunksFiltered))
+	}
 }
 
 func (r *BloomRecorder) record(
