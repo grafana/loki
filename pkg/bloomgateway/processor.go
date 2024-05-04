@@ -144,7 +144,7 @@ func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.Close
 	})
 }
 
-func (p *processor) processBlock(ctx context.Context, blockQuerier *v1.BlockQuerier, tasks []Task) error {
+func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerier, tasks []Task) error {
 	schema, err := blockQuerier.Schema()
 	if err != nil {
 		return err
