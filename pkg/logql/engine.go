@@ -73,6 +73,12 @@ type SelectLogParams struct {
 	*logproto.QueryRequest
 }
 
+func (s SelectLogParams) WithStoreChunks(chunkRefGroup *logproto.ChunkRefGroup) SelectLogParams {
+	cpy := *s.QueryRequest
+	cpy.StoreChunks = chunkRefGroup
+	return SelectLogParams{&cpy}
+}
+
 func (s SelectLogParams) String() string {
 	if s.QueryRequest != nil {
 		return fmt.Sprintf("selector=%s, direction=%s, start=%s, end=%s, limit=%d, shards=%s",
@@ -96,6 +102,12 @@ func (s SelectLogParams) LogSelector() (syntax.LogSelectorExpr, error) {
 
 type SelectSampleParams struct {
 	*logproto.SampleQueryRequest
+}
+
+func (s SelectSampleParams) WithStoreChunks(chunkRefGroup *logproto.ChunkRefGroup) SelectSampleParams {
+	cpy := *s.SampleQueryRequest
+	cpy.StoreChunks = chunkRefGroup
+	return SelectSampleParams{&cpy}
 }
 
 // Expr returns the SampleExpr from the SelectSampleParams.
@@ -220,7 +232,6 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "query.Exec")
 	defer sp.Finish()
 	spLogger := spanlogger.FromContext(ctx)
-	defer spLogger.Finish()
 
 	sp.LogKV(
 		"type", GetRangeType(q.params),

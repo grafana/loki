@@ -1036,7 +1036,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	}
 
 	// get chunk references
-	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil))
+	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1395,7 +1395,6 @@ func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.Detected
 		if err != nil {
 			return nil, err
 		}
-		level.Info(i.logger).Log("msg", matchers)
 	}
 
 	labelMap, err := instance.LabelsWithValues(ctx, *req.Start, matchers...)

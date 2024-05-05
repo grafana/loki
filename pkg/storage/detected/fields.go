@@ -9,6 +9,7 @@ import (
 type UnmarshaledDetectedField struct {
 	Label  string
 	Type   logproto.DetectedFieldType
+	Parser string
 	Sketch *hyperloglog.Sketch
 }
 
@@ -22,6 +23,7 @@ func UnmarshalDetectedField(f *logproto.DetectedField) (*UnmarshaledDetectedFiel
 	return &UnmarshaledDetectedField{
 		Label:  f.Label,
 		Type:   f.Type,
+		Parser: f.Parser,
 		Sketch: sketch,
 	}, nil
 }
@@ -73,18 +75,12 @@ func MergeFields(
 
 	result := make([]*logproto.DetectedField, 0, fieldLimit)
 	for _, field := range mergedFields {
-		// TODO(twhitney): what's the performance cost of marshalling here? We technically don't need to marshal in the merge
-		// but it's nice to keep the response consistent through middlewares in case we need the sketch somewhere else,
-		// need to benchmark this to find out.
-		sketch, err := field.Sketch.MarshalBinary()
-		if err != nil {
-			return nil, err
-		}
 		detectedField := &logproto.DetectedField{
 			Label:       field.Label,
 			Type:        field.Type,
 			Cardinality: field.Sketch.Estimate(),
-			Sketch:      sketch,
+			Parser:      field.Parser,
+			Sketch:      nil,
 		}
 		result = append(result, detectedField)
 	}

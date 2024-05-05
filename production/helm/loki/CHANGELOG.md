@@ -13,9 +13,49 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-## 6.2.5
+## 6.5.1
 
 - [BUGFIX] Fixed Inconsistency between sidecar.securityContext and loki.containerSecurityContext
+
+## 6.5.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v3.0.1
+
+## 6.4.2
+
+- [BUGFIX] Fixed helm helper functions to include missing `loki.hpa.apiVersion`  #12716
+
+## 6.4.1
+
+- [BUGFIX] Fixes read & backend replicas settings
+
+## 6.4.0
+
+- [ENHANCEMENT] Allow extraObject items as multiline strings, allowing for templating field names
+
+## 6.3.4
+
+- [BUGFIX] Add missing OTLP endpoint to nginx config
+
+## 6.3.3
+
+- [ENHANCEMENT] make the singlebinary set 0 the replicas number of backend, write,read.
+
+## 6.3.2
+
+- [BUGFIX] Missing password for Loki-Canary when loki.auth_enabled is true
+
+## 6.3.1
+
+- [BUGFIX] Fixed Typo in Ingester templates for zoneAwareReplication
+
+## 6.3.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v3.0.0
+
+## 6.2.5
+
+- [BUGFIX] Add missing toleration blocks to bloom components.
 
 ## 6.2.4
 

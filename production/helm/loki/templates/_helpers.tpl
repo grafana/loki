@@ -801,6 +801,9 @@ http {
     location = /distributor/ring {
       proxy_pass       {{ $distributorUrl }}$request_uri;
     }
+    location = /otlp/v1/logs {
+      proxy_pass       {{ $distributorUrl }}$request_uri;
+    }
 
     # Ingester
     location = /flush {
@@ -928,13 +931,18 @@ enableServiceLinks: false
 {{/* Determine compactor address based on target configuration */}}
 {{- define "loki.compactorAddress" -}}
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
 {{- $compactorAddress := include "loki.backendFullname" . -}}
 {{- if and $isSimpleScalable .Values.read.legacyReadTarget -}}
 {{/* 2 target configuration */}}
 {{- $compactorAddress = include "loki.readFullname" . -}}
-{{- else if (not $isSimpleScalable) -}}
+{{- else if $isSingleBinary -}}
 {{/* single binary */}}
 {{- $compactorAddress = include "loki.singleBinaryFullname" . -}}
+{{/* distributed */}}
+{{- else if $isDistributed -}}
+{{- $compactorAddress = include "loki.compactorFullname" . -}}
 {{- end -}}
 {{- printf "http://%s:%s" $compactorAddress (.Values.loki.server.http_listen_port | toString) }}
 {{- end }}
@@ -997,5 +1005,18 @@ Return the object store type for use with the test schema.
     s3
   {{- else -}}
     filesystem
+  {{- end -}}
+{{- end -}}
+
+{{/*
+Return the appropriate apiVersion for HorizontalPodAutoscaler.
+*/}}
+{{- define "loki.hpa.apiVersion" -}}
+  {{- if and (.Capabilities.APIVersions.Has "autoscaling/v2") (semverCompare ">= 1.19-0" .Capabilities.KubeVersion.Version) -}}
+      {{- print "autoscaling/v2" -}}
+  {{- else if .Capabilities.APIVersions.Has "autoscaling/v2beta2" -}}
+    {{- print "autoscaling/v2beta2" -}}
+  {{- else -}}
+    {{- print "autoscaling/v2beta1" -}}
   {{- end -}}
 {{- end -}}

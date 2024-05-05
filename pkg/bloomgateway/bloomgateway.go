@@ -44,6 +44,7 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -238,31 +239,46 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}, nil
 	}
 
-	seriesByDay := partitionRequest(req)
-	stats.NumTasks = len(seriesByDay)
+	blocks := make([]bloomshipper.BlockRef, 0, len(req.Blocks))
+	for _, key := range req.Blocks {
+		block, err := bloomshipper.BlockRefFromKey(key)
+		if err != nil {
+			stats.Status = labelFailure
+			return nil, errors.New("could not parse block key")
+		}
+		blocks = append(blocks, block)
+	}
 
-	// no tasks --> empty response
-	if len(seriesByDay) == 0 {
+	// Shortcut if request does not contain blocks
+	if len(blocks) == 0 {
 		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
-			ChunkRefs: []*logproto.GroupedChunkRefs{},
+			ChunkRefs: req.Refs,
 		}, nil
 	}
+
+	// TODO(chaudum): I intentionally keep the logic for handling multiple tasks,
+	// so that the PR does not explode in size. This should be cleaned up at some point.
+
+	seriesByDay := partitionRequest(req)
+	stats.NumTasks = len(seriesByDay)
 
 	sp.LogKV(
 		"filters", len(filters),
 		"days", len(seriesByDay),
+		"blocks", len(req.Blocks),
 		"series_requested", len(req.Refs),
 	)
+
+	if len(seriesByDay) != 1 {
+		stats.Status = labelFailure
+		return nil, errors.New("request time range must span exactly one day")
+	}
 
 	tasks := make([]Task, 0, len(seriesByDay))
 	responses := make([][]v1.Output, 0, len(seriesByDay))
 	for _, seriesForDay := range seriesByDay {
-		task, err := NewTask(ctx, tenantID, seriesForDay, filters)
-		if err != nil {
-			return nil, err
-		}
-
+		task := newTask(ctx, tenantID, seriesForDay, filters, blocks)
 		// TODO(owen-d): include capacity in constructor?
 		task.responses = responsesPool.Get(len(seriesForDay.series))
 		tasks = append(tasks, task)
@@ -279,7 +295,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	for _, task := range tasks {
 		task := task
 		task.enqueueTime = time.Now()
-		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "table", task.table, "series", len(task.series))
 
 		// TODO(owen-d): gracefully handle full queues
 		if err := g.queue.Enqueue(tenantID, nil, task, func() {
@@ -310,7 +325,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			stats.Status = "cancel"
 			return nil, errors.Wrap(ctx.Err(), "request failed")
 		case task := <-tasksCh:
-			level.Info(logger).Log("msg", "task done", "task", task.ID, "err", task.Err())
 			if task.Err() != nil {
 				stats.Status = labelFailure
 				return nil, errors.Wrap(task.Err(), "request failed")
@@ -365,6 +379,10 @@ func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Tas
 		case <-ctx.Done():
 			// do nothing
 		default:
+			// chunks may not always be sorted
+			if !slices.IsSortedFunc(res.Removals, func(a, b v1.ChunkRef) int { return a.Cmp(b) }) {
+				slices.SortFunc(res.Removals, func(a, b v1.ChunkRef) int { return a.Cmp(b) })
+			}
 			task.responses = append(task.responses, res)
 		}
 	}
@@ -395,13 +413,14 @@ func orderedResponsesByFP(responses [][]v1.Output) v1.Iterator[v1.Output] {
 		itrs = append(itrs, v1.NewPeekingIter(v1.NewSliceIter(r)))
 	}
 	return v1.NewHeapIterator[v1.Output](
-		func(o1, o2 v1.Output) bool { return o1.Fp <= o2.Fp },
+		func(o1, o2 v1.Output) bool { return o1.Fp < o2.Fp },
 		itrs...,
 	)
 }
 
 // TODO(owen-d): improve perf. This can be faster with a more specialized impl
 // NB(owen-d): `req` is mutated in place for performance, but `responses` is not
+// Removals of the outputs must be sorted.
 func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses [][]v1.Output) []*logproto.GroupedChunkRefs {
 	res := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
 
@@ -415,6 +434,7 @@ func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses [][]v1.Outpu
 		// from
 		v1.Identity[v1.Output],
 		// merge two removal sets for the same series, deduping
+		// requires that the removals of the outputs are sorted
 		func(o1, o2 v1.Output) v1.Output {
 			res := v1.Output{Fp: o1.Fp}
 

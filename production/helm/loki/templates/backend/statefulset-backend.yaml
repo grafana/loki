@@ -20,7 +20,11 @@ metadata:
   {{- end }}
 spec:
 {{- if not .Values.backend.autoscaling.enabled }}
+  {{- if eq .Values.deploymentMode "SingleBinary" }}
+  replicas: 0
+  {{- else }}
   replicas: {{ .Values.backend.replicas }}
+  {{- end }}
 {{- end }}
   podManagementPolicy: {{ .Values.backend.podManagementPolicy }}
   updateStrategy:

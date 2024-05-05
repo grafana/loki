@@ -457,7 +457,9 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 				Of:    uint32(shards),
 			})
 			downstreams = append(downstreams, DownstreamSampleExpr{
-				shard:      &s,
+				shard: &ShardWithChunkRefs{
+					Shard: s,
+				},
 				SampleExpr: expr,
 			})
 		}

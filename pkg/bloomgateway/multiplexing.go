@@ -2,11 +2,9 @@ package bloomgateway
 
 import (
 	"context"
-	"math/rand"
 	"sync"
 	"time"
 
-	"github.com/oklog/ulid"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -18,10 +16,6 @@ import (
 
 const (
 	Day = 24 * time.Hour
-)
-
-var (
-	entropy = rand.New(rand.NewSource(time.Now().UnixNano()))
 )
 
 type tokenSettings struct {
@@ -45,10 +39,8 @@ func (e *wrappedError) Set(err error) {
 
 // Task is the data structure that is enqueued to the internal queue and dequeued by query workers
 type Task struct {
-	// ID is a lexcographically sortable unique identifier of the task
-	ID ulid.ULID
-	// Tenant is the tenant ID
-	Tenant string
+	// tenant is the tenant ID
+	tenant string
 
 	// channel to write partial responses to
 	resCh chan v1.Output
@@ -65,6 +57,8 @@ type Task struct {
 	series []*logproto.GroupedChunkRefs
 	// filters of the original request
 	filters []syntax.LineFilterExpr
+	// blocks that were resolved on the index gateway and sent with the request
+	blocks []bloomshipper.BlockRef
 	// from..through date of the task's chunks
 	interval bloomshipper.Interval
 	// the context from the request
@@ -77,28 +71,19 @@ type Task struct {
 	enqueueTime time.Time
 }
 
-// NewTask returns a new Task that can be enqueued to the task queue.
-// In addition, it returns a result and an error channel, as well
-// as an error if the instantiation fails.
-func NewTask(ctx context.Context, tenantID string, refs seriesWithInterval, filters []syntax.LineFilterExpr) (Task, error) {
-	key, err := ulid.New(ulid.Now(), entropy)
-	if err != nil {
-		return Task{}, err
-	}
-
-	task := Task{
-		ID:       key,
-		Tenant:   tenantID,
+func newTask(ctx context.Context, tenantID string, refs seriesWithInterval, filters []syntax.LineFilterExpr, blocks []bloomshipper.BlockRef) Task {
+	return Task{
+		tenant:   tenantID,
 		err:      new(wrappedError),
 		resCh:    make(chan v1.Output),
 		filters:  filters,
+		blocks:   blocks,
 		series:   refs.series,
 		interval: refs.interval,
 		table:    refs.day,
 		ctx:      ctx,
 		done:     make(chan struct{}),
 	}
-	return task, nil
 }
 
 // Bounds implements Bounded
@@ -127,12 +112,12 @@ func (t Task) CloseWithError(err error) {
 
 // Copy returns a copy of the existing task but with a new slice of grouped chunk refs
 func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
-	// do not copy ID to distinguish it as copied task
 	return Task{
-		Tenant:   t.Tenant,
+		tenant:   t.tenant,
 		err:      t.err,
 		resCh:    t.resCh,
 		filters:  t.filters,
+		blocks:   t.blocks,
 		series:   series,
 		interval: t.interval,
 		table:    t.table,
