@@ -59,6 +59,15 @@ func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[Request], logger
 	}
 }
 
+func (fq *FusedQuerier) noRemovals(batch []Request, fp model.Fingerprint) {
+	for _, input := range batch {
+		input.Response <- Output{
+			Fp:       fp,
+			Removals: nil,
+		}
+	}
+}
+
 func (fq *FusedQuerier) Run() error {
 	schema, err := fq.bq.Schema()
 	if err != nil {
@@ -85,26 +94,23 @@ func (fq *FusedQuerier) Run() error {
 		if series.Fingerprint != fp {
 			// fingerprint not found, can't remove chunks
 			level.Debug(fq.logger).Log("msg", "fingerprint not found", "fp", series.Fingerprint, "err", fq.bq.series.Err())
-			for _, input := range nextBatch {
-				input.Response <- Output{
-					Fp:       fp,
-					Removals: nil,
-				}
-			}
+			fq.noRemovals(nextBatch, fp)
 			continue
 		}
 
 		// Now that we've found the series, we need to find the unpack the bloom
-		fq.bq.blooms.Seek(series.Offset)
+		skip := fq.bq.blooms.LoadOffset(series.Offset)
+		if skip {
+			// could not seek to the desired bloom,
+			// likely because the page was too large to load
+			fq.noRemovals(nextBatch, fp)
+			continue
+		}
+
 		if !fq.bq.blooms.Next() {
 			// fingerprint not found, can't remove chunks
 			level.Debug(fq.logger).Log("msg", "fingerprint not found", "fp", series.Fingerprint, "err", fq.bq.blooms.Err())
-			for _, input := range nextBatch {
-				input.Response <- Output{
-					Fp:       fp,
-					Removals: nil,
-				}
-			}
+			fq.noRemovals(nextBatch, fp)
 			continue
 		}
 

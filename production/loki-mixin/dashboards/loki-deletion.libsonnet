@@ -2,7 +2,9 @@ local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  local compactor_matcher = if $._config.ssd.enabled then 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher else 'container="compactor"',
+  local compactor_matcher = if $._config.meta_monitoring.enabled
+  then 'pod=~"(compactor|%s-backend.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
+  else if $._config.ssd.enabled then 'container="loki", pod=~"%s-backend.*"' % $._config.ssd.pod_prefix_matcher else 'container="compactor"',
   grafanaDashboards+::
     {
       'loki-deletion.json':
@@ -43,7 +45,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           g.row('Compactor')
           .addPanel(
             $.newQueryPanel('Compactor CPU usage') +
-            g.queryPanel('node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{%s, container="compactor"}' % $.namespaceMatcher(), '{{pod}}'),
+            g.queryPanel('node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{%s, %s}' % [$.namespaceMatcher(), compactor_matcher], '{{pod}}'),
           )
           .addPanel(
             $.newQueryPanel('Compactor memory usage (MiB)') +

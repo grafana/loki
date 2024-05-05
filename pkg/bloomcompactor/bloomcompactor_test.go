@@ -197,6 +197,10 @@ func (m mockLimits) BloomCompactorMaxBlockSize(_ string) int {
 	panic("implement me")
 }
 
+func (m mockLimits) BloomCompactorMaxBloomSize(_ string) int {
+	panic("implement me")
+}
+
 func TestTokenRangesForInstance(t *testing.T) {
 	desc := func(id int, tokens ...uint32) ring.InstanceDesc {
 		return ring.InstanceDesc{Id: fmt.Sprintf("%d", id), Tokens: tokens}

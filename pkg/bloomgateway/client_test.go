@@ -7,8 +7,10 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -32,4 +34,63 @@ func TestBloomGatewayClient(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 0, len(res))
 	})
+}
+
+func shortRef(f, t model.Time, c uint32) *logproto.ShortRef {
+	return &logproto.ShortRef{
+		From:     f,
+		Through:  t,
+		Checksum: c,
+	}
+}
+
+func TestGatewayClient_MergeSeries(t *testing.T) {
+	inputs := [][]*logproto.GroupedChunkRefs{
+		// response 1
+		{
+			{Fingerprint: 0x00, Refs: []*logproto.ShortRef{shortRef(0, 1, 1), shortRef(1, 2, 2)}}, // not overlapping
+			{Fingerprint: 0x01, Refs: []*logproto.ShortRef{shortRef(0, 1, 3), shortRef(1, 2, 4)}}, // fully overlapping chunks
+			{Fingerprint: 0x02, Refs: []*logproto.ShortRef{shortRef(0, 1, 5), shortRef(1, 2, 6)}}, // partially overlapping chunks
+		},
+		// response 2
+		{
+			{Fingerprint: 0x01, Refs: []*logproto.ShortRef{shortRef(0, 1, 3), shortRef(1, 2, 4)}}, // fully overlapping chunks
+			{Fingerprint: 0x02, Refs: []*logproto.ShortRef{shortRef(1, 2, 6), shortRef(2, 3, 7)}}, // partially overlapping chunks
+			{Fingerprint: 0x03, Refs: []*logproto.ShortRef{shortRef(0, 1, 8), shortRef(1, 2, 9)}}, // not overlapping
+		},
+	}
+
+	expected := []*logproto.GroupedChunkRefs{
+		{Fingerprint: 0x00, Refs: []*logproto.ShortRef{shortRef(0, 1, 1), shortRef(1, 2, 2)}},                    // not overlapping
+		{Fingerprint: 0x01, Refs: []*logproto.ShortRef{shortRef(0, 1, 3), shortRef(1, 2, 4)}},                    // fully overlapping chunks
+		{Fingerprint: 0x02, Refs: []*logproto.ShortRef{shortRef(0, 1, 5), shortRef(1, 2, 6), shortRef(2, 3, 7)}}, // partially overlapping chunks
+		{Fingerprint: 0x03, Refs: []*logproto.ShortRef{shortRef(0, 1, 8), shortRef(1, 2, 9)}},                    // not overlapping
+	}
+
+	result, _ := mergeSeries(inputs, nil)
+	require.Equal(t, expected, result)
+}
+
+func TestGatewayClient_MergeChunkSets(t *testing.T) {
+	inp1 := []*logproto.ShortRef{
+		shortRef(1, 3, 1),
+		shortRef(2, 3, 2),
+		shortRef(4, 5, 3),
+	}
+	inp2 := []*logproto.ShortRef{
+		shortRef(2, 3, 2),
+		shortRef(3, 4, 4),
+		shortRef(5, 6, 5),
+	}
+
+	expected := []*logproto.ShortRef{
+		shortRef(1, 3, 1),
+		shortRef(2, 3, 2),
+		shortRef(3, 4, 4),
+		shortRef(4, 5, 3),
+		shortRef(5, 6, 5),
+	}
+
+	result := mergeChunkSets(inp1, inp2)
+	require.Equal(t, expected, result)
 }

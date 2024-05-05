@@ -40,7 +40,7 @@ func (p *processor) run(ctx context.Context, tasks []Task) error {
 }
 
 func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.MultiFingerprintBounds) error {
-	tenant := tasks[0].Tenant
+	tenant := tasks[0].tenant
 	level.Info(p.logger).Log(
 		"msg", "process tasks with bounds",
 		"tenant", tenant,
@@ -157,7 +157,7 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 	for _, task := range tasks {
 		if sp := opentracing.SpanFromContext(task.ctx); sp != nil {
 			md, _ := blockQuerier.Metadata()
-			blk := bloomshipper.BlockRefFrom(task.Tenant, task.table.String(), md)
+			blk := bloomshipper.BlockRefFrom(task.tenant, task.table.String(), md)
 			sp.LogKV("process block", blk.String(), "series", len(task.series))
 		}
 
