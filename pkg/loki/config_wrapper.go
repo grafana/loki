@@ -125,6 +125,9 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyIngesterFinalSleep(r)
 		applyIngesterReplicationFactor(r)
 		applyChunkRetain(r, &defaults)
+		if err := applyCommonQuerierWorkerGRPCConfig(r, &defaults); err != nil {
+			return err
+		}
 
 		return nil
 	}
@@ -683,4 +686,24 @@ func applyChunkRetain(cfg, defaults *ConfigWrapper) {
 			cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
 		}
 	}
+}
+
+func applyCommonQuerierWorkerGRPCConfig(cfg, defaults *ConfigWrapper) error {
+	if !reflect.DeepEqual(cfg.Worker.OldQueryFrontendGRPCClientConfig, defaults.Worker.OldQueryFrontendGRPCClientConfig) {
+		// User is using the old grpc configuration.
+
+		if reflect.DeepEqual(cfg.Worker.NewQueryFrontendGRPCClientConfig, defaults.Worker.NewQueryFrontendGRPCClientConfig) {
+			// User is using the old grpc configuration only, we can just copy it to the new grpc client struct.
+			cfg.Worker.NewQueryFrontendGRPCClientConfig = cfg.Worker.OldQueryFrontendGRPCClientConfig
+		} else {
+			// User is using both, old and new way of configuring the grpc client, so we throw an error.
+			return fmt.Errorf("both `grpc_client_config` and `query_frontend_grpc_client` are set at the same time. Please use only one of them")
+		}
+
+		if reflect.DeepEqual(cfg.Worker.QuerySchedulerGRPCClientConfig, defaults.Worker.QuerySchedulerGRPCClientConfig) {
+			// Since the scheduler grpc client is not set, we can just copy the old query frontend grpc client to the scheduler grpc client.
+			cfg.Worker.QuerySchedulerGRPCClientConfig = cfg.Worker.OldQueryFrontendGRPCClientConfig
+		}
+	}
+	return nil
 }
