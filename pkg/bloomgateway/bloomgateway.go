@@ -270,7 +270,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		"series_requested", len(req.Refs),
 	)
 
-	if len(seriesByDay) != 1 {
+	if len(seriesByDay) > 1 {
 		stats.Status = labelFailure
 		return nil, errors.New("request time range must span exactly one day")
 	}
