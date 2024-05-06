@@ -11,4 +11,5 @@ type DetectedField struct {
 	Label       string                     `json:"label,omitempty"`
 	Type        logproto.DetectedFieldType `json:"type,omitempty"`
 	Cardinality uint64                     `json:"cardinality,omitempty"`
+	Parser      string                     `json:"parser,omitempty"`
 }

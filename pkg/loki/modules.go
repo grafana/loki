@@ -729,6 +729,14 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 	var metasCache cache.Cache
 	if cache.IsCacheConfigured(bsCfg.MetasCache) {
 		metasCache, err = cache.New(bsCfg.MetasCache, reg, logger, stats.BloomMetasCache, constants.Loki)
+
+		// always enable LRU cache
+		lruCfg := bsCfg.MetasLRUCache
+		lruCfg.Enabled = true
+		lruCfg.PurgeInterval = 1 * time.Minute
+		lruCache := cache.NewEmbeddedCache("inmemory-metas-lru", lruCfg, reg, logger, stats.BloomMetasCache)
+
+		metasCache = cache.NewTiered([]cache.Cache{lruCache, metasCache})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create metas cache: %w", err)
 		}
@@ -1440,7 +1448,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		bloomQuerier = bloomgateway.NewQuerier(bloomGatewayClient, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
 	}
 
-	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier)
+	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, t.Overrides, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier)
 	if err != nil {
 		return nil, err
 	}

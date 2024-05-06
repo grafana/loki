@@ -3005,6 +3005,12 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -limits.tsdb-sharding-strategy
 [tsdb_sharding_strategy: <string> | default = "power_of_two"]
 
+# Precompute chunks for TSDB queries. This can improve query performance at the
+# cost of increased memory usage by computing chunks once during planning,
+# reducing index calls.
+# CLI flag: -querier.tsdb-precompute-chunks
+[tsdb_precompute_chunks: <boolean> | default = false]
+
 # Cardinality limit for index queries.
 # CLI flag: -store.cardinality-limit
 [cardinality_limit: <int> | default = 100000]
@@ -5276,6 +5282,26 @@ bloom_shipper:
   # component.
   # The CLI flags prefix for this block configuration is: bloom.metas-cache
   [metas_cache: <cache_config>]
+
+  metas_lru_cache:
+    # In-memory LRU cache for bloom metas. Whether embedded cache is enabled.
+    # CLI flag: -bloom.metas-lru-cache.enabled
+    [enabled: <boolean> | default = false]
+
+    # In-memory LRU cache for bloom metas. Maximum memory size of the cache in
+    # MB.
+    # CLI flag: -bloom.metas-lru-cache.max-size-mb
+    [max_size_mb: <int> | default = 100]
+
+    # In-memory LRU cache for bloom metas. Maximum number of entries in the
+    # cache.
+    # CLI flag: -bloom.metas-lru-cache.max-size-items
+    [max_size_items: <int> | default = 0]
+
+    # In-memory LRU cache for bloom metas. The time to live for items in the
+    # cache before they get purged.
+    # CLI flag: -bloom.metas-lru-cache.ttl
+    [ttl: <duration> | default = 1h]
 ```
 
 ### swift_storage_config

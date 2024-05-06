@@ -41,6 +41,7 @@ type Params interface {
 	Direction() logproto.Direction
 	Shards() []string
 	GetExpression() syntax.Expr
+	GetStoreChunks() *logproto.ChunkRefGroup
 }
 
 func NewLiteralParams(
@@ -50,6 +51,7 @@ func NewLiteralParams(
 	direction logproto.Direction,
 	limit uint32,
 	shards []string,
+	storeChunks *logproto.ChunkRefGroup,
 ) (LiteralParams, error) {
 	p := LiteralParams{
 		queryString: qs,
@@ -60,6 +62,7 @@ func NewLiteralParams(
 		direction:   direction,
 		limit:       limit,
 		shards:      shards,
+		storeChunks: storeChunks,
 	}
 	var err error
 	p.queryExpr, err = syntax.ParseExpr(qs)
@@ -76,6 +79,7 @@ type LiteralParams struct {
 	limit          uint32
 	shards         []string
 	queryExpr      syntax.Expr
+	storeChunks    *logproto.ChunkRefGroup
 }
 
 func (p LiteralParams) Copy() LiteralParams { return p }
@@ -106,6 +110,9 @@ func (p LiteralParams) Direction() logproto.Direction { return p.direction }
 
 // Shards impls Params
 func (p LiteralParams) Shards() []string { return p.shards }
+
+// StoreChunks impls Params
+func (p LiteralParams) GetStoreChunks() *logproto.ChunkRefGroup { return p.storeChunks }
 
 // GetRangeType returns whether a query is an instant query or range query
 func GetRangeType(q Params) QueryRangeType {
@@ -139,6 +146,35 @@ type ParamsWithShardsOverride struct {
 // Shards returns this overwriting shards.
 func (p ParamsWithShardsOverride) Shards() []string {
 	return p.ShardsOverride
+}
+
+type ParamsWithChunkOverrides struct {
+	Params
+	StoreChunksOverride *logproto.ChunkRefGroup
+}
+
+func (p ParamsWithChunkOverrides) GetStoreChunks() *logproto.ChunkRefGroup {
+	return p.StoreChunksOverride
+}
+
+func ParamOverridesFromShard(base Params, shard *ShardWithChunkRefs) (result Params) {
+	if shard == nil {
+		return base
+	}
+
+	result = ParamsWithShardsOverride{
+		Params:         base,
+		ShardsOverride: Shards{shard.Shard}.Encode(),
+	}
+
+	if shard.chunks != nil {
+		result = ParamsWithChunkOverrides{
+			Params:              result,
+			StoreChunksOverride: shard.chunks,
+		}
+	}
+
+	return result
 }
 
 // Sortable logql contain sort or sort_desc.
@@ -214,6 +250,7 @@ func (ev *DefaultEvaluator) NewIterator(ctx context.Context, expr syntax.LogSele
 			Plan: &plan.QueryPlan{
 				AST: expr,
 			},
+			StoreChunks: q.GetStoreChunks(),
 		},
 	}
 
@@ -245,6 +282,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 						Plan: &plan.QueryPlan{
 							AST: expr,
 						},
+						StoreChunks: q.GetStoreChunks(),
 					},
 				})
 				if err != nil {
@@ -264,6 +302,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				Plan: &plan.QueryPlan{
 					AST: expr,
 				},
+				StoreChunks: q.GetStoreChunks(),
 			},
 		})
 		if err != nil {

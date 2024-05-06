@@ -118,7 +118,6 @@ loki:
   # If empty, no configmap or secret will be created.
   # The value will be passed through tpl.
   generatedConfigObjectName: '{{ include "loki.name" . }}'
-
   # -- Config file contents for Loki
   # @default -- See values.yaml
   config: |
@@ -450,7 +449,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default verion of GEL to deploy
-  version: v3.0.0
+  version: v3.0.1
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -845,8 +844,6 @@ adminApi:
   tolerations: []
   # -- Grace period to allow the admin-api to shutdown before it is killed
   terminationGracePeriodSeconds: 60
-
-
 ######################################################################################################################
 #
 # Gateway and Ingress
@@ -1015,12 +1012,8 @@ gateway:
     # @default -- Either `loki.tenants` or `gateway.basicAuth.username` and `gateway.basicAuth.password`.
     htpasswd: >-
       {{ if .Values.loki.tenants }}
-
-
         {{- range $t := .Values.loki.tenants }}
       {{ htpasswd (required "All tenants must have a 'name' set" $t.name) (required "All tenants must have a 'password' set" $t.password) }}
-
-
         {{- end }}
       {{ else }} {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }} {{ end }}
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
@@ -1186,7 +1179,6 @@ migrate:
     # -- If migrating from a distributed service, provide the distributed deployment's
     # memberlist service DNS so the new deployment can join its ring.
     memberlistService: ""
-
 ######################################################################################################################
 #
 # Single Binary Deployment
@@ -3086,6 +3078,7 @@ minio:
   # Allow the address used by Loki to refer to Minio to be overridden
   address: null
 # Create extra manifests via values. Would be passed through `tpl` for templating
+# objects can also be provided as multiline strings, useful for templating field names
 extraObjects: []
 # - apiVersion: v1
 #   kind: ConfigMap
@@ -3105,6 +3098,16 @@ extraObjects: []
 #               category: logs
 #             annotations:
 #               message: "loki has encountered errors"
+# - |
+#     apiVersion: v1
+#     kind: Secret
+#     type: Opaque
+#     metadata:
+#       name: loki-distributed-basic-auth
+#     data:
+#       {{- range .Values.loki.tenants }}
+#       {{ .name }}: {{ b64enc .password | quote }}
+#       {{- end }}
 
 sidecar:
   image:
