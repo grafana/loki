@@ -1559,7 +1559,7 @@ func Test_DetectLogLevels(t *testing.T) {
 		require.Len(t, topVal.Streams[0].Entries[0].StructuredMetadata, 0)
 	})
 
-	t.Run("log level detection enabled", func(t *testing.T) {
+	t.Run("log level detection enabled but level cannot be detected", func(t *testing.T) {
 		limits, ingester := setup(true)
 		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 
@@ -1568,12 +1568,7 @@ func Test_DetectLogLevels(t *testing.T) {
 		require.NoError(t, err)
 		topVal := ingester.Peek()
 		require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
-		require.Equal(t, push.LabelsAdapter{
-			{
-				Name:  levelLabel,
-				Value: logLevelUnknown,
-			},
-		}, topVal.Streams[0].Entries[0].StructuredMetadata)
+		require.Len(t, topVal.Streams[0].Entries[0].StructuredMetadata, 0)
 	})
 
 	t.Run("log level detection enabled and warn logs", func(t *testing.T) {

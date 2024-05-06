@@ -406,10 +406,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					} else {
 						logLevel = detectLogLevelFromLogEntry(entry, structuredMetadata)
 					}
-					entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
-						Name:  levelLabel,
-						Value: logLevel,
-					})
+					if logLevel != logLevelUnknown && logLevel != "" {
+						entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
+							Name:  levelLabel,
+							Value: logLevel,
+						})
+					}
 				}
 				stream.Entries[n] = entry
 
