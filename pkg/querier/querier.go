@@ -1203,7 +1203,7 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 					continue
 				}
 
-				if slices.Contains(df.parsers, *parser) == false {
+				if !slices.Contains(df.parsers, *parser) {
 					df.parsers = append(df.parsers, *parser)
 				}
 
