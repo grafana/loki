@@ -45,6 +45,29 @@ func LoadBlocksDirIntoCache(paths []string, c Cache, logger log.Logger) error {
 	return err.Err()
 }
 
+func removeRecursively(root, path string) error {
+	if path == root {
+		// stop when reached root directory
+		return nil
+	}
+
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		// stop in case of error
+		return err
+	}
+
+	if len(entries) == 0 {
+		base := filepath.Dir(path)
+		if err := os.RemoveAll(path); err != nil {
+			return err
+		}
+		return removeRecursively(root, base)
+	}
+
+	return nil
+}
+
 func loadBlockDirectories(root string, logger log.Logger) (keys []string, values []BlockDirectory) {
 	resolver := NewPrefixedResolver(root, defaultKeyResolver{})
 	_ = filepath.WalkDir(root, func(path string, dirEntry fs.DirEntry, e error) error {
@@ -54,6 +77,15 @@ func loadBlockDirectories(root string, logger log.Logger) (keys []string, values
 		}
 
 		if !dirEntry.IsDir() {
+			return nil
+		}
+
+		// Remove empty directories recursively
+		// filepath.WalkDir() does not support depth-first traversal,
+		// so this is not very efficient
+		err := removeRecursively(root, path)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to remove directory", "path", path, "err", err)
 			return nil
 		}
 

@@ -66,13 +66,13 @@ groups:
         annotations:
             summary: High request latency
   - name: credentials_leak
-    rules: 
+    rules:
       - alert: http-credentials-leaked
-        annotations: 
+        annotations:
           message: "{{ $labels.job }} is leaking http basic auth credentials."
         expr: 'sum by (cluster, job, pod) (count_over_time({namespace="prod"} |~ "http(s?)://(\\w+):(\\w+)@" [5m]) > 0)'
         for: 10m
-        labels: 
+        labels:
           severity: critical
 ```
 
@@ -160,7 +160,7 @@ Here is an example of a remote-write configuration for sending data to a local P
 ```yaml
 ruler:
   ... other settings ...
-  
+
   remote_write:
     enabled: true
     client:
@@ -186,13 +186,13 @@ We don't always control the source code of applications we run. Load balancers a
 Sometimes you want to know whether _any_ instance of something has occurred. Alerting based on logs can be a great way to handle this, such as finding examples of leaked authentication credentials:
 ```yaml
 - name: credentials_leak
-  rules: 
+  rules:
     - alert: http-credentials-leaked
-      annotations: 
+      annotations:
         message: "{{ $labels.job }} is leaking http basic auth credentials."
       expr: 'sum by (cluster, job, pod) (count_over_time({namespace="prod"} |~ "http(s?)://(\\w+):(\\w+)@" [5m]) > 0)'
       for: 10m
-      labels: 
+      labels:
         severity: critical
 ```
 
@@ -208,76 +208,29 @@ As an example, we can use LogQL v2 to help Loki to monitor _itself_, alerting us
 
 ## Interacting with the Ruler
 
-### Cortextool
-Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortextool`](https://github.com/grafana/cortex-tools#rules). The CLI is in early development, but it works with both Loki and Cortex. Pass the `--backend=loki` option when using it with Loki.
+### Lokitool
+Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via `lokitool`.
 
 {{% admonition type="note" %}}
-Not all commands in cortextool currently support Loki.
-{{% /admonition %}}
-
-{{% admonition type="note" %}}
-cortextool was intended to run against multi-tenant Loki, commands need an `--id=` flag set to the Loki instance ID or set the environment variable `CORTEX_TENANT_ID`.  If Loki is running in single tenant mode, the required ID is `fake`.
+lokitool is intended to run against multi-tenant Loki.  The commands need an `--id=` flag set to the Loki instance ID or set the environment variable `LOKI_TENANT_ID`.  If Loki is running in single tenant mode, the required ID is `fake`.
 {{% /admonition %}}
 
 An example workflow is included below:
 
 ```sh
 # lint the rules.yaml file ensuring it's valid and reformatting it if necessary
-cortextool rules lint --backend=loki ./output/rules.yaml
+lokitool rules lint ./output/rules.yaml
 
 # diff rules against the currently managed ruleset in Loki
-cortextool rules diff --rule-dirs=./output --backend=loki
+lokitool rules diff --rule-dirs=./output
 
 # ensure the remote ruleset matches your local ruleset, creating/updating/deleting remote rules which differ from your local specification.
-cortextool rules sync --rule-dirs=./output --backend=loki
+lokitool rules sync --rule-dirs=./output
 
 # print the remote ruleset
-cortextool rules print --backend=loki
+lokitool rules print
 ```
 
-### Cortextool Github Actions
-There is also a [github action](https://github.com/grafana/cortex-rules-action) available for `cortex-tool`, so you can add it into your CI/CD pipelines!
-
-For instance, you can sync rules on master builds via
-```yaml
-name: sync-cortex-rules-and-alerts
-on:
-  push:
-    branches:
-      - master
-env:
-  CORTEX_ADDRESS: '<fill me in>'
-  CORTEX_TENANT_ID: '<fill me in>'
-  CORTEX_API_KEY: ${{ secrets.API_KEY }}
-  RULES_DIR: 'output/'
-jobs:
-  sync-loki-alerts:
-    runs-on: ubuntu-18.04
-    steps:
-      - name: Lint Rules
-        uses: grafana/cortex-rules-action@v0.4.0
-        env:
-          ACTION: 'lint'
-        with:
-          args: --backend=loki
-      - name: Diff rules
-        uses: grafana/cortex-rules-action@v0.4.0
-        env:
-          ACTION: 'diff'
-        with:
-          args: --backend=loki
-      - name: Sync rules
-        if: ${{ !contains(steps.diff-rules.outputs.detailed, 'no changes detected') }}
-        uses: grafana/cortex-rules-action@v0.4.0
-        env:
-          ACTION: 'sync'
-        with:
-          args: --backend=loki
-      - name: Print rules
-        uses: grafana/cortex-rules-action@v0.4.0
-        env:
-          ACTION: 'print'
-```
 ### Terraform
 
 With the [Terraform provider for Loki](https://registry.terraform.io/providers/fgouteroux/loki/latest), you can manage alerts and recording rules in Terraform HCL format:

@@ -34,6 +34,7 @@ func Test_MergeFields(t *testing.T) {
 			Type:        logproto.DetectedFieldString,
 			Cardinality: 1,
 			Sketch:      marshalledFooSketch,
+			Parser:      "logfmt",
 		},
 		{
 			Label:       "bar",
@@ -65,6 +66,7 @@ func Test_MergeFields(t *testing.T) {
 
 		assert.Equal(t, logproto.DetectedFieldString, foo.Type)
 		assert.Equal(t, uint64(3), foo.Cardinality)
+		assert.Equal(t, "logfmt", foo.Parser)
 	})
 
 	t.Run("returns up to limit number of fields", func(t *testing.T) {

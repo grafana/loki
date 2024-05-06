@@ -14,11 +14,13 @@ keywords:
 
 # Install Grafana Loki with Helm
 
-The [Helm](https://helm.sh/) chart allows you to configure, install, and upgrade Grafana Loki within a Kubernetes cluster.
+The [Helm](https://helm.sh/) chart lets you configure, install, and upgrade Grafana Loki within a Kubernetes cluster.
 
 This guide references the Loki Helm chart version 3.0 or greater and contains the following sections:
 
 {{< section menuTitle="true" >}}
+
+If you are installing Grafana Enterprise Logs, follow the [GEL Helm installation](https://grafana.com/docs/enterprise-logs/<ENTERPRISE_LOGS_VERSION>/setup/helm/).
 
 ## Reference
 

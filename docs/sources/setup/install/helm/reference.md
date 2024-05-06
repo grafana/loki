@@ -2630,7 +2630,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "v3.0.0"
+  "version": "v3.0.1"
 }
 </pre>
 </td>

@@ -9,6 +9,7 @@ import (
 type UnmarshaledDetectedField struct {
 	Label  string
 	Type   logproto.DetectedFieldType
+	Parser string
 	Sketch *hyperloglog.Sketch
 }
 
@@ -22,6 +23,7 @@ func UnmarshalDetectedField(f *logproto.DetectedField) (*UnmarshaledDetectedFiel
 	return &UnmarshaledDetectedField{
 		Label:  f.Label,
 		Type:   f.Type,
+		Parser: f.Parser,
 		Sketch: sketch,
 	}, nil
 }
@@ -77,6 +79,7 @@ func MergeFields(
 			Label:       field.Label,
 			Type:        field.Type,
 			Cardinality: field.Sketch.Estimate(),
+			Parser:      field.Parser,
 			Sketch:      nil,
 		}
 		result = append(result, detectedField)

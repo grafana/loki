@@ -87,7 +87,7 @@ func NewResultsCache(
 		next:                 next,
 		cache:                c,
 		limits:               limits,
-		keyGen:               keyGen,
+		keyGen:               NewPipelineWrapperKeygen(keyGen),
 		cacheGenNumberLoader: cacheGenNumberLoader,
 		retentionEnabled:     retentionEnabled,
 		extractor:            extractor,

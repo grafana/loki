@@ -89,6 +89,7 @@ func TestFusedQuerier(t *testing.T) {
 		for j := 0; j < n; j++ {
 			idx := numSeries/nReqs*i + j
 			reqs = append(reqs, Request{
+				Recorder: NewBloomRecorder(context.Background(), "unknown"),
 				Fp:       data[idx].Series.Fingerprint,
 				Chks:     data[idx].Series.Chunks,
 				Response: ch,
@@ -282,6 +283,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 				idx = numSeries - 1
 			}
 			reqs = append(reqs, Request{
+				Recorder: NewBloomRecorder(context.Background(), "unknown"),
 				Fp:       data[idx].Series.Fingerprint,
 				Chks:     data[idx].Series.Chunks,
 				Response: ch,

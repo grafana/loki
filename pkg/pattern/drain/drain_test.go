@@ -6,9 +6,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
 )
 
 func TestDrain_TrainExtractsPatterns(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		drain     *Drain
@@ -115,4 +118,119 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			require.Equal(t, tt.patterns, output)
 		})
 	}
+}
+
+func TestDrain_TrainGeneratesMatchablePatterns(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		drain      *Drain
+		inputLines []string
+	}{
+		{
+			name:  "should match each line against a pattern",
+			drain: New(DefaultConfig()),
+			inputLines: []string{
+				`test test test`,
+				`test test test`,
+				`test test test`,
+				`test test test`,
+			},
+		},
+		{
+			name:  "should also match newlines",
+			drain: New(DefaultConfig()),
+			inputLines: []string{
+				"test test test\n",
+				"test test test\n",
+				"test test test\n",
+				"test test test\n",
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			for _, line := range tt.inputLines {
+				tt.drain.Train(line, 0)
+			}
+			t.Log("Learned clusters", tt.drain.Clusters())
+
+			for _, line := range tt.inputLines {
+				match := tt.drain.Match(line)
+				require.NotNil(t, match, "Line should match a cluster")
+			}
+		})
+	}
+
+}
+
+func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		drain      *Drain
+		inputLines []string
+	}{
+		{
+			name:  "should extract patterns that all lines match",
+			drain: New(DefaultConfig()),
+			inputLines: []string{
+				`test 1 test`,
+				`test 2 test`,
+				`test 3 test`,
+				`test 4 test`,
+			},
+		},
+		{
+			name:  "should extract patterns that match if line ends with newlines",
+			drain: New(DefaultConfig()),
+			inputLines: []string{
+				"test 1 test\n",
+				"test 2 test\n",
+				"test 3 test\n",
+				"test 4 test\n",
+			},
+		},
+		{
+			name:  "should extract patterns that match if line ends with empty space",
+			drain: New(DefaultConfig()),
+			inputLines: []string{
+				"test 1 test			",
+				"test 2 test			",
+				"test 3 test			",
+				"test 4 test			",
+			},
+		},
+		{
+			name:  "should extract patterns that match if line starts with empty space",
+			drain: New(DefaultConfig()),
+			inputLines: []string{
+				"			test 1 test",
+				"			test 2 test",
+				"			test 3 test",
+				"			test 4 test",
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			for _, line := range tt.inputLines {
+				tt.drain.Train(line, 0)
+			}
+			require.Equal(t, 1, len(tt.drain.Clusters()))
+			cluster := tt.drain.Clusters()[0]
+			t.Log("Extracted cluster: ", cluster)
+
+			matcher, err := pattern.ParseLineFilter([]byte(cluster.String()))
+			require.NoError(t, err)
+
+			for _, line := range tt.inputLines {
+				passes := matcher.Test([]byte(line))
+				require.Truef(t, passes, "Line %q should match extracted pattern", line)
+			}
+		})
+	}
+
 }

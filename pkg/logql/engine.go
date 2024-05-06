@@ -232,7 +232,6 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "query.Exec")
 	defer sp.Finish()
 	spLogger := spanlogger.FromContext(ctx)
-	defer spLogger.Finish()
 
 	sp.LogKV(
 		"type", GetRangeType(q.params),

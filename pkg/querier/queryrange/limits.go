@@ -340,10 +340,7 @@ func (q *querySizeLimiter) guessLimitName() string {
 }
 
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "query_size_limits")
-	defer span.Finish()
 	log := spanlogger.FromContext(ctx)
-	defer log.Finish()
 
 	// Only support TSDB
 	schemaCfg, err := q.getSchemaCfg(r)

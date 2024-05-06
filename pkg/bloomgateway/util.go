@@ -2,7 +2,6 @@ package bloomgateway
 
 import (
 	"sort"
-	"time"
 
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
@@ -13,13 +12,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
-func getDayTime(ts model.Time) time.Time {
-	return ts.Time().UTC().Truncate(Day)
-}
-
 func truncateDay(ts model.Time) model.Time {
-	// model.minimumTick is time.Millisecond
-	return ts - (ts % model.Time(24*time.Hour/time.Millisecond))
+	return model.TimeFromUnix(ts.Time().Truncate(Day).Unix())
 }
 
 // getFromThrough assumes a list of ShortRefs sorted by From time
@@ -125,7 +119,7 @@ func partitionSeriesByDay(from, through model.Time, seriesWithChunks []*logproto
 			})
 
 			// All chunks fall outside of the range
-			if min == len(chunks) || max == 0 {
+			if min == len(chunks) || max == 0 || min == max {
 				continue
 			}
 
@@ -135,7 +129,6 @@ func partitionSeriesByDay(from, through model.Time, seriesWithChunks []*logproto
 			if chunks[max-1].Through > maxTs {
 				maxTs = chunks[max-1].Through
 			}
-			// fmt.Println("day", day, "series", series.Fingerprint, "minTs", minTs, "maxTs", maxTs)
 
 			res = append(res, &logproto.GroupedChunkRefs{
 				Fingerprint: series.Fingerprint,

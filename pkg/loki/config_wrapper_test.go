@@ -799,6 +799,109 @@ query_range:
 		config, _ := testContext(configFileString, nil)
 		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 	})
+
+	t.Run("querier worker grpc client behavior", func(t *testing.T) {
+		newConfigBothClientsSet := `---
+frontend_worker:
+  query_frontend_grpc_client:
+    tls_server_name: query-frontend
+  query_scheduler_grpc_client:
+    tls_server_name: query-scheduler
+`
+
+		oldConfig := `---
+frontend_worker:
+  grpc_client_config:
+    tls_server_name: query-frontend
+`
+
+		mixedConfig := `---
+frontend_worker:
+  grpc_client_config:
+    tls_server_name: query-frontend-old
+  query_frontend_grpc_client:
+    tls_server_name: query-frontend-new
+  query_scheduler_grpc_client:
+    tls_server_name: query-scheduler
+`
+		t.Run("new configs are used", func(t *testing.T) {
+			asserts := func(config ConfigWrapper) {
+				require.EqualValues(t, "query-frontend", config.Worker.NewQueryFrontendGRPCClientConfig.TLS.ServerName)
+				require.EqualValues(t, "query-scheduler", config.Worker.QuerySchedulerGRPCClientConfig.TLS.ServerName)
+				// we never want to use zero values by default.
+				require.NotEqualValues(t, 0, config.Worker.NewQueryFrontendGRPCClientConfig.MaxRecvMsgSize)
+				require.NotEqualValues(t, 0, config.Worker.QuerySchedulerGRPCClientConfig.MaxRecvMsgSize)
+			}
+
+			yamlConfig, _, err := configWrapperFromYAML(t, newConfigBothClientsSet, nil)
+			require.NoError(t, err)
+			asserts(yamlConfig)
+
+			// repeat the test using only cli flags.
+			cliFlags := []string{
+				"-querier.frontend-grpc-client.tls-server-name=query-frontend",
+				"-querier.scheduler-grpc-client.tls-server-name=query-scheduler",
+			}
+			cliConfig, _, err := configWrapperFromYAML(t, emptyConfigString, cliFlags)
+			require.NoError(t, err)
+			asserts(cliConfig)
+		})
+
+		t.Run("old config works the same way", func(t *testing.T) {
+			asserts := func(config ConfigWrapper) {
+				require.EqualValues(t, "query-frontend", config.Worker.NewQueryFrontendGRPCClientConfig.TLS.ServerName)
+				require.EqualValues(t, "query-frontend", config.Worker.QuerySchedulerGRPCClientConfig.TLS.ServerName)
+
+				// we never want to use zero values by default.
+				require.NotEqualValues(t, 0, config.Worker.NewQueryFrontendGRPCClientConfig.MaxRecvMsgSize)
+				require.NotEqualValues(t, 0, config.Worker.QuerySchedulerGRPCClientConfig.MaxRecvMsgSize)
+			}
+
+			yamlConfig, _, err := configWrapperFromYAML(t, oldConfig, nil)
+			require.NoError(t, err)
+			asserts(yamlConfig)
+
+			// repeat the test using only cli flags.
+			cliFlags := []string{
+				"-querier.frontend-client.tls-server-name=query-frontend",
+			}
+			cliConfig, _, err := configWrapperFromYAML(t, emptyConfigString, cliFlags)
+			require.NoError(t, err)
+			asserts(cliConfig)
+		})
+
+		t.Run("mixed frontend clients throws an error", func(t *testing.T) {
+			_, _, err := configWrapperFromYAML(t, mixedConfig, nil)
+			require.Error(t, err)
+
+			// repeat the test using only cli flags.
+			_, _, err = configWrapperFromYAML(t, emptyConfigString, []string{
+				"-querier.frontend-client.tls-server-name=query-frontend",
+				"-querier.frontend-grpc-client.tls-server-name=query-frontend",
+			})
+			require.Error(t, err)
+
+			// repeat the test mixing the YAML with cli flags.
+			_, _, err = configWrapperFromYAML(t, newConfigBothClientsSet, []string{
+				"-querier.frontend-client.tls-server-name=query-frontend",
+			})
+			require.Error(t, err)
+		})
+
+		t.Run("mix correct cli flags with YAML configs", func(t *testing.T) {
+			config, _, err := configWrapperFromYAML(t, newConfigBothClientsSet, []string{
+				"-querier.scheduler-grpc-client.tls-enabled=true",
+			})
+			require.NoError(t, err)
+
+			require.EqualValues(t, "query-frontend", config.Worker.NewQueryFrontendGRPCClientConfig.TLS.ServerName)
+			require.EqualValues(t, "query-scheduler", config.Worker.QuerySchedulerGRPCClientConfig.TLS.ServerName)
+			// we never want to use zero values by default.
+			require.NotEqualValues(t, 0, config.Worker.NewQueryFrontendGRPCClientConfig.MaxRecvMsgSize)
+			require.NotEqualValues(t, 0, config.Worker.QuerySchedulerGRPCClientConfig.MaxRecvMsgSize)
+			require.True(t, config.Worker.QuerySchedulerGRPCClientConfig.TLSEnabled)
+		})
+	})
 }
 
 const defaultResulsCacheString = `---

@@ -12,11 +12,12 @@ import (
 )
 
 type Config struct {
-	WorkingDirectory    flagext.StringSliceCSV `yaml:"working_directory"`
-	MaxQueryPageSize    flagext.Bytes          `yaml:"max_query_page_size"`
-	DownloadParallelism int                    `yaml:"download_parallelism"`
-	BlocksCache         BlocksCacheConfig      `yaml:"blocks_cache"`
-	MetasCache          cache.Config           `yaml:"metas_cache"`
+	WorkingDirectory    flagext.StringSliceCSV    `yaml:"working_directory"`
+	MaxQueryPageSize    flagext.Bytes             `yaml:"max_query_page_size"`
+	DownloadParallelism int                       `yaml:"download_parallelism"`
+	BlocksCache         BlocksCacheConfig         `yaml:"blocks_cache"`
+	MetasCache          cache.Config              `yaml:"metas_cache"`
+	MetasLRUCache       cache.EmbeddedCacheConfig `yaml:"metas_lru_cache"`
 
 	// This will always be set to true when flags are registered.
 	// In tests, where config is created as literal, it can be set manually.
@@ -32,6 +33,7 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&c.DownloadParallelism, prefix+"download-parallelism", 8, "The amount of maximum concurrent bloom blocks downloads. Usually set to 2x number of CPU cores.")
 	c.BlocksCache.RegisterFlagsWithPrefixAndDefaults(prefix+"blocks-cache.", "Cache for bloom blocks. ", f, 24*time.Hour)
 	c.MetasCache.RegisterFlagsWithPrefix(prefix+"metas-cache.", "Cache for bloom metas. ", f)
+	c.MetasLRUCache.RegisterFlagsWithPrefix(prefix+"metas-lru-cache.", "In-memory LRU cache for bloom metas. ", f)
 
 	// always cache LIST operations
 	c.CacheListOps = true

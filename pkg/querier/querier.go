@@ -1108,6 +1108,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 			Type:        v.fieldType,
 			Cardinality: v.Estimate(),
 			Sketch:      sketch,
+			Parser:      v.parser,
 		}
 
 		fieldCount++
@@ -1124,13 +1125,19 @@ type parsedFields struct {
 	sketch         *hyperloglog.Sketch
 	isTypeDetected bool
 	fieldType      logproto.DetectedFieldType
+	parser         string
 }
 
-func newParsedFields() *parsedFields {
+func newParsedFields(parser *string) *parsedFields {
+	p := ""
+	if parser != nil {
+		p = *parser
+	}
 	return &parsedFields{
 		sketch:         hyperloglog.New(),
 		isTypeDetected: false,
 		fieldType:      logproto.DetectedFieldString,
+		parser:         p,
 	}
 }
 
@@ -1185,11 +1192,12 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
 
 		for _, entry := range stream.Entries {
-			detected := parseLine(entry.Line)
+			detected, parser := parseLine(entry.Line)
 			for k, vals := range detected {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
-					df = newParsedFields()
+
+					df = newParsedFields(parser)
 					detectedFields[k] = df
 					fieldCount++
 				}
@@ -1217,17 +1225,19 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 	return detectedFields
 }
 
-func parseLine(line string) map[string][]string {
+func parseLine(line string) (map[string][]string, *string) {
+	parser := "logfmt"
 	logFmtParser := logql_log.NewLogfmtParser(true, false)
-	jsonParser := logql_log.NewJSONParser()
 
 	lbls := logql_log.NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
 	_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lbls)
 	if !logfmtSuccess || lbls.HasErr() {
+		parser = "json"
+		jsonParser := logql_log.NewJSONParser()
 		lbls.Reset()
 		_, jsonSuccess := jsonParser.Process(0, []byte(line), lbls)
 		if !jsonSuccess || lbls.HasErr() {
-			return map[string][]string{}
+			return map[string][]string{}, nil
 		}
 	}
 
@@ -1249,7 +1259,7 @@ func parseLine(line string) map[string][]string {
 		result[lbl] = vals
 	}
 
-	return result
+	return result, &parser
 }
 
 // streamsForFieldDetection reads the streams from the iterator and returns them sorted.

@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/dskit/concurrency"
@@ -40,7 +39,7 @@ func (p *processor) run(ctx context.Context, tasks []Task) error {
 }
 
 func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.MultiFingerprintBounds) error {
-	tenant := tasks[0].Tenant
+	tenant := tasks[0].tenant
 	level.Info(p.logger).Log(
 		"msg", "process tasks with bounds",
 		"tenant", tenant,
@@ -155,11 +154,15 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 	iters := make([]v1.PeekingIterator[v1.Request], 0, len(tasks))
 
 	for _, task := range tasks {
-		if sp := opentracing.SpanFromContext(task.ctx); sp != nil {
-			md, _ := blockQuerier.Metadata()
-			blk := bloomshipper.BlockRefFrom(task.Tenant, task.table.String(), md)
-			sp.LogKV("process block", blk.String(), "series", len(task.series))
-		}
+		// NB(owen-d): can be helpful for debugging, but is noisy
+		// and don't feel like threading this through a configuration
+
+		// if sp := opentracing.SpanFromContext(task.ctx); sp != nil {
+		// 	md, _ := blockQuerier.Metadata()
+		// 	blk := bloomshipper.BlockRefFrom(task.tenant, task.table.String(), md)
+		// 	blockID := blk.String()
+		// 	sp.LogKV("process block", blockID, "series", len(task.series))
+		// }
 
 		it := v1.NewPeekingIter(task.RequestIter(tokenizer))
 		iters = append(iters, it)
