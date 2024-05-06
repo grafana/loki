@@ -89,7 +89,7 @@ func MergeFields(
 			Label:       field.Label,
 			Type:        field.Type,
 			Cardinality: field.Sketch.Estimate(),
-			Parsers:      field.Parsers,
+			Parsers:     field.Parsers,
 			Sketch:      nil,
 		}
 		result = append(result, detectedField)

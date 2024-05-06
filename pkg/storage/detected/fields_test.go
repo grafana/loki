@@ -72,7 +72,6 @@ func Test_MergeFields(t *testing.T) {
 		var foo *logproto.DetectedField
 		var baz *logproto.DetectedField
 
-
 		for _, field := range result {
 			if field.Label == "foo" {
 				foo = field
