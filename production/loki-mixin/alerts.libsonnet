@@ -6,12 +6,12 @@
         rules: [
           {
             alert: 'LokiRequestErrors',
-            expr: |||
+            expr: std.strReplace(|||
               100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (cluster, namespace, job, route)
                 /
               sum(rate(loki_request_duration_seconds_count[2m])) by (cluster, namespace, job, route)
                 > 10
-            |||,
+            |||, 'cluster', $._config.per_cluster_label),
             'for': '15m',
             labels: {
               severity: 'critical',
@@ -26,8 +26,8 @@
           {
             alert: 'LokiRequestPanics',
             expr: |||
-              sum(increase(loki_panic_total[10m])) by (cluster, namespace, job) > 0
-            |||,
+              sum(increase(loki_panic_total[10m])) by (%s, namespace, job) > 0
+            ||| % $._config.per_cluster_label,
             labels: {
               severity: 'critical',
             },
