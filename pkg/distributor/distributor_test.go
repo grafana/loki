@@ -1602,7 +1602,10 @@ func Test_DetectLogLevels(t *testing.T) {
 		require.NoError(t, err)
 		topVal := ingester.Peek()
 		require.Equal(t, `{foo="bar", level="debug"}`, topVal.Streams[0].Labels)
-		require.Len(t, topVal.Streams[0].Entries[0].StructuredMetadata, 0)
+		sm := topVal.Streams[0].Entries[0].StructuredMetadata
+		require.Len(t, sm, 1)
+		require.Equal(t, sm[0].Name, levelLabel)
+		require.Equal(t, sm[0].Value, logLevelDebug)
 	})
 
 	t.Run("log level detection enabled but log level already present as structured metadata", func(t *testing.T) {
@@ -1620,12 +1623,16 @@ func Test_DetectLogLevels(t *testing.T) {
 		require.NoError(t, err)
 		topVal := ingester.Peek()
 		require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
+		sm := topVal.Streams[0].Entries[0].StructuredMetadata
 		require.Equal(t, push.LabelsAdapter{
 			{
 				Name:  "severity",
 				Value: logLevelWarn,
+			}, {
+				Name:  levelLabel,
+				Value: logLevelWarn,
 			},
-		}, topVal.Streams[0].Entries[0].StructuredMetadata)
+		}, sm)
 	})
 }
 

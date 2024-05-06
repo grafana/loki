@@ -387,7 +387,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
 
-			addLogLevel := validationContext.allowStructuredMetadata && validationContext.discoverLogLevels && !hasAnyLevelLabels(lbs)
+			shouldDiscoverLevels := validationContext.allowStructuredMetadata && validationContext.discoverLogLevels
+			levelFromLabel, hasLevelLabel := hasAnyLevelLabels(lbs)
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
@@ -396,8 +397,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-				if addLogLevel && !hasAnyLevelLabels(structuredMetadata) {
-					logLevel := detectLogLevelFromLogEntry(entry, structuredMetadata)
+				if shouldDiscoverLevels {
+					var logLevel string
+					if hasLevelLabel {
+						logLevel = levelFromLabel
+					} else if levelFromMetadata, ok := hasAnyLevelLabels(structuredMetadata); ok {
+						logLevel = levelFromMetadata
+					} else {
+						logLevel = detectLogLevelFromLogEntry(entry, structuredMetadata)
+					}
 					entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
 						Name:  levelLabel,
 						Value: logLevel,
@@ -548,13 +556,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
-func hasAnyLevelLabels(l labels.Labels) bool {
+func hasAnyLevelLabels(l labels.Labels) (string, bool) {
 	for lbl := range allowedLabelsForLevel {
 		if l.Has(lbl) {
-			return true
+			return l.Get(lbl), true
 		}
 	}
-	return false
+	return "", false
 }
 
 // shardStream shards (divides) the given stream into N smaller streams, where
