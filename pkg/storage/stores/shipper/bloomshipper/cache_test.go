@@ -107,7 +107,7 @@ func Test_LoadBlocksDirIntoCache(t *testing.T) {
 
 	// check cleaned directories
 	dirs := make([]string, 0, 6)
-	filepath.WalkDir(wd, func(path string, dirEntry fs.DirEntry, _ error) error {
+	_ = filepath.WalkDir(wd, func(path string, dirEntry fs.DirEntry, _ error) error {
 		if !dirEntry.IsDir() {
 			return nil
 		}
