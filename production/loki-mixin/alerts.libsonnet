@@ -7,9 +7,9 @@
           {
             alert: 'LokiRequestErrors',
             expr: |||
-              100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (namespace, job, route)
+              100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (cluster, namespace, job, route)
                 /
-              sum(rate(loki_request_duration_seconds_count[2m])) by (namespace, job, route)
+              sum(rate(loki_request_duration_seconds_count[2m])) by (cluster, namespace, job, route)
                 > 10
             |||,
             'for': '15m',
@@ -26,7 +26,7 @@
           {
             alert: 'LokiRequestPanics',
             expr: |||
-              sum(increase(loki_panic_total[10m])) by (namespace, job) > 0
+              sum(increase(loki_panic_total[10m])) by (cluster, namespace, job) > 0
             |||,
             labels: {
               severity: 'critical',
@@ -57,7 +57,7 @@
           {
             alert: 'LokiTooManyCompactorsRunning',
             expr: |||
-              sum(loki_boltdb_shipper_compactor_running) by (namespace, %s) > 1
+              sum(loki_boltdb_shipper_compactor_running) by (%s, namespace) > 1
             ||| % $._config.per_cluster_label,
             'for': '5m',
             labels: {

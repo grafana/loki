@@ -7,9 +7,9 @@ groups:
                 {{ $labels.cluster }} {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
             summary: Loki request error rate is high.
           expr: |
-            100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (namespace, job, route)
+            100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (cluster, namespace, job, route)
               /
-            sum(rate(loki_request_duration_seconds_count[2m])) by (namespace, job, route)
+            sum(rate(loki_request_duration_seconds_count[2m])) by (cluster, namespace, job, route)
               > 10
           for: 15m
           labels:
@@ -20,7 +20,7 @@ groups:
                 {{ $labels.cluster }} {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}% increase of panics.
             summary: Loki requests are causing code panics.
           expr: |
-            sum(increase(loki_panic_total[10m])) by (namespace, job) > 0
+            sum(increase(loki_panic_total[10m])) by (cluster, namespace, job) > 0
           labels:
             severity: critical
         - alert: LokiRequestLatency
@@ -39,7 +39,7 @@ groups:
                 {{ $labels.cluster }} {{ $labels.namespace }} has had {{ printf "%.0f" $value }} compactors running for more than 5m. Only one compactor should run at a time.
             summary: Loki deployment is running more than one compactor.
           expr: |
-            sum(loki_boltdb_shipper_compactor_running) by (namespace, cluster) > 1
+            sum(loki_boltdb_shipper_compactor_running) by (cluster, namespace) > 1
           for: 5m
           labels:
             severity: warning
