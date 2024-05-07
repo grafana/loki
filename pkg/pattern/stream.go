@@ -2,17 +2,15 @@ package pattern
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"time"
+
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
-	"github.com/grafana/loki/v3/pkg/pattern/tokenization"
-
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 type stream struct {
@@ -29,13 +27,14 @@ type stream struct {
 func newStream(
 	fp model.Fingerprint,
 	labels labels.Labels,
+	formatter string,
 ) (*stream, error) {
 	return &stream{
 		fp:           fp,
 		labels:       labels,
 		labelsString: labels.String(),
 		labelHash:    labels.Hash(),
-		patterns:     drain.New(drain.DefaultConfig()),
+		patterns:     drain.New(drain.DefaultConfig(), formatter),
 	}, nil
 }
 
@@ -52,15 +51,7 @@ func (s *stream) Push(
 		}
 		s.lastTs = entry.Timestamp.UnixNano()
 
-		preprocessedContent := string(tokenization.Preprocess([]byte(entry.Line)))
-		spaces := strings.Count(preprocessedContent, " ")
-		commas := strings.Count(preprocessedContent, ",")
-		delimiter := " "
-		if commas > spaces {
-			delimiter = ","
-		}
-		preprocessedTokens := strings.Split(preprocessedContent, delimiter)
-		s.patterns.TrainTokens(preprocessedTokens, func(in []string) string { return strings.Join(in, delimiter) }, 0)
+		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
 	}
 	return nil
 }

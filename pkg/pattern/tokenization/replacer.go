@@ -58,7 +58,9 @@ type replacer struct {
 	// values we care about, like status and status_code.
 	preserveNextNumbers bool
 
+	// Enables the replacement of numbers with <NUM>. It is too generic for use in all situations, hence the configuration option.
 	replaceNumbers bool
+	replaceHex     bool
 }
 
 // commit advances the current position marker to the lookahead position, i.e.
@@ -628,7 +630,7 @@ func (r *replacer) handleNumberStart(hasMinusPrefix bool) (endsWithBoundary bool
 	// '.', ' ', '/', etc.), so it's either not a real number or date, or it's
 	// some sort of a unit like a duration (e.g. 3h5m2s), size, (e.g. 12KB,
 	// 3MiB), etc.
-	case !boundaryChars[b1]:
+	case r.replaceHex && !boundaryChars[b1]:
 		return r.handleHexOrUnit(hasMinusPrefix, n1, l1, b1)
 
 	// We have a decimal point, so this can either be a plain number, a unit
@@ -834,13 +836,13 @@ func (r *replacer) replaceWithPlaceholders() {
 			onBoundary = r.handleWeirdTimestamp()
 
 		// This could be the start of an lower case hex string:
-		case 'a' <= c && c <= 'f':
+		case r.replaceHex && 'a' <= c && c <= 'f':
 			r.copyUpToCurrent()
 			r.resetHead()
 			onBoundary = r.handleHex(false, 0, 'a', 'f', true)
 
 		// This could be the start of an upper case hex string:
-		case 'A' <= c && c <= 'F':
+		case r.replaceHex && 'A' <= c && c <= 'F':
 			r.copyUpToCurrent()
 			r.resetHead()
 			onBoundary = r.handleHex(false, 0, 'A', 'F', true)
@@ -858,10 +860,15 @@ func (r *replacer) replaceWithPlaceholders() {
 	}
 }
 
-func Preprocess(content []byte) []byte {
+func Preprocess(content []byte, replaceNumbers bool, replaceHex bool) []byte {
 	// ~floor(120%), to allow for some expansion from replacements, hopefully
 	// without needing to allocate more memory
-	r := replacer{source: content, dest: make([]byte, 0, len(content)*120/100)}
+	r := replacer{
+		source:         content,
+		dest:           make([]byte, 0, len(content)*120/100),
+		replaceNumbers: replaceNumbers,
+		replaceHex:     replaceHex,
+	}
 	r.replaceWithPlaceholders()
 	return r.dest
 }

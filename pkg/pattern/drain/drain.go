@@ -23,6 +23,7 @@
 package drain
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -30,8 +31,10 @@ import (
 
 	"github.com/hashicorp/golang-lru/v2/simplelru"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/maps"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/pattern/tokenization"
 )
 
 type Config struct {
@@ -130,7 +133,7 @@ func DefaultConfig() *Config {
 		//  > message are more likely to be constants. Specifically, Drain
 		//  > selects the next internal node by the tokens in the beginning
 		//  > positions of the log message
-		LogClusterDepth: 10,
+		LogClusterDepth: 18,
 		// SimTh is basically a ratio of matching/total in the cluster.
 		// Cluster tokens: "foo <*> bar fred"
 		//       Log line: "foo bar baz qux"
@@ -140,22 +143,28 @@ func DefaultConfig() *Config {
 		// MaxClusterDepth and SimTh, the less the chance that there will be
 		// "similar" clusters, but the greater the footprint.
 		SimTh:       0.5,
-		MaxChildren: 100,
+		MaxChildren: 8,
 		ParamString: `<_>`,
 		MaxClusters: 300,
 	}
 }
 
-func New(config *Config) *Drain {
+func New(config *Config, tokenizer string) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
 	config.maxNodeDepth = config.LogClusterDepth - 2
+	var myTokenizer Tokenizer
+	myTokenizer = &adaptiveLogsTokenizer{}
+	if tokenizer == "logfmt" {
+		myTokenizer = &logfmtTokenizer{tokenizeInsideQuotes: true}
+	}
 
 	d := &Drain{
 		config:      config,
 		rootNode:    createNode(),
 		idToCluster: createLogClusterCache(config.MaxClusters),
+		tokenizer:   myTokenizer,
 	}
 	return d
 }
@@ -165,10 +174,16 @@ type Drain struct {
 	rootNode        *Node
 	idToCluster     *LogClusterCache
 	clustersCounter int
+	tokenizer       Tokenizer
 }
 
 func (d *Drain) Clusters() []*LogCluster {
-	return d.idToCluster.Values()
+	clusters := map[string]*LogCluster{}
+	for _, cluster := range d.idToCluster.Values() {
+		// May need to sum the samples from the chunks
+		clusters[cluster.String()] = cluster
+	}
+	return maps.Values(clusters)
 }
 
 func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts int64) *LogCluster {
@@ -176,10 +191,15 @@ func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts 
 }
 
 func (d *Drain) Train(content string, ts int64) *LogCluster {
-	return d.train(d.getContentAsTokens(content), nil, ts)
+	return d.train(d.tokenizer.Marshal(content), d.tokenizer.Unmarshal, ts)
 }
 
 func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64) *LogCluster {
+	for i, token := range tokens {
+		if len(token) > 50 {
+			tokens[i] = token[:50] + d.config.ParamString
+		}
+	}
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
 	// Match no existing log cluster
 	if matchCluster == nil {
@@ -205,6 +225,17 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 	return matchCluster
 }
 
+func (d *Drain) String() {
+	d.print("", d.rootNode, 0)
+}
+
+func (d *Drain) print(key string, root *Node, depth int) {
+	fmt.Printf("%s%s [%d]\n", strings.Repeat("-", depth), key, len(root.clusterIDs))
+	for _, child := range maps.Keys(root.keyToChildNode) {
+		d.print(child, root.keyToChildNode[child], depth+1)
+	}
+}
+
 func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
 	tokens := tokenizePattern(content, d.config.ParamString)
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
@@ -226,15 +257,6 @@ func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) 
 	}
 	matchCluster.merge(samples)
 	return matchCluster
-}
-
-func RemoveNamedVariablesAndConcat(in []string) string {
-	for i, x := range in {
-		if strings.HasPrefix(x, "<") && strings.HasSuffix(x, ">") {
-			in[i] = "<_>"
-		}
-	}
-	return strings.Join(in, "")
 }
 
 func tokenizePattern(content, param string) []string {
@@ -270,6 +292,12 @@ func (d *Drain) Delete(cluster *LogCluster) {
 }
 
 // Match against an already existing cluster. Match shall be perfect (sim_th=1.0). New cluster will not be created as a result of this call, nor any cluster modifications.
+func (d *Drain) MatchTokens(contentTokens []string) *LogCluster {
+	matchCluster := d.treeSearch(d.rootNode, contentTokens, 1.0, true)
+	return matchCluster
+}
+
+// Match against an already existing cluster. Match shall be perfect (sim_th=1.0). New cluster will not be created as a result of this call, nor any cluster modifications.
 func (d *Drain) Match(content string) *LogCluster {
 	contentTokens := d.getContentAsTokens(content)
 	matchCluster := d.treeSearch(d.rootNode, contentTokens, 1.0, true)
@@ -301,7 +329,7 @@ func (d *Drain) treeSearch(rootNode *Node, tokens []string, simTh float64, inclu
 
 	// find the leaf node for this log - a path of nodes matching the first N tokens (N=tree depth)
 	curNodeDepth := 1
-	for _, token := range tokens {
+	for i, token := range tokens {
 		// at max depth
 		if curNodeDepth >= d.config.maxNodeDepth {
 			break
@@ -314,8 +342,16 @@ func (d *Drain) treeSearch(rootNode *Node, tokens []string, simTh float64, inclu
 
 		keyToChildNode := curNode.keyToChildNode
 		curNode, ok = keyToChildNode[token]
-		if !ok { // no exact next token exist, try wildcard node
-			curNode, ok = keyToChildNode[d.config.ParamString]
+		if !ok { // no exact next token exists, try the preprocessed token
+			processedKey := string(tokenization.Preprocess([]byte(token), true, true))
+			curNode, ok = keyToChildNode[processedKey]
+			if !ok { // no exact or processed token exist, try wildcard node
+				curNode, ok = keyToChildNode[d.config.ParamString]
+			}
+			if ok {
+				// If we matched a processed node, update our tokens to use this match
+				tokens[i] = processedKey
+			}
 		}
 		if !ok { // no wildcard node exist
 			return nil
@@ -402,7 +438,7 @@ func (d *Drain) addSeqToPrefixTree(rootNode *Node, cluster *LogCluster) {
 	}
 
 	currentDepth := 1
-	for _, token := range cluster.Tokens {
+	for i, token := range cluster.Tokens {
 		// if at max depth or this is last token in template - add current log cluster to the leaf node
 		if (currentDepth >= d.config.maxNodeDepth) || currentDepth >= tokenCount {
 			// clean up stale clusters before adding a new one.
@@ -419,7 +455,18 @@ func (d *Drain) addSeqToPrefixTree(rootNode *Node, cluster *LogCluster) {
 
 		// if token not matched in this layer of existing tree.
 		if _, ok = curNode.keyToChildNode[token]; !ok {
-			if !d.hasNumbers(token) {
+			// There is no exact match. Rather than immediately creating a catch-all object, see if we're close to another key at this layer and join to that.
+			processedToken := string(tokenization.Preprocess([]byte(token), true, true))
+			matchingKey := ""
+			for _, key := range maps.Keys(curNode.keyToChildNode) {
+				processedKey := string(tokenization.Preprocess([]byte(key), true, true))
+				if processedKey == processedToken {
+					matchingKey = key
+					cluster.Tokens[i] = processedToken
+				}
+			}
+
+			if matchingKey == "" {
 				if _, ok = curNode.keyToChildNode[d.config.ParamString]; ok {
 					if len(curNode.keyToChildNode) < d.config.MaxChildren {
 						newNode := createNode()
@@ -442,13 +489,13 @@ func (d *Drain) addSeqToPrefixTree(rootNode *Node, cluster *LogCluster) {
 					}
 				}
 			} else {
-				if _, ok = curNode.keyToChildNode[d.config.ParamString]; !ok {
-					newNode := createNode()
-					curNode.keyToChildNode[d.config.ParamString] = newNode
-					curNode = newNode
-				} else {
-					curNode = curNode.keyToChildNode[d.config.ParamString]
+				// We're grouping with an existing log pattern, so rename the old edge to the aggregate key.
+				if matchingKey != processedToken {
+					d.replaceAllTokens(curNode.keyToChildNode[matchingKey], i, processedToken)
+					curNode.keyToChildNode[processedToken] = curNode.keyToChildNode[matchingKey]
+					delete(curNode.keyToChildNode, matchingKey)
 				}
+				curNode = curNode.keyToChildNode[processedToken]
 			}
 		} else {
 			// if the token is matched
@@ -456,6 +503,19 @@ func (d *Drain) addSeqToPrefixTree(rootNode *Node, cluster *LogCluster) {
 		}
 
 		currentDepth++
+	}
+}
+
+func (d *Drain) replaceAllTokens(node *Node, i int, replacement string) {
+	for _, cid := range node.clusterIDs {
+		cluster := d.idToCluster.Get(cid)
+		if cluster == nil {
+			continue
+		}
+		cluster.Tokens[i] = replacement
+	}
+	for _, child := range node.keyToChildNode {
+		d.replaceAllTokens(child, i, replacement)
 	}
 }
 

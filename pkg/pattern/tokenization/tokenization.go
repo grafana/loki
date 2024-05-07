@@ -28,7 +28,16 @@ type tokenizer struct {
 	line   string
 	tokens []string
 
-	tokeniseWholeQuotes bool
+	quotesAsSingleToken bool
+	tokenizeDelimiters  bool
+	replaceNumbers      bool
+}
+
+type TokenizerOpts struct {
+	MaxTokens                 int
+	UseSingleTokenForQuotes   bool
+	IncludeDelimitersInTokens bool
+	PreprocessNumbers         bool
 }
 
 func (t *tokenizer) countOrSaveToken(endTokenPos, skip int) {
@@ -57,7 +66,13 @@ func (t *tokenizer) handleNextToken() bool {
 		// outside of a quoted string.
 		case escaped:
 			if curQuotePos < 0 && delimiters[c] {
-				t.countOrSaveToken(p, 1)
+				nextPos := p
+				skip := 1
+				if t.tokenizeDelimiters {
+					nextPos += 1
+					skip = 0
+				}
+				t.countOrSaveToken(nextPos, skip)
 				return true
 			} else {
 				escaped = false
@@ -77,21 +92,27 @@ func (t *tokenizer) handleNextToken() bool {
 		// character is also part of the current token. The only special case
 		// here is if the current character is a matching quote, that means
 		// we'll no longer be quoted.
-		case t.tokeniseWholeQuotes && curQuotePos >= 0:
+		case t.quotesAsSingleToken && curQuotePos >= 0:
 			if c == curQuoteChar { // end quote
 				curQuotePos = -1
 			}
 
 		// If we encounter a qoute character and we were not already in a quoted
 		// part of the line, mark that we are now in a quote from that type.
-		case t.tokeniseWholeQuotes && (c == '"' || c == '\'' || c == '`'):
+		case t.quotesAsSingleToken && (c == '"' || c == '\'' || c == '`'):
 			curQuoteChar = c
 			curQuotePos = p
 
 		// If we encounter a delimiter outside of a quote, count or save the
 		// token and skip the delimiter.
 		case delimiters[c]:
-			t.countOrSaveToken(p, 1)
+			nextPos := p
+			skip := 1
+			if t.tokenizeDelimiters {
+				nextPos += 1
+				skip = 0
+			}
+			t.countOrSaveToken(nextPos, skip)
 			return true
 
 		// Handle likely JSON object keys that have been serialized without
@@ -166,7 +187,7 @@ func (t *tokenizer) process() {
 }
 
 func (t *tokenizer) tokenize() []string {
-	t.buf = Preprocess(t.rawLine)
+	t.buf = Preprocess(t.rawLine, t.replaceNumbers, false)
 
 	// We use unsafe to convert buf to a string without any new allocations.
 	// This is safe because t.buf won't be used or referenced anywhere else
@@ -195,9 +216,27 @@ func (t *tokenizer) tokenize() []string {
 }
 
 func PreprocessAndTokenize(content []byte) []string {
-	content = bytes.TrimSpace(content)
+	return PreprocessAndTokenizeWithOpts(content, TokenizerOpts{
+		MaxTokens:                 100,
+		UseSingleTokenForQuotes:   true,
+		IncludeDelimitersInTokens: false,
+	})
+}
 
-	t := tokenizer{rawLine: content, maxTokens: 100} // TODO: parametrize maxTokens
+func PreprocessAndTokenizeWithOpts(content []byte, opts TokenizerOpts) []string {
+	content = bytes.TrimSpace(content)
+	maxTokens := 100
+	if opts.MaxTokens != 0 {
+		maxTokens = opts.MaxTokens
+	}
+
+	t := tokenizer{
+		rawLine:             content,
+		maxTokens:           maxTokens,
+		quotesAsSingleToken: opts.UseSingleTokenForQuotes,
+		tokenizeDelimiters:  opts.IncludeDelimitersInTokens,
+		replaceNumbers:      opts.PreprocessNumbers,
+	}
 
 	return t.tokenize()
 }

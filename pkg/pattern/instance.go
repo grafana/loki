@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/httpgrpc"
@@ -138,7 +139,14 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	}
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	s, err := newStream(fp, sortedLabels)
+
+	formatter := "adaptive"
+	if len(pushReqStream.Entries) > 0 {
+		if strings.Index(pushReqStream.Entries[0].Line, "=") != -1 {
+			formatter = "logfmt"
+		}
+	}
+	s, err := newStream(fp, sortedLabels, formatter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
