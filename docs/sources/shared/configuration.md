@@ -543,19 +543,19 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 
 ```yaml
 # Name of OSS bucket.
-# CLI flag: -common.storage.oss.bucketname
+# CLI flag: -<prefix>.storage.oss.bucketname
 [bucket: <string> | default = ""]
 
 # oss Endpoint to connect to.
-# CLI flag: -common.storage.oss.endpoint
+# CLI flag: -<prefix>.storage.oss.endpoint
 [endpoint: <string> | default = ""]
 
 # alibabacloud Access Key ID
-# CLI flag: -common.storage.oss.access-key-id
+# CLI flag: -<prefix>.storage.oss.access-key-id
 [access_key_id: <string> | default = ""]
 
 # alibabacloud Secret Access Key
-# CLI flag: -common.storage.oss.secret-access-key
+# CLI flag: -<prefix>.storage.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
 ```
 
@@ -2236,10 +2236,23 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 # CLI flag: -querier.id
 [id: <string> | default = ""]
 
-# The grpc_client block configures the gRPC client used to communicate between a
-# client and server component in Loki.
+# Configures the querier gRPC client used to communicate with the
+# query-frontend. Shouldn't be used in conjunction with 'grpc_client_config'.
+# The CLI flags prefix for this block configuration is:
+# querier.frontend-grpc-client
+[query_frontend_grpc_client: <grpc_client>]
+
+# Configures the querier gRPC client used to communicate with the query-frontend
+# and with the query-scheduler if 'query_scheduler_grpc_client' isn't defined.
+# This shouldn't be used if 'query_frontend_grpc_client' is defined.
 # The CLI flags prefix for this block configuration is: querier.frontend-client
 [grpc_client_config: <grpc_client>]
+
+# Configures the querier gRPC client used to communicate with the
+# query-scheduler. If not defined, 'grpc_client_config' is used instead.
+# The CLI flags prefix for this block configuration is:
+# querier.scheduler-grpc-client
+[query_scheduler_grpc_client: <grpc_client>]
 ```
 
 ### gcs_storage_config
@@ -2297,6 +2310,8 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `ingester.client`
 - `pattern-ingester.client`
 - `querier.frontend-client`
+- `querier.frontend-grpc-client`
+- `querier.scheduler-grpc-client`
 - `query-scheduler.grpc-client-config`
 - `ruler.client`
 - `tsdb.shipper.index-gateway-client.grpc`
