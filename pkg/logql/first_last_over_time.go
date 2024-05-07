@@ -197,7 +197,7 @@ func (*mergeOverTimeStepEvaluator) Error() error { return nil }
 
 func NewMergeFirstOverTimeStepEvaluator(params Params, m []promql.Matrix) StepEvaluator {
 	if len(m) == 0 {
-		return EmptyEvaluator{}
+		return EmptyEvaluator[SampleVector]{}
 	}
 
 	var (
@@ -234,7 +234,7 @@ func mergeFirstOverTime(vec promql.Vector, pos int, nSeries int, series promql.S
 
 func NewMergeLastOverTimeStepEvaluator(params Params, m []promql.Matrix) StepEvaluator {
 	if len(m) == 0 {
-		return EmptyEvaluator{}
+		return EmptyEvaluator[SampleVector]{}
 	}
 
 	var (
