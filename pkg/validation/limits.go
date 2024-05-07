@@ -187,7 +187,7 @@ type Limits struct {
 	// Deprecated
 	CompactorDeletionEnabled bool `yaml:"allow_deletes" json:"allow_deletes" doc:"deprecated|description=Use deletion_mode per tenant configuration instead."`
 
-	ShardStreams *shardstreams.Config `yaml:"shard_streams" json:"shard_streams"`
+	ShardStreams *shardstreams.Config `yaml:"shard_streams" json:"shard_streams" doc:"description=Define streams sharding behavior."`
 
 	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
 

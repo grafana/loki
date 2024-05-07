@@ -3305,11 +3305,18 @@ ruler_remote_write_sigv4_config:
 # Deprecated: Use deletion_mode per tenant configuration instead.
 [allow_deletes: <boolean>]
 
+# Define streams sharding behavior.
 shard_streams:
+  # Automatically shard streams to keep them under the per-stream rate limit.
+  # Sharding is dictated by the desired rate.
   [enabled: <boolean>]
 
+  # Whether to log sharding streams behavior or not. Not recommended for
+  # production environments.
   [logging_enabled: <boolean>]
 
+  # Threshold used to cut a new shard. Default (1536KB) means if a rate is above
+  # 1536KB/s, it will be sharded into two streams.
   [desired_rate: <int>]
 
 [blocked_queries: <blocked_query...>]
