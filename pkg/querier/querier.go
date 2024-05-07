@@ -1210,6 +1210,7 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 				for _, v := range vals {
 					parsedFields := detectedFields[k]
 					if detectType {
+						// we don't want to determine the type for every line, so we assume the type in each stream will be the same, and re-detect the type for the next stream
 						parsedFields.DetermineType(v)
 						detectType = false
 					}
