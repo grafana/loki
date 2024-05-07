@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
@@ -280,4 +283,106 @@ func filterDuplicateChunks(scfg config.SchemaConfig, storeChunks [][]chunk.Chunk
 	}
 
 	return filteredChunkIDs
+}
+
+func (a *AsyncStore) GetShards(
+	ctx context.Context,
+	userID string,
+	from, through model.Time,
+	targetBytesPerShard uint64,
+	predicate chunk.Predicate,
+) (*logproto.ShardsResponse, error) {
+	logger := log.With(
+		util_log.WithContext(ctx, util_log.Logger),
+		"component", "asyncStore",
+	)
+
+	if !a.shouldQueryIngesters(through, model.Now()) {
+		return a.Store.GetShards(ctx, userID, from, through, targetBytesPerShard, predicate)
+	}
+
+	var (
+		shardResp *logproto.ShardsResponse
+		statsResp *stats.Stats
+	)
+
+	jobs := []func() error{
+		func() error {
+			var err error
+			shardResp, err = a.Store.GetShards(ctx, userID, from, through, targetBytesPerShard, predicate)
+			return err
+		},
+		// We can't dedupe shards by their contents, so we complement the
+		// store's response with the ingester's stats and .
+		func() error {
+			var err error
+			statsResp, err = a.ingesterQuerier.Stats(ctx, userID, from, through, predicate.Matchers...)
+			return err
+		},
+	}
+
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		len(jobs),
+		func(ctx context.Context, i int) error {
+			return jobs[i]()
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	return mergeShardsFromIngestersAndStore(logger, shardResp, statsResp, targetBytesPerShard), nil
+}
+
+func mergeShardsFromIngestersAndStore(
+	logger log.Logger,
+	storeResp *logproto.ShardsResponse,
+	statsResp *logproto.IndexStatsResponse,
+	targetBytesPerShard uint64,
+) *logproto.ShardsResponse {
+	var storeBytes uint64
+	for _, shard := range storeResp.Shards {
+		storeBytes += shard.Stats.Bytes
+	}
+	totalBytes := storeBytes + statsResp.Bytes
+
+	defer func() {
+		level.Debug(logger).Log(
+			"msg", "resolved shards ",
+			"ingester_bytes", datasize.ByteSize(statsResp.Bytes).HumanReadable(),
+			"store_bytes", datasize.ByteSize(storeBytes).HumanReadable(),
+			"total_bytes", datasize.ByteSize(totalBytes).HumanReadable(),
+			"target_bytes", datasize.ByteSize(targetBytesPerShard).HumanReadable(),
+			"store_shards", len(storeResp.Shards),
+		)
+	}()
+
+	// edge case to avoid divide by zero later
+	if totalBytes == 0 {
+		return &logproto.ShardsResponse{
+			Shards: sharding.LinearShards(0, 0),
+		}
+	}
+
+	// If the ingesters don't have enough data to meaningfuly
+	// change the number of shards, use the store response.
+	if pct := float64(statsResp.Bytes) / float64(totalBytes); pct < 0.25 {
+		return storeResp
+	}
+
+	shards := sharding.LinearShards(int(totalBytes/targetBytesPerShard), totalBytes)
+
+	// increment the total chunks by the number seen from ingesters
+	// NB(owen-d): this isn't perfect as it mixes signals a bit by joining
+	// store chunks which _could_ possibly be filtered with ingester chunks which can't,
+	// but it's still directionally helpful
+	updatedStats := storeResp.Statistics
+	updatedStats.Index.TotalChunks += int64(statsResp.Chunks)
+	return &logproto.ShardsResponse{
+		Shards:     shards,
+		Statistics: updatedStats,
+		// explicitly nil chunkgroups when we've changed the shards+included chunkrefs from ingesters
+		ChunkGroups: nil,
+	}
 }

@@ -543,19 +543,19 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 
 ```yaml
 # Name of OSS bucket.
-# CLI flag: -common.storage.oss.bucketname
+# CLI flag: -<prefix>.storage.oss.bucketname
 [bucket: <string> | default = ""]
 
 # oss Endpoint to connect to.
-# CLI flag: -common.storage.oss.endpoint
+# CLI flag: -<prefix>.storage.oss.endpoint
 [endpoint: <string> | default = ""]
 
 # alibabacloud Access Key ID
-# CLI flag: -common.storage.oss.access-key-id
+# CLI flag: -<prefix>.storage.oss.access-key-id
 [access_key_id: <string> | default = ""]
 
 # alibabacloud Secret Access Key
-# CLI flag: -common.storage.oss.secret-access-key
+# CLI flag: -<prefix>.storage.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
 ```
 
@@ -2236,10 +2236,23 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 # CLI flag: -querier.id
 [id: <string> | default = ""]
 
-# The grpc_client block configures the gRPC client used to communicate between a
-# client and server component in Loki.
+# Configures the querier gRPC client used to communicate with the
+# query-frontend. Shouldn't be used in conjunction with 'grpc_client_config'.
+# The CLI flags prefix for this block configuration is:
+# querier.frontend-grpc-client
+[query_frontend_grpc_client: <grpc_client>]
+
+# Configures the querier gRPC client used to communicate with the query-frontend
+# and with the query-scheduler if 'query_scheduler_grpc_client' isn't defined.
+# This shouldn't be used if 'query_frontend_grpc_client' is defined.
 # The CLI flags prefix for this block configuration is: querier.frontend-client
 [grpc_client_config: <grpc_client>]
+
+# Configures the querier gRPC client used to communicate with the
+# query-scheduler. If not defined, 'grpc_client_config' is used instead.
+# The CLI flags prefix for this block configuration is:
+# querier.scheduler-grpc-client
+[query_scheduler_grpc_client: <grpc_client>]
 ```
 
 ### gcs_storage_config
@@ -2297,6 +2310,8 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `ingester.client`
 - `pattern-ingester.client`
 - `querier.frontend-client`
+- `querier.frontend-grpc-client`
+- `querier.scheduler-grpc-client`
 - `query-scheduler.grpc-client-config`
 - `ruler.client`
 - `tsdb.shipper.index-gateway-client.grpc`
@@ -2925,8 +2940,10 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 [discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name component workload job]]
 
 # Discover and add log levels during ingestion, if not present already. Levels
-# would be added to Structured Metadata with name 'level' and one of the values
-# from 'debug', 'info', 'warn', 'error', 'critical', 'fatal'.
+# would be added to Structured Metadata with name
+# level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and
+# one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical',
+# 'fatal' (case insensitive).
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
 
@@ -5280,6 +5297,26 @@ bloom_shipper:
   # component.
   # The CLI flags prefix for this block configuration is: bloom.metas-cache
   [metas_cache: <cache_config>]
+
+  metas_lru_cache:
+    # In-memory LRU cache for bloom metas. Whether embedded cache is enabled.
+    # CLI flag: -bloom.metas-lru-cache.enabled
+    [enabled: <boolean> | default = false]
+
+    # In-memory LRU cache for bloom metas. Maximum memory size of the cache in
+    # MB.
+    # CLI flag: -bloom.metas-lru-cache.max-size-mb
+    [max_size_mb: <int> | default = 100]
+
+    # In-memory LRU cache for bloom metas. Maximum number of entries in the
+    # cache.
+    # CLI flag: -bloom.metas-lru-cache.max-size-items
+    [max_size_items: <int> | default = 0]
+
+    # In-memory LRU cache for bloom metas. The time to live for items in the
+    # cache before they get purged.
+    # CLI flag: -bloom.metas-lru-cache.ttl
+    [ttl: <duration> | default = 1h]
 ```
 
 ### swift_storage_config

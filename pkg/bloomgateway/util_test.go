@@ -166,10 +166,46 @@ func TestPartitionRequest(t *testing.T) {
 		exp []seriesWithInterval
 	}{
 
-		"empty": {
+		"no series": {
 			inp: &logproto.FilterChunkRefRequest{
-				From:    ts.Add(-24 * time.Hour),
-				Through: ts,
+				From:    ts.Add(-12 * time.Hour),
+				Through: ts.Add(12 * time.Hour),
+				Refs:    []*logproto.GroupedChunkRefs{},
+			},
+			exp: []seriesWithInterval{},
+		},
+
+		"no chunks for series": {
+			inp: &logproto.FilterChunkRefRequest{
+				From:    ts.Add(-12 * time.Hour),
+				Through: ts.Add(12 * time.Hour),
+				Refs: []*logproto.GroupedChunkRefs{
+					{
+						Fingerprint: 0x00,
+						Refs:        []*logproto.ShortRef{},
+					},
+					{
+						Fingerprint: 0x10,
+						Refs:        []*logproto.ShortRef{},
+					},
+				},
+			},
+			exp: []seriesWithInterval{},
+		},
+
+		"chunks before and after requested day": {
+			inp: &logproto.FilterChunkRefRequest{
+				From:    ts.Add(-2 * time.Hour),
+				Through: ts.Add(2 * time.Hour),
+				Refs: []*logproto.GroupedChunkRefs{
+					{
+						Fingerprint: 0x00,
+						Refs: []*logproto.ShortRef{
+							{From: ts.Add(-13 * time.Hour), Through: ts.Add(-12 * time.Hour)},
+							{From: ts.Add(13 * time.Hour), Through: ts.Add(14 * time.Hour)},
+						},
+					},
+				},
 			},
 			exp: []seriesWithInterval{},
 		},
