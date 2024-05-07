@@ -473,16 +473,24 @@ enterprise:
   # make sure auth is set to `type: trust`, or that `auth_enabled` is set to `false`.
   adminApi:
     enabled: true
+  # -- Storage configuration for GEL Admin objects
+  adminClientConfig: |
+    {{ if .Values.minio.enabled }}
+    storage:
+      s3:
+        endpoint: {{ include "loki.minio" $ }}
+        bucket_name: admin
+        secret_access_key: {{ $.Values.minio.rootPassword }}
+        access_key_id: {{ $.Values.minio.rootUser }}
+        s3forcepathstyle: true
+        insecure: true
+    {{ end }}
   # enterprise specific sections of the config.yaml file
   config: |
     {{- if .Values.enterprise.adminApi.enabled }}
-    {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "azure") }}
     admin_client:
-      storage:
-        s3:
-          bucket_name: {{ .Values.loki.storage.bucketNames.admin }}
-    {{- end }}
-    {{- end }}
+      {{ tpl .Values.enterprise.adminClientConfig . | nindent 2 }}
+    {{ end }}
     auth:
       type: {{ .Values.enterprise.adminApi.enabled | ternary "enterprise" "trust" }}
     auth_enabled: {{ .Values.loki.auth_enabled }}
