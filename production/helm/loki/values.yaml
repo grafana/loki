@@ -975,6 +975,9 @@ gateway:
     annotations: {}
     # -- Labels for gateway service
     labels: {}
+    # -- Adds the label prometheus.io/service-monitor: "false" to the gateway service so that it's excluded from the loki serviceMonitor
+    # The nginx does not export metrics per default and would be reported as down if monitoring.serviceMonitor.enabled is true.
+    excludeFromServiceMonitor: false
   # Gateway ingress configuration
   ingress:
     # -- Specifies whether an ingress for the gateway should be created
