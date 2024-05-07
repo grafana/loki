@@ -20,9 +20,13 @@ type LogCluster struct {
 
 func (c *LogCluster) String() string {
 	if c.Stringer != nil {
-		return c.Stringer(c.Tokens)
+		return stripReplacements(c.Stringer(c.Tokens))
 	}
-	return strings.Join(c.Tokens, " ")
+	return stripReplacements(strings.Join(c.Tokens, " "))
+}
+
+func stripReplacements(in string) string {
+	return strings.NewReplacer("<HEX>", "<_>", "<NUM>", "<_>", "<TIMESTAMP>", "<_>", "<DURATION>", "<_>", "<BYTESIZE>", "<_>", "<IP>", "<_>", "<UUID>", "<_>").Replace(in)
 }
 
 func (c *LogCluster) append(ts model.Time) {
