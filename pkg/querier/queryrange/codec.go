@@ -2032,6 +2032,10 @@ func (p paramsDetectedLabelsWrapper) Shards() []string {
 	return make([]string, 0)
 }
 
+func (p paramsDetectedLabelsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
 func (p paramsDetectedFieldsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
 }

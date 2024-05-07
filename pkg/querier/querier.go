@@ -990,7 +990,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 			if _, isStatic := staticLabels[label]; isStatic || !containsAllIDTypes(val.Values) {
 				_, ok := dlMap[label]
 				if !ok {
-					dlMap[label] = newParsedFields()
+					dlMap[label] = newParsedLabels()
 				}
 
 				parsedFields := dlMap[label]
@@ -1005,7 +1005,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 		if _, isStatic := staticLabels[label]; isStatic || !containsAllIDTypes(values) {
 			_, ok := dlMap[label]
 			if !ok {
-				dlMap[label] = newParsedFields()
+				dlMap[label] = newParsedLabels()
 			}
 
 			parsedFields := dlMap[label]
@@ -1141,6 +1141,14 @@ func newParsedFields(parser *string) *parsedFields {
 		isTypeDetected: false,
 		fieldType:      logproto.DetectedFieldString,
 		parser:         p,
+	}
+}
+
+func newParsedLabels() *parsedFields {
+	return &parsedFields{
+		sketch:         hyperloglog.New(),
+		isTypeDetected: false,
+		fieldType:      logproto.DetectedFieldString,
 	}
 }
 
