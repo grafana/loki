@@ -365,6 +365,7 @@ loki:
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
+      admin_api_directory: /var/loki/admin
   # -- Configure memcached as an external cache for chunk and results cache. Disabled by default
   # must enable and specify a host for each cache you would like to use.
   memcached:
@@ -473,23 +474,11 @@ enterprise:
   # make sure auth is set to `type: trust`, or that `auth_enabled` is set to `false`.
   adminApi:
     enabled: true
-  # -- Storage configuration for GEL Admin objects
-  adminClientConfig: |
-    {{ if .Values.minio.enabled }}
-    storage:
-      s3:
-        endpoint: {{ include "loki.minio" $ }}
-        bucket_name: admin
-        secret_access_key: {{ $.Values.minio.rootPassword }}
-        access_key_id: {{ $.Values.minio.rootUser }}
-        s3forcepathstyle: true
-        insecure: true
-    {{ end }}
   # enterprise specific sections of the config.yaml file
   config: |
     {{- if .Values.enterprise.adminApi.enabled }}
-    admin_client:
-      {{ tpl .Values.enterprise.adminClientConfig . | nindent 2 }}
+    admin_client:  
+      {{ include "enterprise-logs.adminAPIStorageConfig" . | nindent 2 }}
     {{ end }}
     auth:
       type: {{ .Values.enterprise.adminApi.enabled | ternary "enterprise" "trust" }}
