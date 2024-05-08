@@ -540,7 +540,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			if shard := d.shard; shard != nil {
 				qry.Params = ParamsWithShardsOverride{
 					Params:         qry.Params,
-					ShardsOverride: Shards{*shard}.Encode(),
+					ShardsOverride: Shards{shard.Shard}.Encode(),
 				}
 			}
 			queries[i] = qry
@@ -577,7 +577,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			if shard := d.shard; shard != nil {
 				qry.Params = ParamsWithShardsOverride{
 					Params:         qry.Params,
-					ShardsOverride: Shards{*shard}.Encode(),
+					ShardsOverride: Shards{shard.Shard}.Encode(),
 				}
 			}
 			queries[i] = qry

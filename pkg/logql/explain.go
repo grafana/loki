@@ -67,6 +67,6 @@ func (e *mergeOverTimeStepEvaluator) Explain(parent Node) {
 	parent.Child("MergeFirstOverTime")
 }
 
-func (EmptyEvaluator) Explain(parent Node) {
+func (EmptyEvaluator[SampleVector]) Explain(parent Node) {
 	parent.Child("Empty")
 }
