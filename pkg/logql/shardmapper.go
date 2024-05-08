@@ -481,6 +481,9 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		if err != nil {
 			return nil, 0, err
 		}
+		if len(shards) == 0 {
+			return noOp(expr, m.shards.Resolver())
+		}
 
 		downstreams := make([]DownstreamSampleExpr, 0, len(shards))
 		// This is the magic. We send a custom operation
@@ -504,6 +507,9 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		shards, bytesPerShard, err := m.shards.Shards(expr)
 		if err != nil {
 			return nil, 0, err
+		}
+		if len(shards) == 0 {
+			return noOp(expr, m.shards.Resolver())
 		}
 
 		downstreams := make([]DownstreamSampleExpr, 0, len(shards))
