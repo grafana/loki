@@ -3309,15 +3309,18 @@ ruler_remote_write_sigv4_config:
 shard_streams:
   # Automatically shard streams to keep them under the per-stream rate limit.
   # Sharding is dictated by the desired rate.
-  [enabled: <boolean>]
+  # CLI flag: -shard-streams.enabled
+  [enabled: <boolean> | default = true]
 
   # Whether to log sharding streams behavior or not. Not recommended for
   # production environments.
-  [logging_enabled: <boolean>]
+  # CLI flag: -shard-streams.logging-enabled
+  [logging_enabled: <boolean> | default = false]
 
   # Threshold used to cut a new shard. Default (1536KB) means if a rate is above
   # 1536KB/s, it will be sharded into two streams.
-  [desired_rate: <int>]
+  # CLI flag: -shard-streams.desired-rate
+  [desired_rate: <int> | default = 1536KB]
 
 [blocked_queries: <blocked_query...>]
 
