@@ -75,21 +75,18 @@ func newRangeVectorIterator(
 	if err != nil {
 		return nil, err
 	}
-	return &batchRangeVectorIterator{
-		iter:     it,
-		step:     step,
-		end:      end,
-		selRange: selRange,
-		metrics:  map[string]labels.Labels{},
-		window:   map[string]*promql.Series{},
-		agg:      vectorAggregator,
-		current:  start - step, // first loop iteration will set it to start
-		offset:   offset,
-	}, nil
+	return NewBatchRangeVectorIterator(
+		it,
+		selRange,
+		step,
+		start,
+		end,
+		offset,
+		vectorAggregator,
+	), nil
 }
 
-//batch
-
+// batch
 type batchRangeVectorIterator struct {
 	iter                                 iter.PeekingSampleIterator
 	selRange, step, end, current, offset int64
@@ -99,14 +96,32 @@ type batchRangeVectorIterator struct {
 	agg                                  BatchRangeVectorAggregator
 }
 
+func NewBatchRangeVectorIterator(
+	it iter.PeekingSampleIterator,
+	selRange, step, start, end, offset int64,
+	agg BatchRangeVectorAggregator,
+) RangeVectorIterator {
+	return &batchRangeVectorIterator{
+		iter:     it,
+		selRange: selRange,
+		step:     step,
+		end:      end,
+		current:  start - step, // first loop iteration will set it to start
+		offset:   offset,
+    metrics:  map[string]labels.Labels{},
+    window:   map[string]*promql.Series{},
+		agg:      agg,
+	}
+}
+
 func (r *batchRangeVectorIterator) Next() bool {
 	// slides the range window to the next position
-	r.current = r.current + r.step
+	r.current = r.current + r.step // first current will be 5 min before start
 	if r.current > r.end {
 		return false
 	}
 	rangeEnd := r.current
-	rangeStart := rangeEnd - r.selRange
+	rangeStart := rangeEnd - r.selRange // in nanoseconds
 	// load samples
 	r.popBack(rangeStart)
 	r.load(rangeStart, rangeEnd)

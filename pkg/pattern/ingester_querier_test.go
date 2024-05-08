@@ -18,9 +18,7 @@ func Test_prunePatterns(t *testing.T) {
 	resp := new(logproto.QueryPatternsResponse)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		resp.Series = append(resp.Series, &logproto.PatternSeries{
-			Pattern: scanner.Text(),
-		})
+		resp.Series = append(resp.Series, logproto.NewPatternSeriesWithPattern(scanner.Text(), []*logproto.PatternSample{}))
 	}
 	require.NoError(t, scanner.Err())
 	prunePatterns(resp, 0)
@@ -36,7 +34,7 @@ func Test_prunePatterns(t *testing.T) {
 
 	patterns := make([]string, 0, len(resp.Series))
 	for _, p := range resp.Series {
-		patterns = append(patterns, p.Pattern)
+		patterns = append(patterns, p.GetPattern())
 	}
 
 	require.Equal(t, expectedPatterns, patterns)

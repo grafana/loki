@@ -32,7 +32,10 @@ message QueryPatternsResponse {
 }
 
 message PatternSeries {
-  string pattern = 1;
+  oneof identifier {
+    string pattern = 1;
+    string labels = 3;
+  }
   repeated PatternSample samples = 2;
 }
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
@@ -21,6 +22,7 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -238,17 +240,77 @@ func (i *Ingester) Query(req *logproto.QueryPatternsRequest, stream logproto.Pat
 	if err != nil {
 		return err
 	}
-	iterator, err := instance.Iterator(ctx, req)
-	if err != nil {
-		return err
+
+	expr, err := syntax.ParseExpr(req.Query)
+
+	switch e := expr.(type) {
+	case syntax.SampleExpr:
+		var err error
+		iterator, err := instance.QuerySample(ctx, e, req) // this is returning a first value of 0,0
+		if err != nil {
+			return err
+		}
+
+		// TODO(twhitney): query store
+		// if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		// 	storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+		// 		Start:    start,
+		// 		End:      end,
+		// 		Selector: req.Selector,
+		// 		Shards:   req.Shards,
+		// 		Deletes:  req.Deletes,
+		// 		Plan:     req.Plan,
+		// 	}}
+		// 	storeItr, err := i.store.SelectSamples(ctx, storeReq)
+		// 	if err != nil {
+		// 		util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+		// 		return err
+		// 	}
+
+		// 	it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+		// }
+
+		defer util.LogErrorWithContext(ctx, "closing iterator", iterator.Close)
+		return sendMetricsSample(ctx, iterator, stream)
+	case syntax.LogSelectorExpr:
+		var err error
+		iterator, err := instance.Iterator(ctx, req)
+		if err != nil {
+			return err
+		}
+		defer util.LogErrorWithContext(ctx, "closing iterator", iterator.Close)
+		return sendPatternSample(ctx, iterator, stream)
+	default:
+		return httpgrpc.Errorf(
+			http.StatusBadRequest,
+			fmt.Sprintf("unexpected type (%T): cannot evaluate", e),
+		)
 	}
-	defer util.LogErrorWithContext(ctx, "closing iterator", iterator.Close)
-	return sendPatternSample(ctx, iterator, stream)
 }
 
 func sendPatternSample(ctx context.Context, it iter.Iterator, stream logproto.Pattern_QueryServer) error {
 	for ctx.Err() == nil {
-		batch, err := iter.ReadBatch(it, readBatchSize)
+		batch, err := iter.ReadPatternsBatch(it, readBatchSize)
+		if err != nil {
+			return err
+		}
+		if err := stream.Send(batch); err != nil && err != context.Canceled {
+			return err
+		}
+		if len(batch.Series) == 0 {
+			return nil
+		}
+	}
+	return nil
+}
+
+func sendMetricsSample(
+	ctx context.Context,
+	it iter.Iterator,
+	stream logproto.Pattern_QueryServer,
+) error {
+	for ctx.Err() == nil {
+		batch, err := iter.ReadMetricsBatch(it, readBatchSize)
 		if err != nil {
 			return err
 		}

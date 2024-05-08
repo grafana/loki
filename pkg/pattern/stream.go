@@ -2,15 +2,21 @@ package pattern
 
 import (
 	"context"
+	"math"
 	"sync"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
+	"github.com/grafana/loki/v3/pkg/pattern/metric"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql"
 )
 
 type stream struct {
@@ -20,6 +26,9 @@ type stream struct {
 	labelHash    uint64
 	patterns     *drain.Drain
 	mtx          sync.Mutex
+	metrics      *metric.Chunks
+
+	evaluator metric.SampleEvaluatorFactory
 
 	lastTs int64
 }
@@ -29,6 +38,7 @@ func newStream(
 	labels labels.Labels,
 	metrics *ingesterMetrics,
 ) (*stream, error) {
+	chunks := metric.NewChunks(labels)
 	return &stream{
 		fp:           fp,
 		labels:       labels,
@@ -38,6 +48,8 @@ func newStream(
 			PatternsEvictedTotal:  metrics.patternsDiscardedTotal,
 			PatternsDetectedTotal: metrics.patternsDetectedTotal,
 		}),
+		metrics:   chunks,
+		evaluator: metric.NewDefaultEvaluatorFactory(chunks),
 	}, nil
 }
 
@@ -48,13 +60,20 @@ func (s *stream) Push(
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
+	bytes := uint64(0)
+	count := uint64(len(entries))
 	for _, entry := range entries {
 		if entry.Timestamp.UnixNano() < s.lastTs {
 			continue
 		}
+
+		bytes += uint64(len(entry.Line))
+
 		s.lastTs = entry.Timestamp.UnixNano()
 		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
 	}
+
+	s.metrics.Observe(bytes, count, model.TimeFromUnixNano(s.lastTs))
 	return nil
 }
 
@@ -73,6 +92,142 @@ func (s *stream) Iterator(_ context.Context, from, through, step model.Time) (it
 		iters = append(iters, cluster.Iterator(from, through, step))
 	}
 	return iter.NewMerge(iters...), nil
+}
+
+// TODO(twhitney): duplication between bytes and count iterators
+func (s *stream) BytesIterator(
+	ctx context.Context,
+	expr syntax.SampleExpr,
+	from, through, step model.Time,
+) (iter.Iterator, error) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	stepEvaluator, err := s.evaluator.NewStepEvaluator(
+		ctx,
+		s.evaluator,
+		expr,
+		metric.Bytes,
+		from,
+		through,
+		step,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	next, ts, r := stepEvaluator.Next()
+	if stepEvaluator.Error() != nil {
+		return nil, stepEvaluator.Error()
+	}
+
+	// TODO(twhitney): actually get max series from limits
+	// this is only 1 series since we're already on a stream
+	// this this limit needs to also be enforced higher up
+	maxSeries := 1000
+	series, err := s.JoinSampleVector(
+		next,
+		ts,
+		r,
+		stepEvaluator,
+		maxSeries,
+		from, through, step)
+	if err != nil {
+		return nil, err
+	}
+
+	return metric.NewSeriesToSampleIterator(series), nil
+}
+
+func (s *stream) JoinSampleVector(
+	next bool,
+	ts int64,
+	r logql.StepResult,
+	stepEvaluator logql.StepEvaluator,
+	maxSeries int,
+	from, through, step model.Time,
+) (*promql.Series, error) {
+	stepCount := int(math.Ceil(float64(through.Sub(from).Nanoseconds()) / float64(step.UnixNano())))
+	if stepCount <= 0 {
+		stepCount = 1
+	}
+
+	series := &promql.Series{
+		Metric: s.labels,
+		Floats: make([]promql.FPoint, 0, stepCount),
+	}
+
+	vec := promql.Vector{}
+	if next {
+		vec = r.SampleVector()
+	}
+
+	// fail fast for the first step or instant query
+	if len(vec) > maxSeries {
+		return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+	}
+
+	for next {
+		vec = r.SampleVector()
+		for _, p := range vec {
+			series.Floats = append(series.Floats, promql.FPoint{
+				T: ts,
+				F: p.F,
+			})
+		}
+
+		next, ts, r = stepEvaluator.Next()
+		if stepEvaluator.Error() != nil {
+			return nil, stepEvaluator.Error()
+		}
+	}
+
+	return series, stepEvaluator.Error()
+}
+
+// TODO(twhitney): duplication between bytes and count iterators
+func (s *stream) CountIterator(
+	ctx context.Context,
+	expr syntax.SampleExpr,
+	from, through, step model.Time,
+) (iter.Iterator, error) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	stepEvaluator, err := s.evaluator.NewStepEvaluator(
+		ctx,
+		s.evaluator,
+		expr,
+		metric.Count,
+		from,
+		through,
+		step,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	next, ts, r := stepEvaluator.Next()
+	if stepEvaluator.Error() != nil {
+		return nil, stepEvaluator.Error()
+	}
+
+	// TODO(twhitney): actually get max series from limits
+	// this is only 1 series since we're already on a stream
+	// this this limit needs to also be enforced higher up
+	maxSeries := 1000
+	series, err := s.JoinSampleVector(
+		next,
+		ts,
+		r,
+		stepEvaluator,
+		maxSeries,
+		from, through, step)
+	if err != nil {
+		return nil, err
+	}
+
+	return metric.NewSeriesToSampleIterator(series), nil
 }
 
 func (s *stream) prune(olderThan time.Duration) bool {

@@ -2,6 +2,7 @@ package pattern
 
 import (
 	"context"
+	"errors"
 	"math"
 	"net/http"
 
@@ -18,6 +19,8 @@ import (
 
 // TODO(kolesnikovae): parametrise QueryPatternsRequest
 const minClusterSize = 30
+
+var ErrParseQuery = errors.New("only label matcher, byte_over_time, and count_over_time queries without filters are supported")
 
 type IngesterQuerier struct {
 	cfg    Config
@@ -44,10 +47,24 @@ func NewIngesterQuerier(
 }
 
 func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	// validate that a supported query was provided
+	// TODO(twhitney): validate metric queries don't have filters
+	var expr syntax.Expr
 	_, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		expr, err = syntax.ParseSampleExpr(req.Query)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, ErrParseQuery.Error())
+		}
+
+		switch expr.(type) {
+		case *syntax.VectorAggregationExpr, *syntax.RangeAggregationExpr:
+			break
+		default:
+			return nil, ErrParseQuery
+		}
 	}
+
 	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
 		return client.Query(ctx, req)
 	})
@@ -58,18 +75,30 @@ func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatte
 	for i := range resps {
 		iterators[i] = iter.NewQueryClientIterator(resps[i].response.(logproto.Pattern_QueryClient))
 	}
-	// TODO(kolesnikovae): Incorporate with pruning
-	resp, err := iter.ReadBatch(iter.NewMerge(iterators...), math.MaxInt32)
-	if err != nil {
-		return nil, err
+	switch expr.(type) {
+	case *syntax.VectorAggregationExpr, *syntax.RangeAggregationExpr:
+		resp, err := iter.ReadMetricsBatch(iter.NewMerge(iterators...), math.MaxInt32)
+		if err != nil {
+			return nil, err
+		}
+		return resp, nil
+	default:
+		// TODO(kolesnikovae): Incorporate with pruning
+		resp, err := iter.ReadPatternsBatch(iter.NewMerge(iterators...), math.MaxInt32)
+		if err != nil {
+			return nil, err
+		}
+		return prunePatterns(resp, minClusterSize), nil
 	}
-	return prunePatterns(resp, minClusterSize), nil
 }
 
-func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int) *logproto.QueryPatternsResponse {
+func prunePatterns(
+	resp *logproto.QueryPatternsResponse,
+	minClusterSize int,
+) *logproto.QueryPatternsResponse {
 	d := drain.New(drain.DefaultConfig(), nil)
 	for _, p := range resp.Series {
-		d.TrainPattern(p.Pattern, p.Samples)
+		d.TrainPattern(p.GetPattern(), p.Samples)
 	}
 
 	resp.Series = resp.Series[:0]
@@ -81,10 +110,8 @@ func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int) *lo
 		if pattern == "" {
 			continue
 		}
-		resp.Series = append(resp.Series, &logproto.PatternSeries{
-			Pattern: pattern,
-			Samples: cluster.Samples(),
-		})
+		resp.Series = append(resp.Series,
+			logproto.NewPatternSeriesWithPattern(pattern, cluster.Samples()))
 	}
 	return resp
 }

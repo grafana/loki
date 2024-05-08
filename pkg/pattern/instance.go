@@ -15,8 +15,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/pattern/drain"
+	"github.com/grafana/loki/v3/pkg/pattern/chunk"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
+	"github.com/grafana/loki/v3/pkg/pattern/metric"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
@@ -82,8 +83,8 @@ func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequ
 	}
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
 	step := model.Time(req.Step)
-	if step < drain.TimeResolution {
-		step = drain.TimeResolution
+	if step < chunk.TimeResolution {
+		step = chunk.TimeResolution
 	}
 
 	var iters []iter.Iterator
@@ -98,6 +99,56 @@ func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequ
 	if err != nil {
 		return nil, err
 	}
+	return iter.NewMerge(iters...), nil
+}
+
+func (i *instance) QuerySample(
+	ctx context.Context,
+	expr syntax.SampleExpr,
+	req *logproto.QueryPatternsRequest,
+) (iter.Iterator, error) {
+	from, through := util.RoundToMilliseconds(req.Start, req.End)
+	step := model.Time(req.Step)
+	if step < chunk.TimeResolution {
+		step = chunk.TimeResolution
+	}
+
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, err
+	}
+
+	typ, err := metric.ExtractMetricType(expr)
+	if err != nil || typ == metric.Unsupported {
+		return nil, err
+	}
+
+	var iters []iter.Iterator
+	err = i.forMatchingStreams(
+		selector.Matchers(),
+		func(stream *stream) error {
+			var iter iter.Iterator
+			var err error
+			if typ == metric.Bytes {
+				iter, err = stream.BytesIterator(ctx, expr, from, through, step)
+			} else if typ == metric.Count {
+				iter, err = stream.CountIterator(ctx, expr, from, through, step)
+			} else {
+				return fmt.Errorf("unsupported query operation")
+			}
+
+			if err != nil {
+				return err
+			}
+
+			iters = append(iters, iter)
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return iter.NewMerge(iters...), nil
 }
 
