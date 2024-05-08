@@ -413,7 +413,6 @@ func TestDrain_TrainGeneratesMatchablePatterns(t *testing.T) {
 			for _, line := range tt.inputLines {
 				tt.drain.Train(line, 0)
 			}
-			t.Log(`Learned clusters`, tt.drain.Clusters())
 
 			for _, line := range tt.inputLines {
 				match := tt.drain.Match(line)
@@ -484,7 +483,6 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 			}
 			require.Equal(t, 1, len(tt.drain.Clusters()))
 			cluster := tt.drain.Clusters()[0]
-			t.Log(`Extracted cluster: `, cluster)
 
 			matcher, err := pattern.ParseLineFilter([]byte(cluster.String()))
 			require.NoError(t, err)

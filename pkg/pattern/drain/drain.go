@@ -197,7 +197,9 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 		matchCluster.append(model.TimeFromUnixNano(ts))
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
-		d.metrics.patternsCreatedTotal.Inc()
+		if d.metrics != nil {
+			d.metrics.PatternsDetectedTotal.Inc()
+		}
 	} else {
 		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
 		matchCluster.Tokens = newTemplateTokens
