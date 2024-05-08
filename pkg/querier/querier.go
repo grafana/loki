@@ -1111,7 +1111,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 			Type:        v.fieldType,
 			Cardinality: v.Estimate(),
 			Sketch:      sketch,
-			Parser:      v.parser,
+			Parsers:     v.parsers,
 		}
 
 		fieldCount++
@@ -1125,10 +1125,9 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 }
 
 type parsedFields struct {
-	sketch         *hyperloglog.Sketch
-	isTypeDetected bool
-	fieldType      logproto.DetectedFieldType
-	parser         string
+	sketch    *hyperloglog.Sketch
+	fieldType logproto.DetectedFieldType
+	parsers   []string
 }
 
 func newParsedFields(parser *string) *parsedFields {
@@ -1137,10 +1136,9 @@ func newParsedFields(parser *string) *parsedFields {
 		p = *parser
 	}
 	return &parsedFields{
-		sketch:         hyperloglog.New(),
-		isTypeDetected: false,
-		fieldType:      logproto.DetectedFieldString,
-		parser:         p,
+		sketch:    hyperloglog.New(),
+		fieldType: logproto.DetectedFieldString,
+		parsers:   []string{p},
 	}
 }
 
@@ -1166,7 +1164,6 @@ func (p *parsedFields) Marshal() ([]byte, error) {
 
 func (p *parsedFields) DetermineType(value string) {
 	p.fieldType = determineType(value)
-	p.isTypeDetected = true
 }
 
 func determineType(value string) logproto.DetectedFieldType {
@@ -1198,6 +1195,7 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 	fieldCount := uint32(0)
 
 	for _, stream := range streams {
+		detectType := true
 		level.Debug(spanlogger.FromContext(ctx)).Log(
 			"detected_fields", "true",
 			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
@@ -1207,7 +1205,6 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 			for k, vals := range detected {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
-
 					df = newParsedFields(parser)
 					detectedFields[k] = df
 					fieldCount++
@@ -1217,10 +1214,16 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 					continue
 				}
 
+				if !slices.Contains(df.parsers, *parser) {
+					df.parsers = append(df.parsers, *parser)
+				}
+
 				for _, v := range vals {
 					parsedFields := detectedFields[k]
-					if !parsedFields.isTypeDetected {
+					if detectType {
+						// we don't want to determine the type for every line, so we assume the type in each stream will be the same, and re-detect the type for the next stream
 						parsedFields.DetermineType(v)
+						detectType = false
 					}
 
 					parsedFields.Insert(v)
