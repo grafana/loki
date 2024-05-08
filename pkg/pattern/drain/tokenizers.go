@@ -23,15 +23,15 @@ type adaptiveLogsTokenizer struct{}
 func (a *adaptiveLogsTokenizer) Marshal(in string) []string {
 	preprocessedTokens := tokenization.PreprocessAndTokenizeWithOpts([]byte(in), tokenization.TokenizerOpts{
 		UseSingleTokenForQuotes:   true,
-		IncludeDelimitersInTokens: false,
-		PreprocessNumbers:         true,
+		IncludeDelimitersInTokens: true,
+		PreprocessNumbers:         false,
 	})
 	return preprocessedTokens
 }
 
 func (a *adaptiveLogsTokenizer) Unmarshal(tokens []string) string {
 	// Not easy to unmarshal back to a pattern string for the UI: This works some of the time.
-	return strings.Join(tokens, " ")
+	return strings.Join(tokens, "")
 }
 
 // A tokenizer which tweaks the Adaptive one above to make it more suitable for Explore app.

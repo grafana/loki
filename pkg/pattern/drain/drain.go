@@ -222,7 +222,15 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
 	}
+
 	return matchCluster
+}
+
+func (d *Drain) prune() {
+	// Traverse the tree (the whole tree?!) and combine any branches that have similar clusters
+	// i.e. a branch with <HEX> and <NUM> or <NUM>ac<<NUM> should be aggregated to <HEX> as the most accurate.
+	// This may mean some branches are not reachable? Will see if this is a big deal
+
 }
 
 func (d *Drain) String() {
@@ -299,16 +307,9 @@ func (d *Drain) MatchTokens(contentTokens []string) *LogCluster {
 
 // Match against an already existing cluster. Match shall be perfect (sim_th=1.0). New cluster will not be created as a result of this call, nor any cluster modifications.
 func (d *Drain) Match(content string) *LogCluster {
-	contentTokens := d.getContentAsTokens(content)
+	contentTokens := tokenizePattern(content, d.config.ParamString)
 	matchCluster := d.treeSearch(d.rootNode, contentTokens, 1.0, true)
 	return matchCluster
-}
-
-func (d *Drain) getContentAsTokens(content string) []string {
-	for _, extraDelimiter := range d.config.ExtraDelimiters {
-		content = strings.Replace(content, extraDelimiter, " ", -1)
-	}
-	return strings.Split(content, " ")
 }
 
 func (d *Drain) treeSearch(rootNode *Node, tokens []string, simTh float64, includeParams bool) *LogCluster {
