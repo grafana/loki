@@ -348,7 +348,6 @@ func (t *FileTarget) startWatching(dirs map[string]struct{}) error {
 			path:      dir,
 			eventType: fileTargetEventWatchStart,
 		}:
-			// continue
 		}
 	}
 	return nil
@@ -368,7 +367,6 @@ func (t *FileTarget) stopWatching(dirs map[string]struct{}) error {
 			path:      dir,
 			eventType: fileTargetEventWatchStop,
 		}:
-			// continue
 		}
 	}
 	return nil
