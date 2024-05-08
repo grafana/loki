@@ -460,12 +460,12 @@ storage:
   {{- if .Values.minio.enabled }}
   backend: "s3"
   s3:
-    bucketnames: admin
+    bucket_name: admin
   {{- else if eq .Values.loki.storage.type "s3" -}}
   {{- with .Values.loki.storage.s3 }}
   backend: "s3"
   s3:
-    bucketnames: {{ $.Values.loki.storage.bucketNames.admin }}
+    bucket_name: {{ $.Values.loki.storage.bucketNames.admin }}
   {{- end -}}
   {{- else if eq .Values.loki.storage.type "gcs" -}}
   {{- with .Values.loki.storage.gcs }}
