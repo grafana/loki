@@ -262,7 +262,9 @@ func (t *FileTarget) sync() error {
 			}
 		}
 	}
-
+	
+	matches = removeFilesInIgnoredDirectories(matches)
+	
 	if len(matches) == 0 {
 		level.Debug(t.logger).Log("msg", "no files matched requested path, nothing will be tailed", "path", t.path, "pathExclude", t.pathExclude)
 	}
@@ -319,6 +321,17 @@ func (t *FileTarget) sync() error {
 	t.stopTailingAndRemovePosition(toStopTailing)
 
 	return nil
+}
+
+// given a list of files return the list of files minus those in directories with ignore files
+func removeFilesInIgnoredDirectories(matches []string ) []string {
+	for j := 0; j < len(matches); j++ {
+		if d,err := doublestar.Glob(filepath.Join(filepath.Dir(matches[j]), "*promtail_ignore*")); len(d) > 0 {
+			// exclude this specific match
+				matches = append(matches[:j], matches[j+1:]...)
+		}
+	return matches
+
 }
 
 func (t *FileTarget) startWatching(dirs map[string]struct{}) {
