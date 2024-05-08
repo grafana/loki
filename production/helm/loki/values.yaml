@@ -365,6 +365,7 @@ loki:
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
+      admin_api_directory: /var/loki/admin
   # -- Configure memcached as an external cache for chunk and results cache. Disabled by default
   # must enable and specify a host for each cache you would like to use.
   memcached:
@@ -449,7 +450,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default verion of GEL to deploy
-  version: v3.0.1
+  version: 3.0.1
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -476,13 +477,9 @@ enterprise:
   # enterprise specific sections of the config.yaml file
   config: |
     {{- if .Values.enterprise.adminApi.enabled }}
-    {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "azure") }}
     admin_client:
-      storage:
-        s3:
-          bucket_name: admin
-    {{- end }}
-    {{- end }}
+      {{ include "enterprise-logs.adminAPIStorageConfig" . | nindent 2 }}
+    {{ end }}
     auth:
       type: {{ .Values.enterprise.adminApi.enabled | ternary "enterprise" "trust" }}
     auth_enabled: {{ .Values.loki.auth_enabled }}

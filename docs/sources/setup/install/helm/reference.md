@@ -2572,7 +2572,7 @@ null
   },
   "canarySecret": null,
   "cluster_name": null,
-  "config": "{{- if .Values.enterprise.adminApi.enabled }}\n{{- if or .Values.minio.enabled (eq .Values.loki.storage.type \"s3\") (eq .Values.loki.storage.type \"gcs\") (eq .Values.loki.storage.type \"azure\") }}\nadmin_client:\n  storage:\n    s3:\n      bucket_name: admin\n{{- end }}\n{{- end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n",
+  "config": "{{- if .Values.enterprise.adminApi.enabled }}\nadmin_client:\n  {{ include \"enterprise-logs.adminAPIStorageConfig\" . | nindent 2 }}\n{{ end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n",
   "enabled": false,
   "externalConfigName": "",
   "externalLicenseName": null,
@@ -2630,7 +2630,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "v3.0.1"
+  "version": "3.0.1"
 }
 </pre>
 </td>
@@ -5594,6 +5594,7 @@ null
     "userAssignedId": null
   },
   "filesystem": {
+    "admin_api_directory": "/var/loki/admin",
     "chunks_directory": "/var/loki/chunks",
     "rules_directory": "/var/loki/rules"
   },
