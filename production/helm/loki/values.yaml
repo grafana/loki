@@ -477,7 +477,7 @@ enterprise:
   # enterprise specific sections of the config.yaml file
   config: |
     {{- if .Values.enterprise.adminApi.enabled }}
-    admin_client:  
+    admin_client:
       {{ include "enterprise-logs.adminAPIStorageConfig" . | nindent 2 }}
     {{ end }}
     auth:
