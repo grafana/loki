@@ -1,8 +1,8 @@
 {{- range .Values.extraObjects -}}
 ---
-{{- if kindIs "map" . }}
+{{ if kindIs "map" . }}
 {{ tpl (toYaml .) $ }}
-{{- else }}
+{{ else }}
 {{ tpl . $ }}
-{{- end }}
+{{ end }}
 {{- end }}
