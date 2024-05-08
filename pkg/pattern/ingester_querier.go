@@ -67,7 +67,7 @@ func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatte
 }
 
 func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int) *logproto.QueryPatternsResponse {
-	d := drain.New(drain.DefaultConfig())
+	d := drain.New(drain.DefaultConfig(), nil)
 	for _, p := range resp.Series {
 		d.TrainPattern(p.Pattern, p.Samples)
 	}
