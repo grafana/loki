@@ -376,14 +376,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		),
 	)
 
-	_ = l.BloomCompactorMaxBloomSize.Set(defaultBloomCompactorMaxBloomSize)
-	f.Var(&l.BloomCompactorMaxBloomSize, "bloom-compactor.max-bloom-size",
-		fmt.Sprintf(
-			"Experimental. The maximum bloom size per log stream. A log stream whose generated bloom filter exceeds this size will be discarded. A value of 0 sets an unlimited size. Default is %s.",
-			defaultBloomCompactorMaxBloomSize,
-		),
-	)
-
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
 
 	f.IntVar(&l.VolumeMaxSeries, "limits.volume-max-series", 1000, "The default number of aggregated series or labels that can be returned from a log-volume endpoint")
