@@ -2104,6 +2104,10 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 		return &VolumeResponse{
 			Response: &logproto.VolumeResponse{},
 		}, nil
+	case *DetectedLabelsRequest:
+		return &DetectedLabelsResponse{
+			Response: &logproto.DetectedLabelsResponse{},
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported request type %T", req)
 	}
