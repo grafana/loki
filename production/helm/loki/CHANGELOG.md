@@ -15,7 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.6.0
 
-- [ENHANCEMENT] Allow the definition of PVC annotations for all volume claim templates of SSD deployment mode
+- [ENHANCEMENT] Allow setting PVC annotations for all volume claim templates in simple scalable and single binary mode
 - 
 ## 6.5.0
 
