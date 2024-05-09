@@ -11,10 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/server"
