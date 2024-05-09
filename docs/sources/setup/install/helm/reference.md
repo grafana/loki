@@ -315,6 +315,7 @@ This is the generated reference for the Loki Helm Chart values.
   "initContainers": [],
   "nodeSelector": {},
   "persistence": {
+    "annotations": {},
     "dataVolumeParameters": {
       "emptyDir": {}
     },
@@ -8388,6 +8389,7 @@ false
   "lifecycle": {},
   "nodeSelector": {},
   "persistence": {
+    "annotations": {},
     "enableStatefulSetAutoDeletePVC": true,
     "selector": null,
     "size": "10Gi",
