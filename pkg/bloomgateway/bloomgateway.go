@@ -44,6 +44,7 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -62,6 +63,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
@@ -85,7 +89,7 @@ type Gateway struct {
 
 	queue       *queue.RequestQueue
 	activeUsers *util.ActiveUsersCleanupService
-	bloomStore  bloomshipper.Store
+	bloomStore  bloomshipper.StoreWithMetrics
 
 	pendingTasks *atomic.Int64
 
@@ -107,7 +111,8 @@ func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
 }
 
 // New returns a new instance of the Bloom Gateway.
-func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
+func New(cfg Config, store bloomshipper.StoreWithMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
+	utillog.WarnExperimentalUse("Bloom Gateway", logger)
 	g := &Gateway{
 		cfg:     cfg,
 		logger:  logger,
@@ -200,13 +205,15 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, err
 	}
 
-	logger := log.With(g.logger, "tenant", tenantID)
-
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomgateway.FilterChunkRefs")
 	stats, ctx := ContextWithEmptyStats(ctx)
+	logger := spanlogger.FromContextWithFallback(
+		ctx,
+		util_log.WithContext(ctx, g.logger),
+	)
+
 	defer func() {
 		level.Info(logger).Log(stats.KVArgs()...)
-		sp.LogKV(stats.KVArgs()...)
 		sp.Finish()
 	}()
 
@@ -236,31 +243,46 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}, nil
 	}
 
-	seriesByDay := partitionRequest(req)
-	stats.NumTasks = len(seriesByDay)
+	blocks := make([]bloomshipper.BlockRef, 0, len(req.Blocks))
+	for _, key := range req.Blocks {
+		block, err := bloomshipper.BlockRefFromKey(key)
+		if err != nil {
+			stats.Status = labelFailure
+			return nil, errors.New("could not parse block key")
+		}
+		blocks = append(blocks, block)
+	}
 
-	// no tasks --> empty response
-	if len(seriesByDay) == 0 {
+	// Shortcut if request does not contain blocks
+	if len(blocks) == 0 {
 		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
-			ChunkRefs: []*logproto.GroupedChunkRefs{},
+			ChunkRefs: req.Refs,
 		}, nil
 	}
+
+	// TODO(chaudum): I intentionally keep the logic for handling multiple tasks,
+	// so that the PR does not explode in size. This should be cleaned up at some point.
+
+	seriesByDay := partitionRequest(req)
+	stats.NumTasks = len(seriesByDay)
 
 	sp.LogKV(
 		"filters", len(filters),
 		"days", len(seriesByDay),
+		"blocks", len(req.Blocks),
 		"series_requested", len(req.Refs),
 	)
+
+	if len(seriesByDay) > 1 {
+		stats.Status = labelFailure
+		return nil, errors.New("request time range must span exactly one day")
+	}
 
 	tasks := make([]Task, 0, len(seriesByDay))
 	responses := make([][]v1.Output, 0, len(seriesByDay))
 	for _, seriesForDay := range seriesByDay {
-		task, err := NewTask(ctx, tenantID, seriesForDay, filters)
-		if err != nil {
-			return nil, err
-		}
-
+		task := newTask(ctx, tenantID, seriesForDay, filters, blocks)
 		// TODO(owen-d): include capacity in constructor?
 		task.responses = responsesPool.Get(len(seriesForDay.series))
 		tasks = append(tasks, task)
@@ -277,7 +299,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	for _, task := range tasks {
 		task := task
 		task.enqueueTime = time.Now()
-		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "table", task.table, "series", len(task.series))
 
 		// TODO(owen-d): gracefully handle full queues
 		if err := g.queue.Enqueue(tenantID, nil, task, func() {
@@ -302,22 +323,24 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		preFilterChunks += len(series.Refs)
 	}
 
+	combinedRecorder := v1.NewBloomRecorder(ctx, "combined")
 	for remaining > 0 {
 		select {
 		case <-ctx.Done():
 			stats.Status = "cancel"
 			return nil, errors.Wrap(ctx.Err(), "request failed")
 		case task := <-tasksCh:
-			level.Info(logger).Log("msg", "task done", "task", task.ID, "err", task.Err())
 			if task.Err() != nil {
 				stats.Status = labelFailure
 				return nil, errors.Wrap(task.Err(), "request failed")
 			}
 			responses = append(responses, task.responses)
+			combinedRecorder.Merge(task.recorder)
 			remaining--
 		}
 	}
 
+	combinedRecorder.Report(util_log.WithContext(ctx, g.logger), g.bloomStore.BloomMetrics())
 	sp.LogKV("msg", "received all responses")
 
 	start := time.Now()
@@ -332,7 +355,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	postFilterSeries := len(filtered)
 
-	for _, group := range req.Refs {
+	for _, group := range filtered {
 		postFilterChunks += len(group.Refs)
 	}
 	g.metrics.requestedSeries.Observe(float64(preFilterSeries))
@@ -363,6 +386,10 @@ func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Tas
 		case <-ctx.Done():
 			// do nothing
 		default:
+			// chunks may not always be sorted
+			if !slices.IsSortedFunc(res.Removals, func(a, b v1.ChunkRef) int { return a.Cmp(b) }) {
+				slices.SortFunc(res.Removals, func(a, b v1.ChunkRef) int { return a.Cmp(b) })
+			}
 			task.responses = append(task.responses, res)
 		}
 	}
@@ -393,14 +420,18 @@ func orderedResponsesByFP(responses [][]v1.Output) v1.Iterator[v1.Output] {
 		itrs = append(itrs, v1.NewPeekingIter(v1.NewSliceIter(r)))
 	}
 	return v1.NewHeapIterator[v1.Output](
-		func(o1, o2 v1.Output) bool { return o1.Fp <= o2.Fp },
+		func(o1, o2 v1.Output) bool { return o1.Fp < o2.Fp },
 		itrs...,
 	)
 }
 
 // TODO(owen-d): improve perf. This can be faster with a more specialized impl
 // NB(owen-d): `req` is mutated in place for performance, but `responses` is not
-func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses [][]v1.Output) []*logproto.GroupedChunkRefs {
+// Removals of the outputs must be sorted.
+func filterChunkRefs(
+	req *logproto.FilterChunkRefRequest,
+	responses [][]v1.Output,
+) []*logproto.GroupedChunkRefs {
 	res := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
 
 	// dedupe outputs, merging the same series.
@@ -413,6 +444,7 @@ func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses [][]v1.Outpu
 		// from
 		v1.Identity[v1.Output],
 		// merge two removal sets for the same series, deduping
+		// requires that the removals of the outputs are sorted
 		func(o1, o2 v1.Output) v1.Output {
 			res := v1.Output{Fp: o1.Fp}
 

@@ -7,6 +7,7 @@ import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logproto/indexgateway.proto";
 import "pkg/logproto/logproto.proto";
+import "pkg/logproto/pattern.proto";
 import "pkg/logproto/sketch.proto";
 import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/push/push.proto";
@@ -35,6 +36,9 @@ message LokiRequest {
   string path = 7;
   repeated string shards = 8 [(gogoproto.jsontag) = "shards"];
   Plan plan = 10 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/plan.QueryPlan"];
+  // If populated, these represent the chunk references that the querier should
+  // use to fetch the data, plus any other chunks reported by ingesters.
+  logproto.ChunkRefGroup storeChunks = 11 [(gogoproto.jsontag) = "storeChunks"];
 }
 
 message LokiInstantRequest {
@@ -48,6 +52,9 @@ message LokiInstantRequest {
   string path = 5;
   repeated string shards = 6 [(gogoproto.jsontag) = "shards"];
   Plan plan = 7 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/plan.QueryPlan"];
+  // If populated, these represent the chunk references that the querier should
+  // use to fetch the data, plus any other chunks reported by ingesters.
+  logproto.ChunkRefGroup storeChunks = 8 [(gogoproto.jsontag) = "storeChunks"];
 }
 
 message Plan {
@@ -73,6 +80,7 @@ message LokiResponse {
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
+  repeated string warnings = 10 [(gogoproto.jsontag) = "warnings,omitempty"];
 }
 
 message LokiSeriesRequest {
@@ -157,6 +165,7 @@ message TopKSketchesResponse {
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
+  repeated string warnings = 3 [(gogoproto.jsontag) = "warnings,omitempty"];
 }
 
 message QuantileSketchResponse {
@@ -165,6 +174,7 @@ message QuantileSketchResponse {
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
+  repeated string warnings = 3 [(gogoproto.jsontag) = "warnings,omitempty"];
 }
 
 message ShardsResponse {
@@ -183,6 +193,13 @@ message DetectedFieldsResponse {
   ];
 }
 
+message QueryPatternsResponse {
+  logproto.QueryPatternsResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.QueryPatternsResponse"];
+  repeated definitions.PrometheusResponseHeader Headers = 2 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+  ];
+}
 message DetectedLabelsResponse {
   logproto.DetectedLabelsResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.DetectedLabelsResponse"];
   repeated definitions.PrometheusResponseHeader Headers = 2 [
@@ -204,7 +221,8 @@ message QueryResponse {
     QuantileSketchResponse quantileSketches = 9;
     ShardsResponse shardsResponse = 10;
     DetectedFieldsResponse detectedFields = 11;
-    DetectedLabelsResponse detectedLabels = 12;
+    QueryPatternsResponse patternsResponse = 12;
+    DetectedLabelsResponse detectedLabels = 13;
   }
 }
 
@@ -218,7 +236,8 @@ message QueryRequest {
     logproto.VolumeRequest volume = 6;
     indexgatewaypb.ShardsRequest shardsRequest = 8;
     logproto.DetectedFieldsRequest detectedFields = 9;
-    logproto.DetectedLabelsRequest detectedLabels = 10;
+    logproto.QueryPatternsRequest patternsRequest = 10;
+    logproto.DetectedLabelsRequest detectedLabels = 11;
   }
   map<string, string> metadata = 7 [(gogoproto.nullable) = false];
 }

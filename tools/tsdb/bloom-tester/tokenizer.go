@@ -70,11 +70,11 @@ func (bt *BloomTokenizer) SetLineTokenizer(t *v1.NGramTokenizer) {
 }
 
 func (bt *BloomTokenizer) GetNGramLength() uint64 {
-	return uint64(bt.lineTokenizer.N)
+	return uint64(bt.lineTokenizer.N())
 }
 
 func (bt *BloomTokenizer) GetNGramSkip() uint64 {
-	return uint64(bt.lineTokenizer.Skip)
+	return uint64(bt.lineTokenizer.SkipFactor())
 }
 
 func newMetrics(r prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -146,7 +146,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *v1.SeriesWith
 
 	for idx := range chunks {
 		lc := chunks[idx].Data.(*chunkenc.Facade).LokiChunk()
-		tokenBuf, prefixLn := prefixedToken(bt.lineTokenizer.N, chunks[idx].ChunkRef)
+		tokenBuf, prefixLn := prefixedToken(bt.lineTokenizer.N(), chunks[idx].ChunkRef)
 		chunkTotalUncompressedSize += lc.UncompressedSize()
 
 		itr, err := lc.Iterator(

@@ -7,6 +7,8 @@ import (
 	"sort"
 	"time"
 
+	"golang.org/x/exp/maps"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
@@ -90,8 +92,9 @@ type AccumulatedStreams struct {
 	streams      []*logproto.Stream
 	order        logproto.Direction
 
-	stats   stats.Result        // for accumulating statistics from downstream requests
-	headers map[string][]string // for accumulating headers from downstream requests
+	stats    stats.Result        // for accumulating statistics from downstream requests
+	headers  map[string][]string // for accumulating headers from downstream requests
+	warnings map[string]struct{} // for accumulating warnings from downstream requests
 }
 
 // NewStreamAccumulator returns an accumulator for limited log queries.
@@ -113,7 +116,8 @@ func NewStreamAccumulator(params Params) *AccumulatedStreams {
 		order:    order,
 		limit:    int(params.Limit()),
 
-		headers: make(map[string][]string),
+		headers:  make(map[string][]string),
+		warnings: make(map[string]struct{}),
 	}
 }
 
@@ -353,6 +357,11 @@ func (acc *AccumulatedStreams) Result() []logqlmodel.Result {
 		)
 	}
 
+	warnings := maps.Keys(acc.warnings)
+	sort.Strings(warnings)
+
+	res.Warnings = warnings
+
 	return []logqlmodel.Result{res}
 }
 
@@ -366,6 +375,10 @@ func (acc *AccumulatedStreams) Accumulate(_ context.Context, x logqlmodel.Result
 	}
 	acc.stats.Merge(x.Statistics)
 	metadata.ExtendHeaders(acc.headers, x.Headers)
+
+	for _, w := range x.Warnings {
+		acc.warnings[w] = struct{}{}
+	}
 
 	switch got := x.Data.(type) {
 	case logqlmodel.Streams:

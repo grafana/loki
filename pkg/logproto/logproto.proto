@@ -32,6 +32,16 @@ service Querier {
   rpc GetVolume(VolumeRequest) returns (VolumeResponse) {}
 
   rpc GetDetectedFields(DetectedFieldsRequest) returns (DetectedFieldsResponse) {}
+
+  rpc GetDetectedLabels(DetectedLabelsRequest) returns (LabelToValuesResponse) {}
+}
+
+message LabelToValuesResponse {
+  map<string, UniqueLabelValues> labels = 1;
+}
+
+message UniqueLabelValues {
+  repeated string values = 1;
 }
 
 service StreamData {
@@ -68,6 +78,9 @@ message QueryRequest {
   repeated string shards = 7 [(gogoproto.jsontag) = "shards,omitempty"];
   repeated Delete deletes = 8;
   Plan plan = 9 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/plan.QueryPlan"];
+  // If populated, these represent the chunk references that the querier should
+  // use to fetch the data, plus any other chunks reported by ingesters.
+  ChunkRefGroup storeChunks = 10 [(gogoproto.jsontag) = "storeChunks"];
 }
 
 message SampleQueryRequest {
@@ -83,6 +96,9 @@ message SampleQueryRequest {
   repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
   repeated Delete deletes = 5;
   Plan plan = 6 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/plan.QueryPlan"];
+  // If populated, these represent the chunk references that the querier should
+  // use to fetch the data, plus any other chunks reported by ingesters.
+  ChunkRefGroup storeChunks = 10 [(gogoproto.jsontag) = "storeChunks"];
 }
 
 // TODO(owen-d): fix. This will break rollouts as soon as the internal repr is changed.
@@ -102,6 +118,7 @@ message QueryResponse {
     (gogoproto.nullable) = true
   ];
   stats.Ingester stats = 2 [(gogoproto.nullable) = false];
+  repeated string warnings = 3;
 }
 
 message SampleQueryResponse {
@@ -110,6 +127,7 @@ message SampleQueryResponse {
     (gogoproto.nullable) = true
   ];
   stats.Ingester stats = 2 [(gogoproto.nullable) = false];
+  repeated string warnings = 3;
 }
 
 enum Direction {
@@ -272,6 +290,10 @@ message ChunkRef {
   // The checksum is not written to the external storage. We use crc32,
   // Castagnoli table. See http://www.evanjones.ca/crc32c.html.
   uint32 checksum = 5 [(gogoproto.jsontag) = "-"];
+}
+
+message ChunkRefGroup {
+  repeated ChunkRef refs = 1 [(gogoproto.jsontag) = "refs"];
 }
 
 message LabelValuesForMetricNameRequest {
@@ -440,12 +462,17 @@ message DetectedFieldsRequest {
 
 message DetectedFieldsResponse {
   repeated DetectedField fields = 1;
+  uint32 fieldLimit = 2 [(gogoproto.jsontag) = "fieldLimit,omitempty"];
 }
 
+// TODO: make the detected field include the serialized sketch
+// we only want cardinality in the JSON response
 message DetectedField {
   string label = 1;
   string type = 2 [(gogoproto.casttype) = "DetectedFieldType"];
   uint64 cardinality = 3;
+  repeated string parsers = 4;
+  bytes sketch = 5 [(gogoproto.jsontag) = "sketch,omitempty"];
 }
 
 message DetectedLabelsRequest {
@@ -466,4 +493,5 @@ message DetectedLabelsResponse {
 
 message DetectedLabel {
   string label = 1;
+  uint64 cardinality = 2;
 }

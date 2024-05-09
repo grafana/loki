@@ -402,11 +402,67 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
 		},
 		{
+			`{app="foo"} |= "test" |= "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test foo", true}, {"test bar", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} |= "test" |= "foo" or "bar" or "baz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test foo", true}, {"test bar", true}, {"test baz", true}, {"baz", false}, {"bar", false}, {"foo", false}, {"none", false}},
+		},
+		{
+			`{app="foo"} |= "test" |= "foo" or "bar" or "baz" |= "car"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"car test foo", true}, {"car test bar", true}, {"car test baz", true}, {"baz", false}, {"bar", false}, {"test", false}, {"foo", false}, {"car", false}, {"none", false}},
+		},
+		{
+			`{app="foo"} |= "test" |= "foo" or "bar" or "baz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test foo", true}, {"test bar", true}, {"test baz", true}, {"none", false}},
+		},
+		{
 			`{app="foo"} |= "foo" or "bar" |= "buzz" or "fizz"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
 			[]linecheck{{"foo buzz", true}, {"bar fizz", true}, {"foo", false}, {"bar", false}, {"none", false}},
+		},
+		{
+			`{app="foo"} |~ "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} |~ "test" |~ "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test foo", true}, {"test bar", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} |~ "test" |~ "foo" or "bar" or "baz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test foo", true}, {"test bar", true}, {"test baz", true}, {"baz", false}, {"bar", false}, {"foo", false}, {"none", false}},
+		},
+		{
+			`{app="foo"} |~ "test" |~ "foo" or "bar" or "baz" |~ "car"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"car test foo", true}, {"car test bar", true}, {"car test baz", true}, {"baz", false}, {"bar", false}, {"test", false}, {"foo", false}, {"car", false}, {"none", false}},
 		},
 		{
 			`{app="foo"} != "foo" or "bar"`,
@@ -415,6 +471,28 @@ func Test_FilterMatcher(t *testing.T) {
 			},
 			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
 		},
+		{
+			`{app="foo"} != "test" != "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test", false}, {"foo", false}, {"bar", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} != "test" != "foo" or "bar" or "baz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test", false}, {"foo", false}, {"bar", false}, {"baz", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} != "test" != "foo" or "bar" or "baz" != "car"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test", false}, {"foo", false}, {"bar", false}, {"baz", false}, {"car", false}, {"none", true}},
+		},
+
 		{
 			`{app="foo"} |~ "foo" or "bar"`,
 			[]*labels.Matcher{
@@ -428,6 +506,27 @@ func Test_FilterMatcher(t *testing.T) {
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
 			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} !~ "test" !~ "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test", false}, {"foo", false}, {"bar", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} !~ "test" !~ "foo" or "bar" or "baz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test", false}, {"foo", false}, {"bar", false}, {"baz", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} !~ "test" !~ "foo" or "bar" or "baz" !~ "car"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test", false}, {"foo", false}, {"bar", false}, {"baz", false}, {"car", false}, {"none", true}},
 		},
 		{
 			`{app="foo"} |= ip("127.0.0.1") or "foo"`,
@@ -534,6 +633,18 @@ func TestStringer(t *testing.T) {
 			out: `{app="foo"} |= "foo" or "bar"`,
 		},
 		{
+			in:  `{app="foo"} |= "foo" or "bar" or "baz"`,
+			out: `{app="foo"} |= "foo" or "bar" or "baz"`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or "bar" or "baz" |= "car"`,
+			out: `{app="foo"} |= "foo" or "bar" or "baz" |= "car"`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or "bar" or "baz" |= "car" |= "a" or "b" or "c"`,
+			out: `{app="foo"} |= "foo" or "bar" or "baz" |= "car" |= "a" or "b" or "c"`,
+		},
+		{
 			in:  `{app="foo"} |~ "foo" or "bar" or "baz"`,
 			out: `{app="foo"} |~ "foo" or "bar" or "baz"`,
 		},
@@ -570,8 +681,50 @@ func TestStringer(t *testing.T) {
 			out: `{app="foo"} != "foo" != "bar"`,
 		},
 		{
+			in:  `{app="foo"} != "test" != "foo" or "bar"`,
+			out: `{app="foo"} != "test" != "foo" != "bar"`,
+		},
+		{
+			in:  `{app="foo"} != "test" != "foo" or "bar" or "baz"`,
+			out: `{app="foo"} != "test" != "foo" != "bar" != "baz"`,
+		},
+		{
+			in:  `{app="foo"} != "foo" or "bar" or "baz" != "car"`,
+			out: `{app="foo"} != "foo" != "bar" != "baz" != "car"`,
+		},
+		{
+			in:  `{app="foo"} != "foo" or "bar" or "baz" != "car" != "a" or "b" or "c"`,
+			out: `{app="foo"} != "foo" != "bar" != "baz" != "car" != "a" != "b" != "c"`,
+		},
+		{
+			// Mix of != and |=
+			in:  `{app="foo"} |= "foo" or "bar" or "baz" != "car" != "a" or "b" or "c"`,
+			out: `{app="foo"} |= "foo" or "bar" or "baz" != "car" != "a" != "b" != "c"`,
+		},
+		{
 			in:  `{app="foo"} !~ "foo" or "bar"`,
 			out: `{app="foo"} !~ "foo" !~ "bar"`,
+		},
+		{
+			in:  `{app="foo"} !~ "test" !~ "foo" or "bar"`,
+			out: `{app="foo"} !~ "test" !~ "foo" !~ "bar"`,
+		},
+		{
+			in:  `{app="foo"} !~ "test" !~ "foo" or "bar" or "baz"`,
+			out: `{app="foo"} !~ "test" !~ "foo" !~ "bar" !~ "baz"`,
+		},
+		{
+			in:  `{app="foo"} !~ "foo" or "bar" or "baz" !~ "car"`,
+			out: `{app="foo"} !~ "foo" !~ "bar" !~ "baz" !~ "car"`,
+		},
+		{
+			in:  `{app="foo"} !~ "foo" or "bar" or "baz" !~ "car" !~ "a" or "b" or "c"`,
+			out: `{app="foo"} !~ "foo" !~ "bar" !~ "baz" !~ "car" !~ "a" !~ "b" !~ "c"`,
+		},
+		{
+			// Mix of !~ and |~
+			in:  `{app="foo"} |~ "foo" or "bar" or "baz" !~ "car" !~ "a" or "b" or "c"`,
+			out: `{app="foo"} |~ "foo" or "bar" or "baz" !~ "car" !~ "a" !~ "b" !~ "c"`,
 		},
 		{
 			in:  `{app="foo"} != ip("127.0.0.1") or "foo"`,

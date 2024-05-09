@@ -1,10 +1,15 @@
 package v1
 
 import (
+	"context"
+
 	"github.com/efficientgo/core/errors"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
+	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 type Request struct {
@@ -12,6 +17,102 @@ type Request struct {
 	Chks     ChunkRefs
 	Search   BloomTest
 	Response chan<- Output
+	Recorder *BloomRecorder
+}
+
+// BloomRecorder records the results of a bloom search
+func NewBloomRecorder(ctx context.Context, id string) *BloomRecorder {
+	return &BloomRecorder{
+		ctx:            ctx,
+		id:             id,
+		seriesFound:    atomic.NewInt64(0),
+		chunksFound:    atomic.NewInt64(0),
+		seriesSkipped:  atomic.NewInt64(0),
+		chunksSkipped:  atomic.NewInt64(0),
+		seriesMissed:   atomic.NewInt64(0),
+		chunksMissed:   atomic.NewInt64(0),
+		chunksFiltered: atomic.NewInt64(0),
+	}
+}
+
+type BloomRecorder struct {
+	ctx context.Context
+	id  string
+	// exists in the bloom+queried
+	seriesFound, chunksFound *atomic.Int64
+	// exists in bloom+skipped
+	seriesSkipped, chunksSkipped *atomic.Int64
+	// not found in bloom
+	seriesMissed, chunksMissed *atomic.Int64
+	// filtered out
+	chunksFiltered *atomic.Int64
+}
+
+func (r *BloomRecorder) Merge(other *BloomRecorder) {
+	r.seriesFound.Add(other.seriesFound.Load())
+	r.chunksFound.Add(other.chunksFound.Load())
+	r.seriesSkipped.Add(other.seriesSkipped.Load())
+	r.chunksSkipped.Add(other.chunksSkipped.Load())
+	r.seriesMissed.Add(other.seriesMissed.Load())
+	r.chunksMissed.Add(other.chunksMissed.Load())
+	r.chunksFiltered.Add(other.chunksFiltered.Load())
+}
+
+func (r *BloomRecorder) Report(logger log.Logger, metrics *Metrics) {
+	logger = spanlogger.FromContextWithFallback(r.ctx, logger)
+
+	var (
+		seriesFound     = r.seriesFound.Load()
+		seriesSkipped   = r.seriesSkipped.Load()
+		seriesMissed    = r.seriesMissed.Load()
+		seriesRequested = seriesFound + seriesSkipped + seriesMissed
+
+		chunksFound     = r.chunksFound.Load()
+		chunksSkipped   = r.chunksSkipped.Load()
+		chunksMissed    = r.chunksMissed.Load()
+		chunksFiltered  = r.chunksFiltered.Load()
+		chunksRequested = chunksFound + chunksSkipped + chunksMissed
+	)
+	level.Debug(logger).Log(
+		"recorder_msg", "bloom search results",
+		"recorder_id", r.id,
+
+		"recorder_series_requested", seriesRequested,
+		"recorder_series_found", seriesFound,
+		"recorder_series_skipped", seriesSkipped,
+		"recorder_series_missed", seriesMissed,
+
+		"recorder_chunks_requested", chunksRequested,
+		"recorder_chunks_found", chunksFound,
+		"recorder_chunks_skipped", chunksSkipped,
+		"recorder_chunks_missed", chunksMissed,
+		"recorder_chunks_filtered", chunksFiltered,
+	)
+
+	if metrics != nil {
+		metrics.recorderSeries.WithLabelValues(recorderRequested).Add(float64(seriesRequested))
+		metrics.recorderSeries.WithLabelValues(recorderFound).Add(float64(seriesFound))
+		metrics.recorderSeries.WithLabelValues(recorderSkipped).Add(float64(seriesSkipped))
+		metrics.recorderSeries.WithLabelValues(recorderMissed).Add(float64(seriesMissed))
+
+		metrics.recorderChunks.WithLabelValues(recorderRequested).Add(float64(chunksRequested))
+		metrics.recorderChunks.WithLabelValues(recorderFound).Add(float64(chunksFound))
+		metrics.recorderChunks.WithLabelValues(recorderSkipped).Add(float64(chunksSkipped))
+		metrics.recorderChunks.WithLabelValues(recorderMissed).Add(float64(chunksMissed))
+		metrics.recorderChunks.WithLabelValues(recorderFiltered).Add(float64(chunksFiltered))
+	}
+}
+
+func (r *BloomRecorder) record(
+	seriesFound, chunksFound, seriesSkipped, chunksSkipped, seriesMissed, chunksMissed, chunksFiltered int,
+) {
+	r.seriesFound.Add(int64(seriesFound))
+	r.chunksFound.Add(int64(chunksFound))
+	r.seriesSkipped.Add(int64(seriesSkipped))
+	r.chunksSkipped.Add(int64(chunksSkipped))
+	r.seriesMissed.Add(int64(seriesMissed))
+	r.chunksMissed.Add(int64(chunksMissed))
+	r.chunksFiltered.Add(int64(chunksFiltered))
 }
 
 // Output represents a chunk that failed to pass all searches
@@ -59,6 +160,57 @@ func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[Request], logger
 	}
 }
 
+func (fq *FusedQuerier) recordMissingFp(
+	batch []Request,
+	fp model.Fingerprint,
+) {
+	fq.noRemovals(batch, fp, func(input Request) {
+		input.Recorder.record(
+			0, 0, // found
+			0, 0, // skipped
+			1, len(input.Chks), // missed
+			0, // chunks filtered
+		)
+	})
+}
+
+func (fq *FusedQuerier) recordSkippedFp(
+	batch []Request,
+	fp model.Fingerprint,
+) {
+	fq.noRemovals(batch, fp, func(input Request) {
+		input.Recorder.record(
+			0, 0, // found
+			1, len(input.Chks), // skipped
+			0, 0, // missed
+			0, // chunks filtered
+		)
+	})
+}
+
+func (fq *FusedQuerier) noRemovals(
+	batch []Request,
+	fp model.Fingerprint,
+	fn func(Request),
+) {
+	for _, input := range batch {
+		if fp != input.Fp {
+			// should not happen, but log just in case
+			level.Error(fq.logger).Log(
+				"msg", "fingerprint mismatch",
+				"expected", fp,
+				"actual", input.Fp,
+				"block", "TODO",
+			)
+		}
+		fn(input)
+		input.Response <- Output{
+			Fp:       fp,
+			Removals: nil,
+		}
+	}
+}
+
 func (fq *FusedQuerier) Run() error {
 	schema, err := fq.bq.Schema()
 	if err != nil {
@@ -85,62 +237,58 @@ func (fq *FusedQuerier) Run() error {
 		if series.Fingerprint != fp {
 			// fingerprint not found, can't remove chunks
 			level.Debug(fq.logger).Log("msg", "fingerprint not found", "fp", series.Fingerprint, "err", fq.bq.series.Err())
-			for _, input := range nextBatch {
-				input.Response <- Output{
-					Fp:       fp,
-					Removals: nil,
-				}
-			}
+			fq.recordMissingFp(nextBatch, fp)
+			continue
 		}
 
 		// Now that we've found the series, we need to find the unpack the bloom
-		fq.bq.blooms.Seek(series.Offset)
+		skip := fq.bq.blooms.LoadOffset(series.Offset)
+		if skip {
+			// could not seek to the desired bloom,
+			// likely because the page was too large to load
+			fq.recordSkippedFp(nextBatch, fp)
+			continue
+		}
+
 		if !fq.bq.blooms.Next() {
 			// fingerprint not found, can't remove chunks
 			level.Debug(fq.logger).Log("msg", "fingerprint not found", "fp", series.Fingerprint, "err", fq.bq.blooms.Err())
-			for _, input := range nextBatch {
-				input.Response <- Output{
-					Fp:       fp,
-					Removals: nil,
-				}
-			}
+			fq.recordMissingFp(nextBatch, fp)
 			continue
 		}
 
 		bloom := fq.bq.blooms.At()
 		// test every input against this chunk
 		for _, input := range nextBatch {
-			_, inBlooms := input.Chks.Compare(series.Chunks, true)
+			missing, inBlooms := input.Chks.Compare(series.Chunks, true)
+
+			var (
+				// TODO(owen-d): pool
+				removals ChunkRefs
+				// TODO(salvacorts): pool tokenBuf
+				tokenBuf  []byte
+				prefixLen int
+			)
 
 			// First, see if the search passes the series level bloom before checking for chunks individually
-			if !input.Search.Matches(bloom) {
-				// We return all the chunks that were the intersection of the query
-				// because they for sure do not match the search and don't
-				// need to be downloaded
-				input.Response <- Output{
-					Fp:       fp,
-					Removals: inBlooms,
+			if matchedSeries := input.Search.Matches(bloom); !matchedSeries {
+				removals = inBlooms
+			} else {
+				for _, chk := range inBlooms {
+					// Get buf to concatenate the chunk and search token
+					tokenBuf, prefixLen = prefixedToken(schema.NGramLen(), chk, tokenBuf)
+					if !input.Search.MatchesWithPrefixBuf(bloom, tokenBuf, prefixLen) {
+						removals = append(removals, chk)
+					}
 				}
-				continue
 			}
 
-			// TODO(owen-d): pool
-			var removals ChunkRefs
-
-			// TODO(salvacorts): pool tokenBuf
-			var tokenBuf []byte
-			var prefixLen int
-
-			for _, chk := range inBlooms {
-				// Get buf to concatenate the chunk and search token
-				tokenBuf, prefixLen = prefixedToken(schema.NGramLen(), chk, tokenBuf)
-				if !input.Search.MatchesWithPrefixBuf(bloom, tokenBuf, prefixLen) {
-					removals = append(removals, chk)
-					continue
-				}
-				// Otherwise, the chunk passed all the searches
-			}
-
+			input.Recorder.record(
+				1, len(inBlooms), // found
+				0, 0, // skipped
+				0, len(missing), // missed
+				len(removals), // filtered
+			)
 			input.Response <- Output{
 				Fp:       fp,
 				Removals: removals,

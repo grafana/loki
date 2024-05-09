@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 
@@ -351,7 +352,8 @@ func (s *SimpleBloomController) buildGaps(
 		nGramSize    = uint64(s.limits.BloomNGramLength(tenant))
 		nGramSkip    = uint64(s.limits.BloomNGramSkip(tenant))
 		maxBlockSize = uint64(s.limits.BloomCompactorMaxBlockSize(tenant))
-		blockOpts    = v1.NewBlockOptions(blockEnc, nGramSize, nGramSkip, maxBlockSize)
+		maxBloomSize = uint64(s.limits.BloomCompactorMaxBloomSize(tenant))
+		blockOpts    = v1.NewBlockOptions(blockEnc, nGramSize, nGramSkip, maxBlockSize, maxBloomSize)
 		created      []bloomshipper.Meta
 		totalSeries  int
 		bytesAdded   int
@@ -735,7 +737,11 @@ func findGaps(ownershipRange v1.FingerprintBounds, metas []v1.FingerprintBounds)
 
 		searchRange := ownershipRange.Slice(leftBound, clippedMeta.Max)
 		// update the left bound for the next iteration
-		leftBound = min(clippedMeta.Max+1, ownershipRange.Max+1)
+		// We do the max to prevent the max bound to overflow from MaxUInt64 to 0
+		leftBound = min(
+			max(clippedMeta.Max+1, clippedMeta.Max),
+			max(ownershipRange.Max+1, ownershipRange.Max),
+		)
 
 		// since we've already ensured that the meta is within the ownership range,
 		// we know the xor will be of length zero (when the meta is equal to the ownership range)
@@ -750,8 +756,11 @@ func findGaps(ownershipRange v1.FingerprintBounds, metas []v1.FingerprintBounds)
 		gaps = append(gaps, xors[0])
 	}
 
-	if leftBound <= ownershipRange.Max {
-		// There is a gap between the last meta and the end of the ownership range.
+	// If the leftBound is less than the ownership range max, and it's smaller than MaxUInt64,
+	// There is a gap between the last meta and the end of the ownership range.
+	// Note: we check `leftBound < math.MaxUint64` since in the loop above we clamp the
+	// leftBound to MaxUint64 to prevent an overflow to 0: `max(clippedMeta.Max+1, clippedMeta.Max)`
+	if leftBound < math.MaxUint64 && leftBound <= ownershipRange.Max {
 		gaps = append(gaps, v1.NewBounds(leftBound, ownershipRange.Max))
 	}
 

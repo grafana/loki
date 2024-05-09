@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"time"
 
+	"golang.org/x/exp/maps"
+
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
 	jsoniter "github.com/json-iterator/go"
@@ -164,8 +166,25 @@ func (p prometheusCodec) MergeResponse(responses ...Response) (Response, error) 
 	// Merge the responses.
 	sort.Sort(byFirstTime(promResponses))
 
+	uniqueWarnings := map[string]struct{}{}
+	for _, resp := range promResponses {
+		for _, w := range resp.Warnings {
+			uniqueWarnings[w] = struct{}{}
+		}
+	}
+
+	warnings := maps.Keys(uniqueWarnings)
+	sort.Strings(warnings)
+
+	if len(warnings) == 0 {
+		// When there are no warnings, keep it nil so it can be compared against
+		// the default value
+		warnings = nil
+	}
+
 	response := PrometheusResponse{
-		Status: StatusSuccess,
+		Status:   StatusSuccess,
+		Warnings: warnings,
 		Data: PrometheusData{
 			ResultType: p.resultType.String(),
 			Result:     matrixMerge(promResponses),

@@ -68,6 +68,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
+	if !cfg.Enabled {
+		return nil
+	}
+
 	if err := cfg.RetentionConfig.Validate(); err != nil {
 		return err
 	}
@@ -89,5 +93,6 @@ type Limits interface {
 	BloomNGramSkip(tenantID string) int
 	BloomFalsePositiveRate(tenantID string) float64
 	BloomCompactorMaxBlockSize(tenantID string) int
+	BloomCompactorMaxBloomSize(tenantID string) int
 	BloomBlockEncoding(tenantID string) string
 }

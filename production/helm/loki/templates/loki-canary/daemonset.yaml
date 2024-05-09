@@ -1,4 +1,4 @@
-{{- with .Values.monitoring.lokiCanary -}}
+{{- with .Values.lokiCanary -}}
 {{- if .enabled -}}
 ---
 apiVersion: apps/v1
@@ -51,12 +51,20 @@ spec:
             {{- else if $.Values.loki.auth_enabled }}
             - -user={{ $.Values.monitoring.selfMonitoring.tenant.name }}
             - -tenant-id={{ $.Values.monitoring.selfMonitoring.tenant.name }}
+            - -pass={{ $.Values.monitoring.selfMonitoring.tenant.password }}
+            {{- end }}
+            {{- if .push }}
+            - -push=true
             {{- end }}
             {{- with .extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           securityContext:
             {{- toYaml $.Values.loki.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            {{- with $.Values.lokiCanary.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           ports:
             - name: http-metrics
               containerPort: 3500
@@ -106,6 +114,10 @@ spec:
       {{- with .tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      {{- with $.Values.lokiCanary.extraVolumes }}
+      {{- toYaml . | nindent 8 }}
       {{- end }}
 {{- end }}
 {{- end }}

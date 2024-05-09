@@ -6,6 +6,8 @@ Loki uses GitHub to manage reviews of pull requests:
 - If you plan to do something more involved, discuss your ideas on the relevant GitHub issue.
 - Make sure to follow the prerequisites below before marking your PR as ready for review.
 
+**Note that Promtail is considered to be feature complete, and future development for logs collection will be in [Grafana Alloy](https://github.com/grafana/alloy)**
+
 ## Loki Improvement Documents (LIDs)
 
 Before creating a large pull request to change or add functionality, please create a _Loki Improvement Document (LID)_. We use LIDs to discuss and vet ideas submitted by maintainers or the community in an open and transparent way. As of Jan 2023, we are starting with a lightweight LID process and we may add more structure, inspired by Python's [PEP](https://peps.python.org/pep-0001/) and Kafka's [KIP](https://cwiki.apache.org/confluence/display/KAFKA/Kafka+Improvement+Proposals) approaches.
@@ -16,19 +18,13 @@ LIDs must be created as a pull request using [this template](docs/sources/commun
 
 **NOTE:** The Loki team has adopted the use of [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for commit messages. 
 
-1. Your PR title is in the form `<Feature Area>: Your change`.
-   1. It does not end the title with punctuation. It will be added in the changelog.
-   1. It starts with an imperative verb. Example: Fix the latency between System A and System B.
-   1. It uses Sentence case, not Title Case.
+1. Your PR title is in the conventional commits form `<change type>: Your change`.
    1. It uses a complete phrase or sentence. The PR title will appear in a changelog, so help other people understand what your change will be.
-   1. It has a clear description saying what it does and why. Your PR description will be present in the project' commit log, so be gentle to it.
-1. Your PR is well sync'ed with main
-1. Your PR is correctly documenting appropriate changes under the CHANGELOG. You should document your changes there if:
-   * It adds an important feature
-   * It fixes an issue present in a previous release
-   * It causes a change in operation that would be useful for an operator of Loki to know
-   * You can skip this step for documentation changes, build related changes and simple bug fixes or enhancements. Rationale being we are attempting to curate the CHANGELOG entries with the most relevant and important changes that end users of Loki care about.
-1. Your PR documents upgrading steps under `docs/sources/setup/upgrade/_index.md` if it changes:
+   1. It starts with an imperative verb. Example: Fix the latency between System A and System B.
+   2. It uses Sentence case, not Title Case.
+2. It has a clear description saying what it does and why. Your PR description is a reviewers first impression of your changes.
+3. Your PR branch is sync'ed with main
+4. Your PR documents upgrading steps under `docs/sources/setup/upgrade/_index.md` if it changes:
    * Default configuration values
    * Metric names or label names
    * Changes existing log lines that may be used in dashboard or alerts. e.g: logs lines in any `metrics.go` files might be used in building dashboards or alerts.

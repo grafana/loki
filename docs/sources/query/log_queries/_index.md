@@ -95,7 +95,7 @@ An example that mutates is the expression
 ```
 
 
-Log pipeline expressions fall into one of three categories:
+Log pipeline expressions fall into one of four categories:
 
 - Filtering expressions: [line filter expressions](#line-filter-expression)
 and
@@ -104,6 +104,7 @@ and
 - Formatting expressions: [line format expressions](#line-format-expression)
 and
 [label format expressions](#labels-format-expression)
+- Labels expressions: [drop labels expression](#drop-labels-expression) and [keep labels expression](#keep-labels-expression)
 
 ### Line filter expression
 
@@ -594,7 +595,7 @@ If we have the following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(m
 
 The above query will give us the `line` as `1.1.1.1 200 3`
 
-See [template functions]({{< relref "../template_functions" >}}) to learn about available functions in the template format.
+Additionally, you can also access the log line using the [`__line__`](https://grafana.com/docs/loki/<LOKI_VERSION>/query/template_functions/#__line__) function and the timestamp using the [`__timestamp__`](https://grafana.com/docs/loki/<LOKI_VERSION>/query/template_functions/#__timestamp__) function. See [template functions](https://grafana.com/docs/loki/<LOKI_VERSION>/query/template_functions/) to learn about available functions in the template format.
 
 ### Labels format expression
 

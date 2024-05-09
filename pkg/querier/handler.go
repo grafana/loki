@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/opentracing/opentracing-go"
-
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -24,8 +22,6 @@ func NewQuerierHandler(api *QuerierAPI) *Handler {
 }
 
 func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "queryHandler")
-	defer span.Finish()
 
 	switch concrete := req.(type) {
 	case *queryrange.LokiRequest:
@@ -118,6 +114,14 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		}
 
 		return &queryrange.DetectedFieldsResponse{
+			Response: result,
+		}, nil
+	case *logproto.QueryPatternsRequest:
+		result, err := h.api.PatternsHandler(ctx, concrete)
+		if err != nil {
+			return nil, err
+		}
+		return &queryrange.QueryPatternsResponse{
 			Response: result,
 		}, nil
 	case *queryrange.DetectedLabelsRequest:

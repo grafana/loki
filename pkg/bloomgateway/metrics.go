@@ -3,13 +3,51 @@ package bloomgateway
 import (
 	"time"
 
+	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type metrics struct {
 	*workerMetrics
 	*serverMetrics
+}
+
+const (
+	typeSuccess = "success"
+	typeError   = "error"
+)
+
+type clientMetrics struct {
+	clientRequests *prometheus.CounterVec
+	requestLatency *prometheus.HistogramVec
+	clients        prometheus.Gauge
+}
+
+func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
+	return &clientMetrics{
+		clientRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Subsystem: "bloom_gateway_client",
+			Name:      "requests_total",
+			Help:      "Total number of requests made to the bloom gateway",
+		}, []string{"type"}),
+		requestLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Subsystem: "bloom_gateway_client",
+			Name:      "request_duration_seconds",
+			Help:      "Time (in seconds) spent serving requests when using the bloom gateway",
+			Buckets:   instrument.DefBuckets,
+		}, []string{"operation", "status_code"}),
+		clients: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Subsystem: "bloom_gateway",
+			Name:      "clients",
+			Help:      "The current number of bloom gateway clients.",
+		}),
+	}
 }
 
 type serverMetrics struct {

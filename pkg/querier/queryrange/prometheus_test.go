@@ -15,7 +15,8 @@ import (
 var emptyStats = `"stats": {
 	"index": {
 		"postFilterChunks": 0,
-		"totalChunks": 0
+		"totalChunks": 0,
+		"shardsDuration": 0
 	},
 	"ingester" : {
 		"store": {
@@ -173,7 +174,8 @@ func Test_encodePromResponse(t *testing.T) {
 			"matrix",
 			&LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
-					Status: string(queryrangebase.StatusSuccess),
+					Status:   queryrangebase.StatusSuccess,
+					Warnings: []string{"this is a warning"},
 					Data: queryrangebase.PrometheusData{
 						ResultType: loghttp.ResultTypeMatrix,
 						Result: []queryrangebase.SampleStream{
@@ -201,6 +203,7 @@ func Test_encodePromResponse(t *testing.T) {
 			},
 			`{
 				"status": "success",
+				"warnings": ["this is a warning"],
 				"data": {
 					"resultType": "matrix",
 					"result": [
@@ -221,7 +224,8 @@ func Test_encodePromResponse(t *testing.T) {
 			"vector",
 			&LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
-					Status: string(queryrangebase.StatusSuccess),
+					Status:   queryrangebase.StatusSuccess,
+					Warnings: []string{"this is a warning"},
 					Data: queryrangebase.PrometheusData{
 						ResultType: loghttp.ResultTypeVector,
 						Result: []queryrangebase.SampleStream{
@@ -247,6 +251,7 @@ func Test_encodePromResponse(t *testing.T) {
 			},
 			`{
 				"status": "success",
+				"warnings": ["this is a warning"],
 				"data": {
 					"resultType": "vector",
 					"result": [

@@ -8,8 +8,11 @@ import (
 	"hash"
 	"io"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -20,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -73,6 +77,10 @@ type BlockRef struct {
 
 func (r BlockRef) String() string {
 	return defaultKeyResolver{}.Block(r).Addr()
+}
+
+func BlockRefFromKey(k string) (BlockRef, error) {
+	return defaultKeyResolver{}.ParseBlockKey(key(k))
 }
 
 type MetaRef struct {
@@ -382,7 +390,11 @@ func (b *BloomClient) GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, err
 	err := concurrency.ForEachJob(ctx, len(refs), b.concurrency, func(ctx context.Context, idx int) error {
 		meta, err := b.GetMeta(ctx, refs[idx])
 		if err != nil {
-			return err
+			key := b.KeyResolver.Meta(refs[idx]).Addr()
+			if !b.IsObjectNotFoundErr(err) {
+				return fmt.Errorf("failed to get meta file %s: %w", key, err)
+			}
+			level.Error(b.logger).Log("msg", "failed to get meta file", "ref", key, "err", err)
 		}
 		results[idx] = meta
 		return nil
@@ -390,20 +402,22 @@ func (b *BloomClient) GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, err
 	return results, err
 }
 
+// GetMeta fetches the meta file for given MetaRef from object storage and
+// decodes the JSON data into a Meta.
+// If the meta file is not found in storage or decoding fails, the empty Meta
+// is returned along with the error.
 func (b *BloomClient) GetMeta(ctx context.Context, ref MetaRef) (Meta, error) {
-	meta := Meta{
-		MetaRef: ref,
-	}
+	meta := Meta{MetaRef: ref}
 	key := b.KeyResolver.Meta(ref).Addr()
 	reader, _, err := b.client.GetObject(ctx, key)
 	if err != nil {
-		return Meta{}, fmt.Errorf("failed to get meta file%s: %w", key, err)
+		return meta, err
 	}
 	defer reader.Close()
 
 	err = json.NewDecoder(reader).Decode(&meta)
 	if err != nil {
-		return Meta{}, fmt.Errorf("failed to decode meta file %s: %w", key, err)
+		return meta, errors.Wrap(err, "failed to decode JSON")
 	}
 	return meta, nil
 }
@@ -416,4 +430,102 @@ func findPeriod(configs []config.PeriodConfig, ts model.Time) (config.DayTime, e
 		}
 	}
 	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", ts)
+}
+
+type listOpResult struct {
+	ts       time.Time
+	objects  []client.StorageObject
+	prefixes []client.StorageCommonPrefix
+}
+
+type listOpCache map[string]listOpResult
+
+type cachedListOpObjectClient struct {
+	client.ObjectClient
+	cache         listOpCache
+	mtx           sync.RWMutex
+	ttl, interval time.Duration
+	done          chan struct{}
+}
+
+func newCachedListOpObjectClient(oc client.ObjectClient, ttl, interval time.Duration) *cachedListOpObjectClient {
+	client := &cachedListOpObjectClient{
+		ObjectClient: oc,
+		cache:        make(listOpCache),
+		done:         make(chan struct{}),
+		ttl:          ttl,
+		interval:     interval,
+	}
+
+	go func(c *cachedListOpObjectClient) {
+		ticker := time.NewTicker(c.interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-c.done:
+				return
+			case <-ticker.C:
+				c.mtx.Lock()
+				for k := range c.cache {
+					if time.Since(c.cache[k].ts) > c.ttl {
+						delete(c.cache, k)
+					}
+				}
+				c.mtx.Unlock()
+			}
+		}
+	}(client)
+
+	return client
+}
+
+func (c *cachedListOpObjectClient) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+	var (
+		logger   = spanlogger.FromContext(ctx)
+		start    = time.Now()
+		cacheDur time.Duration
+	)
+	defer func() {
+		logger.LogKV(
+			"cache_duration", cacheDur,
+			"total_duration", time.Since(start),
+		)
+	}()
+
+	if delimiter != "" {
+		return nil, nil, fmt.Errorf("does not support LIST calls with delimiter: %s", delimiter)
+	}
+	c.mtx.RLock()
+	cached, found := c.cache[prefix]
+	c.mtx.RUnlock()
+	cacheDur = time.Since(start)
+	if found {
+		return cached.objects, cached.prefixes, nil
+	}
+
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	objects, prefixes, err := c.ObjectClient.List(ctx, prefix, delimiter)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	c.cache[prefix] = listOpResult{
+		ts:       time.Now(),
+		objects:  objects,
+		prefixes: prefixes,
+	}
+
+	return objects, prefixes, err
+}
+
+func (c *cachedListOpObjectClient) Stop() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	close(c.done)
+	c.cache = nil
+	c.ObjectClient.Stop()
 }

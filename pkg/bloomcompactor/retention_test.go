@@ -22,6 +22,7 @@ import (
 	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -773,7 +774,7 @@ func NewMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*bloomshipper.B
 	schemaCfg := storageconfig.SchemaConfig{
 		Configs: []storageconfig.PeriodConfig{
 			{
-				ObjectType: storageconfig.StorageTypeFileSystem,
+				ObjectType: types.StorageTypeFileSystem,
 				From: storageconfig.DayTime{
 					Time: testTime.Add(-2 * 365 * 24 * time.Hour), // -2 year
 				},
@@ -784,7 +785,7 @@ func NewMockBloomStoreWithWorkDir(t *testing.T, workDir string) (*bloomshipper.B
 					}},
 			},
 			{
-				ObjectType: storageconfig.StorageTypeFileSystem,
+				ObjectType: types.StorageTypeFileSystem,
 				From: storageconfig.DayTime{
 					Time: testTime.Add(-365 * 24 * time.Hour), // -1 year
 				},
