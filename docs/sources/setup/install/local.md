@@ -30,6 +30,19 @@ The configuration specifies running Loki as a single binary.
       apt-get install loki promtail
       ```
 
+## Intstall on MacOS with homebrew
+1. Install homebrew if neccessary; update homebrew.
+2. Navigate to the [homebrew page for Promtail](https://formulae.brew.sh/formula/promtail). Follow the installation directions.
+3. Check that installation was successful.
+   1. Check that promtail exists in its install directory
+      ```
+      which promtail
+      ```
+   2. Run promtail
+      ```
+      promtail
+      ```
+
 ## Install manually
 1. Navigate to the [release page](https://github.com/grafana/loki/releases/).
 2. Scroll down to the Assets section under the version that you want to install.
