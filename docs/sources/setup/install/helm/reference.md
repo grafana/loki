@@ -3702,6 +3702,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.clientMaxBodySize</td>
+			<td>string</td>
+			<td>Allows customizing the `client_max_body_size` directive</td>
+			<td><pre lang="json">
+"4m"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.customBackendUrl</td>
 			<td>string</td>
 			<td>Override Backend URL</td>
