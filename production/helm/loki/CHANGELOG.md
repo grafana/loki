@@ -13,9 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-## 5.48.0
+## 6.6.0
 
-- [ENHANCEMENT] Allow the definition of PVC annotations for all volume claim templates in statefulsets
+- [ENHANCEMENT] Allow the definition of PVC annotations for all volume claim templates of SSD deployment mode
+- 
 ## 6.5.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v3.0.1
