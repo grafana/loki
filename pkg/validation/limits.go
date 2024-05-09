@@ -75,6 +75,7 @@ type Limits struct {
 	MaxLabelNameLength          int              `yaml:"max_label_name_length" json:"max_label_name_length"`
 	MaxLabelValueLength         int              `yaml:"max_label_value_length" json:"max_label_value_length"`
 	MaxLabelNamesPerSeries      int              `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
+	TrackMaxLabelNames          bool             `yaml:"track_max_label_names" json:"track_max_label_names"`
 	RejectOldSamples            bool             `yaml:"reject_old_samples" json:"reject_old_samples"`
 	RejectOldSamplesMaxAge      model.Duration   `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
 	CreationGracePeriod         model.Duration   `yaml:"creation_grace_period" json:"creation_grace_period"`
@@ -561,6 +562,11 @@ func (o *Overrides) MaxLabelValueLength(userID string) int {
 // MaxLabelNamesPerSeries returns maximum number of label/value pairs timeseries.
 func (o *Overrides) MaxLabelNamesPerSeries(userID string) int {
 	return o.getOverridesForUser(userID).MaxLabelNamesPerSeries
+}
+
+// TrackMaxLabelNames returns maximum number of label names seen when accepting push requests.
+func (o *Overrides) TrackMaxLabelNames(userID string) bool {
+	return o.getOverridesForUser(userID).TrackMaxLabelNames
 }
 
 // RejectOldSamples returns true when we should reject samples older than certain

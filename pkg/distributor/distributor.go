@@ -348,6 +348,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	streams := make([]KeyedStream, 0, len(req.Streams))
 	validatedLineSize := 0
 	validatedLineCount := 0
+	maxLabelNamesSeen := 0
 
 	var validationErrors util.GroupedErrors
 	validationContext := d.validator.getValidationContextForTime(time.Now(), tenantID)
@@ -381,6 +382,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(bytes))
 				continue
+			}
+
+			if validationContext.trackMaxLabelNames && maxLabelNamesSeen < len(lbs) {
+				maxLabelNamesSeen = len(lbs)
 			}
 
 			n := 0
@@ -448,6 +453,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			}
 		}
 	}()
+
+	if validationContext.trackMaxLabelNames {
+		validation.MaxLabelNamesPerTenant.WithLabelValues(tenantID).Set(float64(maxLabelNamesSeen))
+	}
 
 	var validationErr error
 	if validationErrors.Err() != nil {
