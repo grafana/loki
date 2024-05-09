@@ -27,7 +27,7 @@ func TestScheduler_setRunState(t *testing.T) {
 	// we make a Scheduler with the things required to avoid nil pointers
 	s := Scheduler{
 		log: util_log.Logger,
-		schedulerRunning: promauto.With(prometheus.NewRegistry()).NewGauge(prometheus.GaugeOpts{
+		schedulerRunning: promauto.With(nil).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_query_scheduler_running",
 			Help: "Value will be 1 if the scheduler is in the ReplicationSet and actively receiving/processing requests",
 		}),
