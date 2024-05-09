@@ -23,7 +23,7 @@ import (
 )
 
 func TestSweepInstance(t *testing.T) {
-	ing, err := New(defaultIngesterTestConfig(t), "foo", prometheus.DefaultRegisterer, log.NewNopLogger())
+	ing, err := New(defaultIngesterTestConfig(t), "foo", prometheus.NewRegistry(), log.NewNopLogger())
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	err = services.StartAndAwaitRunning(context.Background(), ing)

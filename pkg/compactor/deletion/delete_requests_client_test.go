@@ -74,6 +74,7 @@ func TestGetCacheGenNumberForUser(t *testing.T) {
 
 		client.Stop()
 	})
+	deleteClientMetrics.Unregister()
 }
 
 type mockCompactorClient struct {
