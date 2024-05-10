@@ -33,7 +33,7 @@ type StepEvaluator interface {
 	Explain(Node)
 }
 
-type EmptyEvaluator[R StepResult] struct{
+type EmptyEvaluator[R StepResult] struct {
 	value R
 }
 
@@ -47,5 +47,5 @@ func (EmptyEvaluator[_]) Error() error { return nil }
 
 // Next implements StepEvaluator.
 func (e EmptyEvaluator[_]) Next() (ok bool, ts int64, r StepResult) {
-	return false, 0, e.value 
+	return false, 0, e.value
 }
