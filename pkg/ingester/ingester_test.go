@@ -834,7 +834,7 @@ func TestIngester_GetDetectedLabels(t *testing.T) {
 
 	res, err := i.GetDetectedLabels(ctx, &logproto.DetectedLabelsRequest{
 		Start: []time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
-		End:   []time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
+		End:   []time.Time{time.Now().Add(12 * time.Nanosecond)}[0],
 		Query: "",
 	})
 

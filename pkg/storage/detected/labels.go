@@ -42,9 +42,7 @@ func MergeLabels(labels []*logproto.DetectedLabel) (result []*logproto.DetectedL
 				return nil, err
 			}
 			mergedLabels[label.Label] = unmarshaledLabel
-		}
-
-		if ok {
+		} else {
 			err := l.Merge(label)
 			if err != nil {
 				return nil, err
