@@ -1131,24 +1131,34 @@ ingress:
   labels: {}
   #    blackbox.monitoring.exclude: "true"
   paths:
-    write:
+    distributor:
       - /api/prom/push
       - /loki/api/v1/push
-    read:
+      - /otlp/v1/logs
+    queryFrontend:
+      - /api/prom/query
+      # this path covers labels and labelValues endpoints
+      - /api/prom/label
+      - /api/prom/series
       - /api/prom/tail
+      - /loki/api/v1/query
+      - /loki/api/v1/query_range
       - /loki/api/v1/tail
-      - /loki/api
+      # this path covers labels and labelValues endpoints
+      - /loki/api/v1/label
+      - /loki/api/v1/labels
+      - /loki/api/v1/series
+      - /loki/api/v1/index/stats
+      - /loki/api/v1/index/volume
+      - /loki/api/v1/index/volume_range
+      - /loki/api/v1/format_query
+      - /loki/api/v1/detected_fields
+      - /loki/api/v1/detected_labels
+      - /loki/api/v1/patterns
+    ruler:
       - /api/prom/rules
-      - /loki/api/v1/rules
-      - /prometheus/api/v1/rules
-      - /prometheus/api/v1/alerts
-    singleBinary:
-      - /api/prom/push
-      - /loki/api/v1/push
-      - /api/prom/tail
-      - /loki/api/v1/tail
-      - /loki/api
-      - /api/prom/rules
+      - /api/prom/api/v1/rules
+      - /api/prom/api/v1/alerts
       - /loki/api/v1/rules
       - /prometheus/api/v1/rules
       - /prometheus/api/v1/alerts

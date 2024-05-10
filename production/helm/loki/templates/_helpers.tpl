@@ -607,33 +607,68 @@ Return if ingress supports pathType.
 Generate list of ingress service paths based on deployment type
 */}}
 {{- define "loki.ingress.servicePaths" -}}
-{{- if (eq (include "loki.deployment.isScalable" .) "true") -}}
+{{- if (eq (include "loki.deployment.isSingleBinary" .) "true") -}}
+{{- include "loki.ingress.singleBinaryServicePaths" . }}
+{{- else if (eq (include "loki.deployment.isDistributed" .) "true") -}}
+{{- include "loki.ingress.distributedServicePaths" . }}
+{{- else if and (eq (include "loki.deployment.isScalable" .) "true") (not .Values.read.legacyReadTarget ) -}}
 {{- include "loki.ingress.scalableServicePaths" . }}
 {{- else -}}
-{{- include "loki.ingress.singleBinaryServicePaths" . }}
+{{- include "loki.ingress.legacyScalableServicePaths" . }}
 {{- end -}}
 {{- end -}}
 
+
 {{/*
-Ingress service paths for scalable deployment
+Ingress service paths for distributed deployment
+*/}}
+{{- define "loki.ingress.distributedServicePaths" -}}
+{{- $distributorServiceName := include "loki.distributorFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" $distributorServiceName "paths" .Values.ingress.paths.distributor )}}
+{{- $queryFrontendServiceName := include "loki.queryFrontendFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" $queryFrontendServiceName "paths" .Values.ingress.paths.queryFrontend )}}
+{{- $rulerServiceName := include "loki.rulerFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" $rulerServiceName "paths" .Values.ingress.paths.ruler)}}
+{{- end -}}
+
+{{/*
+Ingress service paths for legacy simple scalable deployment when backend components were part of read component.
 */}}
 {{- define "loki.ingress.scalableServicePaths" -}}
-{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "read" "paths" .Values.ingress.paths.read )}}
-{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "write" "paths" .Values.ingress.paths.write )}}
+{{- $readServiceName := include "loki.readFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.queryFrontend )}}
+{{- $writeServiceName := include "loki.writeFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
+{{- $backendServiceName := include "loki.backendFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $backendServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- end -}}
+
+{{/*
+Ingress service paths for legacy simple scalable deployment
+*/}}
+{{- define "loki.ingress.legacyScalableServicePaths" -}}
+{{- $readServiceName := include "loki.readFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.queryFrontend )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- $writeServiceName := include "loki.writeFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
 {{- end -}}
 
 {{/*
 Ingress service paths for single binary deployment
 */}}
 {{- define "loki.ingress.singleBinaryServicePaths" -}}
-{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "singleBinary" "paths" .Values.ingress.paths.singleBinary )}}
+{{- $serviceName := include "loki.singleBinaryFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.distributor )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.queryFrontend )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.ruler )}}
 {{- end -}}
 
 {{/*
 Ingress service path helper function
 Params:
   ctx = . context
-  svcName = service name without the "loki.fullname" part (ie. read, write)
+  serviceName = fully qualified k8s service name
   paths = list of url paths to allow ingress for
 */}}
 {{- define "loki.ingress.servicePath" -}}
@@ -645,14 +680,13 @@ Params:
   pathType: Prefix
   {{- end }}
   backend:
-    {{- $serviceName := include "loki.ingress.serviceName" (dict "ctx" $.ctx "svcName" $.svcName) }}
     {{- if $ingressApiIsStable }}
     service:
-      name: {{ $serviceName }}
+      name: {{ $.serviceName }}
       port:
         number: {{ $.ctx.Values.loki.server.http_listen_port }}
     {{- else }}
-    serviceName: {{ $serviceName }}
+    serviceName: {{ $.serviceName }}
     servicePort: {{ $.ctx.Values.loki.server.http_listen_port }}
     {{- end -}}
 {{- end -}}
@@ -668,7 +702,7 @@ Params:
 {{- if (eq .svcName "singleBinary") }}
 {{- printf "%s" (include "loki.singleBinaryFullname" .ctx) }}
 {{- else }}
-{{- printf "%s-%s" (include "loki.name" .ctx) .svcName }}
+{{- printf "%s-%s" (include "loki.fullname" .ctx) .svcName }}
 {{- end -}}
 {{- end -}}
 
