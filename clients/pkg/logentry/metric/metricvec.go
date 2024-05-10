@@ -84,6 +84,12 @@ func (c *metricVec) Delete(labels model.LabelSet) bool {
 	return ok
 }
 
+func (c *metricVec) DeleteAll() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.metrics = map[model.Fingerprint]prometheus.Metric{}
+}
+
 // prune will remove all metrics which implement the Expirable interface and have expired
 // it does not take out a lock on the metrics map so whoever calls this function should do so.
 func (c *metricVec) prune() {

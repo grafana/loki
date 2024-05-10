@@ -127,6 +127,13 @@ func TestMetricsPipeline(t *testing.T) {
 		strings.NewReader(expectedMetrics)); err != nil {
 		t.Fatalf("mismatch metrics: %v", err)
 	}
+
+	pl.Cleanup()
+
+	if err := testutil.GatherAndCompare(registry,
+		strings.NewReader("")); err != nil {
+		t.Fatalf("mismatch metrics: %v", err)
+	}
 }
 
 func TestNegativeGauge(t *testing.T) {
@@ -435,7 +442,7 @@ func TestDefaultIdleDuration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}
-	assert.Equal(t, int64(5*time.Minute.Seconds()), ms.(*stageProcessor).Processor.(*metricStage).cfg["total_keys"].maxIdleSec)
+	assert.Equal(t, int64(5*time.Minute.Seconds()), ms.(*metricStage).cfg["total_keys"].maxIdleSec)
 }
 
 var (
