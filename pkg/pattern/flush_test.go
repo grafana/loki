@@ -12,7 +12,6 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -23,7 +22,7 @@ import (
 )
 
 func TestSweepInstance(t *testing.T) {
-	ing, err := New(defaultIngesterTestConfig(t), "foo", prometheus.DefaultRegisterer, log.NewNopLogger())
+	ing, err := New(defaultIngesterTestConfig(t), "foo", nil, log.NewNopLogger())
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	err = services.StartAndAwaitRunning(context.Background(), ing)
