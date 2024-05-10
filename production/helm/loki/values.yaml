@@ -1131,10 +1131,18 @@ ingress:
   labels: {}
   #    blackbox.monitoring.exclude: "true"
   paths:
+    # -- Paths that are exposed by Loki Distributor.
+    # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.distributorFullname"}}`.
+    # If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.writeFullname"}}`.
+    # If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`
     distributor:
       - /api/prom/push
       - /loki/api/v1/push
       - /otlp/v1/logs
+    # -- Paths that are exposed by Loki Query Frontend.
+    # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.queryFrontendFullname"}}`.
+    # If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.readFullname"}}`.
+    # If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`
     queryFrontend:
       - /api/prom/query
       # this path covers labels and labelValues endpoints
@@ -1155,6 +1163,11 @@ ingress:
       - /loki/api/v1/detected_fields
       - /loki/api/v1/detected_labels
       - /loki/api/v1/patterns
+    # -- Paths that are exposed by Loki Ruler.
+    # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.rulerFullname"}}`.
+    # If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`.
+    # If deployment mode is SimpleScalable but `read.legacyReadTarget` is `true`, the requests are forwarded to k8s service: `{{"loki.readFullname"}}`.
+    # If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`
     ruler:
       - /api/prom/rules
       - /api/prom/api/v1/rules
