@@ -693,20 +693,6 @@ Params:
 {{- end -}}
 
 {{/*
-Ingress service name helper function
-Params:
-  ctx = . context
-  svcName = service name without the "loki.fullname" part (ie. read, write)
-*/}}
-{{- define "loki.ingress.serviceName" -}}
-{{- if (eq .svcName "singleBinary") }}
-{{- printf "%s" (include "loki.singleBinaryFullname" .ctx) }}
-{{- else }}
-{{- printf "%s-%s" (include "loki.fullname" .ctx) .svcName }}
-{{- end -}}
-{{- end -}}
-
-{{/*
 Create the service endpoint including port for MinIO.
 */}}
 {{- define "loki.minio" -}}
