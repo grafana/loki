@@ -60,7 +60,6 @@ var (
 	idRegexp = regexp.MustCompile(idPattern)
 )
 
-
 type interval struct {
 	start, end time.Time
 }
