@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -44,10 +45,24 @@ func NewIngesterQuerier(
 }
 
 func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
-	_, err := syntax.ParseMatchers(req.Query, true)
+	expr, err := syntax.ParseLogSelector(req.Query, true)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
+	var queryErr error
+	expr.Walk(func(treeExpr syntax.Expr) {
+		switch treeExpr.(type) {
+		case *syntax.MatchersExpr: // Permit
+		case *syntax.PipelineExpr: // Permit
+		case *syntax.LabelFilterExpr: // Permit
+		default:
+			queryErr = errors.New("only label filters are allowed")
+		}
+	})
+	if queryErr != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
 	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
 		return client.Query(ctx, req)
 	})

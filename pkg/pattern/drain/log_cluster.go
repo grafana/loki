@@ -4,9 +4,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 )
 
@@ -25,9 +27,9 @@ func (c *LogCluster) String() string {
 	return strings.Join(c.Tokens, " ")
 }
 
-func (c *LogCluster) append(ts model.Time) {
+func (c *LogCluster) append(ts model.Time, metadata push.LabelsAdapter) {
 	c.Size++
-	c.Chunks.Add(ts)
+	c.Chunks.Add(ts, metadata)
 }
 
 func (c *LogCluster) merge(samples []*logproto.PatternSample) {
@@ -35,8 +37,8 @@ func (c *LogCluster) merge(samples []*logproto.PatternSample) {
 	c.Chunks.merge(samples)
 }
 
-func (c *LogCluster) Iterator(from, through, step model.Time) iter.Iterator {
-	return c.Chunks.Iterator(c.String(), from, through, step)
+func (c *LogCluster) Iterator(from, through, step model.Time, labelFilters log.StreamPipeline) iter.Iterator {
+	return c.Chunks.Iterator(c.String(), from, through, step, labelFilters)
 }
 
 func (c *LogCluster) Samples() []*logproto.PatternSample {

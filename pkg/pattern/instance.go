@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/multierror"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -74,10 +75,31 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 // Iterator returns an iterator of pattern samples matching the given query patterns request.
 func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequest) (iter.Iterator, error) {
-	matchers, err := syntax.ParseMatchers(req.Query, true)
+	expr, err := syntax.ParseLogSelector(req.Query, true)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
+	var queryErr error
+	expr.Walk(func(treeExpr syntax.Expr) {
+		switch treeExpr.(type) {
+		case *syntax.MatchersExpr: // Permit
+		case *syntax.PipelineExpr: // Permit
+		case *syntax.LabelFilterExpr: // Permit
+		default:
+			queryErr = errors.New("only label filters are allowed")
+		}
+	})
+	if queryErr != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	pipeline, err := expr.Pipeline()
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	matchers := expr.Matchers()
+
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
 	step := model.Time(req.Step)
 	if step < drain.TimeResolution {
@@ -86,7 +108,7 @@ func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequ
 
 	var iters []iter.Iterator
 	err = i.forMatchingStreams(matchers, func(s *stream) error {
-		iter, err := s.Iterator(ctx, from, through, step)
+		iter, err := s.Iterator(ctx, from, through, step, pipeline.ForStream(s.labels))
 		if err != nil {
 			return err
 		}

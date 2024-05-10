@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
@@ -106,7 +107,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			scanner := bufio.NewScanner(file)
 			for scanner.Scan() {
 				line := scanner.Text()
-				tt.drain.Train(line, 0)
+				tt.drain.Train(line, 0, push.LabelsAdapter{})
 			}
 
 			var output []string
@@ -152,7 +153,7 @@ func TestDrain_TrainGeneratesMatchablePatterns(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			for _, line := range tt.inputLines {
-				tt.drain.Train(line, 0)
+				tt.drain.Train(line, 0, push.LabelsAdapter{})
 			}
 			t.Log("Learned clusters", tt.drain.Clusters())
 
@@ -217,7 +218,7 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			for _, line := range tt.inputLines {
-				tt.drain.Train(line, 0)
+				tt.drain.Train(line, 0, push.LabelsAdapter{})
 			}
 			require.Equal(t, 1, len(tt.drain.Clusters()))
 			cluster := tt.drain.Clusters()[0]

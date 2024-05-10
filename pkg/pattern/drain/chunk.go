@@ -4,9 +4,12 @@ import (
 	"sort"
 	"time"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 )
 
@@ -21,15 +24,19 @@ const (
 type Chunks []Chunk
 
 type Chunk struct {
-	Samples []logproto.PatternSample
+	Samples            []logproto.PatternSample
+	StructuredMetadata map[string]string
 }
 
-func newChunk(ts model.Time) Chunk {
+func newChunk(ts model.Time, structuredMetadata push.LabelsAdapter) Chunk {
 	maxSize := int(maxChunkTime.Nanoseconds()/TimeResolution.UnixNano()) + 1
-	v := Chunk{Samples: make([]logproto.PatternSample, 1, maxSize)}
+	v := Chunk{Samples: make([]logproto.PatternSample, 1, maxSize), StructuredMetadata: make(map[string]string, 32)}
 	v.Samples[0] = logproto.PatternSample{
 		Timestamp: ts,
 		Value:     1,
+	}
+	for _, lbl := range structuredMetadata {
+		v.StructuredMetadata[lbl.Name] = lbl.Value
 	}
 	return v
 }
@@ -94,31 +101,50 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 	return aggregatedSamples
 }
 
-func (c *Chunks) Add(ts model.Time) {
+func (c *Chunks) Add(ts model.Time, metadata push.LabelsAdapter) {
 	t := truncateTimestamp(ts, TimeResolution)
 
 	if len(*c) == 0 {
-		*c = append(*c, newChunk(t))
+		*c = append(*c, newChunk(t, metadata))
 		return
 	}
 	last := &(*c)[len(*c)-1]
 	if last.Samples[len(last.Samples)-1].Timestamp == t {
 		last.Samples[len(last.Samples)-1].Value++
+		for _, md := range metadata {
+			last.StructuredMetadata[md.Name] = md.Value
+		}
 		return
 	}
 	if !last.spaceFor(t) {
-		*c = append(*c, newChunk(t))
+		*c = append(*c, newChunk(t, metadata))
 		return
 	}
 	last.Samples = append(last.Samples, logproto.PatternSample{
 		Timestamp: t,
 		Value:     1,
 	})
+	for _, md := range metadata {
+		last.StructuredMetadata[md.Name] = md.Value
+	}
 }
 
-func (c Chunks) Iterator(pattern string, from, through, step model.Time) iter.Iterator {
+func (c Chunks) Iterator(pattern string, from, through, step model.Time, labelFilters log.StreamPipeline) iter.Iterator {
 	iters := make([]iter.Iterator, 0, len(c))
+	var emptyLine []byte
 	for _, chunk := range c {
+		chunkMetadata := make([]labels.Label, 0, len(chunk.StructuredMetadata))
+		for k, v := range chunk.StructuredMetadata {
+			chunkMetadata = append(chunkMetadata, labels.Label{
+				Name:  k,
+				Value: v,
+			})
+		}
+		_, _, matches := labelFilters.Process(0, emptyLine, chunkMetadata...)
+		if !matches {
+			continue
+		}
+
 		samples := chunk.ForRange(from, through, step)
 		if len(samples) == 0 {
 			continue

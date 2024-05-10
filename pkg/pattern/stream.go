@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 
@@ -49,12 +50,12 @@ func (s *stream) Push(
 			continue
 		}
 		s.lastTs = entry.Timestamp.UnixNano()
-		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
+		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano(), entry.StructuredMetadata)
 	}
 	return nil
 }
 
-func (s *stream) Iterator(_ context.Context, from, through, step model.Time) (iter.Iterator, error) {
+func (s *stream) Iterator(_ context.Context, from, through, step model.Time, labelFilters log.StreamPipeline) (iter.Iterator, error) {
 	// todo we should improve locking.
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -66,7 +67,7 @@ func (s *stream) Iterator(_ context.Context, from, through, step model.Time) (it
 		if cluster.String() == "" {
 			continue
 		}
-		iters = append(iters, cluster.Iterator(from, through, step))
+		iters = append(iters, cluster.Iterator(from, through, step, labelFilters))
 	}
 	return iter.NewMerge(iters...), nil
 }

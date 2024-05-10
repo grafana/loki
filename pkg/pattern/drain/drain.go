@@ -28,6 +28,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/hashicorp/golang-lru/v2/simplelru"
 	"github.com/prometheus/common/model"
 
@@ -171,15 +172,15 @@ func (d *Drain) Clusters() []*LogCluster {
 	return d.idToCluster.Values()
 }
 
-func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts int64) *LogCluster {
-	return d.train(tokens, stringer, ts)
+func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts int64, metadata push.LabelsAdapter) *LogCluster {
+	return d.train(tokens, stringer, ts, metadata)
 }
 
-func (d *Drain) Train(content string, ts int64) *LogCluster {
-	return d.train(d.getContentAsTokens(content), nil, ts)
+func (d *Drain) Train(content string, ts int64, metadata push.LabelsAdapter) *LogCluster {
+	return d.train(d.getContentAsTokens(content), nil, ts, metadata)
 }
 
-func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64) *LogCluster {
+func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64, metadata push.LabelsAdapter) *LogCluster {
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
 	// Match no existing log cluster
 	if matchCluster == nil {
@@ -192,13 +193,13 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 			Stringer: stringer,
 			Chunks:   Chunks{},
 		}
-		matchCluster.append(model.TimeFromUnixNano(ts))
+		matchCluster.append(model.TimeFromUnixNano(ts), metadata)
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
 	} else {
 		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
 		matchCluster.Tokens = newTemplateTokens
-		matchCluster.append(model.TimeFromUnixNano(ts))
+		matchCluster.append(model.TimeFromUnixNano(ts), metadata)
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
 	}

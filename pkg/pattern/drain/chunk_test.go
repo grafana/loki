@@ -5,30 +5,33 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
+var metadata = push.LabelsAdapter{}
+
 func TestAdd(t *testing.T) {
 	cks := Chunks{}
-	cks.Add(TimeResolution + 1)
-	cks.Add(TimeResolution + 2)
-	cks.Add(2*TimeResolution + 1)
+	cks.Add(TimeResolution+1, metadata)
+	cks.Add(TimeResolution+2, metadata)
+	cks.Add(2*TimeResolution+1, metadata)
 	require.Equal(t, 1, len(cks))
 	require.Equal(t, 2, len(cks[0].Samples))
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + TimeResolution + 1)
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds())+TimeResolution+1, metadata)
 	require.Equal(t, 2, len(cks))
 	require.Equal(t, 1, len(cks[1].Samples))
 }
 
 func TestIterator(t *testing.T) {
 	cks := Chunks{}
-	cks.Add(TimeResolution + 1)
-	cks.Add(TimeResolution + 2)
-	cks.Add(2*TimeResolution + 1)
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + TimeResolution + 1)
+	cks.Add(TimeResolution+1, metadata)
+	cks.Add(TimeResolution+2, metadata)
+	cks.Add(2*TimeResolution+1, metadata)
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds())+TimeResolution+1, metadata)
 
 	it := cks.Iterator("test", model.Time(0), model.Time(time.Hour.Nanoseconds()), TimeResolution)
 	require.NotNil(t, it)
