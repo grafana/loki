@@ -52,7 +52,9 @@ const (
 	tailerWaitEntryThrottle = time.Second / 2
 )
 
-var nowFunc = func() time.Time { return time.Now() }
+var (
+	nowFunc = func() time.Time { return time.Now() }
+)
 
 type interval struct {
 	start, end time.Time
