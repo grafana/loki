@@ -212,7 +212,7 @@ loki:
     query_range:
       align_queries_with_step: true
       {{- with .Values.loki.query_range }}
-      {{- tpl (. | toYaml) $ | nindent 4 }}
+      {{- tpl (. | toYaml) $ | nindent 2 }}
       {{- end }}
       {{- if .Values.resultsCache.enabled }}
       {{- with .Values.resultsCache }}
