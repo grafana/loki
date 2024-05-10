@@ -624,11 +624,11 @@ Ingress service paths for distributed deployment
 */}}
 {{- define "loki.ingress.distributedServicePaths" -}}
 {{- $distributorServiceName := include "loki.distributorFullname" . }}
-{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" $distributorServiceName "paths" .Values.ingress.paths.distributor )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $distributorServiceName "paths" .Values.ingress.paths.distributor )}}
 {{- $queryFrontendServiceName := include "loki.queryFrontendFullname" . }}
-{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" $queryFrontendServiceName "paths" .Values.ingress.paths.queryFrontend )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $queryFrontendServiceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- $rulerServiceName := include "loki.rulerFullname" . }}
-{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" $rulerServiceName "paths" .Values.ingress.paths.ruler)}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $rulerServiceName "paths" .Values.ingress.paths.ruler)}}
 {{- end -}}
 
 {{/*
