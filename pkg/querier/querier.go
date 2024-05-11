@@ -50,9 +50,15 @@ const (
 	// before checking if a new entry is available (to avoid spinning the CPU in a continuous
 	// check loop)
 	tailerWaitEntryThrottle = time.Second / 2
+
+	idPattern = `^(?:(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})|(?:(?:\{)?[0-9a-fA-F]{8}(?:-?[0-9a-fA-F]{4}){3}-?[0-9a-fA-F]{12}(?:\})?)|(\d+(?:\.\d+)?))$`
 )
 
-var nowFunc = func() time.Time { return time.Now() }
+var (
+	nowFunc = func() time.Time { return time.Now() }
+
+	idRegexp = regexp.MustCompile(idPattern)
+)
 
 type interval struct {
 	start, end time.Time
@@ -1046,12 +1052,8 @@ func (q *SingleTenantQuerier) isLabelRelevant(label string, values []string, sta
 
 // containsAllIDTypes filters out all UUID, GUID and numeric types. Returns false if even one value is not of the type
 func containsAllIDTypes(values []string) bool {
-	pattern := `^(?:(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})|(?:(?:\{)?[0-9a-fA-F]{8}(?:-?[0-9a-fA-F]{4}){3}-?[0-9a-fA-F]{12}(?:\})?)|(\d+(?:\.\d+)?))$`
-
-	re := regexp.MustCompile(pattern)
-
 	for _, v := range values {
-		if !re.MatchString(v) {
+		if !idRegexp.MatchString(v) {
 			return false
 		}
 	}

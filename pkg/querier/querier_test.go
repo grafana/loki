@@ -1425,6 +1425,35 @@ func TestQuerier_isLabelRelevant(t *testing.T) {
 	}
 }
 
+func TestQuerier_containsAllIDTypes(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		values   []string
+		expected bool
+	}{
+		{
+			name:     "all uuidv4 values are valid",
+			values:   []string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef", "6b7e2663-8ecb-42e1-8bdc-0c5de70185b3", "2e1e67ff-be4f-47b8-aee1-5d67ff1ddabf", "c95b2d62-74ed-4ed7-a8a1-eb72fc67946e"},
+			expected: true,
+		},
+		{
+			name:     "one uuidv4 values are invalid",
+			values:   []string{"w", "5076e837-cd8d-4dd7-95ff-fecb087dccf6", "2e2a6554-1744-4399-b89a-88ae79c27096", "d3c31248-ec0c-4bc4-b11c-8fb1cfb42e62"},
+			expected: false,
+		},
+		{
+			name:     "all uuidv4 values are invalid",
+			values:   []string{"w", "x", "y", "z"},
+			expected: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, containsAllIDTypes(tc.values))
+		})
+
+	}
+}
+
 func TestQuerier_DetectedLabels(t *testing.T) {
 	manyValues := []string{}
 	now := time.Now()
