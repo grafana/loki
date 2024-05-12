@@ -18,7 +18,7 @@ jobs:
       release_created: ${{ steps.release.outputs.operator--release_created }}
       release_name: ${{ steps.release.outputs.operator--tag_name }}
     steps:
-      - uses: google-github-actions/release-please-action@v4
+      - uses: googleapis/release-please-action@v4
         id: release
         with:
           path: operator

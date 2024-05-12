@@ -23,7 +23,7 @@ To release Loki Operator we need the following:
 3. Create a release tag and a release on GitHub;
 4. Open two PRs to [k8s-operatorhub/community-operators](https://github.com/k8s-operatorhub/community-operators) and [redhat-openshift-ecosystem/community-operators-prod](https://github.com/redhat-openshift-ecosystem/community-operators-prod) with the contents of the new bundles;
 
-Loki Operator uses the GitHub [action release-please](https://github.com/google-github-actions/release-please-action) to automate steps 2 and 3. Furthermore, to automate step 4 we use a workflow that is triggered when a release tag is created.
+Loki Operator uses the GitHub [action release-please](https://github.com/googleapis/release-please-action) to automate steps 2 and 3. Furthermore, to automate step 4 we use a workflow that is triggered when a release tag is created.
 
 In the following sections, we will go over how the workflows are configured.
 
