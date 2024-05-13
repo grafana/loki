@@ -997,4 +997,4 @@ ts=2024-04-16T15:10:42.557068004Z level=info msg="finished node evaluation" cont
 ts=2024-04-16T15:10:42.55528547Z level=info msg="finished node evaluation" controller_id=module.http.cloudwatch_pipelines node_id=prometheus.scrape.stack_378175_cloudwatch_notags duration=14.748545ms
 ts=2024-04-16T15:10:42.555273483Z level=info msg="finished node evaluation" controller_id=module.http.cloudwatch_pipelines node_id=prometheus.scrape.stack_378175_cloudwatch_notags duration=14.735015ms
 ts=2024-04-16T15:10:42.555218448Z level=info msg="finished node evaluation" controller_id=module.http.cloudwatch_pipelines node_id=prometheus.scrape.stack_378175_cloudwatch_notags duration=38.592855ms
-2024-04-16 15:10:42.555 ts=2024-04-16T15:10:42.555230437Z level=info msg="finished node evaluation" controller_id=module.http.cloudwatch_pipelines node_id=prometheus.scrape.stack_378175_cloudwatch_notags duration=38.545339ms
+ts=2024-04-16T15:10:42.555230437Z level=info msg="finished node evaluation" controller_id=module.http.cloudwatch_pipelines node_id=prometheus.scrape.stack_378175_cloudwatch_notags duration=38.545339ms
