@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
@@ -42,6 +43,7 @@ type Params interface {
 	Shards() []string
 	GetExpression() syntax.Expr
 	GetStoreChunks() *logproto.ChunkRefGroup
+	CachingOptions() resultscache.CachingOptions
 }
 
 func NewLiteralParams(
@@ -113,6 +115,10 @@ func (p LiteralParams) Shards() []string { return p.shards }
 
 // StoreChunks impls Params
 func (p LiteralParams) GetStoreChunks() *logproto.ChunkRefGroup { return p.storeChunks }
+
+func (p LiteralParams) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
+}
 
 // GetRangeType returns whether a query is an instant query or range query
 func GetRangeType(q Params) QueryRangeType {

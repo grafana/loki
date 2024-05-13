@@ -1795,6 +1795,10 @@ func (p paramsRangeWrapper) Shards() []string {
 	return p.GetShards()
 }
 
+func (p paramsRangeWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
+}
+
 type paramsInstantWrapper struct {
 	*LokiInstantRequest
 }
@@ -1825,6 +1829,10 @@ func (p paramsInstantWrapper) Direction() logproto.Direction {
 func (p paramsInstantWrapper) Limit() uint32 { return p.LokiInstantRequest.Limit }
 func (p paramsInstantWrapper) Shards() []string {
 	return p.GetShards()
+}
+
+func (p paramsInstantWrapper) CachingOptions() resultscache.CachingOptions {
+	return p.LokiInstantRequest.CachingOptions
 }
 
 type paramsSeriesWrapper struct {
@@ -1863,6 +1871,10 @@ func (p paramsSeriesWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
 }
 
+func (p paramsSeriesWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
+}
+
 type paramsLabelWrapper struct {
 	*LabelRequest
 }
@@ -1899,6 +1911,10 @@ func (p paramsLabelWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
 }
 
+func (p paramsLabelWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
+}
+
 type paramsStatsWrapper struct {
 	*logproto.IndexStatsRequest
 }
@@ -1933,6 +1949,10 @@ func (p paramsStatsWrapper) Shards() []string {
 
 func (p paramsStatsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
+}
+
+func (p paramsStatsWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
 }
 
 type paramsDetectedFieldsWrapper struct {
@@ -1980,6 +2000,10 @@ func (p paramsDetectedFieldsWrapper) Shards() []string {
 
 func (p paramsDetectedFieldsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
+}
+
+func (p paramsDetectedFieldsWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
 }
 
 func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryrangebase.PrometheusResponseHeader {
