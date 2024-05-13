@@ -151,11 +151,15 @@ func New(config *Config, metrics *Metrics) *Drain {
 		panic("depth argument must be at least 3")
 	}
 	config.maxNodeDepth = config.LogClusterDepth - 2
+	var evictFn func(int, *LogCluster)
+	if metrics != nil {
+		evictFn = func(int, *LogCluster) { metrics.PatternsEvictedTotal.Inc() }
+	}
 
 	d := &Drain{
 		config:      config,
 		rootNode:    createNode(),
-		idToCluster: createLogClusterCache(config.MaxClusters, func(int, *LogCluster) { metrics.PatternsEvictedTotal.Inc() }),
+		idToCluster: createLogClusterCache(config.MaxClusters, evictFn),
 		metrics:     metrics,
 	}
 	return d
