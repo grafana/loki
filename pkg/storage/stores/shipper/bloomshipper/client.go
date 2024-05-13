@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -480,12 +481,25 @@ func newCachedListOpObjectClient(oc client.ObjectClient, ttl, interval time.Dura
 }
 
 func (c *cachedListOpObjectClient) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+	var (
+		logger   = spanlogger.FromContext(ctx)
+		start    = time.Now()
+		cacheDur time.Duration
+	)
+	defer func() {
+		logger.LogKV(
+			"cache_duration", cacheDur,
+			"total_duration", time.Since(start),
+		)
+	}()
+
 	if delimiter != "" {
 		return nil, nil, fmt.Errorf("does not support LIST calls with delimiter: %s", delimiter)
 	}
 	c.mtx.RLock()
 	cached, found := c.cache[prefix]
 	c.mtx.RUnlock()
+	cacheDur = time.Since(start)
 	if found {
 		return cached.objects, cached.prefixes, nil
 	}

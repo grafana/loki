@@ -50,9 +50,15 @@ const (
 	// before checking if a new entry is available (to avoid spinning the CPU in a continuous
 	// check loop)
 	tailerWaitEntryThrottle = time.Second / 2
+
+	idPattern = `^(?:(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})|(?:(?:\{)?[0-9a-fA-F]{8}(?:-?[0-9a-fA-F]{4}){3}-?[0-9a-fA-F]{12}(?:\})?)|(\d+(?:\.\d+)?))$`
 )
 
-var nowFunc = func() time.Time { return time.Now() }
+var (
+	nowFunc = func() time.Time { return time.Now() }
+
+	idRegexp = regexp.MustCompile(idPattern)
+)
 
 type interval struct {
 	start, end time.Time
@@ -1046,12 +1052,8 @@ func (q *SingleTenantQuerier) isLabelRelevant(label string, values []string, sta
 
 // containsAllIDTypes filters out all UUID, GUID and numeric types. Returns false if even one value is not of the type
 func containsAllIDTypes(values []string) bool {
-	pattern := `^(?:(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})|(?:(?:\{)?[0-9a-fA-F]{8}(?:-?[0-9a-fA-F]{4}){3}-?[0-9a-fA-F]{12}(?:\})?)|(\d+(?:\.\d+)?))$`
-
-	re := regexp.MustCompile(pattern)
-
 	for _, v := range values {
-		if !re.MatchString(v) {
+		if !idRegexp.MatchString(v) {
 			return false
 		}
 	}
@@ -1108,6 +1110,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 			Type:        v.fieldType,
 			Cardinality: v.Estimate(),
 			Sketch:      sketch,
+			Parsers:     v.parsers,
 		}
 
 		fieldCount++
@@ -1121,16 +1124,20 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 }
 
 type parsedFields struct {
-	sketch         *hyperloglog.Sketch
-	isTypeDetected bool
-	fieldType      logproto.DetectedFieldType
+	sketch    *hyperloglog.Sketch
+	fieldType logproto.DetectedFieldType
+	parsers   []string
 }
 
-func newParsedFields() *parsedFields {
+func newParsedFields(parser *string) *parsedFields {
+	p := ""
+	if parser != nil {
+		p = *parser
+	}
 	return &parsedFields{
-		sketch:         hyperloglog.New(),
-		isTypeDetected: false,
-		fieldType:      logproto.DetectedFieldString,
+		sketch:    hyperloglog.New(),
+		fieldType: logproto.DetectedFieldString,
+		parsers:   []string{p},
 	}
 }
 
@@ -1148,7 +1155,6 @@ func (p *parsedFields) Marshal() ([]byte, error) {
 
 func (p *parsedFields) DetermineType(value string) {
 	p.fieldType = determineType(value)
-	p.isTypeDetected = true
 }
 
 func determineType(value string) logproto.DetectedFieldType {
@@ -1180,16 +1186,17 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 	fieldCount := uint32(0)
 
 	for _, stream := range streams {
+		detectType := true
 		level.Debug(spanlogger.FromContext(ctx)).Log(
 			"detected_fields", "true",
 			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
 
 		for _, entry := range stream.Entries {
-			detected := parseLine(entry.Line)
+			detected, parser := parseLine(entry.Line)
 			for k, vals := range detected {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
-					df = newParsedFields()
+					df = newParsedFields(parser)
 					detectedFields[k] = df
 					fieldCount++
 				}
@@ -1198,10 +1205,16 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 					continue
 				}
 
+				if !slices.Contains(df.parsers, *parser) {
+					df.parsers = append(df.parsers, *parser)
+				}
+
 				for _, v := range vals {
 					parsedFields := detectedFields[k]
-					if !parsedFields.isTypeDetected {
+					if detectType {
+						// we don't want to determine the type for every line, so we assume the type in each stream will be the same, and re-detect the type for the next stream
 						parsedFields.DetermineType(v)
+						detectType = false
 					}
 
 					parsedFields.Insert(v)
@@ -1217,17 +1230,19 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 	return detectedFields
 }
 
-func parseLine(line string) map[string][]string {
+func parseLine(line string) (map[string][]string, *string) {
+	parser := "logfmt"
 	logFmtParser := logql_log.NewLogfmtParser(true, false)
-	jsonParser := logql_log.NewJSONParser()
 
 	lbls := logql_log.NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
 	_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lbls)
 	if !logfmtSuccess || lbls.HasErr() {
+		parser = "json"
+		jsonParser := logql_log.NewJSONParser()
 		lbls.Reset()
 		_, jsonSuccess := jsonParser.Process(0, []byte(line), lbls)
 		if !jsonSuccess || lbls.HasErr() {
-			return map[string][]string{}
+			return map[string][]string{}, nil
 		}
 	}
 
@@ -1249,7 +1264,7 @@ func parseLine(line string) map[string][]string {
 		result[lbl] = vals
 	}
 
-	return result
+	return result, &parser
 }
 
 // streamsForFieldDetection reads the streams from the iterator and returns them sorted.
