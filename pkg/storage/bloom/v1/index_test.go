@@ -22,7 +22,7 @@ func TestBloomOffsetEncoding(t *testing.T) {
 	require.Equal(t, src, dst)
 }
 
-func TestSeriesEncoding(t *testing.T) {
+func TestSeriesEncoding_V1(t *testing.T) {
 	t.Parallel()
 	src := SeriesWithOffset{
 		Series: Series{
@@ -52,6 +52,42 @@ func TestSeriesEncoding(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, src.Fingerprint, fp)
 	require.Equal(t, src.Offset, offset)
+	require.Equal(t, src, dst)
+}
+
+func TestSeriesEncoding_V2(t *testing.T) {
+	t.Parallel()
+	src := SeriesWithOffsets{
+		Series: Series{
+			Fingerprint: model.Fingerprint(1),
+			Chunks: []ChunkRef{
+				{
+					From:     1,
+					Through:  2,
+					Checksum: 3,
+				},
+				{
+					From:     4,
+					Through:  5,
+					Checksum: 6,
+				},
+			},
+		},
+		Offsets: []BloomOffset{
+			{Page: 1, ByteOffset: 2},
+			{Page: 2, ByteOffset: 1},
+		},
+	}
+
+	enc := &encoding.Encbuf{}
+	src.Encode(enc, 0, BloomOffset{})
+
+	dec := encoding.DecWith(enc.Get())
+	var dst SeriesWithOffset
+	fp, offset, err := dst.Decode(&dec, 0, BloomOffset{})
+	require.Nil(t, err)
+	require.Equal(t, src.Fingerprint, fp)
+	require.Equal(t, src.Offsets[len(src.Offsets)-1], offset)
 	require.Equal(t, src, dst)
 }
 

@@ -364,6 +364,76 @@ type Series struct {
 	Chunks      ChunkRefs
 }
 
+// SeriesWithOffsets is a series with a a variable number
+// of bloom offsets. Used in v2+ to store blooms for larger series
+// in parts
+type SeriesWithOffsets struct {
+	Offsets []BloomOffset
+	Series
+}
+
+func (s *SeriesWithOffsets) Encode(
+	enc *encoding.Encbuf,
+	previousFp model.Fingerprint,
+	previousOffset BloomOffset,
+) (model.Fingerprint, BloomOffset) {
+	sort.Sort(s.Chunks) // ensure order
+	// delta encode fingerprint
+	enc.PutBE64(uint64(s.Fingerprint - previousFp))
+	// encode number of bloom offsets in this series
+	enc.PutUvarint(len(s.Offsets))
+
+	lastOffset := previousOffset
+	for _, offset := range s.Offsets {
+		// delta encode offsets
+		offset.Encode(enc, lastOffset)
+		lastOffset = offset
+	}
+
+	// encode chunks using delta encoded timestamps
+	var lastEnd model.Time
+	enc.PutUvarint(len(s.Chunks))
+	for _, chunk := range s.Chunks {
+		lastEnd = chunk.Encode(enc, lastEnd)
+	}
+
+	return s.Fingerprint, lastOffset
+}
+
+func (s *SeriesWithOffsets) Decode(
+	dec *encoding.Decbuf,
+	previousFp model.Fingerprint,
+	previousOffset BloomOffset,
+) (model.Fingerprint, BloomOffset, error) {
+	s.Fingerprint = previousFp + model.Fingerprint(dec.Be64())
+	numOffsets := dec.Uvarint()
+
+	s.Offsets = make([]BloomOffset, numOffsets)
+	var (
+		err        error
+		lastEnd    model.Time
+		lastOffset BloomOffset
+	)
+	for i := range s.Offsets {
+		err = s.Offsets[i].Decode(dec, lastOffset)
+		lastOffset = s.Offsets[i]
+		if err != nil {
+			return 0, BloomOffset{}, errors.Wrapf(err, "decoding %dth bloom offset", i)
+		}
+	}
+
+	// TODO(owen-d): use pool
+	s.Chunks = make([]ChunkRef, dec.Uvarint())
+	for i := range s.Chunks {
+		lastEnd, err = s.Chunks[i].Decode(dec, lastEnd)
+		if err != nil {
+			return 0, BloomOffset{}, errors.Wrapf(err, "decoding %dth chunk", i)
+		}
+	}
+	return s.Fingerprint, lastOffset, dec.Err()
+}
+
+// Used in v1 schema
 type SeriesWithOffset struct {
 	Offset BloomOffset
 	Series
