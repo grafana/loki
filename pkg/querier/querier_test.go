@@ -1714,4 +1714,31 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 		assert.Contains(t, detectedLabels, &logproto.DetectedLabel{Label: "pod", Cardinality: 4})
 		assert.Contains(t, detectedLabels, &logproto.DetectedLabel{Label: "namespace", Cardinality: 60})
 	})
+
+	t.Run("no panics with ingester response is nil", func(t *testing.T) {
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{}, nil)
+		request := logproto.DetectedLabelsRequest{
+			Start: &now,
+			End:   &now,
+			Query: "",
+		}
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		_, err = querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+	})
 }
