@@ -1,15 +1,18 @@
 package detected
 
 import (
+	"slices"
+
 	"github.com/axiomhq/hyperloglog"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type UnmarshaledDetectedField struct {
-	Label  string
-	Type   logproto.DetectedFieldType
-	Sketch *hyperloglog.Sketch
+	Label   string
+	Type    logproto.DetectedFieldType
+	Parsers []string
+	Sketch  *hyperloglog.Sketch
 }
 
 func UnmarshalDetectedField(f *logproto.DetectedField) (*UnmarshaledDetectedField, error) {
@@ -20,9 +23,10 @@ func UnmarshalDetectedField(f *logproto.DetectedField) (*UnmarshaledDetectedFiel
 	}
 
 	return &UnmarshaledDetectedField{
-		Label:  f.Label,
-		Type:   f.Type,
-		Sketch: sketch,
+		Label:   f.Label,
+		Type:    f.Type,
+		Parsers: f.Parsers,
+		Sketch:  sketch,
 	}, nil
 }
 
@@ -32,6 +36,14 @@ func (f *UnmarshaledDetectedField) Merge(df *logproto.DetectedField) error {
 	if err != nil {
 		return err
 	}
+
+	if f.Type != df.Type {
+		f.Type = logproto.DetectedFieldString
+	}
+
+	f.Parsers = append(f.Parsers, df.Parsers...)
+	slices.Sort(f.Parsers)
+	f.Parsers = slices.Compact(f.Parsers)
 
 	return f.Sketch.Merge(sketch)
 }
@@ -77,6 +89,7 @@ func MergeFields(
 			Label:       field.Label,
 			Type:        field.Type,
 			Cardinality: field.Sketch.Estimate(),
+			Parsers:     field.Parsers,
 			Sketch:      nil,
 		}
 		result = append(result, detectedField)

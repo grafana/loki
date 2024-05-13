@@ -5,7 +5,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -16,6 +15,7 @@ import (
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 type querierMetrics struct {
@@ -90,8 +90,9 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	if !bq.limits.BloomGatewayEnabled(tenant) || len(chunkRefs) == 0 || len(v1.ExtractTestableLineFilters(queryPlan.AST)) == 0 {
 		return chunkRefs, nil
 	}
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomquerier.FilterChunkRefs")
-	defer sp.Finish()
+
+	logger, ctx := spanlogger.NewWithLogger(ctx, bq.logger, "bloomquerier.FilterChunkRefs")
+	defer logger.Finish()
 
 	grouped := groupedChunksRefPool.Get(len(chunkRefs))
 	defer groupedChunksRefPool.Put(grouped)
@@ -141,8 +142,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	postFilterChunks := len(result)
 	postFilterSeries := len(deduped)
 
-	level.Debug(bq.logger).Log(
-		"operation", "bloomquerier.FilterChunkRefs",
+	level.Debug(logger).Log(
 		"tenant", tenant,
 		"from", from.Time(),
 		"through", through.Time(),
@@ -153,6 +153,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		"preFilterSeries", preFilterSeries,
 		"postFilterSeries", postFilterSeries,
 		"filteredSeries", preFilterSeries-postFilterSeries,
+		"operation", "bloomquerier.FilterChunkRefs",
 	)
 
 	bq.metrics.chunksTotal.Add(float64(preFilterChunks))
