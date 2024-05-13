@@ -979,14 +979,14 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		}, nil
 	}
 
-	// append static labels before so they are in sorted order
-	for l := range staticLabels {
-		if values, present := ingesterLabels.Labels[l]; present {
-			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: l, Cardinality: uint64(len(values.Values))})
-		}
-	}
-
 	if ingesterLabels != nil {
+		// append static labels before so they are in sorted order
+		for l := range staticLabels {
+			if values, present := ingesterLabels.Labels[l]; present {
+				detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: l, Cardinality: uint64(len(values.Values))})
+			}
+		}
+
 		for label, values := range ingesterLabels.Labels {
 			if q.isLabelRelevant(label, values.Values, staticLabels) {
 				combinedValues := values.Values
