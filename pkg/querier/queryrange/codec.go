@@ -42,6 +42,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/querylimits"
 )
 
+const (
+	cacheControlHeader = "Cache-Control"
+	noCacheVal         = "no-cache"
+)
+
 var DefaultCodec = &Codec{}
 
 type Codec struct{}
@@ -325,8 +330,6 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	cacheControlHeader := "Cache-Control"
-	noCacheVal := "no-cache"
 	disableCacheReq := false
 
 	if strings.ToLower(strings.TrimSpace(r.Header.Get(cacheControlHeader))) == noCacheVal {
@@ -338,9 +341,6 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		req, err := parseRangeQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-		req.CachingOptions = queryrangebase.CachingOptions{
-			Disabled: disableCacheReq,
 		}
 		return req, nil
 	case InstantQueryOp:

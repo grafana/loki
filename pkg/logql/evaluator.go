@@ -82,6 +82,7 @@ type LiteralParams struct {
 	shards         []string
 	queryExpr      syntax.Expr
 	storeChunks    *logproto.ChunkRefGroup
+	cachingOptions resultscache.CachingOptions
 }
 
 func (p LiteralParams) Copy() LiteralParams { return p }
@@ -116,8 +117,9 @@ func (p LiteralParams) Shards() []string { return p.shards }
 // StoreChunks impls Params
 func (p LiteralParams) GetStoreChunks() *logproto.ChunkRefGroup { return p.storeChunks }
 
+// CachingOptions returns whether Loki query created from this params should be cached.
 func (p LiteralParams) CachingOptions() resultscache.CachingOptions {
-	return resultscache.CachingOptions{}
+	return p.cachingOptions
 }
 
 // GetRangeType returns whether a query is an instant query or range query
