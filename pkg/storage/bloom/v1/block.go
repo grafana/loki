@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 )
 
 type BlockMetadata struct {
@@ -104,7 +103,7 @@ func (b *Block) Schema() (Schema, error) {
 }
 
 type BlockQuerier struct {
-	series *LazySeriesIter
+	*LazySeriesIter
 	blooms *LazyBloomIter
 
 	block *Block // ref to underlying block
@@ -117,11 +116,13 @@ type BlockQuerier struct {
 // will be returned to the pool for efficiency. This can only safely be used
 // when the underlying bloom bytes don't escape the decoder, i.e.
 // when loading blooms for querying (bloom-gw) but not for writing (bloom-compactor).
-func NewBlockQuerier(b *Block, noCapture bool, maxPageSize int) *BlockQuerier {
+// When usePool is true, the bloom MUST NOT be captured by the caller. Rather,
+// it should be discarded before another call to Next().
+func NewBlockQuerier(b *Block, usePool bool, maxPageSize int) *BlockQuerier {
 	return &BlockQuerier{
-		block:  b,
-		series: NewLazySeriesIter(b),
-		blooms: NewLazyBloomIter(b, noCapture, maxPageSize),
+		block:          b,
+		LazySeriesIter: NewLazySeriesIter(b),
+		blooms:         NewLazyBloomIter(b, usePool, maxPageSize),
 	}
 }
 
@@ -134,40 +135,11 @@ func (bq *BlockQuerier) Schema() (Schema, error) {
 }
 
 func (bq *BlockQuerier) Reset() error {
-	return bq.series.Seek(0)
-}
-
-func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {
-	return bq.series.Seek(fp)
-}
-
-func (bq *BlockQuerier) Next() bool {
-	for bq.series.Next() {
-		series := bq.series.At()
-		if skip := bq.blooms.LoadOffset(series.Offset); skip {
-			// can't seek to the desired bloom, likely because the page was too large to load
-			// so we skip this series and move on to the next
-			continue
-		}
-		if !bq.blooms.Next() {
-			return false
-		}
-		bloom := bq.blooms.At()
-		bq.cur = &SeriesWithBloom{
-			Series: &series.Series,
-			Bloom:  bloom,
-		}
-		return true
-	}
-	return false
-}
-
-func (bq *BlockQuerier) At() *SeriesWithBloom {
-	return bq.cur
+	return bq.LazySeriesIter.Seek(0)
 }
 
 func (bq *BlockQuerier) Err() error {
-	if err := bq.series.Err(); err != nil {
+	if err := bq.LazySeriesIter.Err(); err != nil {
 		return err
 	}
 

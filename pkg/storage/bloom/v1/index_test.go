@@ -83,12 +83,46 @@ func TestSeriesEncoding_V2(t *testing.T) {
 	src.Encode(enc, 0, BloomOffset{})
 
 	dec := encoding.DecWith(enc.Get())
-	var dst SeriesWithOffset
+	var dst SeriesWithOffsets
 	fp, offset, err := dst.Decode(&dec, 0, BloomOffset{})
 	require.Nil(t, err)
 	require.Equal(t, src.Fingerprint, fp)
 	require.Equal(t, src.Offsets[len(src.Offsets)-1], offset)
 	require.Equal(t, src, dst)
+}
+
+func TestV2SeriesDecodesV1(t *testing.T) {
+	t.Parallel()
+	src := SeriesWithOffset{
+		Series: Series{
+			Fingerprint: model.Fingerprint(1),
+			Chunks: []ChunkRef{
+				{
+					From:     1,
+					Through:  2,
+					Checksum: 3,
+				},
+				{
+					From:     4,
+					Through:  5,
+					Checksum: 6,
+				},
+			},
+		},
+		Offset: BloomOffset{Page: 1, ByteOffset: 2},
+	}
+
+	enc := &encoding.Encbuf{}
+	src.Encode(enc, 0, BloomOffset{})
+
+	dec := encoding.DecWith(enc.Get())
+	var dst SeriesWithOffsets
+	fp, offset, err := dst.decodeV1(&dec, 0, BloomOffset{})
+	require.Nil(t, err)
+	require.Equal(t, src.Fingerprint, fp)
+	require.Equal(t, src.Offset, offset)
+	require.Equal(t, []BloomOffset{src.Offset}, dst.Offsets)
+	require.Equal(t, src.Series, dst.Series)
 }
 
 func TestChunkRefCmpLess(t *testing.T) {

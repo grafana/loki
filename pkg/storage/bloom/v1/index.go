@@ -190,6 +190,7 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 	}
 
 	res = &SeriesPageDecoder{
+		schema: b.opts.Schema,
 		data:   decompressed,
 		header: header.SeriesHeader,
 	}
@@ -267,13 +268,14 @@ func (h *SeriesHeader) Decode(dec *encoding.Decbuf) error {
 // can decode a series page one item at a time, useful when we don't
 // need to iterate an entire page
 type SeriesPageDecoder struct {
+	schema Schema
 	data   []byte
 	dec    encoding.Decbuf
 	header SeriesHeader
 
 	// state
 	i              int // current index
-	cur            *SeriesWithOffset
+	cur            *SeriesWithOffsets
 	err            error
 	previousFp     model.Fingerprint // previous series' fingerprint for delta-decoding
 	previousOffset BloomOffset       // previous series' bloom offset for delta-decoding
@@ -298,8 +300,8 @@ func (d *SeriesPageDecoder) Next() bool {
 		return false
 	}
 
-	var res SeriesWithOffset
-	d.previousFp, d.previousOffset, d.err = res.Decode(&d.dec, d.previousFp, d.previousOffset)
+	var res SeriesWithOffsets
+	d.previousFp, d.previousOffset, d.err = res.Decode(d.schema.version, &d.dec, d.previousFp, d.previousOffset)
 	if d.err != nil {
 		return false
 	}
@@ -348,7 +350,7 @@ func (d *SeriesPageDecoder) Seek(fp model.Fingerprint) {
 	}
 }
 
-func (d *SeriesPageDecoder) At() (res *SeriesWithOffset) {
+func (d *SeriesPageDecoder) At() (res *SeriesWithOffsets) {
 	return d.cur
 }
 
@@ -401,10 +403,15 @@ func (s *SeriesWithOffsets) Encode(
 }
 
 func (s *SeriesWithOffsets) Decode(
+	version byte,
 	dec *encoding.Decbuf,
 	previousFp model.Fingerprint,
 	previousOffset BloomOffset,
 ) (model.Fingerprint, BloomOffset, error) {
+	if version == 1 {
+		return s.decodeV1(dec, previousFp, previousOffset)
+	}
+
 	s.Fingerprint = previousFp + model.Fingerprint(dec.Be64())
 	numOffsets := dec.Uvarint()
 
@@ -431,6 +438,22 @@ func (s *SeriesWithOffsets) Decode(
 		}
 	}
 	return s.Fingerprint, lastOffset, dec.Err()
+}
+
+// Decodes a v2 compatible series from a v1 encoding
+func (s *SeriesWithOffsets) decodeV1(
+	dec *encoding.Decbuf,
+	previousFp model.Fingerprint,
+	previousOffset BloomOffset,
+) (model.Fingerprint, BloomOffset, error) {
+	var single SeriesWithOffset
+	fp, last, err := single.Decode(dec, previousFp, previousOffset)
+	if err != nil {
+		return 0, BloomOffset{}, errors.Wrap(err, "decoding series with offset")
+	}
+	s.Offsets = []BloomOffset{last}
+	s.Series = single.Series
+	return fp, last, nil
 }
 
 // Used in v1 schema

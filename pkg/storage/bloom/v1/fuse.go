@@ -228,21 +228,22 @@ func (fq *FusedQuerier) Run() error {
 			return errors.Wrap(err, "seeking to fingerprint")
 		}
 
-		if !fq.bq.series.Next() {
+		if !fq.bq.Next() {
 			// no more series, we're done since we're iterating desired fingerprints in order
 			return nil
 		}
 
-		series := fq.bq.series.At()
+		series := fq.bq.At()
 		if series.Fingerprint != fp {
 			// fingerprint not found, can't remove chunks
-			level.Debug(fq.logger).Log("msg", "fingerprint not found", "fp", series.Fingerprint, "err", fq.bq.series.Err())
+			level.Debug(fq.logger).Log("msg", "fingerprint not found", "fp", series.Fingerprint, "err", fq.bq.Err())
 			fq.recordMissingFp(nextBatch, fp)
 			continue
 		}
 
 		// Now that we've found the series, we need to find the unpack the bloom
-		skip := fq.bq.blooms.LoadOffset(series.Offset)
+		panic("todo(owen-d): fix+impl")
+		skip := fq.bq.blooms.LoadOffset(series.Offsets[0]) // TODO: support multiple offsets
 		if skip {
 			// could not seek to the desired bloom,
 			// likely because the page was too large to load
