@@ -402,7 +402,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
 func (l *Limits) SetGlobalOTLPConfig(cfg push.GlobalOTLPConfig) {
 	l.GlobalOTLPConfig = cfg
-	l.OTLPConfig = push.DefaultOTLPConfig(cfg)
+	l.OTLPConfig.ApplyGlobalOTLPConfig(cfg)
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

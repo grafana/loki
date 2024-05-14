@@ -294,7 +294,7 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func (c *Config) isModuleEnabled(m string) bool {
+func (c *Config) isTarget(m string) bool {
 	return util.StringsContain(c.Target, m)
 }
 
@@ -726,24 +726,24 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.
-	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(Backend) {
+	if t.Cfg.isTarget(Querier) || t.Cfg.isTarget(Ruler) || t.Cfg.isTarget(Read) || t.Cfg.isTarget(Backend) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 
 	// If the query scheduler and querier are running together, make sure the scheduler goes
 	// first to initialize the ring that will also be used by the querier
-	if (t.Cfg.isModuleEnabled(Querier) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
+	if (t.Cfg.isTarget(Querier) && t.Cfg.isTarget(QueryScheduler)) || t.Cfg.isTarget(All) {
 		deps[Querier] = append(deps[Querier], QueryScheduler)
 	}
 
 	// If the query scheduler and query frontend are running together, make sure the scheduler goes
 	// first to initialize the ring that will also be used by the query frontend
-	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
+	if (t.Cfg.isTarget(QueryFrontend) && t.Cfg.isTarget(QueryScheduler)) || t.Cfg.isTarget(All) {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
 	}
 
 	// Initialise query tags interceptors on targets running ingester
-	if t.Cfg.isModuleEnabled(Ingester) || t.Cfg.isModuleEnabled(Write) || t.Cfg.isModuleEnabled(All) {
+	if t.Cfg.isTarget(Ingester) || t.Cfg.isTarget(Write) || t.Cfg.isTarget(All) {
 		deps[Server] = append(deps[Server], IngesterGRPCInterceptors)
 	}
 
