@@ -27,7 +27,7 @@ type Limits interface {
 	MaxLocalStreamsPerUser(userID string) int
 	MaxGlobalStreamsPerUser(userID string) int
 	PerStreamRateLimit(userID string) validation.RateLimit
-	ShardStreams(userID string) *shardstreams.Config
+	ShardStreams(userID string) shardstreams.Config
 }
 
 // Limiter implements primitives to get the maximum number of streams

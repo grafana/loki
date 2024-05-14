@@ -363,7 +363,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
-	next, ts, r := stepEvaluator.Next()
+	next, _, r := stepEvaluator.Next()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
@@ -373,7 +373,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		case SampleVector:
 			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
 			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-			return q.JoinSampleVector(next, ts, vec, stepEvaluator, maxSeries)
+			return q.JoinSampleVector(next, vec, stepEvaluator, maxSeries)
 		case ProbabilisticQuantileVector:
 			return MergeQuantileSketchVector(next, vec, stepEvaluator, q.params)
 		default:
@@ -383,7 +383,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	return nil, nil
 }
 
-func (q *query) JoinSampleVector(next bool, ts int64, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
+func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
 
 	seriesIndex := map[uint64]*promql.Series{}
 
@@ -431,7 +431,7 @@ func (q *query) JoinSampleVector(next bool, ts int64, r StepResult, stepEvaluato
 				seriesIndex[hash] = series
 			}
 			series.Floats = append(series.Floats, promql.FPoint{
-				T: ts,
+				T: p.T,
 				F: p.F,
 			})
 		}
@@ -439,7 +439,7 @@ func (q *query) JoinSampleVector(next bool, ts int64, r StepResult, stepEvaluato
 		if len(seriesIndex) > maxSeries {
 			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 		}
-		next, ts, r = stepEvaluator.Next()
+		next, _, r = stepEvaluator.Next()
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
 		}

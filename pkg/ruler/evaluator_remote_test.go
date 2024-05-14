@@ -195,7 +195,7 @@ func TestRemoteEvalEmptyScalarResponse(t *testing.T) {
 	require.Empty(t, res.Data)
 }
 
-// TestRemoteEvalEmptyVectorResponse validates that an empty vector response is valid and does not cause an error
+// TestRemoteEvalVectorResponse validates that an empty vector response is valid and does not cause an error
 func TestRemoteEvalVectorResponse(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
 	limits, err := validation.NewOverrides(defaultLimits, nil)

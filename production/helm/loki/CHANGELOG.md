@@ -13,9 +13,16 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-## 6.5.1
+
+## 6.5.3
 
 - [BUGFIX] Disable service monitor for nginx service.
+
+
+## 6.5.2
+
+- [BUGFIX] Fixed Ingress routing for all deployment modes.  
+
 
 ## 6.5.0
 
