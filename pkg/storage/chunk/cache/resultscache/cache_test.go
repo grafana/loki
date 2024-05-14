@@ -682,6 +682,107 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	require.False(t, hit)
 }
 
+func Test_shouldCacheReq(t *testing.T) {
+	modelNow := model.Now()
+
+	cfg := Config{
+		CacheConfig: cache.Config{
+			Cache: cache.NewMockCache(),
+		},
+	}
+	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
+	require.NoError(t, err)
+	rc := NewResultsCache(
+		log.NewNopLogger(),
+		c,
+		nil,
+		ConstSplitter(day),
+		mockLimits{},
+		MockMerger{},
+		MockExtractor{},
+		nil,
+		nil,
+		func(_ context.Context, tenantIDs []string, r Request) int {
+			return 10
+		},
+		nil,
+		false,
+		false,
+	)
+	require.NoError(t, err)
+
+	// create cache with handler
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	// create request with start end within the key extents
+	req := parsedRequest.WithStartEndForCache(time.UnixMilli(int64(modelNow)-(50*1e3)), time.UnixMilli(int64(modelNow)-(10*1e3)))
+
+	// fill cache
+	key := ConstSplitter(day).GenerateCacheKey(context.Background(), "1", req)
+	rc.put(ctx, key, []Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))})
+
+	// Asserts (when `shouldCacheReq` is non-nil and set to return false (should not cache), resultcache should get result from upstream handler (mockHandler))
+	// 1. With `shouldCacheReq` non-nil and set `noCacheReq`, should get result from `next` handler
+	// 2. With `shouldCacheReq` non-nil and set `cacheReq`, should get result from cache
+	// 3. With `shouldCacheReq` nil, should get result from cache
+
+	cases := []struct {
+		name        string
+		shouldCache ShouldCacheReqFn
+		// expected number of times, upstream `next` handler is called inside results cache
+		expCount int
+	}{
+		{
+			name:        "noCacheReq",
+			shouldCache: noCacheReq,
+			expCount:    1,
+		},
+		{
+			name:        "cacheReq",
+			shouldCache: cacheReq,
+			expCount:    0,
+		},
+		{
+			name:        "nil",
+			shouldCache: nil,
+			expCount:    0,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mh := &mockHandler{}
+			rc.next = mh
+			rc.shouldCacheReq = tc.shouldCache
+
+			_, err = rc.Do(ctx, req)
+			require.NoError(t, err)
+			require.Equal(t, tc.expCount, mh.called)
+
+		})
+	}
+}
+
+type mockHandler struct {
+	called int
+	res    Response
+}
+
+func (mh *mockHandler) Do(ctx context.Context, req Request) (Response, error) {
+	mh.called++
+	return mh.res, nil
+}
+
+// noCacheReq is of type `ShouldCacheReq` that always returns false (do not cache)
+func noCacheReq(_ context.Context, _ Request) bool {
+	return false
+}
+
+// cacheReq is of type `ShouldCacheReq` that always returns true (cache the result)
+func cacheReq(_ context.Context, _ Request) bool {
+	return true
+}
+
 func mkAPIResponse(start, end, step int64) *MockResponse {
 	var samples []*MockSample
 	for i := start; i <= end; i += step {

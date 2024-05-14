@@ -55,21 +55,69 @@ func NewLiteralParams(
 	shards []string,
 	storeChunks *logproto.ChunkRefGroup,
 ) (LiteralParams, error) {
+	return newLiteralParams(
+		qs,
+		start,
+		end,
+		step,
+		interval,
+		direction,
+		limit,
+		shards,
+		storeChunks,
+		resultscache.CachingOptions{},
+	)
+}
+
+func NewLiteralParamsWithCaching(
+	qs string,
+	start, end time.Time,
+	step, interval time.Duration,
+	direction logproto.Direction,
+	limit uint32,
+	shards []string,
+	storeChunks *logproto.ChunkRefGroup,
+	cachingOptions resultscache.CachingOptions,
+) (LiteralParams, error) {
+	return newLiteralParams(
+		qs,
+		start,
+		end,
+		step,
+		interval,
+		direction,
+		limit,
+		shards,
+		storeChunks,
+		cachingOptions,
+	)
+}
+
+func newLiteralParams(
+	qs string,
+	start, end time.Time,
+	step, interval time.Duration,
+	direction logproto.Direction,
+	limit uint32,
+	shards []string,
+	storeChunks *logproto.ChunkRefGroup,
+	cachingOptions resultscache.CachingOptions,
+) (LiteralParams, error) {
 	p := LiteralParams{
-		queryString: qs,
-		start:       start,
-		end:         end,
-		step:        step,
-		interval:    interval,
-		direction:   direction,
-		limit:       limit,
-		shards:      shards,
-		storeChunks: storeChunks,
+		queryString:    qs,
+		start:          start,
+		end:            end,
+		step:           step,
+		interval:       interval,
+		direction:      direction,
+		limit:          limit,
+		shards:         shards,
+		storeChunks:    storeChunks,
+		cachingOptions: cachingOptions,
 	}
 	var err error
 	p.queryExpr, err = syntax.ParseExpr(qs)
 	return p, err
-
 }
 
 // LiteralParams impls Params
