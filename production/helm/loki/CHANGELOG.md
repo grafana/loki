@@ -18,11 +18,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Disable service monitor for nginx service.
 
-
 ## 6.5.2
 
-- [BUGFIX] Fixed Ingress routing for all deployment modes.  
-
+- [BUGFIX] Fixed Ingress routing for all deployment modes.
 
 ## 6.5.0
 
