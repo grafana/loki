@@ -651,6 +651,28 @@ func newRangeAggEvaluator(
 		return &QuantileSketchStepEvaluator{
 			iter: iter,
 		}, nil
+	case syntax.OpRangeTypeFirstWithTimestamp:
+		iter := newFirstWithTimestampIterator(
+			it,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		)
+
+		return &RangeVectorEvaluator{
+			iter: iter,
+		}, nil
+	case syntax.OpRangeTypeLastWithTimestamp:
+		iter := newLastWithTimestampIterator(
+			it,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		)
+
+		return &RangeVectorEvaluator{
+			iter: iter,
+		}, nil
 	default:
 		iter, err := newRangeVectorIterator(
 			it, expr,
