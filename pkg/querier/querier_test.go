@@ -1633,8 +1633,8 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{}, nil)
 		request := logproto.DetectedLabelsRequest{
-			Start: &now,
-			End:   &now,
+			Start: now,
+			End:   now.Add(2 * time.Hour),
 			Query: "",
 		}
 
