@@ -24,7 +24,7 @@ var (
 )
 
 type errTooFarBehind struct {
-	// original timestmap of the entry itself.
+	// original timestamp of the entry itself.
 	entryTs time.Time
 
 	// cutoff is the oldest acceptable timstamp of the `stream` that entry belongs to.

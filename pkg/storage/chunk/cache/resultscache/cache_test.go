@@ -768,7 +768,7 @@ type mockHandler struct {
 	res    Response
 }
 
-func (mh *mockHandler) Do(ctx context.Context, req Request) (Response, error) {
+func (mh *mockHandler) Do(_ context.Context, _ Request) (Response, error) {
 	mh.called++
 	return mh.res, nil
 }
