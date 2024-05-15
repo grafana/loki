@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"hash/fnv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -46,6 +47,7 @@ type tailer struct {
 	// and the loop and senders should stop
 	closeChan chan struct{}
 	closeOnce sync.Once
+	closed    atomic.Bool
 
 	blockedAt         *time.Time
 	blockedMtx        sync.RWMutex
@@ -74,6 +76,7 @@ func newTailer(orgID string, expr syntax.LogSelectorExpr, conn TailServer, maxDr
 		maxDroppedStreams: maxDroppedStreams,
 		id:                generateUniqueID(orgID, expr.String()),
 		closeChan:         make(chan struct{}),
+		closed:            atomic.Bool{},
 		pipeline:          pipeline,
 	}, nil
 }
@@ -124,7 +127,7 @@ func (t *tailer) receiveStreamsLoop() {
 		case <-t.closeChan:
 			return
 		case req, ok := <-t.queue:
-			if !ok {
+			if !ok || t.closed.Load() {
 				return
 			}
 
@@ -237,7 +240,8 @@ func (t *tailer) isClosed() bool {
 
 func (t *tailer) close() {
 	t.closeOnce.Do(func() {
-		// Signal the close channel
+		// Signal the close channel & flip the atomic bool so tailers will exit
+		t.closed.Store(true)
 		close(t.closeChan)
 
 		// We intentionally do not close sendChan in order to avoid a panic on

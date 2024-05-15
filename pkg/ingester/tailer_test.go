@@ -17,6 +17,7 @@ import (
 )
 
 func TestTailer_RoundTrip(t *testing.T) {
+	t.Parallel()
 	server := &fakeTailServer{}
 
 	lbs := makeRandomLabels()
@@ -66,6 +67,7 @@ func TestTailer_RoundTrip(t *testing.T) {
 }
 
 func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
+	t.Parallel()
 	runs := 100
 
 	stream := logproto.Stream{
@@ -103,6 +105,7 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 }
 
 func Test_dropstream(t *testing.T) {
+	t.Parallel()
 	maxDroppedStreams := 10
 
 	entry := logproto.Entry{Timestamp: time.Now(), Line: "foo"}
@@ -224,6 +227,7 @@ func Test_TailerSendRace(t *testing.T) {
 }
 
 func Test_IsMatching(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		name     string
 		lbs      labels.Labels
@@ -241,6 +245,7 @@ func Test_IsMatching(t *testing.T) {
 }
 
 func Test_StructuredMetadata(t *testing.T) {
+	t.Parallel()
 	lbs := makeRandomLabels()
 
 	for _, tc := range []struct {
@@ -363,4 +368,18 @@ func Test_StructuredMetadata(t *testing.T) {
 			wg.Wait()
 		})
 	}
+}
+
+func Benchmark_tailer_isClosed(t *testing.B) {
+	var server fakeTailServer
+	expr, err := syntax.ParseLogSelector(`{app="foo"}`, true)
+	require.NoError(t, err)
+	tail, err := newTailer("foo", expr, &server, 0)
+	require.NoError(t, err)
+
+	for i := 0; i < t.N; i++ {
+		tail.isClosed()
+	}
+
+	tail.close()
 }
