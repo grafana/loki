@@ -226,22 +226,17 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 	return matchCluster
 }
 
-func (d *Drain) prune() {
-	// Traverse the tree (the whole tree?!) and combine any branches that have similar clusters
-	// i.e. a branch with <HEX> and <NUM> or <NUM>ac<<NUM> should be aggregated to <HEX> as the most accurate.
-	// This may mean some branches are not reachable? Will see if this is a big deal
-
+func (d *Drain) String() string {
+	return d.tree("", d.rootNode, 0)
 }
 
-func (d *Drain) String() {
-	d.print("", d.rootNode, 0)
-}
-
-func (d *Drain) print(key string, root *Node, depth int) {
-	fmt.Printf("%s%s [%d]\n", strings.Repeat("-", depth), key, len(root.clusterIDs))
+func (d *Drain) tree(key string, root *Node, depth int) string {
+	builder := strings.Builder{}
+	builder.WriteString(fmt.Sprintf("%s%s [%d clusters]\n", strings.Repeat("-", depth), key, len(root.clusterIDs)))
 	for _, child := range maps.Keys(root.keyToChildNode) {
-		d.print(child, root.keyToChildNode[child], depth+1)
+		builder.WriteString(d.tree(child, root.keyToChildNode[child], depth+1))
 	}
+	return builder.String()
 }
 
 func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
