@@ -31,10 +31,10 @@ singleBinary fullname
 {{- end -}}
 
 {{/*
-Return true if deployment mode is SingleBinary
+Return if deployment mode is single binary
 */}}
 {{- define "loki.deployment.isSingleBinary" -}}
-  {{- eq .Values.deploymentMode "SingleBinary" }}
+  {{- or (eq .Values.deploymentMode "SingleBinary") (eq .Values.deploymentMode "SingleBinary<->OtherModes") (and (eq .Values.oldDeploymentMode "SingleBinary") (ne .Values.deploymentMode "SingleBinary")) }}
 {{- end -}}
 
 {{/*
