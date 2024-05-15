@@ -320,7 +320,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -358,7 +358,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*st
 		return nil, fmt.Errorf("failed to create stream for fingerprint: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs)
 
 	i.streamsCreatedTotal.Inc()
 	memoryStreams.WithLabelValues(i.instanceID).Inc()

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/runtime"
+
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
@@ -78,6 +80,8 @@ type stream struct {
 
 	chunkFormat          byte
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
+
+	configs *runtime.TenantConfigs
 }
 
 type chunkDesc struct {
@@ -107,6 +111,7 @@ func newStream(
 	streamRateCalculator *StreamRateCalculator,
 	metrics *ingesterMetrics,
 	writeFailures *writefailures.Manager,
+	configs *runtime.TenantConfigs,
 ) *stream {
 	hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
@@ -126,6 +131,8 @@ func newStream(
 		writeFailures:        writeFailures,
 		chunkFormat:          chunkFormat,
 		chunkHeadBlockFormat: headBlockFmt,
+
+		configs: configs,
 	}
 }
 
@@ -334,13 +341,23 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 
 		chunk.lastUpdated = time.Now()
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
-			invalid = append(invalid, entryWithError{&entries[i], err})
-			if chunkenc.IsOutOfOrderErr(err) {
-				s.writeFailures.Log(s.tenant, err)
-				outOfOrderSamples++
-				outOfOrderBytes += len(entries[i].Line)
+			if chunkenc.IsDuplicateEntryErr(err) {
+				if s.configs.LogDuplicateMetrics(s.tenant) {
+					s.reportDuplicateMetrics(len(entries[i].Line))
+				}
+				if s.configs.LogDuplicateStreamInfo(s.tenant) {
+					err = chunkenc.ErrDuplicateLogEntry(entries[i].Timestamp, s.labelsString)
+					s.writeFailures.Log(s.tenant, err)
+				}
+			} else {
+				invalid = append(invalid, entryWithError{&entries[i], err})
+				if chunkenc.IsOutOfOrderErr(err) {
+					s.writeFailures.Log(s.tenant, err)
+					outOfOrderSamples++
+					outOfOrderBytes += len(entries[i].Line)
+				}
+				continue
 			}
-			continue
 		}
 
 		s.entryCt++
@@ -380,6 +397,13 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		// NOTE: it's still possible for duplicates to be appended if a stream is
 		// deleted from inactivity.
 		if entries[i].Timestamp.Equal(lastLine.ts) && entries[i].Line == lastLine.content {
+			if s.configs.LogDuplicateMetrics(s.tenant) {
+				s.reportDuplicateMetrics(len(entries[i].Line))
+			}
+			if s.configs.LogDuplicateStreamInfo(s.tenant) {
+				err := chunkenc.ErrDuplicateLogEntry(entries[i].Timestamp, s.labelsString)
+				s.writeFailures.Log(s.tenant, err)
+			}
 			continue
 		}
 
@@ -454,6 +478,10 @@ func (s *stream) reportMetrics(ctx context.Context, outOfOrderSamples, outOfOrde
 			usageTracker.DiscardedBytesAdd(ctx, s.tenant, validation.StreamRateLimit, s.labels, float64(rateLimitedBytes))
 		}
 	}
+}
+
+func (s *stream) reportDuplicateMetrics(duplicateLogLineBytes int) {
+	validation.DuplicateLogEntries.WithLabelValues(validation.DiscardedBytesTotal, s.tenant).Add(float64(duplicateLogLineBytes))
 }
 
 func (s *stream) cutChunk(ctx context.Context) *chunkDesc {

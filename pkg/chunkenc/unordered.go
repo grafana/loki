@@ -135,7 +135,7 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 		for _, et := range displaced[0].(*nsEntries).entries {
 			if et.line == line {
 				e.entries = displaced[0].(*nsEntries).entries
-				return nil
+				return ErrDuplicateEntry
 			}
 		}
 		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, hb.symbolizer.Add(structuredMetadata)})
