@@ -616,6 +616,11 @@ func (refs ChunkRefs) Compare(others ChunkRefs, populateInclusive bool) (exclusi
 	return
 }
 
+func (refs ChunkRefs) Intersect(others ChunkRefs) ChunkRefs {
+	_, res := refs.Compare(others, true)
+	return res
+}
+
 func (refs ChunkRefs) Union(others ChunkRefs) ChunkRefs {
 	var res ChunkRefs
 	var i, j int

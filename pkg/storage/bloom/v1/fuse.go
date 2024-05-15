@@ -241,62 +241,111 @@ func (fq *FusedQuerier) Run() error {
 			continue
 		}
 
-		// Now that we've found the series, we need to find the unpack the bloom
-		panic("todo(owen-d): fix+impl")
-		skip := fq.bq.blooms.LoadOffset(series.Offsets[0]) // TODO: support multiple offsets
+		fq.runSeries(schema, series, nextBatch)
+	}
+
+	return nil
+}
+
+func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs []Request) {
+	// For a given chunk|series to be removed, it must fail to match all blooms.
+	// Because iterating/loading blooms can be expensive, we iterate blooms one at a time, collecting
+	// the removals (failures) for each (bloom, chunk) pair.
+	// At the end, we intersect the removals for each series to determine if it should be removed
+
+	type inputChunks struct {
+		Missing  ChunkRefs // chunks that do not exist in the blooms and cannot be queried
+		InBlooms ChunkRefs // chunks which do exist in the blooms and can be queried
+		Removals ChunkRefs // chunks which should be removed
+	}
+
+	inputs := make([]inputChunks, 0, len(reqs))
+	for _, req := range reqs {
+		missing, inBlooms := req.Chks.Compare(series.Chunks, true)
+		inputs = append(inputs, inputChunks{
+			Missing:  missing,
+			InBlooms: inBlooms,
+		})
+	}
+
+	for i, offset := range series.Offsets {
+		skip := fq.bq.blooms.LoadOffset(offset)
 		if skip {
 			// could not seek to the desired bloom,
 			// likely because the page was too large to load
-			fq.recordSkippedFp(nextBatch, fp)
-			continue
+			// NB(owen-d): since all blooms must be tested to guarantee result correctness,
+			// we do not filter any chunks|series
+			fq.recordSkippedFp(reqs, series.Fingerprint)
+			return
 		}
 
 		if !fq.bq.blooms.Next() {
-			// fingerprint not found, can't remove chunks
-			level.Debug(fq.logger).Log("msg", "fingerprint not found", "fp", series.Fingerprint, "err", fq.bq.blooms.Err())
-			fq.recordMissingFp(nextBatch, fp)
-			continue
+			// bloom not found, can't remove chunks
+			level.Debug(fq.logger).Log(
+				"msg", "bloom not found",
+				"fp", series.Fingerprint,
+				"err", fq.bq.blooms.Err(),
+				"i", i,
+			)
+			fq.recordMissingFp(reqs, series.Fingerprint)
+			return
 		}
 
+		// Test each bloom individually
 		bloom := fq.bq.blooms.At()
-		// test every input against this chunk
-		for _, input := range nextBatch {
-			missing, inBlooms := input.Chks.Compare(series.Chunks, true)
+		for j, req := range reqs {
 
+			// shortcut: series level removal
+			// we can skip testing chunk keys individually if the bloom doesn't match
+			// the query
+			if matchedSeries := req.Search.Matches(bloom); !matchedSeries {
+				if inputs[j].Removals == nil {
+					inputs[j].Removals = inputs[j].InBlooms
+				}
+				// NB(owen-d): if removals for this query are non-nil, we don't need to do anything here
+				// because `intersect(set, subset)` will always return `subset`
+
+				// Nothing else needs to be done for this (bloom, request);
+				// check the next input request
+				continue
+			}
+
+			// TODO(owen-d): copying this over, but they're going to be the same
+			// across any block schema because prefix len is determined by n-gram and
+			// all chunks have the same encoding length. tl;dr: it's weird/unnecessary to have
+			// these defined this way and recreated across each bloom
 			var (
-				// TODO(owen-d): pool
-				removals ChunkRefs
-				// TODO(salvacorts): pool tokenBuf
-				tokenBuf  []byte
-				prefixLen int
+				perBloomRemovals ChunkRefs
+				tokenBuf         []byte
+				prefixLen        int
 			)
-
-			// First, see if the search passes the series level bloom before checking for chunks individually
-			if matchedSeries := input.Search.Matches(bloom); !matchedSeries {
-				removals = inBlooms
-			} else {
-				for _, chk := range inBlooms {
-					// Get buf to concatenate the chunk and search token
-					tokenBuf, prefixLen = prefixedToken(schema.NGramLen(), chk, tokenBuf)
-					if !input.Search.MatchesWithPrefixBuf(bloom, tokenBuf, prefixLen) {
-						removals = append(removals, chk)
-					}
+			for _, chk := range inputs[j].InBlooms {
+				// Get buf to concatenate the chunk and search token
+				tokenBuf, prefixLen = prefixedToken(schema.NGramLen(), chk, tokenBuf)
+				if !req.Search.MatchesWithPrefixBuf(bloom, tokenBuf, prefixLen) {
+					perBloomRemovals = append(perBloomRemovals, chk)
 				}
 			}
 
-			input.Recorder.record(
-				1, len(inBlooms), // found
-				0, 0, // skipped
-				0, len(missing), // missed
-				len(removals), // filtered
-			)
-			input.Response <- Output{
-				Fp:       fp,
-				Removals: removals,
+			if inputs[j].Removals == nil {
+				inputs[j].Removals = perBloomRemovals
+			} else {
+				inputs[j].Removals = inputs[j].Removals.Intersect(perBloomRemovals)
 			}
 		}
 
 	}
 
-	return nil
+	for i, req := range reqs {
+		req.Recorder.record(
+			1, len(inputs[i].InBlooms), // found
+			0, 0, // skipped
+			0, len(inputs[i].Missing), // missed
+			len(inputs[i].Removals), // filtered
+		)
+		req.Response <- Output{
+			Fp:       series.Fingerprint,
+			Removals: inputs[i].Removals,
+		}
+	}
 }

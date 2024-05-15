@@ -329,3 +329,65 @@ func TestChunkRefsUnion(t *testing.T) {
 		})
 	}
 }
+
+func TestChunkRefsIntersect(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		desc                   string
+		left, right, intersect ChunkRefs
+	}{
+		{
+			desc:      "empty",
+			left:      nil,
+			right:     nil,
+			intersect: nil,
+		},
+		{
+			desc:      "left empty",
+			left:      nil,
+			right:     ChunkRefs{{From: 1, Through: 2}},
+			intersect: nil,
+		},
+		{
+			desc:      "right empty",
+			left:      ChunkRefs{{From: 1, Through: 2}},
+			right:     nil,
+			intersect: nil,
+		},
+		{
+			desc:      "left before right",
+			left:      ChunkRefs{{From: 1, Through: 2}},
+			right:     ChunkRefs{{From: 3, Through: 4}},
+			intersect: nil,
+		},
+		{
+			desc:      "left after right",
+			left:      ChunkRefs{{From: 3, Through: 4}},
+			right:     ChunkRefs{{From: 1, Through: 2}},
+			intersect: nil,
+		},
+		{
+			desc: "left overlaps right",
+			left: ChunkRefs{
+				{From: 1, Through: 3},
+				{From: 2, Through: 4},
+				{From: 3, Through: 5},
+				{From: 4, Through: 6},
+				{From: 5, Through: 7},
+			},
+			right: ChunkRefs{
+				{From: 2, Through: 4},
+				{From: 4, Through: 6},
+				{From: 5, Through: 6}, // not in left
+			},
+			intersect: ChunkRefs{
+				{From: 2, Through: 4},
+				{From: 4, Through: 6},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.intersect, tc.left.Intersect(tc.right))
+		})
+	}
+}
