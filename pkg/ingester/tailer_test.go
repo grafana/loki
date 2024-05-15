@@ -370,7 +370,7 @@ func Test_StructuredMetadata(t *testing.T) {
 	}
 }
 
-func Benchmark_tailer_isClosed(t *testing.B) {
+func Benchmark_isClosed(t *testing.B) {
 	var server fakeTailServer
 	expr, err := syntax.ParseLogSelector(`{app="foo"}`, true)
 	require.NoError(t, err)
