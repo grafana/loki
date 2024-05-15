@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
-	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
@@ -120,16 +119,29 @@ type SeriesWithLazyBlooms struct {
 	Blooms Iterator[*Bloom]
 }
 
-type SeriesWithBloom struct {
+type SeriesWithBlooms struct {
 	Series *Series
-	Bloom  *Bloom
+	Blooms Iterator[*Bloom]
 }
 
-func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) {
+func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBlooms]) (uint32, error) {
 	for itr.Next() {
-		blockFull, err := b.AddSeries(itr.At())
+		at := itr.At()
+		var offsets []BloomOffset
+		for at.Blooms.Next() {
+			offset, err := b.AddBloom(at.Blooms.At())
+			if err != nil {
+				return 0, errors.Wrap(err, "writing bloom")
+			}
+			offsets = append(offsets, offset)
+		}
+
+		if err := at.Blooms.Err(); err != nil {
+			return 0, errors.Wrap(err, "iterating blooms")
+		}
+		blockFull, err := b.AddSeries(*at.Series, offsets)
 		if err != nil {
-			return 0, err
+			return 0, errors.Wrapf(err, "writing series")
 		}
 		if blockFull {
 			break
@@ -155,18 +167,17 @@ func (b *BlockBuilder) Close() (uint32, error) {
 	return combineChecksums(indexCheckSum, bloomChecksum), nil
 }
 
-// AddSeries adds a series to the block. It returns true after adding the series, the block is full.
-func (b *BlockBuilder) AddSeries(series SeriesWithBloom) (bool, error) {
-	offset, err := b.blooms.Append(series)
-	if err != nil {
-		return false, errors.Wrapf(err, "writing bloom for series %v", series.Series.Fingerprint)
-	}
+func (b *BlockBuilder) AddBloom(bloom *Bloom) (BloomOffset, error) {
+	return b.blooms.Append(bloom)
+}
 
-	if err := b.index.Append(SeriesWithOffset{
-		Offset: offset,
-		Series: *series.Series,
+// AddSeries adds a series to the block. It returns true after adding the series, the block is full.
+func (b *BlockBuilder) AddSeries(series Series, offsets []BloomOffset) (bool, error) {
+	if err := b.index.Append(SeriesWithOffsets{
+		Offsets: offsets,
+		Series:  series,
 	}); err != nil {
-		return false, errors.Wrapf(err, "writing index for series %v", series.Series.Fingerprint)
+		return false, errors.Wrapf(err, "writing index for series %v", series.Fingerprint)
 	}
 
 	full, _, err := b.IsBlockFull()
@@ -222,7 +233,7 @@ func (b *BloomBlockBuilder) WriteSchema() error {
 	return nil
 }
 
-func (b *BloomBlockBuilder) Append(series SeriesWithBloom) (BloomOffset, error) {
+func (b *BloomBlockBuilder) Append(bloom *Bloom) (BloomOffset, error) {
 	if !b.writtenSchema {
 		if err := b.WriteSchema(); err != nil {
 			return BloomOffset{}, errors.Wrap(err, "writing schema")
@@ -230,8 +241,8 @@ func (b *BloomBlockBuilder) Append(series SeriesWithBloom) (BloomOffset, error) 
 	}
 
 	b.scratch.Reset()
-	if err := series.Bloom.Encode(b.scratch); err != nil {
-		return BloomOffset{}, errors.Wrapf(err, "encoding bloom for %v", series.Series.Fingerprint)
+	if err := bloom.Encode(b.scratch); err != nil {
+		return BloomOffset{}, errors.Wrap(err, "encoding bloom")
 	}
 
 	if !b.page.SpaceFor(b.scratch.Len()) {
@@ -398,7 +409,7 @@ func (b *IndexBuilder) WriteOpts() error {
 	return nil
 }
 
-func (b *IndexBuilder) Append(series SeriesWithOffset) error {
+func (b *IndexBuilder) Append(series SeriesWithOffsets) error {
 	if !b.writtenSchema {
 		if err := b.WriteOpts(); err != nil {
 			return errors.Wrap(err, "appending series")
@@ -420,8 +431,6 @@ func (b *IndexBuilder) Append(series SeriesWithOffset) error {
 		b.scratch.Reset()
 		previousFp, previousOffset = series.Encode(b.scratch, b.previousFp, b.previousOffset)
 	}
-	b.previousFp = previousFp
-	b.previousOffset = previousOffset
 
 	switch {
 	case b.page.Count() == 0:
@@ -444,8 +453,8 @@ func (b *IndexBuilder) Append(series SeriesWithOffset) error {
 	}
 
 	_ = b.page.Add(b.scratch.Get())
-	b.previousFp = series.Fingerprint
-	b.previousOffset = series.Offset
+	b.previousFp = previousFp
+	b.previousOffset = previousOffset
 	return nil
 }
 
@@ -530,15 +539,21 @@ func (b *IndexBuilder) Close() (uint32, error) {
 	return crc32Hash.Sum32(), errors.Wrap(b.writer.Close(), "closing series writer")
 }
 
+type BloomCreation struct {
+	Bloom            *Bloom
+	sourceBytesAdded int
+	err              error
+}
+
 // Simplistic implementation of a merge builder that builds a single block
 // from a list of blocks and a store of series.
 type MergeBuilder struct {
 	// existing blocks
-	blocks Iterator[*SeriesWithBloom]
+	blocks Iterator[*SeriesWithBlooms]
 	// store
 	store Iterator[*Series]
 	// Add chunks to a bloom
-	populate func(*Series, *Bloom) (sourceBytesAdded int, skipSeries bool, err error)
+	populate func(s *Series, srcBlooms Iterator[*Bloom], toAdd ChunkRefs) <-chan *BloomCreation
 	metrics  *Metrics
 }
 
@@ -547,14 +562,35 @@ type MergeBuilder struct {
 //     i) When two blocks have the same series, it will prefer the one with the most chunks already indexed
 //  2. iterates through the store, adding chunks to the relevant blooms via the `populate` argument
 func NewMergeBuilder(
-	blocks Iterator[*SeriesWithBloom],
+	blocks Iterator[*SeriesWithBlooms],
 	store Iterator[*Series],
-	populate func(*Series, *Bloom) (int, bool, error),
+	populate func(s *Series, srcBlooms Iterator[*Bloom], toAdd ChunkRefs) <-chan *BloomCreation,
 	metrics *Metrics,
 ) *MergeBuilder {
+	// combinedSeriesIter handles series with fingerprint collisions:
+	// because blooms dont contain the label-set (only the fingerprint),
+	// in the case of a fingerprint collision we simply treat it as one
+	// series with multiple chunks.
+	combinedSeriesIter := NewDedupingIter[*Series, *Series](
+		// eq
+		func(s1, s2 *Series) bool {
+			return s1.Fingerprint == s2.Fingerprint
+		},
+		// from
+		Identity[*Series],
+		// merge
+		func(s1, s2 *Series) *Series {
+			return &Series{
+				Fingerprint: s1.Fingerprint,
+				Chunks:      s1.Chunks.Union(s2.Chunks),
+			}
+		},
+		NewPeekingIter[*Series](store),
+	)
+
 	return &MergeBuilder{
 		blocks:   blocks,
-		store:    store,
+		store:    combinedSeriesIter,
 		populate: populate,
 		metrics:  metrics,
 	}
@@ -562,10 +598,10 @@ func NewMergeBuilder(
 
 func (mb *MergeBuilder) processNextSeries(
 	builder *BlockBuilder,
-	nextInBlocks *SeriesWithBloom,
+	nextInBlocks *SeriesWithBlooms,
 	blocksFinished bool,
 ) (
-	*SeriesWithBloom, // nextInBlocks pointer update
+	*SeriesWithBlooms, // nextInBlocks pointer update
 	int, // bytes added
 	bool, // blocksFinished update
 	bool, // done building block
@@ -605,53 +641,39 @@ func (mb *MergeBuilder) processNextSeries(
 		nextInBlocks = mb.blocks.At()
 	}
 
-	cur := nextInBlocks
-	chunksToAdd := nextInStore.Chunks
-	// The next series from the store doesn't exist in the blocks, so we add it
-	// in its entirety
-	if nextInBlocks == nil || nextInBlocks.Series.Fingerprint > nextInStore.Fingerprint {
-		cur = &SeriesWithBloom{
-			Series: nextInStore,
-			Bloom: &Bloom{
-				// TODO parameterise SBF options. fp_rate
-				ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
-			},
-		}
-	} else {
+	var (
+		offsets           []BloomOffset
+		chunksToAdd                        = nextInStore.Chunks
+		preExistingBlooms Iterator[*Bloom] = NewEmptyIter[*Bloom]()
+	)
+
+	if nextInBlocks != nil && nextInBlocks.Series.Fingerprint == nextInStore.Fingerprint {
 		// if the series already exists in the block, we only need to add the new chunks
 		chunksToAdd = nextInStore.Chunks.Unless(nextInBlocks.Series.Chunks)
 		chunksCopied += len(nextInStore.Chunks) - len(chunksToAdd)
+		preExistingBlooms = nextInBlocks.Blooms
 	}
 
 	chunksIndexed += len(chunksToAdd)
 
-	var (
-		err         error
-		skip        bool
-		done        bool
-		sourceBytes int
-	)
-
-	if len(chunksToAdd) > 0 {
-		sourceBytes, skip, err = mb.populate(
-			&Series{
-				Fingerprint: nextInStore.Fingerprint,
-				Chunks:      chunksToAdd,
-			},
-			cur.Bloom,
-		)
-		bytesAdded += sourceBytes
-
-		if err != nil {
-			return nil, bytesAdded, false, false, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
+	// populate bloom
+	for bloom := range mb.populate(nextInStore, preExistingBlooms, chunksToAdd) {
+		if bloom.err != nil {
+			return nil, bytesAdded, false, false, errors.Wrap(bloom.err, "populating bloom")
 		}
+		offset, err := builder.AddBloom(bloom.Bloom)
+		if err != nil {
+			return nil, bytesAdded, false, false, errors.Wrapf(
+				err, "adding bloom to block for fp (%s)", nextInStore.Fingerprint,
+			)
+		}
+		offsets = append(offsets, offset)
+		bytesAdded += bloom.sourceBytesAdded
 	}
 
-	if !skip {
-		done, err = builder.AddSeries(*cur)
-		if err != nil {
-			return nil, bytesAdded, false, false, errors.Wrap(err, "adding series to block")
-		}
+	done, err := builder.AddSeries(*nextInStore, offsets)
+	if err != nil {
+		return nil, bytesAdded, false, false, errors.Wrap(err, "committing series")
 	}
 
 	return nextInBlocks, bytesAdded, blocksFinished, done, nil
@@ -659,7 +681,7 @@ func (mb *MergeBuilder) processNextSeries(
 
 func (mb *MergeBuilder) Build(builder *BlockBuilder) (checksum uint32, totalBytes int, err error) {
 	var (
-		nextInBlocks   *SeriesWithBloom
+		nextInBlocks   *SeriesWithBlooms
 		blocksFinished bool // whether any previous blocks have been exhausted while building new block
 		done           bool
 	)

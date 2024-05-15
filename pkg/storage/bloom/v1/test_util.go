@@ -15,7 +15,7 @@ import (
 
 // TODO(owen-d): this should probably be in it's own testing-util package
 
-func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (*Block, []SeriesWithBloom, [][][]byte) {
+func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (*Block, []SeriesWithBlooms, [][][]byte) {
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
@@ -38,16 +38,16 @@ func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromT
 		writer,
 	)
 	require.Nil(t, err)
-	itr := NewSliceIter[SeriesWithBloom](data)
+	itr := NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 	block := NewBlock(reader, NewMetrics(nil))
 	return block, data, keys
 }
 
-func MkBasicSeriesWithBlooms(nSeries, _ int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBloom, keysList [][][]byte) {
+func MkBasicSeriesWithBlooms(nSeries, _ int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBlooms, keysList [][][]byte) {
 	const nGramLen = 4
-	seriesList = make([]SeriesWithBloom, 0, nSeries)
+	seriesList = make([]SeriesWithBlooms, 0, nSeries)
 	keysList = make([][][]byte, 0, nSeries)
 
 	step := (throughFp - fromFp) / model.Fingerprint(nSeries)
@@ -91,9 +91,9 @@ func MkBasicSeriesWithBlooms(nSeries, _ int, fromFp, throughFp model.Fingerprint
 			}
 		}
 
-		seriesList = append(seriesList, SeriesWithBloom{
+		seriesList = append(seriesList, SeriesWithBlooms{
 			Series: &series,
-			Bloom:  &bloom,
+			Blooms: &bloom,
 		})
 		keysList = append(keysList, keys)
 	}

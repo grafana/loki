@@ -615,3 +615,33 @@ func (refs ChunkRefs) Compare(others ChunkRefs, populateInclusive bool) (exclusi
 
 	return
 }
+
+func (refs ChunkRefs) Union(others ChunkRefs) ChunkRefs {
+	var res ChunkRefs
+	var i, j int
+	for i < len(refs) && j < len(others) {
+		switch {
+		case refs[i] == others[j]:
+			res = append(res, refs[i])
+			i++
+			j++
+		case refs[i].Less(others[j]):
+			res = append(res, refs[i])
+			i++
+		default:
+			res = append(res, others[j])
+			j++
+		}
+	}
+
+	// append any remaining refs
+	if i < len(refs) {
+		res = append(res, refs[i:]...)
+	}
+
+	if j < len(others) {
+		res = append(res, others[j:]...)
+	}
+
+	return res
+}

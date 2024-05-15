@@ -353,8 +353,8 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 										series := bt.Series{
 											Fingerprint: fp,
 										}
-										swb := bt.SeriesWithBloom{
-											Bloom:  &bloom,
+										swb := bt.SeriesWithBlooms{
+											Blooms: &bloom,
 											Series: &series,
 										}
 										err := bloomTokenizer.PopulateSeriesWithBloom(&swb, got)
@@ -370,7 +370,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 												float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())),
 											)
 
-											writeSBF(&swb.Bloom.ScalableBloomFilter,
+											writeSBF(&swb.Blooms.ScalableBloomFilter,
 												os.Getenv("DIR"),
 												fmt.Sprint(bucketPrefix, experiment.name),
 												os.Getenv("BUCKET"),

@@ -263,3 +263,69 @@ func TestChunkRefsCompare(t *testing.T) {
 		})
 	}
 }
+
+func TestChunkRefsUnion(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		desc               string
+		left, right, union ChunkRefs
+	}{
+		{
+			desc:  "empty",
+			left:  nil,
+			right: nil,
+			union: nil,
+		},
+		{
+			desc:  "left empty",
+			left:  nil,
+			right: ChunkRefs{{From: 1, Through: 2}},
+			union: ChunkRefs{{From: 1, Through: 2}},
+		},
+		{
+			desc:  "right empty",
+			left:  ChunkRefs{{From: 1, Through: 2}},
+			right: nil,
+			union: ChunkRefs{{From: 1, Through: 2}},
+		},
+		{
+			desc:  "left before right",
+			left:  ChunkRefs{{From: 1, Through: 2}},
+			right: ChunkRefs{{From: 3, Through: 4}},
+			union: ChunkRefs{{From: 1, Through: 2}, {From: 3, Through: 4}},
+		},
+		{
+			desc:  "left after right",
+			left:  ChunkRefs{{From: 3, Through: 4}},
+			right: ChunkRefs{{From: 1, Through: 2}},
+			union: ChunkRefs{{From: 1, Through: 2}, {From: 3, Through: 4}},
+		},
+		{
+			desc: "left overlaps right",
+			left: ChunkRefs{
+				{From: 1, Through: 3},
+				{From: 2, Through: 4},
+				{From: 3, Through: 5},
+				{From: 4, Through: 6},
+				{From: 5, Through: 7},
+			},
+			right: ChunkRefs{
+				{From: 2, Through: 4},
+				{From: 4, Through: 6},
+				{From: 5, Through: 6}, // not in left
+			},
+			union: ChunkRefs{
+				{From: 1, Through: 3},
+				{From: 2, Through: 4},
+				{From: 3, Through: 5},
+				{From: 4, Through: 6},
+				{From: 5, Through: 7},
+				{From: 5, Through: 6},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.union, tc.left.Union(tc.right))
+		})
+	}
+}

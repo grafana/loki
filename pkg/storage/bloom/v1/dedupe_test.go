@@ -13,25 +13,25 @@ func TestMergeDedupeIter(t *testing.T) {
 		numKeysPerSeries = 10000
 		data, _          = MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 		dataPtr          = PointerSlice(data)
-		queriers         = make([]PeekingIterator[*SeriesWithBloom], 4)
+		queriers         = make([]PeekingIterator[*SeriesWithBlooms], 4)
 	)
 
 	for i := 0; i < len(queriers); i++ {
-		queriers[i] = NewPeekingIter[*SeriesWithBloom](NewSliceIter[*SeriesWithBloom](dataPtr))
+		queriers[i] = NewPeekingIter[*SeriesWithBlooms](NewSliceIter[*SeriesWithBlooms](dataPtr))
 	}
 
 	mbq := NewHeapIterForSeriesWithBloom(queriers...)
-	eq := func(a, b *SeriesWithBloom) bool {
+	eq := func(a, b *SeriesWithBlooms) bool {
 		return a.Series.Fingerprint == b.Series.Fingerprint
 	}
-	merge := func(a, _ *SeriesWithBloom) *SeriesWithBloom {
+	merge := func(a, _ *SeriesWithBlooms) *SeriesWithBlooms {
 		return a
 	}
-	deduper := NewDedupingIter[*SeriesWithBloom, *SeriesWithBloom](
+	deduper := NewDedupingIter[*SeriesWithBlooms, *SeriesWithBlooms](
 		eq,
-		Identity[*SeriesWithBloom],
+		Identity[*SeriesWithBlooms],
 		merge,
-		NewPeekingIter[*SeriesWithBloom](mbq),
+		NewPeekingIter[*SeriesWithBlooms](mbq),
 	)
 
 	for i := 0; i < len(data); i++ {

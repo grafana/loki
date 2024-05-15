@@ -108,7 +108,7 @@ type BlockQuerier struct {
 
 	block *Block // ref to underlying block
 
-	cur *SeriesWithBloom
+	cur *SeriesWithBlooms
 }
 
 // NewBlockQuerier returns a new BlockQuerier for the given block.

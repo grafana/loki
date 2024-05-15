@@ -54,8 +54,8 @@ func TestFusedQuerier(t *testing.T) {
 		it := tokenizer.Tokens(line)
 		for it.Next() {
 			key := it.At()
-			data[0].Bloom.Add(key)
-			data[2].Bloom.Add(key)
+			data[0].Blooms.Add(key)
+			data[2].Blooms.Add(key)
 		}
 	}
 
@@ -71,7 +71,7 @@ func TestFusedQuerier(t *testing.T) {
 		writer,
 	)
 	require.Nil(t, err)
-	itr := NewSliceIter[SeriesWithBloom](data)
+	itr := NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.NoError(t, err)
 	require.False(t, itr.Next())
@@ -158,7 +158,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	}
 
 	numSeries := 4
-	data := make([]SeriesWithBloom, 0, numSeries)
+	data := make([]SeriesWithBlooms, 0, numSeries)
 	tokenizer := NewNGramTokenizer(4, 0)
 	for i := 0; i < numSeries; i++ {
 		var series Series
@@ -191,9 +191,9 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 			}
 		}
 
-		data = append(data, SeriesWithBloom{
+		data = append(data, SeriesWithBlooms{
 			Series: &series,
-			Bloom:  &bloom,
+			Blooms: &bloom,
 		})
 	}
 
@@ -209,7 +209,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 		writer,
 	)
 	require.Nil(t, err)
-	itr := NewSliceIter[SeriesWithBloom](data)
+	itr := NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.NoError(t, err)
 	require.False(t, itr.Next())
@@ -260,7 +260,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 		writer,
 	)
 	require.Nil(b, err)
-	itr := NewSliceIter[SeriesWithBloom](data)
+	itr := NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(b, err)
 	block := NewBlock(reader, NewMetrics(nil))

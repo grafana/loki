@@ -45,7 +45,7 @@ type SimpleBloomGenerator struct {
 	userID      string
 	store       v1.Iterator[*v1.Series]
 	chunkLoader ChunkLoader
-	blocksIter  v1.ResettableIterator[*v1.SeriesWithBloom]
+	blocksIter  v1.ResettableIterator[*v1.SeriesWithBlooms]
 
 	// options to build blocks with
 	opts v1.BlockOptions
@@ -68,7 +68,7 @@ func NewSimpleBloomGenerator(
 	opts v1.BlockOptions,
 	store v1.Iterator[*v1.Series],
 	chunkLoader ChunkLoader,
-	blocksIter v1.ResettableIterator[*v1.SeriesWithBloom],
+	blocksIter v1.ResettableIterator[*v1.SeriesWithBlooms],
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	reporter func(model.Fingerprint),
 	metrics *Metrics,
@@ -113,9 +113,9 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 		}
 
 		bytesAdded, skip, err := s.tokenizer.Populate(
-			&v1.SeriesWithBloom{
+			&v1.SeriesWithBlooms{
 				Series: series,
-				Bloom:  bloom,
+				Blooms: bloom,
 			},
 			chunkItersWithFP.itr,
 		)
@@ -182,7 +182,7 @@ type LazyBlockBuilderIterator struct {
 	populate     func(*v1.Series, *v1.Bloom) (int, bool, error)
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
 	series       v1.PeekingIterator[*v1.Series]
-	blocks       v1.ResettableIterator[*v1.SeriesWithBloom]
+	blocks       v1.ResettableIterator[*v1.SeriesWithBlooms]
 
 	bytesAdded int
 	curr       *v1.Block
@@ -196,7 +196,7 @@ func NewLazyBlockBuilderIterator(
 	populate func(*v1.Series, *v1.Bloom) (int, bool, error),
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	series v1.PeekingIterator[*v1.Series],
-	blocks v1.ResettableIterator[*v1.SeriesWithBloom],
+	blocks v1.ResettableIterator[*v1.SeriesWithBlooms],
 ) *LazyBlockBuilderIterator {
 	return &LazyBlockBuilderIterator{
 		ctx:          ctx,

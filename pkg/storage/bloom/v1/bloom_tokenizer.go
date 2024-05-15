@@ -94,7 +94,7 @@ type ChunkRefWithIter struct {
 // Populate adds the tokens from the given chunks to the given seriesWithBloom.
 // The `skip` return value indicates whether this series should be discarded and is used to short-circuit
 // bloom generation for series that are too large. We will undoubtedly improve this in the future.
-func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefWithIter]) (bytesAdded int, skip bool, err error) {
+func (bt *BloomTokenizer) Populate(swb *SeriesWithBlooms, chks Iterator[ChunkRefWithIter]) (bytesAdded int, skip bool, err error) {
 	startTime := time.Now().UnixMilli()
 
 	clearCache(bt.cache)
@@ -153,7 +153,7 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 					}
 
 					bt.cache[str] = nil
-					collision, sz := swb.Bloom.ScalableBloomFilter.HeavyAdd(tok)
+					collision, sz := swb.Blooms.ScalableBloomFilter.HeavyAdd(tok)
 					if collision {
 						collisionInserts++
 					} else {
@@ -214,18 +214,18 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefW
 		"chunks", len(swb.Series.Chunks),
 		"fp", swb.Series.Fingerprint,
 		"sourceBytes", datasize.ByteSize(sourceBytes).HumanReadable(),
-		"bloomSize", datasize.ByteSize(swb.Bloom.Capacity()/8).HumanReadable(),
+		"bloomSize", datasize.ByteSize(swb.Blooms.Capacity()/8).HumanReadable(),
 		"skipped", skip,
 	)
 
 	endTime := time.Now().UnixMilli()
 
-	fillRatio := swb.Bloom.ScalableBloomFilter.FillRatio()
+	fillRatio := swb.Blooms.ScalableBloomFilter.FillRatio()
 	bt.metrics.hammingWeightRatio.Observe(fillRatio)
 	bt.metrics.estimatedCount.Observe(
-		float64(estimatedCount(swb.Bloom.ScalableBloomFilter.Capacity(), fillRatio)),
+		float64(estimatedCount(swb.Blooms.ScalableBloomFilter.Capacity(), fillRatio)),
 	)
-	bt.metrics.bloomSize.Observe(float64(swb.Bloom.ScalableBloomFilter.Capacity() / eightBits))
+	bt.metrics.bloomSize.Observe(float64(swb.Blooms.ScalableBloomFilter.Capacity() / eightBits))
 
 	ty := bloomCreationTypeIndexed
 	if skip {

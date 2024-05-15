@@ -138,7 +138,7 @@ func prefixedToken(ngram int, chk logproto.ChunkRef) ([]byte, int) {
 }
 
 // PopulateSeriesWithBloom is intended to be called on the write path, and is used to populate the bloom filter for a given series.
-func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *v1.SeriesWithBloom, chunks []chunk.Chunk) error {
+func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *v1.SeriesWithBlooms, chunks []chunk.Chunk) error {
 	startTime := time.Now().UnixMilli()
 
 	clearCache(bt.cache)
@@ -173,7 +173,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *v1.SeriesWith
 					if !found {
 						bt.cache[str] = nil
 
-						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
+						seriesWithBloom.Blooms.ScalableBloomFilter.TestAndAdd(tok)
 
 						if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
 							clearCache(bt.cache)
@@ -190,7 +190,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *v1.SeriesWith
 					if !found {
 						bt.cache[str] = nil
 
-						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
+						seriesWithBloom.Blooms.ScalableBloomFilter.TestAndAdd(tok)
 
 						if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
 							clearCache(bt.cache)
@@ -209,12 +209,12 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *v1.SeriesWith
 
 	endTime := time.Now().UnixMilli()
 
-	fillRatio := seriesWithBloom.Bloom.ScalableBloomFilter.FillRatio()
+	fillRatio := seriesWithBloom.Blooms.ScalableBloomFilter.FillRatio()
 	bt.metrics.hammingWeightRatio.Observe(fillRatio)
 	bt.metrics.estimatedCount.Observe(
-		float64(estimatedCount(seriesWithBloom.Bloom.ScalableBloomFilter.Capacity(), fillRatio)),
+		float64(estimatedCount(seriesWithBloom.Blooms.ScalableBloomFilter.Capacity(), fillRatio)),
 	)
-	bt.metrics.bloomSize.Observe(float64(seriesWithBloom.Bloom.ScalableBloomFilter.Capacity() / eightBits))
+	bt.metrics.bloomSize.Observe(float64(seriesWithBloom.Blooms.ScalableBloomFilter.Capacity() / eightBits))
 	bt.metrics.sbfCreationTime.Add(float64(endTime - startTime))
 	bt.metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
 	return nil

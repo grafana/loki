@@ -33,7 +33,7 @@ func TestArchive(t *testing.T) {
 	)
 
 	require.Nil(t, err)
-	itr := NewSliceIter[SeriesWithBloom](data)
+	itr := NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 

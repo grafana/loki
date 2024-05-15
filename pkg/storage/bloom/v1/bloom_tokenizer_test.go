@@ -120,8 +120,8 @@ func TestTokenizerPopulate(t *testing.T) {
 	series := Series{
 		Fingerprint: model.Fingerprint(lbsList[0].Hash()),
 	}
-	swb := SeriesWithBloom{
-		Bloom:  &bloom,
+	swb := SeriesWithBlooms{
+		Blooms: &bloom,
 		Series: &series,
 	}
 
@@ -131,7 +131,7 @@ func TestTokenizerPopulate(t *testing.T) {
 	toks := tokenizer.Tokens(testLine)
 	for toks.Next() {
 		token := toks.At()
-		require.True(t, swb.Bloom.Test(token))
+		require.True(t, swb.Blooms.Test(token))
 	}
 }
 
@@ -164,8 +164,8 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 		series := Series{
 			Fingerprint: model.Fingerprint(lbsList[0].Hash()),
 		}
-		swb := SeriesWithBloom{
-			Bloom:  &bloom,
+		swb := SeriesWithBlooms{
+			Blooms: &bloom,
 			Series: &series,
 		}
 
