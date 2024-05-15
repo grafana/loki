@@ -27,13 +27,17 @@ type stream struct {
 func newStream(
 	fp model.Fingerprint,
 	labels labels.Labels,
+	metrics *ingesterMetrics,
 ) (*stream, error) {
 	return &stream{
 		fp:           fp,
 		labels:       labels,
 		labelsString: labels.String(),
 		labelHash:    labels.Hash(),
-		patterns:     drain.New(drain.DefaultConfig()),
+		patterns: drain.New(drain.DefaultConfig(), &drain.Metrics{
+			PatternsEvictedTotal:  metrics.patternsDiscardedTotal,
+			PatternsDetectedTotal: metrics.patternsDetectedTotal,
+		}),
 	}, nil
 }
 
