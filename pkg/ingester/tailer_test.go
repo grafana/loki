@@ -377,9 +377,13 @@ func Benchmark_tailer_isClosed(t *testing.B) {
 	tail, err := newTailer("foo", expr, &server, 0)
 	require.NoError(t, err)
 
+	require.Equal(t, false, tail.isClosed())
+
+	t.ResetTimer()
 	for i := 0; i < t.N; i++ {
 		tail.isClosed()
 	}
 
 	tail.close()
+	require.Equal(t, true, tail.isClosed())
 }

@@ -127,7 +127,7 @@ func (t *tailer) receiveStreamsLoop() {
 		case <-t.closeChan:
 			return
 		case req, ok := <-t.queue:
-			if !ok || t.closed.Load() {
+			if !ok {
 				return
 			}
 
@@ -230,12 +230,7 @@ func isMatching(lbs labels.Labels, matchers []*labels.Matcher) bool {
 }
 
 func (t *tailer) isClosed() bool {
-	select {
-	case <-t.closeChan:
-		return true
-	default:
-		return false
-	}
+	return t.closed.Load()
 }
 
 func (t *tailer) close() {
