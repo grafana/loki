@@ -7,6 +7,8 @@ description: Provides an overview of the steps for implementing Grafana Loki to 
 
 # Get started with Grafana Loki
 
+{{< youtube id="1uk8LtQqsZQ" >}}
+
 Loki is a horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by Prometheus. It is designed to be very cost effective and easy to operate. It does not index the contents of the logs, but rather a set of labels for each log stream.
 
 Because all Loki implementations are unique, the installation process is
