@@ -4,8 +4,9 @@ import (
 	"encoding/binary"
 	"hash/fnv"
 	"sync"
-	"sync/atomic"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
