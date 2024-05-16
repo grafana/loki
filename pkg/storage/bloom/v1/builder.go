@@ -121,7 +121,7 @@ type SeriesWithLazyBlooms struct {
 
 type SeriesWithBlooms struct {
 	Series *Series
-	Blooms Iterator[*Bloom]
+	Blooms SizedIterator[*Bloom]
 }
 
 func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBlooms]) (uint32, error) {
@@ -553,7 +553,7 @@ type MergeBuilder struct {
 	// store
 	store Iterator[*Series]
 	// Add chunks to a bloom
-	populate func(s *Series, srcBlooms Iterator[*Bloom], toAdd ChunkRefs) <-chan *BloomCreation
+	populate func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch <-chan *BloomCreation)
 	metrics  *Metrics
 }
 
@@ -564,7 +564,7 @@ type MergeBuilder struct {
 func NewMergeBuilder(
 	blocks Iterator[*SeriesWithBlooms],
 	store Iterator[*Series],
-	populate func(s *Series, srcBlooms Iterator[*Bloom], toAdd ChunkRefs) <-chan *BloomCreation,
+	populate func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch <-chan *BloomCreation),
 	metrics *Metrics,
 ) *MergeBuilder {
 	// combinedSeriesIter handles series with fingerprint collisions:
@@ -643,8 +643,8 @@ func (mb *MergeBuilder) processNextSeries(
 
 	var (
 		offsets           []BloomOffset
-		chunksToAdd                        = nextInStore.Chunks
-		preExistingBlooms Iterator[*Bloom] = NewEmptyIter[*Bloom]()
+		chunksToAdd                             = nextInStore.Chunks
+		preExistingBlooms SizedIterator[*Bloom] = NewEmptyIter[*Bloom]()
 	)
 
 	if nextInBlocks != nil && nextInBlocks.Series.Fingerprint == nextInStore.Fingerprint {
@@ -657,7 +657,10 @@ func (mb *MergeBuilder) processNextSeries(
 	chunksIndexed += len(chunksToAdd)
 
 	// populate bloom
-	for bloom := range mb.populate(nextInStore, preExistingBlooms, chunksToAdd) {
+	ch := make(chan *BloomCreation)
+	go mb.populate(nextInStore, preExistingBlooms, chunksToAdd, ch)
+
+	for bloom := range ch {
 		if bloom.err != nil {
 			return nil, bytesAdded, false, false, errors.Wrap(bloom.err, "populating bloom")
 		}

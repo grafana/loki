@@ -80,6 +80,11 @@ type Iterator[T any] interface {
 	At() T
 }
 
+type SizedIterator[T any] interface {
+	Iterator[T]
+	Remaining() int // remaining
+}
+
 type PeekingIterator[T any] interface {
 	Peek() (T, bool)
 	Iterator[T]
@@ -158,7 +163,7 @@ func NewSliceIter[T any](xs []T) *SliceIter[T] {
 	return &SliceIter[T]{xs: xs, cur: -1}
 }
 
-func (it *SliceIter[T]) Len() int {
+func (it *SliceIter[T]) Remaining() int {
 	return len(it.xs) - (max(0, it.cur))
 }
 
@@ -202,6 +207,14 @@ func (it *EmptyIter[T]) Err() error {
 
 func (it *EmptyIter[T]) At() T {
 	return it.zero
+}
+
+func (it *EmptyIter[T]) Peek() (T, bool) {
+	return it.zero, false
+}
+
+func (it *EmptyIter[T]) Remaining() int {
+	return 0
 }
 
 // noop

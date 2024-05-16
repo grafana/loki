@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/multierror"
 
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -240,4 +241,61 @@ func (bt *BloomTokenizer) Populate(swb *SeriesWithBlooms, chks Iterator[ChunkRef
 // n ≈ −m ln(1 − p).
 func estimatedCount(m uint, p float64) uint {
 	return uint(-float64(m) * math.Log(1-p))
+}
+
+func (bt *BloomTokenizer) Pop2(
+	series *Series,
+	blooms SizedIterator[*Bloom],
+	chks Iterator[ChunkRefWithIter],
+	ch chan<- *BloomCreation,
+) {
+	// All but the last bloom are considered full -- send back unaltered
+	for blooms.Next() && blooms.Remaining() > 0 {
+		ch <- &BloomCreation{
+			Bloom:            blooms.At(),
+			sourceBytesAdded: 0,
+		}
+	}
+
+	// The last bloom has been made available via the `Next()` call above
+	bloom := blooms.At()
+
+	var bytesAdded int
+
+	for chks.Next() {
+		chk := chks.At()
+
+		for {
+			full, newBytes := bt.addChunkToBloom(bloom, series, chk)
+			bytesAdded += newBytes
+
+			// If a bloom is full, the chunk wasn't completely added
+			// so we'll submit this bloom, start a new one, and continue indexing
+			if full {
+				ch <- &BloomCreation{
+					Bloom:            bloom,
+					sourceBytesAdded: bytesAdded,
+				}
+
+				// start a new bloom + reset bytesAdded counter
+				bytesAdded = 0
+				bloom = &Bloom{
+					// TODO parameterise SBF options. fp_rate
+					ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+				}
+				continue
+			}
+
+			break
+		}
+
+	}
+
+	// Send the last bloom
+	ch <- &BloomCreation{
+		Bloom:            bloom,
+		sourceBytesAdded: bytesAdded,
+	}
+	return
+
 }
