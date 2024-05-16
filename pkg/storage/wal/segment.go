@@ -1,55 +1,55 @@
 package wal
 
 import (
+	"io"
 	"sort"
 
 	"github.com/dolthub/swiss"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
-type WalSegmentWriter struct {
-	tenants *swiss.Map[string, *tenantSegment]
+type streamID struct {
+	labels, tenant string
 }
 
-type tenantSegment struct {
-	streams *swiss.Map[string, *streamSegment]
+type WalSegmentWriter struct {
+	streams *swiss.Map[streamID, *streamSegment]
 }
 
 type streamSegment struct {
-	entries []*logproto.Entry
-	maxt    int64
-	// add the labels.Labels
+	lbls     labels.Labels
+	entries  []*logproto.Entry
+	tenantID string
+	maxt     int64
 }
 
 // NewWalSegmentWriter creates a new WalSegmentWriter.
 func NewWalSegmentWriter() *WalSegmentWriter {
 	return &WalSegmentWriter{
-		tenants: swiss.NewMap[string, *tenantSegment](64),
+		streams: swiss.NewMap[streamID, *streamSegment](64),
 	}
 }
 
 // Labels are passed a string  `{foo="bar",baz="qux"}`  `{foo="foo",baz="foo"}`. labels.Labels => Symbols foo, baz , qux
-func (b *WalSegmentWriter) Append(tenantID, labels string, entries []*logproto.Entry) {
-	t, ok := b.tenants.Get(tenantID)
-	if !ok {
-		t = &tenantSegment{streams: swiss.NewMap[string, *streamSegment](64)}
-		b.tenants.Put(tenantID, t)
+func (b *WalSegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels, entries []*logproto.Entry) {
+	if len(entries) == 0 {
+		return
 	}
-	s, ok := t.streams.Get(labels)
+	id := streamID{labels: labelsString, tenant: tenantID}
+	s, ok := b.streams.Get(id)
 	if !ok {
 		s = &streamSegment{
 			// todo: should be pooled.
 			// prometheus bucketed pool
 			// https://pkg.go.dev/github.com/prometheus/prometheus/util/pool
-			entries: make([]*logproto.Entry, 0, 64),
+			entries:  make([]*logproto.Entry, 0, 64),
+			lbls:     lbls,
+			tenantID: tenantID,
 		}
-		t.streams.Put(labels, s)
-	}
-
-	// check the order.
-	if len(s.entries) == 0 {
 		s.maxt = entries[len(entries)-1].Timestamp.UnixNano()
 		s.entries = append(s.entries, entries...)
+		b.streams.Put(id, s)
 		return
 	}
 
@@ -70,19 +70,53 @@ func (b *WalSegmentWriter) Append(tenantID, labels string, entries []*logproto.E
 	}
 }
 
+// todo document format.
+func (b *WalSegmentWriter) WriteTo(w io.Writer) (int64, error) {
+	var (
+		total   int64
+		streams = make([]*streamSegment, 0, b.streams.Count())
+		offset  = make([]int64, 0, len(streams))
+	)
+	// todo: write magic number and version
+
+	// Collect all streams and sort them by tenantID and labels.
+	b.streams.Iter(func(k streamID, v *streamSegment) bool {
+		streams = append(streams, v)
+		return true
+	})
+	sort.Slice(streams, func(i, j int) bool {
+		if streams[i].tenantID != streams[j].tenantID {
+			return streams[i].tenantID < streams[j].tenantID
+		}
+		return labels.Compare(streams[i].lbls, streams[j].lbls) < 0
+	})
+
+	// Write all streams to the writer.
+	for _, s := range streams {
+		n, err := s.WriteTo(w)
+		if err != nil {
+			return total, err
+		}
+		total += n
+		offset = append(offset, total)
+	}
+	// Write Symbols.
+	// Write Stream offsets and labels ref.
+	// TOC
+	// len(TOC)
+
+	return total, nil
+}
+
+func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
+	return 0, nil
+}
+
+// Reset clears the writer.
+// After calling Reset, the writer can be reused.
 // func(b *WalSegmentWriter) Reset() {
 
 // 	b.tenants.Clear()
 
 // 	return nil
 // }
-
-// func (b *WalSegmentWriter) Close() (io.ReadCloser, error) {
-// 	reader,writer := io.Pipe()
-// 	writer.Write([]byte("hello"))
-// 	return reader, nil
-// }
-
-func (b *WalSegmentWriter) Read(p []byte) (n int, err error) {
-	return 0, nil
-}

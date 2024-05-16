@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/stretchr/testify/require"
 )
 
@@ -96,16 +97,19 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 			// Append the entries
 			for _, batch := range tt.batches {
 				for _, stream := range batch {
-					w.Append(stream.tenant, stream.labels, stream.entries)
+					labels, err := syntax.ParseLabels(stream.labels)
+					require.NoError(t, err)
+					w.Append(stream.tenant, stream.labels, labels, stream.entries)
 				}
 			}
 			require.NotEmpty(t, tt.expected, "expected entries are empty")
 			// Check the entries
 			for _, expected := range tt.expected {
-				tenant, ok := w.tenants.Get(expected.tenant)
+				stream, ok := w.streams.Get(streamID{labels: expected.labels, tenant: expected.tenant})
 				require.True(t, ok)
-				stream, ok := tenant.streams.Get(expected.labels)
-				require.True(t, ok)
+				labels, err := syntax.ParseLabels(expected.labels)
+				require.NoError(t, err)
+				require.Equal(t, labels, stream.lbls)
 				require.Equal(t, expected.entries, stream.entries)
 			}
 		})
