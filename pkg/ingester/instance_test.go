@@ -1549,4 +1549,5 @@ func (m *mockUsageTracker) DiscardedBytesAdd(_ context.Context, tenant string, r
 }
 
 // ReceivedBytesAdd implements push.UsageTracker.
-func (*mockUsageTracker) ReceivedBytesAdd(_ context.Context, tenant string, retentionPeriod time.Duration, labels labels.Labels, value float64) {}
+func (*mockUsageTracker) ReceivedBytesAdd(_ context.Context, tenant string, retentionPeriod time.Duration, labels labels.Labels, value float64) {
+}
