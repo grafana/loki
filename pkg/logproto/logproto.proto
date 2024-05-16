@@ -478,11 +478,11 @@ message DetectedField {
 message DetectedLabelsRequest {
   google.protobuf.Timestamp start = 1 [
     (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = true
+    (gogoproto.nullable) = false
   ];
   google.protobuf.Timestamp end = 2 [
     (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = true
+    (gogoproto.nullable) = false
   ];
   string query = 3;
 }
@@ -494,4 +494,5 @@ message DetectedLabelsResponse {
 message DetectedLabel {
   string label = 1;
   uint64 cardinality = 2;
+  bytes sketch = 3 [(gogoproto.jsontag) = "sketch,omitempty"];
 }

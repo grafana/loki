@@ -18,7 +18,7 @@ import (
 
 func TestInstancePushQuery(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-	inst, err := newInstance("foo", log.NewNopLogger())
+	inst, err := newInstance("foo", log.NewNopLogger(), newIngesterMetrics(nil, "test"))
 	require.NoError(t, err)
 
 	err = inst.Push(context.Background(), &push.PushRequest{
