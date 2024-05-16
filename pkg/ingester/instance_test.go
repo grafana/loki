@@ -1112,7 +1112,7 @@ func TestStreamShardingUsage(t *testing.T) {
 			},
 		})
 		require.Error(t, err)
-		require.Equal(t, 0.4, tracker.discardedBytes)
+		require.Equal(t, 3.0, tracker.discardedBytes)
 	})
 
 	t.Run("valid push returns no error", func(t *testing.T) {
@@ -1544,11 +1544,9 @@ type mockUsageTracker struct {
 }
 
 // DiscardedBytesAdd implements push.UsageTracker.
-func (m *mockUsageTracker) DiscardedBytesAdd(ctx context.Context, tenant string, reason string, labels labels.Labels, value float64) {
+func (m *mockUsageTracker) DiscardedBytesAdd(_ context.Context, tenant string, reason string, labels labels.Labels, value float64) {
 	m.discardedBytes += value
 }
 
 // ReceivedBytesAdd implements push.UsageTracker.
-func (*mockUsageTracker) ReceivedBytesAdd(ctx context.Context, tenant string, retentionPeriod time.Duration, labels labels.Labels, value float64) {
-	return
-}
+func (*mockUsageTracker) ReceivedBytesAdd(_ context.Context, tenant string, retentionPeriod time.Duration, labels labels.Labels, value float64) {}

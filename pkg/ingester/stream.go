@@ -451,7 +451,7 @@ func (s *stream) reportMetrics(ctx context.Context, outOfOrderSamples, outOfOrde
 		validation.DiscardedSamples.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedSamples))
 		validation.DiscardedBytes.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedBytes))
 		if usageTracker != nil {
-			usageTracker.DiscardedBytesAdd(ctx, s.tenant, validation.StreamRateLimit, s.labels, float64(outOfOrderBytes))
+			usageTracker.DiscardedBytesAdd(ctx, s.tenant, validation.StreamRateLimit, s.labels, float64(rateLimitedBytes))
 		}
 	}
 }

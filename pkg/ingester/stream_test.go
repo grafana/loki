@@ -275,7 +275,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	_, failed := s.validateEntries(context.Background(), entries, false, true, tracker)
 	require.NotEmpty(t, failed)
 	require.False(t, hasRateLimitErr(failed))
-	require.Equal(t, 13, tracker.discardedBytes)
+	require.Equal(t, 13.0, tracker.discardedBytes)
 }
 
 func TestUnorderedPush(t *testing.T) {
@@ -414,7 +414,7 @@ func TestPushRateLimit(t *testing.T) {
 	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true, tracker)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
-	require.Equal(t, 0.2, tracker.discardedBytes)
+	require.Equal(t, 20.0, tracker.discardedBytes)
 }
 
 func TestPushRateLimitAllOrNothing(t *testing.T) {
@@ -456,7 +456,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[0].Line))}).Error())
 	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
-	require.Equal(t, 0.2, tracker.discardedBytes)
+	require.Equal(t, 20.0, tracker.discardedBytes)
 }
 
 func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
