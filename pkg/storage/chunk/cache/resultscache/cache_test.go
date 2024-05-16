@@ -683,8 +683,6 @@ func Test_resultsCache_MissingData(t *testing.T) {
 }
 
 func Test_shouldCacheReq(t *testing.T) {
-	modelNow := model.Now()
-
 	cfg := Config{
 		CacheConfig: cache.Config{
 			Cache: cache.NewMockCache(),
@@ -715,37 +713,37 @@ func Test_shouldCacheReq(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 
 	// create request with start end within the key extents
-	req := parsedRequest.WithStartEndForCache(time.UnixMilli(int64(modelNow)-(50*1e3)), time.UnixMilli(int64(modelNow)-(10*1e3)))
+	req := parsedRequest.WithStartEndForCache(time.UnixMilli(50), time.UnixMilli(120))
 
 	// fill cache
 	key := ConstSplitter(day).GenerateCacheKey(context.Background(), "1", req)
-	rc.put(ctx, key, []Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))})
+	rc.put(ctx, key, []Extent{mkExtent(50, 120)})
 
-	// Asserts (when `shouldCacheReq` is non-nil and set to return false (should not cache), resultcache should get result from upstream handler (mockHandler))
-	// 1. With `shouldCacheReq` non-nil and set `noCacheReq`, should get result from `next` handler
-	// 2. With `shouldCacheReq` non-nil and set `cacheReq`, should get result from cache
-	// 3. With `shouldCacheReq` nil, should get result from cache
+	// Asserts (when `shouldLookupCache` is non-nil and set to return false (should not cache), resultcache should get result from upstream handler (mockHandler))
+	// 1. With `shouldLookupCache` non-nil and set `noCacheReq`, should get result from `next` handler
+	// 2. With `shouldLookupCache` non-nil and set `cacheReq`, should get result from cache
+	// 3. With `shouldLookupCache` nil, should get result from cache
 
 	cases := []struct {
-		name        string
-		shouldCache ShouldCacheReqFn
+		name              string
+		shouldLookupCache ShouldCacheReqFn
 		// expected number of times, upstream `next` handler is called inside results cache
 		expCount int
 	}{
 		{
-			name:        "noCacheReq",
-			shouldCache: noCacheReq,
-			expCount:    1,
+			name:              "don't lookup cache",
+			shouldLookupCache: noLookupCache,
+			expCount:          1,
 		},
 		{
-			name:        "cacheReq",
-			shouldCache: cacheReq,
-			expCount:    0,
+			name:              "lookup cache",
+			shouldLookupCache: lookupCache,
+			expCount:          0,
 		},
 		{
-			name:        "nil",
-			shouldCache: nil,
-			expCount:    0,
+			name:              "nil",
+			shouldLookupCache: nil,
+			expCount:          0,
 		},
 	}
 
@@ -753,7 +751,7 @@ func Test_shouldCacheReq(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mh := &mockHandler{}
 			rc.next = mh
-			rc.shouldCacheReq = tc.shouldCache
+			rc.shouldCacheReq = tc.shouldLookupCache
 
 			_, err = rc.Do(ctx, req)
 			require.NoError(t, err)
@@ -773,13 +771,13 @@ func (mh *mockHandler) Do(_ context.Context, _ Request) (Response, error) {
 	return mh.res, nil
 }
 
-// noCacheReq is of type `ShouldCacheReq` that always returns false (do not cache)
-func noCacheReq(_ context.Context, _ Request) bool {
+// noLookupCache is of type `ShouldCacheReq` that always returns false (do not cache)
+func noLookupCache(_ context.Context, _ Request) bool {
 	return false
 }
 
-// cacheReq is of type `ShouldCacheReq` that always returns true (cache the result)
-func cacheReq(_ context.Context, _ Request) bool {
+// lookupCache is of type `ShouldCacheReq` that always returns true (cache the result)
+func lookupCache(_ context.Context, _ Request) bool {
 	return true
 }
 
