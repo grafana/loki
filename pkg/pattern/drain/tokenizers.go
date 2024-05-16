@@ -2,7 +2,6 @@ package drain
 
 import (
 	"bytes"
-	"fmt"
 	"strings"
 
 	"github.com/go-logfmt/logfmt"
@@ -79,24 +78,34 @@ type logfmtTokenizer struct {
 	tokenizeInsideQuotes bool
 }
 
+func multiBytesToStringSlice(in [][]byte) []string {
+	retVal := make([]string, len(in))
+	for i, byteSlice := range in {
+		retVal[i] = string(byteSlice)
+	}
+	return retVal
+}
+
 func (a *logfmtTokenizer) Marshal(in string) []string {
-	tokens := []string{}
+	tokens := make([]string, 0, len(in)/4) // Guesstimate of at least 4 characters per token
 	processed := tokenization.Preprocess([]byte(in), false, false)
 	decoder := logfmt.NewDecoder(bytes.NewReader(processed))
 	for decoder.ScanRecord() {
 		for decoder.ScanKeyval() {
+			if decoder.Err() != nil {
+				print("err", decoder.Err())
+			}
 			k := decoder.Key()
 			v := decoder.Value()
-			equals := "="
-			if v == nil {
-				equals = ""
+			if v != nil {
+				k = append(k, byte('='))
 			}
-			tokens = append(tokens, fmt.Sprintf("%s%s", k, equals))
+			tokens = append(tokens, string(k))
 			if v == nil {
 				continue
 			}
 			if a.tokenizeInsideQuotes {
-				tokens = append(tokens, strings.Split(string(v), " ")...)
+				tokens = append(tokens, multiBytesToStringSlice(bytes.Split(v, []byte(" ")))...)
 			} else {
 				tokens = append(tokens, string(v))
 			}
@@ -115,23 +124,28 @@ func (a *logfmtTokenizer) Unmarshal(tokens []string) string {
 		if strings.HasSuffix(token, "=") {
 			quotedOutput := quoted.String()
 			if quotedTokens > 1 {
-				output.WriteString(fmt.Sprintf("%q ", strings.TrimSuffix(quotedOutput, " ")))
+				output.WriteString("\"")
+				output.WriteString(quotedOutput[:len(quotedOutput)-1]) // Drop the trailing space
+				output.WriteString("\" ")
 			} else {
-				output.WriteString(fmt.Sprintf("%s", quotedOutput))
+				output.WriteString(quotedOutput)
 			}
 			quoted.Reset()
 			quotedTokens = 0
 			output.WriteString(token)
 		} else {
-			quoted.WriteString(token + " ")
+			quoted.WriteString(token)
+			quoted.WriteString(" ")
 			quotedTokens++
 		}
 	}
-	quotedOutput := strings.TrimSuffix(quoted.String(), " ")
+	quotedOutput := quoted.String()
 	if quotedTokens > 1 {
-		output.WriteString(fmt.Sprintf("%q", strings.TrimSuffix(quotedOutput, " ")))
+		output.WriteString("\"")
+		output.WriteString(quotedOutput[:len(quotedOutput)-1]) // Drop the trailing space
+		output.WriteString("\"")
 	} else {
-		output.WriteString(fmt.Sprintf("%s", quotedOutput))
+		output.WriteString(quotedOutput)
 	}
 	return output.String()
 }

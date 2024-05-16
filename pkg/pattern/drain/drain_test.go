@@ -3,6 +3,7 @@ package drain
 import (
 	"bufio"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,7 +12,7 @@ import (
 )
 
 func TestDrain_TrainExtractsPatterns(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 	tests := []struct {
 		name      string
 		drain     *Drain
@@ -359,9 +360,20 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			defer file.Close()
 
 			scanner := bufio.NewScanner(file)
+			var lines []string
 			for scanner.Scan() {
-				line := scanner.Text()
-				tt.drain.Train(line, 0)
+				lines = append(lines, scanner.Text())
+			}
+
+			tokenizer := "adaptive"
+			if strings.Index(lines[0], "=") != -1 {
+				tokenizer = "logfmt"
+			}
+			for i := 0; i < 1000; i++ {
+				tt.drain = New(DefaultConfig(), tokenizer)
+				for _, line := range lines {
+					tt.drain.Train(line, 0)
+				}
 			}
 
 			var output []string
