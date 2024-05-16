@@ -1544,10 +1544,10 @@ type mockUsageTracker struct {
 }
 
 // DiscardedBytesAdd implements push.UsageTracker.
-func (m *mockUsageTracker) DiscardedBytesAdd(_ context.Context, tenant string, reason string, labels labels.Labels, value float64) {
+func (m *mockUsageTracker) DiscardedBytesAdd(_ context.Context, _ string, _ string, _ labels.Labels, value float64) {
 	m.discardedBytes += value
 }
 
 // ReceivedBytesAdd implements push.UsageTracker.
-func (*mockUsageTracker) ReceivedBytesAdd(_ context.Context, tenant string, retentionPeriod time.Duration, labels labels.Labels, value float64) {
+func (*mockUsageTracker) ReceivedBytesAdd(_ context.Context, _ string, _ time.Duration, _ labels.Labels, _ float64) {
 }
