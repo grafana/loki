@@ -72,7 +72,7 @@ spec:
       terminationGracePeriodSeconds: {{ .terminationGracePeriodSeconds }}
       {{- if $.ctx.Values.imagePullSecrets }}
       imagePullSecrets:
-      {{- range $.ctx.Values.image.pullSecrets }}
+      {{- range $.ctx.Values.imagepullSecrets }}
         - name: {{ . }}
       {{- end }}
       {{- end }}
