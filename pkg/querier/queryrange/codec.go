@@ -2070,6 +2070,10 @@ func (p paramsDetectedFieldsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
 }
 
+func (p paramsDetectedLabelsWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
+}
+
 func (p paramsDetectedFieldsWrapper) CachingOptions() resultscache.CachingOptions {
 	return resultscache.CachingOptions{}
 }
