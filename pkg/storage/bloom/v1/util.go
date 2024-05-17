@@ -37,9 +37,9 @@ var (
 	BlockPool = mempool.New([]mempool.Bucket{
 		{Size: 128, Capacity: 64 << 10}, // 64K mainly for tests
 		{Size: 256, Capacity: 2 << 20},  // 512MB
-		{Size: 64, Capacity: 8 << 20},   // 512MB
-		{Size: 16, Capacity: 32 << 20},  // 512MB
-		{Size: 4, Capacity: 128 << 20},  // 512MB
+		{Size: 128, Capacity: 8 << 20},  // 1024MB
+		{Size: 32, Capacity: 32 << 20},  // 1024MB
+		{Size: 8, Capacity: 128 << 20},  // 1024MB
 		{Size: 1, Capacity: 512 << 20},  // 512MB
 	})
 )
