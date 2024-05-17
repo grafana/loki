@@ -64,16 +64,20 @@ func (b *Bloom) Decode(dec *encoding.Decbuf) error {
 }
 
 func LazyDecodeBloomPage(r io.Reader, usePool bool, pool chunkenc.ReaderPool, page BloomPageHeader) (*BloomPageDecoder, error) {
-
 	var data []byte
+	var err error
+
 	if usePool {
-		data = BlockPool.Get(page.Len)[:page.Len]
+		data, err = BlockPool.Get(page.Len)
+		if err != nil {
+			return nil, err
+		}
 		defer BlockPool.Put(data)
 	} else {
 		data = make([]byte, page.Len)
 	}
 
-	_, err := io.ReadFull(r, data)
+	_, err = io.ReadFull(r, data)
 	if err != nil {
 		return nil, errors.Wrap(err, "reading bloom page")
 	}
@@ -91,7 +95,10 @@ func LazyDecodeBloomPage(r io.Reader, usePool bool, pool chunkenc.ReaderPool, pa
 
 	var b []byte
 	if usePool {
-		b = BlockPool.Get(page.DecompressedLen)[:page.DecompressedLen]
+		b, err = BlockPool.Get(page.DecompressedLen)
+		if err != nil {
+			return nil, err
+		}
 		// buffer will be relinquished when page is finished or skipped
 	} else {
 		b = make([]byte, page.DecompressedLen)
@@ -113,15 +120,19 @@ func LazyDecodeBloomPageNoCompression(r io.Reader, usePool bool, page BloomPageH
 		return nil, errors.New("the Len and DecompressedLen of the page do not match")
 	}
 
+	var err error
 	var data []byte
 	if usePool {
-		data = BlockPool.Get(page.Len)[:page.Len]
+		data, err = BlockPool.Get(page.Len)
+		if err != nil {
+			return nil, err
+		}
 		// buffer will be relinquished when page is finished or skipped
 	} else {
 		data = make([]byte, page.Len)
 	}
 
-	_, err := io.ReadFull(r, data)
+	_, err = io.ReadFull(r, data)
 	if err != nil {
 		return nil, errors.Wrap(err, "reading bloom page")
 	}

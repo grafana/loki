@@ -1,18 +1,26 @@
 package mempool
 
 import (
+	"errors"
 	"fmt"
+	"sync"
 	"unsafe"
 )
 
+var (
+	errSlabExhausted = errors.New("slab exhausted")
+	errTooBig        = errors.New("requested slice too big")
+)
+
 type Pool interface {
-	Get(size int) []byte
+	Get(size int) ([]byte, error)
 	Put(buffer []byte)
 }
 
 type slab struct {
 	buffer      chan unsafe.Pointer
 	size, count int
+	mtx         sync.Mutex
 }
 
 func newSlab(bufferSize, bufferCount int) *slab {
@@ -31,17 +39,24 @@ func (s *slab) init() {
 	}
 }
 
-func (s *slab) get(size int) []byte {
+func (s *slab) get(size int) ([]byte, error) {
 	// TODO(chaudum): Remove debug line
 	// fmt.Fprintf(os.Stderr, "get %d bytes in slab %d\n", size, s.size)
 
+	s.mtx.Lock()
 	if s.buffer == nil {
 		s.init()
 	}
+	defer s.mtx.Unlock()
 
 	// wait for available buffer on channel
-	ptr := <-s.buffer
-	buf := unsafe.Slice((*byte)(ptr), s.size)
+	var buf []byte
+	select {
+	case ptr := <-s.buffer:
+		buf = unsafe.Slice((*byte)(ptr), s.size)
+	default:
+		return nil, errSlabExhausted
+	}
 
 	// Taken from https://github.com/ortuman/nuke/blob/main/monotonic_arena.go#L37-L48
 	// This piece of code will be translated into a runtime.memclrNoHeapPointers
@@ -52,7 +67,7 @@ func (s *slab) get(size int) []byte {
 		buf[i] = 0
 	}
 
-	return buf[:size]
+	return buf[:size], nil
 }
 
 func (s *slab) put(buf []byte) {
@@ -82,7 +97,7 @@ func New(buckets []Bucket) Pool {
 }
 
 // Get satisfies Pool interface
-func (a *mempool) Get(size int) []byte {
+func (a *mempool) Get(size int) ([]byte, error) {
 	for i := 0; i < len(a.slabs); i++ {
 		if a.slabs[i].size < size {
 			continue
