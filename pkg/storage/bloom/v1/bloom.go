@@ -68,11 +68,11 @@ func LazyDecodeBloomPage(r io.Reader, usePool bool, pool chunkenc.ReaderPool, pa
 	var err error
 
 	if usePool {
-		data, err = BlockPool.Get(page.Len)
+		data, err = BloomPageMemPool.Get(page.Len)
 		if err != nil {
 			return nil, err
 		}
-		defer BlockPool.Put(data)
+		defer BloomPageMemPool.Put(data)
 	} else {
 		data = make([]byte, page.Len)
 	}
@@ -95,7 +95,7 @@ func LazyDecodeBloomPage(r io.Reader, usePool bool, pool chunkenc.ReaderPool, pa
 
 	var b []byte
 	if usePool {
-		b, err = BlockPool.Get(page.DecompressedLen)
+		b, err = BloomPageMemPool.Get(page.DecompressedLen)
 		if err != nil {
 			return nil, err
 		}
@@ -123,7 +123,7 @@ func LazyDecodeBloomPageNoCompression(r io.Reader, usePool bool, page BloomPageH
 	var err error
 	var data []byte
 	if usePool {
-		data, err = BlockPool.Get(page.Len)
+		data, err = BloomPageMemPool.Get(page.Len)
 		if err != nil {
 			return nil, err
 		}
@@ -179,6 +179,8 @@ type BloomPageDecoder struct {
 	n   int // number of blooms in page
 	cur *Bloom
 	err error
+
+	usePool bool
 }
 
 // Relinquish returns the underlying byte slice to the pool
@@ -188,11 +190,15 @@ type BloomPageDecoder struct {
 // bytes don't escape the decoder:
 // on reads in the bloom-gw but not in the bloom-compactor
 func (d *BloomPageDecoder) Relinquish() {
+	if !d.usePool {
+		return
+	}
+
 	data := d.data
 	d.data = nil
 
 	if cap(data) > 0 {
-		BlockPool.Put(data)
+		BloomPageMemPool.Put(data)
 	}
 }
 

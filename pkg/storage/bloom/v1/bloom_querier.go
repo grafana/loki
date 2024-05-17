@@ -53,7 +53,7 @@ func (it *LazyBloomIter) LoadOffset(offset BloomOffset) (skip bool) {
 
 		// drop the current page if it exists and
 		// we're using the pool
-		if it.curPage != nil && it.usePool {
+		if it.curPage != nil {
 			it.curPage.Relinquish()
 		}
 
@@ -133,9 +133,7 @@ func (it *LazyBloomIter) next() bool {
 			it.curPageIndex++
 			// drop the current page if it exists and
 			// we're using the pool
-			if it.usePool {
-				it.curPage.Relinquish()
-			}
+			it.curPage.Relinquish()
 			it.curPage = nil
 			continue
 		}

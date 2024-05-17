@@ -34,8 +34,17 @@ var (
 		},
 	}
 
-	BlockPool = mempool.New([]mempool.Bucket{
-		{Size: 128, Capacity: 64 << 10}, // 64K mainly for tests
+	// 4KB -> 4MB
+	SeriesPageMemPool = BytePool{
+		pool: pool.New(
+			4<<10, 4<<20, 2,
+			func(size int) interface{} {
+				return make([]byte, size)
+			}),
+	}
+
+	BloomPageMemPool = mempool.New([]mempool.Bucket{
+		{Size: 128, Capacity: 64 << 10}, // 8MB -- for tests
 		{Size: 256, Capacity: 2 << 20},  // 512MB
 		{Size: 128, Capacity: 8 << 20},  // 1024MB
 		{Size: 32, Capacity: 32 << 20},  // 1024MB
