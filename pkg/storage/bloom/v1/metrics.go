@@ -37,11 +37,9 @@ const (
 	chunkIndexedTypeIterated = "iterated"
 	chunkIndexedTypeCopied   = "copied"
 
-	tokenTypeRaw           = "raw"
-	tokenTypeChunkPrefixed = "chunk_prefixed"
-	collisionTypeFalse     = "false"
-	collisionTypeTrue      = "true"
-	collisionTypeCache     = "cache"
+	collisionTypeFalse = "false"
+	collisionTypeTrue  = "true"
+	collisionTypeCache = "cache"
 
 	blockFlushReasonFull     = "full"
 	blockFlushReasonFinished = "finished"
@@ -118,7 +116,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Namespace: constants.Loki,
 			Name:      "bloom_inserts_total",
 			Help:      "Number of inserts into the bloom filter. collision type may be `false` (no collision), `cache` (found in token cache) or true (found in bloom filter). token_type may be either `raw` (the original ngram) or `chunk_prefixed` (the ngram with the chunk prefix)",
-		}, []string{"token_type", "collision"}),
+		}, []string{"collision"}),
 		sourceBytesAdded: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "bloom_source_bytes_added_total",
