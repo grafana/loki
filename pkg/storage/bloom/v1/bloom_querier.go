@@ -62,7 +62,7 @@ func (it *LazyBloomIter) LoadOffset(offset BloomOffset) (skip bool) {
 			it.err = errors.Wrap(err, "getting blooms reader")
 			return false
 		}
-		decoder, skip, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.m, it.b.metrics)
+		decoder, skip, err := it.b.blooms.BloomPageDecoder(r, it.usePool, offset.Page, it.m, it.b.metrics)
 		if err != nil {
 			it.err = errors.Wrap(err, "loading bloom page")
 			return false
@@ -106,6 +106,7 @@ func (it *LazyBloomIter) next() bool {
 			var skip bool
 			it.curPage, skip, err = it.b.blooms.BloomPageDecoder(
 				r,
+				it.usePool,
 				it.curPageIndex,
 				it.m,
 				it.b.metrics,

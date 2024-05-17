@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	"github.com/prometheus/prometheus/util/pool"
+
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/mempool"
 )
 
 const (
@@ -32,14 +34,14 @@ var (
 		},
 	}
 
-	// 4KB -> 128MB
-	BlockPool = BytePool{
-		pool: pool.New(
-			4<<10, 128<<20, 2,
-			func(size int) interface{} {
-				return make([]byte, size)
-			}),
-	}
+	BlockPool = mempool.New([]mempool.Bucket{
+		{Size: 128, Capacity: 64 << 10}, // 64K mainly for tests
+		{Size: 256, Capacity: 2 << 20},  // 512MB
+		{Size: 64, Capacity: 8 << 20},   // 512MB
+		{Size: 16, Capacity: 32 << 20},  // 512MB
+		{Size: 4, Capacity: 128 << 20},  // 512MB
+		{Size: 1, Capacity: 512 << 20},  // 512MB
+	})
 )
 
 type BytePool struct {
