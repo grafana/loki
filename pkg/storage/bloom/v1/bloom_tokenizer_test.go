@@ -120,18 +120,22 @@ func TestTokenizerPopulate(t *testing.T) {
 	series := Series{
 		Fingerprint: model.Fingerprint(lbsList[0].Hash()),
 	}
-	swb := SeriesWithBlooms{
-		Blooms: &bloom,
-		Series: &series,
-	}
 
-	_, _, err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
+	blooms, err := populateAndConsumeBloom(
+		bt,
+		series,
+		NewSliceIter([]*Bloom{&bloom}),
+		NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
+			Itr: itr}}),
+	)
 	require.NoError(t, err)
+	require.Equal(t, 1, len(blooms))
+
 	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
 	toks := tokenizer.Tokens(testLine)
 	for toks.Next() {
 		token := toks.At()
-		require.True(t, swb.Blooms.Test(token))
+		require.True(t, blooms[0].Test(token))
 	}
 }
 
@@ -164,12 +168,13 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 		series := Series{
 			Fingerprint: model.Fingerprint(lbsList[0].Hash()),
 		}
-		swb := SeriesWithBlooms{
-			Blooms: &bloom,
-			Series: &series,
-		}
-
-		_, _, err = bt.Populate(&swb, NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}))
+		_, err = populateAndConsumeBloom(
+			bt,
+			series,
+			NewSliceIter([]*Bloom{&bloom}),
+			NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
+				Itr: itr}}),
+		)
 		require.NoError(b, err)
 	}
 }

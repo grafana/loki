@@ -408,6 +408,8 @@ func (s *SeriesWithOffsets) Decode(
 	previousFp model.Fingerprint,
 	previousOffset BloomOffset,
 ) (model.Fingerprint, BloomOffset, error) {
+	// Since *SeriesWithOffsets is is still representable by the v1 schema as a len=1 offset group,
+	// we can decode it even though multiple offsets were introduced in v2
 	if version == 1 {
 		return s.decodeV1(dec, previousFp, previousOffset)
 	}

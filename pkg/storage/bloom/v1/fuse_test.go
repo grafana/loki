@@ -47,18 +47,6 @@ func TestFusedQuerier(t *testing.T) {
 	numSeries := 1000
 	data, keys := MkBasicSeriesWithBlooms(numSeries, 0, 0x0000, 0xffff, 0, 10000)
 
-	// Make the first and third series blooms too big to fit into a single page so we skip them while reading
-	for i := 0; i < 10000; i++ {
-		tokenizer := NewNGramTokenizer(4, 0)
-		line := fmt.Sprintf("%04x:%04x", i, i+1)
-		it := tokenizer.Tokens(line)
-		for it.Next() {
-			key := it.At()
-			data[0].Blooms.Add(key)
-			data[2].Blooms.Add(key)
-		}
-	}
-
 	builder, err := NewBlockBuilder(
 		BlockOptions{
 			Schema: Schema{
@@ -146,6 +134,16 @@ func TestFusedQuerier(t *testing.T) {
 	}
 }
 
+// Successfully query series across multiple pages as well as series that only occupy 1 bloom
+func TestFuseMultiPage(t *testing.T) {
+	t.FailNow() // placeholder
+}
+
+// Skip series when bloom pages are too large
+func TestFuseSkipReadsWhenPageTooLarge(t *testing.T) {
+	t.FailNow()
+}
+
 func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
@@ -193,7 +191,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 
 		data = append(data, SeriesWithBlooms{
 			Series: &series,
-			Blooms: &bloom,
+			Blooms: NewSliceIter([]*Bloom{&bloom}),
 		})
 	}
 
@@ -221,21 +219,22 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 		err := querier.Seek(fp)
 		require.NoError(t, err)
 
-		require.True(t, querier.series.Next())
-		series := querier.series.At()
+		require.True(t, querier.Next())
+		series := querier.At()
 		require.Equal(t, fp, series.Fingerprint)
 
-		seekable := true
-		if largeSeries(int(fp)) {
-			seekable = false
+		if large := largeSeries(int(fp)); large {
+			require.Equal(t, 2, len(series.Offsets))
+		} else {
+			require.Equal(t, 1, len(series.Offsets))
 		}
-		if !seekable {
-			require.True(t, querier.blooms.LoadOffset(series.Offset))
-			continue
+
+		for _, offset := range series.Offsets {
+			require.False(t, querier.blooms.LoadOffset(offset))
+			require.True(t, querier.blooms.Next())
+			require.NoError(t, querier.blooms.Err())
 		}
-		require.False(t, querier.blooms.LoadOffset(series.Offset))
-		require.True(t, querier.blooms.Next())
-		require.NoError(t, querier.blooms.Err())
+
 	}
 }
 

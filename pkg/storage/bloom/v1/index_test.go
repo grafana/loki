@@ -84,7 +84,7 @@ func TestSeriesEncoding_V2(t *testing.T) {
 
 	dec := encoding.DecWith(enc.Get())
 	var dst SeriesWithOffsets
-	fp, offset, err := dst.Decode(&dec, 0, BloomOffset{})
+	fp, offset, err := dst.Decode(V2, &dec, 0, BloomOffset{})
 	require.Nil(t, err)
 	require.Equal(t, src.Fingerprint, fp)
 	require.Equal(t, src.Offsets[len(src.Offsets)-1], offset)

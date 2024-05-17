@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 )
@@ -93,7 +94,7 @@ func MkBasicSeriesWithBlooms(nSeries, _ int, fromFp, throughFp model.Fingerprint
 
 		seriesList = append(seriesList, SeriesWithBlooms{
 			Series: &series,
-			Blooms: &bloom,
+			Blooms: NewSliceIter[*Bloom]([]*Bloom{&bloom}),
 		})
 		keysList = append(keysList, keys)
 	}
@@ -109,4 +110,24 @@ func EqualIterators[T any](t *testing.T, test func(a, b T), expected, actual Ite
 	require.False(t, actual.Next())
 	require.Nil(t, expected.Err())
 	require.Nil(t, actual.Err())
+}
+
+func populateAndConsumeBloom(
+	bt *BloomTokenizer,
+	s Series,
+	blooms SizedIterator[*Bloom],
+	chks Iterator[ChunkRefWithIter],
+) (res []*Bloom, err error) {
+	var e multierror.MultiError
+	ch := make(chan *BloomCreation)
+	go bt.Populate(&s, blooms, chks, ch)
+	for range ch {
+		x := <-ch
+		if x.err != nil {
+			e = append(e, x.err)
+		} else {
+			res = append(res, x.Bloom)
+		}
+	}
+	return res, e.Err()
 }
