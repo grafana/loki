@@ -141,6 +141,7 @@ func newInstance(
 	extractorWrapper log.SampleExtractorWrapper,
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
+	customStreamsTracker push.UsageTracker,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
@@ -174,6 +175,8 @@ func newInstance(
 
 		writeFailures: writeFailures,
 		schemaconfig:  &c,
+
+		customStreamsTracker: customStreamsTracker,
 	}
 	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
 	return i, err
@@ -241,7 +244,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream)
+		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream, i.customStreamsTracker)
 		s.chunkMtx.Unlock()
 	}
 

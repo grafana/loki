@@ -272,19 +272,19 @@ func (r *DetectedLabelsRequest) AsProto() *logproto.DetectedLabelsRequest {
 }
 
 func (r *DetectedLabelsRequest) GetEnd() time.Time {
-	return *r.End
+	return r.End
 }
 
 func (r *DetectedLabelsRequest) GetEndTs() time.Time {
-	return *r.End
+	return r.End
 }
 
 func (r *DetectedLabelsRequest) GetStart() time.Time {
-	return *r.Start
+	return r.Start
 }
 
 func (r *DetectedLabelsRequest) GetStartTs() time.Time {
-	return *r.Start
+	return r.Start
 }
 
 func (r *DetectedLabelsRequest) GetStep() int64 {
@@ -293,8 +293,8 @@ func (r *DetectedLabelsRequest) GetStep() int64 {
 
 func (r *DetectedLabelsRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
 	clone := *r
-	clone.Start = &s
-	clone.End = &e
+	clone.Start = s
+	clone.End = e
 	return &clone
 }
 
@@ -1546,6 +1546,25 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			},
 			Headers: headers,
 		}, nil
+	case *DetectedLabelsResponse:
+		resp0 := responses[0].(*DetectedLabelsResponse)
+		headers := resp0.Headers
+		var labels []*logproto.DetectedLabel
+
+		for _, r := range responses {
+			labels = append(labels, r.(*DetectedLabelsResponse).Response.DetectedLabels...)
+		}
+		mergedLabels, err := detected.MergeLabels(labels)
+		if err != nil {
+			return nil, err
+		}
+
+		return &DetectedLabelsResponse{
+			Response: &logproto.DetectedLabelsResponse{
+				DetectedLabels: mergedLabels,
+			},
+			Headers: headers,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unknown response type (%T) in merging responses", responses[0])
 	}
@@ -1743,6 +1762,10 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 	case *DetectedFieldsRequest:
 		return &paramsDetectedFieldsWrapper{
 			DetectedFieldsRequest: r,
+		}, nil
+	case *DetectedLabelsRequest:
+		return &paramsDetectedLabelsWrapper{
+			DetectedLabelsRequest: r,
 		}, nil
 	default:
 		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, *DetectedFieldsRequest, got (%T)", r)
@@ -1968,6 +1991,51 @@ func (p paramsDetectedFieldsWrapper) Shards() []string {
 	return make([]string, 0)
 }
 
+type paramsDetectedLabelsWrapper struct {
+	*DetectedLabelsRequest
+}
+
+func (p paramsDetectedLabelsWrapper) QueryString() string {
+	return p.GetQuery()
+}
+
+func (p paramsDetectedLabelsWrapper) GetExpression() syntax.Expr {
+	expr, err := syntax.ParseExpr(p.GetQuery())
+	if err != nil {
+		return nil
+	}
+
+	return expr
+}
+
+func (p paramsDetectedLabelsWrapper) Start() time.Time {
+	return p.GetStartTs()
+}
+
+func (p paramsDetectedLabelsWrapper) End() time.Time {
+	return p.GetEndTs()
+}
+
+func (p paramsDetectedLabelsWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+
+func (p paramsDetectedLabelsWrapper) Interval() time.Duration {
+	return 0
+}
+
+func (p paramsDetectedLabelsWrapper) Direction() logproto.Direction {
+	return logproto.BACKWARD
+}
+func (p paramsDetectedLabelsWrapper) Limit() uint32 { return 0 }
+func (p paramsDetectedLabelsWrapper) Shards() []string {
+	return make([]string, 0)
+}
+
+func (p paramsDetectedLabelsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
 func (p paramsDetectedFieldsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
 }
@@ -2035,6 +2103,10 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 	case *logproto.VolumeRequest:
 		return &VolumeResponse{
 			Response: &logproto.VolumeResponse{},
+		}, nil
+	case *DetectedLabelsRequest:
+		return &DetectedLabelsResponse{
+			Response: &logproto.DetectedLabelsResponse{},
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported request type %T", req)
