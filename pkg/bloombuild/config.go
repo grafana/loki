@@ -3,6 +3,7 @@ package bloombuild
 import (
 	"flag"
 	"fmt"
+
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 )
