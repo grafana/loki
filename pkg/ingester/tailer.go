@@ -4,11 +4,11 @@ import (
 	"encoding/binary"
 	"hash/fnv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.uber.org/atomic"
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/v3/pkg/logproto"

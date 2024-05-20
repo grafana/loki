@@ -42,6 +42,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/querylimits"
 )
 
+const (
+	cacheControlHeader = "Cache-Control"
+	noCacheVal         = "no-cache"
+)
+
 var DefaultCodec = &Codec{}
 
 type Codec struct{}
@@ -95,8 +100,6 @@ func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
 	)
 }
 
-func (*LokiRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
-
 func (r *LokiInstantRequest) GetStep() int64 {
 	return 0
 }
@@ -141,8 +144,6 @@ func (r *LokiInstantRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("shards", strings.Join(r.GetShards(), ",")),
 	)
 }
-
-func (*LokiInstantRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
 func (r *LokiSeriesRequest) GetEnd() time.Time {
 	return r.EndTs
@@ -329,18 +330,27 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
+	disableCacheReq := false
+
+	if strings.ToLower(strings.TrimSpace(r.Header.Get(cacheControlHeader))) == noCacheVal {
+		disableCacheReq = true
+	}
+
 	switch op := getOperation(r.URL.Path); op {
 	case QueryRangeOp:
 		req, err := parseRangeQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-
 		return req, nil
 	case InstantQueryOp:
 		req, err := parseInstantQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		req.CachingOptions = queryrangebase.CachingOptions{
+			Disabled: disableCacheReq,
 		}
 
 		return req, nil
@@ -1808,6 +1818,10 @@ func (p paramsRangeWrapper) Shards() []string {
 	return p.GetShards()
 }
 
+func (p paramsRangeWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
+}
+
 type paramsInstantWrapper struct {
 	*LokiInstantRequest
 }
@@ -1838,6 +1852,10 @@ func (p paramsInstantWrapper) Direction() logproto.Direction {
 func (p paramsInstantWrapper) Limit() uint32 { return p.LokiInstantRequest.Limit }
 func (p paramsInstantWrapper) Shards() []string {
 	return p.GetShards()
+}
+
+func (p paramsInstantWrapper) CachingOptions() resultscache.CachingOptions {
+	return p.LokiInstantRequest.CachingOptions
 }
 
 type paramsSeriesWrapper struct {
@@ -1876,6 +1894,10 @@ func (p paramsSeriesWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
 }
 
+func (p paramsSeriesWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
+}
+
 type paramsLabelWrapper struct {
 	*LabelRequest
 }
@@ -1912,6 +1934,10 @@ func (p paramsLabelWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
 }
 
+func (p paramsLabelWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
+}
+
 type paramsStatsWrapper struct {
 	*logproto.IndexStatsRequest
 }
@@ -1946,6 +1972,10 @@ func (p paramsStatsWrapper) Shards() []string {
 
 func (p paramsStatsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
+}
+
+func (p paramsStatsWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
 }
 
 type paramsDetectedFieldsWrapper struct {
@@ -2038,6 +2068,14 @@ func (p paramsDetectedLabelsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 
 func (p paramsDetectedFieldsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
+}
+
+func (p paramsDetectedLabelsWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
+}
+
+func (p paramsDetectedFieldsWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
 }
 
 func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryrangebase.PrometheusResponseHeader {
