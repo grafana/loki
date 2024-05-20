@@ -383,6 +383,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		),
 	)
 
+	f.BoolVar(&l.BloomCreationEnabled, "bloom-build.enable", false, "Experimental. Whether to create blooms for the tenant.")
+	f.IntVar(&l.BloomSplitSeriesKeyspaceByFactor, "bloom-build.split-keyspace-by-factor", 256, "Experimental. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
+
 	_ = l.BloomCompactorMaxBloomSize.Set(defaultBloomCompactorMaxBloomSize)
 	f.Var(&l.BloomCompactorMaxBloomSize, "bloom-compactor.max-bloom-size",
 		fmt.Sprintf(
