@@ -38,8 +38,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/types"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
-	"github.com/grafana/loki/v3/pkg/bloombuild/bloomplanner"
-	"github.com/grafana/loki/v3/pkg/bloombuild/bloomworker"
+	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
+	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
@@ -124,8 +124,8 @@ const (
 	QuerySchedulerRing       string = "query-scheduler-ring"
 	BloomCompactor           string = "bloom-compactor"
 	BloomCompactorRing       string = "bloom-compactor-ring"
-	BloomBuildPlanner        string = "bloom-build-planner"
-	BloomBuildWorker         string = "bloom-build-worker"
+	BloomPlanner             string = "bloom-planner"
+	BloomBuilder             string = "bloom-builder"
 	BloomStore               string = "bloom-store"
 	All                      string = "all"
 	Read                     string = "read"
@@ -807,7 +807,7 @@ func (t *Loki) updateConfigForShipperStore() {
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeWriteOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 
-	case t.Cfg.isTarget(Querier), t.Cfg.isTarget(Ruler), t.Cfg.isTarget(Read), t.Cfg.isTarget(Backend), t.isModuleActive(IndexGateway), t.Cfg.isTarget(BloomBuildPlanner), t.Cfg.isTarget(BloomBuildWorker):
+	case t.Cfg.isTarget(Querier), t.Cfg.isTarget(Ruler), t.Cfg.isTarget(Read), t.Cfg.isTarget(Backend), t.isModuleActive(IndexGateway), t.Cfg.isTarget(BloomCompactor), t.Cfg.isTarget(BloomPlanner), t.Cfg.isTarget(BloomBuilder):
 		// We do not want query to do any updates to index
 		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
@@ -1557,29 +1557,29 @@ func (t *Loki) initBloomCompactorRing() (services.Service, error) {
 	return t.bloomCompactorRingManager, nil
 }
 
-func (t *Loki) initBloomBuildPlanner() (services.Service, error) {
+func (t *Loki) initBloomPlanner() (services.Service, error) {
 	if !t.Cfg.BloomBuild.Enabled {
 		return nil, nil
 	}
 
-	logger := log.With(util_log.Logger, "component", "bloom-build-planner")
+	logger := log.With(util_log.Logger, "component", "bloom-planner")
 
-	return bloomplanner.New(
+	return planner.New(
 		t.Cfg.BloomBuild.Planner,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
 }
 
-func (t *Loki) initBloomBuildWorker() (services.Service, error) {
+func (t *Loki) initBloomBuilder() (services.Service, error) {
 	if !t.Cfg.BloomBuild.Enabled {
 		return nil, nil
 	}
 
-	logger := log.With(util_log.Logger, "component", "bloom-build-worker")
+	logger := log.With(util_log.Logger, "component", "bloom-worker")
 
-	return bloomworker.New(
-		t.Cfg.BloomBuild.Worker,
+	return builder.New(
+		t.Cfg.BloomBuild.Builder,
 		logger,
 		prometheus.DefaultRegisterer,
 	)

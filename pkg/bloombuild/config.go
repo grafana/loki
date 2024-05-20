@@ -3,24 +3,23 @@ package bloombuild
 import (
 	"flag"
 	"fmt"
-
-	"github.com/grafana/loki/v3/pkg/bloombuild/bloomplanner"
-	"github.com/grafana/loki/v3/pkg/bloombuild/bloomworker"
+	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
+	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 )
 
 // Config configures the bloom-planner component.
 type Config struct {
 	Enabled bool `yaml:"enabled"`
 
-	Planner bloomplanner.Config `yaml:"planner"`
-	Worker  bloomworker.Config  `yaml:"worker"`
+	Planner planner.Config `yaml:"planner"`
+	Builder builder.Config `yaml:"builder"`
 }
 
 // RegisterFlags registers flags for the bloom building configuration.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.Enabled, "bloom-build.enabled", false, "Flag to enable or disable the usage of the bloom-build-planner and bloom-builder components.")
+	f.BoolVar(&cfg.Enabled, "bloom-build.enabled", false, "Flag to enable or disable the usage of the bloom-planner and bloom-builder components.")
 	cfg.Planner.RegisterFlagsWithPrefix("bloom-build.planner", f)
-	cfg.Worker.RegisterFlagsWithPrefix("bloom-build.worker", f)
+	cfg.Builder.RegisterFlagsWithPrefix("bloom-build.builder", f)
 }
 
 func (cfg *Config) Validate() error {
@@ -32,8 +31,8 @@ func (cfg *Config) Validate() error {
 		return fmt.Errorf("invalid bloom planner configuration: %w", err)
 	}
 
-	if err := cfg.Worker.Validate(); err != nil {
-		return fmt.Errorf("invalid bloom worker configuration: %w", err)
+	if err := cfg.Builder.Validate(); err != nil {
+		return fmt.Errorf("invalid bloom builder configuration: %w", err)
 	}
 
 	return nil

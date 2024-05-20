@@ -1,4 +1,4 @@
-package bloomworker
+package planner
 
 import "flag"
 

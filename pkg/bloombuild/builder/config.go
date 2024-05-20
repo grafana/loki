@@ -1,8 +1,8 @@
-package bloomplanner
+package builder
 
 import "flag"
 
-// Config configures the bloom-planner component.
+// Config configures the bloom-builder component.
 type Config struct {
 	// TODO: Add config
 }

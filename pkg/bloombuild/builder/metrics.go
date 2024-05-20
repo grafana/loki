@@ -1,4 +1,4 @@
-package bloomplanner
+package builder
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
@@ -7,7 +7,7 @@ import (
 
 const (
 	metricsNamespace = "loki"
-	metricsSubsystem = "bloomplanner"
+	metricsSubsystem = "bloombuilder"
 )
 
 type Metrics struct {
@@ -20,7 +20,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "running",
-			Help:      "Value will be 1 if bloom build planner is currently running on this instance",
+			Help:      "Value will be 1 if the bloom builder is currently running on this instance",
 		}),
 	}
 }

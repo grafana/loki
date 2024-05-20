@@ -327,14 +327,14 @@ pattern_ingester:
 [bloom_compactor: <bloom_compactor>]
 
 bloom_build:
-  # Flag to enable or disable the usage of the bloom-build-planner and
-  # bloom-builder components.
+  # Flag to enable or disable the usage of the bloom-planner and bloom-builder
+  # components.
   # CLI flag: -bloom-build.enabled
   [enabled: <boolean> | default = false]
 
   planner:
 
-  worker:
+  builder:
 
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
 # server, responsible for serving queries for filtering chunks based on filter
