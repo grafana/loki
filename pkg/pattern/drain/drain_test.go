@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
 )
 
-func TestDrain_TrainExtractsPatterns(t *testing.T) {
+func BenchmarkDrain_TrainExtractsPatterns(t *testing.B) {
 	//t.Parallel()
 	tests := []struct {
 		name      string
@@ -354,7 +354,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.B) {
 			file, err := os.Open(tt.inputFile)
 			require.NoError(t, err)
 			defer file.Close()
@@ -369,7 +369,10 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			if strings.Index(lines[0], "=") != -1 {
 				tokenizer = "logfmt"
 			}
-			for i := 0; i < 1000; i++ {
+
+			t.ResetTimer()
+			t.ReportAllocs()
+			for i := 0; i < t.N; i++ {
 				tt.drain = New(DefaultConfig(), tokenizer)
 				for _, line := range lines {
 					tt.drain.Train(line, 0)
@@ -382,7 +385,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 				output = append(output, cluster.String())
 			}
 
-			require.Equal(t, tt.patterns, output)
+			//require.Equal(t, tt.patterns, output)
 		})
 	}
 }

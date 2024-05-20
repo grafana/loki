@@ -3,6 +3,7 @@ package drain
 import (
 	"bytes"
 	"strings"
+	"unsafe"
 
 	"github.com/go-logfmt/logfmt"
 
@@ -10,7 +11,7 @@ import (
 )
 
 type Tokenizer interface {
-	Marshal(string) []string
+	Marshal([]byte) [][]byte
 	Unmarshal([]string) string
 }
 
@@ -19,13 +20,13 @@ type Tokenizer interface {
 // It replaces as much as possible with constants before passing to Drain (e.g. <NUM>, <DURATION>, <TIMESTAMP>, <HEX>)
 type adaptiveLogsTokenizer struct{}
 
-func (a *adaptiveLogsTokenizer) Marshal(in string) []string {
-	preprocessedTokens := tokenization.PreprocessAndTokenizeWithOpts([]byte(in), tokenization.TokenizerOpts{
+func (a *adaptiveLogsTokenizer) Marshal(in []byte) [][]byte {
+	_ = tokenization.PreprocessAndTokenizeWithOpts(in, tokenization.TokenizerOpts{
 		UseSingleTokenForQuotes:   true,
 		IncludeDelimitersInTokens: true,
 		PreprocessNumbers:         false,
 	})
-	return preprocessedTokens
+	return [][]byte{}
 }
 
 func (a *adaptiveLogsTokenizer) Unmarshal(tokens []string) string {
@@ -76,42 +77,66 @@ func (a *spaceOrCommaTokenizer) Unmarshal(tokens []string) string {
 
 type logfmtTokenizer struct {
 	tokenizeInsideQuotes bool
+	bytesReader          *bytes.Reader
+	bufs                 [][]byte
 }
 
-func multiBytesToStringSlice(in [][]byte) []string {
-	retVal := make([]string, len(in))
-	for i, byteSlice := range in {
-		retVal[i] = string(byteSlice)
+func NewLogFmtTokenizer(tokenizeInsideQuotes bool) *logfmtTokenizer {
+	return &logfmtTokenizer{
+		tokenizeInsideQuotes: tokenizeInsideQuotes,
+		bytesReader:          bytes.NewReader(nil),
+		bufs:                 make([][]byte, 0, 128),
 	}
-	return retVal
+
 }
 
-func (a *logfmtTokenizer) Marshal(in string) []string {
-	tokens := make([]string, 0, len(in)/4) // Guesstimate of at least 4 characters per token
-	processed := tokenization.Preprocess([]byte(in), false, false)
-	decoder := logfmt.NewDecoder(bytes.NewReader(processed))
+func unsafeBytesToStrings(in [][]byte) []string {
+	return unsafe.Slice((*string)(unsafe.Pointer(&in[0])), len(in))
+}
+
+func safeBytesToStrings(in [][]byte) []string {
+	output := make([]string, len(in))
+	for i, byteSlice := range in {
+		output[i] = string(byteSlice)
+	}
+	return output
+}
+
+// Result is only valid until the next call to marshal?
+func (a *logfmtTokenizer) Marshal(in []byte) [][]byte {
+	tokens := a.bufs                                       //make([][]byte, 0, len(in)/4)                 // Guesstimate of at least 4 characters per token
+	processed := tokenization.Preprocess(in, false, false) // Returns a new byte buffer after tokenisation
+	a.bytesReader.Reset(processed)
+	decoder := logfmt.NewDecoder(a.bytesReader)
+
 	for decoder.ScanRecord() {
 		for decoder.ScanKeyval() {
-			if decoder.Err() != nil {
-				print("err", decoder.Err())
-			}
 			k := decoder.Key()
 			v := decoder.Value()
-			if v != nil {
-				k = append(k, byte('='))
-			}
-			tokens = append(tokens, string(k))
 			if v == nil {
+				tokens = append(tokens, k)
 				continue
 			}
-			if a.tokenizeInsideQuotes {
-				tokens = append(tokens, multiBytesToStringSlice(bytes.Split(v, []byte(" ")))...)
+			tokens = append(tokens, append(k, byte('=')))
+
+			spaces := bytes.Count(v, []byte(" "))
+			if a.tokenizeInsideQuotes && spaces > 0 {
+				/*				start := 0
+								for i := 0; i < spaces; i++ {
+									next := bytes.In(v[start:], ' ')
+									tokens = append(tokens, v[start:start+next])
+									start += next + 1
+								}
+								tokens = append(tokens, v[start:])*/
+				tokens = append(tokens, bytes.Split(v, []byte(" "))...)
 			} else {
-				tokens = append(tokens, string(v))
+				tokens = append(tokens, v)
 			}
 		}
 	}
 
+	// Translate the [][]byte to []string without reallocating
+	// This is safe because we only treat this as a byte slice within this function
 	return tokens
 }
 
