@@ -27,7 +27,6 @@ import (
 	"github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
-	"github.com/grafana/loki/v3/pkg/bloombuild/bloomplanner"
 	gerrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -39,6 +38,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/types"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/bloombuild/bloomplanner"
+	"github.com/grafana/loki/v3/pkg/bloombuild/bloomworker"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
@@ -124,6 +125,7 @@ const (
 	BloomCompactor           string = "bloom-compactor"
 	BloomCompactorRing       string = "bloom-compactor-ring"
 	BloomBuildPlanner        string = "bloom-build-planner"
+	BloomBuildWorker         string = "bloom-build-worker"
 	BloomStore               string = "bloom-store"
 	All                      string = "all"
 	Read                     string = "read"
@@ -805,7 +807,7 @@ func (t *Loki) updateConfigForShipperStore() {
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeWriteOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 
-	case t.Cfg.isTarget(Querier), t.Cfg.isTarget(Ruler), t.Cfg.isTarget(Read), t.Cfg.isTarget(Backend), t.isModuleActive(IndexGateway), t.Cfg.isTarget(BloomBuildPlanner):
+	case t.Cfg.isTarget(Querier), t.Cfg.isTarget(Ruler), t.Cfg.isTarget(Read), t.Cfg.isTarget(Backend), t.isModuleActive(IndexGateway), t.Cfg.isTarget(BloomBuildPlanner), t.Cfg.isTarget(BloomBuildWorker):
 		// We do not want query to do any updates to index
 		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
@@ -1564,6 +1566,20 @@ func (t *Loki) initBloomBuildPlanner() (services.Service, error) {
 
 	return bloomplanner.New(
 		t.Cfg.BloomBuild.Planner,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+}
+
+func (t *Loki) initBloomBuildWorker() (services.Service, error) {
+	if !t.Cfg.BloomBuild.Enabled {
+		return nil, nil
+	}
+
+	logger := log.With(util_log.Logger, "component", "bloom-build-worker")
+
+	return bloomworker.New(
+		t.Cfg.BloomBuild.Worker,
 		logger,
 		prometheus.DefaultRegisterer,
 	)

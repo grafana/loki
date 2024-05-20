@@ -1,4 +1,4 @@
-package bloomplanner
+package bloomworker
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
 
-type Planner struct {
+type Worker struct {
 	services.Service
 
 	cfg     Config
@@ -22,29 +22,29 @@ func New(
 	cfg Config,
 	logger log.Logger,
 	r prometheus.Registerer,
-) (*Planner, error) {
-	utillog.WarnExperimentalUse("Bloom Build Planner", logger)
+) (*Worker, error) {
+	utillog.WarnExperimentalUse("Bloom Builder", logger)
 
-	p := &Planner{
+	w := &Worker{
 		cfg:     cfg,
 		metrics: NewMetrics(r),
 		logger:  logger,
 	}
 
-	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
-	return p, nil
+	w.Service = services.NewBasicService(w.starting, w.running, w.stopping)
+	return w, nil
 }
 
-func (p *Planner) starting(_ context.Context) (err error) {
-	p.metrics.running.Set(1)
+func (w *Worker) starting(_ context.Context) (err error) {
+	w.metrics.running.Set(1)
 	return err
 }
 
-func (p *Planner) stopping(_ error) error {
-	p.metrics.running.Set(0)
+func (w *Worker) stopping(_ error) error {
+	w.metrics.running.Set(0)
 	return nil
 }
 
-func (p *Planner) running(_ context.Context) error {
+func (w *Worker) running(_ context.Context) error {
 	return nil
 }

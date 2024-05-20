@@ -653,6 +653,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(BloomCompactor, t.initBloomCompactor)
 	mm.RegisterModule(BloomCompactorRing, t.initBloomCompactorRing, modules.UserInvisibleModule)
 	mm.RegisterModule(BloomBuildPlanner, t.initBloomBuildPlanner)
+	mm.RegisterModule(BloomBuildWorker, t.initBloomBuildWorker)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
@@ -691,6 +692,7 @@ func (t *Loki) setupModuleManager() error {
 		BloomGateway:             {Server, BloomStore, Analytics},
 		BloomCompactor:           {Server, BloomStore, BloomCompactorRing, Analytics, Store},
 		BloomBuildPlanner:        {Server, BloomStore, Analytics, Store},
+		BloomBuildWorker:         {Server, BloomStore, Analytics, Store},
 		PatternIngester:          {Server, MemberlistKV, Analytics},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
 		IngesterQuerier:          {Ring},
