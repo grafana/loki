@@ -2,6 +2,7 @@ package planner
 
 import (
 	"fmt"
+
 	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
