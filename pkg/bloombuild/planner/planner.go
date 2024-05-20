@@ -99,7 +99,7 @@ func (p *Planner) running(ctx context.Context) error {
 func (p *Planner) runOne(ctx context.Context) error {
 	var (
 		start  = time.Now()
-		status = statusSuccess
+		status = statusFailure
 	)
 	defer func() {
 		p.metrics.buildCompleted.WithLabelValues(status).Inc()
@@ -114,19 +114,37 @@ func (p *Planner) runOne(ctx context.Context) error {
 
 	work, err := p.loadWork(ctx, tables)
 	if err != nil {
-		status = statusFailure
 		level.Error(p.logger).Log("msg", "error loading work", "err", err)
 		return fmt.Errorf("error loading work: %w", err)
 	}
 
+	// TODO: Enqueue instead of buffering here
+	//       This is just a placeholder for now
+	var tasks []Task
+
 	for _, w := range work {
-		err := p.findGapsForBounds(ctx, w.tenant, w.table, w.ownershipRange)
+		gaps, err := p.findGapsForBounds(ctx, w.tenant, w.table, w.ownershipRange)
 		if err != nil {
 			return fmt.Errorf("error building bloom for tenant (%s) in table (%s) for bounds (%s): %w", w.tenant, w.table, w.ownershipRange, err)
 		}
+
+		for _, gap := range gaps {
+			tasks = append(tasks, Task{
+				table:           w.table.Addr(),
+				tenant:          w.tenant,
+				OwnershipBounds: w.ownershipRange,
+				tsdb:            gap.tsdb,
+				gaps:            gap.gaps,
+			})
+		}
 	}
 
-	level.Info(p.logger).Log("msg", "bloom build iteration completed", "duration", time.Since(start).Seconds())
+	status = statusSuccess
+	level.Info(p.logger).Log(
+		"msg", "bloom build iteration completed",
+		"duration", time.Since(start).Seconds(),
+		"tasks", len(tasks),
+	)
 	return nil
 }
 
@@ -225,14 +243,8 @@ func (p *Planner) findGapsForBounds(
 	tenant string,
 	table config.DayTable,
 	ownershipRange v1.FingerprintBounds,
-) error {
+) ([]blockPlan, error) {
 	logger := log.With(p.logger, "org_id", tenant, "table", table.Addr(), "ownership", ownershipRange.String())
-
-	client, err := p.bloomStore.Client(table.ModelTime())
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to get client", "err", err)
-		return fmt.Errorf("failed to get client: %w", err)
-	}
 
 	// Fetch source metas to be used in both build and cleanup of out-of-date metas+blooms
 	metas, err := p.bloomStore.FetchMetas(
@@ -245,7 +257,7 @@ func (p *Planner) findGapsForBounds(
 	)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to get metas", "err", err)
-		return fmt.Errorf("failed to get metas: %w", err)
+		return nil, fmt.Errorf("failed to get metas: %w", err)
 	}
 
 	level.Debug(logger).Log("msg", "found relevant metas", "metas", len(metas))
@@ -253,15 +265,10 @@ func (p *Planner) findGapsForBounds(
 	// Find gaps in the TSDBs for this tenant/table
 	gaps, err := p.findOutdatedGaps(ctx, tenant, table, ownershipRange, metas, logger)
 	if err != nil {
-		return fmt.Errorf("failed to find outdated gaps: %w", err)
+		return nil, fmt.Errorf("failed to find outdated gaps: %w", err)
 	}
 
-	return nil
-}
-
-type gapWithBlocks struct {
-	bounds v1.FingerprintBounds
-	blocks []bloomshipper.BlockRef
+	return gaps, nil
 }
 
 // blockPlan is a plan for all the work needed to build a meta.json
@@ -275,7 +282,7 @@ type gapWithBlocks struct {
 //     This is a performance optimization to avoid expensive re-reindexing
 type blockPlan struct {
 	tsdb tsdb.SingleTenantTSDBIdentifier
-	gaps []gapWithBlocks
+	gaps []GapWithBlocks
 }
 
 func (p *Planner) findOutdatedGaps(
@@ -369,11 +376,11 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan
 	for _, idx := range tsdbs {
 		plan := blockPlan{
 			tsdb: idx.tsdb,
-			gaps: make([]gapWithBlocks, 0, len(idx.gaps)),
+			gaps: make([]GapWithBlocks, 0, len(idx.gaps)),
 		}
 
 		for _, gap := range idx.gaps {
-			planGap := gapWithBlocks{
+			planGap := GapWithBlocks{
 				bounds: gap,
 			}
 
