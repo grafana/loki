@@ -3,7 +3,7 @@ package planner
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/v3/pkg/storage"
+	"sort"
 	"time"
 
 	"github.com/go-kit/log"
@@ -12,8 +12,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -24,7 +27,8 @@ type Planner struct {
 	limits    Limits
 	schemaCfg config.SchemaConfig
 
-	tsdbStore TSDBStore
+	tsdbStore  TSDBStore
+	bloomStore bloomshipper.Store
 
 	metrics *Metrics
 	logger  log.Logger
@@ -35,6 +39,7 @@ func New(
 	schemaCfg config.SchemaConfig,
 	storeCfg storage.Config,
 	storageMetrics storage.ClientMetrics,
+	bloomStore bloomshipper.Store,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Planner, error) {
@@ -46,11 +51,12 @@ func New(
 	}
 
 	p := &Planner{
-		cfg:       cfg,
-		schemaCfg: schemaCfg,
-		tsdbStore: tsdbStore,
-		metrics:   NewMetrics(r),
-		logger:    logger,
+		cfg:        cfg,
+		schemaCfg:  schemaCfg,
+		tsdbStore:  tsdbStore,
+		bloomStore: bloomStore,
+		metrics:    NewMetrics(r),
+		logger:     logger,
 	}
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
@@ -113,7 +119,12 @@ func (p *Planner) runOne(ctx context.Context) error {
 		return fmt.Errorf("error loading work: %w", err)
 	}
 
-	_ = work
+	for _, w := range work {
+		err := p.findGapsForBounds(ctx, w.tenant, w.table, w.ownershipRange)
+		if err != nil {
+			return fmt.Errorf("error building bloom for tenant (%s) in table (%s) for bounds (%s): %w", w.tenant, w.table, w.ownershipRange, err)
+		}
+	}
 
 	level.Info(p.logger).Log("msg", "bloom build iteration completed", "duration", time.Since(start).Seconds())
 	return nil
@@ -199,4 +210,224 @@ func (p *Planner) tenants(ctx context.Context, table config.DayTable) (*v1.Slice
 	}
 
 	return v1.NewSliceIter(tenants), nil
+}
+
+/*
+Planning works as follows, split across many functions for clarity:
+ 1. Fetch all meta.jsons for the given tenant and table which overlap the ownership range of this compactor.
+ 2. Load current TSDBs for this tenant/table.
+ 3. For each live TSDB (there should be only 1, but this works with multiple), find any gaps
+    (fingerprint ranges) which are not up-to-date, determined by checking other meta.json files and comparing
+    the TSDBs they were generated from as well as their ownership ranges.
+*/
+func (p *Planner) findGapsForBounds(
+	ctx context.Context,
+	tenant string,
+	table config.DayTable,
+	ownershipRange v1.FingerprintBounds,
+) error {
+	logger := log.With(p.logger, "org_id", tenant, "table", table.Addr(), "ownership", ownershipRange.String())
+
+	client, err := p.bloomStore.Client(table.ModelTime())
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to get client", "err", err)
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Fetch source metas to be used in both build and cleanup of out-of-date metas+blooms
+	metas, err := p.bloomStore.FetchMetas(
+		ctx,
+		bloomshipper.MetaSearchParams{
+			TenantID: tenant,
+			Interval: bloomshipper.NewInterval(table.Bounds()),
+			Keyspace: ownershipRange,
+		},
+	)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to get metas", "err", err)
+		return fmt.Errorf("failed to get metas: %w", err)
+	}
+
+	level.Debug(logger).Log("msg", "found relevant metas", "metas", len(metas))
+
+	// Find gaps in the TSDBs for this tenant/table
+	gaps, err := p.findOutdatedGaps(ctx, tenant, table, ownershipRange, metas, logger)
+	if err != nil {
+		return fmt.Errorf("failed to find outdated gaps: %w", err)
+	}
+
+	return nil
+}
+
+type gapWithBlocks struct {
+	bounds v1.FingerprintBounds
+	blocks []bloomshipper.BlockRef
+}
+
+// blockPlan is a plan for all the work needed to build a meta.json
+// It includes:
+//   - the tsdb (source of truth) which contains all the series+chunks
+//     we need to ensure are indexed in bloom blocks
+//   - a list of gaps that are out of date and need to be checked+built
+//   - within each gap, a list of block refs which overlap the gap are included
+//     so we can use them to accelerate bloom generation. They likely contain many
+//     of the same chunks we need to ensure are indexed, just from previous tsdb iterations.
+//     This is a performance optimization to avoid expensive re-reindexing
+type blockPlan struct {
+	tsdb tsdb.SingleTenantTSDBIdentifier
+	gaps []gapWithBlocks
+}
+
+func (p *Planner) findOutdatedGaps(
+	ctx context.Context,
+	tenant string,
+	table config.DayTable,
+	ownershipRange v1.FingerprintBounds,
+	metas []bloomshipper.Meta,
+	logger log.Logger,
+) ([]blockPlan, error) {
+	// Resolve TSDBs
+	tsdbs, err := p.tsdbStore.ResolveTSDBs(ctx, table, tenant)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
+		return nil, fmt.Errorf("failed to resolve tsdbs: %w", err)
+	}
+
+	if len(tsdbs) == 0 {
+		return nil, nil
+	}
+
+	// Determine which TSDBs have gaps in the ownership range and need to
+	// be processed.
+	tsdbsWithGaps, err := gapsBetweenTSDBsAndMetas(ownershipRange, tsdbs, metas)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to find gaps", "err", err)
+		return nil, fmt.Errorf("failed to find gaps: %w", err)
+	}
+
+	if len(tsdbsWithGaps) == 0 {
+		level.Debug(logger).Log("msg", "blooms exist for all tsdbs")
+		return nil, nil
+	}
+
+	work, err := blockPlansForGaps(tsdbsWithGaps, metas)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to create plan", "err", err)
+		return nil, fmt.Errorf("failed to create plan: %w", err)
+	}
+
+	return work, nil
+}
+
+// Used to signal the gaps that need to be populated for a tsdb
+type tsdbGaps struct {
+	tsdb tsdb.SingleTenantTSDBIdentifier
+	gaps []v1.FingerprintBounds
+}
+
+// gapsBetweenTSDBsAndMetas returns if the metas are up-to-date with the TSDBs. This is determined by asserting
+// that for each TSDB, there are metas covering the entire ownership range which were generated from that specific TSDB.
+func gapsBetweenTSDBsAndMetas(
+	ownershipRange v1.FingerprintBounds,
+	tsdbs []tsdb.SingleTenantTSDBIdentifier,
+	metas []bloomshipper.Meta,
+) (res []tsdbGaps, err error) {
+	for _, db := range tsdbs {
+		id := db.Name()
+
+		relevantMetas := make([]v1.FingerprintBounds, 0, len(metas))
+		for _, meta := range metas {
+			for _, s := range meta.Sources {
+				if s.Name() == id {
+					relevantMetas = append(relevantMetas, meta.Bounds)
+				}
+			}
+		}
+
+		gaps, err := FindGapsInFingerprintBounds(ownershipRange, relevantMetas)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(gaps) > 0 {
+			res = append(res, tsdbGaps{
+				tsdb: db,
+				gaps: gaps,
+			})
+		}
+	}
+
+	return res, err
+}
+
+// blockPlansForGaps groups tsdb gaps we wish to fill with overlapping but out of date blocks.
+// This allows us to expedite bloom generation by using existing blocks to fill in the gaps
+// since many will contain the same chunks.
+func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan, error) {
+	plans := make([]blockPlan, 0, len(tsdbs))
+
+	for _, idx := range tsdbs {
+		plan := blockPlan{
+			tsdb: idx.tsdb,
+			gaps: make([]gapWithBlocks, 0, len(idx.gaps)),
+		}
+
+		for _, gap := range idx.gaps {
+			planGap := gapWithBlocks{
+				bounds: gap,
+			}
+
+			for _, meta := range metas {
+
+				if meta.Bounds.Intersection(gap) == nil {
+					// this meta doesn't overlap the gap, skip
+					continue
+				}
+
+				for _, block := range meta.Blocks {
+					if block.Bounds.Intersection(gap) == nil {
+						// this block doesn't overlap the gap, skip
+						continue
+					}
+					// this block overlaps the gap, add it to the plan
+					// for this gap
+					planGap.blocks = append(planGap.blocks, block)
+				}
+			}
+
+			// ensure we sort blocks so deduping iterator works as expected
+			sort.Slice(planGap.blocks, func(i, j int) bool {
+				return planGap.blocks[i].Bounds.Less(planGap.blocks[j].Bounds)
+			})
+
+			peekingBlocks := v1.NewPeekingIter[bloomshipper.BlockRef](
+				v1.NewSliceIter[bloomshipper.BlockRef](
+					planGap.blocks,
+				),
+			)
+			// dedupe blocks which could be in multiple metas
+			itr := v1.NewDedupingIter[bloomshipper.BlockRef, bloomshipper.BlockRef](
+				func(a, b bloomshipper.BlockRef) bool {
+					return a == b
+				},
+				v1.Identity[bloomshipper.BlockRef],
+				func(a, _ bloomshipper.BlockRef) bloomshipper.BlockRef {
+					return a
+				},
+				peekingBlocks,
+			)
+
+			deduped, err := v1.Collect[bloomshipper.BlockRef](itr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to dedupe blocks: %w", err)
+			}
+			planGap.blocks = deduped
+
+			plan.gaps = append(plan.gaps, planGap)
+		}
+
+		plans = append(plans, plan)
+	}
+
+	return plans, nil
 }

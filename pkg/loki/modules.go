@@ -1566,6 +1566,10 @@ func (t *Loki) initBloomPlanner() (services.Service, error) {
 
 	return planner.New(
 		t.Cfg.BloomBuild.Planner,
+		t.Cfg.SchemaConfig,
+		t.Cfg.StorageConfig,
+		t.ClientMetrics,
+		t.BloomStore,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
