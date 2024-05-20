@@ -8,16 +8,17 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/grafana/dskit/test"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
 type mockStore int
@@ -36,7 +37,7 @@ func (m mockStore) LabelValuesForMetricName(_ context.Context, _ string, _, _ mo
 
 func (m mockStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
 
-func (m mockStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (m mockStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate, _ *logproto.ChunkRefGroup) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
@@ -58,6 +59,14 @@ func (m mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*lab
 
 func (m mockStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
+}
+
+func (m mockStore) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {
+	return nil, nil
+}
+
+func (m mockStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
+	return nil, false
 }
 
 func (m mockStore) Stop() {}
@@ -344,4 +353,78 @@ func TestVolume(t *testing.T) {
 		require.Nil(t, volumes)
 	})
 
+}
+
+func TestFilterForTimeRange(t *testing.T) {
+	mkRefs := func(from, through model.Time) (res []*logproto.ChunkRef) {
+		for i := from; i <= through; i++ {
+			res = append(res, &logproto.ChunkRef{
+				From:    i,
+				Through: i + 1,
+			})
+		}
+		return res
+	}
+
+	mkChks := func(from, through model.Time) (res []chunk.Chunk) {
+		for _, ref := range mkRefs(from, through) {
+			res = append(res, chunk.Chunk{ChunkRef: *ref})
+		}
+		return res
+	}
+
+	for _, tc := range []struct {
+		desc          string
+		input         []*logproto.ChunkRef
+		from, through model.Time
+		exp           []chunk.Chunk
+	}{
+		{
+			desc:    "no refs",
+			input:   nil,
+			from:    0,
+			through: 10,
+			exp:     []chunk.Chunk{},
+		},
+		{
+			desc:    "no refs in range",
+			input:   mkRefs(0, 5),
+			from:    10,
+			through: 15,
+			exp:     []chunk.Chunk{},
+		},
+		{
+			desc:    "all refs in range",
+			input:   mkRefs(0, 5),
+			from:    0,
+			through: 5,
+			exp:     mkChks(0, 5),
+		},
+		{
+			desc:    "some refs in range",
+			input:   mkRefs(0, 5),
+			from:    2,
+			through: 3,
+			exp:     mkChks(2, 3),
+		},
+		{
+			desc:    "left overlap",
+			input:   mkRefs(0, 5),
+			from:    3,
+			through: 7,
+			exp:     mkChks(3, 5),
+		},
+		{
+			desc:    "right overlap",
+			input:   mkRefs(5, 10),
+			from:    3,
+			through: 7,
+			exp:     mkChks(5, 7),
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			got := filterForTimeRange(tc.input, tc.from, tc.through)
+			require.Equal(t, tc.exp, got)
+		})
+	}
 }

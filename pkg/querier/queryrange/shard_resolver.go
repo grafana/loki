@@ -3,11 +3,11 @@ package queryrange
 import (
 	"context"
 	"fmt"
-	math "math"
 	strings "strings"
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/efficientgo/core/errors"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
@@ -15,15 +15,17 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util/spanlogger"
-	"github.com/grafana/loki/pkg/util/validation"
-	valid "github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	logqlstats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 func shardResolverForConf(
@@ -34,14 +36,15 @@ func shardResolverForConf(
 	maxParallelism int,
 	maxShards int,
 	r queryrangebase.Request,
-	handler queryrangebase.Handler,
+	statsHandler, next queryrangebase.Handler,
 	limits Limits,
 ) (logql.ShardResolver, bool) {
-	if conf.IndexType == config.TSDBType {
+	if conf.IndexType == types.TSDBType {
 		return &dynamicShardResolver{
 			ctx:             ctx,
 			logger:          logger,
-			handler:         handler,
+			statsHandler:    statsHandler,
+			next:            next,
 			limits:          limits,
 			from:            model.Time(r.GetStart().UnixMilli()),
 			through:         model.Time(r.GetEnd().UnixMilli()),
@@ -57,10 +60,13 @@ func shardResolverForConf(
 }
 
 type dynamicShardResolver struct {
-	ctx     context.Context
-	handler queryrangebase.Handler
-	logger  log.Logger
-	limits  Limits
+	ctx context.Context
+	// TODO(owen-d): shouldn't have to fork handlers here -- one should just transparently handle the right logic
+	// depending on the underlying type?
+	statsHandler queryrangebase.Handler // index stats handler (hooked up to results cache, etc)
+	next         queryrangebase.Handler // next handler in the chain (used for non-stats reqs)
+	logger       log.Logger
+	limits       Limits
 
 	from, through   model.Time
 	maxParallelism  int
@@ -153,7 +159,7 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 		grps = append(grps, syntax.MatcherRange{})
 	}
 
-	results, err := getStatsForMatchers(ctx, log, r.handler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
+	results, err := getStatsForMatchers(ctx, log, r.statsHandler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
 	if err != nil {
 		return stats.Stats{}, err
 	}
@@ -191,7 +197,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 	}
 
 	maxBytesPerShard := validation.SmallestPositiveIntPerTenant(tenantIDs, r.limits.TSDBMaxBytesPerShard)
-	factor := guessShardFactor(combined, maxBytesPerShard, r.maxShards)
+	factor := sharding.GuessShardFactor(combined.Bytes, uint64(maxBytesPerShard), r.maxShards)
 
 	var bytesPerShard = combined.Bytes
 	if factor > 0 {
@@ -210,41 +216,74 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 	return factor, bytesPerShard, nil
 }
 
-// Since we shard by powers of two and we increase shard factor
-// once each shard surpasses maxBytesPerShard, if the shard factor
-// is at least two, the range of data per shard is (maxBytesPerShard/2, maxBytesPerShard]
-// For instance, for a maxBytesPerShard of 500MB and a query touching 1000MB, we split into two shards of 500MB.
-// If there are 1004MB, we split into four shards of 251MB.
-func guessShardFactor(stats stats.Stats, maxBytesPerShard, maxShards int) int {
-	// If maxBytesPerShard is 0, we use the default value
-	// to avoid division by zero
-	if maxBytesPerShard < 1 {
-		maxBytesPerShard = valid.DefaultTSDBMaxBytesPerShard
+func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerShard uint64) (
+	[]logproto.Shard,
+	[]logproto.ChunkRefGroup,
+	error,
+) {
+	log := spanlogger.FromContext(r.ctx)
+
+	adjustedFrom := r.from
+
+	// NB(owen-d): there should only ever be 1 matcher group passed
+	// to this call as we call it separately for different legs
+	// of binary ops, but I'm putting in the loop for completion
+	grps, err := syntax.MatcherGroups(expr)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	minShards := float64(stats.Bytes) / float64(maxBytesPerShard)
+	for _, grp := range grps {
+		diff := grp.Interval + grp.Offset
 
-	// round up to nearest power of 2
-	power := math.Ceil(math.Log2(minShards))
+		// For instant queries, when start == end,
+		// we have a default lookback which we add here
+		if grp.Interval == 0 {
+			diff = diff + r.defaultLookback
+		}
 
-	// Since x^0 == 1 and we only support factors of 2
-	// reset this edge case manually
-	factor := int(math.Pow(2, power))
-	if maxShards > 0 {
-		factor = min(factor, maxShards)
+		// use the oldest adjustedFrom
+		if r.from.Add(-diff).Before(adjustedFrom) {
+			adjustedFrom = r.from.Add(-diff)
+		}
 	}
 
-	// shortcut: no need to run any sharding logic when factor=1
-	// as it's the same as no sharding
-	if factor == 1 {
-		factor = 0
-	}
-	return factor
-}
+	exprStr := expr.String()
+	// try to get shards for the given expression
+	// if it fails, fallback to linearshards based on stats
+	resp, err := r.next.Do(r.ctx, &logproto.ShardsRequest{
+		From:                adjustedFrom,
+		Through:             r.through,
+		Query:               expr.String(),
+		TargetBytesPerShard: targetBytesPerShard,
+	})
 
-func min(a, b int) int {
-	if a < b {
-		return a
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to get shards for expression, got %T: %+v", err, err)
 	}
-	return b
+
+	casted, ok := resp.(*ShardsResponse)
+	if !ok {
+		return nil, nil, fmt.Errorf("expected *ShardsResponse while querying index, got %T", resp)
+	}
+
+	// accumulate stats
+	logqlstats.JoinResults(r.ctx, casted.Response.Statistics)
+
+	var refs int
+	for _, x := range casted.Response.ChunkGroups {
+		refs += len(x.Refs)
+	}
+
+	level.Debug(log).Log(
+		"msg", "retrieved sharding ranges",
+		"target_bytes_per_shard", targetBytesPerShard,
+		"shards", len(casted.Response.Shards),
+		"query", exprStr,
+		"total_chunks", casted.Response.Statistics.Index.TotalChunks,
+		"post_filter_chunks", casted.Response.Statistics.Index.PostFilterChunks,
+		"precomputed_refs", refs,
+	)
+
+	return casted.Response.Shards, casted.Response.ChunkGroups, err
 }

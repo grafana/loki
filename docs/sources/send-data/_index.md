@@ -59,6 +59,8 @@ These third-party clients also enable sending logs to Loki:
 - [promtail-client](https://github.com/afiskon/promtail-client) (Go)
 - [push-to-loki.py](https://github.com/sleleko/devops-kb/blob/master/python/push-to-loki.py) (Python 3)
 - [python-logging-loki](https://pypi.org/project/python-logging-loki/) (Python 3)
+- [nextlog](https://pypi.org/project/nextlog/) (Python 3)
+- [Rails Loki Exporter](https://github.com/planninghow/rails-loki-exporter) (Rails)
 - [Serilog-Sinks-Loki](https://github.com/JosephWoodward/Serilog-Sinks-Loki) (C#)
 - [Vector Loki Sink](https://vector.dev/docs/reference/configuration/sinks/loki/)
 - [winston-loki](https://github.com/JaniAnttonen/winston-loki) (JS)

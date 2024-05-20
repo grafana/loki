@@ -6,7 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"golang.org/x/exp/slices"
+
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
@@ -18,15 +22,15 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/codes"
 
-	"github.com/grafana/loki/pkg/distributor/clientpool"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type responseFromIngesters struct {
@@ -39,23 +43,25 @@ type IngesterQuerier struct {
 	ring            ring.ReadRing
 	pool            *ring_client.Pool
 	extraQueryDelay time.Duration
+	logger          log.Logger
 }
 
-func NewIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, metricsNamespace string) (*IngesterQuerier, error) {
+func NewIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, metricsNamespace string, logger log.Logger) (*IngesterQuerier, error) {
 	factory := func(addr string) (ring_client.PoolClient, error) {
 		return client.New(clientCfg, addr)
 	}
 
-	return newIngesterQuerier(clientCfg, ring, extraQueryDelay, ring_client.PoolAddrFunc(factory), metricsNamespace)
+	return newIngesterQuerier(clientCfg, ring, extraQueryDelay, ring_client.PoolAddrFunc(factory), metricsNamespace, logger)
 }
 
 // newIngesterQuerier creates a new IngesterQuerier and allows to pass a custom ingester client factory
 // used for testing purposes
-func newIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, clientFactory ring_client.PoolFactory, metricsNamespace string) (*IngesterQuerier, error) {
+func newIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, clientFactory ring_client.PoolFactory, metricsNamespace string, logger log.Logger) (*IngesterQuerier, error) {
 	iq := IngesterQuerier{
 		ring:            ring,
 		pool:            clientpool.NewPool("ingester", clientCfg.PoolConfig, ring, clientFactory, util_log.Logger, metricsNamespace),
 		extraQueryDelay: extraQueryDelay,
+		logger:          logger,
 	}
 
 	err := services.StartAndAwaitRunning(context.Background(), iq.pool)
@@ -267,7 +273,7 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 		return nil, err
 	}
 
-	counts := make([]uint32, len(responses))
+	counts := make([]uint32, 0, len(responses))
 
 	for _, resp := range responses {
 		counts = append(counts, resp.response.(uint32))
@@ -354,6 +360,54 @@ func (q *IngesterQuerier) Volume(ctx context.Context, _ string, from, through mo
 
 	merged := seriesvolume.Merge(casted, limit)
 	return merged, nil
+}
+
+func (q *IngesterQuerier) DetectedLabel(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
+	ingesterResponses, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
+		return client.GetDetectedLabels(ctx, req)
+	})
+
+	if err != nil {
+		level.Error(q.logger).Log("msg", "error getting detected labels", "err", err)
+		return nil, err
+	}
+
+	labelMap := make(map[string][]string)
+	for _, resp := range ingesterResponses {
+		thisIngester, ok := resp.response.(*logproto.LabelToValuesResponse)
+		if !ok {
+			level.Warn(q.logger).Log("msg", "Cannot convert response to LabelToValuesResponse in detectedlabels",
+				"response", resp)
+		}
+
+		if thisIngester == nil {
+			continue
+		}
+
+		for label, thisIngesterValues := range thisIngester.Labels {
+			var combinedValues []string
+			allIngesterValues, isLabelPresent := labelMap[label]
+			if isLabelPresent {
+				combinedValues = append(allIngesterValues, thisIngesterValues.Values...)
+			} else {
+				combinedValues = thisIngesterValues.Values
+			}
+			labelMap[label] = combinedValues
+		}
+	}
+
+	// Dedupe all ingester values
+	mergedResult := make(map[string]*logproto.UniqueLabelValues)
+	for label, val := range labelMap {
+		slices.Sort(val)
+		uniqueValues := slices.Compact(val)
+
+		mergedResult[label] = &logproto.UniqueLabelValues{
+			Values: uniqueValues,
+		}
+	}
+
+	return &logproto.LabelToValuesResponse{Labels: mergedResult}, nil
 }
 
 func convertMatchersToString(matchers []*labels.Matcher) string {

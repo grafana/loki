@@ -4,13 +4,13 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 func configurePodSpecForRestrictedStandard(podSpec *corev1.PodSpec) error {
 	podSecurityContext := corev1.PodSpec{
 		SecurityContext: &corev1.PodSecurityContext{
-			RunAsNonRoot: pointer.Bool(true),
+			RunAsNonRoot: ptr.To(true),
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
@@ -19,7 +19,7 @@ func configurePodSpecForRestrictedStandard(podSpec *corev1.PodSpec) error {
 
 	containerSecurityContext := corev1.Container{
 		SecurityContext: &corev1.SecurityContext{
-			AllowPrivilegeEscalation: pointer.Bool(false),
+			AllowPrivilegeEscalation: ptr.To(false),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
 			},

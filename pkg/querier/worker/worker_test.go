@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/crypto/tls"
+	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/util/test"
+	"github.com/grafana/loki/v3/pkg/util/test"
 )
 
 func TestResetConcurrency(t *testing.T) {
@@ -54,7 +56,7 @@ func TestResetConcurrency(t *testing.T) {
 				MaxConcurrent: tt.maxConcurrent,
 			}
 
-			w, err := newQuerierWorkerWithProcessor(cfg, NewMetrics(cfg, nil), log.NewNopLogger(), &mockProcessor{}, "", nil, nil)
+			w, err := newQuerierWorkerWithProcessor(cfg.QuerySchedulerGRPCClientConfig, cfg.MaxConcurrent, cfg.DNSLookupPeriod, NewMetrics(cfg, nil), log.NewNopLogger(), &mockProcessor{}, "", nil, nil)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), w))
 
@@ -93,3 +95,35 @@ func (m mockProcessor) processQueriesOnSingleStream(ctx context.Context, _ *grpc
 }
 
 func (m mockProcessor) notifyShutdown(_ context.Context, _ *grpc.ClientConn, _ string) {}
+
+func TestGRPCConfigBehavior(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	t.Run("uses separated GRPC TLS server names", func(t *testing.T) {
+		cfg := Config{
+			SchedulerAddress: "scheduler:9095",
+			QuerySchedulerGRPCClientConfig: grpcclient.Config{
+				TLS: tls.ClientConfig{
+					ServerName: "query-scheduler",
+				},
+			},
+			NewQueryFrontendGRPCClientConfig: grpcclient.Config{
+				TLS: tls.ClientConfig{
+					ServerName: "query-frontend",
+				},
+			},
+		}
+
+		qw, err := NewQuerierWorker(cfg, nil, nil, logger, nil, nil)
+		require.NoError(t, err)
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), qw))
+
+		// grpc client the querier uses to talk to the scheduler, so the expected server name is "query-scheduler".
+		castedQw := qw.(*querierWorker)
+		require.Equal(t, "query-scheduler", castedQw.grpcClientConfig.TLS.ServerName)
+
+		// grpc client the querier uses to return results to the frontend, so the expected server name is "query-frontend".
+		sp := castedQw.processor.(*schedulerProcessor)
+		require.Equal(t, "query-frontend", sp.grpcConfig.TLS.ServerName)
+	})
+}

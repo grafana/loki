@@ -50,16 +50,23 @@ Params:
 Return if deployment mode is simple scalable
 */}}
 {{- define "loki.deployment.isScalable" -}}
-  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (eq (int .Values.singleBinary.replicas) 0) }}
+  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (or (eq .Values.deploymentMode "SingleBinary<->SimpleScalable") (eq .Values.deploymentMode "SimpleScalable") (eq .Values.deploymentMode "SimpleScalable<->Distributed")) }}
 {{- end -}}
 
 {{/*
 Return if deployment mode is single binary
 */}}
 {{- define "loki.deployment.isSingleBinary" -}}
-  {{- $nonZeroReplicas := gt (int .Values.singleBinary.replicas) 0 }}
-  {{- or (eq (include "loki.isUsingObjectStorage" . ) "false") ($nonZeroReplicas) }}
+  {{- or (eq .Values.deploymentMode "SingleBinary") (eq .Values.deploymentMode "SingleBinary<->SimpleScalable") }}
 {{- end -}}
+
+{{/*
+Return if deployment mode is distributed
+*/}}
+{{- define "loki.deployment.isDistributed" -}}
+  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (or (eq .Values.deploymentMode "Distributed") (eq .Values.deploymentMode "SimpleScalable<->Distributed")) }}
+{{- end -}}
+
 
 {{/*
 Create a default fully qualified app name.
@@ -201,7 +208,7 @@ Generated storage config for loki common config
 {{- if .Values.minio.enabled -}}
 s3:
   endpoint: {{ include "loki.minio" $ }}
-  bucketnames: {{ $.Values.loki.storage.bucketNames.chunks }}
+  bucketnames: chunks
   secret_access_key: {{ $.Values.minio.rootPassword }}
   access_key_id: {{ $.Values.minio.rootUser }}
   s3forcepathstyle: true
@@ -339,7 +346,7 @@ Storage config for ruler
 {{- if .Values.minio.enabled -}}
 type: "s3"
 s3:
-  bucketnames: {{ $.Values.loki.storage.bucketNames.ruler }}
+  bucketnames: ruler
 {{- else if eq .Values.loki.storage.type "s3" -}}
 {{- with .Values.loki.storage.s3 }}
 type: "s3"
@@ -362,6 +369,9 @@ s3:
   {{- end }}
   s3forcepathstyle: {{ .s3ForcePathStyle }}
   insecure: {{ .insecure }}
+  {{- with .http_config }}
+  http_config: {{ toYaml . | nindent 6 }}
+  {{- end }}
 {{- end -}}
 {{- else if eq .Values.loki.storage.type "gcs" -}}
 {{- with .Values.loki.storage.gcs }}
@@ -444,8 +454,84 @@ ruler:
 {{- end }}
 {{- end }}
 
+{{/* Enterprise Logs Admin API storage config */}}
+{{- define "enterprise-logs.adminAPIStorageConfig" }}
+storage:
+  {{- if .Values.minio.enabled }}
+  backend: "s3"
+  s3:
+    bucket_name: admin
+  {{- else if eq .Values.loki.storage.type "s3" -}}
+  {{- with .Values.loki.storage.s3 }}
+  backend: "s3"
+  s3:
+    bucket_name: {{ $.Values.loki.storage.bucketNames.admin }}
+  {{- end -}}
+  {{- else if eq .Values.loki.storage.type "gcs" -}}
+  {{- with .Values.loki.storage.gcs }}
+  backend: "gcs"
+  gcs:
+    bucket_name: {{ $.Values.loki.storage.bucketNames.admin }}
+  {{- end -}}
+  {{- else if eq .Values.loki.storage.type "azure" -}}
+  {{- with .Values.loki.storage.azure }}
+  backend: "azure"
+  azure:
+    account_name: {{ .accountName }}
+    {{- with .accountKey }}
+    account_key: {{ . }}
+    {{- end }}
+    {{- with .connectionString }}
+    connection_string: {{ . }}
+    {{- end }}
+    container_name: {{ $.Values.loki.storage.bucketNames.admin }}
+    {{- with .endpointSuffix }}
+    endpoint_suffix: {{ . }}
+    {{- end }}
+  {{- end -}}
+  {{- else if eq .Values.loki.storage.type "swift" -}}
+  {{- with .Values.loki.storage.swift }}
+  backend: "swift"
+  swift:
+    {{- with .auth_version }}
+    auth_version: {{ . }}
+    {{- end }}
+    auth_url: {{ .auth_url }}
+    {{- with .internal }}
+    internal: {{ . }}
+    {{- end }}
+    username: {{ .username }}
+    user_domain_name: {{ .user_domain_name }}
+    {{- with .user_domain_id }}
+    user_domain_id: {{ . }}
+    {{- end }}
+    {{- with .user_id }}
+    user_id: {{ . }}
+    {{- end }}
+    password: {{ .password }}
+    {{- with .domain_id }}
+    domain_id: {{ . }}
+    {{- end }}
+    domain_name: {{ .domain_name }}
+    project_id: {{ .project_id }}
+    project_name: {{ .project_name }}
+    project_domain_id: {{ .project_domain_id }}
+    project_domain_name: {{ .project_domain_name }}
+    region_name: {{ .region_name }}
+    container_name: {{ .container_name }}
+    max_retries: {{ .max_retries | default 3 }}
+    connect_timeout: {{ .connect_timeout | default "10s" }}
+    request_timeout: {{ .request_timeout | default "5s" }}
+  {{- end -}}
+  {{- else }}
+  backend: "filesystem"
+  filesystem:
+    dir: {{ .Values.loki.storage.filesystem.admin_api_directory }}
+  {{- end -}}
+{{- end }}
+
 {{/*
-Calculate the config from structured and unstructred text input
+Calculate the config from structured and unstructured text input
 */}}
 {{- define "loki.calculatedConfig" -}}
 {{ tpl (mergeOverwrite (tpl .Values.loki.config . | fromYaml) .Values.loki.structuredConfig | toYaml) . }}
@@ -457,10 +543,10 @@ The volume to mount for loki configuration
 {{- define "loki.configVolume" -}}
 {{- if eq .Values.loki.configStorageType "Secret" -}}
 secret:
-  secretName: {{ tpl .Values.loki.externalConfigSecretName . }}
-{{- else if eq .Values.loki.configStorageType "ConfigMap" -}}
+  secretName: {{ tpl .Values.loki.configObjectName . }}
+{{- else -}}
 configMap:
-  name: {{ tpl .Values.loki.externalConfigSecretName . }}
+  name: {{ tpl .Values.loki.configObjectName . }}
   items:
     - key: "config.yaml"
       path: "config.yaml"
@@ -521,33 +607,68 @@ Return if ingress supports pathType.
 Generate list of ingress service paths based on deployment type
 */}}
 {{- define "loki.ingress.servicePaths" -}}
-{{- if (eq (include "loki.deployment.isScalable" .) "true") -}}
+{{- if (eq (include "loki.deployment.isSingleBinary" .) "true") -}}
+{{- include "loki.ingress.singleBinaryServicePaths" . }}
+{{- else if (eq (include "loki.deployment.isDistributed" .) "true") -}}
+{{- include "loki.ingress.distributedServicePaths" . }}
+{{- else if and (eq (include "loki.deployment.isScalable" .) "true") (not .Values.read.legacyReadTarget ) -}}
 {{- include "loki.ingress.scalableServicePaths" . }}
 {{- else -}}
-{{- include "loki.ingress.singleBinaryServicePaths" . }}
+{{- include "loki.ingress.legacyScalableServicePaths" . }}
 {{- end -}}
 {{- end -}}
 
+
 {{/*
-Ingress service paths for scalable deployment
+Ingress service paths for distributed deployment
+*/}}
+{{- define "loki.ingress.distributedServicePaths" -}}
+{{- $distributorServiceName := include "loki.distributorFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $distributorServiceName "paths" .Values.ingress.paths.distributor )}}
+{{- $queryFrontendServiceName := include "loki.queryFrontendFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $queryFrontendServiceName "paths" .Values.ingress.paths.queryFrontend )}}
+{{- $rulerServiceName := include "loki.rulerFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $rulerServiceName "paths" .Values.ingress.paths.ruler)}}
+{{- end -}}
+
+{{/*
+Ingress service paths for legacy simple scalable deployment when backend components were part of read component.
 */}}
 {{- define "loki.ingress.scalableServicePaths" -}}
-{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "read" "paths" .Values.ingress.paths.read )}}
-{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "write" "paths" .Values.ingress.paths.write )}}
+{{- $readServiceName := include "loki.readFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.queryFrontend )}}
+{{- $writeServiceName := include "loki.writeFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
+{{- $backendServiceName := include "loki.backendFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $backendServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- end -}}
+
+{{/*
+Ingress service paths for legacy simple scalable deployment
+*/}}
+{{- define "loki.ingress.legacyScalableServicePaths" -}}
+{{- $readServiceName := include "loki.readFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.queryFrontend )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- $writeServiceName := include "loki.writeFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
 {{- end -}}
 
 {{/*
 Ingress service paths for single binary deployment
 */}}
 {{- define "loki.ingress.singleBinaryServicePaths" -}}
-{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "singleBinary" "paths" .Values.ingress.paths.singleBinary )}}
+{{- $serviceName := include "loki.singleBinaryFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.distributor )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.queryFrontend )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.ruler )}}
 {{- end -}}
 
 {{/*
 Ingress service path helper function
 Params:
   ctx = . context
-  svcName = service name without the "loki.fullname" part (ie. read, write)
+  serviceName = fully qualified k8s service name
   paths = list of url paths to allow ingress for
 */}}
 {{- define "loki.ingress.servicePath" -}}
@@ -560,29 +681,14 @@ Params:
   {{- end }}
   backend:
     {{- if $ingressApiIsStable }}
-    {{- $serviceName := include "loki.ingress.serviceName" (dict "ctx" $.ctx "svcName" $.svcName) }}
     service:
-      name: {{ $serviceName }}
+      name: {{ $.serviceName }}
       port:
-        number: 3100
+        number: {{ $.ctx.Values.loki.server.http_listen_port }}
     {{- else }}
-    serviceName: {{ $serviceName }}
-    servicePort: 3100
-{{- end -}}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Ingress service name helper function
-Params:
-  ctx = . context
-  svcName = service name without the "loki.fullname" part (ie. read, write)
-*/}}
-{{- define "loki.ingress.serviceName" -}}
-{{- if (eq .svcName "singleBinary") }}
-{{- printf "%s" (include "loki.singleBinaryFullname" .ctx) }}
-{{- else }}
-{{- printf "%s-%s" (include "loki.name" .ctx) .svcName }}
+    serviceName: {{ $.serviceName }}
+    servicePort: {{ $.ctx.Values.loki.server.http_listen_port }}
+    {{- end -}}
 {{- end -}}
 {{- end -}}
 
@@ -591,13 +697,13 @@ Create the service endpoint including port for MinIO.
 */}}
 {{- define "loki.minio" -}}
 {{- if .Values.minio.enabled -}}
-{{- printf "%s-%s.%s.svc:%s" .Release.Name "minio" .Release.Namespace (.Values.minio.service.port | toString) -}}
+{{- .Values.minio.address | default (printf "%s-%s.%s.svc:%s" .Release.Name "minio" .Release.Namespace (.Values.minio.service.port | toString)) -}}
 {{- end -}}
 {{- end -}}
 
 {{/* Determine if deployment is using object storage */}}
 {{- define "loki.isUsingObjectStorage" -}}
-{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") (eq .Values.loki.storage.type "swift") -}}
+{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") (eq .Values.loki.storage.type "swift") (eq .Values.loki.storage.type "alibabacloud") -}}
 {{- end -}}
 
 {{/* Configure the correct name for the memberlist service */}}
@@ -610,7 +716,7 @@ Create the service endpoint including port for MinIO.
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
 {{- $url := printf "%s.%s.svc.%s.:%s" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.gateway.service.port | toString)  }}
 {{- if and $isSingleBinary (not .Values.gateway.enabled)  }}
-  {{- $url = printf "%s.%s.svc.%s.:3100" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+  {{- $url = printf "%s.%s.svc.%s.:%s" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
 {{- end }}
 {{- printf "%s" $url -}}
 {{- end -}}
@@ -694,8 +800,17 @@ http {
   {{- end }}
 
   server {
+    {{- if (.Values.gateway.nginxConfig.ssl) }}
+    listen             8080 ssl;
+    {{- if .Values.gateway.nginxConfig.enableIPv6 }}
+    listen             [::]:8080 ssl;
+    {{- end }}
+    {{- else }}
     listen             8080;
+    {{- if .Values.gateway.nginxConfig.enableIPv6 }}
     listen             [::]:8080;
+    {{- end }}
+    {{- end }}
 
     {{- if .Values.gateway.basicAuth.enabled }}
     auth_basic           "Loki";
@@ -707,6 +822,9 @@ http {
       auth_basic off;
     }
 
+    ########################################################
+    # Configure backend targets
+
     {{- $backendHost := include "loki.backendFullname" .}}
     {{- $readHost := include "loki.readFullname" .}}
     {{- $writeHost := include "loki.writeFullname" .}}
@@ -715,15 +833,11 @@ http {
     {{- $backendHost = include "loki.readFullname" . }}
     {{- end }}
 
-    {{- if gt (int .Values.singleBinary.replicas) 0 }}
-    {{- $backendHost = include "loki.singleBinaryFullname" . }}
-    {{- $readHost = include "loki.singleBinaryFullname" .}}
-    {{- $writeHost = include "loki.singleBinaryFullname" .}}
-    {{- end }}
+    {{- $httpSchema := .Values.gateway.nginxConfig.schema }}
 
-    {{- $writeUrl    := printf "http://%s.%s.svc.%s:3100" $writeHost   .Release.Namespace .Values.global.clusterDomain }}
-    {{- $readUrl     := printf "http://%s.%s.svc.%s:3100" $readHost    .Release.Namespace .Values.global.clusterDomain }}
-    {{- $backendUrl  := printf "http://%s.%s.svc.%s:3100" $backendHost .Release.Namespace .Values.global.clusterDomain }}
+    {{- $writeUrl    := printf "%s://%s.%s.svc.%s:%s" $httpSchema $writeHost   .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $readUrl     := printf "%s://%s.%s.svc.%s:%s" $httpSchema $readHost    .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $backendUrl  := printf "%s://%s.%s.svc.%s:%s" $httpSchema $backendHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
 
     {{- if .Values.gateway.nginxConfig.customWriteUrl }}
     {{- $writeUrl  = .Values.gateway.nginxConfig.customWriteUrl }}
@@ -735,24 +849,64 @@ http {
     {{- $backendUrl = .Values.gateway.nginxConfig.customBackendUrl }}
     {{- end }}
 
+    {{- $singleBinaryHost := include "loki.singleBinaryFullname" . }}
+    {{- $singleBinaryUrl  := printf "%s://%s.%s.svc.%s:%s" $httpSchema $singleBinaryHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+
+    {{- $distributorHost := include "loki.distributorFullname" .}}
+    {{- $ingesterHost := include "loki.ingesterFullname" .}}
+    {{- $queryFrontendHost := include "loki.queryFrontendFullname" .}}
+    {{- $indexGatewayHost := include "loki.indexGatewayFullname" .}}
+    {{- $rulerHost := include "loki.rulerFullname" .}}
+    {{- $compactorHost := include "loki.compactorFullname" .}}
+    {{- $schedulerHost := include "loki.querySchedulerFullname" .}}
+
+
+    {{- $distributorUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $distributorHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) -}}
+    {{- $ingesterUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $ingesterHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $queryFrontendUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $queryFrontendHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $indexGatewayUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $indexGatewayHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $rulerUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $rulerHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $compactorUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $compactorHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $schedulerUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $schedulerHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+
+    {{- if eq (include "loki.deployment.isSingleBinary" .) "true"}}
+    {{- $distributorUrl = $singleBinaryUrl }}
+    {{- $ingesterUrl = $singleBinaryUrl }}
+    {{- $queryFrontendUrl = $singleBinaryUrl }}
+    {{- $indexGatewayUrl = $singleBinaryUrl }}
+    {{- $rulerUrl = $singleBinaryUrl }}
+    {{- $compactorUrl = $singleBinaryUrl }}
+    {{- $schedulerUrl = $singleBinaryUrl }}
+    {{- else if eq (include "loki.deployment.isScalable" .) "true"}}
+    {{- $distributorUrl = $writeUrl }}
+    {{- $ingesterUrl = $writeUrl }}
+    {{- $queryFrontendUrl = $readUrl }}
+    {{- $indexGatewayUrl = $backendUrl }}
+    {{- $rulerUrl = $backendUrl }}
+    {{- $compactorUrl = $backendUrl }}
+    {{- $schedulerUrl = $backendUrl }}
+    {{- end -}}
 
     # Distributor
     location = /api/prom/push {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $distributorUrl }}$request_uri;
     }
     location = /loki/api/v1/push {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $distributorUrl }}$request_uri;
     }
     location = /distributor/ring {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $distributorUrl }}$request_uri;
+    }
+    location = /otlp/v1/logs {
+      proxy_pass       {{ $distributorUrl }}$request_uri;
     }
 
     # Ingester
     location = /flush {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
     location ^~ /ingester/ {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
     location = /ingester {
       internal;        # to suppress 301
@@ -760,62 +914,61 @@ http {
 
     # Ring
     location = /ring {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
 
     # MemberListKV
     location = /memberlist {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
-
 
     # Ruler
     location = /ruler/ring {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /api/prom/rules {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location ^~ /api/prom/rules/ {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /loki/api/v1/rules {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location ^~ /loki/api/v1/rules/ {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /prometheus/api/v1/alerts {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /prometheus/api/v1/rules {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $rulerUrl }}$request_uri;
     }
 
     # Compactor
     location = /compactor/ring {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $compactorUrl }}$request_uri;
     }
     location = /loki/api/v1/delete {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $compactorUrl }}$request_uri;
     }
     location = /loki/api/v1/cache/generation_numbers {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $compactorUrl }}$request_uri;
     }
 
     # IndexGateway
     location = /indexgateway/ring {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $indexGatewayUrl }}$request_uri;
     }
 
     # QueryScheduler
     location = /scheduler/ring {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $schedulerUrl }}$request_uri;
     }
 
     # Config
     location = /config {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+      proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
 
     {{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled }}
@@ -831,28 +984,27 @@ http {
 
     # QueryFrontend, Querier
     location = /api/prom/tail {
-      proxy_pass       {{ $readUrl }}$request_uri;
+      proxy_pass       {{ $queryFrontendUrl }}$request_uri;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
     }
     location = /loki/api/v1/tail {
-      proxy_pass       {{ $readUrl }}$request_uri;
+      proxy_pass       {{ $queryFrontendUrl }}$request_uri;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
     }
     location ^~ /api/prom/ {
-      proxy_pass       {{ $readUrl }}$request_uri;
+      proxy_pass       {{ $queryFrontendUrl }}$request_uri;
     }
     location = /api/prom {
       internal;        # to suppress 301
     }
     location ^~ /loki/api/v1/ {
-      proxy_pass       {{ $readUrl }}$request_uri;
+      proxy_pass       {{ $queryFrontendUrl }}$request_uri;
     }
     location = /loki/api/v1 {
       internal;        # to suppress 301
     }
-
 
     {{- with .Values.gateway.nginxConfig.serverSnippet }}
     {{ . | nindent 4 }}
@@ -875,23 +1027,92 @@ enableServiceLinks: false
 {{/* Determine compactor address based on target configuration */}}
 {{- define "loki.compactorAddress" -}}
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
 {{- $compactorAddress := include "loki.backendFullname" . -}}
 {{- if and $isSimpleScalable .Values.read.legacyReadTarget -}}
 {{/* 2 target configuration */}}
 {{- $compactorAddress = include "loki.readFullname" . -}}
-{{- else if (not $isSimpleScalable) -}}
+{{- else if $isSingleBinary -}}
 {{/* single binary */}}
 {{- $compactorAddress = include "loki.singleBinaryFullname" . -}}
+{{/* distributed */}}
+{{- else if $isDistributed -}}
+{{- $compactorAddress = include "loki.compactorFullname" . -}}
 {{- end -}}
-{{- printf "%s" $compactorAddress }}
+{{- printf "http://%s:%s" $compactorAddress (.Values.loki.server.http_listen_port | toString) }}
 {{- end }}
 
 {{/* Determine query-scheduler address */}}
 {{- define "loki.querySchedulerAddress" -}}
-{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- $schedulerAddress := ""}}
-{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) -}}
-{{- $schedulerAddress = printf "query-scheduler-discovery.%s.svc.%s.:9095" .Release.Namespace .Values.global.clusterDomain -}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed -}}
+{{- $schedulerAddress = printf "%s.%s.svc.%s:%s" (include "loki.querySchedulerFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
 {{- end -}}
 {{- printf "%s" $schedulerAddress }}
 {{- end }}
+
+{{/* Determine querier address */}}
+{{- define "loki.querierAddress" -}}
+{{- $querierAddress := "" }}
+{{- if "loki.deployment.isDistributed "}}
+{{- $querierHost := include "loki.querierFullname" .}}
+{{- $querierUrl := printf "http://%s.%s.svc.%s:3100" $querierHost .Release.Namespace .Values.global.clusterDomain }}
+{{- $querierAddress = $querierUrl }}
+{{- end -}}
+{{- printf "%s" $querierAddress }}
+{{- end }}
+
+{{/* Determine index-gateway address */}}
+{{- define "loki.indexGatewayAddress" -}}
+{{- $idxGatewayAddress := ""}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- $isScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if $isDistributed -}}
+{{- $idxGatewayAddress = printf "dns+%s-headless.%s.svc.%s:%s" (include "loki.indexGatewayFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
+{{- end -}}
+{{- if $isScalable -}}
+{{- $idxGatewayAddress = printf "dns+%s-headless.%s.svc.%s:%s" (include "loki.backendFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
+{{- end -}}
+{{- printf "%s" $idxGatewayAddress }}
+{{- end }}
+
+{{- define "loki.config.checksum" -}}
+checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
+{{- end -}}
+
+{{/*
+Return the appropriate apiVersion for PodDisruptionBudget.
+*/}}
+{{- define "loki.pdb.apiVersion" -}}
+  {{- if and (.Capabilities.APIVersions.Has "policy/v1") (semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version) -}}
+    {{- print "policy/v1" -}}
+  {{- else -}}
+    {{- print "policy/v1beta1" -}}
+  {{- end -}}
+{{- end -}}
+
+{{/*
+Return the object store type for use with the test schema.
+*/}}
+{{- define "loki.testSchemaObjectStore" -}}
+  {{- if .Values.minio.enabled -}}
+    s3
+  {{- else -}}
+    filesystem
+  {{- end -}}
+{{- end -}}
+
+{{/*
+Return the appropriate apiVersion for HorizontalPodAutoscaler.
+*/}}
+{{- define "loki.hpa.apiVersion" -}}
+  {{- if and (.Capabilities.APIVersions.Has "autoscaling/v2") (semverCompare ">= 1.19-0" .Capabilities.KubeVersion.Version) -}}
+      {{- print "autoscaling/v2" -}}
+  {{- else if .Capabilities.APIVersions.Has "autoscaling/v2beta2" -}}
+    {{- print "autoscaling/v2beta2" -}}
+  {{- else -}}
+    {{- print "autoscaling/v2beta1" -}}
+  {{- end -}}
+{{- end -}}

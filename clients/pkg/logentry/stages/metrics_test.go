@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/logentry/metric"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/metric"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var testMetricYaml = `
@@ -125,6 +125,13 @@ func TestMetricsPipeline(t *testing.T) {
 
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(expectedMetrics)); err != nil {
+		t.Fatalf("mismatch metrics: %v", err)
+	}
+
+	pl.Cleanup()
+
+	if err := testutil.GatherAndCompare(registry,
+		strings.NewReader("")); err != nil {
 		t.Fatalf("mismatch metrics: %v", err)
 	}
 }
@@ -435,7 +442,7 @@ func TestDefaultIdleDuration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}
-	assert.Equal(t, int64(5*time.Minute.Seconds()), ms.(*stageProcessor).Processor.(*metricStage).cfg["total_keys"].maxIdleSec)
+	assert.Equal(t, int64(5*time.Minute.Seconds()), ms.(*metricStage).cfg["total_keys"].maxIdleSec)
 }
 
 var (

@@ -17,14 +17,14 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/logproto"
-	loki_runtime "github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	loki_runtime "github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type MemoryWALReader struct {
@@ -131,7 +131,7 @@ func (r *MemRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 
 func (r *MemRecoverer) Series(_ *Series) error { return nil }
 
-func (r *MemRecoverer) SetStream(userID string, series record.RefSeries) error {
+func (r *MemRecoverer) SetStream(_ context.Context, userID string, series record.RefSeries) error {
 	r.Lock()
 	defer r.Unlock()
 	user, ok := r.users[userID]
@@ -190,7 +190,7 @@ func Test_InMemorySegmentRecover(t *testing.T) {
 
 			recoverer := NewMemRecoverer()
 
-			require.Nil(t, RecoverWAL(reader, recoverer))
+			require.NoError(t, RecoverWAL(context.Background(), reader, recoverer))
 			recoverer.Close()
 
 			require.Equal(t, users, recoverer.usersCt)
@@ -228,7 +228,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	mkSample := func(i int) *logproto.PushRequest {
@@ -262,7 +262,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 	require.Equal(t, false, iter.Next())
 
 	// create a new ingester now
-	i, err = New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	i, err = New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	// recover the checkpointed series

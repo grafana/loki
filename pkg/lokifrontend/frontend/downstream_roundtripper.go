@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 // RoundTripper that forwards requests to downstream URL.
@@ -20,13 +20,13 @@ type downstreamRoundTripper struct {
 	codec         queryrangebase.Codec
 }
 
-func NewDownstreamRoundTripper(downstreamURL string, transport http.RoundTripper) (queryrangebase.Handler, error) {
+func NewDownstreamRoundTripper(downstreamURL string, transport http.RoundTripper, codec queryrangebase.Codec) (queryrangebase.Handler, error) {
 	u, err := url.Parse(downstreamURL)
 	if err != nil {
 		return nil, err
 	}
 
-	return &downstreamRoundTripper{downstreamURL: u, transport: transport}, nil
+	return &downstreamRoundTripper{downstreamURL: u, transport: transport, codec: codec}, nil
 }
 
 func (d downstreamRoundTripper) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {

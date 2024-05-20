@@ -12,8 +12,8 @@ import (
 	"github.com/prometheus/common/model"
 	"google.golang.org/grpc"
 
-	deletion_grpc "github.com/grafana/loki/pkg/compactor/client/grpc"
-	"github.com/grafana/loki/pkg/compactor/deletion"
+	deletion_grpc "github.com/grafana/loki/v3/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 )
 
 type GRPCConfig struct {
@@ -22,7 +22,7 @@ type GRPCConfig struct {
 
 // RegisterFlags registers flags.
 func (cfg *GRPCConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("compactor.grpc-client", f)
 }
 
 type compactorGRPCClient struct {

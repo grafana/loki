@@ -8,12 +8,19 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
 )
 
-func TarGz(dst io.Writer, src *DirectoryBlockReader) error {
-	if err := src.Init(); err != nil {
-		return errors.Wrap(err, "error initializing directory block reader")
+type TarEntry struct {
+	Name string
+	Size int64
+	Body io.ReadSeeker
+}
+
+func TarGz(dst io.Writer, reader BlockReader) error {
+	itr, err := reader.TarEntries()
+	if err != nil {
+		return errors.Wrap(err, "error getting tar entries")
 	}
 
 	gzipper := chunkenc.GetWriterPool(chunkenc.EncGZIP).GetWriter(dst)
@@ -22,27 +29,24 @@ func TarGz(dst io.Writer, src *DirectoryBlockReader) error {
 	tarballer := tar.NewWriter(gzipper)
 	defer tarballer.Close()
 
-	for _, f := range []*os.File{src.index, src.blooms} {
-		info, err := f.Stat()
-		if err != nil {
-			return errors.Wrapf(err, "error stat'ing file %s", f.Name())
+	for itr.Next() {
+		entry := itr.At()
+		hdr := &tar.Header{
+			Name: entry.Name,
+			Mode: 0600,
+			Size: entry.Size,
 		}
 
-		header, err := tar.FileInfoHeader(info, f.Name())
-		if err != nil {
-			return errors.Wrapf(err, "error creating tar header for file %s", f.Name())
+		if err := tarballer.WriteHeader(hdr); err != nil {
+			return errors.Wrapf(err, "error writing tar header for file %s", entry.Name)
 		}
 
-		if err := tarballer.WriteHeader(header); err != nil {
-			return errors.Wrapf(err, "error writing tar header for file %s", f.Name())
+		if _, err := io.Copy(tarballer, entry.Body); err != nil {
+			return errors.Wrapf(err, "error writing file %s to tarball", entry.Name)
 		}
-
-		if _, err := io.Copy(tarballer, f); err != nil {
-			return errors.Wrapf(err, "error writing file %s to tarball", f.Name())
-		}
-
 	}
-	return nil
+
+	return itr.Err()
 }
 
 func UnTarGz(dst string, r io.Reader) error {

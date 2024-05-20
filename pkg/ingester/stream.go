@@ -15,16 +15,17 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util/flagext"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var ErrEntriesExist = errors.New("duplicate push - entries already exist")
@@ -181,6 +182,8 @@ func (s *stream) Push(
 	lockChunk bool,
 	// Whether nor not to ingest all at once or not. It is a per-tenant configuration.
 	rateLimitWholeStream bool,
+
+	usageTracker push.UsageTracker,
 ) (int, error) {
 	if lockChunk {
 		s.chunkMtx.Lock()
@@ -199,7 +202,7 @@ func (s *stream) Push(
 		return 0, ErrEntriesExist
 	}
 
-	toStore, invalid := s.validateEntries(entries, isReplay, rateLimitWholeStream)
+	toStore, invalid := s.validateEntries(ctx, entries, isReplay, rateLimitWholeStream, usageTracker)
 	if rateLimitWholeStream && hasRateLimitErr(invalid) {
 		return 0, errorForFailedEntries(s, invalid, len(entries))
 	}
@@ -213,7 +216,7 @@ func (s *stream) Push(
 		s.metrics.chunkCreatedStats.Inc(1)
 	}
 
-	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, toStore)
+	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, toStore, usageTracker)
 	s.recordAndSendToTailers(record, storedEntries)
 
 	if len(s.chunks) != prevNumChunks {
@@ -288,34 +291,32 @@ func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.E
 	hasTailers := len(s.tailers) != 0
 	s.tailerMtx.RUnlock()
 	if hasTailers {
-		go func() {
-			stream := logproto.Stream{Labels: s.labelsString, Entries: entries}
+		stream := logproto.Stream{Labels: s.labelsString, Entries: entries}
 
-			closedTailers := []uint32{}
+		closedTailers := []uint32{}
 
-			s.tailerMtx.RLock()
-			for _, tailer := range s.tailers {
-				if tailer.isClosed() {
-					closedTailers = append(closedTailers, tailer.getID())
-					continue
-				}
-				tailer.send(stream, s.labels)
+		s.tailerMtx.RLock()
+		for _, tailer := range s.tailers {
+			if tailer.isClosed() {
+				closedTailers = append(closedTailers, tailer.getID())
+				continue
 			}
-			s.tailerMtx.RUnlock()
+			tailer.send(stream, s.labels)
+		}
+		s.tailerMtx.RUnlock()
 
-			if len(closedTailers) != 0 {
-				s.tailerMtx.Lock()
-				defer s.tailerMtx.Unlock()
+		if len(closedTailers) != 0 {
+			s.tailerMtx.Lock()
+			defer s.tailerMtx.Unlock()
 
-				for _, closedTailerID := range closedTailers {
-					delete(s.tailers, closedTailerID)
-				}
+			for _, closedTailerID := range closedTailers {
+				delete(s.tailers, closedTailerID)
 			}
-		}()
+		}
 	}
 }
 
-func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (int, []logproto.Entry, []entryWithError) {
+func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker) (int, []logproto.Entry, []entryWithError) {
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		sp.LogKV("event", "stream started to store entries", "labels", s.labelsString)
 		defer sp.LogKV("event", "stream finished to store entries")
@@ -352,11 +353,12 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (in
 		bytesAdded += len(entries[i].Line)
 		storedEntries = append(storedEntries, entries[i])
 	}
-	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, 0, 0)
+	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, 0, 0, usageTracker)
 	return bytesAdded, storedEntries, invalid
 }
 
-func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWholeStream bool) ([]logproto.Entry, []entryWithError) {
+func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker) ([]logproto.Entry, []entryWithError) {
+
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
 		rateLimitedSamples, rateLimitedBytes int
@@ -396,7 +398,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
 		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
 		if !isReplay && s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(cutoff)})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
 			outOfOrderSamples++
 			outOfOrderBytes += lineBytes
@@ -429,11 +431,11 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 	}
 
 	s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)
-	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes)
+	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes, usageTracker)
 	return toStore, failedEntriesWithError
 }
 
-func (s *stream) reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes int) {
+func (s *stream) reportMetrics(ctx context.Context, outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes int, usageTracker push.UsageTracker) {
 	if outOfOrderSamples > 0 {
 		name := validation.OutOfOrder
 		if s.unorderedWrites {
@@ -441,10 +443,16 @@ func (s *stream) reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSa
 		}
 		validation.DiscardedSamples.WithLabelValues(name, s.tenant).Add(float64(outOfOrderSamples))
 		validation.DiscardedBytes.WithLabelValues(name, s.tenant).Add(float64(outOfOrderBytes))
+		if usageTracker != nil {
+			usageTracker.DiscardedBytesAdd(ctx, s.tenant, name, s.labels, float64(outOfOrderBytes))
+		}
 	}
 	if rateLimitedSamples > 0 {
 		validation.DiscardedSamples.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedSamples))
 		validation.DiscardedBytes.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedBytes))
+		if usageTracker != nil {
+			usageTracker.DiscardedBytesAdd(ctx, s.tenant, validation.StreamRateLimit, s.labels, float64(rateLimitedBytes))
+		}
 	}
 }
 

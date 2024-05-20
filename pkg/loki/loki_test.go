@@ -11,12 +11,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/collectors/version"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
+
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	internalserver "github.com/grafana/loki/pkg/server"
+	internalserver "github.com/grafana/loki/v3/pkg/server"
 )
 
 func TestFlagDefaults(t *testing.T) {
@@ -251,4 +257,21 @@ schema_config:
 	require.NoError(t, err)
 	require.Equal(t, string(bBytes), "abc")
 	assert.True(t, customHandlerInvoked)
+	unregisterLokiMetrics(loki)
+}
+
+func unregisterLokiMetrics(loki *Loki) {
+	loki.ClientMetrics.Unregister()
+	loki.deleteClientMetrics.Unregister()
+	prometheus.Unregister(version.NewCollector(constants.Loki))
+	prometheus.Unregister(collectors.NewGoCollector(
+		collectors.WithGoCollectorRuntimeMetrics(collectors.MetricsAll),
+	))
+	//TODO Update DSKit to have a method to unregister these metrics
+	prometheus.Unregister(loki.Metrics.TCPConnections)
+	prometheus.Unregister(loki.Metrics.TCPConnectionsLimit)
+	prometheus.Unregister(loki.Metrics.RequestDuration)
+	prometheus.Unregister(loki.Metrics.ReceivedMessageSize)
+	prometheus.Unregister(loki.Metrics.SentMessageSize)
+	prometheus.Unregister(loki.Metrics.InflightRequests)
 }

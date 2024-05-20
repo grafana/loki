@@ -16,12 +16,27 @@ common:
     kvstore:
       store: inmemory
 
+limits_config:
+  split_instant_metric_queries_by_interval: '10m'
+
+
 query_range:
   align_queries_with_step: true
   cache_index_stats_results: true
   cache_results: true
   cache_volume_results: true
   cache_series_results: true
+  cache_instant_metric_results: true
+  instant_metric_query_split_align: true
+  instant_metric_results_cache:
+    cache:
+      default_validity: 12h
+      memcached_client:
+        consistent_hash: true
+        addresses: "dns+localhost:11211"
+        max_idle_conns: 16
+        timeout: 500ms
+        update_interval: 1m
   series_results_cache:
     cache:
       default_validity: 12h
@@ -65,7 +80,7 @@ schema_config:
     - from: 2020-10-24
       store: tsdb
       object_store: filesystem
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h

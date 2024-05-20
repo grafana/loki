@@ -1,3 +1,5 @@
+//go:build integration
+
 package integration
 
 import (
@@ -19,16 +21,18 @@ import (
 	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/grafana/loki/integration/client"
-	"github.com/grafana/loki/integration/cluster"
+	"github.com/grafana/loki/v3/integration/client"
+	"github.com/grafana/loki/v3/integration/cluster"
 
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	"github.com/grafana/loki/pkg/util/querylimits"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/util/querylimits"
 )
 
 func TestMicroServicesIngestQuery(t *testing.T) {
-	clu := cluster.New(nil)
+	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
+		c.SetSchemaVer("v13")
+	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()
@@ -225,10 +229,12 @@ func TestMicroServicesIngestQueryWithSchemaChange(t *testing.T) {
 			"compactor",
 			"-target=compactor",
 			"-compactor.compaction-interval=1s",
+			"-validation.allow-structured-metadata=false",
 		)
 		tDistributor = clu.AddComponent(
 			"distributor",
 			"-target=distributor",
+			"-validation.allow-structured-metadata=false",
 		)
 	)
 	require.NoError(t, clu.Run())
@@ -239,11 +245,13 @@ func TestMicroServicesIngestQueryWithSchemaChange(t *testing.T) {
 			"ingester",
 			"-target=ingester",
 			"-ingester.flush-on-shutdown=true",
+			"-validation.allow-structured-metadata=false",
 		)
 		tQueryScheduler = clu.AddComponent(
 			"query-scheduler",
 			"-target=query-scheduler",
 			"-query-scheduler.use-scheduler-ring=false",
+			"-validation.allow-structured-metadata=false",
 		)
 	)
 	require.NoError(t, clu.Run())
@@ -256,12 +264,14 @@ func TestMicroServicesIngestQueryWithSchemaChange(t *testing.T) {
 			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
 			"-frontend.default-validity=0s",
 			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-validation.allow-structured-metadata=false",
 		)
 		tQuerier = clu.AddComponent(
 			"querier",
 			"-target=querier",
 			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
 			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-validation.allow-structured-metadata=false",
 		)
 	)
 	require.NoError(t, clu.Run())
@@ -418,10 +428,12 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 					"compactor",
 					"-target=compactor",
 					"-compactor.compaction-interval=1s",
+					"-validation.allow-structured-metadata=false",
 				)
 				tDistributor = clu.AddComponent(
 					"distributor",
 					"-target=distributor",
+					"-validation.allow-structured-metadata=false",
 				)
 			)
 			require.NoError(t, clu.Run())
@@ -432,11 +444,13 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 					"ingester",
 					"-target=ingester",
 					"-ingester.flush-on-shutdown=true",
+					"-validation.allow-structured-metadata=false",
 				)
 				tQueryScheduler = clu.AddComponent(
 					"query-scheduler",
 					"-target=query-scheduler",
 					"-query-scheduler.use-scheduler-ring=false",
+					"-validation.allow-structured-metadata=false",
 				)
 			)
 			require.NoError(t, clu.Run())
@@ -449,12 +463,14 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 					"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
 					"-frontend.default-validity=0s",
 					"-common.compactor-address="+tCompactor.HTTPURL(),
+					"-validation.allow-structured-metadata=false",
 				)
 				tQuerier = clu.AddComponent(
 					"querier",
 					"-target=querier",
 					"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
 					"-common.compactor-address="+tCompactor.HTTPURL(),
+					"-validation.allow-structured-metadata=false",
 				)
 			)
 			require.NoError(t, clu.Run())
@@ -470,12 +486,12 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 			cliQueryFrontend.Now = now
 
 			t.Run("ingest-logs", func(t *testing.T) {
-				require.NoError(t, cliDistributor.PushLogLine("lineA", time.Now().Add(-48*time.Hour), map[string]string{"traceID": "123"}, map[string]string{"job": "fake"}))
-				require.NoError(t, cliDistributor.PushLogLine("lineB", time.Now().Add(-36*time.Hour), map[string]string{"traceID": "456"}, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineA", time.Now().Add(-48*time.Hour), nil, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineB", time.Now().Add(-36*time.Hour), nil, map[string]string{"job": "fake"}))
 
 				// ingest logs to the current period
-				require.NoError(t, cliDistributor.PushLogLine("lineC", now, map[string]string{"traceID": "789"}, map[string]string{"job": "fake"}))
-				require.NoError(t, cliDistributor.PushLogLine("lineD", now, map[string]string{"traceID": "123"}, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineC", now, nil, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineD", now, nil, map[string]string{"job": "fake"}))
 
 			})
 
@@ -525,7 +541,9 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 }
 
 func TestSchedulerRing(t *testing.T) {
-	clu := cluster.New(nil)
+	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
+		c.SetSchemaVer("v13")
+	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()
@@ -643,7 +661,7 @@ func TestSchedulerRing(t *testing.T) {
 }
 
 func TestOTLPLogsIngestQuery(t *testing.T) {
-	clu := cluster.New(nil, func(c *cluster.Cluster) {
+	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
 	defer func() {
@@ -721,7 +739,7 @@ func TestOTLPLogsIngestQuery(t *testing.T) {
 
 	t.Run("ingest-logs", func(t *testing.T) {
 		// ingest some log lines
-		require.NoError(t, cliDistributor.PushOTLPLogLine("lineA", now.Add(-45*time.Minute), map[string]any{"trace_id": 1, "user_id": "2"}))
+		require.NoError(t, cliDistributor.PushOTLPLogLine("lineA", now.Add(-45*time.Minute), map[string]any{"trace_id": 1, "user_id": "2", "email": "foo@bar.com"}))
 		require.NoError(t, cliDistributor.PushOTLPLogLine("lineB", now.Add(-45*time.Minute), nil))
 
 		require.NoError(t, cliDistributor.PushOTLPLogLine("lineC", now, map[string]any{"order.ids": []any{5, 6}}))
@@ -1061,6 +1079,7 @@ func TestCategorizedLabels(t *testing.T) {
 }
 
 func TestBloomFiltersEndToEnd(t *testing.T) {
+	t.Skip("skipping until blooms have settled")
 	commonFlags := []string{
 		"-bloom-compactor.compaction-interval=10s",
 		"-bloom-compactor.enable-compaction=true",
@@ -1073,6 +1092,7 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 		"-ingester.wal-enabled=false",
 		"-query-scheduler.use-scheduler-ring=false",
 		"-store.index-cache-read.embedded-cache.enabled=true",
+		"-querier.split-queries-by-interval=24h",
 	}
 
 	tenantID := randStringRunes()
@@ -1195,16 +1215,22 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 
 	lineTpl := `caller=loki_micro_services_test.go msg="push log line" id="%s"`
 	// ingest logs from 10 different pods
+	// from now-60m to now-55m
 	// each line contains a random, unique string
 	// that string is used to verify filtering using bloom gateway
-	uniqueStrings := make([]string, 600)
+	uniqueStrings := make([]string, 5*60)
 	for i := 0; i < len(uniqueStrings); i++ {
 		id := randStringRunes()
 		id = fmt.Sprintf("%s-%d", id, i)
 		uniqueStrings[i] = id
 		pod := fmt.Sprintf("pod-%d", i%10)
 		line := fmt.Sprintf(lineTpl, id)
-		err := cliDistributor.PushLogLine(line, now.Add(-1*time.Hour).Add(time.Duration(i-len(uniqueStrings))*time.Second), nil, map[string]string{"pod": pod})
+		err := cliDistributor.PushLogLine(
+			line,
+			now.Add(-1*time.Hour).Add(time.Duration(i)*time.Second),
+			nil,
+			map[string]string{"pod": pod},
+		)
 		require.NoError(t, err)
 	}
 
@@ -1217,16 +1243,23 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 		// verify metrics that observe usage of block for filtering
 		metrics, err := cliBloomCompactor.Metrics()
 		require.NoError(t, err)
-		successfulRunCount := getMetricValue(t, "loki_bloomcompactor_runs_completed_total", metrics)
-		t.Log("successful bloom compactor runs", successfulRunCount)
+		successfulRunCount, labels, err := extractMetric(`loki_bloomcompactor_runs_completed_total`, metrics)
+		if err != nil {
+			return false
+		}
+		t.Log("bloom compactor runs", successfulRunCount, labels)
+		if labels["status"] != "success" {
+			return false
+		}
+
 		return successfulRunCount == 1
 	}, 30*time.Second, time.Second)
 
 	// use bloom gateway to perform needle in the haystack queries
 	randIdx := rand.Intn(len(uniqueStrings))
 	q := fmt.Sprintf(`{job="varlog"} |= "%s"`, uniqueStrings[randIdx])
-	end := now.Add(-1 * time.Second)
-	start := end.Add(-24 * time.Hour)
+	start := now.Add(-90 * time.Minute)
+	end := now.Add(-30 * time.Minute)
 	resp, err := cliQueryFrontend.RunRangeQueryWithStartEnd(context.Background(), q, start, end)
 	require.NoError(t, err)
 

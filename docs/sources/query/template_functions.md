@@ -11,10 +11,15 @@ weight: 30
 
 The [text template](https://golang.org/pkg/text/template) format used in `| line_format` and `| label_format` support the usage of functions.
 
+{{% admonition type="note" %}}
+In the examples below we use backticks to quote the template strings. This is because some template strings contain double quotes, and using backticks lets us avoid escaping the double quotes.
+If you are using a different quoting style, you may need to escape the double quotes.
+{{% /admonition %}}
+
 All labels are added as variables in the template engine. They can be referenced using they label name prefixed by a `.`(e.g `.label_name`). For example the following template will output the value of the path label:
 
 ```template
-{{ .path }}
+`{{ .path }}`
 ```
 
 Additionally you can also access the log line using the [`__line__`](#__line__) function and the timestamp using the [`__timestamp__`](#__timestamp__) function.
@@ -25,7 +30,7 @@ In a chained pipeline, the result of each command is passed as the last argument
 Example:
 
 ```template
-{{ .path | replace " " "_" | trunc 5 | upper }}
+`{{ .path | replace " " "_" | trunc 5 | upper }}`
 ```
 
 For function that returns a `bool` such as `contains`, `eq`, `hasPrefix` and `hasSuffix`, you can apply `AND` / `OR` and nested `if` logic.
@@ -33,9 +38,9 @@ For function that returns a `bool` such as `contains`, `eq`, `hasPrefix` and `ha
 Example:
 
 ```template
-{{ if and (contains "he" "hello") (contains "llo" "hello") }} yes {{end}}
-{{ if or (contains "he" "hello") (contains("llo" "hello") }} yes {{end}}
-{{ if contains .err "ErrTimeout" }} timeout {{else if contains "he" "hello"}} yes {{else}} no {{end}}
+`{{ if and (contains "he" "hello") (contains "llo" "hello") }} yes {{end}}`
+`{{ if or (contains "he" "hello") (contains("llo" "hello") }} yes {{end}}`
+`{{ if contains .err "ErrTimeout" }} timeout {{else if contains "he" "hello"}} yes {{else}} no {{end}}`
 ```
 
 ## __line__
@@ -47,7 +52,7 @@ Signature: `line() string`
 Examples:
 
 ```template
-"{{ __line__ | lower }}"
+`{{ __line__ | lower }}`
 `{{ __line__ }}`
 ```
 
@@ -58,7 +63,7 @@ This function returns the current log lines timestamp.
 Signature: `timestamp() time.Time`
 
 ```template
-"{{ __timestamp__ }}"
+`{{ __timestamp__ }}`
 `{{ __timestamp__ | date "2006-01-02T15:04:05.00Z-07:00" }}`
 `{{ __timestamp__ | unixEpoch }}`
 ```
@@ -92,7 +97,7 @@ Signature: `lower(string) string`
 Examples:
 
 ```template
-"{{ .request_method | lower }}"
+`{{ .request_method | lower }}`
 `{{ lower  "HELLO"}}`
 ```
 
@@ -107,7 +112,7 @@ Signature: `upper(string) string`
 Examples:
 
 ```template
-"{{ .request_method | upper }}"
+`{ .request_method | upper }}`
 `{{ upper  "hello"}}`
 ```
 
@@ -122,7 +127,7 @@ Signature: `title(string) string`
 Examples:
 
 ```template
-"{{.request_method | title}}"
+`{{.request_method | title}}`
 `{{ title "hello world"}}`
 ```
 
@@ -137,7 +142,7 @@ Signature: `trunc(count int,value string) string`
 Examples:
 
 ```template
-"{{ .path | trunc 2 }}"
+`{{ .path | trunc 2 }}`
 `{{ trunc 5 "hello world"}}`   // output: hello
 `{{ trunc -5 "hello world"}}`  // output: world
 ```
@@ -155,7 +160,7 @@ Otherwise, this calls value[start, end].
 Examples:
 
 ```template
-"{{ .path | substr 2 5 }}"
+`{{ .path | substr 2 5 }}`
 `{{ substr 0 5 "hello world"}}`  // output: hello
 `{{ substr 6 11 "hello world"}}` // output: world
 ```
@@ -175,8 +180,8 @@ It takes three arguments:
 Examples:
 
 ```template
-{{ .cluster | replace "-cluster" "" }}
-{{ replace "hello" "world" "hello world" }}
+`{{ .cluster | replace "-cluster" "" }}`
+`{{ replace "hello" "world" "hello world" }}`
 ```
 
 The last example will return `world world`.
@@ -190,8 +195,8 @@ Signature: `trim(string) string`
 Examples:
 
 ```template
-{{ .ip | trim }}
-{{ trim "   hello    " }} // output: hello
+`{{ .ip | trim }}`
+`{{ trim "   hello    " }}` // output: hello
 ```
 
 ## trimAll
@@ -203,8 +208,8 @@ Signature: `trimAll(chars string,src string) string`
 Examples:
 
 ```template
-{{ .path | trimAll "/" }}
-{{ trimAll "$" "$5.00" }} // output: 5.00
+`{{ .path | trimAll "/" }}`
+`{{ trimAll "$" "$5.00" }}` // output: 5.00
 ```
 
 ## trimSuffix
@@ -216,8 +221,8 @@ Signature: `trimSuffix(suffix string, src string) string`
 Examples:
 
 ```template
-{{  .path | trimSuffix "/" }}
-{{ trimSuffix "-" "hello-" }} // output: hello
+`{{  .path | trimSuffix "/" }}`
+`{{ trimSuffix "-" "hello-" }}` // output: hello
 ```
 
 ## trimPrefix
@@ -229,8 +234,8 @@ Signature: `trimPrefix(prefix string, src string) string`
 Examples:
 
 ```template
-{{  .path | trimPrefix "/" }}
-{{ trimPrefix "-" "-hello" }} // output: hello
+`{{  .path | trimPrefix "/" }}`
+`{{ trimPrefix "-" "-hello" }}` // output: hello
 ```
 
 ## alignLeft
@@ -268,7 +273,7 @@ Signature: `indent(spaces int,src string) string`
 Example:
 
 ```template
-{{ indent 4 .query }}
+`{{ indent 4 .query }}`
 ```
 
 This indents each line contained in the `.query` by four (4) spaces.
@@ -282,7 +287,7 @@ Signature: `nindent(spaces int,src string) string`
 Example:
 
 ```template
-{{ nindent 4 .query }}
+`{{ nindent 4 .query }}`
 ```
 
 This will indent every line of text by 4 space characters and add a new line to the beginning.
@@ -296,20 +301,20 @@ Signature: `repeat(c int,value string) string`
 Example:
 
 ```template
-{{ repeat 3 "hello" }} // output: hellohellohello
+`{{ repeat 3 "hello" }}` // output: hellohellohello
 ```
 
 ## contains
 
 Use this function to test to see if one string is contained inside of another.
 
-Signature: `contains(s string, src string) bool`
+Signature: `contains(s string, src string,) bool`
 
 Examples:
 
 ```template
-{{ if contains .err "ErrTimeout" }} timeout {{end}}
-{{ if contains "he" "hello" }} yes {{end}}
+`{{ if contains "ErrTimeout" .err }} timeout {{end}}`
+`{{ if contains "he" "hello" }} yes {{end}}`
 ```
 
 ## eq
@@ -321,8 +326,8 @@ Signature: `eq(s string, src string) bool`
 Examples:
 
 ```template
-{{ if eq .err "ErrTimeout" }} timeout {{end}}
-{{ if eq "he" "hello" }} yes {{end}}
+`{{ if eq "ErrTimeout" .err }} timeout {{end}}`
+`{{ if eq "hello" "hello" }} yes {{end}}`
 ```
 
 ## hasPrefix and hasSuffix
@@ -337,8 +342,8 @@ Signatures:
 Examples:
 
 ```template
-{{ if hasSuffix .err "Timeout" }} timeout {{end}}
-{{ if hasPrefix "he" "hello" }} yes {{end}}
+`{{ if hasSuffix .err "Timeout" }} timeout {{end}}`
+`{{ if hasPrefix "he" "hello" }} yes {{end}}`
 ```
 
 ## add
@@ -350,7 +355,7 @@ Signature: `func(i ...interface{}) int64`
 Example:
 
 ```template
-{{ add 3 2 5 }} // output: 10
+`{{ add 3 2 5 }}` // output: 10
 ```
 
 ## sub
@@ -362,19 +367,19 @@ Signature: `func(a, b interface{}) int64`
 Example:
 
 ```template
-{{ sub 5 2 }} // output: 3
+`{{ sub 5 2 }}` // output: 3
 ```
 
 ## mul
 
-Mulitply numbers. Supports multiple numbers.
+Multiply numbers. Supports multiple numbers.
 
 Signature: `func(a interface{}, v ...interface{}) int64`
 
 Example:
 
 ```template
-{{ mul 5 2 3}} // output: 30
+`{{ mul 5 2 3}}` // output: 30
 ```
 
 ## div
@@ -386,7 +391,7 @@ Signature: `func(a, b interface{}) int64`
 Example:
 
 ```template
-{{ div 10 2}} // output: 5
+`{{ div 10 2}}` // output: 5
 ```
 
 ## addf
@@ -398,7 +403,7 @@ Signature: `func(i ...interface{}) float64`
 Example:
 
 ```template
-{{ addf 3.5 2 5 }} // output: 10.5
+`{{ addf 3.5 2 5 }}` // output: 10.5
 ```
 
 ## subf
@@ -410,19 +415,19 @@ Signature: `func(a interface{}, v ...interface{}) float64`
 Example:
 
 ```template
-{{ subf  5.5 2 1.5 }} // output: 2
+`{{ subf  5.5 2 1.5 }}` // output: 2
 ```
 
 ## mulf
 
-Mulitply numbers. Supports multiple numbers
+Multiply numbers. Supports multiple numbers
 
 Signature: `func(a interface{}, v ...interface{}) float64`
 
 Example:
 
 ```template
-{{ mulf 5.5 2 2.5 }} // output: 27.5
+`{{ mulf 5.5 2 2.5 }}` // output: 27.5
 ```
 
 ## divf
@@ -434,7 +439,7 @@ Signature: `func(a interface{}, v ...interface{}) float64`
 Example:
 
 ```template
-{{ divf 10 2 4}} // output: 1.25
+`{{ divf 10 2 4}}` // output: 1.25
 ```
 
 ## mod
@@ -446,7 +451,7 @@ Signature: `func(a, b interface{}) int64`
 Example:
 
 ```template
-{{ mod 10 3}} // output: 1
+`{{ mod 10 3}}` // output: 1
 ```
 
 ## max
@@ -458,7 +463,7 @@ Signature: `max(a interface{}, i ...interface{}) int64`
 Example:
 
 ```template
-{{ max 1 2 3 }} //output 3
+`{{ max 1 2 3 }}` //output 3
 ```
 
 ## min
@@ -470,7 +475,7 @@ Signature: `min(a interface{}, i ...interface{}) int64`
 Example:
 
 ```template
-{{ min 1 2 3 }} //output 1
+`{{ min 1 2 3 }}`//output 1
 ```
 
 ## maxf
@@ -482,7 +487,7 @@ Signature: `maxf(a interface{}, i ...interface{}) float64`
 Example:
 
 ```template
-{{ maxf 1 2.5 3 }} //output 3
+`{{ maxf 1 2.5 3 }}` //output 3
 ```
 
 ## minf
@@ -494,7 +499,7 @@ Signature: `minf(a interface{}, i ...interface{}) float64`
 Example:
 
 ```template
-{{ minf 1 2.5 3 }} //output 1.5
+`{{ minf 1 2.5 3 }}` //output 1.5
 ```
 
 ## ceil
@@ -506,7 +511,7 @@ Signature: `ceil(a interface{}) float64`
 Example:
 
 ```template
-{{ ceil 123.001 }} //output 124.0
+`{{ ceil 123.001 }}` //output 124.0
 ```
 
 ## floor
@@ -518,7 +523,7 @@ Signature: `floor(a interface{}) float64`
 Example:
 
 ```template
-{{ floor 123.9999 }} //output 123.0
+`{{ floor 123.9999 }}` //output 123.0
 ```
 
 ## round
@@ -530,7 +535,7 @@ Signature: `round(a interface{}, p int, rOpt ...float64) float64`
 Example:
 
 ```template
-{{ round 123.555555 3 }} //output 123.556
+`{{ round 123.555555 3 }}` //output 123.556
 ```
 
 We can also provide a `roundOn` number as third parameter
@@ -538,7 +543,7 @@ We can also provide a `roundOn` number as third parameter
 Example:
 
 ```template
-{{ round 123.88571428571 5 .2 }} //output 123.88572
+`{{ round 123.88571428571 5 .2 }}` //output 123.88572
 ```
 
 With default `roundOn` of `.5` the above value would be `123.88571`
@@ -552,7 +557,7 @@ Signature: `toInt(v interface{}) int`
 Example:
 
 ```template
-{{ "3" | int }} //output 3
+`{{ "3" | int }}` //output 3
 ```
 
 ## float64
@@ -564,7 +569,7 @@ Signature: `toFloat64(v interface{}) float64`
 Example:
 
 ```template
-{{ "3.5" | float64 }} //output 3.5
+`{{ "3.5" | float64 }}` //output 3.5
 ```
 
 ## fromJson
@@ -576,13 +581,13 @@ Signature: `fromJson(v string) interface{}`
 Example:
 
 ```template
-fromJson "{\"foo\": 55}"
+`{{fromJson "{\"foo\": 55}"}}`
 ```
 
 Example of a query to print a newline per queries stored as a json array in the log line:
 
 ```logql
-{job="loki/querier"} |= "finish in prometheus" | logfmt | line_format "{{ range $q := fromJson .queries }} {{ $q.query }} {{ end }}"
+{job="loki/querier"} |= "finish in prometheus" | logfmt | line_format `{{ range $q := fromJson .queries }} {{ $q.query }} {{ end }}`
 ```
 
 ## now
@@ -594,7 +599,7 @@ Signature: `Now() time.Time`
 Example:
 
 ```template
-{{ now }}
+`{{ now }}`
 ```
 
 ## toDate
@@ -610,8 +615,8 @@ Signature: `toDate(fmt, str string) time.Time`
 Examples: 
 
 ```template
-{{ toDate "2006-01-02" "2021-11-02" }}
-{{ .foo | toDate "2006-01-02T15:04:05.999999999Z" }}
+`{{ toDate "2006-01-02" "2021-11-02" }}`
+`{{ .foo | toDate "2006-01-02T15:04:05.999999999Z" }}`
 ```
 
 ## toDateInZone
@@ -627,8 +632,8 @@ Signature: `toDateInZone(fmt, zone, str string) time.Time`
 Examples:
 
 ```template
-{{ toDateInZone "2006-01-02" "UTC" "2021-11-02" }}
-{{ .foo | toDateInZone "2006-01-02T15:04:05.999999999Z" "UTC" }}
+`{{ toDateInZone "2006-01-02" "UTC" "2021-11-02" }}`
+`{{ .foo | toDateInZone "2006-01-02T15:04:05.999999999Z" "UTC" }}`
 ```
 
 ## date
@@ -640,7 +645,7 @@ Signature: `date(fmt string, date interface{}) string`
 Example:
 
 ```template
-{{ date "2006-01-02" now }}
+`{{ date "2006-01-02" now }}`
 ```
 
 ## unixEpoch
@@ -652,13 +657,13 @@ Signature: `unixEpoch(date time.Time) string`
 Examples:
 
 ```template
-{{ unixEpoch now }}
-{{ .foo | toDateInZone "2006-01-02T15:04:05.999999999Z" "UTC" | unixEpoch }}
+`{{ unixEpoch now }}`
+`{{ .foo | toDateInZone "2006-01-02T15:04:05.999999999Z" "UTC" | unixEpoch }}`
 ```
 
 Example of a query to filter Loki querier jobs which create time is 1 day before:
 ```logql
-{job="loki/querier"} | label_format nowEpoch=`{{(unixEpoch now)}}`,createDateEpoch=`{{unixEpoch (toDate "2006-01-02" .createDate)}}` | label_format dateTimeDiff="{{sub .nowEpoch .createDateEpoch}}" | dateTimeDiff > 86400
+{job="loki/querier"} | label_format nowEpoch=`{{(unixEpoch now)}}`,createDateEpoch=`{{unixEpoch (toDate "2006-01-02" .createDate)}}` | label_format dateTimeDiff=`{{sub .nowEpoch .createDateEpoch}}` | dateTimeDiff > 86400
 ```
 
 ## unixEpochMillis
@@ -670,8 +675,8 @@ Signature: `unixEpochMillis(date time.Time) string`
 Examples:
 
 ```template
-{{ unixEpochMillis now }}
-{{ .foo | toDateInZone "2006-01-02T15:04:05.999999999Z" "UTC" | unixEpochMillis }}
+`{{ unixEpochMillis now }}`
+`{{ .foo | toDateInZone "2006-01-02T15:04:05.999999999Z" "UTC" | unixEpochMillis }}`
 ```
 
 ## unixEpochNanos
@@ -683,8 +688,8 @@ Signature: `unixEpochNanos(date time.Time) string`
 Examples:
 
 ```template
-{{ unixEpochNanos now }}
-{{ .foo | toDateInZone "2006-01-02T15:04:05.999999999Z" "UTC" | unixEpochNanos }}
+`{{ unixEpochNanos now }}`
+`{{ .foo | toDateInZone "2006-01-02T15:04:05.999999999Z" "UTC" | unixEpochNanos }}`
 ```
 
 ## unixToTime
@@ -709,8 +714,8 @@ Signature: `default(d string, src string) string`
 Examples:
 
 ```template
-{{ default "-" "" }} // output: -
-{{ default "-" "foo" }} // output: foo
+`{{ default "-" "" }}` // output: -
+`{{ default "-" "foo" }}` // output: foo
 ```
 
 Example of a query to print a `-` if the `http_request_headers_x_forwarded_for` label is empty:
@@ -727,8 +732,8 @@ Signature: `count(regex string, src string) int`
 Examples:
 
 ```template
-{{ count "a|b" "abab" }} // output: 4
-{{ count "o" "foo" }}    // output: 2
+`{{ count "a|b" "abab" }}` // output: 4
+`{{ count "o" "foo" }}`    // output: 2
 ```
 
 Example of a query to print how many times XYZ occurs in a line:
@@ -745,7 +750,7 @@ Signature: `urlencode(string) string`
 Examples:
 
 ```template
-"{{ .request_url | urlencode }}"
+`{{ .request_url | urlencode }}`
 `{{ urlencode  .request_url}}`
 ```
 
@@ -758,7 +763,7 @@ Signature: `urldecode(string) string`
 Examples:
 
 ```template
-"{{ .request_url | urldecode }}"
+`{{ .request_url | urldecode }}`
 `{{ urldecode  .request_url}}`
 ```
 
@@ -771,7 +776,7 @@ Signature: `b64enc(string) string`
 Examples:
 
 ```template
-"{{ .foo | b64enc }}"
+`{{ .foo | b64enc }}`
 `{{ b64enc  .foo }}`
 ```
 
@@ -784,7 +789,7 @@ Signature: `b64dec(string) string`
 Examples:
 
 ```template
-"{{ .foo | b64dec }}"
+`{{ .foo | b64dec }}`
 `{{ b64dec  .foo }}`
 ```
 
@@ -797,7 +802,7 @@ Signature: `bytes(string) string`
 Examples:
 
 ```template
-"{{ .foo | bytes }}"
+`{{ .foo | bytes }}`
 `{{ bytes .foo }}`
 ```
 
@@ -808,7 +813,7 @@ An alias for `duration_seconds`
 Examples:
 
 ```template
-"{{ .foo | duration }}"
+`{{ .foo | duration }}`
 `{{ duration .foo }}`
 ```
 
@@ -821,6 +826,6 @@ Signature: `duration_seconds(string) float64`
 Examples:
 
 ```template
-"{{ .foo | duration_seconds }}"
+`{{ .foo | duration_seconds }}`
 `{{ duration_seconds .foo }}`
 ```

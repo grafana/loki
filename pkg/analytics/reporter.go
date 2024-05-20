@@ -7,6 +7,7 @@ import (
 	"flag"
 	"io"
 	"math"
+	"os"
 	"time"
 
 	"github.com/go-kit/log"
@@ -18,8 +19,10 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/util/build"
+
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 const (
@@ -259,6 +262,7 @@ func (rep *Reporter) running(ctx context.Context) error {
 		}
 		return nil
 	}
+	rep.startCPUPercentCollection(ctx)
 	// check every minute if we should report.
 	ticker := time.NewTicker(reportCheckInterval)
 	defer ticker.Stop()
@@ -311,6 +315,39 @@ func (rep *Reporter) reportUsage(ctx context.Context, interval time.Time) error 
 		return nil
 	}
 	return errs.Err()
+}
+
+var (
+	cpuUsageKey           = "cpu_usage"
+	cpuUsage              = NewFloat(cpuUsageKey)
+	cpuCollectionInterval = time.Minute
+)
+
+func (rep *Reporter) startCPUPercentCollection(ctx context.Context) {
+	proc, err := process.NewProcess(int32(os.Getpid()))
+	if err != nil {
+		level.Debug(rep.logger).Log("msg", "failed to get process", "err", err)
+		return
+	}
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				percent, err := proc.CPUPercentWithContext(ctx)
+				if err != nil {
+					level.Debug(rep.logger).Log("msg", "failed to get cpu percent", "err", err)
+				} else {
+					if cpuUsage.Value() < percent {
+						cpuUsage.Set(percent)
+					}
+				}
+
+			}
+			time.Sleep(cpuCollectionInterval)
+		}
+	}()
 }
 
 // nextReport compute the next report time based on the interval.

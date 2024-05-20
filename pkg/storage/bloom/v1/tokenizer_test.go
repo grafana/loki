@@ -2,15 +2,15 @@ package v1
 
 import (
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/pkg/logproto"
 )
 
 const BigFile = "../../../logql/sketch/testdata/war_peace.txt"
 
 func TestNGramIterator(t *testing.T) {
+	t.Parallel()
 	var (
 		three      = NewNGramTokenizer(3, 0)
 		threeSkip1 = NewNGramTokenizer(3, 1)
@@ -73,7 +73,24 @@ func TestNGramIterator(t *testing.T) {
 	}
 }
 
+// Mainly this ensures we don't panic when a string ends in invalid utf8
+func TestInvalidUTF8(t *testing.T) {
+	x := NewNGramTokenizer(3, 0)
+
+	input := "abc\x80"
+	require.False(t, utf8.ValidString(input))
+	itr := x.Tokens(input)
+	require.True(t, itr.Next())
+	require.Equal(t, []byte("abc"), itr.At())
+	require.True(t, itr.Next())
+	// we don't really care about the final rune returned and it's probably not worth the perf cost
+	// to check for it
+	require.Equal(t, []byte{0x62, 0x63, 0xef, 0xbf, 0xbd}, itr.At())
+	require.False(t, itr.Next())
+}
+
 func TestPrefixedIterator(t *testing.T) {
+	t.Parallel()
 	var (
 		three = NewNGramTokenizer(3, 0)
 	)
@@ -173,7 +190,7 @@ func BenchmarkTokens(b *testing.B) {
 				{
 					desc: "v2",
 					f: func() func() {
-						buf, prefixLn := prefixedToken(v2Three.N, logproto.ChunkRef{})
+						buf, prefixLn := prefixedToken(v2Three.N(), ChunkRef{}, nil)
 						return func() {
 							itr := NewPrefixedTokenIter(buf, prefixLn, v2Three.Tokens(lorem))
 							for itr.Next() {
@@ -190,7 +207,7 @@ func BenchmarkTokens(b *testing.B) {
 				{
 					desc: "v2",
 					f: func() func() {
-						buf, prefixLn := prefixedToken(v2Three.N, logproto.ChunkRef{})
+						buf, prefixLn := prefixedToken(v2Three.N(), ChunkRef{}, nil)
 						return func() {
 							itr := NewPrefixedTokenIter(buf, prefixLn, v2ThreeSkip1.Tokens(lorem))
 							for itr.Next() {

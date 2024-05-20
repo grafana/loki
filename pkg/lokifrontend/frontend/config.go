@@ -9,11 +9,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
-	v1 "github.com/grafana/loki/pkg/lokifrontend/frontend/v1"
-	v2 "github.com/grafana/loki/pkg/lokifrontend/frontend/v2"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
+	v1 "github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1"
+	v2 "github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // This struct combines several configuration options together to preserve backwards compatibility.
@@ -43,7 +43,7 @@ func InitFrontend(cfg CombinedFrontendConfig, ring ring.ReadRing, limits v1.Limi
 	switch {
 	case cfg.DownstreamURL != "":
 		// If the user has specified a downstream Prometheus, then we should use that.
-		rt, err := NewDownstreamRoundTripper(cfg.DownstreamURL, http.DefaultTransport)
+		rt, err := NewDownstreamRoundTripper(cfg.DownstreamURL, http.DefaultTransport, codec)
 		return rt, nil, nil, err
 	case cfg.FrontendV2.SchedulerAddress != "" || ring != nil:
 		// If query-scheduler address is configured, use Frontend.

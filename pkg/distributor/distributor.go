@@ -10,11 +10,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
+	"github.com/buger/jsonparser"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/go-logfmt/logfmt"
 	"github.com/gogo/status"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/dskit/httpgrpc"
@@ -32,33 +36,52 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/compactor/retention"
-	"github.com/grafana/loki/pkg/distributor/clientpool"
-	"github.com/grafana/loki/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
 	ringKey = "distributor"
 
-	ringAutoForgetUnhealthyPeriods = 10
+	ringAutoForgetUnhealthyPeriods = 2
+
+	labelServiceName = "service_name"
+	serviceUnknown   = "unknown_service"
+	levelLabel       = "detected_level"
+	logLevelDebug    = "debug"
+	logLevelInfo     = "info"
+	logLevelWarn     = "warn"
+	logLevelError    = "error"
+	logLevelFatal    = "fatal"
+	logLevelCritical = "critical"
+	logLevelTrace    = "trace"
+	logLevelUnknown  = "unknown"
 )
 
 var (
 	maxLabelCacheSize = 100000
 	rfStats           = analytics.NewInt("distributor_replication_factor")
 )
+
+var allowedLabelsForLevel = map[string]struct{}{
+	"level": {}, "LEVEL": {}, "Level": {},
+	"severity": {}, "SEVERITY": {}, "Severity": {},
+	"lvl": {}, "LVL": {}, "Lvl": {},
+}
 
 // Config for a Distributor.
 type Config struct {
@@ -72,11 +95,14 @@ type Config struct {
 	RateStore RateStoreConfig `yaml:"rate_store"`
 
 	// WriteFailuresLoggingCfg customizes write failures logging behavior.
-	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Experimental. Customize the logging of write failures."`
+	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Customize the logging of write failures."`
+
+	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
+	cfg.OTLPConfig.RegisterFlags(fs)
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
@@ -121,11 +147,15 @@ type Distributor struct {
 	// Push failures rate limiter.
 	writeFailuresManager *writefailures.Manager
 
+	RequestParserWrapper push.RequestParserWrapper
+
 	// metrics
 	ingesterAppends        *prometheus.CounterVec
 	ingesterAppendTimeouts *prometheus.CounterVec
 	replicationFactor      prometheus.Gauge
 	streamShardCount       prometheus.Counter
+
+	usageTracker push.UsageTracker
 }
 
 // New a distributor creates.
@@ -138,6 +168,7 @@ func New(
 	registerer prometheus.Registerer,
 	metricsNamespace string,
 	tee Tee,
+	usageTracker push.UsageTracker,
 	logger log.Logger,
 ) (*Distributor, error) {
 	factory := cfg.factory
@@ -153,7 +184,7 @@ func New(
 		return client.New(internalCfg, addr)
 	}
 
-	validator, err := NewValidator(overrides)
+	validator, err := NewValidator(overrides, usageTracker)
 	if err != nil {
 		return nil, err
 	}
@@ -185,6 +216,7 @@ func New(
 		healthyInstancesCount: atomic.NewUint32(0),
 		rateLimitStrat:        rateLimitStrat,
 		tee:                   tee,
+		usageTracker:          usageTracker,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_ingester_appends_total",
@@ -337,7 +369,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			// Truncate first so subsequent steps have consistent line lengths
 			d.truncateLines(validationContext, &stream)
 
-			stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
+			var lbs labels.Labels
+			lbs, stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, stream)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -353,13 +386,33 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			n := 0
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
+
+			shouldDiscoverLevels := validationContext.allowStructuredMetadata && validationContext.discoverLogLevels
+			levelFromLabel, hasLevelLabel := hasAnyLevelLabels(lbs)
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
+				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue
 				}
 
+				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+				if shouldDiscoverLevels {
+					var logLevel string
+					if hasLevelLabel {
+						logLevel = levelFromLabel
+					} else if levelFromMetadata, ok := hasAnyLevelLabels(structuredMetadata); ok {
+						logLevel = levelFromMetadata
+					} else {
+						logLevel = detectLogLevelFromLogEntry(entry, structuredMetadata)
+					}
+					if logLevel != logLevelUnknown && logLevel != "" {
+						entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
+							Name:  levelLabel,
+							Value: logLevel,
+						})
+					}
+				}
 				stream.Entries[n] = entry
 
 				// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
@@ -411,6 +464,24 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
+
+		if d.usageTracker != nil {
+			for _, stream := range req.Streams {
+				lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
+				if err != nil {
+					continue
+				}
+
+				discardedStreamBytes := 0
+				for _, e := range stream.Entries {
+					discardedStreamBytes += len(e.Line)
+				}
+
+				if d.usageTracker != nil {
+					d.usageTracker.DiscardedBytesAdd(ctx, tenantID, validation.RateLimited, lbs, float64(discardedStreamBytes))
+				}
+			}
+		}
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -487,6 +558,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
+func hasAnyLevelLabels(l labels.Labels) (string, bool) {
+	for lbl := range allowedLabelsForLevel {
+		if l.Has(lbl) {
+			return l.Get(lbl), true
+		}
+	}
+	return "", false
+}
+
 // shardStream shards (divides) the given stream into N smaller streams, where
 // N is the sharding size for the given stream. shardSteam returns the smaller
 // streams and their associated keys for hashing to ingesters.
@@ -509,7 +589,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 	return d.divideEntriesBetweenShards(tenantID, shardCount, shardStreamsCfg, stream)
 }
 
-func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg *shardstreams.Config, stream logproto.Stream) []KeyedStream {
+func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg shardstreams.Config, stream logproto.Stream) []KeyedStream {
 	derivedStreams := d.createShards(stream, totalShards, tenantID, shardStreamsCfg)
 
 	for i := 0; i < len(stream.Entries); i++ {
@@ -521,7 +601,7 @@ func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards in
 	return derivedStreams
 }
 
-func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg *shardstreams.Config) []KeyedStream {
+func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg shardstreams.Config) []KeyedStream {
 	var (
 		streamLabels   = labelTemplate(stream.Labels, d.logger)
 		streamPattern  = streamLabels.String()
@@ -684,30 +764,43 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 }
 
 type labelData struct {
-	labels string
-	hash   uint64
+	ls   labels.Labels
+	hash uint64
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, uint64, error) {
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		labelVal := val.(labelData)
-		return labelVal.labels, labelVal.hash, nil
+		return labelVal.ls, labelVal.ls.String(), labelVal.hash, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		return "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		return nil, "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {
-		return "", 0, err
+	if err := d.validator.ValidateLabels(vContext, ls, stream); err != nil {
+		return nil, "", 0, err
 	}
 
-	lsVal := ls.String()
+	// We do not want to count service_name added by us in the stream limit so adding it after validating original labels.
+	if !ls.Has(labelServiceName) && len(vContext.discoverServiceName) > 0 {
+		serviceName := serviceUnknown
+		for _, labelName := range vContext.discoverServiceName {
+			if labelVal := ls.Get(labelName); labelVal != "" {
+				serviceName = labelVal
+				break
+			}
+		}
+
+		ls = labels.NewBuilder(ls).Set(labelServiceName, serviceName).Labels()
+		stream.Labels = ls.String()
+	}
+
 	lsHash := ls.Hash()
 
-	d.labelCache.Add(key, labelData{lsVal, lsHash})
-	return lsVal, lsHash, nil
+	d.labelCache.Add(key, labelData{ls, lsHash})
+	return ls, ls.String(), lsHash, nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.
@@ -716,7 +809,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 // based on the rate stored in the rate store and will store the new evaluated number of shards.
 //
 // desiredRate is expected to be given in bytes.
-func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, pushSize int, tenantID string, streamShardcfg *shardstreams.Config) int {
+func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, pushSize int, tenantID string, streamShardcfg shardstreams.Config) int {
 	if streamShardcfg.DesiredRate.Val() <= 0 {
 		if streamShardcfg.LoggingEnabled {
 			level.Error(logger).Log("msg", "invalid desired rate", "desired_rate", streamShardcfg.DesiredRate.String())
@@ -792,4 +885,125 @@ func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger l
 // distributor. $EFFECTIVE_RATE_LIMIT = $GLOBAL_RATE_LIMIT / $NUM_INSTANCES.
 func (d *Distributor) HealthyInstancesCount() int {
 	return int(d.healthyInstancesCount.Load())
+}
+
+func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
+	// otlp logs have a severity number, using which we are defining the log levels.
+	// Significance of severity number is explained in otel docs here https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber
+	if otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber); otlpSeverityNumberTxt != "" {
+		otlpSeverityNumber, err := strconv.Atoi(otlpSeverityNumberTxt)
+		if err != nil {
+			return logLevelInfo
+		}
+		if otlpSeverityNumber == int(plog.SeverityNumberUnspecified) {
+			return logLevelUnknown
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberTrace4) {
+			return logLevelTrace
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberDebug4) {
+			return logLevelDebug
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberInfo4) {
+			return logLevelInfo
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberWarn4) {
+			return logLevelWarn
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberError4) {
+			return logLevelError
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberFatal4) {
+			return logLevelFatal
+		}
+		return logLevelUnknown
+	}
+
+	return extractLogLevelFromLogLine(entry.Line)
+}
+
+func extractLogLevelFromLogLine(log string) string {
+	var v string
+	if isJSON(log) {
+		v = getValueUsingJSONParser(log)
+	} else {
+		v = getValueUsingLogfmtParser(log)
+	}
+
+	switch strings.ToLower(v) {
+	case "trace", "trc":
+		return logLevelTrace
+	case "debug", "dbg":
+		return logLevelDebug
+	case "info", "inf":
+		return logLevelInfo
+	case "warn", "wrn":
+		return logLevelWarn
+	case "error", "err":
+		return logLevelError
+	case "critical":
+		return logLevelCritical
+	case "fatal":
+		return logLevelFatal
+	default:
+		return detectLevelFromLogLine(log)
+	}
+}
+
+func getValueUsingLogfmtParser(line string) string {
+	equalIndex := strings.Index(line, "=")
+	if len(line) == 0 || equalIndex == -1 {
+		return logLevelUnknown
+	}
+	d := logfmt.NewDecoder(strings.NewReader(line))
+	d.ScanRecord()
+	for d.ScanKeyval() {
+		if _, ok := allowedLabelsForLevel[string(d.Key())]; ok {
+			return string(d.Value())
+		}
+	}
+	return logLevelUnknown
+}
+
+func getValueUsingJSONParser(log string) string {
+	for allowedLabel := range allowedLabelsForLevel {
+		l, err := jsonparser.GetString([]byte(log), allowedLabel)
+		if err == nil {
+			return l
+		}
+	}
+	return logLevelUnknown
+}
+
+func isJSON(line string) bool {
+	var firstNonSpaceChar rune
+	for _, char := range line {
+		if !unicode.IsSpace(char) {
+			firstNonSpaceChar = char
+			break
+		}
+	}
+
+	var lastNonSpaceChar rune
+	for i := len(line) - 1; i >= 0; i-- {
+		char := rune(line[i])
+		if !unicode.IsSpace(char) {
+			lastNonSpaceChar = char
+			break
+		}
+	}
+
+	return firstNonSpaceChar == '{' && lastNonSpaceChar == '}'
+}
+
+func detectLevelFromLogLine(log string) string {
+	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
+		strings.Contains(log, "error") || strings.Contains(log, "ERROR") {
+		return logLevelError
+	}
+	if strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
+		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
+		return logLevelWarn
+	}
+	if strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") {
+		return logLevelCritical
+	}
+	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
+		return logLevelDebug
+	}
+	return logLevelUnknown
 }

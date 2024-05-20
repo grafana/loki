@@ -1,3 +1,5 @@
+//go:build integration
+
 package integration
 
 import (
@@ -11,13 +13,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/integration/client"
-	"github.com/grafana/loki/integration/cluster"
+	"github.com/grafana/loki/v3/integration/client"
+	"github.com/grafana/loki/v3/integration/cluster"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/push"
-	"github.com/grafana/loki/pkg/storage"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage"
 )
 
 type pushRequest struct {
@@ -26,7 +29,7 @@ type pushRequest struct {
 }
 
 func TestMicroServicesDeleteRequest(t *testing.T) {
-	clu := cluster.New(nil, cluster.SchemaWithBoltDBAndBoltDB, func(c *cluster.Cluster) {
+	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
 	defer func() {

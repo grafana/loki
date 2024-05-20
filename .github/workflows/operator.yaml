@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.20']
+        go: ['1.21']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.20']
+        go: ['1.21']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -64,7 +64,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.20']
+        go: ['1.21']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -85,7 +85,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.20']
+        go: ['1.21']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -106,7 +106,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.20']
+        go: ['1.21']
     steps:
     - name: Install make
       run: sudo apt-get install make

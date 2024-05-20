@@ -10,10 +10,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 type indexShipperIterator interface {
@@ -84,20 +84,20 @@ func (i *indexShipperQuerier) Close() error {
 	return nil
 }
 
-func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *tsdbindex.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
 	}
-	return idx.GetChunkRefs(ctx, userID, from, through, res, shard, matchers...)
+	return idx.GetChunkRefs(ctx, userID, from, through, res, fpFilter, matchers...)
 }
 
-func (i *indexShipperQuerier) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *tsdbindex.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (i *indexShipperQuerier) Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
 	}
-	return idx.Series(ctx, userID, from, through, res, shard, matchers...)
+	return idx.Series(ctx, userID, from, through, res, fpFilter, matchers...)
 }
 
 func (i *indexShipperQuerier) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
@@ -116,49 +116,64 @@ func (i *indexShipperQuerier) LabelValues(ctx context.Context, userID string, fr
 	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 }
 
-func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *tsdbindex.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter tsdbindex.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return err
 	}
 
-	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
+	return idx.Stats(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, matchers...)
 }
 
-func (i *indexShipperQuerier) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, shard *tsdbindex.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
+func (i *indexShipperQuerier) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter tsdbindex.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return err
 	}
 
-	return idx.Volume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
+	return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 }
 
-type resultAccumulator struct {
+func (i *indexShipperQuerier) ForSeries(ctx context.Context, userID string, fpFilter tsdbindex.FingerprintFilter, from, through model.Time, fn func(labels.Labels, model.Fingerprint, []tsdbindex.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+	idx, err := i.indices(ctx, from, through, userID)
+	if err != nil {
+		return err
+	}
+
+	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+}
+
+type resultAccumulator[T any] struct {
 	mtx   sync.Mutex
-	items []interface{}
-	merge func(xs []interface{}) (interface{}, error)
+	items []T
+	merge func(xs []T) (T, error)
 }
 
-func newResultAccumulator(merge func(xs []interface{}) (interface{}, error)) *resultAccumulator {
-	return &resultAccumulator{
+// TODO(owen-d): make generic to avoid casting at runtime.
+func newResultAccumulator[T any](merge func(xs []T) (T, error)) *resultAccumulator[T] {
+	return &resultAccumulator[T]{
 		merge: merge,
 	}
 }
 
-func (acc *resultAccumulator) Add(item interface{}) {
+func (acc *resultAccumulator[T]) Add(item T) {
 	acc.mtx.Lock()
 	defer acc.mtx.Unlock()
 	acc.items = append(acc.items, item)
 
 }
 
-func (acc *resultAccumulator) Merge() (interface{}, error) {
+func (acc *resultAccumulator[T]) Merge() (res T, err error) {
 	acc.mtx.Lock()
 	defer acc.mtx.Unlock()
 
-	if len(acc.items) == 0 {
-		return nil, ErrEmptyAccumulator
+	ln := len(acc.items)
+	if ln == 0 {
+		return res, ErrEmptyAccumulator
+	}
+
+	if ln == 1 {
+		return acc.items[0], nil
 	}
 
 	return acc.merge(acc.items)

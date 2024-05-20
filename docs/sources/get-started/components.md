@@ -12,16 +12,18 @@ Loki is a modular system that contains many components that can either be run to
 in logical groups (in "simple scalable deployment" mode with targets `read`, `write`, `backend`), or individually (in "microservice" mode).
 For more information see [Deployment modes]({{< relref "./deployment-modes" >}}).
 
-| Component | _individual_ | `all` | `read` | `write` | `backend` |
-| ----------------------------------- | - | - | - | - | - |
-| [Distributor](#distributor)         | x | x |   | x |   |
-| [Ingester](#ingester)               | x | x |   | x |   |
-| [Query Frontend](#query-frontend)   | x | x | x |   |   |
-| [Query Scheduler](#query-scheduler) | x | x |   |   | x |
-| [Querier](#querier)                 | x | x | x |   |   |
-| [Index Gateway](#index-gateway)     | x |   |   |   | x |
-| [Compactor](#compactor)             | x | x |   |   | x |
-| [Ruler](#ruler)                     | x | x |   |   | x |
+| Component                                          | _individual_ | `all` | `read` | `write` | `backend` |
+|----------------------------------------------------|--------------| - | - | - | - |
+| [Distributor](#distributor)                        | x            | x |   | x |   |
+| [Ingester](#ingester)                              | x            | x |   | x |   |
+| [Query Frontend](#query-frontend)                  | x            | x | x |   |   |
+| [Query Scheduler](#query-scheduler)                | x            | x |   |   | x |
+| [Querier](#querier)                                | x            | x | x |   |   |
+| [Index Gateway](#index-gateway)                    | x            |   |   |   | x |
+| [Compactor](#compactor)                            | x            | x |   |   | x |
+| [Ruler](#ruler)                                    | x            | x |   |   | x |
+| [Bloom Compactor (Experimental)](#bloom-compactor) | x            |   |   |   | x |
+| [Bloom Gateway (Experimental)](#bloom-gateway)     | x            |   |   |   | x |
 
 This page describes the responsibilities of each of these components.
 
@@ -29,7 +31,7 @@ This page describes the responsibilities of each of these components.
 ## Distributor
 
 The **distributor** service is responsible for handling incoming push requests from
-clients. It's the first stop in the write path for log data. Once the
+clients. It's the first step in the write path for log data. Once the
 distributor receives a set of streams in an HTTP request, each stream is validated for correctness
 and to ensure that it is within the configured tenant (or global) limits. Each valid stream
 is then sent to `n` [ingesters](#ingester) in parallel, where `n` is the [replication factor](#replication-factor) for data.
@@ -55,7 +57,7 @@ Currently the only way the distributor mutates incoming data is by normalizing l
 The distributor can also rate limit incoming logs based on the maximum data ingest rate per tenant. It does this by checking a per-tenant limit and dividing it by the current number of distributors. This allows the rate limit to be specified per tenant at the cluster level and enables us to scale the distributors up or down and have the per-distributor limit adjust accordingly. For instance, say we have 10 distributors and tenant A has a 10MB rate limit. Each distributor will allow up to 1MB/s before limiting. Now, say another large tenant joins the cluster and we need to spin up 10 more distributors. The now 20 distributors will adjust their rate limits for tenant A to `(10MB / 20 distributors) = 500KB/s`. This is how global limits allow much simpler and safer operation of the Loki cluster.
 
 {{% admonition type="note" %}}
-The distributor uses the `ring` component under the hood to register itself amongst its peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring configuration]({{< relref "../configure#distributor" >}}).
+The distributor uses the `ring` component under the hood to register itself amongst its peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor).
 {{% /admonition %}}
 
 ### Forwarding
@@ -170,7 +172,7 @@ deduplicated.
 
 ### Timestamp Ordering
 
-Loki is configured to [accept out-of-order writes]({{< relref "../configure#accept-out-of-order-writes" >}}) by default.
+Loki is configured to [accept out-of-order writes](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#accept-out-of-order-writes) by default.
 
 When not configured to accept out-of-order writes, the ingester validates that ingested log lines are in order. When an
 ingester receives a log line that doesn't follow the expected order, the line
@@ -334,3 +336,29 @@ This mode is called remote rule evaluation and is used to gain the advantages of
 from the query frontend.
 
 When running multiple rulers, they use a consistent hash ring to distribute rule groups amongst available ruler instances.
+
+## Bloom Compactor
+{{% admonition type="warning" %}}
+This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.  No SLA is provided.  
+{{% /admonition %}}
+
+The Bloom Compactor service is responsible for building blooms for chunks in the object store. 
+The resulting blooms are grouped in bloom blocks spanning multiple series and chunks from a given day. 
+This component also builds metadata files to track which blocks are available for each series and TSDB index file.
+
+The service is horizontally scalable. When running multiple Bloom Compactors, they use a ring to shard tenants and 
+distribute series fingerprints among the available Bloom Compactor instances. 
+The ring is also used to decide which compactor should apply blooms retention.
+
+## Bloom Gateway
+{{% admonition type="warning" %}}
+This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.  No SLA is provided.  
+{{% /admonition %}}
+
+The Bloom Gateway service is responsible for handling and serving chunks filtering requests. 
+The index gateway queries the Bloom Gateway when computing chunk references, or when computing shards for a given query.
+The gateway service takes a list of chunks and a filtering expression and matches them against the blooms, 
+filtering out any chunks that do not match the given filter expression.
+
+The service is horizontally scalable. When running multiple instances, they use a ring to shard tenants and 
+distribute series fingerprints across instances.

@@ -18,9 +18,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type mockClient struct {
@@ -195,7 +195,7 @@ func TestRemoteEvalEmptyScalarResponse(t *testing.T) {
 	require.Empty(t, res.Data)
 }
 
-// TestRemoteEvalEmptyVectorResponse validates that an empty vector response is valid and does not cause an error
+// TestRemoteEvalVectorResponse validates that an empty vector response is valid and does not cause an error
 func TestRemoteEvalVectorResponse(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
 	limits, err := validation.NewOverrides(defaultLimits, nil)

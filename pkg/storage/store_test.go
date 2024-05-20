@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -21,25 +24,26 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	lokilog "github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/push"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/marshal"
-	"github.com/grafana/loki/pkg/validation"
+
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
@@ -115,7 +119,7 @@ func Benchmark_store_SelectSample(b *testing.B) {
 			sampleCount := 0
 			for i := 0; i < b.N; i++ {
 				iter, err := chunkStore.SelectSamples(ctx, logql.SelectSampleParams{
-					SampleQueryRequest: newSampleQuery(test, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()), nil),
+					SampleQueryRequest: newSampleQuery(test, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()), nil, nil),
 				})
 				if err != nil {
 					b.Fatal(err)
@@ -209,7 +213,7 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 			{
 				From:       config.DayTime{Time: start},
 				IndexType:  "boltdb",
-				ObjectType: config.StorageTypeFileSystem,
+				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v13",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{
@@ -530,7 +534,7 @@ func Test_store_SelectSample(t *testing.T) {
 	}{
 		{
 			"all",
-			newSampleQuery("count_over_time({foo=~\"ba.*\"}[5m])", from, from.Add(6*time.Millisecond), nil),
+			newSampleQuery("count_over_time({foo=~\"ba.*\"}[5m])", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -606,7 +610,7 @@ func Test_store_SelectSample(t *testing.T) {
 		},
 		{
 			"filter regex",
-			newSampleQuery("rate({foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"[1m])", from, from.Add(6*time.Millisecond), nil),
+			newSampleQuery("rate({foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"[1m])", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -632,7 +636,7 @@ func Test_store_SelectSample(t *testing.T) {
 		},
 		{
 			"filter matcher",
-			newSampleQuery("count_over_time({foo=\"bar\"}[10m])", from, from.Add(6*time.Millisecond), nil),
+			newSampleQuery("count_over_time({foo=\"bar\"}[10m])", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -674,7 +678,7 @@ func Test_store_SelectSample(t *testing.T) {
 		},
 		{
 			"filter time",
-			newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(time.Millisecond), nil),
+			newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(time.Millisecond), nil, nil),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -704,6 +708,7 @@ func Test_store_SelectSample(t *testing.T) {
 				"count_over_time({foo=~\"ba.*\"}[5m])",
 				from,
 				from.Add(6*time.Millisecond),
+				nil,
 				[]*logproto.Delete{
 					{
 						Selector: `{foo="bar"}`,
@@ -757,6 +762,7 @@ func Test_store_SelectSample(t *testing.T) {
 				"count_over_time({foo=~\"ba.*\"}[5m])",
 				from,
 				from.Add(6*time.Millisecond),
+				nil,
 				[]*logproto.Delete{
 					{
 						Selector: `{foo="bar"}`,
@@ -870,7 +876,7 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	s.SetChunkFilterer(&fakeChunkFilterer{})
 	ctx = user.InjectOrgID(context.Background(), "test-user")
-	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil)})
+	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil, nil)})
 	if err != nil {
 		t.Errorf("store.SelectSamples() error = %v", err)
 		return
@@ -914,7 +920,8 @@ func Test_PipelineWrapper(t *testing.T) {
 
 	s.SetPipelineWrapper(wrapper)
 	ctx = user.InjectOrgID(context.Background(), "test-user")
-	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
+	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), []astmapper.ShardAnnotation{{Shard: 1, Of: 5}}, nil)})
+
 	if err != nil {
 		t.Errorf("store.SelectLogs() error = %v", err)
 		return
@@ -927,6 +934,37 @@ func Test_PipelineWrapper(t *testing.T) {
 	require.Equal(t, "test-user", wrapper.tenant)
 	require.Equal(t, "{foo=~\"ba.*\"}", wrapper.query)
 	require.Equal(t, 28, wrapper.pipeline.sp.called) // we've passed every log line through the wrapper
+}
+
+func Test_PipelineWrapper_disabled(t *testing.T) {
+	s := &LokiStore{
+		Store: storeFixture,
+		cfg: Config{
+			MaxChunkBatchSize: 10,
+		},
+		chunkMetrics: NilMetrics,
+	}
+	wrapper := &testPipelineWrapper{
+		pipeline: newMockPipeline(),
+	}
+
+	s.SetPipelineWrapper(wrapper)
+	ctx = user.InjectOrgID(context.Background(), "test-user")
+	ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, "true")
+	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), []astmapper.ShardAnnotation{{Shard: 1, Of: 5}}, nil)})
+
+	if err != nil {
+		t.Errorf("store.SelectLogs() error = %v", err)
+		return
+	}
+	defer logit.Close()
+	for logit.Next() {
+		require.NoError(t, logit.Error()) // consume the iterator
+	}
+
+	require.Equal(t, "", wrapper.tenant)
+	require.Equal(t, "", wrapper.query)
+	require.Equal(t, 0, wrapper.pipeline.sp.called) // we've passed every log line through the wrapper
 }
 
 type testPipelineWrapper struct {
@@ -999,7 +1037,7 @@ func Test_SampleWrapper(t *testing.T) {
 	s.SetExtractorWrapper(wrapper)
 
 	ctx = user.InjectOrgID(context.Background(), "test-user")
-	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil)})
+	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), []astmapper.ShardAnnotation{{Shard: 1, Of: 3}}, nil)})
 	if err != nil {
 		t.Errorf("store.SelectSamples() error = %v", err)
 		return
@@ -1012,6 +1050,36 @@ func Test_SampleWrapper(t *testing.T) {
 	require.Equal(t, "test-user", wrapper.tenant)
 	require.Equal(t, "count_over_time({foo=~\"ba.*\"}[1s])", wrapper.query)
 	require.Equal(t, 28, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
+}
+
+func Test_SampleWrapper_disabled(t *testing.T) {
+	s := &LokiStore{
+		Store: storeFixture,
+		cfg: Config{
+			MaxChunkBatchSize: 10,
+		},
+		chunkMetrics: NilMetrics,
+	}
+	wrapper := &testExtractorWrapper{
+		extractor: newMockExtractor(),
+	}
+	s.SetExtractorWrapper(wrapper)
+
+	ctx = user.InjectOrgID(context.Background(), "test-user")
+	ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, "true")
+	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), []astmapper.ShardAnnotation{{Shard: 1, Of: 3}}, nil)})
+	if err != nil {
+		t.Errorf("store.SelectSamples() error = %v", err)
+		return
+	}
+	defer it.Close()
+	for it.Next() {
+		require.NoError(t, it.Error()) // consume the iterator
+	}
+
+	require.Equal(t, "", wrapper.tenant)
+	require.Equal(t, "", wrapper.query)
+	require.Equal(t, 0, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
 }
 
 type testExtractorWrapper struct {
@@ -1215,8 +1283,8 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	periodConfig := config.PeriodConfig{
 		From:       config.DayTime{Time: timeToModelTime(firstPeriodDate)},
-		IndexType:  config.TSDBType,
-		ObjectType: config.StorageTypeFileSystem,
+		IndexType:  types.TSDBType,
+		ObjectType: types.StorageTypeFileSystem,
 		Schema:     "v9",
 		IndexTables: config.IndexPeriodicTableConfig{
 			PathPrefix: "index/",
@@ -1270,7 +1338,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	// get all the chunks from the first period
 	predicate := chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
-	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate), predicate)
+	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate), predicate, nil)
 	require.NoError(t, err)
 	var totalChunks int
 	for _, chks := range chunks {
@@ -1289,7 +1357,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 	// update schema with a new period that uses different index prefix
 	periodConfig2 := config.PeriodConfig{
 		From:       config.DayTime{Time: timeToModelTime(secondPeriodDate)},
-		IndexType:  config.TSDBType,
+		IndexType:  types.TSDBType,
 		ObjectType: "named-store",
 		Schema:     "v11",
 		IndexTables: config.IndexPeriodicTableConfig{
@@ -1341,7 +1409,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	// get all the chunks from both the stores
 	predicate = chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
-	chunks, _, err = store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate.Add(24*time.Hour)), predicate)
+	chunks, _, err = store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate.Add(24*time.Hour)), predicate, nil)
 	require.NoError(t, err)
 
 	totalChunks = 0
@@ -1368,9 +1436,9 @@ func TestStore_MultiPeriod(t *testing.T) {
 	secondStoreDate := parseDate("2019-01-02")
 
 	for name, indexes := range map[string][]string{
-		"botldb_boltdb": {config.BoltDBShipperType, config.BoltDBShipperType},
-		"botldb_tsdb":   {config.BoltDBShipperType, config.TSDBType},
-		"tsdb_tsdb":     {config.TSDBType, config.TSDBType},
+		"botldb_boltdb": {types.BoltDBShipperType, types.BoltDBShipperType},
+		"botldb_tsdb":   {types.BoltDBShipperType, types.TSDBType},
+		"tsdb_tsdb":     {types.TSDBType, types.TSDBType},
 	} {
 		t.Run(name, func(t *testing.T) {
 			tempDir := t.TempDir()
@@ -1396,7 +1464,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 			periodConfigV9 := config.PeriodConfig{
 				From:       config.DayTime{Time: timeToModelTime(firstStoreDate)},
 				IndexType:  indexes[0],
-				ObjectType: config.StorageTypeFileSystem,
+				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v9",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{
@@ -1475,7 +1543,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 
 			// get all the chunks from both the stores
 			predicate := chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
-			chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), predicate)
+			chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), predicate, nil)
 			require.NoError(t, err)
 			var totalChunks int
 			for _, chks := range chunks {
@@ -1753,7 +1821,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 			{
 				From:       config.DayTime{Time: timeToModelTime(boltdbShipperStartDate)},
 				IndexType:  "boltdb-shipper",
-				ObjectType: config.StorageTypeFileSystem,
+				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v12",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PathPrefix: "index/",
@@ -1766,7 +1834,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 			{
 				From:       config.DayTime{Time: timeToModelTime(tsdbStartDate)},
 				IndexType:  "tsdb",
-				ObjectType: config.StorageTypeFileSystem,
+				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v12",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PathPrefix: "index/",
@@ -1846,7 +1914,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 
 	// get all the chunks from both the stores
 	predicate := chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
-	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(boltdbShipperStartDate), timeToModelTime(tsdbStartDate.Add(24*time.Hour)), predicate)
+	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(boltdbShipperStartDate), timeToModelTime(tsdbStartDate.Add(24*time.Hour)), predicate, nil)
 	require.NoError(t, err)
 	var totalChunks int
 	for _, chks := range chunks {
@@ -1862,6 +1930,76 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 			require.True(t, ok)
 		}
 	}
+}
+
+func TestStore_SyncStopInteraction(t *testing.T) {
+	tempDir := t.TempDir()
+
+	ingesterName := "ingester-1"
+	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
+	// config for BoltDB Shipper
+	boltdbShipperConfig := boltdb.IndexCfg{}
+	flagext.DefaultValues(&boltdbShipperConfig)
+	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "boltdb-index")
+	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
+	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	boltdbShipperConfig.IngesterName = ingesterName
+	boltdbShipperConfig.ResyncInterval = time.Millisecond
+
+	// config for tsdb Shipper
+	tsdbShipperConfig := indexshipper.Config{}
+	flagext.DefaultValues(&tsdbShipperConfig)
+	tsdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "tsdb-index")
+	tsdbShipperConfig.CacheLocation = path.Join(tempDir, "tsdb-shipper-cache")
+	tsdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	tsdbShipperConfig.IngesterName = ingesterName
+	tsdbShipperConfig.ResyncInterval = time.Millisecond
+
+	// dates for activation of boltdb shippers
+	boltdbShipperStartDate := parseDate("2019-01-01")
+	tsdbStartDate := parseDate("2019-01-02")
+
+	cfg := Config{
+		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+		BoltDBShipperConfig: boltdbShipperConfig,
+		TSDBShipperConfig:   tsdbShipperConfig,
+	}
+
+	schemaConfig := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:       config.DayTime{Time: timeToModelTime(boltdbShipperStartDate)},
+				IndexType:  "boltdb-shipper",
+				ObjectType: types.StorageTypeFileSystem,
+				Schema:     "v12",
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
+				RowShards: 2,
+			},
+			{
+				From:       config.DayTime{Time: timeToModelTime(tsdbStartDate)},
+				IndexType:  "tsdb",
+				ObjectType: types.StorageTypeFileSystem,
+				Schema:     "v12",
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
+			},
+		},
+	}
+
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
+	require.NoError(t, err)
+	store.Stop()
 }
 
 func TestQueryReferencingStructuredMetadata(t *testing.T) {
@@ -2069,7 +2207,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				ctx := user.InjectOrgID(context.Background(), "fake")
 				_, ctx = stats.NewContext(ctx)
-				it, err := store.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery(tc.query, chkFrom, chkThrough.Add(time.Minute), nil)})
+				it, err := store.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery(tc.query, chkFrom, chkThrough.Add(time.Minute), nil, nil)})
 				require.NoError(t, err)
 				numSamples := int64(0)
 				for it.Next() {

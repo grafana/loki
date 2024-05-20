@@ -14,11 +14,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 func NewMockQuerier(shards int, streams []logproto.Stream) MockQuerier {
@@ -34,6 +34,20 @@ type MockQuerier struct {
 	streams []logproto.Stream
 }
 
+func (q MockQuerier) extractOldShard(xs []string) (*index.ShardAnnotation, error) {
+	parsed, version, err := ParseShards(xs)
+	if err != nil {
+		return nil, err
+	}
+
+	if version != PowerOfTwoVersion {
+		return nil, fmt.Errorf("unsupported shard version: %d", version)
+	}
+
+	return parsed[0].PowerOfTwo, nil
+
+}
+
 func (q MockQuerier) SelectLogs(_ context.Context, req SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
@@ -46,13 +60,12 @@ func (q MockQuerier) SelectLogs(_ context.Context, req SelectLogParams) (iter.En
 
 	matchers := expr.Matchers()
 
-	var shard *astmapper.ShardAnnotation
+	var shard *index.ShardAnnotation
 	if len(req.Shards) > 0 {
-		shards, err := ParseShards(req.Shards)
+		shard, err = q.extractOldShard(req.Shards)
 		if err != nil {
 			return nil, err
 		}
-		shard = &shards[0]
 	}
 
 	var matched []logproto.Stream
@@ -172,13 +185,12 @@ func (q MockQuerier) SelectSamples(_ context.Context, req SelectSampleParams) (i
 
 	matchers := selector.Matchers()
 
-	var shard *astmapper.ShardAnnotation
+	var shard *index.ShardAnnotation
 	if len(req.Shards) > 0 {
-		shards, err := ParseShards(req.Shards)
+		shard, err = q.extractOldShard(req.Shards)
 		if err != nil {
 			return nil, err
 		}
-		shard = &shards[0]
 	}
 
 	var matched []logproto.Stream
@@ -215,7 +227,7 @@ type MockDownstreamer struct {
 
 func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return m }
 
-func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
+func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery, _ Accumulator) ([]logqlmodel.Result, error) {
 	results := make([]logqlmodel.Result, 0, len(queries))
 	for _, query := range queries {
 		res, err := m.Query(query.Params).Exec(ctx)
@@ -265,8 +277,9 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 			if valueField {
 				line = fmt.Sprintf("%s value=%f", line, r.Float64()*100.0)
 			}
+			nanos := r.Int63n(time.Second.Nanoseconds())
 			stream.Entries = append(stream.Entries, logproto.Entry{
-				Timestamp: time.Unix(0, int64(j*int(time.Second))),
+				Timestamp: time.Unix(0, int64(j*int(time.Second))+nanos),
 				Line:      line,
 			})
 		}

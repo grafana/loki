@@ -14,24 +14,21 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 type cacheKeySeries struct {
 	Limits
 	transformer UserIDTransformer
-	iqo         util.IngesterQueryOptions
 }
 
 // GenerateCacheKey generates a cache key based on the userID, matchers, split duration and the interval of the request.
 func (i cacheKeySeries) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	sr := r.(*LokiSeriesRequest)
-
-	split := SplitIntervalForTimeRange(i.iqo, i.Limits, i.MetadataQuerySplitDuration, []string{userID}, time.Now().UTC(), r.GetEnd().UTC())
+	split := metadataSplitIntervalForTimeRange(i.Limits, []string{userID}, time.Now().UTC(), r.GetStart().UTC())
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {
@@ -87,7 +84,6 @@ func NewSeriesCacheMiddleware(
 	merger queryrangebase.Merger,
 	c cache.Cache,
 	cacheGenNumberLoader queryrangebase.CacheGenNumberLoader,
-	iqo util.IngesterQueryOptions,
 	shouldCache queryrangebase.ShouldCacheFn,
 	parallelismForReq queryrangebase.ParallelismForReqFn,
 	retentionEnabled bool,
@@ -97,7 +93,7 @@ func NewSeriesCacheMiddleware(
 	return queryrangebase.NewResultsCacheMiddleware(
 		logger,
 		c,
-		cacheKeySeries{limits, transformer, iqo},
+		cacheKeySeries{limits, transformer},
 		limits,
 		merger,
 		seriesExtractor{},
@@ -107,6 +103,7 @@ func NewSeriesCacheMiddleware(
 		},
 		parallelismForReq,
 		retentionEnabled,
+		true,
 		metrics,
 	)
 }

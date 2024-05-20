@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 )
 
 // PipelineStages contains configuration for each stage within a pipeline
@@ -28,6 +28,13 @@ type Pipeline struct {
 	stages    []Stage
 	jobName   *string
 	dropCount *prometheus.CounterVec
+}
+
+// Cleanup implements Stage.
+func (p *Pipeline) Cleanup() {
+	for _, s := range p.stages {
+		s.Cleanup()
+	}
 }
 
 // NewPipeline creates a new log entry pipeline from a configuration
@@ -169,6 +176,7 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 	return api.NewEntryHandler(handlerIn, func() {
 		once.Do(func() { close(handlerIn) })
 		wg.Wait()
+		p.Cleanup()
 	})
 }
 

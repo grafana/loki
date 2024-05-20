@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -82,6 +82,12 @@ func (c *metricVec) Delete(labels model.LabelSet) bool {
 		delete(c.metrics, fp)
 	}
 	return ok
+}
+
+func (c *metricVec) DeleteAll() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.metrics = map[model.Fingerprint]prometheus.Metric{}
 }
 
 // prune will remove all metrics which implement the Expirable interface and have expired

@@ -12,9 +12,9 @@ import (
 	"github.com/grafana/dskit/log"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
 
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
+	lokiflag "github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 type fakeConfig map[string]string

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
@@ -24,13 +24,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 var (
@@ -151,7 +151,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 			t.Parallel()
 
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
-			params, err := NewLiteralParams(test.qs, test.ts, test.ts, 0, 0, test.direction, test.limit, nil)
+			params, err := NewLiteralParams(test.qs, test.ts, test.ts, 0, 0, test.direction, test.limit, nil, nil)
 			require.NoError(t, err)
 			q := eng.Query(params)
 			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
@@ -979,7 +979,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
 
-			params, err := NewLiteralParams(test.qs, test.ts, test.ts, 0, 0, test.direction, test.limit, nil)
+			params, err := NewLiteralParams(test.qs, test.ts, test.ts, 0, 0, test.direction, test.limit, nil, nil)
 			require.NoError(t, err)
 			q := eng.Query(params)
 			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
@@ -2281,7 +2281,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
 
-			params, err := NewLiteralParams(test.qs, test.start, test.end, test.step, test.interval, test.direction, test.limit, nil)
+			params, err := NewLiteralParams(test.qs, test.start, test.end, test.step, test.interval, test.direction, test.limit, nil, nil)
 			require.NoError(t, err)
 			q := eng.Query(params)
 			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
@@ -2312,7 +2312,7 @@ func TestEngine_Stats(t *testing.T) {
 
 	queueTime := 2 * time.Nanosecond
 
-	params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil)
+	params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
 	require.NoError(t, err)
 	q := eng.Query(params)
 
@@ -2345,7 +2345,7 @@ func (metaQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (ite
 func TestEngine_Metadata(t *testing.T) {
 	eng := NewEngine(EngineOpts{}, &metaQuerier{}, NoLimits, log.NewNopLogger())
 
-	params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.BACKWARD, 1000, nil)
+	params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.BACKWARD, 1000, nil, nil)
 	require.NoError(t, err)
 	q := eng.Query(params)
 
@@ -2362,7 +2362,7 @@ func TestEngine_LogsInstantQuery_Vector(t *testing.T) {
 	queueTime := 2 * time.Nanosecond
 	logqlVector := `vector(5)`
 
-	params, err := NewLiteralParams(logqlVector, now, now, 0, time.Second*30, logproto.BACKWARD, 1000, nil)
+	params, err := NewLiteralParams(logqlVector, now, now, 0, time.Second*30, logproto.BACKWARD, 1000, nil, nil)
 	require.NoError(t, err)
 	q := eng.Query(params)
 	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
@@ -2383,16 +2383,16 @@ func TestEngine_LogsInstantQuery_Vector(t *testing.T) {
 }
 
 type errorIteratorQuerier struct {
-	samples []iter.SampleIterator
-	entries []iter.EntryIterator
+	samples func() []iter.SampleIterator
+	entries func() []iter.EntryIterator
 }
 
 func (e errorIteratorQuerier) SelectLogs(_ context.Context, p SelectLogParams) (iter.EntryIterator, error) {
-	return iter.NewSortEntryIterator(e.entries, p.Direction), nil
+	return iter.NewSortEntryIterator(e.entries(), p.Direction), nil
 }
 
 func (e errorIteratorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
-	return iter.NewSortSampleIterator(e.samples), nil
+	return iter.NewSortSampleIterator(e.samples()), nil
 }
 
 func TestStepEvaluator_Error(t *testing.T) {
@@ -2406,9 +2406,11 @@ func TestStepEvaluator_Error(t *testing.T) {
 			"rangeAggEvaluator",
 			`count_over_time({app="foo"}[1m])`,
 			&errorIteratorQuerier{
-				samples: []iter.SampleIterator{
-					iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
-					NewErrorSampleIterator(),
+				samples: func() []iter.SampleIterator {
+					return []iter.SampleIterator{
+						iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
+						NewErrorSampleIterator(),
+					}
 				},
 			},
 			ErrMock,
@@ -2417,9 +2419,11 @@ func TestStepEvaluator_Error(t *testing.T) {
 			"stream",
 			`{app="foo"}`,
 			&errorIteratorQuerier{
-				entries: []iter.EntryIterator{
-					iter.NewStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
-					NewErrorEntryIterator(),
+				entries: func() []iter.EntryIterator {
+					return []iter.EntryIterator{
+						iter.NewStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
+						NewErrorEntryIterator(),
+					}
 				},
 			},
 			ErrMock,
@@ -2428,9 +2432,11 @@ func TestStepEvaluator_Error(t *testing.T) {
 			"binOpStepEvaluator",
 			`count_over_time({app="foo"}[1m]) / count_over_time({app="foo"}[1m])`,
 			&errorIteratorQuerier{
-				samples: []iter.SampleIterator{
-					iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
-					NewErrorSampleIterator(),
+				samples: func() []iter.SampleIterator {
+					return []iter.SampleIterator{
+						iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
+						NewErrorSampleIterator(),
+					}
 				},
 			},
 			ErrMockMultiple,
@@ -2442,7 +2448,7 @@ func TestStepEvaluator_Error(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits, log.NewNopLogger())
 
-			params, err := NewLiteralParams(tc.qs, time.Unix(0, 0), time.Unix(180, 0), 1*time.Second, 0, logproto.BACKWARD, 1, nil)
+			params, err := NewLiteralParams(tc.qs, time.Unix(0, 0), time.Unix(180, 0), 1*time.Second, 0, logproto.BACKWARD, 1, nil, nil)
 			require.NoError(t, err)
 			q := eng.Query(params)
 			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
@@ -2468,7 +2474,7 @@ func TestEngine_MaxSeries(t *testing.T) {
 		{`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.FORWARD, false},
 	} {
 		t.Run(test.qs, func(t *testing.T) {
-			params, err := NewLiteralParams(test.qs, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, test.direction, 1000, nil)
+			params, err := NewLiteralParams(test.qs, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, test.direction, 1000, nil, nil)
 			require.NoError(t, err)
 			q := eng.Query(params)
 			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
@@ -2495,7 +2501,7 @@ func TestEngine_MaxRangeInterval(t *testing.T) {
 		{`topk(1,rate({app=~"foo|bar"}[12h]) / (rate({app="baz"}[23h]) + rate({app="fiz"}[25h])))`, logproto.FORWARD, true},
 	} {
 		t.Run(test.qs, func(t *testing.T) {
-			params, err := NewLiteralParams(test.qs, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, test.direction, 1000, nil)
+			params, err := NewLiteralParams(test.qs, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, test.direction, 1000, nil, nil)
 			require.NoError(t, err)
 			q := eng.Query(params)
 
@@ -2562,7 +2568,7 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 			{`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, logproto.FORWARD},
 			{`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app)`, logproto.FORWARD},
 		} {
-			params, err := NewLiteralParams(test.qs, start, end, 60*time.Second, 0, logproto.BACKWARD, 1000, nil)
+			params, err := NewLiteralParams(test.qs, start, end, 60*time.Second, 0, logproto.BACKWARD, 1000, nil, nil)
 			require.NoError(b, err)
 			q := eng.Query(params)
 

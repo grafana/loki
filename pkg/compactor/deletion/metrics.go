@@ -4,12 +4,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type DeleteRequestClientMetrics struct {
 	deleteRequestsLookupsTotal       prometheus.Counter
 	deleteRequestsLookupsFailedTotal prometheus.Counter
+}
+
+func (m DeleteRequestClientMetrics) Unregister() {
+	prometheus.Unregister(m.deleteRequestsLookupsTotal)
+	prometheus.Unregister(m.deleteRequestsLookupsFailedTotal)
 }
 
 func NewDeleteRequestClientMetrics(r prometheus.Registerer) *DeleteRequestClientMetrics {

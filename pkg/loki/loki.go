@@ -3,6 +3,7 @@ package loki
 import (
 	"bytes"
 	"context"
+	stdlib_errors "errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -29,41 +30,45 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/bloomcompactor"
-	"github.com/grafana/loki/pkg/bloomgateway"
-	"github.com/grafana/loki/pkg/compactor"
-	compactorclient "github.com/grafana/loki/pkg/compactor/client"
-	"github.com/grafana/loki/pkg/compactor/deletion"
-	"github.com/grafana/loki/pkg/distributor"
-	"github.com/grafana/loki/pkg/ingester"
-	ingester_client "github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/loki/common"
-	"github.com/grafana/loki/pkg/lokifrontend"
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
-	"github.com/grafana/loki/pkg/querier"
-	"github.com/grafana/loki/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/querier/worker"
-	"github.com/grafana/loki/pkg/ruler"
-	base_ruler "github.com/grafana/loki/pkg/ruler/base"
-	"github.com/grafana/loki/pkg/ruler/rulestore"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/scheduler"
-	internalserver "github.com/grafana/loki/pkg/server"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
-	"github.com/grafana/loki/pkg/tracing"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/fakeauth"
-	"github.com/grafana/loki/pkg/util/limiter"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
-	serverutil "github.com/grafana/loki/pkg/util/server"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/bloombuild"
+	"github.com/grafana/loki/v3/pkg/bloomcompactor"
+	"github.com/grafana/loki/v3/pkg/bloomgateway"
+	"github.com/grafana/loki/v3/pkg/compactor"
+	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/indexgateway"
+	"github.com/grafana/loki/v3/pkg/ingester"
+	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/loki/common"
+	"github.com/grafana/loki/v3/pkg/lokifrontend"
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
+	"github.com/grafana/loki/v3/pkg/pattern"
+	"github.com/grafana/loki/v3/pkg/querier"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/worker"
+	"github.com/grafana/loki/v3/pkg/ruler"
+	base_ruler "github.com/grafana/loki/v3/pkg/ruler/base"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/scheduler"
+	internalserver "github.com/grafana/loki/v3/pkg/server"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/tracing"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/fakeauth"
+	"github.com/grafana/loki/v3/pkg/util/limiter"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	serverutil "github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // Config is the root config for Loki.
@@ -83,29 +88,32 @@ type Config struct {
 	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
+	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
-	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor"`
-	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway"`
+	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor,omitempty" category:"experimental"`
+	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
+	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
 	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
 	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
 	CompactorConfig     compactor.Config           `yaml:"compactor,omitempty"`
 	CompactorHTTPClient compactorclient.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
-	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty" doc:"hidden"`
-	LimitsConfig        validation.Limits          `yaml:"limits_config,omitempty"`
+	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty"`
+	LimitsConfig        validation.Limits          `yaml:"limits_config"`
 	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
 	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 
-	RuntimeConfig runtimeconfig.Config `yaml:"runtime_config,omitempty"`
-	Tracing       tracing.Config       `yaml:"tracing"`
-	Analytics     analytics.Config     `yaml:"analytics"`
+	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
+	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`
+	Tracing           tracing.Config       `yaml:"tracing"`
+	Analytics         analytics.Config     `yaml:"analytics"`
 
 	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden|deprecated"`
 
 	Common common.Config `yaml:"common,omitempty"`
 
-	ShutdownDelay time.Duration `yaml:"shutdown_delay" category:"experimental"`
+	ShutdownDelay time.Duration `yaml:"shutdown_delay"`
 
 	MetricsNamespace string `yaml:"metrics_namespace"`
 }
@@ -167,8 +175,10 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
 	c.BloomCompactor.RegisterFlags(f)
+	c.BloomBuild.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 	c.Analytics.RegisterFlags(f)
+	c.OperationalConfig.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -178,6 +188,7 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
 	c.Server.RegisterFlags(throwaway)
 	c.InternalServer.RegisterFlags(throwaway)
+	c.Pattern.RegisterFlags(throwaway)
 
 	throwaway.VisitAll(func(f *flag.Flag) {
 		// Ignore errors when setting new values. We have a test to verify that it works.
@@ -190,6 +201,9 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 
 		case "server.http-listen-port":
 			_ = f.Value.Set("3100")
+
+		case "pattern-ingester.distributor.replication-factor":
+			_ = f.Value.Set("1")
 		}
 
 		fs.Var(f.Value, f.Name, f.Usage)
@@ -209,61 +223,81 @@ func (c *Config) Clone() flagext.Registerer {
 // Validate the config and returns an error if the validation
 // doesn't pass
 func (c *Config) Validate() error {
+	var errs []error
+
 	if err := c.SchemaConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid schema config")
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid schema config"))
 	}
 	if err := c.StorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid storage config")
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid storage_config config"))
 	}
 	if err := c.QueryRange.Validate(); err != nil {
-		return errors.Wrap(err, "invalid queryrange config")
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_range config"))
 	}
 	if err := c.Querier.Validate(); err != nil {
-		return errors.Wrap(err, "invalid querier config")
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid querier config"))
+	}
+	if err := c.QueryScheduler.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_scheduler config"))
 	}
 	if err := c.TableManager.Validate(); err != nil {
-		return errors.Wrap(err, "invalid tablemanager config")
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid table_manager config"))
 	}
 	if err := c.Ruler.Validate(); err != nil {
-		return errors.Wrap(err, "invalid ruler config")
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ruler config"))
 	}
 	if err := c.Ingester.Validate(); err != nil {
-		return errors.Wrap(err, "invalid ingester config")
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingester config"))
 	}
 	if err := c.LimitsConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid limits config")
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits_config config"))
 	}
 	if err := c.Worker.Validate(); err != nil {
-		return errors.Wrap(err, "invalid frontend-worker config")
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid frontend_worker config"))
 	}
 	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid boltdb-shipper config")
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid boltdb_shipper config"))
+	}
+	if err := c.IndexGateway.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid index_gateway config"))
 	}
 	if err := c.CompactorConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid compactor config")
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid compactor config"))
 	}
 	if err := c.ChunkStoreConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid chunk store config")
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid chunk_store_config config"))
 	}
 	if err := c.QueryRange.Validate(); err != nil {
-		return errors.Wrap(err, "invalid query_range config")
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_range config"))
+	}
+	if err := c.BloomCompactor.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid bloom_compactor config"))
+	}
+	if err := c.BloomGateway.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid bloom_gateway config"))
+	}
+	if err := c.Pattern.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid pattern_ingester config"))
 	}
 
-	if err := ValidateConfigCompatibility(*c); err != nil {
-		return err
-	}
+	errs = append(errs, validateSchemaValues(c)...)
+	errs = append(errs, ValidateConfigCompatibility(*c)...)
+	errs = append(errs, validateBackendAndLegacyReadMode(c)...)
+	errs = append(errs, validateSchemaRequirements(c)...)
+	errs = append(errs, validateDirectoriesExist(c)...)
 
-	// Honor the legacy scalable deployment topology
-	if c.LegacyReadTarget {
-		if c.isModuleEnabled(Backend) {
-			return fmt.Errorf("invalid target, cannot run backend target with legacy read mode")
-		}
+	// The output format isn't great for this, so try to get the operators attention if there are multiple errors
+	if len(errs) > 1 {
+		errs = append([]error{fmt.Errorf("MULTIPLE CONFIG ERRORS FOUND, PLEASE READ CAREFULLY")}, errs...)
+		return stdlib_errors.Join(errs...)
+	} else if len(errs) == 1 {
+		return errs[0]
 	}
 
 	return nil
 }
 
-func (c *Config) isModuleEnabled(m string) bool {
+func (c *Config) isTarget(m string) bool {
 	return util.StringsContain(c.Target, m)
 }
 
@@ -296,11 +330,14 @@ type Loki struct {
 	TenantLimits              validation.TenantLimits
 	distributor               *distributor.Distributor
 	Ingester                  ingester.Interface
+	PatternIngester           *pattern.Ingester
+	PatternRingClient         *pattern.RingClient
 	Querier                   querier.Querier
 	cacheGenerationLoader     queryrangebase.CacheGenNumberLoader
 	querierAPI                *querier.QuerierAPI
 	ingesterQuerier           *querier.IngesterQuerier
 	Store                     storage.Store
+	BloomStore                bloomshipper.StoreWithMetrics
 	tableManager              *index.TableManager
 	frontend                  Frontend
 	ruler                     *base_ruler.Ruler
@@ -319,21 +356,24 @@ type Loki struct {
 	bloomCompactorRingManager *lokiring.RingManager
 	bloomGatewayRingManager   *lokiring.RingManager
 
-	clientMetrics       storage.ClientMetrics
+	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
 	Tee                distributor.Tee
+	PushParserWrapper  push.RequestParserWrapper
 	HTTPAuthMiddleware middleware.Interface
 
 	Codec   Codec
 	Metrics *server.Metrics
+
+	UsageTracker push.UsageTracker
 }
 
 // New makes a new Loki.
 func New(cfg Config) (*Loki, error) {
 	loki := &Loki{
 		Cfg:                 cfg,
-		clientMetrics:       storage.NewClientMetrics(),
+		ClientMetrics:       storage.NewClientMetrics(),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
 		Codec:               queryrange.DefaultCodec,
 	}
@@ -559,6 +599,15 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 			}
 		}
 
+		// Pattern Ingester has a special check that makes sure that it was able to register into the ring,
+		// and that all other ring entries are OK too.
+		if t.PatternIngester != nil {
+			if err := t.PatternIngester.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Pattern Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+		}
+
 		// Query Frontend has a special check that makes sure that a querier is attached before it signals
 		// itself as ready
 		if t.frontend != nil {
@@ -589,9 +638,10 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
-	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Querier, t.initQuerier)
+	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
+	mm.RegisterModule(IngesterGRPCInterceptors, t.initIngesterGRPCInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendMiddleware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
@@ -599,17 +649,21 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RuleEvaluator, t.initRuleEvaluator, modules.UserInvisibleModule)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
+	mm.RegisterModule(BloomStore, t.initBloomStore)
 	mm.RegisterModule(BloomCompactor, t.initBloomCompactor)
 	mm.RegisterModule(BloomCompactorRing, t.initBloomCompactorRing, modules.UserInvisibleModule)
+	mm.RegisterModule(BloomPlanner, t.initBloomPlanner)
+	mm.RegisterModule(BloomBuilder, t.initBloomBuilder)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(BloomGateway, t.initBloomGateway)
-	mm.RegisterModule(BloomGatewayRing, t.initBloomGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics)
 	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
+	mm.RegisterModule(PatternIngester, t.initPatternIngester)
+	mm.RegisterModule(PatternRingClient, t.initPatternRingClient, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -623,10 +677,10 @@ func (t *Loki) setupModuleManager() error {
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs, Analytics},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, Analytics},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
@@ -634,21 +688,24 @@ func (t *Loki) setupModuleManager() error {
 		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
 		TableManager:             {Server, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
-		IndexGateway:             {Server, Store, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
-		BloomGateway:             {Server, BloomGatewayRing, Analytics},
-		BloomCompactor:           {Server, BloomCompactorRing, Analytics},
+		IndexGateway:             {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
+		BloomGateway:             {Server, BloomStore, Analytics},
+		BloomCompactor:           {Server, BloomStore, BloomCompactorRing, Analytics, Store},
+		BloomPlanner:             {Server, BloomStore, Analytics, Store},
+		BloomBuilder:             {Server, BloomStore, Analytics, Store},
+		PatternIngester:          {Server, MemberlistKV, Analytics},
+		PatternRingClient:        {Server, MemberlistKV, Analytics},
 		IngesterQuerier:          {Ring},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
-		BloomGatewayRing:         {Overrides, MemberlistKV},
 		BloomCompactorRing:       {Overrides, MemberlistKV},
 		MemberlistKV:             {Server},
 
 		Read:    {QueryFrontend, Querier},
-		Write:   {Ingester, Distributor},
+		Write:   {Ingester, Distributor, PatternIngester},
 		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
 
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
@@ -676,25 +733,25 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.
-	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(Backend) {
+	if t.Cfg.isTarget(Querier) || t.Cfg.isTarget(Ruler) || t.Cfg.isTarget(Read) || t.Cfg.isTarget(Backend) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 
 	// If the query scheduler and querier are running together, make sure the scheduler goes
 	// first to initialize the ring that will also be used by the querier
-	if (t.Cfg.isModuleEnabled(Querier) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
+	if (t.Cfg.isTarget(Querier) && t.Cfg.isTarget(QueryScheduler)) || t.Cfg.isTarget(All) {
 		deps[Querier] = append(deps[Querier], QueryScheduler)
 	}
 
 	// If the query scheduler and query frontend are running together, make sure the scheduler goes
 	// first to initialize the ring that will also be used by the query frontend
-	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
+	if (t.Cfg.isTarget(QueryFrontend) && t.Cfg.isTarget(QueryScheduler)) || t.Cfg.isTarget(All) {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
 	}
 
-	// Add bloom gateway ring in client mode to IndexGateway service dependencies if bloom filtering is enabled.
-	if t.Cfg.BloomGateway.Enabled {
-		deps[IndexGateway] = append(deps[IndexGateway], BloomGatewayRing)
+	// Initialise query tags interceptors on targets running ingester
+	if t.Cfg.isTarget(Ingester) || t.Cfg.isTarget(Write) || t.Cfg.isTarget(All) {
+		deps[Server] = append(deps[Server], IngesterGRPCInterceptors)
 	}
 
 	if t.Cfg.LegacyReadTarget {
@@ -719,7 +776,6 @@ func (t *Loki) setupModuleManager() error {
 			a[idx] = InternalServer
 			deps[key] = a
 		}
-
 	}
 
 	for mod, targets := range deps {

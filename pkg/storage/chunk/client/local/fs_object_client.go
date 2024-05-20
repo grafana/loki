@@ -13,10 +13,10 @@ import (
 	"github.com/grafana/dskit/runutil"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/ruler/rulestore/local"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // FSConfig is the config for a FSObjectClient.
@@ -66,7 +66,8 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 func (FSObjectClient) Stop() {}
 
 func (f *FSObjectClient) ObjectExists(_ context.Context, objectKey string) (bool, error) {
-	_, err := os.Lstat(objectKey)
+	fullPath := filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey))
+	_, err := os.Lstat(fullPath)
 	if err != nil {
 		return false, err
 	}
