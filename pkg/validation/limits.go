@@ -205,6 +205,9 @@ type Limits struct {
 	BloomCompactorMaxBlockSize flagext.ByteSize `yaml:"bloom_compactor_max_block_size" json:"bloom_compactor_max_block_size" category:"experimental"`
 	BloomCompactorMaxBloomSize flagext.ByteSize `yaml:"bloom_compactor_max_bloom_size" json:"bloom_compactor_max_bloom_size" category:"experimental"`
 
+	BloomCreationEnabled             bool `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
+	BloomSplitSeriesKeyspaceByFactor int  `yaml:"bloom_split_series_keyspace_by_factor" json:"bloom_split_series_keyspace_by_factor" category:"experimental"`
+
 	BloomNGramLength       int     `yaml:"bloom_ngram_length" json:"bloom_ngram_length" category:"experimental"`
 	BloomNGramSkip         int     `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip" category:"experimental"`
 	BloomFalsePositiveRate float64 `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate" category:"experimental"`
@@ -971,6 +974,14 @@ func (o *Overrides) BloomCompactorShardSize(userID string) int {
 
 func (o *Overrides) BloomCompactorEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).BloomCompactorEnabled
+}
+
+func (o *Overrides) BloomCreationEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).BloomCreationEnabled
+}
+
+func (o *Overrides) BloomSplitSeriesKeyspaceByFactor(userID string) int {
+	return o.getOverridesForUser(userID).BloomSplitSeriesKeyspaceByFactor
 }
 
 func (o *Overrides) BloomNGramLength(userID string) int {
