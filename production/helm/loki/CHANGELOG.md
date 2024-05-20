@@ -16,7 +16,11 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.6.0
 
 - [ENHANCEMENT] Allow setting PVC annotations for all volume claim templates in simple scalable and single binary mode
-- 
+
+## 6.5.2
+
+- [BUGFIX] Fixed Ingress routing for all deployment modes.  
+
 ## 6.5.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v3.0.1
