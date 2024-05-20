@@ -194,6 +194,10 @@ func (p *Planner) loadWork(
 			p.metrics.tenantsDiscovered.Inc()
 			tenant := tenants.At()
 
+			if !p.limits.BloomCreationEnabled(tenant) {
+				continue
+			}
+
 			splitFactor := p.limits.BloomSplitSeriesKeyspaceByFactor(tenant)
 			bounds := SplitFingerprintKeyspaceByFactor(splitFactor)
 
