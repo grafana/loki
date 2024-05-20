@@ -8,7 +8,7 @@ type Config struct {
 }
 
 // RegisterFlagsWithPrefix registers flags for the bloom-planner configuration.
-func (cfg *Config) RegisterFlagsWithPrefix(flagsPrefix string, f *flag.FlagSet) {
+func (cfg *Config) RegisterFlagsWithPrefix(_ string, _ *flag.FlagSet) {
 	// TODO: Register flags with flagsPrefix
 }
 

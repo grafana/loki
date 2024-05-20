@@ -2,8 +2,8 @@ package bloomworker
 
 import (
 	"context"
-	"github.com/go-kit/log"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
