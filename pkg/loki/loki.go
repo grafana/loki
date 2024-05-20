@@ -31,6 +31,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomcompactor"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
@@ -90,6 +91,7 @@ type Config struct {
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
 	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor,omitempty" category:"experimental"`
+	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
 	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
 	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
@@ -173,6 +175,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
 	c.BloomCompactor.RegisterFlags(f)
+	c.BloomBuild.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 	c.Analytics.RegisterFlags(f)
 	c.OperationalConfig.RegisterFlags(f)
@@ -649,6 +652,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(BloomStore, t.initBloomStore)
 	mm.RegisterModule(BloomCompactor, t.initBloomCompactor)
 	mm.RegisterModule(BloomCompactorRing, t.initBloomCompactorRing, modules.UserInvisibleModule)
+	mm.RegisterModule(BloomBuildPlanner, t.initBloomBuildPlanner)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
@@ -686,6 +690,7 @@ func (t *Loki) setupModuleManager() error {
 		IndexGateway:             {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
 		BloomGateway:             {Server, BloomStore, Analytics},
 		BloomCompactor:           {Server, BloomStore, BloomCompactorRing, Analytics, Store},
+		BloomBuildPlanner:        {Server, BloomStore, Analytics, Store},
 		PatternIngester:          {Server, MemberlistKV, Analytics},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
 		IngesterQuerier:          {Ring},
