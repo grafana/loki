@@ -155,7 +155,7 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 	defer func() {
 		if err != nil {
 			metrics.pagesSkipped.WithLabelValues(pageTypeSeries, skipReasonErr).Inc()
-			metrics.bytesSkipped.WithLabelValues(pageTypeSeries).Add(float64(header.DecompressedLen))
+			metrics.bytesSkipped.WithLabelValues(pageTypeSeries, skipReasonErr).Add(float64(header.DecompressedLen))
 		} else {
 			metrics.pagesRead.WithLabelValues(pageTypeSeries).Inc()
 			metrics.bytesRead.WithLabelValues(pageTypeSeries).Add(float64(header.DecompressedLen))
