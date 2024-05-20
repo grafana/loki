@@ -3399,6 +3399,16 @@ shard_streams:
 # CLI flag: -bloom-compactor.max-bloom-size
 [bloom_compactor_max_bloom_size: <int> | default = 128MB]
 
+# Experimental. Whether to create blooms for the tenant.
+# CLI flag: -bloom-build.enable
+[bloom_creation_enabled: <boolean> | default = false]
+
+# Experimental. Number of splits to create for the series keyspace when building
+# blooms. The series keyspace is split into this many parts to parallelize bloom
+# creation.
+# CLI flag: -bloom-build.split-keyspace-by-factor
+[bloom_split_series_keyspace_by_factor: <int> | default = 256]
+
 # Experimental. Length of the n-grams created when computing blooms from log
 # lines.
 # CLI flag: -bloom-compactor.ngram-length
