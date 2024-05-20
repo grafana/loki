@@ -2,8 +2,10 @@ package planner
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -45,6 +47,29 @@ func (p *Planner) stopping(_ error) error {
 	return nil
 }
 
-func (p *Planner) running(_ context.Context) error {
+func (p *Planner) running(ctx context.Context) error {
+	// run once at beginning
+	if err := p.runOne(ctx); err != nil {
+		return err
+	}
+
+	ticker := time.NewTicker(p.cfg.PlanningInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			err := ctx.Err()
+			level.Debug(p.logger).Log("msg", "planner context done", "err", err)
+			return err
+
+		case <-ticker.C:
+			if err := p.runOne(ctx); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (p *Planner) runOne(_ context.Context) error {
 	return nil
 }
