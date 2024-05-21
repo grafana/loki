@@ -76,7 +76,7 @@ func (p *Planner) stopping(_ error) error {
 func (p *Planner) running(ctx context.Context) error {
 	// run once at beginning
 	if err := p.runOne(ctx); err != nil {
-		return err
+		level.Error(p.logger).Log("msg", "bloom build iteration failed for the first time", "err", err)
 	}
 
 	ticker := time.NewTicker(p.cfg.PlanningInterval)
@@ -90,7 +90,7 @@ func (p *Planner) running(ctx context.Context) error {
 
 		case <-ticker.C:
 			if err := p.runOne(ctx); err != nil {
-				return err
+				level.Error(p.logger).Log("msg", "bloom build iteration failed", "err", err)
 			}
 		}
 	}
@@ -125,7 +125,8 @@ func (p *Planner) runOne(ctx context.Context) error {
 	for _, w := range work {
 		gaps, err := p.findGapsForBounds(ctx, w.tenant, w.table, w.ownershipRange)
 		if err != nil {
-			return fmt.Errorf("error building bloom for tenant (%s) in table (%s) for bounds (%s): %w", w.tenant, w.table, w.ownershipRange, err)
+			level.Error(p.logger).Log("msg", "error finding gaps", "err", err, "tenant", w.tenant, "table", w.table, "ownership", w.ownershipRange.String())
+			return fmt.Errorf("error finding gaps for tenant (%s) in table (%s) for bounds (%s): %w", w.tenant, w.table, w.ownershipRange, err)
 		}
 
 		for _, gap := range gaps {
@@ -151,7 +152,7 @@ func (p *Planner) runOne(ctx context.Context) error {
 func (p *Planner) tables(ts time.Time) *dayRangeIterator {
 	// adjust the minimum by one to make it inclusive, which is more intuitive
 	// for a configuration variable
-	adjustedMin := min(p.cfg.MinTableOffset - 1)
+	adjustedMin := p.cfg.MinTableOffset - 1
 	minCompactionDelta := time.Duration(adjustedMin) * config.ObjectStorageIndexRequiredPeriod
 	maxCompactionDelta := time.Duration(p.cfg.MaxTableOffset) * config.ObjectStorageIndexRequiredPeriod
 
@@ -198,7 +199,7 @@ func (p *Planner) loadWork(
 				continue
 			}
 
-			splitFactor := p.limits.BloomSplitSeriesKeyspaceByFactor(tenant)
+			splitFactor := p.limits.BloomSplitSeriesKeyspaceBy(tenant)
 			bounds := SplitFingerprintKeyspaceByFactor(splitFactor)
 
 			for _, bounds := range bounds {

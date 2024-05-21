@@ -335,7 +335,7 @@ bloom_build:
   planner:
     # Interval at which to re-run the bloom creation planning.
     # CLI flag: -bloom-build.planner.interval
-    [planning_interval: <duration> | default = 10m]
+    [planning_interval: <duration> | default = 8h]
 
     # Newest day-table offset (from today, inclusive) to build blooms for.
     # Increase to lower cost by not re-writing data to object storage too
@@ -3406,8 +3406,8 @@ shard_streams:
 # Experimental. Number of splits to create for the series keyspace when building
 # blooms. The series keyspace is split into this many parts to parallelize bloom
 # creation.
-# CLI flag: -bloom-build.split-keyspace-by-factor
-[bloom_split_series_keyspace_by_factor: <int> | default = 256]
+# CLI flag: -bloom-build.split-keyspace-by
+[bloom_split_series_keyspace_by: <int> | default = 256]
 
 # Experimental. Length of the n-grams created when computing blooms from log
 # lines.
