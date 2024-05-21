@@ -2,7 +2,7 @@ namespace: example_namespace
 groups:
 - name: example_rule_group
   rules:
-  - expr: sum(up)
+  - expr: sum(up) or vector(0)
     record: summed_up
 ---
 namespace: other_example_namespace
