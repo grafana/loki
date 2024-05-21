@@ -12,16 +12,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/queue"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/util"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type Planner struct {
 	services.Service
+	// Subservices manager.
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
 
 	cfg       Config
 	limits    Limits
@@ -29,6 +34,9 @@ type Planner struct {
 
 	tsdbStore  TSDBStore
 	bloomStore bloomshipper.Store
+
+	tasksQueue  *queue.RequestQueue
+	activeUsers *util.ActiveUsersCleanupService
 
 	metrics *Metrics
 	logger  log.Logger
@@ -51,15 +59,34 @@ func New(
 		return nil, fmt.Errorf("error creating TSDB store: %w", err)
 	}
 
+	// Queue to manage tasks
+	queueMetrics := NewQueueMetrics(r)
+	tasksQueue := queue.NewRequestQueue(cfg.MaxQueuedTasksPerTenant, 0, NewQueueLimits(limits), queueMetrics)
+
+	// Clean metrics for inactive users: do not have added tasks to the queue in the last 1 hour
+	activeUsers := util.NewActiveUsersCleanupService(5*time.Minute, 1*time.Hour, func(user string) {
+		queueMetrics.Cleanup(user)
+	})
+
 	p := &Planner{
-		cfg:        cfg,
-		limits:     limits,
-		schemaCfg:  schemaCfg,
-		tsdbStore:  tsdbStore,
-		bloomStore: bloomStore,
-		metrics:    NewMetrics(r),
-		logger:     logger,
+		cfg:         cfg,
+		limits:      limits,
+		schemaCfg:   schemaCfg,
+		tsdbStore:   tsdbStore,
+		bloomStore:  bloomStore,
+		tasksQueue:  tasksQueue,
+		activeUsers: activeUsers,
+		metrics:     NewMetrics(r, tasksQueue.GetConnectedConsumersMetric),
+		logger:      logger,
 	}
+
+	svcs := []services.Service{p.tasksQueue, p.activeUsers}
+	p.subservices, err = services.NewManager(svcs...)
+	if err != nil {
+		return nil, fmt.Errorf("error creating subservices manager: %w", err)
+	}
+	p.subservicesWatcher = services.NewFailureWatcher()
+	p.subservicesWatcher.WatchManager(p.subservices)
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
 	return p, nil
@@ -120,33 +147,45 @@ func (p *Planner) runOne(ctx context.Context) error {
 		return fmt.Errorf("error loading work: %w", err)
 	}
 
-	// TODO: Enqueue instead of buffering here
-	//       This is just a placeholder for now
-	var tasks []Task
-
+	var totalTasks int
 	for _, w := range work {
+		logger := log.With(p.logger, "tenant", w.tenant, "table", w.table.Addr(), "ownership", w.ownershipRange.String())
+
 		gaps, err := p.findGapsForBounds(ctx, w.tenant, w.table, w.ownershipRange)
 		if err != nil {
-			level.Error(p.logger).Log("msg", "error finding gaps", "err", err, "tenant", w.tenant, "table", w.table, "ownership", w.ownershipRange.String())
+			level.Error(logger).Log("msg", "error finding gaps", "err", err)
 			return fmt.Errorf("error finding gaps for tenant (%s) in table (%s) for bounds (%s): %w", w.tenant, w.table, w.ownershipRange, err)
 		}
 
+		now := time.Now()
 		for _, gap := range gaps {
-			tasks = append(tasks, Task{
+			totalTasks++
+			task := Task{
 				table:           w.table.Addr(),
 				tenant:          w.tenant,
 				OwnershipBounds: w.ownershipRange,
 				tsdb:            gap.tsdb,
 				gaps:            gap.gaps,
-			})
+
+				queueTime: now,
+				ctx:       ctx,
+			}
+
+			p.activeUsers.UpdateUserTimestamp(task.tenant, now)
+			if err := p.tasksQueue.Enqueue(task.tenant, nil, task, nil); err != nil {
+				level.Error(logger).Log("msg", "error enqueuing task", "err", err)
+				return fmt.Errorf("error enqueuing task for tenant (%s) in table (%s) for bounds (%s): %w", task.tenant, task.table, task.OwnershipBounds, err)
+			}
 		}
+
 	}
+
+	level.Info(p.logger).Log("msg", "planning completed", "tasks", totalTasks)
 
 	status = statusSuccess
 	level.Info(p.logger).Log(
 		"msg", "bloom build iteration completed",
 		"duration", time.Since(start).Seconds(),
-		"tasks", len(tasks),
 	)
 	return nil
 }

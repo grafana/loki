@@ -1,6 +1,9 @@
 package planner
 
 import (
+	"context"
+	"time"
+
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
@@ -19,4 +22,8 @@ type Task struct {
 	OwnershipBounds v1.FingerprintBounds
 	tsdb            tsdb.SingleTenantTSDBIdentifier
 	gaps            []GapWithBlocks
+
+	// Tracking
+	queueTime time.Time
+	ctx       context.Context
 }
