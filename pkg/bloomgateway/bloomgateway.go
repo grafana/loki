@@ -387,8 +387,8 @@ func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Tas
 			// do nothing
 		default:
 			// chunks may not always be sorted
-			if !slices.IsSortedFunc(res.Removals, func(a, b v1.ChunkRef) int { return a.Cmp(b) }) {
-				slices.SortFunc(res.Removals, func(a, b v1.ChunkRef) int { return a.Cmp(b) })
+			if !slices.IsSortedFunc(res.Removals, func(a, b v1.ChunkRef) int { return b.Cmp(a) }) {
+				slices.SortFunc(res.Removals, func(a, b v1.ChunkRef) int { return b.Cmp(a) })
 			}
 			task.responses = append(task.responses, res)
 		}
