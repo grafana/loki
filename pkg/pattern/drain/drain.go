@@ -254,22 +254,33 @@ func (d *Drain) tree(key string, root *Node, depth int) string {
 
 func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
 	tokens := d.tokenizer.Marshal([]byte(content))
-	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
-	// Match no existing log cluster
-	if matchCluster == nil {
-		clusterID := d.clustersCounter + 1
-		matchCluster = &LogCluster{
-			Tokens: byteSlicesToStrings(tokens),
-			id:     clusterID,
+	for {
+		matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
+		// Match no existing log cluster
+		if matchCluster == nil {
+			clusterID := d.clustersCounter + 1
+			matchCluster = &LogCluster{
+				Tokens: byteSlicesToStrings(tokens), // Copy the bytes to new strings because we are (probably) storing them
+				id:     clusterID,
+				Size:   1,
+			}
+			// This call may modify the prefix tree to replace a static value with a placeholder (e.g. 3214 -> <NUM>)
+			treeModified := d.addSeqToPrefixTree(d.rootNode, matchCluster)
+			if treeModified {
+				continue
+			}
+			// No modification, we just add the new cluster
+			d.clustersCounter++
+			d.idToCluster.Set(clusterID, matchCluster)
+		} else {
+			newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
+			matchCluster.Tokens = newTemplateTokens
+			// Touch cluster to update its state in the cache.
+			d.idToCluster.Get(matchCluster.id)
 		}
-	} else {
-		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
-		matchCluster.Tokens = newTemplateTokens
-		// Touch cluster to update its state in the cache.
-		d.idToCluster.Get(matchCluster.id)
+		matchCluster.merge(samples)
+		return matchCluster
 	}
-	matchCluster.merge(samples)
-	return matchCluster
 }
 
 func deduplicatePlaceholders(tokens []string, param string) []string {

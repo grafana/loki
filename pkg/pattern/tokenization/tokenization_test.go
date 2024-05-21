@@ -353,10 +353,10 @@ func TestTokenizationMemcpy(t *testing.T) {
 // Useful for running single test cases in isolation
 func TestTokenizationPlayground(t *testing.T) {
 	tc := tokenizationTestCase{
-		`ts=2024-05-02T12:17:22.01212206Z caller=http.go:194 level=debug traceID=00545d5c1acae94e orgID=1218 msg=\"POST /push.v1.PusherService/Push (200) 1.604732ms\"`,
-		[]string{`ts=<TIMESTAMP> caller=http.go:194 level=debug traceID=00545d5c1acae94e orgID=1218 msg=\"POST /push.v1.PusherService/Push (200) 1.604732ms\"`},
+		"foo 121113.21231 bar 123.0.1.123 -123 -1231.11",
+		[]string{"foo", "<NUM>", "bar", "<IP>", "<NUM>", "<NUM>"},
 	}
-	result := string(Preprocess([]byte(tc.line), false, false))
+	result := PreprocessAndTokenize([]byte(tc.line))
 	assert.Equal(
 		t, tc.expResult, result,
 		fmt.Sprintf("Log line: %q\nActual result slice: %#v", tc.line, result),
