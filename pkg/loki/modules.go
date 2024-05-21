@@ -1566,6 +1566,7 @@ func (t *Loki) initBloomPlanner() (services.Service, error) {
 
 	return planner.New(
 		t.Cfg.BloomBuild.Planner,
+		t.Overrides,
 		t.Cfg.SchemaConfig,
 		t.Cfg.StorageConfig,
 		t.ClientMetrics,

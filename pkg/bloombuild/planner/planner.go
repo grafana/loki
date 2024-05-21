@@ -30,12 +30,15 @@ type Planner struct {
 	tsdbStore  TSDBStore
 	bloomStore bloomshipper.Store
 
+	tasksQueue *queue.RequestQueue
+
 	metrics *Metrics
 	logger  log.Logger
 }
 
 func New(
 	cfg Config,
+	limits Limits,
 	schemaCfg config.SchemaConfig,
 	storeCfg storage.Config,
 	storageMetrics storage.ClientMetrics,
@@ -52,6 +55,7 @@ func New(
 
 	p := &Planner{
 		cfg:        cfg,
+		limits:     limits,
 		schemaCfg:  schemaCfg,
 		tsdbStore:  tsdbStore,
 		bloomStore: bloomStore,
