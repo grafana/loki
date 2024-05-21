@@ -3,8 +3,9 @@ package ingester
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/validation"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func Test_OwnedStreamService(t *testing.T) {
