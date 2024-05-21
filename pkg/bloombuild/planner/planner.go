@@ -30,8 +30,6 @@ type Planner struct {
 	tsdbStore  TSDBStore
 	bloomStore bloomshipper.Store
 
-	tasksQueue *queue.RequestQueue
-
 	metrics *Metrics
 	logger  log.Logger
 }
