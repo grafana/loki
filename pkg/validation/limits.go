@@ -205,6 +205,9 @@ type Limits struct {
 	BloomCompactorMaxBlockSize flagext.ByteSize `yaml:"bloom_compactor_max_block_size" json:"bloom_compactor_max_block_size" category:"experimental"`
 	BloomCompactorMaxBloomSize flagext.ByteSize `yaml:"bloom_compactor_max_bloom_size" json:"bloom_compactor_max_bloom_size" category:"experimental"`
 
+	BloomCreationEnabled       bool `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
+	BloomSplitSeriesKeyspaceBy int  `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
+
 	BloomNGramLength       int     `yaml:"bloom_ngram_length" json:"bloom_ngram_length" category:"experimental"`
 	BloomNGramSkip         int     `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip" category:"experimental"`
 	BloomFalsePositiveRate float64 `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate" category:"experimental"`
@@ -379,6 +382,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 			defaultBloomCompactorMaxBlockSize,
 		),
 	)
+
+	f.BoolVar(&l.BloomCreationEnabled, "bloom-build.enable", false, "Experimental. Whether to create blooms for the tenant.")
+	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Experimental. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
 
 	_ = l.BloomCompactorMaxBloomSize.Set(defaultBloomCompactorMaxBloomSize)
 	f.Var(&l.BloomCompactorMaxBloomSize, "bloom-compactor.max-bloom-size",
@@ -971,6 +977,14 @@ func (o *Overrides) BloomCompactorShardSize(userID string) int {
 
 func (o *Overrides) BloomCompactorEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).BloomCompactorEnabled
+}
+
+func (o *Overrides) BloomCreationEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).BloomCreationEnabled
+}
+
+func (o *Overrides) BloomSplitSeriesKeyspaceBy(userID string) int {
+	return o.getOverridesForUser(userID).BloomSplitSeriesKeyspaceBy
 }
 
 func (o *Overrides) BloomNGramLength(userID string) int {
