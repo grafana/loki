@@ -3,13 +3,22 @@ package audit
 import (
 	"context"
 	"fmt"
+	"io"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/v3/pkg/compactor"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/storage"
+	loki_storage "github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	indexshipper_storage "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	shipperutil "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	progressbar "github.com/schollz/progressbar/v3"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -18,51 +27,97 @@ const (
 	TsFormat = time.RFC3339Nano
 )
 
-type Audit struct {
-	workingDir string
+func Run(ctx context.Context, cloudIndexPath, table string, cfg Config, logger log.Logger) (int, int, error) {
+	level.Info(logger).Log("msg", "auditing index", "index", cloudIndexPath, "table", table, "tenant", cfg.Tenant, "working_dir", cfg.WorkingDir)
 
-	tenant string
-
-	logger log.Logger
-
-	period string
-	fp     string
-
-	parallelism int
-}
-
-func (a *Audit) validate() error {
-	if a.parallelism < 1 {
-		return fmt.Errorf("invalid parallelism %d", a.parallelism)
-	}
-
-	if a.logger == nil {
-		return fmt.Errorf("logger should be set")
-	}
-
-	if a.tenant == "" {
-		return fmt.Errorf("tenant should be set")
-	}
-
-	if a.workingDir == "" {
-		return fmt.Errorf("please set the workingdir")
-	}
-
-	return nil
-}
-
-func Run(ctx context.Context, path, table, tenant, workingDir string) error {
-	gzipExtension := ".gz"
-	if decompress := storage.IsCompressedFile(path); decompress {
-		path = strings.Trim(path, gzipExtension)
-	}
-
-	idxCompactor := tsdb.NewIndexCompactor()
-	compactedIdx, err := idxCompactor.OpenCompactedIndexFile(ctx, path, table, tenant, workingDir, config.PeriodConfig{}, util_log.Logger)
+	objClient, err := GetObjectClient(cfg, logger)
 	if err != nil {
-		return err
+		return 0, 0, err
+	}
+
+	localFile, err := DownloadIndexFile(ctx, cfg, cloudIndexPath, objClient, logger)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	compactedIdx, err := ParseCompactexIndex(ctx, localFile, table, cfg, logger)
+	if err != nil {
+		return 0, 0, err
 	}
 	defer compactedIdx.Cleanup()
 
-	return nil
+	return PerformAudit(objClient, compactedIdx, logger)
+}
+
+func GetObjectClient(cfg Config, logger log.Logger) (client.ObjectClient, error) {
+	periodCfg := cfg.SchemaConfig.Configs[len(cfg.SchemaConfig.Configs)-1] // only check the last period.
+
+	objClient, err := loki_storage.NewObjectClient(periodCfg.ObjectType, cfg.StorageConfig, storage.NewClientMetrics())
+	if err != nil {
+		return nil, fmt.Errorf("couldn't create object client: %w", err)
+	}
+
+	return objClient, nil
+}
+
+func DownloadIndexFile(ctx context.Context, cfg Config, cloudIndexPath string, objClient client.ObjectClient, logger log.Logger) (string, error) {
+	splitPath := strings.Split(cloudIndexPath, "/")
+	localFileName := splitPath[len(splitPath)-1]
+	decompress := indexshipper_storage.IsCompressedFile(cloudIndexPath)
+	if decompress {
+		// get rid of the last extension, which is .gz
+		localFileName = strings.TrimSuffix(localFileName, path.Ext(localFileName))
+	}
+	localFilePath := path.Join(cfg.WorkingDir, localFileName)
+	if err := shipperutil.DownloadFileFromStorage(localFilePath, decompress, false, logger, func() (io.ReadCloser, error) {
+		r, _, err := objClient.GetObject(ctx, cloudIndexPath)
+		return r, err
+	}); err != nil {
+		return "", fmt.Errorf("couldn't download file %q from storage: %w", cloudIndexPath, err)
+	}
+
+	level.Info(logger).Log("msg", "file successfully downloaded from storage", "path", cloudIndexPath)
+	return localFileName, nil
+}
+
+func ParseCompactexIndex(ctx context.Context, localFilePath, table string, cfg Config, logger log.Logger) (compactor.CompactedIndex, error) {
+	periodCfg := cfg.SchemaConfig.Configs[len(cfg.SchemaConfig.Configs)-1] // only check the last period.
+	idxCompactor := tsdb.NewIndexCompactor()
+	compactedIdx, err := idxCompactor.OpenCompactedIndexFile(ctx, localFilePath, table, cfg.Tenant, cfg.WorkingDir, periodCfg, util_log.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't open compacted index file %q: %w", localFilePath, err)
+	}
+	return compactedIdx, nil
+}
+
+func PerformAudit(objClient client.ObjectClient, compactedIdx compactor.CompactedIndex, logger log.Logger) (int, int, error) {
+	missingChunk := 0
+	chunkFound := 0
+	bar := progressbar.NewOptions(-1,
+		progressbar.OptionShowCount(),
+		progressbar.OptionSetDescription("Chunks validated"),
+	)
+	compactedIdx.ForEachChunk(context.Background(), func(ce retention.ChunkEntry) (deleteChunk bool, err error) {
+		bar.Add(1)
+		_, err = CheckChunkExistance(string(ce.ChunkID), objClient)
+		if err != nil {
+			missingChunk++
+			logger.Log("msg", "chunk is missing", "err", err.Error(), "chunk_id", string(ce.ChunkID))
+			return false, nil
+		}
+
+		chunkFound++
+		return false, err
+	})
+
+	return chunkFound, missingChunk, fmt.Errorf("%d chunks are missing. audit failed", missingChunk)
+}
+
+func CheckChunkExistance(key string, objClient client.ObjectClient) (bool, error) {
+	exists, err := objClient.ObjectExists(context.Background(), key)
+	if err != nil {
+		return false, err
+	}
+
+	return exists, nil
 }
