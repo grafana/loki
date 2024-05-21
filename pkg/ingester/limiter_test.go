@@ -8,12 +8,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-func TestLimiter_AssertMaxStreamsPerUser(t *testing.T) {
+func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 	tests := map[string]struct {
 		maxLocalStreamsPerUser  int
 		maxGlobalStreamsPerUser int
@@ -21,6 +22,9 @@ func TestLimiter_AssertMaxStreamsPerUser(t *testing.T) {
 		ringIngesterCount       int
 		streams                 int
 		expected                error
+		useOwnedStreamService   bool
+		fixedLimit              int32
+		ownedStreamCount        int64
 	}{
 		"both local and global limit are disabled": {
 			maxLocalStreamsPerUser:  0,
@@ -94,6 +98,36 @@ func TestLimiter_AssertMaxStreamsPerUser(t *testing.T) {
 			streams:                 3000,
 			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 3000, 300, 500, 1000, 300),
 		},
+		"actual limit must be used if it's greater than fixed limit": {
+			maxLocalStreamsPerUser:  500,
+			maxGlobalStreamsPerUser: 1000,
+			ringReplicationFactor:   3,
+			ringIngesterCount:       10,
+			useOwnedStreamService:   true,
+			fixedLimit:              20,
+			ownedStreamCount:        3000,
+			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 3000, 300, 500, 1000, 300),
+		},
+		"fixed limit must be used if it's greater than actual limit": {
+			maxLocalStreamsPerUser:  500,
+			maxGlobalStreamsPerUser: 1000,
+			ringReplicationFactor:   3,
+			ringIngesterCount:       10,
+			useOwnedStreamService:   true,
+			fixedLimit:              2000,
+			ownedStreamCount:        2001,
+			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 2001, 2000, 500, 1000, 300),
+		},
+		"fixed limit must not be used if both limits are disabled": {
+			maxLocalStreamsPerUser:  0,
+			maxGlobalStreamsPerUser: 0,
+			ringReplicationFactor:   3,
+			ringIngesterCount:       10,
+			useOwnedStreamService:   true,
+			fixedLimit:              2000,
+			ownedStreamCount:        2001,
+			expected:                nil,
+		},
 	}
 
 	for testName, testData := range tests {
@@ -107,11 +141,20 @@ func TestLimiter_AssertMaxStreamsPerUser(t *testing.T) {
 			limits, err := validation.NewOverrides(validation.Limits{
 				MaxLocalStreamsPerUser:  testData.maxLocalStreamsPerUser,
 				MaxGlobalStreamsPerUser: testData.maxGlobalStreamsPerUser,
+				UseOwnedStreamCount:     testData.useOwnedStreamService,
 			}, nil)
 			require.NoError(t, err)
 
+			ownedStreamSvc := &ownedStreamService{
+				fixedLimit:       atomic.NewInt32(testData.fixedLimit),
+				ownedStreamCount: atomic.NewInt64(testData.ownedStreamCount),
+			}
 			limiter := NewLimiter(limits, NilMetrics, ring, testData.ringReplicationFactor)
-			actual := limiter.AssertMaxStreamsPerUser("test", testData.streams)
+			defaultCountSupplier := func() int {
+				return testData.streams
+			}
+			streamCountLimiter := newStreamCountLimiter("test", defaultCountSupplier, limiter, ownedStreamSvc)
+			actual := streamCountLimiter.AssertNewStreamAllowed("test")
 
 			assert.Equal(t, testData.expected, actual)
 		})
