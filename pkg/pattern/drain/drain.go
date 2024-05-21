@@ -35,6 +35,7 @@ import (
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/maps"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/tokenization"
 )
 
@@ -150,25 +151,21 @@ func DefaultConfig() *Config {
 	}
 }
 
-func New(config *Config, tokenizer string) *Drain {
+func New(config *Config) *Drain {
+	return NewWithTokenizer(config, &AdaptiveTokenizer{})
+}
+
+func NewWithTokenizer(config *Config, tokenizer PatternTokenizer) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
 	config.maxNodeDepth = config.LogClusterDepth - 2
-	var myTokenizer Tokenizer
-	myTokenizer = &adaptiveLogsTokenizer{}
-	if tokenizer == "logfmt" {
-		myTokenizer = NewLogFmtTokenizer(true)
-	}
-
-	cache, _ := simplelru.NewLRU[string, string](300, nil)
 
 	d := &Drain{
-		config:              config,
-		rootNode:            createNode(),
-		idToCluster:         createLogClusterCache(config.MaxClusters),
-		tokenizer:           myTokenizer,
-		processedTokenCache: cache,
+		config:      config,
+		rootNode:    createNode(),
+		idToCluster: createLogClusterCache(config.MaxClusters),
+		tokenizer:   tokenizer,
 	}
 	return d
 }
@@ -178,7 +175,7 @@ type Drain struct {
 	rootNode        *Node
 	idToCluster     *LogClusterCache
 	clustersCounter int
-	tokenizer       Tokenizer
+	tokenizer       PatternTokenizer
 
 	processedTokenCache simplelru.LRUCache[string, string]
 }
@@ -195,6 +192,14 @@ func (d *Drain) Train(content string, ts int64) *LogCluster {
 	return d.train(d.tokenizer.Marshal([]byte(content)), d.tokenizer.Unmarshal, ts)
 }
 
+func byteSlicesToStrings(in [][]byte) []string {
+	output := make([]string, len(in))
+	for i, byteSlice := range in {
+		output[i] = string(byteSlice)
+	}
+	return output
+}
+
 func (d *Drain) train(tokens [][]byte, stringer func([]string) string, ts int64) *LogCluster {
 	for i, token := range tokens {
 		if len(token) > 50 {
@@ -208,7 +213,7 @@ func (d *Drain) train(tokens [][]byte, stringer func([]string) string, ts int64)
 		if matchCluster == nil {
 			clusterID := d.clustersCounter + 1
 			matchCluster = &LogCluster{
-				Tokens:   safeBytesToStrings(tokens), // Copy the bytes to new strings because we are (probably) storing them
+				Tokens:   byteSlicesToStrings(tokens), // Copy the bytes to new strings because we are (probably) storing them
 				id:       clusterID,
 				Size:     1,
 				Stringer: stringer,
@@ -247,17 +252,16 @@ func (d *Drain) tree(key string, root *Node, depth int) string {
 	return builder.String()
 }
 
-/*func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
-	tokens := tokenizePattern(content, d.config.ParamString)
+func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
+	tokens := d.tokenizer.Marshal([]byte(content))
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
 	// Match no existing log cluster
 	if matchCluster == nil {
 		clusterID := d.clustersCounter + 1
 		matchCluster = &LogCluster{
-			Tokens: tokens,
+			Tokens: byteSlicesToStrings(tokens),
 			id:     clusterID,
 		}
-
 	} else {
 		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
 		matchCluster.Tokens = newTemplateTokens
@@ -266,10 +270,6 @@ func (d *Drain) tree(key string, root *Node, depth int) string {
 	}
 	matchCluster.merge(samples)
 	return matchCluster
-}
-
-*/func tokenizePattern(content, param string) []string {
-	return deduplicatePlaceholders(strings.Split(content, " "), param)
 }
 
 func deduplicatePlaceholders(tokens []string, param string) []string {
@@ -301,17 +301,10 @@ func (d *Drain) Delete(cluster *LogCluster) {
 }
 
 // Match against an already existing cluster. Match shall be perfect (sim_th=1.0). New cluster will not be created as a result of this call, nor any cluster modifications.
-func (d *Drain) MatchTokens(contentTokens []string) *LogCluster {
-	//matchCluster := d.treeSearch(d.rootNode, contentTokens, 1.0, true)
-	return nil
-}
-
-// Match against an already existing cluster. Match shall be perfect (sim_th=1.0). New cluster will not be created as a result of this call, nor any cluster modifications.
 func (d *Drain) Match(content string) *LogCluster {
-	//contentTokens := tokenizePattern(content, d.config.ParamString)
-	return nil
-	/*	matchCluster := d.treeSearch(d.rootNode, contentTokens, 1.0, true)
-		return matchCluster*/
+	contentTokens := d.tokenizer.Marshal([]byte(content))
+	matchCluster := d.treeSearch(d.rootNode, contentTokens, 1.0, true)
+	return matchCluster
 }
 
 func (d *Drain) treeSearch(rootNode *Node, tokens [][]byte, simTh float64, includeParams bool) *LogCluster {

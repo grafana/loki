@@ -140,10 +140,17 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 
-	formatter := "adaptive"
+	var formatter drain.PatternTokenizer
+	formatter = &drain.AdaptiveTokenizer{}
 	if len(pushReqStream.Entries) > 0 {
-		if strings.Index(pushReqStream.Entries[0].Line, "=") != -1 {
-			formatter = "logfmt"
+		// Heuristic to determine if this logline is logfmt or not
+		// We consider the number of equals characters (proxy for key-value pairs) against the number of spaces (total number of keys)
+		// This avoids the case where a non-logfmt line has some unrelated '=' characters
+		// May cause incorrect behaviour if the first line of a stream has a lot of '=' characters.
+		numSpaces := strings.Count(pushReqStream.Entries[0].Line, " ")
+		numEquals := strings.Count(pushReqStream.Entries[0].Line, "=")
+		if numEquals > numSpaces/2 {
+			formatter = drain.NewLogFmtTokenizer(true)
 		}
 	}
 	s, err := newStream(fp, sortedLabels, formatter)

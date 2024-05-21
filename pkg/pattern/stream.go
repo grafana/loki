@@ -27,14 +27,14 @@ type stream struct {
 func newStream(
 	fp model.Fingerprint,
 	labels labels.Labels,
-	formatter string,
+	formatter drain.PatternTokenizer,
 ) (*stream, error) {
 	return &stream{
 		fp:           fp,
 		labels:       labels,
 		labelsString: labels.String(),
 		labelHash:    labels.Hash(),
-		patterns:     drain.New(drain.DefaultConfig(), formatter),
+		patterns:     drain.NewWithTokenizer(drain.DefaultConfig(), formatter),
 	}, nil
 }
 

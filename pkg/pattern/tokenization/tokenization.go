@@ -5,7 +5,7 @@ import (
 	"unsafe"
 )
 
-const placeholderEndOfLine = "<...>"
+var placeholderEndOfLine = []byte("<...>")
 
 // Outside of quoted strings, these are the delimiters between tokens. However,
 // they are not going to be a part of the tokens themselves and will be replaced
@@ -26,11 +26,12 @@ type tokenizer struct {
 	// Result values, the values in the `tokens` slice reference line and shouldn't
 	// allocate new memory.
 	line   string
-	tokens []string
+	tokens [][]byte
 
 	quotesAsSingleToken bool
 	tokenizeDelimiters  bool
 	replaceNumbers      bool
+	replaceHex          bool
 }
 
 type TokenizerOpts struct {
@@ -38,6 +39,7 @@ type TokenizerOpts struct {
 	UseSingleTokenForQuotes   bool
 	IncludeDelimitersInTokens bool
 	PreprocessNumbers         bool
+	PreprocessHex             bool
 }
 
 func (t *tokenizer) countOrSaveToken(endTokenPos, skip int) {
@@ -45,7 +47,7 @@ func (t *tokenizer) countOrSaveToken(endTokenPos, skip int) {
 		// Intentionally written like this and not with append(), so this can
 		// panic if we ever exceed the preallocated slice size, since that means
 		// we have a nasty bug in handleNextToken() below.
-		t.tokens[t.tokenCount] = t.line[t.tpos:endTokenPos]
+		t.tokens[t.tokenCount] = t.buf[t.tpos:endTokenPos]
 	}
 	t.tokenCount++
 	t.tpos = endTokenPos + skip
@@ -186,15 +188,15 @@ func (t *tokenizer) process() {
 	t.tpos += len(placeholderEndOfLine)
 }
 
-func (t *tokenizer) tokenize() []string {
-	t.buf = Preprocess(t.rawLine, t.replaceNumbers, false)
+func (t *tokenizer) tokenizeBytes() [][]byte {
+	t.buf = Preprocess(t.rawLine, t.replaceNumbers, t.replaceHex)
 
 	// We use unsafe to convert buf to a string without any new allocations.
 	// This is safe because t.buf won't be used or referenced anywhere else
 	// besides here from now on.
 	t.line = unsafe.String(unsafe.SliceData(t.buf), len(t.buf))
 
-	if len(t.line) >= 2 && (t.line[0] == '{' || t.line[len(t.line)-1] == '}') {
+	if len(t.buf) >= 2 && (t.buf[0] == '{' || t.buf[len(t.buf)-1] == '}') {
 		t.maybeJSON = true
 	}
 
@@ -203,11 +205,13 @@ func (t *tokenizer) tokenize() []string {
 	// If we have super long lines (more than twice the size we need to get the
 	// maxTokens we want), copy just the part we need so the tokens don't hold a
 	// reference to the original huge []byte slice.
-	if t.tokenCount == t.maxTokens && t.tpos*2 < len(t.line) {
-		t.line = string(t.buf[0 : t.tpos+1])
+	if t.tokenCount == t.maxTokens && t.tpos*2 < len(t.buf) {
+		tmp := make([]byte, t.tpos+1)
+		copy(tmp, t.buf[0:t.tpos+1])
+		t.buf = tmp
 	}
 
-	t.tokens = make([]string, t.tokenCount) // intentionally like this, see comment in countOrSaveToken()
+	t.tokens = make([][]byte, t.tokenCount) // intentionally like this, see comment in countOrSaveToken()
 	t.tokenCount = 0
 	t.tpos = 0
 	t.process()
@@ -215,15 +219,26 @@ func (t *tokenizer) tokenize() []string {
 	return t.tokens
 }
 
+func (t *tokenizer) tokenize() []string {
+	tokens := t.tokenizeBytes()
+	stringTokens := make([]string, len(tokens))
+	for i, token := range tokens {
+		stringTokens[i] = string(token)
+	}
+	return stringTokens
+}
+
 func PreprocessAndTokenize(content []byte) []string {
-	return PreprocessAndTokenizeWithOpts(content, TokenizerOpts{
+	return PreprocessAndTokenizeStringWithOpts(content, TokenizerOpts{
 		MaxTokens:                 100,
 		UseSingleTokenForQuotes:   true,
 		IncludeDelimitersInTokens: false,
+		PreprocessNumbers:         true,
+		PreprocessHex:             true,
 	})
 }
 
-func PreprocessAndTokenizeWithOpts(content []byte, opts TokenizerOpts) []string {
+func PreprocessAndTokenizeStringWithOpts(content []byte, opts TokenizerOpts) []string {
 	content = bytes.TrimSpace(content)
 	maxTokens := 100
 	if opts.MaxTokens != 0 {
@@ -236,7 +251,26 @@ func PreprocessAndTokenizeWithOpts(content []byte, opts TokenizerOpts) []string 
 		quotesAsSingleToken: opts.UseSingleTokenForQuotes,
 		tokenizeDelimiters:  opts.IncludeDelimitersInTokens,
 		replaceNumbers:      opts.PreprocessNumbers,
+		replaceHex:          opts.PreprocessHex,
 	}
 
 	return t.tokenize()
+}
+
+func PreprocessAndTokenizeBytesWithOpts(content []byte, opts TokenizerOpts) [][]byte {
+	maxTokens := 100
+	if opts.MaxTokens != 0 {
+		maxTokens = opts.MaxTokens
+	}
+
+	t := tokenizer{
+		rawLine:             content,
+		maxTokens:           maxTokens,
+		quotesAsSingleToken: opts.UseSingleTokenForQuotes,
+		tokenizeDelimiters:  opts.IncludeDelimitersInTokens,
+		replaceNumbers:      opts.PreprocessNumbers,
+		replaceHex:          opts.PreprocessHex,
+	}
+
+	return t.tokenizeBytes()
 }

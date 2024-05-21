@@ -36,16 +36,11 @@ func Benchmark_logfmtTokenizer_Marshal(t *testing.B) {
 
 			t.ResetTimer()
 			t.ReportAllocs()
-			//allTheTokens := [][]string{}
 			for i := 0; i < t.N; i++ {
 				for _, line := range lines {
-					_ = a.Marshal(line)
-					//fmt.Printf("%s\n", tokens)
-					//allTheTokens = append(allTheTokens, safeBytesToStrings(tokens))
+					a.Marshal(line)
 				}
 			}
-
-			//require.True(t, len(allTheTokens) >= 5000)
 		})
 	}
 }
