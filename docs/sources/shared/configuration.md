@@ -351,6 +351,10 @@ bloom_build:
     # CLI flag: -bloom-build.planner.max-table-offset
     [max_table_offset: <int> | default = 2]
 
+    # Maximum number of tasks to queue per tenant.
+    # CLI flag: -bloom-build.planner.max-tasks-per-tenant
+    [max_queued_tasks_per_tenant: <int> | default = 30000]
+
   builder:
 
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
@@ -3408,6 +3412,11 @@ shard_streams:
 # creation.
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
+
+# Experimental. Maximum number of builders to use when building blooms. 0 allows
+# unlimited builders.
+# CLI flag: -bloom-build.max-builders
+[bloom_build_max_builders: <int> | default = 0]
 
 # Experimental. Length of the n-grams created when computing blooms from log
 # lines.
