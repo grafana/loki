@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/atomic"
+
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
