@@ -58,6 +58,7 @@ func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, mi
 		args = append(args, []string{
 			fmt.Sprintf("--opa.matcher=%s", opaNetworkLabelMatchers),
 			"--opa.matcher-op=or",
+			"--opa.skip-namespace-inference=true",
 		}...)
 	}
 
