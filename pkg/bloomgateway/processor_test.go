@@ -15,6 +15,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -38,6 +39,10 @@ type dummyStore struct {
 	delay time.Duration
 	// mock response error when serving block queriers in ForEach
 	err error
+}
+
+func (s *dummyStore) BloomMetrics() *v1.Metrics {
+	return v1.NewMetrics(nil)
 }
 
 func (s *dummyStore) ResolveMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([][]bloomshipper.MetaRef, []*bloomshipper.Fetcher, error) {

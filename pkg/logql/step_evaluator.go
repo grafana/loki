@@ -32,3 +32,20 @@ type StepEvaluator interface {
 	// Explain returns a print of the step evaluation tree
 	Explain(Node)
 }
+
+type EmptyEvaluator[R StepResult] struct {
+	value R
+}
+
+var _ StepEvaluator = EmptyEvaluator[SampleVector]{}
+
+// Close implements StepEvaluator.
+func (EmptyEvaluator[_]) Close() error { return nil }
+
+// Error implements StepEvaluator.
+func (EmptyEvaluator[_]) Error() error { return nil }
+
+// Next implements StepEvaluator.
+func (e EmptyEvaluator[_]) Next() (ok bool, ts int64, r StepResult) {
+	return false, 0, e.value
+}
