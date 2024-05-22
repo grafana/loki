@@ -174,6 +174,15 @@ type JournalTargetConfig struct {
 	Matches string `yaml:"matches"`
 }
 
+type SyslogFormat string
+
+const (
+	// A modern Syslog RFC
+	SyslogFormatRFC5424 = "rfc5424"
+	// A legacy Syslog RFC also known as BSD-syslog
+	SyslogFormatRFC3164 = "rfc3164"
+)
+
 // SyslogTargetConfig describes a scrape config that listens for log lines over syslog.
 type SyslogTargetConfig struct {
 	// ListenAddress is the address to listen on for syslog messages.
@@ -202,13 +211,17 @@ type SyslogTargetConfig struct {
 	// message should be pushed to Loki
 	UseRFC5424Message bool `yaml:"use_rfc5424_message"`
 
-	// IsRFC3164Message defines wether the log is formated as RFC3164
-	IsRFC3164Message bool `yaml:"is_rfc3164_message"`
+	// Used Sylog format at the target.
+	SyslogFormat SyslogFormat `yaml:"syslog_format"`
 
 	// MaxMessageLength sets the maximum limit to the length of syslog messages
 	MaxMessageLength int `yaml:"max_message_length"`
 
 	TLSConfig promconfig.TLSConfig `yaml:"tls_config,omitempty"`
+}
+
+func (config SyslogTargetConfig) IsRFC3164Message() bool {
+    return config.SyslogFormat == SyslogFormatRFC3164
 }
 
 // WindowsEventsTargetConfig describes a scrape config that listen for windows event logs.

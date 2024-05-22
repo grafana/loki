@@ -225,7 +225,7 @@ func (t *SyslogTarget) handleMessageRFC3164(connLabels labels.Labels, msg syslog
 }
 
 func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Message) {
-	if t.config.IsRFC3164Message {
+	if t.config.IsRFC3164Message() {
 		t.handleMessageRFC3164(connLabels, msg)
 	} else {
 		t.handleMessageRFC5424(connLabels, msg)
