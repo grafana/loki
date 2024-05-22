@@ -23,8 +23,7 @@ func TestAdd(t *testing.T) {
 	require.Equal(t, 1, len(cks[1].Samples))
 	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) - TimeResolution)
 	require.Equal(t, 2, len(cks))
-	require.Equal(t, 2, len(cks[1].Samples))
-	require.Lessf(t, cks[1].Samples[0].Timestamp, cks[1].Samples[1].Timestamp, "Samples should be sorted if inserted out of order")
+	require.Equalf(t, 1, len(cks[1].Samples), "Older samples should not be added if they arrive out of order")
 }
 
 func TestIterator(t *testing.T) {
@@ -192,6 +191,18 @@ func TestForRange(t *testing.T) {
 				{Timestamp: 3, Value: 2},
 			}},
 			start:    4,
+			end:      6,
+			expected: nil,
+		},
+		{
+			name: "Internally out-of-order samples generate nil result",
+			c: &Chunk{Samples: []logproto.PatternSample{
+				{Timestamp: 1, Value: 2},
+				{Timestamp: 5, Value: 2},
+				{Timestamp: 3, Value: 2},
+				{Timestamp: 7, Value: 2},
+			}},
+			start:    2,
 			end:      6,
 			expected: nil,
 		},

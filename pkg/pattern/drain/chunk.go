@@ -51,7 +51,7 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 	}
 	first := c.Samples[0].Timestamp
 	last := c.Samples[len(c.Samples)-1].Timestamp
-	if last < first || start >= end || first >= end || last < start {
+	if start >= end || first >= end || last < start {
 		return nil
 	}
 	var lo int
@@ -66,6 +66,11 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 			return c.Samples[i].Timestamp >= end
 		})
 	}
+
+	if c.Samples[lo].Timestamp > c.Samples[hi-1].Timestamp {
+		return nil
+	}
+
 	if step == TimeResolution {
 		return c.Samples[lo:hi]
 	}
@@ -110,15 +115,13 @@ func (c *Chunks) Add(ts model.Time) {
 		*c = append(*c, newChunk(t))
 		return
 	}
+	if ts.Before(last.Samples[len(last.Samples)-1].Timestamp) {
+		return
+	}
 	last.Samples = append(last.Samples, logproto.PatternSample{
 		Timestamp: t,
 		Value:     1,
 	})
-	if len(last.Samples) > 1 && last.Samples[len(last.Samples)-2].Timestamp > t {
-		sort.SliceStable(last.Samples, func(i, j int) bool {
-			return last.Samples[i].Timestamp < last.Samples[j].Timestamp
-		})
-	}
 }
 
 func (c Chunks) Iterator(pattern string, from, through, step model.Time) iter.Iterator {
