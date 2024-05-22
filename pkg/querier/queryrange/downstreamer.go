@@ -45,6 +45,8 @@ func ParamsToLokiRequest(params logql.Params) queryrangebase.Request {
 			Plan: &plan.QueryPlan{
 				AST: params.GetExpression(),
 			},
+			StoreChunks:    params.GetStoreChunks(),
+			CachingOptions: params.CachingOptions(),
 		}
 	}
 	return &LokiRequest{
@@ -60,6 +62,8 @@ func ParamsToLokiRequest(params logql.Params) queryrangebase.Request {
 		Plan: &plan.QueryPlan{
 			AST: params.GetExpression(),
 		},
+		StoreChunks:    params.GetStoreChunks(),
+		CachingOptions: params.CachingOptions(),
 	}
 }
 
@@ -141,7 +145,6 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "DownstreamHandler.instance")
 		defer sp.Finish()
 		logger := spanlogger.FromContext(ctx)
-		defer logger.Finish()
 		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Params.Shards()), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler), "engine", "downstream")
 
 		res, err := in.handler.Do(ctx, req)

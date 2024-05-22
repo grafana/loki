@@ -141,6 +141,7 @@ func newInstance(
 	extractorWrapper log.SampleExtractorWrapper,
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
+	customStreamsTracker push.UsageTracker,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
@@ -174,6 +175,8 @@ func newInstance(
 
 		writeFailures: writeFailures,
 		schemaconfig:  &c,
+
+		customStreamsTracker: customStreamsTracker,
 	}
 	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
 	return i, err
@@ -241,7 +244,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream)
+		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream, i.customStreamsTracker)
 		s.chunkMtx.Unlock()
 	}
 
@@ -588,9 +591,31 @@ type UniqueValues map[string]struct{}
 
 // LabelsWithValues returns the label names with all the unique values depending on the request
 func (i *instance) LabelsWithValues(ctx context.Context, startTime time.Time, matchers ...*labels.Matcher) (map[string]UniqueValues, error) {
-	// TODO (shantanu): Figure out how to get the label names from index directly when no matchers are given.
-
 	labelMap := make(map[string]UniqueValues)
+	if len(matchers) == 0 {
+		labelsFromIndex, err := i.index.LabelNames(startTime, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, label := range labelsFromIndex {
+			values, err := i.index.LabelValues(startTime, label, nil)
+			if err != nil {
+				return nil, err
+			}
+			existingValues, exists := labelMap[label]
+			if !exists {
+				existingValues = make(map[string]struct{})
+			}
+			for _, v := range values {
+				existingValues[v] = struct{}{}
+			}
+			labelMap[label] = existingValues
+		}
+
+		return labelMap, nil
+	}
+
 	err := i.forMatchingStreams(ctx, startTime, matchers, nil, func(s *stream) error {
 		for _, label := range s.labels {
 			v, exists := labelMap[label.Name]

@@ -168,10 +168,10 @@ spec:
                     values:
                       - ingester-zone-b
               topologyKey: kubernetes.io/hostname
-        {{- with .Values.ingester.zoneAwareReplication.zoneA.extraAffinity }}
+        {{- with .Values.ingester.zoneAwareReplication.zoneB.extraAffinity }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- with .Values.ingester.zoneAwareReplication.zoneA.nodeSelector }}
+      {{- with .Values.ingester.zoneAwareReplication.zoneB.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}

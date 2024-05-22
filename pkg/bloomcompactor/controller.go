@@ -352,7 +352,8 @@ func (s *SimpleBloomController) buildGaps(
 		nGramSize    = uint64(s.limits.BloomNGramLength(tenant))
 		nGramSkip    = uint64(s.limits.BloomNGramSkip(tenant))
 		maxBlockSize = uint64(s.limits.BloomCompactorMaxBlockSize(tenant))
-		blockOpts    = v1.NewBlockOptions(blockEnc, nGramSize, nGramSkip, maxBlockSize)
+		maxBloomSize = uint64(s.limits.BloomCompactorMaxBloomSize(tenant))
+		blockOpts    = v1.NewBlockOptions(blockEnc, nGramSize, nGramSkip, maxBlockSize, maxBloomSize)
 		created      []bloomshipper.Meta
 		totalSeries  int
 		bytesAdded   int
@@ -383,6 +384,10 @@ func (s *SimpleBloomController) buildGaps(
 			// to try and accelerate bloom creation
 			level.Debug(logger).Log("msg", "loading series and blocks for gap", "blocks", len(gap.blocks))
 			seriesItr, blocksIter, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
+				return nil, errors.Wrap(err, "failed to get series and blocks")
+			}
 
 			// TODO(owen-d): more elegant error handling than sync.OnceFunc
 			closeBlocksIter := sync.OnceFunc(func() {
@@ -391,11 +396,6 @@ func (s *SimpleBloomController) buildGaps(
 				}
 			})
 			defer closeBlocksIter()
-
-			if err != nil {
-				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
-				return nil, errors.Wrap(err, "failed to get series and blocks")
-			}
 
 			// Blocks are built consuming the series iterator. For observability, we wrap the series iterator
 			// with a counter iterator to count the number of times Next() is called on it.

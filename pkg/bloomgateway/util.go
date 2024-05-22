@@ -2,7 +2,6 @@ package bloomgateway
 
 import (
 	"sort"
-	"time"
 
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
@@ -13,13 +12,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
-func getDayTime(ts model.Time) time.Time {
-	return ts.Time().UTC().Truncate(Day)
-}
-
 func truncateDay(ts model.Time) model.Time {
-	// model.minimumTick is time.Millisecond
-	return ts - (ts % model.Time(24*time.Hour/time.Millisecond))
+	return model.TimeFromUnix(ts.Time().Truncate(Day).Unix())
 }
 
 // getFromThrough assumes a list of ShortRefs sorted by From time
@@ -100,20 +94,24 @@ type seriesWithInterval struct {
 }
 
 func partitionRequest(req *logproto.FilterChunkRefRequest) []seriesWithInterval {
+	return partitionSeriesByDay(req.From, req.Through, req.Refs)
+}
+
+func partitionSeriesByDay(from, through model.Time, seriesWithChunks []*logproto.GroupedChunkRefs) []seriesWithInterval {
 	result := make([]seriesWithInterval, 0)
 
-	fromDay, throughDay := truncateDay(req.From), truncateDay(req.Through)
+	fromDay, throughDay := truncateDay(from), truncateDay(through)
 
 	for day := fromDay; day.Equal(throughDay) || day.Before(throughDay); day = day.Add(Day) {
 		minTs, maxTs := model.Latest, model.Earliest
 		nextDay := day.Add(Day)
-		res := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
+		res := make([]*logproto.GroupedChunkRefs, 0, len(seriesWithChunks))
 
-		for _, series := range req.Refs {
+		for _, series := range seriesWithChunks {
 			chunks := series.Refs
 
 			min := sort.Search(len(chunks), func(i int) bool {
-				return chunks[i].Through >= day
+				return chunks[i].From >= day
 			})
 
 			max := sort.Search(len(chunks), func(i int) bool {
@@ -121,7 +119,7 @@ func partitionRequest(req *logproto.FilterChunkRefRequest) []seriesWithInterval 
 			})
 
 			// All chunks fall outside of the range
-			if min == len(chunks) || max == 0 {
+			if min == len(chunks) || max == 0 || min == max {
 				continue
 			}
 
@@ -131,7 +129,6 @@ func partitionRequest(req *logproto.FilterChunkRefRequest) []seriesWithInterval 
 			if chunks[max-1].Through > maxTs {
 				maxTs = chunks[max-1].Through
 			}
-			// fmt.Println("day", day, "series", series.Fingerprint, "minTs", minTs, "maxTs", maxTs)
 
 			res = append(res, &logproto.GroupedChunkRefs{
 				Fingerprint: series.Fingerprint,

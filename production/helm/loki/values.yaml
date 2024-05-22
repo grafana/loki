@@ -18,7 +18,6 @@ fullnameOverride: null
 clusterLabelOverride: null
 # -- Image pull secrets for Docker images
 imagePullSecrets: []
-
 # -- Deployment mode lets you specify how to deploy Loki.
 # There are 3 options:
 # - SingleBinary: Loki is deployed as a single binary, useful for small installs typically without HA, up to a few tens of GB/day.
@@ -29,7 +28,6 @@ imagePullSecrets: []
 # - SimpleScalable<->Distributed: Migrate from SimpleScalable to Distributed (or vice versa)
 # Note: SimpleScalable and Distributed REQUIRE the use of object storage.
 deploymentMode: SimpleScalable
-
 ######################################################################################################################
 #
 # Base Loki Configs including kubernetes configurations and configurations for Loki itself,
@@ -37,6 +35,7 @@ deploymentMode: SimpleScalable
 #
 ######################################################################################################################
 # -- Configuration for running Loki
+# @default -- See values.yaml
 loki:
   # Configures the readiness probe for all of the Loki pods
   readinessProbe:
@@ -111,17 +110,14 @@ loki:
   # In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use [environment variables in the configuration](https://grafana.com/docs/loki/latest/configuration/#use-environment-variables-in-the-configuration).
   # Such environment variables can be then stored in a separate Secret and injected via the global.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).
   configStorageType: ConfigMap
-
   # -- The name of the object which Loki will mount as a volume containing the config.
   # If the configStorageType is Secret, this will be the name of the Secret, if it is ConfigMap, this will be the name of the ConfigMap.
   # The value will be passed through tpl.
   configObjectName: '{{ include "loki.name" . }}'
-
   # -- The name of the Secret or ConfigMap that will be created by this chart.
   # If empty, no configmap or secret will be created.
   # The value will be passed through tpl.
   generatedConfigObjectName: '{{ include "loki.name" . }}'
-
   # -- Config file contents for Loki
   # @default -- See values.yaml
   config: |
@@ -369,6 +365,7 @@ loki:
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
+      admin_api_directory: /var/loki/admin
   # -- Configure memcached as an external cache for chunk and results cache. Disabled by default
   # must enable and specify a host for each cache you would like to use.
   memcached:
@@ -442,7 +439,6 @@ loki:
   # -- Enable tracing
   tracing:
     enabled: false
-
 ######################################################################################################################
 #
 # Enterprise Loki Configs
@@ -454,7 +450,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default verion of GEL to deploy
-  version: v1.8.6
+  version: 3.0.1
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -481,13 +477,9 @@ enterprise:
   # enterprise specific sections of the config.yaml file
   config: |
     {{- if .Values.enterprise.adminApi.enabled }}
-    {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "azure") }}
     admin_client:
-      storage:
-        s3:
-          bucket_name: admin
-    {{- end }}
-    {{- end }}
+      {{ include "enterprise-logs.adminAPIStorageConfig" . | nindent 2 }}
+    {{ end }}
     auth:
       type: {{ .Values.enterprise.adminApi.enabled | ternary "enterprise" "trust" }}
     auth_enabled: {{ .Values.loki.auth_enabled }}
@@ -596,7 +588,6 @@ kubectlImage:
   digest: null
   # -- Docker image pull policy
   pullPolicy: IfNotPresent
-
 ######################################################################################################################
 #
 # Chart Testing
@@ -685,13 +676,11 @@ lokiCanary:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 1
-
 ######################################################################################################################
 #
 # Service Accounts and Kubernetes RBAC
 #
 ######################################################################################################################
-
 serviceAccount:
   # -- Specifies whether a ServiceAccount should be created
   create: true
@@ -720,13 +709,11 @@ rbac:
   # apparmor.security.beta.kubernetes.io/defaultProfileName: 'runtime/default'
   # -- Whether to install RBAC in the namespace only or cluster-wide. Useful if you want to watch ConfigMap globally.
   namespaced: false
-
 ######################################################################################################################
 #
 # Network Policy configuration
 #
 ######################################################################################################################
-
 networkPolicy:
   # -- Specifies whether Network Policies should be created
   enabled: false
@@ -776,7 +763,6 @@ networkPolicy:
   egressKubeApiserver:
     # -- Enable additional cilium egress rules to kube-apiserver for backend.
     enabled: false
-
 ######################################################################################################################
 #
 # Global memberlist configuration
@@ -787,7 +773,6 @@ networkPolicy:
 memberlist:
   service:
     publishNotReadyAddresses: false
-
 ######################################################################################################################
 #
 # adminAPI configuration, enterprise only.
@@ -856,7 +841,6 @@ adminApi:
   tolerations: []
   # -- Grace period to allow the admin-api to shutdown before it is killed
   terminationGracePeriodSeconds: 60
-
 ######################################################################################################################
 #
 # Gateway and Ingress
@@ -1018,16 +1002,15 @@ gateway:
     username: null
     # -- The basic auth password for the gateway
     password: null
-    # -- Uses the specified users from the `loki.tenants` list to create the htpasswd file
-    # if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used
+    # -- Uses the specified users from the `loki.tenants` list to create the htpasswd file.
+    # if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used.
     # The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes
     # high CPU load.
+    # @default -- Either `loki.tenants` or `gateway.basicAuth.username` and `gateway.basicAuth.password`.
     htpasswd: >-
       {{ if .Values.loki.tenants }}
-
         {{- range $t := .Values.loki.tenants }}
       {{ htpasswd (required "All tenants must have a 'name' set" $t.name) (required "All tenants must have a 'password' set" $t.password) }}
-
         {{- end }}
       {{ else }} {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }} {{ end }}
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
@@ -1068,7 +1051,6 @@ gateway:
     # @default -- See values.yaml
     file: |
       {{- include "loki.nginxFile" . | indent 2 -}}
-
 # -- If running enterprise and using the default enterprise gateway, configs go here.
 enterpriseGateway:
   # -- Define the amount of instances
@@ -1134,7 +1116,6 @@ enterpriseGateway:
   tolerations: []
   # -- Grace period to allow the gateway to shutdown before it is killed
   terminationGracePeriodSeconds: 60
-
 # -- Ingress configuration Use either this ingress or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.
 # You'll need to supply authn configuration for your ingress controller.
@@ -1150,24 +1131,47 @@ ingress:
   labels: {}
   #    blackbox.monitoring.exclude: "true"
   paths:
-    write:
+    # -- Paths that are exposed by Loki Distributor.
+    # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.distributorFullname"}}`.
+    # If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.writeFullname"}}`.
+    # If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`
+    distributor:
       - /api/prom/push
       - /loki/api/v1/push
-    read:
+      - /otlp/v1/logs
+    # -- Paths that are exposed by Loki Query Frontend.
+    # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.queryFrontendFullname"}}`.
+    # If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.readFullname"}}`.
+    # If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`
+    queryFrontend:
+      - /api/prom/query
+      # this path covers labels and labelValues endpoints
+      - /api/prom/label
+      - /api/prom/series
       - /api/prom/tail
+      - /loki/api/v1/query
+      - /loki/api/v1/query_range
       - /loki/api/v1/tail
-      - /loki/api
+      # this path covers labels and labelValues endpoints
+      - /loki/api/v1/label
+      - /loki/api/v1/labels
+      - /loki/api/v1/series
+      - /loki/api/v1/index/stats
+      - /loki/api/v1/index/volume
+      - /loki/api/v1/index/volume_range
+      - /loki/api/v1/format_query
+      - /loki/api/v1/detected_fields
+      - /loki/api/v1/detected_labels
+      - /loki/api/v1/patterns
+    # -- Paths that are exposed by Loki Ruler.
+    # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.rulerFullname"}}`.
+    # If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`.
+    # If deployment mode is SimpleScalable but `read.legacyReadTarget` is `true`, the requests are forwarded to k8s service: `{{"loki.readFullname"}}`.
+    # If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`
+    ruler:
       - /api/prom/rules
-      - /loki/api/v1/rules
-      - /prometheus/api/v1/rules
-      - /prometheus/api/v1/alerts
-    singleBinary:
-      - /api/prom/push
-      - /loki/api/v1/push
-      - /api/prom/tail
-      - /loki/api/v1/tail
-      - /loki/api
-      - /api/prom/rules
+      - /api/prom/api/v1/rules
+      - /api/prom/api/v1/alerts
       - /loki/api/v1/rules
       - /prometheus/api/v1/rules
       - /prometheus/api/v1/alerts
@@ -1195,7 +1199,6 @@ migrate:
     # -- If migrating from a distributed service, provide the distributed deployment's
     # memberlist service DNS so the new deployment can join its ring.
     memberlistService: ""
-
 ######################################################################################################################
 #
 # Single Binary Deployment
@@ -1291,7 +1294,6 @@ singleBinary:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
-
 ######################################################################################################################
 #
 # Simple Scalable Deployment (SSD) Mode
@@ -1419,7 +1421,6 @@ write:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
-
 # --  Configuration for the read pod(s)
 read:
   # -- Number of replicas for the read
@@ -1527,7 +1528,6 @@ read:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
-
 # --  Configuration for the backend pod(s)
 backend:
   # -- Number of replicas for the backend
@@ -1636,7 +1636,6 @@ backend:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
-
 ######################################################################################################################
 #
 # Microservices Mode
@@ -1765,8 +1764,8 @@ ingester:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
-      # - name: wal
-      #   size: 150Gi
+        # - name: wal
+        #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -1821,7 +1820,6 @@ ingester:
       excludeDefaultZone: false
       readPath: false
       writePath: false
-
 # --  Configuration for the distributor
 distributor:
   # -- Number of replicas for the distributor
@@ -1908,11 +1906,10 @@ distributor:
   nodeSelector: {}
   # -- Tolerations for distributor pods
   tolerations: []
-    # -- Adds the appProtocol field to the distributor service. This allows distributor to work with istio protocol selection.
+  # -- Adds the appProtocol field to the distributor service. This allows distributor to work with istio protocol selection.
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
-
 # --  Configuration for the querier
 querier:
   # -- Number of replicas for the querier
@@ -2029,7 +2026,6 @@ querier:
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
-
 # -- Configuration for the query-frontend
 queryFrontend:
   # -- Number of replicas for the query-frontend
@@ -2118,7 +2114,6 @@ queryFrontend:
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
-
 # -- Configuration for the query-scheduler
 queryScheduler:
   # -- Number of replicas for the query-scheduler.
@@ -2179,7 +2174,6 @@ queryScheduler:
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
-
 # -- Configuration for the index-gateway
 indexGateway:
   # -- Number of replicas for the index-gateway
@@ -2261,7 +2255,6 @@ indexGateway:
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
-
 # -- Configuration for the compactor
 compactor:
   # -- Number of replicas for the compactor
@@ -2350,13 +2343,12 @@ compactor:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
-      # - name: wal
-      #   size: 150Gi
+        # - name: wal
+        #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
     whenScaled: Retain
-
   serviceAccount:
     create: false
     # -- The name of the ServiceAccount to use for the compactor.
@@ -2369,7 +2361,6 @@ compactor:
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
-
 # -- Configuration for the bloom gateway
 bloomGateway:
   # -- Number of replicas for the bloom gateway
@@ -2458,13 +2449,12 @@ bloomGateway:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
-      # - name: wal
-      #   size: 150Gi
+        # - name: wal
+        #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
     whenScaled: Retain
-
   serviceAccount:
     create: false
     # -- The name of the ServiceAccount to use for the bloom gateway.
@@ -2477,7 +2467,6 @@ bloomGateway:
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
-
 # -- Configuration for the bloom compactor
 bloomCompactor:
   # -- Number of replicas for the bloom compactor
@@ -2566,13 +2555,12 @@ bloomCompactor:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
-      # - name: wal
-      #   size: 150Gi
+        # - name: wal
+        #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
     whenScaled: Retain
-
   serviceAccount:
     create: false
     # -- The name of the ServiceAccount to use for the bloom compactor.
@@ -2585,7 +2573,6 @@ bloomCompactor:
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
-
 # -- Configuration for the pattern ingester
 patternIngester:
   # -- Number of replicas for the pattern ingester
@@ -2674,13 +2661,12 @@ patternIngester:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
-      # - name: wal
-      #   size: 150Gi
+        # - name: wal
+        #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
     whenScaled: Retain
-
   serviceAccount:
     create: false
     # -- The name of the ServiceAccount to use for the pattern ingester.
@@ -2693,7 +2679,6 @@ patternIngester:
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
-
 # -- Configuration for the ruler
 ruler:
   # -- The ruler component is optional and can be disabled if desired.
@@ -2775,71 +2760,70 @@ ruler:
     grpc: ""
   # -- Directories containing rules files
   directories: {}
-    # tenant_foo:
-    #   rules1.txt: |
-    #     groups:
-    #       - name: should_fire
-    #         rules:
-    #           - alert: HighPercentageError
-    #             expr: |
-    #               sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
-    #                 /
-    #               sum(rate({app="foo", env="production"}[5m])) by (job)
-    #                 > 0.05
-    #             for: 10m
-    #             labels:
-    #               severity: warning
-    #             annotations:
-    #               summary: High error rate
-    #       - name: credentials_leak
-    #         rules:
-    #           - alert: http-credentials-leaked
-    #             annotations:
-    #               message: "{{ $labels.job }} is leaking http basic auth credentials."
-    #             expr: 'sum by (cluster, job, pod) (count_over_time({namespace="prod"} |~ "http(s?)://(\\w+):(\\w+)@" [5m]) > 0)'
-    #             for: 10m
-    #             labels:
-    #               severity: critical
-    #   rules2.txt: |
-    #     groups:
-    #       - name: example
-    #         rules:
-    #         - alert: HighThroughputLogStreams
-    #           expr: sum by(container) (rate({job=~"loki-dev/.*"}[1m])) > 1000
-    #           for: 2m
-    # tenant_bar:
-    #   rules1.txt: |
-    #     groups:
-    #       - name: should_fire
-    #         rules:
-    #           - alert: HighPercentageError
-    #             expr: |
-    #               sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
-    #                 /
-    #               sum(rate({app="foo", env="production"}[5m])) by (job)
-    #                 > 0.05
-    #             for: 10m
-    #             labels:
-    #               severity: warning
-    #             annotations:
-    #               summary: High error rate
-    #       - name: credentials_leak
-    #         rules:
-    #           - alert: http-credentials-leaked
-    #             annotations:
-    #               message: "{{ $labels.job }} is leaking http basic auth credentials."
-    #             expr: 'sum by (cluster, job, pod) (count_over_time({namespace="prod"} |~ "http(s?)://(\\w+):(\\w+)@" [5m]) > 0)'
-    #             for: 10m
-    #             labels:
-    #               severity: critical
-    #   rules2.txt: |
-    #     groups:
-    #       - name: example
-    #         rules:
-    #         - alert: HighThroughputLogStreams
-    #           expr: sum by(container) (rate({job=~"loki-dev/.*"}[1m])) > 1000
-    #           for: 2m
-
+  # tenant_foo:
+  #   rules1.txt: |
+  #     groups:
+  #       - name: should_fire
+  #         rules:
+  #           - alert: HighPercentageError
+  #             expr: |
+  #               sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
+  #                 /
+  #               sum(rate({app="foo", env="production"}[5m])) by (job)
+  #                 > 0.05
+  #             for: 10m
+  #             labels:
+  #               severity: warning
+  #             annotations:
+  #               summary: High error rate
+  #       - name: credentials_leak
+  #         rules:
+  #           - alert: http-credentials-leaked
+  #             annotations:
+  #               message: "{{ $labels.job }} is leaking http basic auth credentials."
+  #             expr: 'sum by (cluster, job, pod) (count_over_time({namespace="prod"} |~ "http(s?)://(\\w+):(\\w+)@" [5m]) > 0)'
+  #             for: 10m
+  #             labels:
+  #               severity: critical
+  #   rules2.txt: |
+  #     groups:
+  #       - name: example
+  #         rules:
+  #         - alert: HighThroughputLogStreams
+  #           expr: sum by(container) (rate({job=~"loki-dev/.*"}[1m])) > 1000
+  #           for: 2m
+  # tenant_bar:
+  #   rules1.txt: |
+  #     groups:
+  #       - name: should_fire
+  #         rules:
+  #           - alert: HighPercentageError
+  #             expr: |
+  #               sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
+  #                 /
+  #               sum(rate({app="foo", env="production"}[5m])) by (job)
+  #                 > 0.05
+  #             for: 10m
+  #             labels:
+  #               severity: warning
+  #             annotations:
+  #               summary: High error rate
+  #       - name: credentials_leak
+  #         rules:
+  #           - alert: http-credentials-leaked
+  #             annotations:
+  #               message: "{{ $labels.job }} is leaking http basic auth credentials."
+  #             expr: 'sum by (cluster, job, pod) (count_over_time({namespace="prod"} |~ "http(s?)://(\\w+):(\\w+)@" [5m]) > 0)'
+  #             for: 10m
+  #             labels:
+  #               severity: critical
+  #   rules2.txt: |
+  #     groups:
+  #       - name: example
+  #         rules:
+  #         - alert: HighThroughputLogStreams
+  #           expr: sum by(container) (rate({job=~"loki-dev/.*"}[1m])) > 1000
+  #           for: 2m
 memcached:
   image:
     # -- Memcached Docker image repository
@@ -2858,7 +2842,6 @@ memcached:
     capabilities:
       drop: [ALL]
     allowPrivilegeEscalation: false
-
 memcachedExporter:
   # -- Whether memcached metrics should be exported
   enabled: true
@@ -2885,7 +2868,6 @@ memcachedExporter:
   #   memcached.tls.insecure-skip-verify: false
   #   memcached.tls.server-name: memcached
   extraArgs: {}
-
 resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true
@@ -2970,7 +2952,6 @@ resultsCache:
   service:
     annotations: {}
     labels: {}
-
 chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
@@ -3059,7 +3040,6 @@ chunksCache:
   service:
     annotations: {}
     labels: {}
-
 ######################################################################################################################
 #
 # Subchart configurations
@@ -3068,7 +3048,6 @@ chunksCache:
 # -- Setting for the Grafana Rollout Operator https://github.com/grafana/helm-charts/tree/main/charts/rollout-operator
 rollout_operator:
   enabled: false
-
   # -- podSecurityContext is the pod security context for the rollout operator.
   # When installing on OpenShift, override podSecurityContext settings with
   #
@@ -3084,14 +3063,12 @@ rollout_operator:
     runAsUser: 10001
     seccompProfile:
       type: RuntimeDefault
-
   # Set the container security context
   securityContext:
     readOnlyRootFilesystem: true
     capabilities:
       drop: [ALL]
     allowPrivilegeEscalation: false
-
 # -- Configuration for the minio subchart
 minio:
   enabled: false
@@ -3121,6 +3098,7 @@ minio:
   # Allow the address used by Loki to refer to Minio to be overridden
   address: null
 # Create extra manifests via values. Would be passed through `tpl` for templating
+# objects can also be provided as multiline strings, useful for templating field names
 extraObjects: []
 # - apiVersion: v1
 #   kind: ConfigMap
@@ -3140,6 +3118,16 @@ extraObjects: []
 #               category: logs
 #             annotations:
 #               message: "loki has encountered errors"
+# - |
+#     apiVersion: v1
+#     kind: Secret
+#     type: Opaque
+#     metadata:
+#       name: loki-distributed-basic-auth
+#     data:
+#       {{- range .Values.loki.tenants }}
+#       {{ .name }}: {{ b64enc .password | quote }}
+#       {{- end }}
 
 sidecar:
   image:
@@ -3199,7 +3187,6 @@ sidecar:
     watchClientTimeout: 60
     # -- Log level of the sidecar container.
     logLevel: INFO
-
 ############################################## WARNING ###############################################################
 #
 # DEPRECATED VALUES
@@ -3299,6 +3286,8 @@ monitoring:
     tenant:
       # -- Name of the tenant
       name: "self-monitoring"
+      # -- Password of the gateway for Basic auth
+      password: null
       # -- Namespace to create additional tenant token secret in. Useful if your Grafana instance
       # is in a separate namespace. Token will still be created in the canary namespace.
       secretNamespace: "{{ .Release.Namespace }}"
@@ -3347,7 +3336,6 @@ monitoring:
       labels: {}
       # -- Additional clients for remote write
       clients: null
-
 # -- DEPRECATED Configuration for the table-manager. The table-manager is only necessary when using a deprecated
 # index type such as Cassandra, Bigtable, or DynamoDB, it has not been necessary since loki introduced self-
 # contained index types like 'boltdb-shipper' and 'tsdb'. This will be removed in a future helm chart.

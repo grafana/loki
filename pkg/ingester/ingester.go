@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 
@@ -242,10 +243,12 @@ type Ingester struct {
 	streamRateCalculator *StreamRateCalculator
 
 	writeLogManager *writefailures.Manager
+
+	customStreamsTracker push.UsageTracker
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -273,6 +276,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		terminateOnShutdown:   false,
 		streamRateCalculator:  NewStreamRateCalculator(),
 		writeLogManager:       writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester"),
+		customStreamsTracker:  customStreamsTracker,
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -863,7 +867,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.pipelineWrapper, i.extractorWrapper, i.streamRateCalculator, i.writeLogManager)
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.pipelineWrapper, i.extractorWrapper, i.streamRateCalculator, i.writeLogManager, i.customStreamsTracker)
 		if err != nil {
 			return nil, err
 		}
@@ -1036,7 +1040,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	}
 
 	// get chunk references
-	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil))
+	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1395,10 +1399,9 @@ func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.Detected
 		if err != nil {
 			return nil, err
 		}
-		level.Info(i.logger).Log("msg", matchers)
 	}
 
-	labelMap, err := instance.LabelsWithValues(ctx, *req.Start, matchers...)
+	labelMap, err := instance.LabelsWithValues(ctx, req.Start, matchers...)
 
 	if err != nil {
 		return nil, err

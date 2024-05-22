@@ -289,6 +289,11 @@ func TestMerge(t *testing.T) {
 						Tenant:      "fake",
 						Refs: []*logproto.ShortRef{
 							{
+								From:     700,
+								Through:  1000,
+								Checksum: 40,
+							},
+							{
 								From:     1000,
 								Through:  1500,
 								Checksum: 10,
@@ -302,11 +307,6 @@ func TestMerge(t *testing.T) {
 								From:     2000,
 								Through:  2500,
 								Checksum: 30,
-							},
-							{
-								From:     700,
-								Through:  1000,
-								Checksum: 40,
 							},
 							{
 								From:     2000,
@@ -344,7 +344,10 @@ func TestMerge(t *testing.T) {
 			m := newMerger()
 			actual, err := m.MergeResponse(input...)
 			require.NoError(t, err)
-			require.Equal(t, tc.expected, actual)
+
+			resp, ok := actual.(*logproto.FilterChunkRefResponse)
+			require.True(t, ok)
+			require.Equal(t, tc.expected, resp)
 		})
 	}
 }
@@ -450,14 +453,14 @@ func TestCache(t *testing.T) {
 	res, err = cacheMiddleware.FilterChunkRefs(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 2, *calls)
-	require.Equal(t, expectedRes, res)
+	require.ElementsMatch(t, expectedRes.ChunkRefs, res.ChunkRefs)
 
 	// Doing a request again should only hit the cache
 	*calls = 0
 	res, err = cacheMiddleware.FilterChunkRefs(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 0, *calls)
-	require.Equal(t, expectedRes, res)
+	require.ElementsMatch(t, expectedRes.ChunkRefs, res.ChunkRefs)
 }
 
 type mockServer struct {

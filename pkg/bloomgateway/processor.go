@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/dskit/concurrency"
@@ -40,7 +39,7 @@ func (p *processor) run(ctx context.Context, tasks []Task) error {
 }
 
 func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.MultiFingerprintBounds) error {
-	tenant := tasks[0].Tenant
+	tenant := tasks[0].tenant
 	level.Info(p.logger).Log(
 		"msg", "process tasks with bounds",
 		"tenant", tenant,
@@ -63,31 +62,14 @@ func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.M
 	return nil
 }
 
-func (p *processor) processTasks(ctx context.Context, tenant string, day config.DayTime, keyspaces v1.MultiFingerprintBounds, tasks []Task) error {
+func (p *processor) processTasks(ctx context.Context, tenant string, day config.DayTime, _ v1.MultiFingerprintBounds, tasks []Task) error {
 	level.Info(p.logger).Log("msg", "process tasks for day", "tenant", tenant, "tasks", len(tasks), "day", day.String())
+	var duration time.Duration
 
-	minFpRange, maxFpRange := getFirstLast(keyspaces)
-	interval := bloomshipper.NewInterval(day.Bounds())
-	metaSearch := bloomshipper.MetaSearchParams{
-		TenantID: tenant,
-		Interval: interval,
-		Keyspace: v1.NewBounds(minFpRange.Min, maxFpRange.Max),
+	blocksRefs := make([]bloomshipper.BlockRef, 0, len(tasks[0].blocks)*len(tasks))
+	for _, task := range tasks {
+		blocksRefs = append(blocksRefs, task.blocks...)
 	}
-
-	start := time.Now()
-	metas, err := p.store.FetchMetas(ctx, metaSearch)
-	duration := time.Since(start)
-	level.Debug(p.logger).Log("msg", "fetched metas", "count", len(metas), "duration", duration, "err", err)
-
-	for _, t := range tasks {
-		FromContext(t.ctx).AddMetasFetchTime(duration)
-	}
-
-	if err != nil {
-		return err
-	}
-
-	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
 
 	data := partitionTasks(tasks, blocksRefs)
 
@@ -96,7 +78,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		refs = append(refs, block.ref)
 	}
 
-	start = time.Now()
+	startBlocks := time.Now()
 	bqs, err := p.store.FetchBlocks(
 		ctx,
 		refs,
@@ -108,7 +90,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		// the underlying bloom []byte outside of iteration
 		bloomshipper.WithPool(true),
 	)
-	duration = time.Since(start)
+	duration = time.Since(startBlocks)
 	level.Debug(p.logger).Log("msg", "fetched blocks", "count", len(refs), "duration", duration, "err", err)
 
 	for _, t := range tasks {
@@ -119,9 +101,9 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		return err
 	}
 
-	start = time.Now()
+	startProcess := time.Now()
 	res := p.processBlocks(ctx, bqs, data)
-	duration = time.Since(start)
+	duration = time.Since(startProcess)
 
 	for _, t := range tasks {
 		FromContext(t.ctx).AddProcessingTime(duration)
@@ -172,11 +154,15 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 	iters := make([]v1.PeekingIterator[v1.Request], 0, len(tasks))
 
 	for _, task := range tasks {
-		if sp := opentracing.SpanFromContext(task.ctx); sp != nil {
-			md, _ := blockQuerier.Metadata()
-			blk := bloomshipper.BlockRefFrom(task.Tenant, task.table.String(), md)
-			sp.LogKV("process block", blk.String(), "series", len(task.series))
-		}
+		// NB(owen-d): can be helpful for debugging, but is noisy
+		// and don't feel like threading this through a configuration
+
+		// if sp := opentracing.SpanFromContext(task.ctx); sp != nil {
+		// 	md, _ := blockQuerier.Metadata()
+		// 	blk := bloomshipper.BlockRefFrom(task.tenant, task.table.String(), md)
+		// 	blockID := blk.String()
+		// 	sp.LogKV("process block", blockID, "series", len(task.series))
+		// }
 
 		it := v1.NewPeekingIter(task.RequestIter(tokenizer))
 		iters = append(iters, it)
