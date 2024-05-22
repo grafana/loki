@@ -94,7 +94,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'querier'),
           )
         )
-        # Add the read path for single scalable deployment only. The read path should not display disk utilization as the index gateway is present in the backend pods.
+        // Add the read path for single scalable deployment only. The read path should not display disk utilization as the index gateway is present in the backend pods.
         .addRowIf(
           $._config.ssd.enabled,
           grafana.row.new('Read path')
@@ -108,7 +108,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.goHeapInUsePanel('Memory (go heap inuse)', index_gateway_job_matcher),
           )
         )
-        # Otherwise we add the index gateway information
+        // Otherwise we add the index gateway information
         .addRowIf(
           !$._config.ssd.enabled,
           grafana.row.new('Index Gateway')
