@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package protos;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "protos";
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+// FPBounds is identical to the definition in `pkg/storage/bloom/v1/bounds.FingerprintBounds`
+// which ensures we can cast between them without allocations.
+// TODO(salvacorts): Reuse from `pkg/logproto/indexgateway.proto`
+message FPBounds {
+  uint64 min = 1 [
+    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint",
+    (gogoproto.jsontag) = "min"
+  ];
+  uint64 max = 2 [
+    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint",
+    (gogoproto.jsontag) = "max"
+  ];
+}
+
+// BlockRef is identical to the definition in `pkg/storage/stores/shipper/bloomshipper/client.go` for BlockRef
+// which ensures we can cast between them without allocations.
+message BlockRef {
+    string tenant = 1;
+    string table = 2;
+    FPBounds bounds = 3 [
+      (gogoproto.nullable) = false,
+      (gogoproto.jsontag) = "bounds"
+    ];
+    int64 startTimestamp = 4;
+    int64 endTimestamp = 5;
+    uint32 checksum = 6;
+}
+
+message Task {
+    string table = 1;
+    string tenant = 2;
+    FPBounds bounds = 3 [
+      (gogoproto.nullable) = false,
+      (gogoproto.jsontag) = "bounds"
+    ];
+}
