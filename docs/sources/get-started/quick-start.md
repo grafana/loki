@@ -24,6 +24,10 @@ The Docker Compose configuration instantiates the following components, each in 
 
 ## Interactive Learning Environment
 
+{{< admonition type="note" >}}
+The Interactive Learning Environment is currently in trial. Please provide feedback, report bugs, and raise issues in the [Grafana Killercoda Repository](https://github.com/grafana/killercoda).
+{{< /admonition >}}
+
 Try out this demo within our interactive learning environment: [Loki Quickstart Sandbox](https://killercoda.com/grafana-labs/course/loki/loki-quickstart) 
 
 - A free Killercoda account is required to verify you are not a bot.
