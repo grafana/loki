@@ -24,22 +24,22 @@ message ProtoFingerprintBounds {
 
 message ProtoGapWithBlocks {
   ProtoFingerprintBounds bounds = 1 [
-      (gogoproto.nullable) = false,
-      (gogoproto.jsontag) = "bounds"
-    ];
-    repeated string blockRef = 2;
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "bounds"
+  ];
+  repeated string blockRef = 2;
 }
 
 // TODO: Define BlockRef and SingleTenantTSDBIdentifier as messages so we can use them right away
 //       instead of unmarshaling them from strings or doing unsafe casts.
 message ProtoTask {
-    string id = 1;
-    string table = 2;
-    string tenant = 3;
-    ProtoFingerprintBounds bounds = 4 [
-      (gogoproto.nullable) = false,
-      (gogoproto.jsontag) = "bounds"
-    ];
-    string tsdb = 5;
-    repeated ProtoGapWithBlocks gaps = 6;
+  string id = 1;
+  string table = 2;
+  string tenant = 3;
+  ProtoFingerprintBounds bounds = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "bounds"
+  ];
+  string tsdb = 5;
+  repeated ProtoGapWithBlocks gaps = 6;
 }

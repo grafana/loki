@@ -9,7 +9,6 @@ option go_package = "protos";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
-
 service PlannerForBuilder {
   rpc BuilderLoop(stream BuilderToPlanner) returns (stream PlannerToBuilder) {}
 
