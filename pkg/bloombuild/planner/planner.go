@@ -3,8 +3,6 @@ package planner
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
-	"github.com/pkg/errors"
 	"sort"
 	"sync"
 	"time"
@@ -12,9 +10,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/queue"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -179,8 +179,11 @@ func (p *Planner) runOne(ctx context.Context) error {
 		for _, gap := range gaps {
 			totalTasks++
 
-			task := NewTask(w.table.Addr(), w.tenant, w.ownershipRange, gap.tsdb, gap.gaps)
-			task = task.WithQueueTracking(ctx, now)
+			task := NewQueueTask(
+				ctx,
+				now,
+				protos.NewTask(w.table.Addr(), w.tenant, w.ownershipRange, gap.tsdb, gap.gaps),
+			)
 
 			if err := p.enqueueTask(task); err != nil {
 				level.Error(logger).Log("msg", "error enqueuing task", "err", err)
@@ -337,7 +340,7 @@ func (p *Planner) findGapsForBounds(
 //     This is a performance optimization to avoid expensive re-reindexing
 type blockPlan struct {
 	tsdb tsdb.SingleTenantTSDBIdentifier
-	gaps []GapWithBlocks
+	gaps []protos.GapWithBlocks
 }
 
 func (p *Planner) findOutdatedGaps(
@@ -431,12 +434,12 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan
 	for _, idx := range tsdbs {
 		plan := blockPlan{
 			tsdb: idx.tsdb,
-			gaps: make([]GapWithBlocks, 0, len(idx.gaps)),
+			gaps: make([]protos.GapWithBlocks, 0, len(idx.gaps)),
 		}
 
 		for _, gap := range idx.gaps {
-			planGap := GapWithBlocks{
-				bounds: gap,
+			planGap := protos.GapWithBlocks{
+				Bounds: gap,
 			}
 
 			for _, meta := range metas {
@@ -453,18 +456,18 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan
 					}
 					// this block overlaps the gap, add it to the plan
 					// for this gap
-					planGap.blocks = append(planGap.blocks, block)
+					planGap.Blocks = append(planGap.Blocks, block)
 				}
 			}
 
 			// ensure we sort blocks so deduping iterator works as expected
-			sort.Slice(planGap.blocks, func(i, j int) bool {
-				return planGap.blocks[i].Bounds.Less(planGap.blocks[j].Bounds)
+			sort.Slice(planGap.Blocks, func(i, j int) bool {
+				return planGap.Blocks[i].Bounds.Less(planGap.Blocks[j].Bounds)
 			})
 
 			peekingBlocks := v1.NewPeekingIter[bloomshipper.BlockRef](
 				v1.NewSliceIter[bloomshipper.BlockRef](
-					planGap.blocks,
+					planGap.Blocks,
 				),
 			)
 			// dedupe blocks which could be in multiple metas
@@ -483,7 +486,7 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan
 			if err != nil {
 				return nil, fmt.Errorf("failed to dedupe blocks: %w", err)
 			}
-			planGap.blocks = deduped
+			planGap.Blocks = deduped
 
 			plan.gaps = append(plan.gaps, planGap)
 		}
@@ -497,18 +500,18 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan
 func (p *Planner) addPendingTask(task *Task) {
 	p.pendingTasksMu.Lock()
 	defer p.pendingTasksMu.Unlock()
-	p.pendingTasks[task.ID()] = task
+	p.pendingTasks[task.ID] = task
 }
 
 func (p *Planner) removePendingTask(task *Task) {
 	p.pendingTasksMu.Lock()
 	defer p.pendingTasksMu.Unlock()
-	delete(p.pendingTasks, task.ID())
+	delete(p.pendingTasks, task.ID)
 }
 
 func (p *Planner) enqueueTask(task *Task) error {
-	p.activeUsers.UpdateUserTimestamp(task.tenant, time.Now())
-	return p.tasksQueue.Enqueue(task.tenant, nil, task, func() {
+	p.activeUsers.UpdateUserTimestamp(task.Tenant, time.Now())
+	return p.tasksQueue.Enqueue(task.Tenant, nil, task, func() {
 		p.addPendingTask(task)
 	})
 }
@@ -582,16 +585,8 @@ func (p *Planner) forwardTaskToBuilder(
 ) error {
 	defer p.removePendingTask(task)
 
-	// TODO: Complete Task proto definition
 	msg := &protos.PlannerToBuilder{
-		Task: &protos.Task{
-			Table:  task.table,
-			Tenant: task.tenant,
-			Bounds: protos.FPBounds{
-				Min: task.OwnershipBounds.Min,
-				Max: task.OwnershipBounds.Max,
-			},
-		},
+		Task: task.ToProtoTask(),
 	}
 
 	if err := builder.Send(msg); err != nil {

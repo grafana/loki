@@ -21,7 +21,7 @@ message BuilderToPlanner {
 }
 
 message PlannerToBuilder {
-  Task task = 1;
+  ProtoTask task = 1;
 }
 
 message NotifyBuilderShutdownRequest {
