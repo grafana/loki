@@ -6,6 +6,7 @@ import (
 	"io"
 	"path"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
@@ -19,6 +20,7 @@ import (
 	shipperutil "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	progressbar "github.com/schollz/progressbar/v3"
+	"golang.org/x/sync/errgroup"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -46,7 +48,7 @@ func Run(ctx context.Context, cloudIndexPath, table string, cfg Config, logger l
 	}
 	defer compactedIdx.Cleanup()
 
-	return PerformAudit(objClient, compactedIdx, logger)
+	return AuditCompactedIndex(ctx, objClient, compactedIdx, cfg.Concurrency, logger)
 }
 
 func GetObjectClient(cfg Config, logger log.Logger) (client.ObjectClient, error) {
@@ -90,27 +92,35 @@ func ParseCompactexIndex(ctx context.Context, localFilePath, table string, cfg C
 	return compactedIdx, nil
 }
 
-func PerformAudit(objClient client.ObjectClient, compactedIdx compactor.CompactedIndex, logger log.Logger) (int, int, error) {
-	missingChunk := 0
-	chunkFound := 0
+func AuditCompactedIndex(ctx context.Context, objClient client.ObjectClient, compactedIdx compactor.CompactedIndex, parallelism int, logger log.Logger) (int, int, error) {
+	var missingChunks, foundChunks atomic.Int32
+	foundChunks.Store(0)
+	missingChunks.Store(0)
 	bar := progressbar.NewOptions(-1,
 		progressbar.OptionShowCount(),
 		progressbar.OptionSetDescription("Chunks validated"),
 	)
-	compactedIdx.ForEachChunk(context.Background(), func(ce retention.ChunkEntry) (deleteChunk bool, err error) {
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(parallelism)
+	compactedIdx.ForEachChunk(ctx, func(ce retention.ChunkEntry) (deleteChunk bool, err error) {
 		bar.Add(1)
-		_, err = CheckChunkExistance(string(ce.ChunkID), objClient)
-		if err != nil {
-			missingChunk++
-			logger.Log("msg", "chunk is missing", "err", err.Error(), "chunk_id", string(ce.ChunkID))
-			return false, nil
-		}
+		g.Go(func() error {
+			exists, err := CheckChunkExistance(string(ce.ChunkID), objClient)
+			if err != nil || !exists {
+				missingChunks.Add(1)
+				logger.Log("msg", "chunk is missing", "err", err, "chunk_id", string(ce.ChunkID))
+				return nil
+			}
+			foundChunks.Add(1)
+			return nil
+		})
 
-		chunkFound++
-		return false, err
+		return false, nil
 	})
+	g.Wait()
 
-	return chunkFound, missingChunk, fmt.Errorf("%d chunks are missing. audit failed", missingChunk)
+	return int(foundChunks.Load()), int(missingChunks.Load()), nil
 }
 
 func CheckChunkExistance(key string, objClient client.ObjectClient) (bool, error) {
