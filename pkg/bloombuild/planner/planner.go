@@ -148,9 +148,12 @@ func (p *Planner) runOne(ctx context.Context) error {
 
 	var totalTasks int
 	for _, w := range work {
+		logger := log.With(p.logger, "tenant", w.tenant, "table", w.table.Addr(), "ownership", w.ownershipRange.String())
+
 		gaps, err := p.findGapsForBounds(ctx, w.tenant, w.table, w.ownershipRange)
 		if err != nil {
-			return fmt.Errorf("error finding gaps for tenant (%s) in table (%s) for bounds (%s): %w", w.tenant, w.table, w.ownershipRange, err)
+			level.Error(logger).Log("msg", "error finding gaps", "err", err)
+			continue
 		}
 
 		now := time.Now()
@@ -169,7 +172,8 @@ func (p *Planner) runOne(ctx context.Context) error {
 
 			p.activeUsers.UpdateUserTimestamp(task.tenant, now)
 			if err := p.tasksQueue.Enqueue(task.tenant, nil, task, nil); err != nil {
-				return fmt.Errorf("error enqueuing task for tenant (%s) in table (%s) for bounds (%s): %w", task.tenant, task.table, task.OwnershipBounds, err)
+				level.Error(logger).Log("msg", "error enqueuing task", "err", err)
+				continue
 			}
 		}
 	}
