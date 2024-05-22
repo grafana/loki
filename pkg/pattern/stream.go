@@ -27,13 +27,17 @@ type stream struct {
 func newStream(
 	fp model.Fingerprint,
 	labels labels.Labels,
+	metrics *ingesterMetrics,
 ) (*stream, error) {
 	return &stream{
 		fp:           fp,
 		labels:       labels,
 		labelsString: labels.String(),
 		labelHash:    labels.Hash(),
-		patterns:     drain.New(drain.DefaultConfig()),
+		patterns: drain.New(drain.DefaultConfig(), &drain.Metrics{
+			PatternsEvictedTotal:  metrics.patternsDiscardedTotal,
+			PatternsDetectedTotal: metrics.patternsDetectedTotal,
+		}),
 	}, nil
 }
 
@@ -54,7 +58,7 @@ func (s *stream) Push(
 	return nil
 }
 
-func (s *stream) Iterator(_ context.Context, from, through model.Time) (iter.Iterator, error) {
+func (s *stream) Iterator(_ context.Context, from, through, step model.Time) (iter.Iterator, error) {
 	// todo we should improve locking.
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -66,7 +70,7 @@ func (s *stream) Iterator(_ context.Context, from, through model.Time) (iter.Ite
 		if cluster.String() == "" {
 			continue
 		}
-		iters = append(iters, cluster.Iterator(from, through))
+		iters = append(iters, cluster.Iterator(from, through, step))
 	}
 	return iter.NewMerge(iters...), nil
 }

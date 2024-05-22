@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 var (
@@ -114,13 +115,27 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 
 // FetchMetas implements store.
 func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
+	logger := spanlogger.FromContext(ctx)
+
+	resolverStart := time.Now()
 	metaRefs, fetchers, err := b.ResolveMetas(ctx, params)
+	resolverDuration := time.Since(resolverStart)
 	if err != nil {
 		return nil, err
 	}
 	if len(metaRefs) != len(fetchers) {
 		return nil, errors.New("metaRefs and fetchers have unequal length")
 	}
+
+	var metaCt int
+	for i := range metaRefs {
+		metaCt += len(metaRefs[i])
+	}
+	logger.LogKV(
+		"msg", "resolved metas",
+		"metas", metaCt,
+		"duration", resolverDuration,
+	)
 
 	var metas []Meta
 	for i := range fetchers {

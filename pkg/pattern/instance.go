@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -29,9 +30,10 @@ type instance struct {
 	streams    *streamsMap
 	index      *index.BitPrefixInvertedIndex
 	logger     log.Logger
+	metrics    *ingesterMetrics
 }
 
-func newInstance(instanceID string, logger log.Logger) (*instance, error) {
+func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
 	if err != nil {
 		return nil, err
@@ -42,6 +44,7 @@ func newInstance(instanceID string, logger log.Logger) (*instance, error) {
 		instanceID: instanceID,
 		streams:    newStreamsMap(),
 		index:      index,
+		metrics:    metrics,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -78,10 +81,14 @@ func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequ
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
+	step := model.Time(req.Step)
+	if step < drain.TimeResolution {
+		step = drain.TimeResolution
+	}
 
 	var iters []iter.Iterator
 	err = i.forMatchingStreams(matchers, func(s *stream) error {
-		iter, err := s.Iterator(ctx, from, through)
+		iter, err := s.Iterator(ctx, from, through, step)
 		if err != nil {
 			return err
 		}
@@ -133,7 +140,7 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	}
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	s, err := newStream(fp, sortedLabels)
+	s, err := newStream(fp, sortedLabels, i.metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}

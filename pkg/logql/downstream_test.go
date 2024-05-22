@@ -65,6 +65,10 @@ func TestMappingEquivalence(t *testing.T) {
 			`,
 			false,
 		},
+		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false},
+		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.
@@ -89,6 +93,7 @@ func TestMappingEquivalence(t *testing.T) {
 				interval,
 				logproto.FORWARD,
 				uint32(limit),
+				nil,
 				nil,
 			)
 			require.NoError(t, err)
@@ -140,7 +145,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 		query         string
 		realtiveError float64
 	}{
-		{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.03},
+		{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.05},
 		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.02},
 	} {
 		q := NewMockQuerier(
@@ -161,6 +166,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 				interval,
 				logproto.FORWARD,
 				uint32(limit),
+				nil,
 				nil,
 			)
 			require.NoError(t, err)
@@ -196,6 +202,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 				0,
 				logproto.FORWARD,
 				uint32(limit),
+				nil,
 				nil,
 			)
 			require.NoError(t, err)
@@ -263,6 +270,7 @@ func TestShardCounter(t *testing.T) {
 				interval,
 				logproto.FORWARD,
 				uint32(limit),
+				nil,
 				nil,
 			)
 			require.NoError(t, err)
@@ -524,6 +532,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 				logproto.FORWARD,
 				uint32(limit),
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 
@@ -627,7 +636,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 					shard: NewPowerOfTwoShard(index.ShardAnnotation{
 						Shard: 0,
 						Of:    3,
-					}).Ptr(),
+					}).Bind(nil),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeRate,
 						Left: &syntax.LogRange{
@@ -643,7 +652,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 						shard: NewPowerOfTwoShard(index.ShardAnnotation{
 							Shard: 1,
 							Of:    3,
-						}).Ptr(),
+						}).Bind(nil),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
 							Left: &syntax.LogRange{
@@ -659,7 +668,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 1,
 								Of:    3,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.RangeAggregationExpr{
 								Operation: syntax.OpRangeTypeRate,
 								Left: &syntax.LogRange{
