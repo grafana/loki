@@ -69,11 +69,15 @@ type Task struct {
 
 	// log enqueue time so we can observe the time spent in the queue
 	enqueueTime time.Time
+
+	// recorder
+	recorder *v1.BloomRecorder
 }
 
 func newTask(ctx context.Context, tenantID string, refs seriesWithInterval, filters []syntax.LineFilterExpr, blocks []bloomshipper.BlockRef) Task {
 	return Task{
 		tenant:   tenantID,
+		recorder: v1.NewBloomRecorder(ctx, "task"),
 		err:      new(wrappedError),
 		resCh:    make(chan v1.Output),
 		filters:  filters,
@@ -113,6 +117,7 @@ func (t Task) CloseWithError(err error) {
 // Copy returns a copy of the existing task but with a new slice of grouped chunk refs
 func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 	return Task{
+		recorder: t.recorder,
 		tenant:   t.tenant,
 		err:      t.err,
 		resCh:    t.resCh,
@@ -126,22 +131,26 @@ func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 	}
 }
 
-func (t Task) RequestIter(tokenizer *v1.NGramTokenizer) v1.Iterator[v1.Request] {
+func (t Task) RequestIter(
+	tokenizer *v1.NGramTokenizer,
+) v1.Iterator[v1.Request] {
 	return &requestIterator{
-		series:  v1.NewSliceIter(t.series),
-		search:  v1.FiltersToBloomTest(tokenizer, t.filters...),
-		channel: t.resCh,
-		curr:    v1.Request{},
+		recorder: t.recorder,
+		series:   v1.NewSliceIter(t.series),
+		search:   v1.FiltersToBloomTest(tokenizer, t.filters...),
+		channel:  t.resCh,
+		curr:     v1.Request{},
 	}
 }
 
 var _ v1.Iterator[v1.Request] = &requestIterator{}
 
 type requestIterator struct {
-	series  v1.Iterator[*logproto.GroupedChunkRefs]
-	search  v1.BloomTest
-	channel chan<- v1.Output
-	curr    v1.Request
+	recorder *v1.BloomRecorder
+	series   v1.Iterator[*logproto.GroupedChunkRefs]
+	search   v1.BloomTest
+	channel  chan<- v1.Output
+	curr     v1.Request
 }
 
 // At implements v1.Iterator.
@@ -162,6 +171,7 @@ func (it *requestIterator) Next() bool {
 	}
 	group := it.series.At()
 	it.curr = v1.Request{
+		Recorder: it.recorder,
 		Fp:       model.Fingerprint(group.Fingerprint),
 		Chks:     convertToChunkRefs(group.Refs),
 		Search:   it.search,
