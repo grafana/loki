@@ -118,6 +118,7 @@ func (p *Planner) running(ctx context.Context) error {
 			return err
 
 		case <-ticker.C:
+			level.Info(p.logger).Log("msg", "starting bloom build iteration")
 			if err := p.runOne(ctx); err != nil {
 				level.Error(p.logger).Log("msg", "bloom build iteration failed", "err", err)
 			}
@@ -136,24 +137,19 @@ func (p *Planner) runOne(ctx context.Context) error {
 	}()
 
 	p.metrics.buildStarted.Inc()
-	level.Info(p.logger).Log("msg", "running bloom build planning")
 
 	tables := p.tables(time.Now())
 	level.Debug(p.logger).Log("msg", "loaded tables", "tables", tables.TotalDays())
 
 	work, err := p.loadWork(ctx, tables)
 	if err != nil {
-		level.Error(p.logger).Log("msg", "error loading work", "err", err)
 		return fmt.Errorf("error loading work: %w", err)
 	}
 
 	var totalTasks int
 	for _, w := range work {
-		logger := log.With(p.logger, "tenant", w.tenant, "table", w.table.Addr(), "ownership", w.ownershipRange.String())
-
 		gaps, err := p.findGapsForBounds(ctx, w.tenant, w.table, w.ownershipRange)
 		if err != nil {
-			level.Error(logger).Log("msg", "error finding gaps", "err", err)
 			return fmt.Errorf("error finding gaps for tenant (%s) in table (%s) for bounds (%s): %w", w.tenant, w.table, w.ownershipRange, err)
 		}
 
@@ -173,14 +169,12 @@ func (p *Planner) runOne(ctx context.Context) error {
 
 			p.activeUsers.UpdateUserTimestamp(task.tenant, now)
 			if err := p.tasksQueue.Enqueue(task.tenant, nil, task, nil); err != nil {
-				level.Error(logger).Log("msg", "error enqueuing task", "err", err)
 				return fmt.Errorf("error enqueuing task for tenant (%s) in table (%s) for bounds (%s): %w", task.tenant, task.table, task.OwnershipBounds, err)
 			}
 		}
-
 	}
 
-	level.Info(p.logger).Log("msg", "planning completed", "tasks", totalTasks)
+	level.Debug(p.logger).Log("msg", "planning completed", "tasks", totalTasks)
 
 	status = statusSuccess
 	level.Info(p.logger).Log(
