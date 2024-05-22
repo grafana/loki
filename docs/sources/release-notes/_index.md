@@ -8,7 +8,7 @@ weight: 100
 Release notes for Loki are in the CHANGELOG for the release and
 listed here by version number.
 
-- [V3.0 release notes](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/v3.0/)
+- [V3.0 release notes](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/v3-0/)
 - [V2.9 release notes](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/v2-9/)
 - [V2.8 release notes](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/v2-8/)
 - [V2.7 release notes](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/v2-7/)
