@@ -38,7 +38,11 @@ func NewTask(table, tenant string, bounds v1.FingerprintBounds, tsdb tsdb.Single
 }
 
 // TODO: Use it in the builder to parse the task
-func FromProtoTask(task ProtoTask) (*Task, error) {
+func FromProtoTask(task *ProtoTask) (*Task, error) {
+	if task == nil {
+		return nil, nil
+	}
+
 	tsdbRef, ok := tsdb.ParseSingleTenantTSDBPath(task.Tsdb)
 	if !ok {
 		return nil, fmt.Errorf("failed to parse tsdb path %s", task.Tsdb)

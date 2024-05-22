@@ -2,8 +2,9 @@ package planner
 
 import (
 	"context"
-	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"time"
+
+	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 )
 
 type Task struct {
@@ -14,7 +15,7 @@ type Task struct {
 	ctx       context.Context
 }
 
-func NewQueueTask(ctx context.Context, queueTime time.Time, task *protos.Task) *Task {
+func NewTask(ctx context.Context, queueTime time.Time, task *protos.Task) *Task {
 	return &Task{
 		Task:      task,
 		ctx:       ctx,

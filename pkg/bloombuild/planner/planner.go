@@ -77,15 +77,16 @@ func New(
 	})
 
 	p := &Planner{
-		cfg:         cfg,
-		limits:      limits,
-		schemaCfg:   schemaCfg,
-		tsdbStore:   tsdbStore,
-		bloomStore:  bloomStore,
-		tasksQueue:  tasksQueue,
-		activeUsers: activeUsers,
-		metrics:     NewMetrics(r, tasksQueue.GetConnectedConsumersMetric),
-		logger:      logger,
+		cfg:          cfg,
+		limits:       limits,
+		schemaCfg:    schemaCfg,
+		tsdbStore:    tsdbStore,
+		bloomStore:   bloomStore,
+		tasksQueue:   tasksQueue,
+		pendingTasks: map[string]*Task{},
+		activeUsers:  activeUsers,
+		metrics:      NewMetrics(r, tasksQueue.GetConnectedConsumersMetric),
+		logger:       logger,
 	}
 
 	svcs := []services.Service{p.tasksQueue, p.activeUsers}
@@ -100,13 +101,23 @@ func New(
 	return p, nil
 }
 
-func (p *Planner) starting(_ context.Context) (err error) {
+func (p *Planner) starting(ctx context.Context) (err error) {
+	if err := services.StartManagerAndAwaitHealthy(ctx, p.subservices); err != nil {
+		return fmt.Errorf("error starting planner subservices: %w", err)
+	}
+
 	p.metrics.running.Set(1)
-	return err
+	return nil
 }
 
 func (p *Planner) stopping(_ error) error {
-	p.metrics.running.Set(0)
+	defer p.metrics.running.Set(0)
+
+	// This will also stop the requests queue, which stop accepting new requests and errors out any pending requests.
+	if err := services.StopManagerAndAwaitStopped(context.Background(), p.subservices); err != nil {
+		return fmt.Errorf("error stopping planner subservices: %w", err)
+	}
+
 	return nil
 }
 
@@ -179,9 +190,8 @@ func (p *Planner) runOne(ctx context.Context) error {
 		for _, gap := range gaps {
 			totalTasks++
 
-			task := NewQueueTask(
-				ctx,
-				now,
+			task := NewTask(
+				ctx, now,
 				protos.NewTask(w.table.Addr(), w.tenant, w.ownershipRange, gap.tsdb, gap.gaps),
 			)
 
@@ -547,8 +557,8 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 		}
 		lastIndex = idx
 
-		// This really should not happen, but log additional information before the scheduler panics.
 		if item == nil {
+
 			return fmt.Errorf("dequeue() call resulted in nil response. builder: %s", builderID)
 		}
 		task := item.(*Task)
