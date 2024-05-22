@@ -3,7 +3,10 @@ package planner
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
+	"github.com/pkg/errors"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -22,6 +25,8 @@ import (
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
 
+var errPlannerIsNotRunning = errors.New("planner is not running")
+
 type Planner struct {
 	services.Service
 	// Subservices manager.
@@ -37,6 +42,9 @@ type Planner struct {
 
 	tasksQueue  *queue.RequestQueue
 	activeUsers *util.ActiveUsersCleanupService
+
+	pendingTasksMu sync.Mutex
+	pendingTasks   map[string]*Task
 
 	metrics *Metrics
 	logger  log.Logger
@@ -108,8 +116,12 @@ func (p *Planner) running(ctx context.Context) error {
 		level.Error(p.logger).Log("msg", "bloom build iteration failed for the first time", "err", err)
 	}
 
-	ticker := time.NewTicker(p.cfg.PlanningInterval)
-	defer ticker.Stop()
+	planningTicker := time.NewTicker(p.cfg.PlanningInterval)
+	defer planningTicker.Stop()
+
+	inflightTasksTicker := time.NewTicker(250 * time.Millisecond)
+	defer inflightTasksTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -117,11 +129,18 @@ func (p *Planner) running(ctx context.Context) error {
 			level.Debug(p.logger).Log("msg", "planner context done", "err", err)
 			return err
 
-		case <-ticker.C:
+		case <-planningTicker.C:
 			level.Info(p.logger).Log("msg", "starting bloom build iteration")
 			if err := p.runOne(ctx); err != nil {
 				level.Error(p.logger).Log("msg", "bloom build iteration failed", "err", err)
 			}
+
+		case <-inflightTasksTicker.C:
+			p.pendingTasksMu.Lock()
+			inflight := len(p.pendingTasks)
+			p.pendingTasksMu.Unlock()
+
+			p.metrics.inflightRequests.Observe(float64(inflight))
 		}
 	}
 }
@@ -159,19 +178,11 @@ func (p *Planner) runOne(ctx context.Context) error {
 		now := time.Now()
 		for _, gap := range gaps {
 			totalTasks++
-			task := Task{
-				table:           w.table.Addr(),
-				tenant:          w.tenant,
-				OwnershipBounds: w.ownershipRange,
-				tsdb:            gap.tsdb,
-				gaps:            gap.gaps,
 
-				queueTime: now,
-				ctx:       ctx,
-			}
+			task := NewTask(w.table.Addr(), w.tenant, w.ownershipRange, gap.tsdb, gap.gaps)
+			task = task.WithQueueTracking(ctx, now)
 
-			p.activeUsers.UpdateUserTimestamp(task.tenant, now)
-			if err := p.tasksQueue.Enqueue(task.tenant, nil, task, nil); err != nil {
+			if err := p.enqueueTask(task); err != nil {
 				level.Error(logger).Log("msg", "error enqueuing task", "err", err)
 				continue
 			}
@@ -481,4 +492,119 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan
 	}
 
 	return plans, nil
+}
+
+func (p *Planner) addPendingTask(task *Task) {
+	p.pendingTasksMu.Lock()
+	defer p.pendingTasksMu.Unlock()
+	p.pendingTasks[task.ID()] = task
+}
+
+func (p *Planner) removePendingTask(task *Task) {
+	p.pendingTasksMu.Lock()
+	defer p.pendingTasksMu.Unlock()
+	delete(p.pendingTasks, task.ID())
+}
+
+func (p *Planner) enqueueTask(task *Task) error {
+	p.activeUsers.UpdateUserTimestamp(task.tenant, time.Now())
+	return p.tasksQueue.Enqueue(task.tenant, nil, task, func() {
+		p.addPendingTask(task)
+	})
+}
+
+func (p *Planner) NotifyBuilderShutdown(
+	_ context.Context,
+	req *protos.NotifyBuilderShutdownRequest,
+) (*protos.NotifyBuilderShutdownResponse, error) {
+	level.Debug(p.logger).Log("msg", "builder shutdown", "builder", req.BuilderID)
+	p.tasksQueue.UnregisterConsumerConnection(req.GetBuilderID())
+
+	return &protos.NotifyBuilderShutdownResponse{}, nil
+}
+
+func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer) error {
+	resp, err := builder.Recv()
+	if err != nil {
+		return fmt.Errorf("error receiving message from builder: %w", err)
+	}
+
+	builderID := resp.GetBuilderID()
+	logger := log.With(p.logger, "builder", builderID)
+	level.Debug(logger).Log("msg", "builder connected")
+
+	p.tasksQueue.RegisterConsumerConnection(builderID)
+	defer p.tasksQueue.UnregisterConsumerConnection(builderID)
+
+	lastIndex := queue.StartIndex
+	for p.isRunningOrStopping() {
+		item, idx, err := p.tasksQueue.Dequeue(builder.Context(), lastIndex, builderID)
+		if err != nil {
+			return fmt.Errorf("error dequeuing task: %w", err)
+		}
+		lastIndex = idx
+
+		// This really should not happen, but log additional information before the scheduler panics.
+		if item == nil {
+			return fmt.Errorf("dequeue() call resulted in nil response. builder: %s", builderID)
+		}
+		task := item.(*Task)
+
+		queueTime := time.Since(task.queueTime)
+		p.metrics.queueDuration.Observe(queueTime.Seconds())
+
+		if task.ctx.Err() != nil {
+			level.Warn(logger).Log("msg", "task context done after dequeue", "err", task.ctx.Err())
+			lastIndex = lastIndex.ReuseLastIndex()
+			p.removePendingTask(task)
+			continue
+		}
+
+		if err := p.forwardTaskToBuilder(builder, builderID, task); err != nil {
+			// Re-queue the task if the builder is failing to process the tasks
+			if err := p.enqueueTask(task); err != nil {
+				p.metrics.taskLost.Inc()
+				level.Error(logger).Log("msg", "error re-enqueuing task. this task will be lost", "err", err)
+			}
+
+			return fmt.Errorf("error forwarding task to builder (%s). Task requeued: %w", builderID, err)
+		}
+
+	}
+
+	return errPlannerIsNotRunning
+}
+
+func (p *Planner) forwardTaskToBuilder(
+	builder protos.PlannerForBuilder_BuilderLoopServer,
+	builderID string,
+	task *Task,
+) error {
+	defer p.removePendingTask(task)
+
+	// TODO: Complete Task proto definition
+	msg := &protos.PlannerToBuilder{
+		Task: &protos.Task{
+			Table:  task.table,
+			Tenant: task.tenant,
+			Bounds: protos.FPBounds{
+				Min: task.OwnershipBounds.Min,
+				Max: task.OwnershipBounds.Max,
+			},
+		},
+	}
+
+	if err := builder.Send(msg); err != nil {
+		return fmt.Errorf("error sending task to builder (%s): %w", builderID, err)
+	}
+
+	// TODO(salvacorts): Implement timeout and retry for builder response.
+	_, err := builder.Recv()
+
+	return err
+}
+
+func (p *Planner) isRunningOrStopping() bool {
+	st := p.State()
+	return st == services.Running || st == services.Stopping
 }
