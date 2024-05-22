@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -439,35 +439,7 @@ func Test_BuilderLoop(t *testing.T) {
 type fakeBuilder struct {
 	id    string
 	tasks []*protos.Task
-}
-
-func (f *fakeBuilder) SetHeader(md metadata.MD) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (f *fakeBuilder) SendHeader(md metadata.MD) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (f *fakeBuilder) SetTrailer(md metadata.MD) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (f *fakeBuilder) Context() context.Context {
-	return context.Background()
-}
-
-func (f *fakeBuilder) SendMsg(m any) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (f *fakeBuilder) RecvMsg(m any) error {
-	//TODO implement me
-	panic("implement me")
+	grpc.ServerStream
 }
 
 func newMockBuilder(id string) *fakeBuilder {
@@ -476,6 +448,10 @@ func newMockBuilder(id string) *fakeBuilder {
 
 func (f *fakeBuilder) ReceivedTasks() []*protos.Task {
 	return f.tasks
+}
+
+func (f *fakeBuilder) Context() context.Context {
+	return context.Background()
 }
 
 func (f *fakeBuilder) Send(req *protos.PlannerToBuilder) error {
@@ -497,15 +473,15 @@ func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
 type fakeLimits struct {
 }
 
-func (f *fakeLimits) BloomCreationEnabled(tenantID string) bool {
+func (f *fakeLimits) BloomCreationEnabled(_ string) bool {
 	return true
 }
 
-func (f *fakeLimits) BloomSplitSeriesKeyspaceBy(tenantID string) int {
+func (f *fakeLimits) BloomSplitSeriesKeyspaceBy(_ string) int {
 	return 1
 }
 
-func (f *fakeLimits) BloomBuildMaxBuilders(tenantID string) int {
+func (f *fakeLimits) BloomBuildMaxBuilders(_ string) int {
 	return 0
 }
 
