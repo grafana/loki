@@ -471,18 +471,18 @@ message DetectedField {
   string label = 1;
   string type = 2 [(gogoproto.casttype) = "DetectedFieldType"];
   uint64 cardinality = 3;
-  string parser = 4;
+  repeated string parsers = 4;
   bytes sketch = 5 [(gogoproto.jsontag) = "sketch,omitempty"];
 }
 
 message DetectedLabelsRequest {
   google.protobuf.Timestamp start = 1 [
     (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = true
+    (gogoproto.nullable) = false
   ];
   google.protobuf.Timestamp end = 2 [
     (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = true
+    (gogoproto.nullable) = false
   ];
   string query = 3;
 }
@@ -494,4 +494,5 @@ message DetectedLabelsResponse {
 message DetectedLabel {
   string label = 1;
   uint64 cardinality = 2;
+  bytes sketch = 3 [(gogoproto.jsontag) = "sketch,omitempty"];
 }
