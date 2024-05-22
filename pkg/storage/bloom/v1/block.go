@@ -117,11 +117,11 @@ type BlockQuerier struct {
 // will be returned to the pool for efficiency. This can only safely be used
 // when the underlying bloom bytes don't escape the decoder, i.e.
 // when loading blooms for querying (bloom-gw) but not for writing (bloom-compactor).
-func NewBlockQuerier(b *Block, noCapture bool, maxPageSize int) *BlockQuerier {
+func NewBlockQuerier(b *Block, alloc Allocator, maxPageSize int) *BlockQuerier {
 	return &BlockQuerier{
 		block:  b,
 		series: NewLazySeriesIter(b),
-		blooms: NewLazyBloomIter(b, noCapture, maxPageSize),
+		blooms: NewLazyBloomIter(b, alloc, maxPageSize),
 	}
 }
 

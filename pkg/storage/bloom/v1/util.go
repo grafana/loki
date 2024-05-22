@@ -44,24 +44,45 @@ var (
 
 	// buffer pool for bloom pages
 	// 128KB 256KB 512KB 1MB 2MB 4MB 8MB 16MB 32MB 64MB 128MB
-	BloomPagePool = BytePool{
+	BloomPagePool = &BytePool{
 		pool: pool.New(
 			128<<10, 128<<20, 2,
 			func(size int) interface{} {
 				return make([]byte, size)
 			}),
 	}
+
+	HeapAllocator = &simpleHeapAllocator{}
 )
+
+type Allocator interface {
+	Get(size int) ([]byte, error)
+	Put([]byte) bool
+}
+
+type simpleHeapAllocator struct{}
+
+func (a *simpleHeapAllocator) Get(size int) ([]byte, error) {
+	return make([]byte, size), nil
+}
+
+func (a *simpleHeapAllocator) Put([]byte) bool {
+	return true
+}
 
 type BytePool struct {
 	pool *pool.Pool
 }
 
-func (p *BytePool) Get(size int) []byte {
-	return p.pool.Get(size).([]byte)[:0]
+// Get implement Allocator
+func (p *BytePool) Get(size int) ([]byte, error) {
+	return p.pool.Get(size).([]byte)[:size], nil
 }
-func (p *BytePool) Put(b []byte) {
+
+// Put implement Allocator
+func (p *BytePool) Put(b []byte) bool {
 	p.pool.Put(b)
+	return true
 }
 
 func newCRC32() hash.Hash32 {

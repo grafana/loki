@@ -157,15 +157,22 @@ func (b *BlockDirectory) resolveSize() error {
 
 // BlockQuerier returns a new block querier from the directory.
 // The passed function `close` is called when the the returned querier is closed.
-
 func (b BlockDirectory) BlockQuerier(
 	usePool bool,
 	close func() error,
 	maxPageSize int,
 	metrics *v1.Metrics,
 ) *CloseableBlockQuerier {
+
+	var alloc v1.Allocator
+	if usePool {
+		alloc = v1.BloomPagePool
+	} else {
+		alloc = v1.HeapAllocator
+	}
+
 	return &CloseableBlockQuerier{
-		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), usePool, maxPageSize),
+		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), alloc, maxPageSize),
 		BlockRef:     b.BlockRef,
 		close:        close,
 	}
