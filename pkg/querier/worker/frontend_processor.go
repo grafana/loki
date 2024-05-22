@@ -30,7 +30,7 @@ func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger, co
 		log:            log,
 		handler:        handler,
 		codec:          codec,
-		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
+		maxMessageSize: cfg.NewQueryFrontendGRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
 	}
 }
