@@ -395,12 +395,10 @@ func Test_BuilderLoop(t *testing.T) {
 	}()
 
 	// Enqueue tasks
-	tsdbId, ok := tsdb.ParseSingleTenantTSDBPath("1-compactor-1-10-ff.tsdb")
-	require.True(t, ok)
 	for i := 0; i < nTasks; i++ {
 		task := NewTask(
 			context.Background(), time.Now(),
-			protos.NewTask("fakeTable", "fakeTenant", v1.NewBounds(0, 10), tsdbId, nil),
+			protos.NewTask("fakeTable", "fakeTenant", v1.NewBounds(0, 10), tsdbID(1), nil),
 		)
 
 		err = planner.enqueueTask(task)
