@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.6.1
 
 - [BUGFIX] Fix query scheduler http-metrics targetPort
+- [BUGFIX] Added helm chart value `singleBinary.service.type` to allow configuration of the single binary Service type
 
 ## 6.6.0
 
@@ -23,7 +24,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.5.2
 
-- [BUGFIX] Fixed Ingress routing for all deployment modes.  
+- [BUGFIX] Fixed Ingress routing for all deployment modes.
 
 ## 6.5.0
 

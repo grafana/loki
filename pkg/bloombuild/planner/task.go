@@ -9,7 +9,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
-// TODO: Extract this definiton to a proto file at pkg/bloombuild/protos/protos.proto
+// TODO: Extract this definition to a proto file at pkg/bloombuild/protos/protos.proto
 
 type GapWithBlocks struct {
 	bounds v1.FingerprintBounds
