@@ -104,7 +104,10 @@ type instance struct {
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
 
-	limiter *Limiter
+	limiter            *Limiter
+	streamCountLimiter *streamCountLimiter
+	ownedStreamsSvc    *ownedStreamService
+
 	configs *runtime.TenantConfigs
 
 	wal WAL
@@ -147,11 +150,12 @@ func newInstance(
 	if err != nil {
 		return nil, err
 	}
-
+	streams := newStreamsMap()
+	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter)
 	c := config.SchemaConfig{Configs: periodConfigs}
 	i := &instance{
 		cfg:        cfg,
-		streams:    newStreamsMap(),
+		streams:    streams,
 		buf:        make([]byte, 0, 1024),
 		index:      invertedIndex,
 		instanceID: instanceID,
@@ -159,9 +163,11 @@ func newInstance(
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
 
-		tailers: map[uint32]*tailer{},
-		limiter: limiter,
-		configs: configs,
+		tailers:            map[uint32]*tailer{},
+		limiter:            limiter,
+		streamCountLimiter: newStreamCountLimiter(instanceID, streams.Len, limiter, ownedStreamsSvc),
+		ownedStreamsSvc:    ownedStreamsSvc,
+		configs:            configs,
 
 		wal:                   wal,
 		metrics:               metrics,
@@ -286,29 +292,11 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	}
 
 	if record != nil {
-		err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, i.streams.Len())
+		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID)
 	}
 
 	if err != nil {
-		if i.configs.LogStreamCreation(i.instanceID) {
-			level.Debug(util_log.Logger).Log(
-				"msg", "failed to create stream, exceeded limit",
-				"org_id", i.instanceID,
-				"err", err,
-				"stream", pushReqStream.Labels,
-			)
-		}
-
-		validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
-		bytes := 0
-		for _, e := range pushReqStream.Entries {
-			bytes += len(e.Line)
-		}
-		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
-		if i.customStreamsTracker != nil {
-			i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))
-		}
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, labels, i.instanceID)
+		return i.onStreamCreationError(ctx, pushReqStream, err, labels)
 	}
 
 	fp := i.getHashForLabels(labels)
@@ -333,21 +321,47 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		i.metrics.recoveredStreamsTotal.Inc()
 	}
 
+	i.onStreamCreated(s)
+
+	return s, nil
+}
+
+func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels) (*stream, error) {
+	if i.configs.LogStreamCreation(i.instanceID) {
+		level.Debug(util_log.Logger).Log(
+			"msg", "failed to create stream, exceeded limit",
+			"org_id", i.instanceID,
+			"err", err,
+			"stream", pushReqStream.Labels,
+		)
+	}
+
+	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
+	bytes := 0
+	for _, e := range pushReqStream.Entries {
+		bytes += len(e.Line)
+	}
+	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
+	if i.customStreamsTracker != nil {
+		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))
+	}
+	return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, labels, i.instanceID)
+}
+
+func (i *instance) onStreamCreated(s *stream) {
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
 	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
-
+	i.ownedStreamsSvc.incOwnedStreamCount()
 	if i.configs.LogStreamCreation(i.instanceID) {
 		level.Debug(util_log.Logger).Log(
 			"msg", "successfully created stream",
 			"org_id", i.instanceID,
-			"stream", pushReqStream.Labels,
+			"stream", s.labels.String(),
 		)
 	}
-
-	return s, nil
 }
 
 func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*stream, error) {
@@ -407,6 +421,7 @@ func (i *instance) removeStream(s *stream) {
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
 		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		streamsCountStats.Add(-1)
+		i.ownedStreamsSvc.decOwnedStreamCount()
 	}
 }
 

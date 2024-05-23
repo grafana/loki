@@ -2978,6 +2978,11 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
 
+# When true an ingester takes into account only the streams that it owns
+# according to the ring while applying the stream limit.
+# CLI flag: -ingester.use-owned-stream-count
+[use_owned_stream_count: <boolean> | default = false]
+
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
 [max_streams_per_user: <int> | default = 0]
