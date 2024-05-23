@@ -2,11 +2,17 @@ package pattern
 
 import (
 	"bufio"
+	"context"
 	"os"
 	"testing"
+	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/dskit/ring"
+	ring_client "github.com/grafana/dskit/ring/client"
+	"github.com/grafana/dskit/services"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -38,4 +44,156 @@ func Test_prunePatterns(t *testing.T) {
 	}
 
 	require.Equal(t, expectedPatterns, patterns)
+}
+
+func Test_Patterns(t *testing.T) {
+	t.Run("it rejects metric queries with filters", func(t *testing.T) {
+		q := &IngesterQuerier{
+			cfg:        Config{},
+			logger:     log.NewNopLogger(),
+			ringClient: &fakeRingClient{},
+			registerer: nil,
+		}
+		for _, query := range []string{
+			`count_over_time({foo="bar"} |= "baz" [5m])`,
+			`count_over_time({foo="bar"} != "baz" [5m])`,
+			`count_over_time({foo="bar"} =~ "baz" [5m])`,
+			`count_over_time({foo="bar"} !~ "baz" [5m])`,
+			`count_over_time({foo="bar"} | logfmt | color=blue [5m])`,
+			`sum(count_over_time({foo="bar"} |= "baz" [5m]))`,
+			`sum by label(count_over_time({foo="bar"} |= "baz" [5m]))`,
+			`bytes_over_time({foo="bar"} |= "baz" [5m])`,
+		} {
+			_, err := q.Patterns(
+				context.Background(),
+				&logproto.QueryPatternsRequest{
+					Query: query,
+				},
+			)
+			require.Error(t, err, query)
+			require.ErrorIs(t, err, ErrParseQuery)
+
+		}
+	})
+
+	t.Run("accepts log selector queries and count and bytes metric queries", func(t *testing.T) {
+		q := &IngesterQuerier{
+			cfg:        Config{},
+			logger:     log.NewNopLogger(),
+			ringClient: &fakeRingClient{},
+			registerer: nil,
+		}
+		for _, query := range []string{
+			`{foo="bar"}`,
+			`count_over_time({foo="bar"}[5m])`,
+			`bytes_over_time({foo="bar"}[5m])`,
+			`sum(count_over_time({foo="bar"}[5m]))`,
+			`sum(bytes_over_time({foo="bar"}[5m]))`,
+			`sum by (level)(count_over_time({foo="bar"}[5m]))`,
+			`sum by (level)(bytes_over_time({foo="bar"}[5m]))`,
+		} {
+			_, err := q.Patterns(
+				context.Background(),
+				&logproto.QueryPatternsRequest{
+					Query: query,
+				},
+			)
+			require.NoError(t, err, query)
+		}
+	})
+}
+
+type fakeRingClient struct{}
+
+func (f *fakeRingClient) Pool() *ring_client.Pool {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) StartAsync(ctx context.Context) error {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) AwaitRunning(ctx context.Context) error {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) StopAsync() {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) AwaitTerminated(ctx context.Context) error {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) FailureCase() error {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) State() services.State {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) AddListener(listener services.Listener) {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) Ring() ring.ReadRing {
+	return &fakeRing{}
+}
+
+type fakeRing struct{}
+
+func (f *fakeRing) Get(
+	key uint32,
+	op ring.Operation,
+	bufDescs []ring.InstanceDesc,
+	bufHosts []string,
+	bufZones []string,
+) (ring.ReplicationSet, error) {
+	panic("not implemented")
+}
+
+func (f *fakeRing) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) {
+	panic("not implemented")
+}
+
+func (f *fakeRing) GetReplicationSetForOperation(op ring.Operation) (ring.ReplicationSet, error) {
+	return ring.ReplicationSet{}, nil
+}
+
+func (f *fakeRing) ReplicationFactor() int {
+	panic("not implemented")
+}
+
+func (f *fakeRing) InstancesCount() int {
+	panic("not implemented")
+}
+
+func (f *fakeRing) ShuffleShard(identifier string, size int) ring.ReadRing {
+	panic("not implemented")
+}
+
+func (f *fakeRing) GetInstanceState(instanceID string) (ring.InstanceState, error) {
+	panic("not implemented")
+}
+
+func (f *fakeRing) ShuffleShardWithLookback(
+	identifier string,
+	size int,
+	lookbackPeriod time.Duration,
+	now time.Time,
+) ring.ReadRing {
+	panic("not implemented")
+}
+
+func (f *fakeRing) HasInstance(instanceID string) bool {
+	panic("not implemented")
+}
+
+func (f *fakeRing) CleanupShuffleShardCache(identifier string) {
+	panic("not implemented")
+}
+
+func (f *fakeRing) GetTokenRangesForInstance(instanceID string) (ring.TokenRanges, error) {
+	panic("not implemented")
 }

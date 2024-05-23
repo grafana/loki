@@ -28,7 +28,7 @@ func TestInstance_QuerySample(t *testing.T) {
 		Step:  oneMin,
 	}
 
-	instance, err := newInstance("test", log.NewNopLogger())
+	instance, err := newInstance("test", log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	labels := model.LabelSet{

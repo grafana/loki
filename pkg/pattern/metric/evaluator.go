@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -48,9 +49,9 @@ func ExtractMetricType(expr syntax.SampleExpr) (MetricType, error) {
 }
 
 type SampleEvaluatorFactory interface {
-	// NewStepEvaluator returns a NewStepEvaluator for a given SampleExpr. 
-  // It's explicitly passed another NewStepEvaluator
-  // in order to enable arbitrary computation of embedded expressions. This allows more modular & extensible
+	// NewStepEvaluator returns a NewStepEvaluator for a given SampleExpr.
+	// It's explicitly passed another NewStepEvaluator
+	// in order to enable arbitrary computation of embedded expressions. This allows more modular & extensible
 	// NewStepEvaluator implementations which can be composed.
 	NewStepEvaluator(
 		ctx context.Context,
@@ -161,7 +162,7 @@ func (ev *DefaultEvaluatorFactory) NewStepEvaluator(
 	}
 }
 
-// Need to create our own StepEvaluator since we only support bytes and count over time, 
+// Need to create our own StepEvaluator since we only support bytes and count over time,
 // and always sum to get those values. In order to accomplish this we need control over the
 // aggregation operation..
 func NewPatternSampleRangeAggEvaluator(
@@ -199,7 +200,7 @@ func newRangeVectorIterator(
 	// TODO(twhitney): do I need a streaming aggregator?
 	// if so the aggregator is going to make this
 	// a bit of a bad time, as there's currently no
-  // way to provide a custom one.
+	// way to provide a custom one.
 	//
 	// var overlap bool
 	// if selRange >= step && start != end {
@@ -222,7 +223,7 @@ func newRangeVectorIterator(
 	// 	}, nil
 	// }
 
-  // always sum
+	// always sum
 	aggregator := logql.BatchRangeVectorAggregator(func(samples []promql.FPoint) float64 {
 		sum := 0.0
 		for _, v := range samples {
@@ -263,7 +264,6 @@ func (s *SeriesToSampleIterator) Next() bool {
 
 	current, rest := s.floats[0], s.floats[1:]
 
-  //Is timestamp the correct unit here?
 	s.curTs = current.T
 	s.cur = current.F
 
@@ -351,4 +351,8 @@ func (p *paramCompat) GetExpression() syntax.Expr {
 
 func (p *paramCompat) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
+}
+
+func (p *paramCompat) CachingOptions() (res resultscache.CachingOptions) {
+	return
 }

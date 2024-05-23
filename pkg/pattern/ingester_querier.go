@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"math"
-	"net/http"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -26,14 +24,14 @@ type IngesterQuerier struct {
 	cfg    Config
 	logger log.Logger
 
-	ringClient *RingClient
+	ringClient RingClient
 
 	registerer prometheus.Registerer
 }
 
 func NewIngesterQuerier(
 	cfg Config,
-	ringClient *RingClient,
+	ringClient RingClient,
 	metricsNamespace string,
 	registerer prometheus.Registerer,
 	logger log.Logger,
@@ -48,19 +46,29 @@ func NewIngesterQuerier(
 
 func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
 	// validate that a supported query was provided
-	// TODO(twhitney): validate metric queries don't have filters
 	var expr syntax.Expr
 	_, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
 		expr, err = syntax.ParseSampleExpr(req.Query)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, ErrParseQuery.Error())
+			return nil, ErrParseQuery
 		}
 
+		var selector syntax.LogSelectorExpr
 		switch expr.(type) {
-		case *syntax.VectorAggregationExpr, *syntax.RangeAggregationExpr:
-			break
+		case *syntax.VectorAggregationExpr:
+			selector, err = expr.(*syntax.VectorAggregationExpr).Selector()
+		case *syntax.RangeAggregationExpr:
+			selector, err = expr.(*syntax.RangeAggregationExpr).Selector()
 		default:
+			return nil, ErrParseQuery
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		if selector == nil || selector.HasFilter() {
 			return nil, ErrParseQuery
 		}
 	}
@@ -118,7 +126,7 @@ func prunePatterns(
 
 // ForAllIngesters runs f, in parallel, for all ingesters
 func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Context, logproto.PatternClient) (interface{}, error)) ([]ResponseFromIngesters, error) {
-	replicationSet, err := q.ringClient.ring.GetReplicationSetForOperation(ring.Read)
+	replicationSet, err := q.ringClient.Ring().GetReplicationSetForOperation(ring.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +145,7 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 		// Nothing here
 	}
 	results, err := ring.DoUntilQuorum(ctx, replicationSet, cfg, func(ctx context.Context, ingester *ring.InstanceDesc) (ResponseFromIngesters, error) {
-		client, err := q.ringClient.pool.GetClientFor(ingester.Addr)
+		client, err := q.ringClient.Pool().GetClientFor(ingester.Addr)
 		if err != nil {
 			return ResponseFromIngesters{addr: ingester.Addr}, err
 		}

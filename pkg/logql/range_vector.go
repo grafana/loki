@@ -108,20 +108,20 @@ func NewBatchRangeVectorIterator(
 		end:      end,
 		current:  start - step, // first loop iteration will set it to start
 		offset:   offset,
-    metrics:  map[string]labels.Labels{},
-    window:   map[string]*promql.Series{},
+		metrics:  map[string]labels.Labels{},
+		window:   map[string]*promql.Series{},
 		agg:      agg,
 	}
 }
 
 func (r *batchRangeVectorIterator) Next() bool {
 	// slides the range window to the next position
-	r.current = r.current + r.step // first current will be 5 min before start
+	r.current = r.current + r.step
 	if r.current > r.end {
 		return false
 	}
 	rangeEnd := r.current
-	rangeStart := rangeEnd - r.selRange // in nanoseconds
+	rangeStart := rangeEnd - r.selRange
 	// load samples
 	r.popBack(rangeStart)
 	r.load(rangeStart, rangeEnd)

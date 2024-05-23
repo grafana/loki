@@ -34,6 +34,7 @@ import (
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/pattern"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -1047,6 +1048,12 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
 	}
 	res, err := q.patternQuerier.Patterns(ctx, req)
+	if err != nil {
+		if errors.Is(err, pattern.ErrParseQuery) {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+	}
+
 	return res, err
 }
 

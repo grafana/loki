@@ -93,7 +93,7 @@ func TestInstancePushQuery(t *testing.T) {
 
 	t.Run("test count_over_time samples", func(t *testing.T) {
 		lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-		inst, err := newInstance("foo", log.NewNopLogger())
+		inst, err := newInstance("foo", log.NewNopLogger(), nil)
 		require.NoError(t, err)
 
 		err = inst.Push(context.Background(), &push.PushRequest{
@@ -185,7 +185,7 @@ func TestInstancePushQuery(t *testing.T) {
 
 	t.Run("test bytes_over_time samples", func(t *testing.T) {
 		lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-		inst, err := newInstance("foo", log.NewNopLogger())
+		inst, err := newInstance("foo", log.NewNopLogger(), nil)
 		require.NoError(t, err)
 
 		err = inst.Push(context.Background(), &push.PushRequest{
