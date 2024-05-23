@@ -28,7 +28,7 @@
       // Support Loki SSD mode on dashboards.
       enabled: false,
 
-      // The prefix used to match the write and read pods on SSD mode.
+      // The prefix used to match the backend, write and read pods on SSD mode.
       pod_prefix_matcher: '(loki.*|enterprise-logs)',
     },
 

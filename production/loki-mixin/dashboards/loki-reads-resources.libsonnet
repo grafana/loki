@@ -9,13 +9,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
   then '(index-gateway.*|%s-read.*|loki-single-binary)' % $._config.ssd.pod_prefix_matcher
   else if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'index-gateway',
 
-  local ingester_pod_matcher = if $._config.meta_monitoring.enabled
-  then 'container=~"loki|ingester", pod=~"(ingester.*|%s-write.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
-  else if $._config.ssd.enabled then 'container="loki", pod=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher else 'container="ingester"',
-  local ingester_job_matcher = if $._config.meta_monitoring.enabled
-  then '(ingester.+|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher
-  else if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.+',
-
   grafanaDashboards+::
     {
       'loki-reads-resources.json':
@@ -171,18 +164,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
           .addPanel(
             $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'bloom-gateway'),
-          )
-        )
-        .addRow(
-          $.row('Ingester')
-          .addPanel(
-            $.CPUUsagePanel('CPU', ingester_pod_matcher),
-          )
-          .addPanel(
-            $.memoryWorkingSetPanel('Memory (workingset)', ingester_pod_matcher),
-          )
-          .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', ingester_job_matcher),
           )
         )
         .addRowIf(
