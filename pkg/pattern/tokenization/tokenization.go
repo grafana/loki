@@ -2,7 +2,6 @@ package tokenization
 
 import (
 	"bytes"
-	"unsafe"
 )
 
 var placeholderEndOfLine = []byte("<...>")
@@ -23,9 +22,8 @@ type tokenizer struct {
 	tokenCount int
 	maybeJSON  bool
 
-	// Result values, the values in the `tokens` slice reference line and shouldn't
+	// Result values, the values in the `tokens` slice reference buf and shouldn't
 	// allocate new memory.
-	line   string
 	tokens [][]byte
 
 	quotesAsSingleToken bool
@@ -58,9 +56,9 @@ func (t *tokenizer) handleNextToken() bool {
 	var c, curQuoteChar byte
 	curQuotePos := -1
 
-	lineLen := len(t.line)
+	lineLen := len(t.buf)
 	for p := t.tpos; p < lineLen; p++ {
-		c = t.line[p]
+		c = t.buf[p]
 		switch {
 
 		// If the previous character was a backslash, we ignore the next
@@ -132,11 +130,11 @@ func (t *tokenizer) handleNextToken() bool {
 		// because it ensures that we're not at the start of a token, i.e. there
 		// wasn't a delimiter right before the comma.
 		case t.maybeJSON && p > t.tpos && (c == ':' || c == ',') && p+1 < lineLen:
-			if c == ':' && t.line[p-1] == '"' && !delimiters[t.line[p+1]] {
+			if c == ':' && t.buf[p-1] == '"' && !delimiters[t.buf[p+1]] {
 				t.countOrSaveToken(p+1, 0)
 				return true
 			}
-			if c == ',' && t.line[p+1] == '"' {
+			if c == ',' && t.buf[p+1] == '"' {
 				t.countOrSaveToken(p, 0)
 				return true
 			}
@@ -155,8 +153,8 @@ func (t *tokenizer) handleNextToken() bool {
 		return true
 	}
 
-	if t.tpos < len(t.line) {
-		t.countOrSaveToken(len(t.line), 0)
+	if t.tpos < len(t.buf) {
+		t.countOrSaveToken(len(t.buf), 0)
 		return true
 	}
 
@@ -175,7 +173,7 @@ func (t *tokenizer) process() {
 		}
 	}
 
-	if t.tpos >= len(t.line) {
+	if t.tpos >= len(t.buf) {
 		return
 	}
 
@@ -190,11 +188,6 @@ func (t *tokenizer) process() {
 
 func (t *tokenizer) tokenizeBytes() [][]byte {
 	t.buf = Preprocess(t.rawLine, t.replaceNumbers, t.replaceHex)
-
-	// We use unsafe to convert buf to a string without any new allocations.
-	// This is safe because t.buf won't be used or referenced anywhere else
-	// besides here from now on.
-	t.line = unsafe.String(unsafe.SliceData(t.buf), len(t.buf))
 
 	if len(t.buf) >= 2 && (t.buf[0] == '{' || t.buf[len(t.buf)-1] == '}') {
 		t.maybeJSON = true

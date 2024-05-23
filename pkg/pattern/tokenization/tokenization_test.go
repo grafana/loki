@@ -347,7 +347,7 @@ func TestTokenizationMemcpy(t *testing.T) {
 	}
 	tokenizer := tokenizer{rawLine: buf, maxTokens: 10}
 	tokenizer.tokenize()
-	require.Less(t, len(tokenizer.line), 100)
+	require.Less(t, len(tokenizer.buf), 100)
 }
 
 // Useful for running single test cases in isolation
