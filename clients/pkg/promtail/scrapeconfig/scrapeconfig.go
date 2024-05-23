@@ -211,7 +211,7 @@ type SyslogTargetConfig struct {
 	// message should be pushed to Loki
 	UseRFC5424Message bool `yaml:"use_rfc5424_message"`
 
-    // Syslog format used at the target.
+	// Syslog format used at the target.
 	SyslogFormat SyslogFormat `yaml:"syslog_format"`
 
 	// MaxMessageLength sets the maximum limit to the length of syslog messages
@@ -221,7 +221,7 @@ type SyslogTargetConfig struct {
 }
 
 func (config SyslogTargetConfig) IsRFC3164Message() bool {
-    return config.SyslogFormat == SyslogFormatRFC3164
+	return config.SyslogFormat == SyslogFormatRFC3164
 }
 
 // WindowsEventsTargetConfig describes a scrape config that listen for windows event logs.
