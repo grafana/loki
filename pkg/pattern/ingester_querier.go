@@ -45,34 +45,70 @@ func NewIngesterQuerier(
 }
 
 func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
-	// validate that a supported query was provided
-	var expr syntax.Expr
 	_, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
-		expr, err = syntax.ParseSampleExpr(req.Query)
-		if err != nil {
-			return nil, ErrParseQuery
+		// not a pattern query, so either a metric query or an error
+		if q.cfg.MetricAggregation.Enabled {
+			return q.queryMetricSamples(ctx, req)
 		}
 
-		var selector syntax.LogSelectorExpr
-		switch expr.(type) {
-		case *syntax.VectorAggregationExpr:
-			selector, err = expr.(*syntax.VectorAggregationExpr).Selector()
-		case *syntax.RangeAggregationExpr:
-			selector, err = expr.(*syntax.RangeAggregationExpr).Selector()
-		default:
-			return nil, ErrParseQuery
-		}
-
-		if err != nil {
-			return nil, err
-		}
-
-		if selector == nil || selector.HasFilter() {
-			return nil, ErrParseQuery
-		}
+		return nil, err
 	}
 
+	return q.queryPatternSamples(ctx, req)
+}
+
+func (q *IngesterQuerier) queryPatternSamples(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	iterators, err := q.query(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO(kolesnikovae): Incorporate with pruning
+	resp, err := iter.ReadPatternsBatch(iter.NewMerge(iterators...), math.MaxInt32)
+	if err != nil {
+		return nil, err
+	}
+	return prunePatterns(resp, minClusterSize), nil
+}
+
+func (q *IngesterQuerier) queryMetricSamples(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	expr, err := syntax.ParseSampleExpr(req.Query)
+	if err != nil {
+		return nil, err
+	}
+
+	var selector syntax.LogSelectorExpr
+	switch expr.(type) {
+	case *syntax.VectorAggregationExpr:
+		selector, err = expr.(*syntax.VectorAggregationExpr).Selector()
+	case *syntax.RangeAggregationExpr:
+		selector, err = expr.(*syntax.RangeAggregationExpr).Selector()
+	default:
+		return nil, ErrParseQuery
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	if selector == nil || selector.HasFilter() {
+		return nil, ErrParseQuery
+	}
+
+	iterators, err := q.query(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := iter.ReadMetricsBatch(iter.NewMerge(iterators...), math.MaxInt32)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (q *IngesterQuerier) query(ctx context.Context, req *logproto.QueryPatternsRequest) ([]iter.Iterator, error) {
 	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
 		return client.Query(ctx, req)
 	})
@@ -83,21 +119,7 @@ func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatte
 	for i := range resps {
 		iterators[i] = iter.NewQueryClientIterator(resps[i].response.(logproto.Pattern_QueryClient))
 	}
-	switch expr.(type) {
-	case *syntax.VectorAggregationExpr, *syntax.RangeAggregationExpr:
-		resp, err := iter.ReadMetricsBatch(iter.NewMerge(iterators...), math.MaxInt32)
-		if err != nil {
-			return nil, err
-		}
-		return resp, nil
-	default:
-		// TODO(kolesnikovae): Incorporate with pruning
-		resp, err := iter.ReadPatternsBatch(iter.NewMerge(iterators...), math.MaxInt32)
-		if err != nil {
-			return nil, err
-		}
-		return prunePatterns(resp, minClusterSize), nil
-	}
+	return iterators, nil
 }
 
 func prunePatterns(

@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
+	"github.com/grafana/loki/v3/pkg/pattern/metric"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -38,6 +39,7 @@ type Config struct {
 	ConcurrentFlushes int                   `yaml:"concurrent_flushes"`
 	FlushCheckPeriod  time.Duration         `yaml:"flush_check_period"`
 
+	MetricAggregation metric.AggregationConfig `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 }
@@ -49,6 +51,8 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.Enabled, "pattern-ingester.enabled", false, "Flag to enable or disable the usage of the pattern-ingester component.")
 	fs.IntVar(&cfg.ConcurrentFlushes, "pattern-ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	fs.DurationVar(&cfg.FlushCheckPeriod, "pattern-ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
+
+	cfg.MetricAggregation.RegisterFlagsWithPrefix(fs, "pattern-ingester.")
 }
 
 func (cfg *Config) Validate() error {
@@ -335,7 +339,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(instanceID, i.logger, i.metrics)
+		inst, err = newInstance(instanceID, i.logger, i.metrics, i.cfg.MetricAggregation)
 		if err != nil {
 			return nil, err
 		}

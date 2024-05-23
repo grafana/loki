@@ -13,17 +13,24 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
+	"github.com/grafana/loki/v3/pkg/pattern/metric"
 
 	"github.com/grafana/loki/pkg/push"
 )
 
 func TestInstancePushQuery(t *testing.T) {
-	t.Run("test pattern samples", func(t *testing.T) {
-		lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-		inst, err := newInstance("foo", log.NewNopLogger(), newIngesterMetrics(nil, "test"))
+	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
+	setup := func() *instance {
+		inst, err := newInstance("foo", log.NewNopLogger(), newIngesterMetrics(nil, "test"), metric.AggregationConfig{
+			Enabled: true,
+		})
 		require.NoError(t, err)
 
-		err = inst.Push(context.Background(), &push.PushRequest{
+		return inst
+	}
+	t.Run("test pattern samples", func(t *testing.T) {
+		inst := setup()
+		err := inst.Push(context.Background(), &push.PushRequest{
 			Streams: []push.Stream{
 				{
 					Labels: lbs.String(),
@@ -92,11 +99,8 @@ func TestInstancePushQuery(t *testing.T) {
 	})
 
 	t.Run("test count_over_time samples", func(t *testing.T) {
-		lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-		inst, err := newInstance("foo", log.NewNopLogger(), nil)
-		require.NoError(t, err)
-
-		err = inst.Push(context.Background(), &push.PushRequest{
+		inst := setup()
+		err := inst.Push(context.Background(), &push.PushRequest{
 			Streams: []push.Stream{
 				{
 					Labels: lbs.String(),
@@ -184,11 +188,8 @@ func TestInstancePushQuery(t *testing.T) {
 	})
 
 	t.Run("test bytes_over_time samples", func(t *testing.T) {
-		lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-		inst, err := newInstance("foo", log.NewNopLogger(), nil)
-		require.NoError(t, err)
-
-		err = inst.Push(context.Background(), &push.PushRequest{
+		inst := setup()
+		err := inst.Push(context.Background(), &push.PushRequest{
 			Streams: []push.Stream{
 				{
 					Labels: lbs.String(),

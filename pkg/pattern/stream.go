@@ -26,7 +26,9 @@ type stream struct {
 	labelHash    uint64
 	patterns     *drain.Drain
 	mtx          sync.Mutex
-	metrics      *metric.Chunks
+
+	aggregateMetrics bool
+	metrics          *metric.Chunks
 
 	evaluator metric.SampleEvaluatorFactory
 
@@ -37,9 +39,9 @@ func newStream(
 	fp model.Fingerprint,
 	labels labels.Labels,
 	metrics *ingesterMetrics,
+	aggregateMetrics bool,
 ) (*stream, error) {
-	chunks := metric.NewChunks(labels)
-	return &stream{
+	stream := &stream{
 		fp:           fp,
 		labels:       labels,
 		labelsString: labels.String(),
@@ -48,9 +50,16 @@ func newStream(
 			PatternsEvictedTotal:  metrics.patternsDiscardedTotal,
 			PatternsDetectedTotal: metrics.patternsDetectedTotal,
 		}),
-		metrics:   chunks,
-		evaluator: metric.NewDefaultEvaluatorFactory(chunks),
-	}, nil
+		aggregateMetrics: aggregateMetrics,
+	}
+
+	if aggregateMetrics {
+		chunks := metric.NewChunks(labels)
+		stream.metrics = chunks
+		stream.evaluator = metric.NewDefaultEvaluatorFactory(chunks)
+	}
+
+	return stream, nil
 }
 
 func (s *stream) Push(
@@ -73,7 +82,9 @@ func (s *stream) Push(
 		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
 	}
 
-	s.metrics.Observe(bytes, count, model.TimeFromUnixNano(s.lastTs))
+	if s.aggregateMetrics && s.metrics != nil {
+		s.metrics.Observe(bytes, count, model.TimeFromUnixNano(s.lastTs))
+	}
 	return nil
 }
 

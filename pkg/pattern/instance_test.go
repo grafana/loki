@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/pattern/metric"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,7 +29,7 @@ func TestInstance_QuerySample(t *testing.T) {
 		Step:  oneMin,
 	}
 
-	instance, err := newInstance("test", log.NewNopLogger(), nil)
+	instance, err := newInstance("test", log.NewNopLogger(), nil, metric.AggregationConfig{})
 	require.NoError(t, err)
 
 	labels := model.LabelSet{
@@ -37,7 +38,7 @@ func TestInstance_QuerySample(t *testing.T) {
 
 	lastTsMilli := (then + oneMin + oneMin) // 1715964095000
 
-  //TODO(twhitney): Add a few more pushes to this or another test
+	// TODO(twhitney): Add a few more pushes to this or another test
 	instance.Push(ctx, &logproto.PushRequest{
 		Streams: []push.Stream{
 			{

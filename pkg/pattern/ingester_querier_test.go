@@ -14,6 +14,7 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/pattern/metric"
 )
 
 func Test_prunePatterns(t *testing.T) {
@@ -49,7 +50,11 @@ func Test_prunePatterns(t *testing.T) {
 func Test_Patterns(t *testing.T) {
 	t.Run("it rejects metric queries with filters", func(t *testing.T) {
 		q := &IngesterQuerier{
-			cfg:        Config{},
+			cfg: Config{
+				MetricAggregation: metric.AggregationConfig{
+					Enabled: true,
+				},
+			},
 			logger:     log.NewNopLogger(),
 			ringClient: &fakeRingClient{},
 			registerer: nil,
@@ -57,11 +62,11 @@ func Test_Patterns(t *testing.T) {
 		for _, query := range []string{
 			`count_over_time({foo="bar"} |= "baz" [5m])`,
 			`count_over_time({foo="bar"} != "baz" [5m])`,
-			`count_over_time({foo="bar"} =~ "baz" [5m])`,
+			`count_over_time({foo="bar"} |~ "baz" [5m])`,
 			`count_over_time({foo="bar"} !~ "baz" [5m])`,
-			`count_over_time({foo="bar"} | logfmt | color=blue [5m])`,
+			`count_over_time({foo="bar"} | logfmt | color="blue" [5m])`,
 			`sum(count_over_time({foo="bar"} |= "baz" [5m]))`,
-			`sum by label(count_over_time({foo="bar"} |= "baz" [5m]))`,
+			`sum by (label)(count_over_time({foo="bar"} |= "baz" [5m]))`,
 			`bytes_over_time({foo="bar"} |= "baz" [5m])`,
 		} {
 			_, err := q.Patterns(
@@ -71,14 +76,18 @@ func Test_Patterns(t *testing.T) {
 				},
 			)
 			require.Error(t, err, query)
-			require.ErrorIs(t, err, ErrParseQuery)
+			require.ErrorIs(t, err, ErrParseQuery, query)
 
 		}
 	})
 
 	t.Run("accepts log selector queries and count and bytes metric queries", func(t *testing.T) {
 		q := &IngesterQuerier{
-			cfg:        Config{},
+			cfg: Config{
+				MetricAggregation: metric.AggregationConfig{
+					Enabled: true,
+				},
+			},
 			logger:     log.NewNopLogger(),
 			ringClient: &fakeRingClient{},
 			registerer: nil,

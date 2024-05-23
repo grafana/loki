@@ -25,27 +25,29 @@ const indexShards = 32
 
 // instance is a tenant instance of the pattern ingester.
 type instance struct {
-	instanceID string
-	buf        []byte             // buffer used to compute fps.
-	mapper     *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
-	streams    *streamsMap
-	index      *index.BitPrefixInvertedIndex
-	logger     log.Logger
-	metrics    *ingesterMetrics
+	instanceID     string
+	buf            []byte             // buffer used to compute fps.
+	mapper         *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
+	streams        *streamsMap
+	index          *index.BitPrefixInvertedIndex
+	logger         log.Logger
+	metrics        *ingesterMetrics
+	aggregationCfg metric.AggregationConfig
 }
 
-func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics) (*instance, error) {
+func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics, aggCfg metric.AggregationConfig) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
 	if err != nil {
 		return nil, err
 	}
 	i := &instance{
-		buf:        make([]byte, 0, 1024),
-		logger:     logger,
-		instanceID: instanceID,
-		streams:    newStreamsMap(),
-		index:      index,
-		metrics:    metrics,
+		buf:            make([]byte, 0, 1024),
+		logger:         logger,
+		instanceID:     instanceID,
+		streams:        newStreamsMap(),
+		index:          index,
+		metrics:        metrics,
+		aggregationCfg: aggCfg,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -60,7 +62,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
 				// add stream
-				return i.createStream(ctx, reqStream)
+				return i.createStream(ctx, reqStream, i.aggregationCfg.Enabled)
 			}, nil)
 		if err != nil {
 			appendErr.Add(err)
@@ -107,6 +109,11 @@ func (i *instance) QuerySample(
 	expr syntax.SampleExpr,
 	req *logproto.QueryPatternsRequest,
 ) (iter.Iterator, error) {
+	if !i.aggregationCfg.Enabled {
+		// Should never get here, but this will prevent nil pointer panics in test
+		return iter.Empty, nil
+	}
+
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
 	step := model.Time(req.Step)
 	if step < chunk.TimeResolution {
@@ -184,14 +191,14 @@ outer:
 	return nil
 }
 
-func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream) (*stream, error) {
+func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream, aggregateMetrics bool) (*stream, error) {
 	labels, err := syntax.ParseLabels(pushReqStream.Labels)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	s, err := newStream(fp, sortedLabels, i.metrics)
+	s, err := newStream(fp, sortedLabels, i.metrics, i.aggregationCfg.Enabled)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
