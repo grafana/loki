@@ -157,3 +157,7 @@ func (it *LazyBloomIter) Err() error {
 		return nil
 	}
 }
+
+func (it *LazyBloomIter) Close() {
+	it.curPage.Relinquish(it.alloc)
+}

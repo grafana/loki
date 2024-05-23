@@ -173,3 +173,7 @@ func (bq *BlockQuerier) Err() error {
 
 	return bq.blooms.Err()
 }
+
+func (bq *BlockQuerier) Close() {
+	bq.blooms.Close()
+}

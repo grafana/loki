@@ -22,6 +22,7 @@ type CloseableBlockQuerier struct {
 }
 
 func (c *CloseableBlockQuerier) Close() error {
+	c.Free()
 	if c.close != nil {
 		return c.close()
 	}
@@ -171,8 +172,10 @@ func (b BlockDirectory) BlockQuerier(
 		alloc = v1.HeapAllocator
 	}
 
+	bq := v1.NewBlockQuerier(b.Block(metrics), alloc, maxPageSize)
+
 	return &CloseableBlockQuerier{
-		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), alloc, maxPageSize),
+		BlockQuerier: bq,
 		BlockRef:     b.BlockRef,
 		close:        close,
 	}
