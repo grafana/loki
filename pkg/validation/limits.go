@@ -85,6 +85,7 @@ type Limits struct {
 	DiscoverLogLevels           bool             `yaml:"discover_log_levels" json:"discover_log_levels"`
 
 	// Ingester enforced limits.
+	UseOwnedStreamCount     bool             `yaml:"use_owned_stream_count" json:"use_owned_stream_count"`
 	MaxLocalStreamsPerUser  int              `yaml:"max_streams_per_user" json:"max_streams_per_user"`
 	MaxGlobalStreamsPerUser int              `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
 	UnorderedWrites         bool             `yaml:"unordered_writes" json:"unordered_writes"`
@@ -270,6 +271,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.CreationGracePeriod, "validation.create-grace-period", "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
 	f.IntVar(&l.MaxEntriesLimitPerQuery, "validation.max-entries-limit", 5000, "Maximum number of log entries that will be returned for a query.")
 
+	f.BoolVar(&l.UseOwnedStreamCount, "ingester.use-owned-stream-count", false, "When true an ingester takes into account only the streams that it owns according to the ring while applying the stream limit.")
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 0, "Maximum number of active streams per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 5000, "Maximum number of active streams per user, across the cluster. 0 to disable. When the global limit is enabled, each ingester is configured with a dynamic local limit based on the replication factor and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.")
 
@@ -586,6 +588,10 @@ func (o *Overrides) RejectOldSamplesMaxAge(userID string) time.Duration {
 // we should accept samples.
 func (o *Overrides) CreationGracePeriod(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).CreationGracePeriod)
+}
+
+func (o *Overrides) UseOwnedStreamCount(userID string) bool {
+	return o.getOverridesForUser(userID).UseOwnedStreamCount
 }
 
 // MaxLocalStreamsPerUser returns the maximum number of streams a user is allowed to store
