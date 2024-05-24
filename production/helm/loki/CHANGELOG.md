@@ -13,9 +13,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-
 ## 6.6.1
 
+- [BUGFIX] Fix query scheduler http-metrics targetPort
 - [ENHANCEMENT] Allow to customize `client_max_body_size` when using Loki Gateway. #12924
 
 ## 6.6.0
