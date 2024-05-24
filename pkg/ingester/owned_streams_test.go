@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -29,8 +30,37 @@ func Test_OwnedStreamService(t *testing.T) {
 
 	service.incOwnedStreamCount()
 	service.incOwnedStreamCount()
-	require.Equal(t, 2, service.getOwnedStreamCount())
+	service.incOwnedStreamCount()
+	require.Equal(t, 3, service.getOwnedStreamCount())
+
+	// simulate the effect from the recalculation job
+	service.notOwnedStreamCount = 1
+	service.ownedStreamCount = 2
+
+	service.decOwnedStreamCount()
+	require.Equal(t, 2, service.getOwnedStreamCount(), "owned stream count must be decremented only when notOwnedStreamCount is set to 0")
+	require.Equal(t, 0, service.notOwnedStreamCount)
 
 	service.decOwnedStreamCount()
 	require.Equal(t, 1, service.getOwnedStreamCount())
+	require.Equal(t, 0, service.notOwnedStreamCount, "notOwnedStreamCount must not be decremented lower than 0")
+
+	group := sync.WaitGroup{}
+	group.Add(200)
+	for i := 0; i < 100; i++ {
+		go func() {
+			defer group.Done()
+			service.incOwnedStreamCount()
+		}()
+	}
+
+	for i := 0; i < 100; i++ {
+		go func() {
+			defer group.Done()
+			service.decOwnedStreamCount()
+		}()
+	}
+	group.Wait()
+
+	require.Equal(t, 1, service.getOwnedStreamCount(), "owned stream count must not be changed")
 }
