@@ -10,16 +10,18 @@ weight: 500
 # Send log data to Loki
 
 There are a number of different clients available to send log data to Loki.
-While all clients can be used simultaneously to cover multiple use cases, which client is initially picked to send logs depends on your use case.
+While all clients can be used simultaneously to cover multiple use cases, which client is initially picked to send logs depends on your use case. 
+
+{{< youtube id="xtEppndO7F8" >}}
 
 ## Grafana Clients
 
 The following clients are developed and supported (for those customers who have purchased a support contract) by Grafana Labs for sending logs to Loki:
 
-- [Grafana Agent](/docs/agent/latest/) - The Grafana Agent is the recommended client for the Grafana stack. It can  collect telemetry data for metrics, logs, traces, and continuous profiles and is fully compatible with the Prometheus, OpenTelemetry, and Grafana open source ecosystems.
-- [Promtail]({{< relref "./promtail" >}}) - Promtail is the client of choice when you're running Kubernetes, as you can configure it to automatically scrape logs from pods running on the same node that Promtail runs on. Promtail and Prometheus running together in Kubernetes enables powerful debugging: if Prometheus and Promtail use the same labels, users can use tools like Grafana to switch between metrics and logs based on the label set.  
-Promtail is also the client of choice on bare-metal since it can be configured to tail logs from all files given a host path. It is the easiest way to send logs to Loki from plain-text files (for example, things that log to `/var/log/*.log`).
-Lastly, Promtail works well if you want to extract metrics from logs such as counting the occurrences of a particular message.
+- [Grafana Alloy](/docs/alloy/latest/) - Grafana Alloy is the recommended client for the Grafana stack. It can  collect telemetry data for metrics, logs, traces, and continuous profiles and is fully compatible with the Prometheus, OpenTelemetry, and Grafana open source ecosystems.
+- [Promtail]({{< relref "./promtail" >}}) - Promtail is the client of choice when you're running Kubernetes, as you can configure it to automatically scrape logs from pods running on the same node that Promtail runs on. Promtail and Prometheus running together in Kubernetes enables powerful debugging: if Prometheus and Promtail use the same labels, users can use tools like Grafana to switch between metrics and logs based on the label set.
+Promtail is also the client of choice on bare-metal since it can be configured to tail logs from all files given a host path. It is the easiest way to send logs to Loki from plain-text files (for example, things that log to `/var/log/*.log`). 
+Lastly, Promtail works well if you want to extract metrics from logs such as counting the occurrences of a particular message. **Promtails features are now also available within Grafana Alloy.**
 - [xk6-loki extension](https://github.com/grafana/xk6-loki) - The k6-loki extension lets you perform [load testing on Loki]({{< relref "./k6" >}}).
 
 ## OpenTelemetry Collector
