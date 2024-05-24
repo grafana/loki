@@ -1242,7 +1242,9 @@ const (
 	// internal expressions not represented in LogQL. These are used to
 	// evaluate expressions differently resulting in intermediate formats
 	// that are not consumable by LogQL clients but are used for sharding.
-	OpRangeTypeQuantileSketch = "__quantile_sketch_over_time__"
+	OpRangeTypeQuantileSketch     = "__quantile_sketch_over_time__"
+	OpRangeTypeFirstWithTimestamp = "__first_over_time_ts__"
+	OpRangeTypeLastWithTimestamp  = "__last_over_time_ts__"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1346,7 +1348,9 @@ func (e *RangeAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
 func (e RangeAggregationExpr) validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
-		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
+		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile,
+			OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst,
+			OpRangeTypeLast, OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.Operation)
 		}
@@ -1355,7 +1359,8 @@ func (e RangeAggregationExpr) validate() error {
 		switch e.Operation {
 		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev,
 			OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeRateCounter,
-			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch:
+			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch,
+			OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.Operation)
@@ -2216,6 +2221,8 @@ var shardableOps = map[string]bool{
 	// range vector ops
 	OpRangeTypeAvg:       true,
 	OpRangeTypeCount:     true,
+	OpRangeTypeFirst:     true,
+	OpRangeTypeLast:      true,
 	OpRangeTypeRate:      true,
 	OpRangeTypeBytes:     true,
 	OpRangeTypeBytesRate: true,

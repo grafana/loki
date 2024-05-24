@@ -39,6 +39,12 @@ const (
 	volumeRangePath    = "/loki/api/v1/index/volume_range"
 	detectedFieldsPath = "/loki/api/v1/detected_fields"
 	defaultAuthHeader  = "Authorization"
+
+	// HTTP header keys
+	HTTPScopeOrgID          = "X-Scope-OrgID"
+	HTTPQueryTags           = "X-Query-Tags"
+	HTTPCacheControl        = "Cache-Control"
+	HTTPCacheControlNoCache = "no-cache"
 )
 
 var userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
@@ -77,6 +83,7 @@ type DefaultClient struct {
 	BearerTokenFile string
 	Retries         int
 	QueryTags       string
+	NoCache         bool
 	AuthHeader      string
 	ProxyURL        string
 	BackoffConfig   BackoffConfig
@@ -372,11 +379,15 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	h.Set("User-Agent", userAgent)
 
 	if c.OrgID != "" {
-		h.Set("X-Scope-OrgID", c.OrgID)
+		h.Set(HTTPScopeOrgID, c.OrgID)
+	}
+
+	if c.NoCache {
+		h.Set(HTTPCacheControl, HTTPCacheControlNoCache)
 	}
 
 	if c.QueryTags != "" {
-		h.Set("X-Query-Tags", c.QueryTags)
+		h.Set(HTTPQueryTags, c.QueryTags)
 	}
 
 	if (c.Username != "" || c.Password != "") && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {

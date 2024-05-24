@@ -30,9 +30,10 @@ type instance struct {
 	streams    *streamsMap
 	index      *index.BitPrefixInvertedIndex
 	logger     log.Logger
+	metrics    *ingesterMetrics
 }
 
-func newInstance(instanceID string, logger log.Logger) (*instance, error) {
+func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
 	if err != nil {
 		return nil, err
@@ -43,6 +44,7 @@ func newInstance(instanceID string, logger log.Logger) (*instance, error) {
 		instanceID: instanceID,
 		streams:    newStreamsMap(),
 		index:      index,
+		metrics:    metrics,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -138,7 +140,7 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	}
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	s, err := newStream(fp, sortedLabels)
+	s, err := newStream(fp, sortedLabels, i.metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}

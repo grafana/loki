@@ -24,6 +24,10 @@ var (
 )
 
 type errTooFarBehind struct {
+	// original timestamp of the entry itself.
+	entryTs time.Time
+
+	// cutoff is the oldest acceptable timstamp of the `stream` that entry belongs to.
 	cutoff time.Time
 }
 
@@ -32,12 +36,12 @@ func IsErrTooFarBehind(err error) bool {
 	return ok
 }
 
-func ErrTooFarBehind(cutoff time.Time) error {
-	return &errTooFarBehind{cutoff: cutoff}
+func ErrTooFarBehind(entryTs, cutoff time.Time) error {
+	return &errTooFarBehind{entryTs: entryTs, cutoff: cutoff}
 }
 
 func (m *errTooFarBehind) Error() string {
-	return "entry too far behind, oldest acceptable timestamp is: " + m.cutoff.Format(time.RFC3339)
+	return fmt.Sprintf("entry too far behind, entry timestamp is: %s, oldest acceptable timestamp is: %s", m.entryTs.Format(time.RFC3339), m.cutoff.Format(time.RFC3339))
 }
 
 func IsOutOfOrderErr(err error) bool {

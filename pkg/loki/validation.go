@@ -14,7 +14,7 @@ func validateBackendAndLegacyReadMode(c *Config) []error {
 	var errs []error
 	// Honor the legacy scalable deployment topology
 	if c.LegacyReadTarget {
-		if c.isModuleEnabled(Backend) {
+		if c.isTarget(Backend) {
 			errs = append(errs, fmt.Errorf("CONFIG ERROR: invalid target, cannot run backend target with legacy read mode"))
 		}
 	}

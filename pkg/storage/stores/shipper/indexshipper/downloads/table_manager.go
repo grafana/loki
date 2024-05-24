@@ -111,14 +111,13 @@ func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, inde
 		return nil, err
 	}
 
+	// Increment the WaitGroup counter here before starting the goroutine
+	tm.wg.Add(1)
 	go tm.loop()
 	return tm, nil
 }
 
 func (tm *tableManager) loop() {
-	tm.tablesMtx.Lock()
-	tm.wg.Add(1)
-	tm.tablesMtx.Unlock()
 	defer tm.wg.Done()
 
 	syncTicker := time.NewTicker(tm.cfg.SyncInterval)
