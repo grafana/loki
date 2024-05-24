@@ -4,6 +4,8 @@ import (
 	"io"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql/parser"
 )
 
 type queryClientIterator struct {
@@ -38,6 +40,10 @@ func (i *queryClientIterator) Pattern() string {
 	return i.curr.Pattern()
 }
 
+func (i *queryClientIterator) Labels() labels.Labels {
+	return i.curr.Labels()
+}
+
 func (i *queryClientIterator) At() logproto.PatternSample {
 	return i.curr.At()
 }
@@ -58,7 +64,17 @@ func NewQueryResponseIterator(resp *logproto.QueryPatternsResponse) Iterator {
 		for j, sample := range s.Samples {
 			samples[j] = *sample
 		}
-		iters[i] = NewSlice(s.Pattern, samples)
+
+		switch s.GetIdentifier().(type) {
+		case *logproto.PatternSeries_Labels:
+			ls, err := parser.ParseMetric(s.GetLabels())
+			if err != nil {
+				ls = labels.Labels{}
+			}
+			iters[i] = NewLabelsSlice(ls, samples)
+		default:
+			iters[i] = NewPatternSlice(s.GetPattern(), samples)
+		}
 	}
 	return NewMerge(iters...)
 }

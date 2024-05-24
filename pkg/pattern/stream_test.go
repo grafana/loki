@@ -16,7 +16,7 @@ import (
 
 func TestAddStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-	stream, err := newStream(model.Fingerprint(lbs.Hash()), lbs, newIngesterMetrics(nil, "test"))
+	stream, err := newStream(model.Fingerprint(lbs.Hash()), lbs, newIngesterMetrics(nil, "test"), false)
 	require.NoError(t, err)
 
 	err = stream.Push(context.Background(), []push.Entry{
@@ -36,7 +36,7 @@ func TestAddStream(t *testing.T) {
 	require.NoError(t, err)
 	it, err := stream.Iterator(context.Background(), model.Earliest, model.Latest, model.Time(time.Second))
 	require.NoError(t, err)
-	res, err := iter.ReadAll(it)
+	res, err := iter.ReadAllWithPatterns(it)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(res.Series))
 	require.Equal(t, int64(2), res.Series[0].Samples[0].Value)
@@ -44,7 +44,12 @@ func TestAddStream(t *testing.T) {
 
 func TestPruneStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-	stream, err := newStream(model.Fingerprint(lbs.Hash()), lbs, newIngesterMetrics(nil, "test"))
+	stream, err := newStream(
+		model.Fingerprint(lbs.Hash()),
+		lbs,
+		newIngesterMetrics(nil, "test"),
+		false,
+	)
 	require.NoError(t, err)
 
 	err = stream.Push(context.Background(), []push.Entry{
@@ -70,7 +75,7 @@ func TestPruneStream(t *testing.T) {
 	require.Equal(t, false, stream.prune(time.Hour))
 	it, err := stream.Iterator(context.Background(), model.Earliest, model.Latest, model.Time(time.Second))
 	require.NoError(t, err)
-	res, err := iter.ReadAll(it)
+	res, err := iter.ReadAllWithPatterns(it)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(res.Series))
 	require.Equal(t, int64(1), res.Series[0].Samples[0].Value)

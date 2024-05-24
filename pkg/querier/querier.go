@@ -1047,6 +1047,10 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
 	}
 	res, err := q.patternQuerier.Patterns(ctx, req)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
 	return res, err
 }
 

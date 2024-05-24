@@ -62,7 +62,7 @@ func TestSweepInstance(t *testing.T) {
 		End:   time.Unix(0, math.MaxInt64),
 	})
 	require.NoError(t, err)
-	res, err := iter.ReadAll(it)
+	res, err := iter.ReadAllWithPatterns(it)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(res.Series))
 	ing.sweepUsers(true, true)
@@ -72,7 +72,7 @@ func TestSweepInstance(t *testing.T) {
 		End:   time.Unix(0, math.MaxInt64),
 	})
 	require.NoError(t, err)
-	res, err = iter.ReadAll(it)
+	res, err = iter.ReadAllWithPatterns(it)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(res.Series))
 }

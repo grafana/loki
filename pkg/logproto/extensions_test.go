@@ -3,6 +3,7 @@ package logproto
 import (
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,4 +40,72 @@ func TestShard_SpaceFor(t *testing.T) {
 			require.Equal(t, shard.SpaceFor(&IndexStatsResponse{Bytes: tc.bytes}, target), tc.exp)
 		})
 	}
+}
+
+func TestQueryPatternsResponse_UnmarshalJSON(t *testing.T) {
+	t.Run("unmarshals patterns", func(t *testing.T) {
+		mockData := []byte(`{
+		"status": "success",
+		"data": [
+			{
+				"pattern": "foo <*> bar",
+				"samples": [[1609459200, 10], [1609545600, 15]]
+			},
+			{
+				"pattern": "foo <*> buzz",
+				"samples": [[1609459200, 20], [1609545600, 25]]
+			}
+		]
+	}`)
+
+		expectedSeries := []*PatternSeries{
+			NewPatternSeriesWithPattern("foo <*> bar", []*PatternSample{
+				{Timestamp: model.TimeFromUnix(1609459200), Value: 10},
+				{Timestamp: model.TimeFromUnix(1609545600), Value: 15},
+			}),
+			NewPatternSeriesWithPattern("foo <*> buzz", []*PatternSample{
+				{Timestamp: model.TimeFromUnix(1609459200), Value: 20},
+				{Timestamp: model.TimeFromUnix(1609545600), Value: 25},
+			}),
+		}
+
+		r := &QueryPatternsResponse{}
+		err := r.UnmarshalJSON(mockData)
+
+		require.Nil(t, err)
+		require.Equal(t, expectedSeries, r.Series)
+	})
+
+	t.Run("unmarshals labels", func(t *testing.T) {
+		mockData := []byte(`{
+		"status": "success",
+		"data": [
+			{
+				"labels": "{foo=\"bar\"}",
+				"samples": [[1609459200, 10], [1609545600, 15]]
+			},
+			{
+				"labels": "{foo=\"buzz\"}",
+				"samples": [[1609459200, 20], [1609545600, 25]]
+			}
+		]
+	}`)
+
+		expectedSeries := []*PatternSeries{
+			NewPatternSeriesWithLabels(`{foo="bar"}`, []*PatternSample{
+				{Timestamp: model.TimeFromUnix(1609459200), Value: 10},
+				{Timestamp: model.TimeFromUnix(1609545600), Value: 15},
+			}),
+			NewPatternSeriesWithLabels(`{foo="buzz"}`, []*PatternSample{
+				{Timestamp: model.TimeFromUnix(1609459200), Value: 20},
+				{Timestamp: model.TimeFromUnix(1609545600), Value: 25},
+			}),
+		}
+
+		r := &QueryPatternsResponse{}
+		err := r.UnmarshalJSON(mockData)
+
+		require.Nil(t, err)
+		require.Equal(t, expectedSeries, r.Series)
+	})
 }

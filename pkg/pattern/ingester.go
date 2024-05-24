@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
@@ -21,8 +22,10 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
+	"github.com/grafana/loki/v3/pkg/pattern/metric"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -36,6 +39,7 @@ type Config struct {
 	ConcurrentFlushes int                   `yaml:"concurrent_flushes"`
 	FlushCheckPeriod  time.Duration         `yaml:"flush_check_period"`
 
+	MetricAggregation metric.AggregationConfig `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 }
@@ -47,6 +51,8 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.Enabled, "pattern-ingester.enabled", false, "Flag to enable or disable the usage of the pattern-ingester component.")
 	fs.IntVar(&cfg.ConcurrentFlushes, "pattern-ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	fs.DurationVar(&cfg.FlushCheckPeriod, "pattern-ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
+
+	cfg.MetricAggregation.RegisterFlagsWithPrefix(fs, "pattern-ingester.")
 }
 
 func (cfg *Config) Validate() error {
@@ -238,17 +244,77 @@ func (i *Ingester) Query(req *logproto.QueryPatternsRequest, stream logproto.Pat
 	if err != nil {
 		return err
 	}
-	iterator, err := instance.Iterator(ctx, req)
-	if err != nil {
-		return err
+
+	expr, err := syntax.ParseExpr(req.Query)
+
+	switch e := expr.(type) {
+	case syntax.SampleExpr:
+		var err error
+		iterator, err := instance.QuerySample(ctx, e, req) // this is returning a first value of 0,0
+		if err != nil {
+			return err
+		}
+
+		// TODO(twhitney): query store
+		// if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		// 	storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+		// 		Start:    start,
+		// 		End:      end,
+		// 		Selector: req.Selector,
+		// 		Shards:   req.Shards,
+		// 		Deletes:  req.Deletes,
+		// 		Plan:     req.Plan,
+		// 	}}
+		// 	storeItr, err := i.store.SelectSamples(ctx, storeReq)
+		// 	if err != nil {
+		// 		util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+		// 		return err
+		// 	}
+
+		// 	it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+		// }
+
+		defer util.LogErrorWithContext(ctx, "closing iterator", iterator.Close)
+		return sendMetricsSample(ctx, iterator, stream)
+	case syntax.LogSelectorExpr:
+		var err error
+		iterator, err := instance.Iterator(ctx, req)
+		if err != nil {
+			return err
+		}
+		defer util.LogErrorWithContext(ctx, "closing iterator", iterator.Close)
+		return sendPatternSample(ctx, iterator, stream)
+	default:
+		return httpgrpc.Errorf(
+			http.StatusBadRequest,
+			fmt.Sprintf("unexpected type (%T): cannot evaluate", e),
+		)
 	}
-	defer util.LogErrorWithContext(ctx, "closing iterator", iterator.Close)
-	return sendPatternSample(ctx, iterator, stream)
 }
 
 func sendPatternSample(ctx context.Context, it iter.Iterator, stream logproto.Pattern_QueryServer) error {
 	for ctx.Err() == nil {
-		batch, err := iter.ReadBatch(it, readBatchSize)
+		batch, err := iter.ReadPatternsBatch(it, readBatchSize)
+		if err != nil {
+			return err
+		}
+		if err := stream.Send(batch); err != nil && err != context.Canceled {
+			return err
+		}
+		if len(batch.Series) == 0 {
+			return nil
+		}
+	}
+	return nil
+}
+
+func sendMetricsSample(
+	ctx context.Context,
+	it iter.Iterator,
+	stream logproto.Pattern_QueryServer,
+) error {
+	for ctx.Err() == nil {
+		batch, err := iter.ReadMetricsBatch(it, readBatchSize)
 		if err != nil {
 			return err
 		}
@@ -273,7 +339,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(instanceID, i.logger, i.metrics)
+		inst, err = newInstance(instanceID, i.logger, i.metrics, i.cfg.MetricAggregation)
 		if err != nil {
 			return nil, err
 		}

@@ -9,28 +9,29 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/pattern/chunk"
 )
 
 func TestAdd(t *testing.T) {
 	cks := Chunks{}
-	cks.Add(TimeResolution + 1)
-	cks.Add(TimeResolution + 2)
-	cks.Add(2*TimeResolution + 1)
+	cks.Add(chunk.TimeResolution + 1)
+	cks.Add(chunk.TimeResolution + 2)
+	cks.Add(2*chunk.TimeResolution + 1)
 	require.Equal(t, 1, len(cks))
 	require.Equal(t, 2, len(cks[0].Samples))
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + TimeResolution + 1)
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + chunk.TimeResolution + 1)
 	require.Equal(t, 2, len(cks))
 	require.Equal(t, 1, len(cks[1].Samples))
 }
 
 func TestIterator(t *testing.T) {
 	cks := Chunks{}
-	cks.Add(TimeResolution + 1)
-	cks.Add(TimeResolution + 2)
-	cks.Add(2*TimeResolution + 1)
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + TimeResolution + 1)
+	cks.Add(chunk.TimeResolution + 1)
+	cks.Add(chunk.TimeResolution + 2)
+	cks.Add(2*chunk.TimeResolution + 1)
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + chunk.TimeResolution + 1)
 
-	it := cks.Iterator("test", model.Time(0), model.Time(time.Hour.Nanoseconds()), TimeResolution)
+	it := cks.Iterator("test", model.Time(0), model.Time(time.Hour.Nanoseconds()), chunk.TimeResolution)
 	require.NotNil(t, it)
 
 	var samples []logproto.PatternSample
@@ -137,7 +138,7 @@ func TestForRange(t *testing.T) {
 			},
 		},
 		{
-			name: "Start and End Before First Element",
+			name: "Start before First and End Inclusive of First Element",
 			c: &Chunk{Samples: []logproto.PatternSample{
 				{Timestamp: 2, Value: 2},
 				{Timestamp: 4, Value: 4},
@@ -145,6 +146,17 @@ func TestForRange(t *testing.T) {
 			}},
 			start:    0,
 			end:      2,
+			expected: []logproto.PatternSample{{Timestamp: 2, Value: 2}},
+		},
+		{
+			name: "Start and End before First Element",
+			c: &Chunk{Samples: []logproto.PatternSample{
+				{Timestamp: 2, Value: 2},
+				{Timestamp: 4, Value: 4},
+				{Timestamp: 6, Value: 6},
+			}},
+			start:    0,
+			end:      1,
 			expected: nil,
 		},
 		{

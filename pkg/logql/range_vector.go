@@ -75,21 +75,18 @@ func newRangeVectorIterator(
 	if err != nil {
 		return nil, err
 	}
-	return &batchRangeVectorIterator{
-		iter:     it,
-		step:     step,
-		end:      end,
-		selRange: selRange,
-		metrics:  map[string]labels.Labels{},
-		window:   map[string]*promql.Series{},
-		agg:      vectorAggregator,
-		current:  start - step, // first loop iteration will set it to start
-		offset:   offset,
-	}, nil
+	return NewBatchRangeVectorIterator(
+		it,
+		selRange,
+		step,
+		start,
+		end,
+		offset,
+		vectorAggregator,
+	), nil
 }
 
-//batch
-
+// batch
 type batchRangeVectorIterator struct {
 	iter                                 iter.PeekingSampleIterator
 	selRange, step, end, current, offset int64
@@ -97,6 +94,24 @@ type batchRangeVectorIterator struct {
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
 	agg                                  BatchRangeVectorAggregator
+}
+
+func NewBatchRangeVectorIterator(
+	it iter.PeekingSampleIterator,
+	selRange, step, start, end, offset int64,
+	agg BatchRangeVectorAggregator,
+) RangeVectorIterator {
+	return &batchRangeVectorIterator{
+		iter:     it,
+		selRange: selRange,
+		step:     step,
+		end:      end,
+		current:  start - step, // first loop iteration will set it to start
+		offset:   offset,
+		metrics:  map[string]labels.Labels{},
+		window:   map[string]*promql.Series{},
+		agg:      agg,
+	}
 }
 
 func (r *batchRangeVectorIterator) Next() bool {
