@@ -7,7 +7,7 @@ weight: 200
 # Single Store BoltDB (boltdb-shipper)
 
 {{% admonition type="note" %}}
-Single store BoltDB Shipper is a legacy storage option and is not recommended for new deployments. The [TSDB]({{< relref "./tsdb" >}}) index is the recommended index.
+Single store BoltDB Shipper is a legacy storage option recommended for Loki 2.0 through 2.7.x and is not recommended for new deployments. The [TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) is the recommended index for Loki 2.8 and newer.
 {{% /admonition %}}
 
 BoltDB Shipper lets you run Grafana Loki without any dependency on NoSQL stores for storing index.
@@ -155,5 +155,3 @@ storage_config:
   gcs:
     bucket_name: GCS_BUCKET_NAME
 ```
-
-

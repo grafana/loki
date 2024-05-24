@@ -40,7 +40,7 @@ func (c *noopClient) FilterChunks(_ context.Context, _ string, _ bloomshipper.In
 type mockBlockResolver struct{}
 
 // Resolve implements BlockResolver.
-func (*mockBlockResolver) Resolve(_ context.Context, tenant string, interval bloomshipper.Interval, series []*logproto.GroupedChunkRefs) ([]blockWithSeries, error) {
+func (*mockBlockResolver) Resolve(_ context.Context, tenant string, interval bloomshipper.Interval, series []*logproto.GroupedChunkRefs) ([]blockWithSeries, []*logproto.GroupedChunkRefs, error) {
 	day := truncateDay(interval.Start)
 	first, last := getFirstLast(series)
 	block := bloomshipper.BlockRef{
@@ -53,7 +53,7 @@ func (*mockBlockResolver) Resolve(_ context.Context, tenant string, interval blo
 			Checksum:       0,
 		},
 	}
-	return []blockWithSeries{{block: block, series: series}}, nil
+	return []blockWithSeries{{block: block, series: series}}, nil, nil
 }
 
 var _ BlockResolver = &mockBlockResolver{}
@@ -61,12 +61,13 @@ var _ BlockResolver = &mockBlockResolver{}
 func TestBloomQuerier(t *testing.T) {
 	logger := log.NewNopLogger()
 	limits := newLimits()
+	cfg := QuerierConfig{}
 	resolver := &mockBlockResolver{}
 	tenant := "fake"
 
 	t.Run("client not called when filters are empty", func(t *testing.T) {
 		c := &noopClient{}
-		bq := NewQuerier(c, limits, resolver, nil, logger)
+		bq := NewQuerier(c, cfg, limits, resolver, nil, logger)
 
 		ctx := context.Background()
 		through := model.Now()
@@ -86,7 +87,7 @@ func TestBloomQuerier(t *testing.T) {
 
 	t.Run("client not called when chunkRefs are empty", func(t *testing.T) {
 		c := &noopClient{}
-		bq := NewQuerier(c, limits, resolver, nil, logger)
+		bq := NewQuerier(c, cfg, limits, resolver, nil, logger)
 
 		ctx := context.Background()
 		through := model.Now()
@@ -102,7 +103,7 @@ func TestBloomQuerier(t *testing.T) {
 
 	t.Run("querier propagates error from client", func(t *testing.T) {
 		c := &noopClient{err: errors.New("something went wrong")}
-		bq := NewQuerier(c, limits, resolver, nil, logger)
+		bq := NewQuerier(c, cfg, limits, resolver, nil, logger)
 
 		ctx := context.Background()
 		through := model.Now()
@@ -121,7 +122,7 @@ func TestBloomQuerier(t *testing.T) {
 
 	t.Run("client called once for each day of the interval", func(t *testing.T) {
 		c := &noopClient{}
-		bq := NewQuerier(c, limits, resolver, nil, logger)
+		bq := NewQuerier(c, cfg, limits, resolver, nil, logger)
 
 		ctx := context.Background()
 		from := mktime("2024-04-16 22:00")
