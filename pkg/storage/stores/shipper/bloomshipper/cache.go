@@ -22,7 +22,7 @@ type CloseableBlockQuerier struct {
 }
 
 func (c *CloseableBlockQuerier) Close() error {
-	c.Free()
+	c.BlockQuerier.Close()
 	if c.close != nil {
 		return c.close()
 	}
@@ -167,7 +167,7 @@ func (b BlockDirectory) BlockQuerier(
 
 	var alloc v1.Allocator
 	if usePool {
-		alloc = v1.BloomPagePool
+		alloc = v1.BloomPageMemPool
 	} else {
 		alloc = v1.HeapAllocator
 	}

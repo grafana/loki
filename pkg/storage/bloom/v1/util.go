@@ -7,6 +7,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/mempool"
 	"github.com/prometheus/prometheus/util/pool"
 )
 
@@ -53,13 +54,25 @@ var (
 	}
 
 	HeapAllocator = &simpleHeapAllocator{}
+
+	BloomPageMemPool = mempool.New([]mempool.Bucket{
+		{Size: 128, Capacity: 64 << 10}, // 8MB -- for tests
+		{Size: 256, Capacity: 2 << 20},  // 512MB
+		{Size: 128, Capacity: 8 << 20},  // 1024MB
+		{Size: 32, Capacity: 32 << 20},  // 1024MB
+		{Size: 8, Capacity: 128 << 20},  // 1024MB
+		{Size: 2, Capacity: 512 << 20},  // 1024MB
+	})
 )
 
+// Allocator handles byte slices for bloom queriers.
+// It exists to reduce the cost of allocations and allows to re-use already allocated memory.
 type Allocator interface {
 	Get(size int) ([]byte, error)
 	Put([]byte) bool
 }
 
+// simpleHeapAllocator allocates a new byte slice every time and does not re-cycle buffers.
 type simpleHeapAllocator struct{}
 
 func (a *simpleHeapAllocator) Get(size int) ([]byte, error) {
@@ -70,6 +83,7 @@ func (a *simpleHeapAllocator) Put([]byte) bool {
 	return true
 }
 
+// BytePool uses a sync.Pool to re-cycle already allocated buffers.
 type BytePool struct {
 	pool *pool.Pool
 }
