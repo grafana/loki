@@ -35,6 +35,8 @@ schema_config:
 
 pattern_ingester:
   enabled: true
+  metric_aggregation:
+    enabled: true
 
 ruler:
   alertmanager_url: http://localhost:9093

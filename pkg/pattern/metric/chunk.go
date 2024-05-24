@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/chunk"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/prometheus/common/model"
@@ -51,10 +52,21 @@ func (c *Chunks) Observe(bytes, count uint64, ts model.Time) {
 func (c *Chunks) Iterator(
 	ctx context.Context,
 	typ MetricType,
+	grouping *syntax.Grouping,
 	from, through, step model.Time,
 ) (iter.Iterator, error) {
 	if typ == Unsupported {
 		return nil, fmt.Errorf("unsupported metric type")
+	}
+
+	lbls := c.labels
+	if grouping != nil {
+    sort.Strings(grouping.Groups)
+		lbls = make(labels.Labels, 0, len(grouping.Groups))
+		for _, group := range grouping.Groups {
+			value := c.labels.Get(group)
+			lbls = append(lbls, labels.Label{Name: group, Value: value})
+		}
 	}
 
 	iters := make([]iter.Iterator, 0, len(c.chunks))
@@ -68,9 +80,10 @@ func (c *Chunks) Iterator(
 			continue
 		}
 
-		iters = append(iters, iter.NewLabelsSlice(c.labels, samples))
+		iters = append(iters, iter.NewLabelsSlice(lbls, samples))
 	}
-	return iter.NewNonOverlappingLabelsIterator(c.labels, iters), nil
+
+	return iter.NewNonOverlappingLabelsIterator(lbls, iters), nil
 }
 
 // TODO(twhitney): These values should be float64s (to match prometheus samples) or int64s (to match pattern samples)
@@ -127,7 +140,7 @@ func (c *Chunk) spaceFor(ts model.Time) bool {
 	return ts.Sub(c.Samples[0].Timestamp) < chunk.MaxChunkTime
 }
 
-//TODO(twhitney): any way to remove the duplication between this and the drain chunk ForRange method?
+// TODO(twhitney): any way to remove the duplication between this and the drain chunk ForRange method?
 // ForRangeAndType returns samples with only the values
 // in the given range [start:end] and aggregates them by step duration.
 // start and end are in milliseconds since epoch. step is a duration in milliseconds.

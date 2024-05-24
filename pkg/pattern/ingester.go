@@ -48,11 +48,11 @@ type Config struct {
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("pattern-ingester.", fs, util_log.Logger)
 	cfg.ClientConfig.RegisterFlags(fs)
+	cfg.MetricAggregation.RegisterFlagsWithPrefix(fs, "pattern-ingester.")
+
 	fs.BoolVar(&cfg.Enabled, "pattern-ingester.enabled", false, "Flag to enable or disable the usage of the pattern-ingester component.")
 	fs.IntVar(&cfg.ConcurrentFlushes, "pattern-ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	fs.DurationVar(&cfg.FlushCheckPeriod, "pattern-ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
-
-	cfg.MetricAggregation.RegisterFlagsWithPrefix(fs, "pattern-ingester.")
 }
 
 func (cfg *Config) Validate() error {

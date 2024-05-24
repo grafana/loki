@@ -19,7 +19,7 @@ import (
 )
 
 // TODO(twhitney): duplication with code in NewStepEvaluator
-func ExtractMetricType(expr syntax.SampleExpr) (MetricType, error) {
+func extractMetricType(expr syntax.SampleExpr) (MetricType, error) {
 	var typ MetricType
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
@@ -57,7 +57,6 @@ type SampleEvaluatorFactory interface {
 		ctx context.Context,
 		nextEvaluatorFactory SampleEvaluatorFactory,
 		expr syntax.SampleExpr,
-		typ MetricType,
 		from, through, step model.Time,
 	) (logql.StepEvaluator, error)
 }
@@ -66,7 +65,6 @@ type SampleEvaluatorFunc func(
 	ctx context.Context,
 	nextEvaluatorFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
-	typ MetricType,
 	from, through, step model.Time,
 ) (logql.StepEvaluator, error)
 
@@ -74,10 +72,9 @@ func (s SampleEvaluatorFunc) NewStepEvaluator(
 	ctx context.Context,
 	nextEvaluatorFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
-	typ MetricType,
 	from, through, step model.Time,
 ) (logql.StepEvaluator, error) {
-	return s(ctx, nextEvaluatorFactory, expr, typ, from, through, step)
+	return s(ctx, nextEvaluatorFactory, expr, from, through, step)
 }
 
 type DefaultEvaluatorFactory struct {
@@ -94,9 +91,13 @@ func (ev *DefaultEvaluatorFactory) NewStepEvaluator(
 	ctx context.Context,
 	evFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
-	typ MetricType,
 	from, through, step model.Time,
 ) (logql.StepEvaluator, error) {
+	metricType, err := extractMetricType(expr)
+	if err != nil || metricType == Unsupported {
+		return nil, err
+	}
+
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
@@ -106,12 +107,11 @@ func (ev *DefaultEvaluatorFactory) NewStepEvaluator(
 				func(ctx context.Context,
 					_ SampleEvaluatorFactory,
 					_ syntax.SampleExpr,
-					typ MetricType,
 					from, through, step model.Time,
 				) (logql.StepEvaluator, error) {
 					fromWithRangeAndOffset := from.Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset)
 					throughWithOffset := through.Add(-rangExpr.Left.Offset)
-					it, err := ev.chunks.Iterator(ctx, typ, fromWithRangeAndOffset, throughWithOffset, step)
+					it, err := ev.chunks.Iterator(ctx, metricType, e.Grouping, fromWithRangeAndOffset, throughWithOffset, step)
 					if err != nil {
 						return nil, err
 					}
@@ -129,7 +129,7 @@ func (ev *DefaultEvaluatorFactory) NewStepEvaluator(
 		if e.Grouping == nil {
 			return nil, errors.Errorf("aggregation operator '%q' without grouping", e.Operation)
 		}
-		nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, e.Left, typ, from, through, step)
+		nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, e.Left, from, through, step)
 		if err != nil {
 			return nil, err
 		}
@@ -145,7 +145,7 @@ func (ev *DefaultEvaluatorFactory) NewStepEvaluator(
 	case *syntax.RangeAggregationExpr:
 		fromWithRangeAndOffset := from.Add(-e.Left.Interval).Add(-e.Left.Offset)
 		throughWithOffset := through.Add(-e.Left.Offset)
-		it, err := ev.chunks.Iterator(ctx, typ, fromWithRangeAndOffset, throughWithOffset, step)
+		it, err := ev.chunks.Iterator(ctx, metricType, e.Grouping, fromWithRangeAndOffset, throughWithOffset, step)
 		if err != nil {
 			return nil, err
 		}
@@ -250,6 +250,8 @@ type SeriesToSampleIterator struct {
 	lbls   labels.Labels
 }
 
+// TODO: could this me a matrix iterator that returned multiple samples with
+// different labels for the same timestamp?
 func NewSeriesToSampleIterator(series *promql.Series) *SeriesToSampleIterator {
 	return &SeriesToSampleIterator{
 		floats: series.Floats,

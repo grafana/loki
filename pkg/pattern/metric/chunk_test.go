@@ -1,11 +1,15 @@
 package metric
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -326,4 +330,110 @@ func TestForRangeAndType(t *testing.T) {
 			require.Equal(t, len(result), cap(result), "Returned slice wasn't created at the correct capacity")
 		})
 	}
+}
+
+func Test_Chunks_Iterator(t *testing.T) {
+	ctx := context.Background()
+	lbls := labels.Labels{
+		labels.Label{Name: "foo", Value: "bar"},
+		labels.Label{Name: "container", Value: "jar"},
+	}
+	chunks := Chunks{
+		chunks: []Chunk{
+			{
+				Samples: []MetricSample{
+					{Timestamp: 2, Bytes: 2, Count: 1},
+					{Timestamp: 4, Bytes: 4, Count: 3},
+					{Timestamp: 6, Bytes: 6, Count: 5},
+				},
+				mint: 2,
+				maxt: 6,
+			},
+		},
+		labels: lbls,
+	}
+
+	t.Run("without grouping", func(t *testing.T) {
+		it, err := chunks.Iterator(ctx, Bytes, nil, 0, 10, 2)
+		require.NoError(t, err)
+
+		res, err := iter.ReadAllWithLabels(it)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, len(res.Series))
+		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
+
+		it, err = chunks.Iterator(ctx, Count, nil, 0, 10, 2)
+		require.NoError(t, err)
+
+		res, err = iter.ReadAllWithLabels(it)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, len(res.Series))
+		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
+	})
+
+	t.Run("grouping", func(t *testing.T) {
+		grouping := &syntax.Grouping{
+			Groups:  []string{"container"},
+			Without: false,
+		}
+
+		expectedLabels := labels.Labels{
+			labels.Label{
+				Name:  "container",
+				Value: "jar",
+			},
+		}
+
+		it, err := chunks.Iterator(ctx, Bytes, grouping, 0, 10, 2)
+		require.NoError(t, err)
+
+		res, err := iter.ReadAllWithLabels(it)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, len(res.Series))
+		require.Equal(t, expectedLabels.String(), res.Series[0].GetLabels())
+
+		it, err = chunks.Iterator(ctx, Count, grouping, 0, 10, 2)
+		require.NoError(t, err)
+
+		res, err = iter.ReadAllWithLabels(it)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, len(res.Series))
+		require.Equal(t, expectedLabels.String(), res.Series[0].GetLabels())
+	})
+
+	t.Run("grouping by a missing label", func(t *testing.T) {
+		grouping := &syntax.Grouping{
+			Groups:  []string{"missing"},
+			Without: false,
+		}
+
+		expectedLabels := labels.Labels{
+			labels.Label{
+				Name:  "missing",
+				Value: "",
+			},
+		}
+
+		it, err := chunks.Iterator(ctx, Bytes, grouping, 0, 10, 2)
+		require.NoError(t, err)
+
+		res, err := iter.ReadAllWithLabels(it)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, len(res.Series))
+		require.Equal(t, expectedLabels.String(), res.Series[0].GetLabels())
+
+		it, err = chunks.Iterator(ctx, Count, grouping, 0, 10, 2)
+		require.NoError(t, err)
+
+		res, err = iter.ReadAllWithLabels(it)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, len(res.Series))
+		require.Equal(t, expectedLabels.String(), res.Series[0].GetLabels())
+	})
 }

@@ -125,24 +125,13 @@ func (i *instance) QuerySample(
 		return nil, err
 	}
 
-	typ, err := metric.ExtractMetricType(expr)
-	if err != nil || typ == metric.Unsupported {
-		return nil, err
-	}
-
 	var iters []iter.Iterator
 	err = i.forMatchingStreams(
 		selector.Matchers(),
 		func(stream *stream) error {
 			var iter iter.Iterator
 			var err error
-			if typ == metric.Bytes {
-				iter, err = stream.BytesIterator(ctx, expr, from, through, step)
-			} else if typ == metric.Count {
-				iter, err = stream.CountIterator(ctx, expr, from, through, step)
-			} else {
-				return fmt.Errorf("unsupported query operation")
-			}
+			iter, err = stream.SampleIterator(ctx, expr, from, through, step)
 
 			if err != nil {
 				return err

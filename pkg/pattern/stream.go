@@ -2,6 +2,7 @@ package pattern
 
 import (
 	"context"
+	"errors"
 	"math"
 	"sync"
 	"time"
@@ -105,8 +106,7 @@ func (s *stream) Iterator(_ context.Context, from, through, step model.Time) (it
 	return iter.NewMerge(iters...), nil
 }
 
-// TODO(twhitney): duplication between bytes and count iterators
-func (s *stream) BytesIterator(
+func (s *stream) SampleIterator(
 	ctx context.Context,
 	expr syntax.SampleExpr,
 	from, through, step model.Time,
@@ -118,7 +118,6 @@ func (s *stream) BytesIterator(
 		ctx,
 		s.evaluator,
 		expr,
-		metric.Bytes,
 		from,
 		through,
 		step,
@@ -150,6 +149,7 @@ func (s *stream) BytesIterator(
 	return metric.NewSeriesToSampleIterator(series), nil
 }
 
+//TODO: should this join multiple series into a matrix, so we don't have the weird hack?
 func (s *stream) JoinSampleVector(
 	next bool,
 	ts int64,
@@ -163,11 +163,6 @@ func (s *stream) JoinSampleVector(
 		stepCount = 1
 	}
 
-	series := &promql.Series{
-		Metric: s.labels,
-		Floats: make([]promql.FPoint, 0, stepCount),
-	}
-
 	vec := promql.Vector{}
 	if next {
 		vec = r.SampleVector()
@@ -178,10 +173,22 @@ func (s *stream) JoinSampleVector(
 		return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 	}
 
+	var seriesHash string
+	series := map[string]*promql.Series{}
 	for next {
 		vec = r.SampleVector()
 		for _, p := range vec {
-			series.Floats = append(series.Floats, promql.FPoint{
+			seriesHash = p.Metric.String()
+			s, ok := series[seriesHash]
+			if !ok {
+				s = &promql.Series{
+					Metric: p.Metric,
+					Floats: make([]promql.FPoint, 0, stepCount),
+				}
+				series[p.Metric.String()] = s
+			}
+
+			s.Floats = append(s.Floats, promql.FPoint{
 				T: ts,
 				F: p.F,
 			})
@@ -193,52 +200,12 @@ func (s *stream) JoinSampleVector(
 		}
 	}
 
-	return series, stepEvaluator.Error()
-}
-
-// TODO(twhitney): duplication between bytes and count iterators
-func (s *stream) CountIterator(
-	ctx context.Context,
-	expr syntax.SampleExpr,
-	from, through, step model.Time,
-) (iter.Iterator, error) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	stepEvaluator, err := s.evaluator.NewStepEvaluator(
-		ctx,
-		s.evaluator,
-		expr,
-		metric.Count,
-		from,
-		through,
-		step,
-	)
-	if err != nil {
-		return nil, err
+	if len(series) > 1 {
+		// TODO: is this actually a problem? Should this just become a Matrix
+		return nil, errors.New("multiple series found in a single stream")
 	}
 
-	next, ts, r := stepEvaluator.Next()
-	if stepEvaluator.Error() != nil {
-		return nil, stepEvaluator.Error()
-	}
-
-	// TODO(twhitney): actually get max series from limits
-	// this is only 1 series since we're already on a stream
-	// this this limit needs to also be enforced higher up
-	maxSeries := 1000
-	series, err := s.JoinSampleVector(
-		next,
-		ts,
-		r,
-		stepEvaluator,
-		maxSeries,
-		from, through, step)
-	if err != nil {
-		return nil, err
-	}
-
-	return metric.NewSeriesToSampleIterator(series), nil
+	return series[seriesHash], stepEvaluator.Error()
 }
 
 func (s *stream) prune(olderThan time.Duration) bool {

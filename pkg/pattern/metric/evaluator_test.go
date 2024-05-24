@@ -30,14 +30,10 @@ func Test_SampleEvaluator(t *testing.T) {
 		expr, err := syntax.ParseSampleExpr(query)
 		require.NoError(t, err)
 
-		typ, err := ExtractMetricType(expr)
-		require.NoError(t, err)
-
 		evaluator, err := factory.NewStepEvaluator(
 			context.Background(),
 			factory,
 			expr.(syntax.SampleExpr),
-			typ,
 			model.Time(now-fiveMin), model.Time(now), model.Time(fiveMin),
 		)
 
