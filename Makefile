@@ -253,12 +253,12 @@ clients/cmd/promtail/promtail-debug:
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) --tags=$(PROMTAIL_GO_TAGS) -o $@ ./$(@D)
 
 #########
-# Mixin #
+# Loki Mixin #
 #########
 
-MIXIN_PATH := production/loki-mixin
-MIXIN_OUT_PATH := production/loki-mixin-compiled
-MIXIN_OUT_PATH_SSD := production/loki-mixin-compiled-ssd
+MIXIN_PATH_LOKI := production/loki-mixin
+MIXIN_OUT_LOKI_PATH := production/loki-mixin-compiled
+MIXIN_OUT_LOKI_PATH_SSD := production/loki-mixin-compiled-ssd
 
 loki-mixin: ## compile the loki mixin
 ifeq ($(BUILD_IN_CONTAINER),true)
@@ -266,19 +266,41 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
-	@rm -rf $(MIXIN_OUT_PATH) && mkdir $(MIXIN_OUT_PATH)
-	@cd $(MIXIN_PATH) && jb install
-	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH)/alerts.yaml --output-rules $(MIXIN_OUT_PATH)/rules.yaml --directory $(MIXIN_OUT_PATH)/dashboards ${MIXIN_PATH}/mixin.libsonnet
+	@rm -rf $(MIXIN_OUT_LOKI_PATH) && mkdir $(MIXIN_OUT_LOKI_PATH)
+	@cd $(MIXIN_PATH_LOKI) && jb install
+	@mixtool generate all --output-alerts $(MIXIN_OUT_LOKI_PATH)/alerts.yaml --output-rules $(MIXIN_OUT_LOKI_PATH)/rules.yaml --directory $(MIXIN_OUT_LOKI_PATH)/dashboards ${MIXIN_PATH_LOKI}/mixin.libsonnet
 
-	@rm -rf $(MIXIN_OUT_PATH_SSD) && mkdir $(MIXIN_OUT_PATH_SSD)
-	@cd $(MIXIN_PATH) && jb install
-	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH_SSD)/alerts.yaml --output-rules $(MIXIN_OUT_PATH_SSD)/rules.yaml --directory $(MIXIN_OUT_PATH_SSD)/dashboards ${MIXIN_PATH}/mixin-ssd.libsonnet
+	@rm -rf $(MIXIN_OUT_LOKI_PATH_SSD) && mkdir $(MIXIN_OUT_LOKI_PATH_SSD)
+	@cd $(MIXIN_PATH_LOKI) && jb install
+	@mixtool generate all --output-alerts $(MIXIN_OUT_LOKI_PATH_SSD)/alerts.yaml --output-rules $(MIXIN_OUT_LOKI_PATH_SSD)/rules.yaml --directory $(MIXIN_OUT_LOKI_PATH_SSD)/dashboards ${MIXIN_PATH_LOKI}/mixin-ssd.libsonnet
 endif
 
 loki-mixin-check: loki-mixin ## check the loki mixin is up to date
 	@echo "Checking diff"
-	@git diff --exit-code -- $(MIXIN_OUT_PATH) || (echo "Please build mixin by running 'make loki-mixin'" && false)
-	@git diff --exit-code -- $(MIXIN_OUT_PATH_SSD) || (echo "Please build mixin by running 'make loki-mixin'" && false)
+	@git diff --exit-code -- $(MIXIN_OUT_LOKI_PATH) || (echo "Please build mixin by running 'make loki-mixin'" && false)
+	@git diff --exit-code -- $(MIXIN_OUT_LOKI_PATH_SSD) || (echo "Please build mixin by running 'make loki-mixin'" && false)
+
+#########
+# Promtail Mixin #
+#########
+
+MIXIN_PATH_PROMTAIL := production/promtail-mixin
+MIXIN_OUT_PROMTAIL_PATH := production/promtail-mixin-compiled
+
+promtail-mixin:
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
+	@rm -rf $(MIXIN_OUT_PROMTAIL_PATH) && mkdir $(MIXIN_OUT_PROMTAIL_PATH)
+	@cd $(MIXIN_PATH_PROMTAIL) && jb install
+	@mixtool generate all --output-alerts $(MIXIN_OUT_PROMTAIL_PATH)/alerts.yaml --output-rules $(MIXIN_OUT_PROMTAIL_PATH)/rules.yaml --directory $(MIXIN_OUT_PROMTAIL_PATH)/dashboards ${MIXIN_PATH_PROMTAIL}/mixin.libsonnet
+endif
+
+promtail-mixin-check: promtail-mixin
+	@echo "Checking diff"
+	@git diff --exit-code -- $(MIXIN_OUT_PROMTAIL_PATH) || (echo "Please build mixin by running 'make promtail-mixin'" && false)
 
 ###############
 # Migrate #
