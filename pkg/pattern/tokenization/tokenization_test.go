@@ -353,8 +353,8 @@ func TestTokenizationMemcpy(t *testing.T) {
 // Useful for running single test cases in isolation
 func TestTokenizationPlayground(t *testing.T) {
 	tc := tokenizationTestCase{
-		"foo 121113.21231 bar 123.0.1.123 -123 -1231.11",
-		[]string{"foo", "<NUM>", "bar", "<IP>", "<NUM>", "<NUM>"},
+		`foo ts=2024-04-16T15:10:43.057467305Z caller=filetargetmanager.go:361 level=info component=logs logs_config=default msg="Adding target" key="/var/log/pods/*6e95d7c0-d863-461c-a6d1-68653e438e3e/kube-proxy/*.log:{component=\"kube-proxy\", container=\"kube-proxy\", job=\"kube-system/gke-ops-us-east-0-main-n2s32-1-1dd39c-32ae1dde-hmhw\", namespace=\"kube-system\", pod=\"kube-proxy-gke-ops-us-east-0-main-n2s32-1-1dd39c-32ae1dde-hmhw\", tier=\"node\"}"`,
+		[]string{"foo", "<IDENTIFIER>", "<IDENTIFIER>", "<IDENTIFIER>", "<IDENTIFIER>", "<IDENTIFIER>", "<IDENTIFIER>", "<IDENTIFIER>"},
 	}
 	result := PreprocessAndTokenize([]byte(tc.line))
 	assert.Equal(

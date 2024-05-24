@@ -203,7 +203,13 @@ func byteSlicesToStrings(in [][]byte) []string {
 func (d *Drain) train(tokens [][]byte, stringer func([]string) string, ts int64) *LogCluster {
 	for i, token := range tokens {
 		if len(token) > 50 {
-			tokens[i] = append(token[:50], []byte(d.config.ParamString)...)
+			openIndex := bytes.Index(token[40:50], []byte("<"))
+			closeIndex := bytes.Index(token[40:51], []byte(">"))
+			if openIndex != -1 && closeIndex == -1 {
+				tokens[i] = append(token[:openIndex], []byte(d.config.ParamString)...)
+			} else {
+				tokens[i] = append(token[:50], []byte(d.config.ParamString)...)
+			}
 		}
 	}
 	// We have to repeat this twice or more if the tree is modified during training

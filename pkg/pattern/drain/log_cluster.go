@@ -26,7 +26,7 @@ func (c *LogCluster) String() string {
 }
 
 func stripReplacements(in string) string {
-	return strings.NewReplacer("<HEX>", "<_>", "<NUM>", "<_>", "<TIMESTAMP>", "<_>", "<DURATION>", "<_>", "<BYTESIZE>", "<_>", "<IP>", "<_>", "<UUID>", "<_>").Replace(in)
+	return strings.NewReplacer("<HEX>", "<_>", "<NUM>", "<_>", "<TIMESTAMP>", "<_>", "<DURATION>", "<_>", "<BYTESIZE>", "<_>", "<IP>", "<_>", "<UUID>", "<_>", "<RANDCHARS>", "<_>").Replace(in)
 }
 
 func (c *LogCluster) append(ts model.Time) {

@@ -6,13 +6,14 @@ import (
 )
 
 var (
-	placeholderNumber    = []byte("<NUM>")
-	placeholderHex       = []byte("<HEX>")
-	placeholderUUID      = []byte("<UUID>")
-	placeholderTimestamp = []byte("<TIMESTAMP>")
-	placeholderDuration  = []byte("<DURATION>")
-	placeholderBytesize  = []byte("<BYTESIZE>")
-	placeholderIP        = []byte("<IP>")
+	placeholderNumber     = []byte("<NUM>")
+	placeholderHex        = []byte("<HEX>")
+	placeholderUUID       = []byte("<UUID>")
+	placeholderTimestamp  = []byte("<TIMESTAMP>")
+	placeholderDuration   = []byte("<DURATION>")
+	placeholderBytesize   = []byte("<BYTESIZE>")
+	placeholderIP         = []byte("<IP>")
+	placeholderIdentifier = []byte("<RANDCHARS>")
 )
 
 // Integer numbers after these words won't be replaced by `<NUM>`.
@@ -136,6 +137,47 @@ func (r *replacer) advanceChar(c byte) bool {
 		return true
 	}
 	return false
+}
+
+// Our definition of an identifier is a string that containers both letters & numbers which are greater than
+func (r *replacer) advanceIdentifier() bool {
+	r.resetHead()
+	const stateNum = 1
+	const stateUpper = 2
+	const stateLower = 3
+	var c byte
+	state := -1
+	flips := -1
+	for ; r.head < len(r.source); r.head++ {
+		c = r.source[r.head]
+		if '0' <= c && c <= '9' {
+			if state != stateNum {
+				state = stateNum
+				flips++
+			}
+		} else if 'A' <= c && c <= 'Z' {
+			if state != stateUpper {
+				state = stateUpper
+				flips++
+			}
+		} else if 'a' <= c && c <= 'z' {
+			if state != stateLower {
+				state = stateLower
+				flips++
+			}
+		} else {
+			result := (r.head-r.cur) >= 8 && flips > (r.head-r.cur)/3
+			if !result {
+				r.head = r.cur
+			}
+			return result
+		}
+	}
+	result := (r.head-r.cur) >= 8 && flips > (r.head-r.cur)/3
+	if !result {
+		r.head = r.cur
+	}
+	return result
 }
 
 func (r *replacer) peekNextIsBoundary() bool {
@@ -412,7 +454,7 @@ func (r *replacer) handleHexOrUnit(hasMinusPrefix bool, n1, l1 uint, c1 byte) (e
 		return r.handleHex(hasMinusPrefix, l1+1, 'a', 'f', !zeroHex)
 	} else if 'A' <= c1 && c1 <= 'F' {
 		return r.handleHex(hasMinusPrefix, l1+1, 'A', 'F', !zeroHex)
-	} else if zeroHex {
+	} else if r.replaceHex && zeroHex {
 		// Well, it probably wasn't a zero-hex after all, or it contained only
 		// digits, so try to handle that or emit what we absorbed
 		_, l2 := r.advanceUintRet()
@@ -442,8 +484,13 @@ func (r *replacer) handleHex(hasMinusPrefix bool, l1 uint, lc, hc byte, canBeUUI
 		r.resetHead()
 	}
 
-	if totalLen >= minHexLen && r.peekNextIsBoundary() {
+	if r.replaceHex && totalLen >= minHexLen && r.peekNextIsBoundary() {
 		r.emit(hasMinusPrefix, placeholderHex)
+		return true
+	}
+
+	if r.advanceIdentifier() {
+		r.emit(false, placeholderIdentifier)
 		return true
 	}
 
@@ -463,6 +510,11 @@ func (r *replacer) handlePotentialUnitWithDecimal(hasMinusPrefix bool, c1 byte) 
 	if r.advanceDuration() {
 		// We subsume hasMinusPrefix, since durations can be negative
 		r.emit(false, placeholderDuration)
+		return true
+	}
+
+	if r.advanceIdentifier() {
+		r.emit(false, placeholderIdentifier)
 		return true
 	}
 
@@ -630,7 +682,7 @@ func (r *replacer) handleNumberStart(hasMinusPrefix bool) (endsWithBoundary bool
 	// '.', ' ', '/', etc.), so it's either not a real number or date, or it's
 	// some sort of a unit like a duration (e.g. 3h5m2s), size, (e.g. 12KB,
 	// 3MiB), etc.
-	case r.replaceHex && !boundaryChars[b1]:
+	case !boundaryChars[b1]:
 		return r.handleHexOrUnit(hasMinusPrefix, n1, l1, b1)
 
 	// We have a decimal point, so this can either be a plain number, a unit
@@ -659,6 +711,10 @@ func (r *replacer) handleNumberStart(hasMinusPrefix bool) (endsWithBoundary bool
 			return true
 		}
 		// if not, go to default handler after switch statement
+
+	case r.advanceIdentifier():
+		r.emit(false, placeholderIdentifier)
+		return true
 	}
 
 	// Number with an unknown boundary - emit the number and leave the boundary
@@ -760,6 +816,11 @@ func (r *replacer) handleWeirdTimestamp() (endsWithBoundary bool) {
 	}
 	r.resetHead()
 
+	if r.advanceIdentifier() {
+		r.emit(false, placeholderIdentifier)
+		return true
+	}
+
 	return false
 }
 
@@ -836,17 +897,21 @@ func (r *replacer) replaceWithPlaceholders() {
 			onBoundary = r.handleWeirdTimestamp()
 
 		// This could be the start of an lower case hex string:
-		case r.replaceHex && 'a' <= c && c <= 'f':
+		case 'a' <= c && c <= 'f':
 			r.copyUpToCurrent()
 			r.resetHead()
 			onBoundary = r.handleHex(false, 0, 'a', 'f', true)
 
 		// This could be the start of an upper case hex string:
-		case r.replaceHex && 'A' <= c && c <= 'F':
+		case 'A' <= c && c <= 'F':
 			r.copyUpToCurrent()
 			r.resetHead()
 			onBoundary = r.handleHex(false, 0, 'A', 'F', true)
 
+		case onBoundary && r.advanceIdentifier():
+			r.copyUpToCurrent()
+			r.emit(false, placeholderIdentifier)
+			onBoundary = true
 		// If we haven't actually matched anything, update whether we're still
 		// on a boundary character and continue onto the next one.
 		default:
