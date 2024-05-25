@@ -1244,6 +1244,8 @@ singleBinary:
     annotations: {}
     # -- Additional labels for single binary Service
     labels: {}
+    # -- Type for single binary Service
+    type: ClusterIP
   # -- Comma-separated list of Loki modules to load for the single binary
   targetModule: "all"
   # -- Labels for single binary service

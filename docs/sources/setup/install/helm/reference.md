@@ -10043,6 +10043,14 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.service.type</td>
+			<td>string</td>
+			<td>Type to use for single binary Service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+		</tr>
+		<tr>
 			<td>singleBinary.targetModule</td>
 			<td>string</td>
 			<td>Comma-separated list of Loki modules to load for the single binary</td>
