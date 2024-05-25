@@ -296,6 +296,10 @@ Starting with the 3.0 release we began using [conventional commits](https://www.
 * [9857](https://github.com/grafana/loki/pull/9857) **DylanGuedes**: Stop emitting spans for every `AWS.S3` or `Azure.Blob` call.
 * [9212](https://github.com/grafana/loki/pull/9212) **trevorwhitney**: Rename UsageReport to Analytics. The only external impact of this change is a change in the `-list-targets` output.
 
+#### Loki Canary
+
+* [8889](https://github.com/grafana/loki/pull/8889) **chaudum**: Add `-actor` CLI argument to Canary binary to allow for setting the `X-Loki-Actor-Path` header for queries.
+
 #### Promtail
 
 ##### Enhancements
