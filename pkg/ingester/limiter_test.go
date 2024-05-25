@@ -24,7 +24,7 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 		expected                error
 		useOwnedStreamService   bool
 		fixedLimit              int32
-		ownedStreamCount        int64
+		ownedStreamCount        int
 	}{
 		"both local and global limit are disabled": {
 			maxLocalStreamsPerUser:  0,
@@ -147,7 +147,7 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 
 			ownedStreamSvc := &ownedStreamService{
 				fixedLimit:       atomic.NewInt32(testData.fixedLimit),
-				ownedStreamCount: atomic.NewInt64(testData.ownedStreamCount),
+				ownedStreamCount: testData.ownedStreamCount,
 			}
 			limiter := NewLimiter(limits, NilMetrics, ring, testData.ringReplicationFactor)
 			defaultCountSupplier := func() int {
