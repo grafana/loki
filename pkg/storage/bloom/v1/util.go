@@ -7,8 +7,9 @@ import (
 	"io"
 	"sync"
 
-	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/mempool"
 	"github.com/prometheus/prometheus/util/pool"
+
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/mempool"
 )
 
 const (
