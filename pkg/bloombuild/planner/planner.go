@@ -607,9 +607,15 @@ func (p *Planner) forwardTaskToBuilder(
 	}
 
 	// TODO(salvacorts): Implement timeout and retry for builder response.
-	_, err := builder.Recv()
+	res, err := builder.Recv()
+	if err != nil {
+		return fmt.Errorf("error receiving response from builder (%s): %w", builderID, err)
+	}
+	if res.GetError() != "" {
+		return fmt.Errorf("error processing task in builder (%s): %s", builderID, res.GetError())
+	}
 
-	return err
+	return nil
 }
 
 func (p *Planner) isRunningOrStopping() bool {
