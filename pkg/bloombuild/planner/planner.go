@@ -43,8 +43,7 @@ type Planner struct {
 	tasksQueue  *queue.RequestQueue
 	activeUsers *util.ActiveUsersCleanupService
 
-	pendingTasksMu sync.Mutex
-	pendingTasks   map[string]*Task
+	pendingTasks sync.Map
 
 	metrics *Metrics
 	logger  log.Logger
@@ -77,16 +76,15 @@ func New(
 	})
 
 	p := &Planner{
-		cfg:          cfg,
-		limits:       limits,
-		schemaCfg:    schemaCfg,
-		tsdbStore:    tsdbStore,
-		bloomStore:   bloomStore,
-		tasksQueue:   tasksQueue,
-		pendingTasks: map[string]*Task{},
-		activeUsers:  activeUsers,
-		metrics:      NewMetrics(r, tasksQueue.GetConnectedConsumersMetric),
-		logger:       logger,
+		cfg:         cfg,
+		limits:      limits,
+		schemaCfg:   schemaCfg,
+		tsdbStore:   tsdbStore,
+		bloomStore:  bloomStore,
+		tasksQueue:  tasksQueue,
+		activeUsers: activeUsers,
+		metrics:     NewMetrics(r, tasksQueue.GetConnectedConsumersMetric),
+		logger:      logger,
 	}
 
 	svcs := []services.Service{p.tasksQueue, p.activeUsers}
@@ -136,9 +134,13 @@ func (p *Planner) running(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			err := ctx.Err()
-			level.Debug(p.logger).Log("msg", "planner context done", "err", err)
-			return err
+			if err := ctx.Err(); !errors.Is(err, context.Canceled) {
+				level.Error(p.logger).Log("msg", "planner context done with error", "err", err)
+				return err
+			}
+
+			level.Debug(p.logger).Log("msg", "planner context done")
+			return nil
 
 		case <-planningTicker.C:
 			level.Info(p.logger).Log("msg", "starting bloom build iteration")
@@ -147,10 +149,7 @@ func (p *Planner) running(ctx context.Context) error {
 			}
 
 		case <-inflightTasksTicker.C:
-			p.pendingTasksMu.Lock()
-			inflight := len(p.pendingTasks)
-			p.pendingTasksMu.Unlock()
-
+			inflight := p.totalPendingTasks()
 			p.metrics.inflightRequests.Observe(float64(inflight))
 		}
 	}
@@ -508,15 +507,19 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan
 }
 
 func (p *Planner) addPendingTask(task *Task) {
-	p.pendingTasksMu.Lock()
-	defer p.pendingTasksMu.Unlock()
-	p.pendingTasks[task.ID] = task
+	p.pendingTasks.Store(task.ID, task)
 }
 
 func (p *Planner) removePendingTask(task *Task) {
-	p.pendingTasksMu.Lock()
-	defer p.pendingTasksMu.Unlock()
-	delete(p.pendingTasks, task.ID)
+	p.pendingTasks.Delete(task.ID)
+}
+
+func (p *Planner) totalPendingTasks() (total int) {
+	p.pendingTasks.Range(func(_, _ interface{}) bool {
+		total++
+		return true
+	})
+	return total
 }
 
 func (p *Planner) enqueueTask(task *Task) error {

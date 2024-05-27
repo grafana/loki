@@ -382,17 +382,12 @@ func Test_BuilderLoop(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start planner
-	err = planner.StartAsync(context.Background())
+	err = services.StartAndAwaitRunning(context.Background(), planner)
 	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		return planner.State() == services.Running
-	}, 15*time.Second, 10*time.Millisecond)
-	defer func() {
-		planner.StopAsync()
-		require.Eventually(t, func() bool {
-			return planner.State() != services.Running
-		}, 1*time.Minute, 100*time.Millisecond)
-	}()
+	t.Cleanup(func() {
+		err := services.StopAndAwaitTerminated(context.Background(), planner)
+		require.NoError(t, err)
+	})
 
 	// Enqueue tasks
 	for i := 0; i < nTasks; i++ {
@@ -406,7 +401,7 @@ func Test_BuilderLoop(t *testing.T) {
 	}
 
 	// All tasks should be pending
-	require.Equal(t, nTasks, len(planner.pendingTasks))
+	require.Equal(t, nTasks, planner.totalPendingTasks())
 
 	// Create builders and call planner.BuilderLoop
 	builders := make([]*fakeBuilder, 0, nBuilders)
@@ -431,7 +426,7 @@ func Test_BuilderLoop(t *testing.T) {
 	}, 15*time.Second, 10*time.Millisecond)
 
 	// Finally, the queue should be empty
-	require.Equal(t, 0, len(planner.pendingTasks))
+	require.Equal(t, 0, planner.totalPendingTasks())
 }
 
 type fakeBuilder struct {

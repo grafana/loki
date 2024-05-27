@@ -69,7 +69,7 @@ func NewMetrics(
 		taskLost: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "task_lost_total",
+			Name:      "tasks_lost_total",
 			Help:      "Total number of tasks lost due to not being picked up by a builder and failed to be requeued.",
 		}),
 
