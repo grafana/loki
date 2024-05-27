@@ -70,16 +70,16 @@ func (s *slab) put(buf []byte) {
 	s.buffer <- ptr
 }
 
-// mempool is an Allocator implementation that uses a fixed size memory pool
+// MemPool is an Allocator implementation that uses a fixed size memory pool
 // that is split into multiple slabs of different buffer sizes.
 // Buffers are re-cycled and need to be returned back to the pool, otherwise
 // the pool runs out of available buffers.
-type mempool struct {
+type MemPool struct {
 	slabs []*slab
 }
 
-func New(buckets []Bucket) *mempool {
-	a := &mempool{
+func New(buckets []Bucket) *MemPool {
+	a := &MemPool{
 		slabs: make([]*slab, 0, len(buckets)),
 	}
 	for _, b := range buckets {
@@ -91,7 +91,7 @@ func New(buckets []Bucket) *mempool {
 // Get satisfies Allocator interface
 // Allocating a buffer from an exhausted pool/slab will return an error.
 // Allocating a buffer that exceeds the largest slab size will cause a panic.
-func (a *mempool) Get(size int) ([]byte, error) {
+func (a *MemPool) Get(size int) ([]byte, error) {
 	for i := 0; i < len(a.slabs); i++ {
 		if a.slabs[i].size < size {
 			continue
@@ -104,7 +104,7 @@ func (a *mempool) Get(size int) ([]byte, error) {
 // Put satisfies Allocator interface
 // Every buffer allocated with Get(size int) needs to be returned to the pool
 // using Put(buffer []byte) so it can be re-cycled.
-func (a *mempool) Put(buffer []byte) bool {
+func (a *MemPool) Put(buffer []byte) bool {
 	size := cap(buffer)
 	for i := 0; i < len(a.slabs); i++ {
 		if a.slabs[i].size < size {

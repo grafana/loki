@@ -15,7 +15,7 @@ func TestMemPool(t *testing.T) {
 	t.Run("empty pool", func(t *testing.T) {
 		pool := New([]Bucket{})
 		require.Panics(t, func() {
-			pool.Get(128)
+			_, _ = pool.Get(128)
 		})
 	})
 
@@ -24,7 +24,7 @@ func TestMemPool(t *testing.T) {
 			{Size: 1, Capacity: 128},
 		})
 		require.Panics(t, func() {
-			pool.Get(256)
+			_, _ = pool.Get(256)
 		})
 	})
 
