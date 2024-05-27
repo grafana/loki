@@ -3,15 +3,17 @@ package builder
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -96,7 +98,6 @@ func (w *Builder) running(ctx context.Context) error {
 }
 
 func (w *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) error {
-
 	for {
 		ctx := c.Context()
 		if err := ctx.Err(); err != nil {
@@ -112,26 +113,28 @@ func (w *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 		if err != nil {
 			return fmt.Errorf("failed to receive task from planner: %w", err)
 		}
-		//start := time.Now()
 
-		if err = w.processTask(c.Context(), protoTask.Task); err != nil {
+		w.metrics.taskStarted.Inc()
+		start := time.Now()
+		status := statusSuccess
+
+		err = w.processTask(c.Context(), protoTask.Task)
+		if err != nil {
+			status = statusFailure
 			level.Error(w.logger).Log("msg", "failed to process task", "err", err)
-			err = fmt.Errorf("failed to process task: %w", err)
-			if err = w.notifyTaskDoneToPlanner(c, err); err != nil {
-				return fmt.Errorf("failed to send error back to planner: %w", err)
-			}
-
-			continue
 		}
 
-		// Acknowledge successful task completion to planner
-		if err = w.notifyTaskDoneToPlanner(c, nil); err != nil {
+		w.metrics.taskCompleted.WithLabelValues(status).Inc()
+		w.metrics.taskTime.WithLabelValues(status).Observe(time.Since(start).Seconds())
+
+		// Acknowledge task completion to planner
+		if err = w.notifyTaskCompletedToPlanner(c, err); err != nil {
 			return fmt.Errorf("failed to notify task completion to planner: %w", err)
 		}
 	}
 }
 
-func (w *Builder) notifyTaskDoneToPlanner(c protos.PlannerForBuilder_BuilderLoopClient, err error) error {
+func (w *Builder) notifyTaskCompletedToPlanner(c protos.PlannerForBuilder_BuilderLoopClient, err error) error {
 	var errMsg string
 	if err != nil {
 		errMsg = err.Error()
