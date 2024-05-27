@@ -35,6 +35,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/bloomcompactor"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/mempool"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -729,6 +731,18 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 
 	reg := prometheus.DefaultRegisterer
 	bsCfg := t.Cfg.StorageConfig.BloomShipperConfig
+
+	switch bsCfg.MemoryManagement.BloomPageAllocationType {
+	case "simple":
+		bloomshipper.BloomPageAllocator = v1.HeapAllocator
+	case "dynamic":
+		bloomshipper.BloomPageAllocator = v1.BloomPagePool
+	case "fixed":
+		bloomshipper.BloomPageAllocator = mempool.New(bsCfg.MemoryManagement.BloomPageMemPoolBuckets)
+	default:
+		// do nothing
+		bloomshipper.BloomPageAllocator = nil
+	}
 
 	var metasCache cache.Cache
 	if t.Cfg.isTarget(IndexGateway) && cache.IsCacheConfigured(bsCfg.MetasCache) {

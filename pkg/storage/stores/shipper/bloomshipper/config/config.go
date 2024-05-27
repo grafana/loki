@@ -4,11 +4,16 @@ package config
 import (
 	"errors"
 	"flag"
+	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
 
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/mempool"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	lokiflagext "github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 type Config struct {
@@ -18,6 +23,7 @@ type Config struct {
 	BlocksCache         BlocksCacheConfig         `yaml:"blocks_cache"`
 	MetasCache          cache.Config              `yaml:"metas_cache"`
 	MetasLRUCache       cache.EmbeddedCacheConfig `yaml:"metas_lru_cache"`
+	MemoryManagement    MemoryManagementConfig    `yaml:"memory_management"`
 
 	// This will always be set to true when flags are registered.
 	// In tests, where config is created as literal, it can be set manually.
@@ -34,6 +40,7 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	c.BlocksCache.RegisterFlagsWithPrefixAndDefaults(prefix+"blocks-cache.", "Cache for bloom blocks. ", f, 24*time.Hour)
 	c.MetasCache.RegisterFlagsWithPrefix(prefix+"metas-cache.", "Cache for bloom metas. ", f)
 	c.MetasLRUCache.RegisterFlagsWithPrefix(prefix+"metas-lru-cache.", "In-memory LRU cache for bloom metas. ", f)
+	c.MemoryManagement.RegisterFlagsWithPrefix(prefix+"memory-management.", f)
 
 	// always cache LIST operations
 	c.CacheListOps = true
@@ -42,6 +49,9 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 func (c *Config) Validate() error {
 	if len(c.WorkingDirectory) == 0 {
 		return errors.New("at least one working directory must be specified")
+	}
+	if err := c.MemoryManagement.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -80,4 +90,57 @@ func (cfg *BlocksCacheConfig) Validate() error {
 		return errors.New("blocks cache soft_limit must not be greater than hard_limit")
 	}
 	return nil
+}
+
+var (
+	defaultMemPoolBuckets = mempool.Buckets{
+		{Size: 128, Capacity: 64 << 10}, // 8MiB -- for tests
+		{Size: 512, Capacity: 2 << 20},  // 1024MiB
+		{Size: 128, Capacity: 8 << 20},  // 1024MiB
+		{Size: 32, Capacity: 32 << 20},  // 1024MiB
+		{Size: 8, Capacity: 128 << 20},  // 1024MiB
+	}
+	types = supportedAllocationTypes{
+		"simple", "simple heap allocations using Go's make([]byte, n) and no re-cycling of buffers",
+		"dynamic", "a buffer pool with variable sized buckets and best effort re-cycling of buffers using Go's sync.Pool",
+		"fixed", "a fixed size memory pool with configurable slab sizes, see mem-pool-buckets",
+	}
+)
+
+type MemoryManagementConfig struct {
+	BloomPageAllocationType string                          `yaml:"bloom_page_alloc_type"`
+	BloomPageMemPoolBuckets lokiflagext.CSV[mempool.Bucket] `yaml:"bloom_page_mem_pool_buckets"`
+}
+
+func (cfg *MemoryManagementConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&cfg.BloomPageAllocationType, prefix+"alloc-type", "dynamic", fmt.Sprintf("One of: %s", strings.Join(types.descriptions(), ", ")))
+
+	_ = cfg.BloomPageMemPoolBuckets.Set(defaultMemPoolBuckets.String())
+	f.Var(&cfg.BloomPageMemPoolBuckets, prefix+"mem-pool-buckets", "Comma separated list of buckets in the format {size}x{bytes}")
+}
+
+func (cfg *MemoryManagementConfig) Validate() error {
+	if !slices.Contains(types.names(), cfg.BloomPageAllocationType) {
+		msg := fmt.Sprintf("bloom_page_alloc_type must be one of: %s", strings.Join(types.descriptions(), ", "))
+		return errors.New(msg)
+	}
+	return nil
+}
+
+type supportedAllocationTypes []string
+
+func (t supportedAllocationTypes) names() []string {
+	names := make([]string, 0, len(t)/2)
+	for i := 0; i < len(t); i += 2 {
+		names = append(names, t[i])
+	}
+	return names
+}
+
+func (t supportedAllocationTypes) descriptions() []string {
+	names := make([]string, 0, len(t)/2)
+	for i := 0; i < len(t); i += 2 {
+		names = append(names, fmt.Sprintf("%s (%s)", t[i], t[i+1]))
+	}
+	return names
 }

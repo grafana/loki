@@ -15,6 +15,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
+var BloomPageAllocator v1.Allocator
+
 type CloseableBlockQuerier struct {
 	BlockRef
 	*v1.BlockQuerier
@@ -166,8 +168,8 @@ func (b BlockDirectory) BlockQuerier(
 ) *CloseableBlockQuerier {
 
 	var alloc v1.Allocator
-	if usePool {
-		alloc = v1.BloomPageMemPool
+	if usePool && BloomPageAllocator != nil {
+		alloc = BloomPageAllocator
 	} else {
 		alloc = v1.HeapAllocator
 	}

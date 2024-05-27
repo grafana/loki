@@ -83,7 +83,7 @@ func New(buckets []Bucket) *MemPool {
 		slabs: make([]*slab, 0, len(buckets)),
 	}
 	for _, b := range buckets {
-		a.slabs = append(a.slabs, newSlab(b.Capacity, b.Size))
+		a.slabs = append(a.slabs, newSlab(int(b.Capacity), b.Size))
 	}
 	return a
 }

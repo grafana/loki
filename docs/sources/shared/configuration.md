@@ -5401,6 +5401,18 @@ bloom_shipper:
     # cache before they get purged.
     # CLI flag: -bloom.metas-lru-cache.ttl
     [ttl: <duration> | default = 1h]
+
+  memory_management:
+    # One of: simple (simple heap allocations using Go's make([]byte, n) and no
+    # re-cycling of buffers), dynamic (a buffer pool with variable sized buckets
+    # and best effort re-cycling of buffers using Go's sync.Pool), fixed (a
+    # fixed size memory pool with configurable slab sizes, see mem-pool-buckets)
+    # CLI flag: -bloom.memory-management.alloc-type
+    [bloom_page_alloc_type: <string> | default = "dynamic"]
+
+    # Comma separated list of buckets in the format {size}x{bytes}
+    # CLI flag: -bloom.memory-management.mem-pool-buckets
+    [bloom_page_mem_pool_buckets: <list of Buckets> | default = 128x64KB,512x2MB,128x8MB,32x32MB,8x128MB]
 ```
 
 ### swift_storage_config
