@@ -13,6 +13,9 @@ services:
       - 3101:3100
       - 7946
       - 9095
+    # Needed due to https://github.com/containers/podman/issues/12188
+    security_opt:
+      - "label=disable"
     volumes:
       -  /var/home/core/LOKI/loki-config.yaml:/etc/loki/config.yaml:rw,Z
     depends_on:
@@ -33,6 +36,9 @@ services:
       - 3102:3100
       - 7946
       - 9095
+    # Needed due to https://github.com/containers/podman/issues/12188
+    security_opt:
+      - "label=disable"
     volumes:
       -  /var/home/core/LOKI/loki-config.yaml:/etc/loki/config.yaml:rw,Z
     healthcheck:
@@ -48,6 +54,7 @@ services:
   alloy:
     image: grafana/alloy:latest
     container_name: evaluate-loki-alloy-1
+    # Needed due to https://github.com/containers/podman/issues/12188
     security_opt:
       - "label=disable"
     volumes:
@@ -133,6 +140,9 @@ services:
     ports:
       - "3100"
       - "7946"
+    # Needed due to https://github.com/containers/podman/issues/12188
+    security_opt:
+      - "label=disable"
     command: "-config.file=/etc/loki/config.yaml -target=backend -legacy-read-mode=false"
     depends_on:
       - gateway
