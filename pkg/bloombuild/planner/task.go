@@ -4,26 +4,21 @@ import (
 	"context"
 	"time"
 
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 )
 
-// TODO: Extract this definiton to a proto file at pkg/bloombuild/protos/protos.proto
-
-type GapWithBlocks struct {
-	bounds v1.FingerprintBounds
-	blocks []bloomshipper.BlockRef
-}
-
 type Task struct {
-	table           string
-	tenant          string
-	OwnershipBounds v1.FingerprintBounds
-	tsdb            tsdb.SingleTenantTSDBIdentifier
-	gaps            []GapWithBlocks
+	*protos.Task
 
 	// Tracking
 	queueTime time.Time
 	ctx       context.Context
+}
+
+func NewTask(ctx context.Context, queueTime time.Time, task *protos.Task) *Task {
+	return &Task{
+		Task:      task,
+		ctx:       ctx,
+		queueTime: queueTime,
+	}
 }
