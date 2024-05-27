@@ -16,9 +16,41 @@ discovery.relabel "flog_scrape" {
 loki.source.docker "flog_scrape" {
 	host             = "unix:///var/run/docker.sock"
 	targets          = discovery.docker.flog_scrape.targets
-	forward_to       = [loki.write.default.receiver]
-	relabel_rules    = discovery.relabel.flog_scrape.rules
+	forward_to       = [loki.process.test.receiver]
+        relabel_rules    = discovery.relabel.flog_scrape.rules
 	refresh_interval = "5s"
+}
+
+loki.process "test" {
+  forward_to = [loki.write.default.receiver]
+
+  stage.json {
+    expressions = {
+      "host" = "host",
+      "user_identifier" = "\"user-identifier\"",
+      "datetime" = "datetime",
+      "method" = "method",
+      "request" = "request",
+      "protocol" = "protocol",
+      "status" = "status",
+      "bytes" = "bytes",
+      "referer" = "referer",
+    }
+  }
+
+  stage.labels {
+    values = {
+      "host" = "host",
+      "user_identifier" = "user_identifier",
+      "datetime" = "datetime",
+      "method" = "method",
+      "request" = "request",
+      "protocol" = "protocol",
+      "status" = "status",
+      "bytes" = "bytes",
+      "referer" = "referer",
+     }
+  }
 }
 
 loki.write "default" {
