@@ -57,4 +57,4 @@ $ curl http://localhost:3102/ready
 ready
 ```
 
-- Open the portal in your favourite browser and follow https://grafana.com/docs/loki/latest/get-started/quick-start/#viewing-your-logs-in-grafana
+- Open the portal (http://http://localhost:3000) in your favourite browser and follow https://grafana.com/docs/loki/latest/get-started/quick-start/#viewing-your-logs-in-grafana
