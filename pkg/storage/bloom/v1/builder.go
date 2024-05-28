@@ -114,14 +114,9 @@ func NewBlockBuilder(opts BlockOptions, writer BlockWriter) (*BlockBuilder, erro
 	}, nil
 }
 
-type SeriesWithLazyBlooms struct {
-	Series *Series
-	Blooms Iterator[*Bloom]
-}
-
 type SeriesWithBlooms struct {
 	Series *Series
-	Blooms SizedIterator[*Bloom]
+	Blooms Iterator[*Bloom]
 }
 
 func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBlooms]) (uint32, error) {

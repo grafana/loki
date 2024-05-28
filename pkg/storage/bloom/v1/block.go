@@ -107,8 +107,6 @@ type BlockQuerier struct {
 	blooms *LazyBloomIter
 
 	block *Block // ref to underlying block
-
-	cur *SeriesWithBlooms
 }
 
 // NewBlockQuerier returns a new BlockQuerier for the given block.
@@ -144,4 +142,61 @@ func (bq *BlockQuerier) Err() error {
 	}
 
 	return bq.blooms.Err()
+}
+
+type BlockQuerierIter struct {
+	*BlockQuerier
+}
+
+func (bq *BlockQuerier) Iter() *BlockQuerierIter {
+	return &BlockQuerierIter{BlockQuerier: bq}
+}
+
+func (b *BlockQuerierIter) Next() bool {
+	return b.LazySeriesIter.Next()
+}
+
+func (b *BlockQuerierIter) At() *SeriesWithBlooms {
+	s := b.LazySeriesIter.At()
+	res := &SeriesWithBlooms{
+		Series: &s.Series,
+		Blooms: newOffsetsIter(b.blooms, s.Offsets),
+	}
+	return res
+}
+
+type offsetsIter struct {
+	blooms  *LazyBloomIter
+	offsets []BloomOffset
+	cur     int
+}
+
+func newOffsetsIter(blooms *LazyBloomIter, offsets []BloomOffset) *offsetsIter {
+	return &offsetsIter{
+		blooms:  blooms,
+		offsets: offsets,
+	}
+}
+
+func (it *offsetsIter) Next() bool {
+	for it.cur < len(it.offsets) {
+
+		if skip := it.blooms.LoadOffset(it.offsets[it.cur]); skip {
+			it.cur++
+			continue
+		}
+
+		it.cur++
+		return it.blooms.Next()
+
+	}
+	return false
+}
+
+func (it *offsetsIter) At() *Bloom {
+	return it.blooms.At()
+}
+
+func (it *offsetsIter) Err() error {
+	return it.blooms.Err()
 }
