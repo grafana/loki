@@ -72,7 +72,7 @@ service:
 
 Since the OpenTelemetry protocol differs from the Loki storage model, here is how data in the OpenTelemetry format will be mapped by default to the Loki data model during ingestion, which can be changed as explained later:
 
-- Index labels: Resource attributes map well to index labels in Loki, since both usually identify the source of the logs. Because Loki has a limit of 30 index labels, we have selected the following resource attributes to be stored as index labels, while the remaining attributes are stored as [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}) with each log entry:
+- Index labels: Resource attributes map well to index labels in Loki, since both usually identify the source of the logs. The default list of Resource Attributes to store as Index labels can be configured using `default_resource_attributes_as_index_labels` under [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). By default, the following resource attributes will be stored as index labels, while the remaining attributes are stored as [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}) with each log entry:
   - cloud.availability_zone
   - cloud.region
   - container.name
@@ -90,6 +90,10 @@ Since the OpenTelemetry protocol differs from the Loki storage model, here is ho
   - service.instance.id
   - service.name
   - service.namespace
+
+    {{% admonition type="note" %}}
+    Because Loki has a default limit of 15 index labels, we recommend storing only select resource attributes as index labels. Although the default config selects more than 15 Resource Attributes, it should be fine since a few are mutually exclusive.
+    {{% /admonition %}}
 
 - Timestamp: One of `LogRecord.TimeUnixNano` or `LogRecord.ObservedTimestamp`, based on which one is set. If both are not set, the ingestion timestamp will be used.
 
