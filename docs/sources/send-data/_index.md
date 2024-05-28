@@ -12,6 +12,8 @@ weight: 500
 There are a number of different clients available to send log data to Loki.
 While all clients can be used simultaneously to cover multiple use cases, which client is initially picked to send logs depends on your use case.
 
+{{< youtube id="xtEppndO7F8" >}}
+
 ## Grafana Clients
 
 The following clients are developed and supported (for those customers who have purchased a support contract) by Grafana Labs for sending logs to Loki:
