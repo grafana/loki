@@ -43,3 +43,7 @@ ruler:
 
 compactor:
   working_directory: /tmp/compactor
+
+# Needed to avoid 'Maximum active stream limit exceeded' errors
+limits_config:
+  max_streams_per_user: 0
