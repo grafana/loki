@@ -39,7 +39,7 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
     - If running a single replica of Loki, configure the `filesystem` storage:
 
       ```yaml
-      mode: SingleBinary
+      deploymentMode: SingleBinary
       loki:
         commonConfig:
           replication_factor: 1
