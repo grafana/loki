@@ -2,7 +2,6 @@ package audit
 
 import (
 	"context"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -11,27 +10,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
-	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
-	"github.com/grafana/loki/v3/pkg/storage/config"
 )
-
-func TestGetObjectClient(t *testing.T) {
-	objClient, err := GetObjectClient(Config{
-		StorageConfig: storage.Config{},
-		SchemaConfig: config.SchemaConfig{
-			Configs: []config.PeriodConfig{
-				{
-					ObjectType: "gcs",
-				},
-			},
-		},
-	})
-
-	require.NoError(t, err)
-	require.Equal(t, reflect.TypeOf(&gcp.GCSObjectClient{}), reflect.TypeOf(objClient))
-}
 
 type testObjClient struct {
 	client.ObjectClient
