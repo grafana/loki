@@ -78,7 +78,7 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 		return errors.Errorf("invalid magic number. expected %x, got  %x", magicNumber, number)
 	}
 	s.version = dec.Byte()
-	if s.version != 1 {
+	if s.version != 1 && s.version != 2 {
 		return errors.Errorf("invalid version. expected %d, got %d", 1, s.version)
 	}
 

@@ -23,7 +23,7 @@ func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromT
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
 	numSeries := int(throughFp-fromFp) / nth
-	data, keys := MkBasicSeriesWithBlooms(numSeries, nth, fromFp, throughFp, fromTs, throughTs)
+	data, keys := MkBasicSeriesWithBlooms(numSeries, fromFp, throughFp, fromTs, throughTs)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -46,9 +46,33 @@ func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromT
 	return block, data, keys
 }
 
-func MkBasicSeriesWithBlooms(nSeries, _ int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBlooms, keysList [][][]byte) {
+// This is a helper type used in tests that buffers blooms and can be turned into
+// the commonly used iterator form *SeriesWithBlooms.
+type SeriesWithLiteralBlooms struct {
+	Series *Series
+	Blooms []*Bloom
+}
+
+func (s *SeriesWithLiteralBlooms) SeriesWithBlooms() SeriesWithBlooms {
+	return SeriesWithBlooms{
+		Series: s.Series,
+		Blooms: NewSliceIter[*Bloom](s.Blooms),
+	}
+}
+
+func MkBasicSeriesWithBlooms(nSeries int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBlooms, keysList [][][]byte) {
+	series, keys := MkBasicSeriesWithLiteralBlooms(nSeries, fromFp, throughFp, fromTs, throughTs)
+	mapped := make([]SeriesWithBlooms, 0, len(series))
+	for _, s := range series {
+		mapped = append(mapped, s.SeriesWithBlooms())
+	}
+
+	return mapped, keys
+}
+
+func MkBasicSeriesWithLiteralBlooms(nSeries int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithLiteralBlooms, keysList [][][]byte) {
 	const nGramLen = 4
-	seriesList = make([]SeriesWithBlooms, 0, nSeries)
+	seriesList = make([]SeriesWithLiteralBlooms, 0, nSeries)
 	keysList = make([][][]byte, 0, nSeries)
 
 	step := (throughFp - fromFp) / model.Fingerprint(nSeries)
@@ -92,9 +116,9 @@ func MkBasicSeriesWithBlooms(nSeries, _ int, fromFp, throughFp model.Fingerprint
 			}
 		}
 
-		seriesList = append(seriesList, SeriesWithBlooms{
+		seriesList = append(seriesList, SeriesWithLiteralBlooms{
 			Series: &series,
-			Blooms: NewSliceIter[*Bloom]([]*Bloom{&bloom}),
+			Blooms: []*Bloom{&bloom},
 		})
 		keysList = append(keysList, keys)
 	}

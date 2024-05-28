@@ -116,7 +116,7 @@ func NewBlockBuilder(opts BlockOptions, writer BlockWriter) (*BlockBuilder, erro
 
 type SeriesWithBlooms struct {
 	Series *Series
-	Blooms Iterator[*Bloom]
+	Blooms SizedIterator[*Bloom]
 }
 
 func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBlooms]) (uint32, error) {

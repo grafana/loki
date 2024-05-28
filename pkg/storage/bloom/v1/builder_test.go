@@ -2,7 +2,6 @@ package v1
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"sort"
 	"testing"
@@ -48,8 +47,7 @@ func TestBlockOptionsRoundTrip(t *testing.T) {
 
 func TestBlockBuilder_RoundTrip(t *testing.T) {
 	numSeries := 100
-	numKeysPerSeries := 10000
-	data, keys := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+	data, keys := MkBasicSeriesWithLiteralBlooms(numSeries, 0, 0xffff, 0, 10000)
 
 	for _, enc := range blockEncodings {
 		// references for linking in memory reader+writer
@@ -101,7 +99,12 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 				builder, err := NewBlockBuilder(blockOpts, tc.writer)
 
 				require.Nil(t, err)
-				itr := NewPeekingIter[SeriesWithBlooms](NewSliceIter[SeriesWithBlooms](data))
+				itr := NewPeekingIter[SeriesWithBlooms](
+					NewMapIter(
+						NewSliceIter[SeriesWithLiteralBlooms](data),
+						func(x SeriesWithLiteralBlooms) SeriesWithBlooms { return x.SeriesWithBlooms() },
+					),
+				)
 				_, err = builder.BuildFrom(itr)
 				require.Nil(t, err)
 
@@ -117,7 +120,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 				}
 
 				block := NewBlock(tc.reader, NewMetrics(nil))
-				querier := NewBlockQuerier(block, false, DefaultMaxPageSize)
+				querier := NewBlockQuerier(block, false, DefaultMaxPageSize).Iter()
 
 				err = block.LoadHeaders()
 				require.Nil(t, err)
@@ -127,9 +130,18 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 				for i := 0; i < len(processedData); i++ {
 					require.Equal(t, true, querier.Next(), "on iteration %d with error %v", i, querier.Err())
 					got := querier.At()
+					blooms, err := Collect(got.Blooms)
+					require.Nil(t, err)
 					require.Equal(t, processedData[i].Series, got.Series)
 					for _, key := range keys[i] {
-						require.True(t, got.Bloom.Test(key))
+						found := false
+						for _, b := range blooms {
+							if b.Test(key) {
+								found = true
+								break
+							}
+						}
+						require.True(t, found)
 					}
 					require.NoError(t, querier.Err())
 				}
@@ -145,9 +157,18 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 					for j := 0; j < len(halfData); j++ {
 						require.Equal(t, true, querier.Next(), "on iteration %d", j)
 						got := querier.At()
+						blooms, err := Collect(got.Blooms)
+						require.Nil(t, err)
 						require.Equal(t, halfData[j].Series, got.Series)
 						for _, key := range halfKeys[j] {
-							require.True(t, got.Bloom.Test(key))
+							found := false
+							for _, b := range blooms {
+								if b.Test(key) {
+									found = true
+									break
+								}
+							}
+							require.True(t, found)
 						}
 						require.NoError(t, querier.Err())
 					}
@@ -182,9 +203,8 @@ func TestMergeBuilder(t *testing.T) {
 
 	nBlocks := 10
 	numSeries := 100
-	numKeysPerSeries := 100
 	blocks := make([]PeekingIterator[*SeriesWithBlooms], 0, nBlocks)
-	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 	blockOpts := BlockOptions{
 		Schema: Schema{
 			version:  DefaultSchemaVersion,
@@ -218,12 +238,12 @@ func TestMergeBuilder(t *testing.T) {
 		itr := NewSliceIter[SeriesWithBlooms](data[min:max])
 		_, err = builder.BuildFrom(itr)
 		require.Nil(t, err)
-		blocks = append(blocks, NewPeekingIter[*SeriesWithBlooms](NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), false, DefaultMaxPageSize)))
+		blocks = append(blocks, NewPeekingIter[*SeriesWithBlooms](NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), false, DefaultMaxPageSize).Iter()))
 	}
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(_ *Series, _ *Bloom) (int, bool, error) {
-		return 0, false, errors.New("not implemented")
+	pop := func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch <-chan *BloomCreation) {
+		return
 	}
 
 	// storage should contain references to all the series we ingested,
@@ -260,15 +280,14 @@ func TestMergeBuilder(t *testing.T) {
 			require.Equal(t, a.Series, b.Series, "expected %+v, got %+v", a, b)
 		},
 		NewSliceIter[*SeriesWithBlooms](PointerSlice(data)),
-		querier,
+		querier.Iter(),
 	)
 }
 
 func TestBlockReset(t *testing.T) {
 	t.Parallel()
 	numSeries := 100
-	numKeysPerSeries := 10000
-	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 1, 0xffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, 1, 0xffff, 0, 10000)
 
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
@@ -320,9 +339,8 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	t.Parallel()
 
 	numSeries := 100
-	numKeysPerSeries := 100
 	minTs, maxTs := model.Time(0), model.Time(10000)
-	xs, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, minTs, maxTs)
+	xs, _ := MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, minTs, maxTs)
 
 	var data [][]*SeriesWithBlooms
 
@@ -362,7 +380,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 			_, err = builder.BuildFrom(itr)
 			require.Nil(t, err)
 			block := NewBlock(reader, NewMetrics(nil))
-			querier := NewBlockQuerier(block, false, DefaultMaxPageSize)
+			querier := NewBlockQuerier(block, false, DefaultMaxPageSize).Iter()
 
 			// rather than use the block querier directly, collect it's data
 			// so we can use it in a few places later
@@ -408,10 +426,8 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	mb := NewMergeBuilder(
 		dedupedBlocks(blocks),
 		dedupedStore,
-		func(s *Series, b *Bloom) (int, bool, error) {
-			// We're not actually indexing new data in this test
-			return 0, false, nil
-		},
+		// We're not actually indexing new data in this test
+		func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch <-chan *BloomCreation) {},
 		NewMetrics(nil),
 	)
 	builder, err := NewBlockBuilder(blockOpts, writer)
@@ -432,6 +448,6 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 			require.Equal(t, a.Series.Fingerprint, b.Series.Fingerprint)
 		},
 		sourceItr,
-		mergedBlockQuerier,
+		mergedBlockQuerier.Iter(),
 	)
 }

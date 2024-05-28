@@ -9,11 +9,10 @@ import (
 func TestMergeDedupeIter(t *testing.T) {
 	t.Parallel()
 	var (
-		numSeries        = 100
-		numKeysPerSeries = 10000
-		data, _          = MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
-		dataPtr          = PointerSlice(data)
-		queriers         = make([]PeekingIterator[*SeriesWithBlooms], 4)
+		numSeries = 100
+		data, _   = MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
+		dataPtr   = PointerSlice(data)
+		queriers  = make([]PeekingIterator[*SeriesWithBlooms], 4)
 	)
 
 	for i := 0; i < len(queriers); i++ {

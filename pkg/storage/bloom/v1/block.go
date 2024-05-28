@@ -148,6 +148,9 @@ type BlockQuerierIter struct {
 	*BlockQuerier
 }
 
+// Iter returns a new BlockQuerierIter, which changes the iteration type to SeriesWithBlooms,
+// automatically loading the blooms for each series rather than requiring the caller to
+// turn the offset to a `Bloom` via `LoadOffset`
 func (bq *BlockQuerier) Iter() *BlockQuerierIter {
 	return &BlockQuerierIter{BlockQuerier: bq}
 }
@@ -199,4 +202,8 @@ func (it *offsetsIter) At() *Bloom {
 
 func (it *offsetsIter) Err() error {
 	return it.blooms.Err()
+}
+
+func (it *offsetsIter) Remaining() int {
+	return len(it.offsets) - it.cur
 }
