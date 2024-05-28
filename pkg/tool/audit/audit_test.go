@@ -2,7 +2,6 @@ package audit
 
 import (
 	"context"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -18,7 +17,6 @@ import (
 )
 
 func TestGetObjectClient(t *testing.T) {
-	logger := log.NewLogfmtLogger(os.Stdout)
 	objClient, err := GetObjectClient(Config{
 		StorageConfig: storage.Config{},
 		SchemaConfig: config.SchemaConfig{
@@ -28,7 +26,7 @@ func TestGetObjectClient(t *testing.T) {
 				},
 			},
 		},
-	}, logger)
+	})
 
 	require.NoError(t, err)
 	require.Equal(t, reflect.TypeOf(&gcp.GCSObjectClient{}), reflect.TypeOf(objClient))
