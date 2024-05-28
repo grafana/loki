@@ -64,7 +64,6 @@ type fakePlannerServer struct {
 
 	addr       string
 	grpcServer *grpc.Server
-	stop       chan struct{}
 }
 
 func newFakePlannerServer(tasks []*protos.ProtoTask) (*fakePlannerServer, error) {
@@ -77,7 +76,6 @@ func newFakePlannerServer(tasks []*protos.ProtoTask) (*fakePlannerServer, error)
 		tasks:      tasks,
 		addr:       lis.Addr().String(),
 		grpcServer: grpc.NewServer(),
-		stop:       make(chan struct{}),
 	}
 
 	protos.RegisterPlannerForBuilderServer(server.grpcServer, server)
@@ -95,7 +93,6 @@ func (f *fakePlannerServer) Addr() string {
 }
 
 func (f *fakePlannerServer) Stop() {
-	close(f.stop)
 	f.grpcServer.Stop()
 }
 
@@ -116,7 +113,7 @@ func (f *fakePlannerServer) BuilderLoop(srv protos.PlannerForBuilder_BuilderLoop
 	}
 
 	// No more tasks. Wait until shutdown.
-	<-f.stop
+	<-srv.Context().Done()
 	return nil
 }
 
