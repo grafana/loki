@@ -204,15 +204,18 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 		structuredMetadataSymbols = make([]string, 0, symbols)
 		// Read every label and add it to a map for easy lookup
 		for i := 0; i < int(symbols); i++ {
+			// Read the length of the string
 			strLen, read := binary.Uvarint(decompressed)
 			if read <= 0 {
 				return nil, fmt.Errorf("expected to find a length for a structured metadata string but did not find one")
 			}
-			//strLen will be the length of the label, we read one byte passed because the [:end] is not inclusive
-			//we then reslice the slice to be one byte past because the [start:] is inclusive
-			str := string(decompressed[:strLen+1])
+			decompressed = decompressed[read:]
+
+			// Read the bytes of the string and advance the buffer
+			str := string(decompressed[:strLen])
+			decompressed = decompressed[strLen:]
+			// Append to our slice of symbols
 			structuredMetadataSymbols = append(structuredMetadataSymbols, str)
-			decompressed = decompressed[strLen+1:]
 		}
 	}
 
