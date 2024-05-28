@@ -27,6 +27,7 @@ type Config struct {
 	LogLevel      dskitlog.Level           `yaml:"log_level"`
 	Concurrency   int                      `yaml:"concurrency"`
 	WorkingDir    string                   `yaml:"working_dir"`
+	Period        string                   `yaml:"period,omitempty"`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -37,6 +38,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Tenant, "tenant", "", "tenant to analyze data")
 	f.IntVar(&c.Concurrency, "concurrency", 100, "amount of files to check concurrently")
 	f.StringVar(&c.WorkingDir, "working-dir", ".", "working directory to store downloaded files")
+	f.StringVar(&c.Period, "period", "", "the table period in a format like 19959")
 }
 
 func (c *Config) Validate() error {
@@ -51,6 +53,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Concurrency <= 0 {
 		return fmt.Errorf("concurrency argument needs to be greater than 0")
+	}
+	if c.Period == "" {
+		return fmt.Errorf("period argument missing. Use -period flag or add 'period' to the config file")
 	}
 	return nil
 }

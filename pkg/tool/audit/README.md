@@ -31,7 +31,10 @@ go build ./cmd/lokitool
 ```
 4. Finally, invoke the `audit index` command the following way:
 ```bash
-./lokitool audit index --config.file=configfile.yaml --index.file=index/loki_env_tsdb_index_19856/12345/1715707992714992001-compactor-1715199977885-1815707796275-g8003361.tsdb.gz
+./lokitool audit index --period=19856 --config.file=configfile.yaml --index.file=index/loki_env_tsdb_index_19856/12345/1715707992714992001-compactor-1715199977885-1815707796275-g8003361.tsdb.gz
 ```
+The `--period` is the period of the index being audited. You can find it by checking the 5-digits number appended
+as a suffix of the Loki environment name in the index file. Example: For `index/loki_env_tsdb_index_19856/12345/...`,
+the period is 19856.
 The `--config.file` is the YAML configuration described in the first step.
 The `--index.file` is the path to the index file you want to audit. Take a look at your bucket to see its exactly path and substitute it accordingly.

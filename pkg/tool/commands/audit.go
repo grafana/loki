@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/tool/audit"
 	util_cfg "github.com/grafana/loki/v3/pkg/util/cfg"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -18,14 +18,16 @@ type AuditCommand struct {
 	path string
 
 	configFile string
+
+	extraArgs []string
 }
 
 func (a *AuditCommand) auditIndex(kpCtx *kingpin.ParseContext) error {
 	logger := log.NewLogfmtLogger(os.Stdout)
 
 	var auditCfg audit.Config
-	configFileArg := fmt.Sprintf("-config.file=%s", a.configFile)
-	if err := util_cfg.DefaultUnmarshal(&auditCfg, []string{configFileArg}, flag.CommandLine); err != nil {
+	// configFileArg := fmt.Sprintf("-config.file=%s", a.configFile)
+	if err := util_cfg.DefaultUnmarshal(&auditCfg, a.extraArgs, flag.CommandLine); err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
 	}
@@ -34,7 +36,7 @@ func (a *AuditCommand) auditIndex(kpCtx *kingpin.ParseContext) error {
 		os.Exit(1)
 	}
 
-	found, missing, err := audit.Run(context.Background(), a.path, "19859", auditCfg, logger)
+	found, missing, err := audit.Run(context.Background(), a.path, auditCfg.Period, auditCfg, logger)
 	if err != nil {
 		return err
 	}
@@ -57,4 +59,5 @@ func (a *AuditCommand) Register(app *kingpin.Application) {
 
 	auditIndexCmd.Flag("config.file", "Auditing and storage configuration").Required().StringVar(&a.configFile)
 	auditIndexCmd.Flag("index.file", "Index to be audited").Required().StringVar(&a.path)
+	auditIndexCmd.Arg("args", "").StringsVar(&a.extraArgs)
 }

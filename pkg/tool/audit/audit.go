@@ -11,6 +11,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	progressbar "github.com/schollz/progressbar/v3"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -19,9 +22,6 @@ import (
 	indexshipper_storage "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	shipperutil "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
-	progressbar "github.com/schollz/progressbar/v3"
-	"golang.org/x/sync/errgroup"
-
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -103,8 +103,8 @@ func AuditCompactedIndex(ctx context.Context, objClient client.ObjectClient, com
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(parallelism)
-	compactedIdx.ForEachChunk(ctx, func(ce retention.ChunkEntry) (deleteChunk bool, err error) {
-		bar.Add(1)
+	compactedIdx.ForEachChunk(ctx, func(ce retention.ChunkEntry) (deleteChunk bool, err error) { //nolint:errcheck
+		bar.Add(1) // nolint:errcheck
 		g.Go(func() error {
 			exists, err := CheckChunkExistance(string(ce.ChunkID), objClient)
 			if err != nil || !exists {
@@ -118,7 +118,7 @@ func AuditCompactedIndex(ctx context.Context, objClient client.ObjectClient, com
 
 		return false, nil
 	})
-	g.Wait()
+	g.Wait() // nolint:errcheck
 
 	return int(foundChunks.Load()), int(missingChunks.Load()), nil
 }
