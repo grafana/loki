@@ -46,4 +46,4 @@ compactor:
 
 # Needed to avoid 'Maximum active stream limit exceeded' errors
 limits_config:
-  max_streams_per_user: 0
+  max_global_streams_per_user: 0
