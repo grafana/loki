@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	dskitlog "github.com/grafana/dskit/log"
+
 	"github.com/grafana/loki/v3/pkg/storage"
 	lokiStorage "github.com/grafana/loki/v3/pkg/storage/config"
 )
