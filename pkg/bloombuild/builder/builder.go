@@ -47,18 +47,7 @@ func New(
 	return w, nil
 }
 
-func (w *Builder) starting(ctx context.Context) error {
-	opts, err := w.cfg.GrpcConfig.DialOption(nil, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create grpc dial options: %w", err)
-	}
-
-	conn, err := grpc.DialContext(ctx, w.cfg.PlannerAddress, opts...)
-	if err != nil {
-		return fmt.Errorf("failed to dial bloom planner: %w", err)
-	}
-
-	w.client = protos.NewPlannerForBuilderClient(conn)
+func (w *Builder) starting(_ context.Context) error {
 	w.metrics.running.Set(1)
 	return nil
 }
@@ -78,15 +67,22 @@ func (w *Builder) stopping(_ error) error {
 }
 
 func (w *Builder) running(ctx context.Context) error {
+	opts, err := w.cfg.GrpcConfig.DialOption(nil, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create grpc dial options: %w", err)
+	}
+
+	// TODO: Wrap hereafter in retry logic
+	conn, err := grpc.DialContext(ctx, w.cfg.PlannerAddress, opts...)
+	if err != nil {
+		return fmt.Errorf("failed to dial bloom planner: %w", err)
+	}
+
+	w.client = protos.NewPlannerForBuilderClient(conn)
 
 	c, err := w.client.BuilderLoop(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start builder loop: %w", err)
-	}
-
-	// Send ready message to planner
-	if err := c.Send(&protos.BuilderToPlanner{BuilderID: w.ID}); err != nil {
-		return fmt.Errorf("failed to send ready message to planner: %w", err)
 	}
 
 	// Start processing tasks from planner
@@ -98,19 +94,21 @@ func (w *Builder) running(ctx context.Context) error {
 }
 
 func (w *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) error {
-	for {
-		ctx := c.Context()
-		if err := ctx.Err(); err != nil {
-			if !errors.Is(err, context.Canceled) {
-				return fmt.Errorf("builder loop context error: %w", err)
-			}
+	// Send ready message to planner
+	if err := c.Send(&protos.BuilderToPlanner{BuilderID: w.ID}); err != nil {
+		return fmt.Errorf("failed to send ready message to planner: %w", err)
+	}
 
-			level.Debug(w.logger).Log("msg", "builder loop context canceled")
-			return nil
-		}
-
+	for w.State() == services.Running {
+		// When the planner connection closes or the builder stops, the context
+		// will be canceled and the loop will exit.
 		protoTask, err := c.Recv()
 		if err != nil {
+			if errors.Is(c.Context().Err(), context.Canceled) {
+				level.Debug(w.logger).Log("msg", "builder loop context canceled")
+				return nil
+			}
+
 			return fmt.Errorf("failed to receive task from planner: %w", err)
 		}
 
@@ -132,6 +130,9 @@ func (w *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 			return fmt.Errorf("failed to notify task completion to planner: %w", err)
 		}
 	}
+
+	level.Debug(w.logger).Log("msg", "builder loop stopped")
+	return nil
 }
 
 func (w *Builder) notifyTaskCompletedToPlanner(c protos.PlannerForBuilder_BuilderLoopClient, err error) error {
