@@ -356,6 +356,15 @@ bloom_build:
     [max_queued_tasks_per_tenant: <int> | default = 30000]
 
   builder:
+    # The grpc_client block configures the gRPC client used to communicate
+    # between a client and server component in Loki.
+    # The CLI flags prefix for this block configuration is:
+    # bloom-build.builder.grpc
+    [grpc_config: <grpc_client>]
+
+    # Hostname (and port) of the bloom planner
+    # CLI flag: -bloom-build.builder.planner-address
+    [planner_address: <string> | default = ""]
 
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
 # server, responsible for serving queries for filtering chunks based on filter
@@ -2335,6 +2344,7 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 The `grpc_client` block configures the gRPC client used to communicate between a client and server component in Loki. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
+- `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`

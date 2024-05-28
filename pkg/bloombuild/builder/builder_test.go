@@ -3,17 +3,18 @@ package builder
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/dskit/flagext"
 	"net"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 )
 
 func Test_BuilderLoop(t *testing.T) {
@@ -114,11 +115,9 @@ func (f *fakePlannerServer) BuilderLoop(srv protos.PlannerForBuilder_BuilderLoop
 		f.completedTasks++
 	}
 
-	// No more tasks. Emulate waiting for requeue until shutdown.
-	select {
-	case <-f.stop:
-		return nil
-	}
+	// No more tasks. Wait until shutdown.
+	<-f.stop
+	return nil
 }
 
 func (f *fakePlannerServer) NotifyBuilderShutdown(_ context.Context, _ *protos.NotifyBuilderShutdownRequest) (*protos.NotifyBuilderShutdownResponse, error) {
