@@ -73,7 +73,7 @@ func TestAuditIndex(t *testing.T) {
 		},
 	}
 	logger := log.NewNopLogger()
-	found, missing, err := AuditCompactedIndex(ctx, objClient, compactedIdx, 1, logger)
+	found, missing, err := ValidateCompactedIndex(ctx, objClient, compactedIdx, 1, logger)
 	require.NoError(t, err)
 	require.Equal(t, 4, found)
 	require.Equal(t, 1, missing)

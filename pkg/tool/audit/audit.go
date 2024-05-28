@@ -6,12 +6,12 @@ import (
 	"io"
 	"path"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	progressbar "github.com/schollz/progressbar/v3"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/compactor"
@@ -32,7 +32,7 @@ const (
 func Run(ctx context.Context, cloudIndexPath, table string, cfg Config, logger log.Logger) (int, int, error) {
 	level.Info(logger).Log("msg", "auditing index", "index", cloudIndexPath, "table", table, "tenant", cfg.Tenant, "working_dir", cfg.WorkingDir)
 
-	objClient, err := GetObjectClient(cfg, logger)
+	objClient, err := GetObjectClient(cfg)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -48,10 +48,10 @@ func Run(ctx context.Context, cloudIndexPath, table string, cfg Config, logger l
 	}
 	defer compactedIdx.Cleanup()
 
-	return AuditCompactedIndex(ctx, objClient, compactedIdx, cfg.Concurrency, logger)
+	return ValidateCompactedIndex(ctx, objClient, compactedIdx, cfg.Concurrency, logger)
 }
 
-func GetObjectClient(cfg Config, logger log.Logger) (client.ObjectClient, error) {
+func GetObjectClient(cfg Config) (client.ObjectClient, error) {
 	periodCfg := cfg.SchemaConfig.Configs[len(cfg.SchemaConfig.Configs)-1] // only check the last period.
 
 	objClient, err := loki_storage.NewObjectClient(periodCfg.ObjectType, cfg.StorageConfig, storage.NewClientMetrics())
@@ -92,7 +92,7 @@ func ParseCompactexIndex(ctx context.Context, localFilePath, table string, cfg C
 	return compactedIdx, nil
 }
 
-func AuditCompactedIndex(ctx context.Context, objClient client.ObjectClient, compactedIdx compactor.CompactedIndex, parallelism int, logger log.Logger) (int, int, error) {
+func ValidateCompactedIndex(ctx context.Context, objClient client.ObjectClient, compactedIdx compactor.CompactedIndex, parallelism int, logger log.Logger) (int, int, error) {
 	var missingChunks, foundChunks atomic.Int32
 	foundChunks.Store(0)
 	missingChunks.Store(0)

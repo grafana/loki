@@ -22,7 +22,7 @@ type AuditCommand struct {
 	extraArgs []string
 }
 
-func (a *AuditCommand) auditIndex(kpCtx *kingpin.ParseContext) error {
+func (a *AuditCommand) auditIndex(_ *kingpin.ParseContext) error {
 	logger := log.NewLogfmtLogger(os.Stdout)
 
 	var auditCfg audit.Config
