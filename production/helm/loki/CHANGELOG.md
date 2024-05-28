@@ -45,6 +45,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Fix query-frontend (headless) and ruler http-metrics targetPort
 
+## 6.6.2
+
+- [BUGFIX] Fix imagePullSecrets for statefulset-results-cache
+
 ## 6.6.1
 
 - [BUGFIX] Fix query scheduler http-metrics targetPort
