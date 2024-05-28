@@ -36,7 +36,7 @@
     cd ~/Downloads
     git clone https://github.com/mingrammer/flog.git
     cd flog
-    podman machine init -v ~/LOKI:/var/home/core/LOKI
+    podman machine init -v ~/LOKI:/var/home/core/LOKI --memory 4096
     podman machine start
     podman build -t localhost/mingrammer/flog:latest .
     podman image ls
