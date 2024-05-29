@@ -188,7 +188,7 @@ func (d *Drain) Train(content string, ts int64) *LogCluster {
 }
 
 func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64) *LogCluster {
-	if len(tokens) < 3 {
+	if len(tokens) < 4 {
 		return nil
 	}
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
@@ -213,7 +213,7 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 	} else {
 		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
 		clusterName := strings.Join(newTemplateTokens, " ")
-		if strings.Contains(clusterName, "I0529") && len(clusterName) < 20 {
+		if strings.Contains(clusterName, "I0529") && len(newTemplateTokens) < 10 {
 			level.Debug(util_log.Logger).Log("msg", "cluster name too short", "new_token", strings.Join(tokens, " "), "matched_token", strings.Join(matchCluster.Tokens, " "), "new_cluster", clusterName)
 		}
 		if len(strings.ReplaceAll(strings.ReplaceAll(clusterName, d.config.ParamString, ""), " ", "")) < 8 {
