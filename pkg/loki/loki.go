@@ -31,6 +31,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomcompactor"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
@@ -90,14 +91,15 @@ type Config struct {
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
 	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor,omitempty" category:"experimental"`
+	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
 	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
 	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
 	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
 	CompactorConfig     compactor.Config           `yaml:"compactor,omitempty"`
 	CompactorHTTPClient compactorclient.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
-	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty" doc:"hidden"`
-	LimitsConfig        validation.Limits          `yaml:"limits_config,omitempty"`
+	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty"`
+	LimitsConfig        validation.Limits          `yaml:"limits_config"`
 	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
 	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
@@ -173,6 +175,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
 	c.BloomCompactor.RegisterFlags(f)
+	c.BloomBuild.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 	c.Analytics.RegisterFlags(f)
 	c.OperationalConfig.RegisterFlags(f)
@@ -294,7 +297,7 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func (c *Config) isModuleEnabled(m string) bool {
+func (c *Config) isTarget(m string) bool {
 	return util.StringsContain(c.Target, m)
 }
 
@@ -649,6 +652,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(BloomStore, t.initBloomStore)
 	mm.RegisterModule(BloomCompactor, t.initBloomCompactor)
 	mm.RegisterModule(BloomCompactorRing, t.initBloomCompactorRing, modules.UserInvisibleModule)
+	mm.RegisterModule(BloomPlanner, t.initBloomPlanner)
+	mm.RegisterModule(BloomBuilder, t.initBloomBuilder)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
@@ -683,9 +688,11 @@ func (t *Loki) setupModuleManager() error {
 		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
 		TableManager:             {Server, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
-		IndexGateway:             {Server, Store, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
+		IndexGateway:             {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
 		BloomGateway:             {Server, BloomStore, Analytics},
 		BloomCompactor:           {Server, BloomStore, BloomCompactorRing, Analytics, Store},
+		BloomPlanner:             {Server, BloomStore, Analytics, Store},
+		BloomBuilder:             {Server, BloomStore, Analytics, Store},
 		PatternIngester:          {Server, MemberlistKV, Analytics},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
 		IngesterQuerier:          {Ring},
@@ -695,7 +702,7 @@ func (t *Loki) setupModuleManager() error {
 		MemberlistKV:             {Server},
 
 		Read:    {QueryFrontend, Querier},
-		Write:   {Ingester, Distributor},
+		Write:   {Ingester, Distributor, PatternIngester},
 		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
@@ -726,24 +733,24 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.
-	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(Backend) {
+	if t.Cfg.isTarget(Querier) || t.Cfg.isTarget(Ruler) || t.Cfg.isTarget(Read) || t.Cfg.isTarget(Backend) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 
 	// If the query scheduler and querier are running together, make sure the scheduler goes
 	// first to initialize the ring that will also be used by the querier
-	if (t.Cfg.isModuleEnabled(Querier) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
+	if (t.Cfg.isTarget(Querier) && t.Cfg.isTarget(QueryScheduler)) || t.Cfg.isTarget(All) {
 		deps[Querier] = append(deps[Querier], QueryScheduler)
 	}
 
 	// If the query scheduler and query frontend are running together, make sure the scheduler goes
 	// first to initialize the ring that will also be used by the query frontend
-	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
+	if (t.Cfg.isTarget(QueryFrontend) && t.Cfg.isTarget(QueryScheduler)) || t.Cfg.isTarget(All) {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
 	}
 
 	// Initialise query tags interceptors on targets running ingester
-	if t.Cfg.isModuleEnabled(Ingester) || t.Cfg.isModuleEnabled(Write) || t.Cfg.isModuleEnabled(All) {
+	if t.Cfg.isTarget(Ingester) || t.Cfg.isTarget(Write) || t.Cfg.isTarget(All) {
 		deps[Server] = append(deps[Server], IngesterGRPCInterceptors)
 	}
 

@@ -251,6 +251,42 @@ github.com/Shopify/sarama
 ## explicit; go 1.15
 github.com/Workiva/go-datastructures/rangetree
 github.com/Workiva/go-datastructures/slice
+# github.com/alecthomas/chroma v0.10.0
+## explicit; go 1.13
+github.com/alecthomas/chroma
+github.com/alecthomas/chroma/formatters
+github.com/alecthomas/chroma/formatters/html
+github.com/alecthomas/chroma/formatters/svg
+github.com/alecthomas/chroma/lexers
+github.com/alecthomas/chroma/lexers/a
+github.com/alecthomas/chroma/lexers/b
+github.com/alecthomas/chroma/lexers/c
+github.com/alecthomas/chroma/lexers/circular
+github.com/alecthomas/chroma/lexers/d
+github.com/alecthomas/chroma/lexers/e
+github.com/alecthomas/chroma/lexers/f
+github.com/alecthomas/chroma/lexers/g
+github.com/alecthomas/chroma/lexers/h
+github.com/alecthomas/chroma/lexers/i
+github.com/alecthomas/chroma/lexers/internal
+github.com/alecthomas/chroma/lexers/j
+github.com/alecthomas/chroma/lexers/k
+github.com/alecthomas/chroma/lexers/l
+github.com/alecthomas/chroma/lexers/m
+github.com/alecthomas/chroma/lexers/n
+github.com/alecthomas/chroma/lexers/o
+github.com/alecthomas/chroma/lexers/p
+github.com/alecthomas/chroma/lexers/q
+github.com/alecthomas/chroma/lexers/r
+github.com/alecthomas/chroma/lexers/s
+github.com/alecthomas/chroma/lexers/t
+github.com/alecthomas/chroma/lexers/v
+github.com/alecthomas/chroma/lexers/w
+github.com/alecthomas/chroma/lexers/x
+github.com/alecthomas/chroma/lexers/y
+github.com/alecthomas/chroma/lexers/z
+github.com/alecthomas/chroma/quick
+github.com/alecthomas/chroma/styles
 # github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 ## explicit
 github.com/alecthomas/template
@@ -434,6 +470,9 @@ github.com/beorn7/perks/quantile
 # github.com/bmatcuk/doublestar v1.3.4
 ## explicit; go 1.12
 github.com/bmatcuk/doublestar
+# github.com/buger/jsonparser v1.1.1
+## explicit; go 1.13
+github.com/buger/jsonparser
 # github.com/c2h5oh/datasize v0.0.0-20220606134207-859f65c6625b
 ## explicit
 github.com/c2h5oh/datasize
@@ -506,6 +545,10 @@ github.com/dimchansky/utfbom
 # github.com/distribution/reference v0.5.0
 ## explicit; go 1.20
 github.com/distribution/reference
+# github.com/dlclark/regexp2 v1.4.0
+## explicit
+github.com/dlclark/regexp2
+github.com/dlclark/regexp2/syntax
 # github.com/docker/docker v25.0.3+incompatible
 ## explicit
 github.com/docker/docker/api
@@ -686,6 +729,10 @@ github.com/go-logr/logr/funcr
 # github.com/go-logr/stdr v1.2.2
 ## explicit; go 1.16
 github.com/go-logr/stdr
+# github.com/go-ole/go-ole v1.2.6
+## explicit; go 1.12
+github.com/go-ole/go-ole
+github.com/go-ole/go-ole/oleutil
 # github.com/go-openapi/analysis v0.22.2
 ## explicit; go 1.19
 github.com/go-openapi/analysis
@@ -1132,6 +1179,9 @@ github.com/leodido/go-urn
 ## explicit
 github.com/leodido/ragel-machinery
 github.com/leodido/ragel-machinery/parser
+# github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0
+## explicit; go 1.16
+github.com/lufia/plan9stats
 # github.com/mailru/easyjson v0.7.7
 ## explicit; go 1.12
 github.com/mailru/easyjson/buffer
@@ -1168,6 +1218,9 @@ github.com/minio/minio-go/v7/pkg/tags
 # github.com/minio/sha256-simd v1.0.1
 ## explicit; go 1.17
 github.com/minio/sha256-simd
+# github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
+## explicit
+github.com/mitchellh/colorstring
 # github.com/mitchellh/copystructure v1.0.0
 ## explicit
 github.com/mitchellh/copystructure
@@ -1252,6 +1305,9 @@ github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 ## explicit
 github.com/pmezard/go-difflib/difflib
+# github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c
+## explicit; go 1.14
+github.com/power-devops/perfstat
 # github.com/prometheus/alertmanager v0.27.0
 ## explicit; go 1.21
 github.com/prometheus/alertmanager/api/v2/models
@@ -1380,6 +1436,17 @@ github.com/segmentio/fasthash/fnv1a
 # github.com/sercand/kuberesolver/v5 v5.1.1
 ## explicit; go 1.18
 github.com/sercand/kuberesolver/v5
+# github.com/shirou/gopsutil/v4 v4.24.0-alpha.1
+## explicit; go 1.20
+github.com/shirou/gopsutil/v4/common
+github.com/shirou/gopsutil/v4/cpu
+github.com/shirou/gopsutil/v4/internal/common
+github.com/shirou/gopsutil/v4/mem
+github.com/shirou/gopsutil/v4/net
+github.com/shirou/gopsutil/v4/process
+# github.com/shoenig/go-m1cpu v0.1.6
+## explicit; go 1.20
+github.com/shoenig/go-m1cpu
 # github.com/shopspring/decimal v1.2.0
 ## explicit; go 1.13
 github.com/shopspring/decimal
@@ -1433,6 +1500,12 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing/opentracing
+# github.com/tklauser/go-sysconf v0.3.12
+## explicit; go 1.13
+github.com/tklauser/go-sysconf
+# github.com/tklauser/numcpus v0.6.1
+## explicit; go 1.13
+github.com/tklauser/numcpus
 # github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 ## explicit
 github.com/tonistiigi/fifo
@@ -1484,6 +1557,9 @@ github.com/yuin/gopher-lua
 github.com/yuin/gopher-lua/ast
 github.com/yuin/gopher-lua/parse
 github.com/yuin/gopher-lua/pm
+# github.com/yusufpapurcu/wmi v1.2.4
+## explicit; go 1.16
+github.com/yusufpapurcu/wmi
 # go.etcd.io/bbolt v1.3.6
 ## explicit; go 1.12
 go.etcd.io/bbolt
@@ -1642,7 +1718,7 @@ golang.org/x/exp/slices
 # golang.org/x/mod v0.16.0
 ## explicit; go 1.18
 golang.org/x/mod/semver
-# golang.org/x/net v0.22.0
+# golang.org/x/net v0.23.0
 ## explicit; go 1.18
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -1977,6 +2053,13 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
+# gotest.tools v2.2.0+incompatible
+## explicit
+gotest.tools/assert
+gotest.tools/assert/cmp
+gotest.tools/internal/difflib
+gotest.tools/internal/format
+gotest.tools/internal/source
 # gotest.tools/v3 v3.4.0
 ## explicit; go 1.13
 # k8s.io/api v0.29.2

@@ -219,6 +219,55 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 	}
 }
 
+func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	tests := []struct {
+		name       string
+		reqBuilder func() (*http.Request, error)
+		want       queryrangebase.Request
+	}{
+		{
+			"query_instant",
+			func() (*http.Request, error) {
+				req, err := http.NewRequest(
+					http.MethodGet,
+					fmt.Sprintf(`/v1/query?time=%d&query={foo="bar"}&limit=200&direction=FORWARD`, start.UnixNano()),
+					nil,
+				)
+				if err == nil {
+					req.Header.Set(cacheControlHeader, noCacheVal)
+				}
+				return req, err
+			},
+			&LokiInstantRequest{
+				Query:     `{foo="bar"}`,
+				Limit:     200,
+				Direction: logproto.FORWARD,
+				Path:      "/v1/query",
+				TimeTs:    start,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"}`),
+				},
+				CachingOptions: queryrangebase.CachingOptions{
+					Disabled: true,
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := tt.reqBuilder()
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := DefaultCodec.DecodeRequest(ctx, req, nil)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func Test_codec_DecodeResponse(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -400,17 +449,17 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		{
 			"series error wrong key type", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"status":"success","data": [{42: "some string"}]}`))},
 			&LokiSeriesRequest{Path: "/loki/api/v1/series"},
-			nil, "error decoding response: ReadObjectCB",
+			nil, "error decoding response: invalid character",
 		},
 		{
 			"series error key decode", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"status":"success","data": [{"\x": "some string"}]}`))},
 			&LokiSeriesRequest{Path: "/loki/api/v1/series"},
-			nil, "invalid escape char after",
+			nil, "invalid character 'x' in string escape code",
 		},
 		{
 			"series error value decode", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"status":"success","data": [{"label": "some string\x"}]}`))},
 			&LokiSeriesRequest{Path: "/loki/api/v1/series"},
-			nil, "invalid escape char after",
+			nil, "invalid character 'x' in string escape code",
 		},
 	}
 	for _, tt := range tests {

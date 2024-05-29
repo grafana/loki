@@ -155,7 +155,7 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 	defer func() {
 		if err != nil {
 			metrics.pagesSkipped.WithLabelValues(pageTypeSeries, skipReasonErr).Inc()
-			metrics.bytesSkipped.WithLabelValues(pageTypeSeries).Add(float64(header.DecompressedLen))
+			metrics.bytesSkipped.WithLabelValues(pageTypeSeries, skipReasonErr).Add(float64(header.DecompressedLen))
 		} else {
 			metrics.pagesRead.WithLabelValues(pageTypeSeries).Inc()
 			metrics.bytesRead.WithLabelValues(pageTypeSeries).Add(float64(header.DecompressedLen))
@@ -166,8 +166,8 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 		return nil, errors.Wrap(err, "seeking to series page")
 	}
 
-	data := BlockPool.Get(header.Len)[:header.Len]
-	defer BlockPool.Put(data)
+	data := SeriesPagePool.Get(header.Len)[:header.Len]
+	defer SeriesPagePool.Put(data)
 	_, err = io.ReadFull(r, data)
 	if err != nil {
 		return nil, errors.Wrap(err, "reading series page")
@@ -423,6 +423,18 @@ func (r *ChunkRef) Less(other ChunkRef) bool {
 	}
 
 	return r.Checksum < other.Checksum
+}
+
+func (r *ChunkRef) Cmp(other ChunkRef) int {
+	if r.From != other.From {
+		return int(other.From) - int(r.From)
+	}
+
+	if r.Through != other.Through {
+		return int(other.Through) - int(r.Through)
+	}
+
+	return int(other.Checksum) - int(r.Checksum)
 }
 
 func (r *ChunkRef) Encode(enc *encoding.Encbuf, previousEnd model.Time) model.Time {

@@ -1,8 +1,12 @@
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  local compactor_pod_matcher = if $._config.ssd.enabled then 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher else 'container="compactor"',
-  local compactor_job_matcher = if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'compactor',
+  local compactor_pod_matcher = if $._config.meta_monitoring.enabled
+  then 'pod=~"(compactor.*|%s-backend.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
+  else if $._config.ssd.enabled then 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher else 'container="compactor"',
+  local compactor_job_matcher = if $._config.meta_monitoring.enabled
+  then '"(compactor|%s-backend.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
+  else if $._config.ssd.enabled then '%s-backend' % $._config.ssd.pod_prefix_matcher else 'compactor',
   grafanaDashboards+::
     {
       'loki-retention.json':

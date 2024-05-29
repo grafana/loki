@@ -65,9 +65,9 @@
             },
             annotations: {
               summary: 'Loki deployment is running more than one compactor.',
-              description: |||
+              description: std.strReplace(|||
                 {{ $labels.cluster }} {{ $labels.namespace }} has had {{ printf "%.0f" $value }} compactors running for more than 5m. Only one compactor should run at a time.
-              |||,
+              |||, 'cluster', $._config.per_cluster_label),
             },
           },
         ],

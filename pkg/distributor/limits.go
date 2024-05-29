@@ -25,7 +25,7 @@ type Limits interface {
 	DiscoverServiceName(userID string) []string
 	DiscoverLogLevels(userID string) bool
 
-	ShardStreams(userID string) *shardstreams.Config
+	ShardStreams(userID string) shardstreams.Config
 	IngestionRateStrategy() string
 	IngestionRateBytes(userID string) float64
 	IngestionBurstSizeBytes(userID string) int

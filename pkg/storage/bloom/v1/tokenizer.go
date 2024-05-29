@@ -48,7 +48,7 @@ func NewNGramTokenizer(n, skip int) *NGramTokenizer {
 	return t
 }
 
-// Token implementsthe NGramBuilder interface
+// Token implements the NGramBuilder interface
 // The Token iterator uses shared buffers for performance. The []byte returned by At()
 // is not safe for use after subsequent calls to Next()
 func (t *NGramTokenizer) Tokens(line string) Iterator[[]byte] {

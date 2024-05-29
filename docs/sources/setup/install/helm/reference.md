@@ -315,6 +315,7 @@ This is the generated reference for the Loki Helm Chart values.
   "initContainers": [],
   "nodeSelector": {},
   "persistence": {
+    "annotations": {},
     "dataVolumeParameters": {
       "emptyDir": {}
     },
@@ -509,6 +510,15 @@ null
 			<td>backend.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for backend pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2572,7 +2582,7 @@ null
   },
   "canarySecret": null,
   "cluster_name": null,
-  "config": "{{- if .Values.enterprise.adminApi.enabled }}\n{{- if or .Values.minio.enabled (eq .Values.loki.storage.type \"s3\") (eq .Values.loki.storage.type \"gcs\") (eq .Values.loki.storage.type \"azure\") }}\nadmin_client:\n  storage:\n    s3:\n      bucket_name: admin\n{{- end }}\n{{- end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n",
+  "config": "{{- if .Values.enterprise.adminApi.enabled }}\nadmin_client:\n  {{ include \"enterprise-logs.adminAPIStorageConfig\" . | nindent 2 }}\n{{ end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n",
   "enabled": false,
   "externalConfigName": "",
   "externalLicenseName": null,
@@ -2630,7 +2640,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "v1.8.6"
+  "version": "3.0.1"
 }
 </pre>
 </td>
@@ -3455,9 +3465,9 @@ null
 		<tr>
 			<td>gateway.basicAuth.htpasswd</td>
 			<td>string</td>
-			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
-			<td><pre lang="json">
-"{{ if .Values.loki.tenants }}\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
+			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file. if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used. The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
+			<td><pre lang="">
+Either `loki.tenants` or `gateway.basicAuth.username` and `gateway.basicAuth.password`.
 </pre>
 </td>
 		</tr>
@@ -5086,29 +5096,37 @@ null
   "ingressClassName": "",
   "labels": {},
   "paths": {
-    "read": [
-      "/api/prom/tail",
-      "/loki/api/v1/tail",
-      "/loki/api",
-      "/api/prom/rules",
-      "/loki/api/v1/rules",
-      "/prometheus/api/v1/rules",
-      "/prometheus/api/v1/alerts"
-    ],
-    "singleBinary": [
+    "distributor": [
       "/api/prom/push",
       "/loki/api/v1/push",
+      "/otlp/v1/logs"
+    ],
+    "queryFrontend": [
+      "/api/prom/query",
+      "/api/prom/label",
+      "/api/prom/series",
       "/api/prom/tail",
+      "/loki/api/v1/query",
+      "/loki/api/v1/query_range",
       "/loki/api/v1/tail",
-      "/loki/api",
+      "/loki/api/v1/label",
+      "/loki/api/v1/labels",
+      "/loki/api/v1/series",
+      "/loki/api/v1/index/stats",
+      "/loki/api/v1/index/volume",
+      "/loki/api/v1/index/volume_range",
+      "/loki/api/v1/format_query",
+      "/loki/api/v1/detected_fields",
+      "/loki/api/v1/detected_labels",
+      "/loki/api/v1/patterns"
+    ],
+    "ruler": [
       "/api/prom/rules",
+      "/api/prom/api/v1/rules",
+      "/api/prom/api/v1/alerts",
       "/loki/api/v1/rules",
       "/prometheus/api/v1/rules",
       "/prometheus/api/v1/alerts"
-    ],
-    "write": [
-      "/api/prom/push",
-      "/loki/api/v1/push"
     ]
   },
   "tls": []
@@ -5123,6 +5141,62 @@ null
 			<td><pre lang="json">
 [
   "loki.example.com"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.distributor</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Distributor. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.distributorFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.writeFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
+			<td><pre lang="json">
+[
+  "/api/prom/push",
+  "/loki/api/v1/push",
+  "/otlp/v1/logs"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.queryFrontend</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Query Frontend. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.queryFrontendFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.readFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
+			<td><pre lang="json">
+[
+  "/api/prom/query",
+  "/api/prom/label",
+  "/api/prom/series",
+  "/api/prom/tail",
+  "/loki/api/v1/query",
+  "/loki/api/v1/query_range",
+  "/loki/api/v1/tail",
+  "/loki/api/v1/label",
+  "/loki/api/v1/labels",
+  "/loki/api/v1/series",
+  "/loki/api/v1/index/stats",
+  "/loki/api/v1/index/volume",
+  "/loki/api/v1/index/volume_range",
+  "/loki/api/v1/format_query",
+  "/loki/api/v1/detected_fields",
+  "/loki/api/v1/detected_labels",
+  "/loki/api/v1/patterns"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.ruler</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Ruler. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.rulerFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`. If deployment mode is SimpleScalable but `read.legacyReadTarget` is `true`, the requests are forwarded to k8s service: `{{"loki.readFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
+			<td><pre lang="json">
+[
+  "/api/prom/rules",
+  "/api/prom/api/v1/rules",
+  "/api/prom/api/v1/alerts",
+  "/loki/api/v1/rules",
+  "/prometheus/api/v1/rules",
+  "/prometheus/api/v1/alerts"
 ]
 </pre>
 </td>
@@ -5200,199 +5274,8 @@ null
 			<td>loki</td>
 			<td>object</td>
 			<td>Configuration for running Loki</td>
-			<td><pre lang="json">
-{
-  "analytics": {},
-  "annotations": {},
-  "auth_enabled": true,
-  "commonConfig": {
-    "compactor_address": "{{ include \"loki.compactorAddress\" . }}",
-    "path_prefix": "/var/loki",
-    "replication_factor": 3
-  },
-  "compactor": {},
-  "config": "{{- if .Values.enterprise.enabled}}\n{{- tpl .Values.enterprise.config . }}\n{{- else }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\n{{- end }}\n\n{{- with .Values.loki.server }}\nserver:\n  {{- toYaml . | nindent 2}}\n{{- end}}\n\nmemberlist:\n{{- if .Values.loki.memberlistConfig }}\n  {{- toYaml .Values.loki.memberlistConfig | nindent 2 }}\n{{- else }}\n{{- if .Values.loki.extraMemberlistConfig}}\n{{- toYaml .Values.loki.extraMemberlistConfig | nindent 2}}\n{{- end }}\n  join_members:\n    - {{ include \"loki.memberlist\" . }}\n    {{- with .Values.migrate.fromDistributed }}\n    {{- if .enabled }}\n    - {{ .memberlistService }}\n    {{- end }}\n    {{- end }}\n{{- end }}\n\n{{- with .Values.loki.ingester }}\ningester:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- if .Values.loki.commonConfig}}\ncommon:\n{{- toYaml .Values.loki.commonConfig | nindent 2}}\n  storage:\n  {{- include \"loki.commonStorageConfig\" . | nindent 4}}\n{{- end}}\n\n{{- with .Values.loki.limits_config }}\nlimits_config:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\nruntime_config:\n  file: /etc/loki/runtime-config/runtime-config.yaml\n\n{{- with .Values.chunksCache }}\n{{- if .enabled }}\nchunk_store_config:\n  chunk_cache_config:\n    default_validity: {{ .defaultValidity }}\n    background:\n      writeback_goroutines: {{ .writebackParallelism }}\n      writeback_buffer: {{ .writebackBuffer }}\n      writeback_size_limit: {{ .writebackSizeLimit }}\n    memcached:\n      batch_size: {{ .batchSize }}\n      parallelism: {{ .parallelism }}\n    memcached_client:\n      addresses: dnssrvnoa+_memcached-client._tcp.{{ template \"loki.fullname\" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc\n      consistent_hash: true\n      timeout: {{ .timeout }}\n      max_idle_conns: 72\n{{- end }}\n{{- end }}\n\n{{- if .Values.loki.schemaConfig }}\nschema_config:\n{{- toYaml .Values.loki.schemaConfig | nindent 2}}\n{{- end }}\n\n{{- if .Values.loki.useTestSchema }}\nschema_config:\n{{- toYaml .Values.loki.testSchemaConfig | nindent 2}}\n{{- end }}\n\n{{ include \"loki.rulerConfig\" . }}\n\n{{- if or .Values.tableManager.retention_deletes_enabled .Values.tableManager.retention_period }}\ntable_manager:\n  retention_deletes_enabled: {{ .Values.tableManager.retention_deletes_enabled }}\n  retention_period: {{ .Values.tableManager.retention_period }}\n{{- end }}\n\nquery_range:\n  align_queries_with_step: true\n  {{- with .Values.loki.query_range }}\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n  {{- end }}\n  {{- if .Values.resultsCache.enabled }}\n  {{- with .Values.resultsCache }}\n  cache_results: true\n  results_cache:\n    cache:\n      default_validity: {{ .defaultValidity }}\n      background:\n        writeback_goroutines: {{ .writebackParallelism }}\n        writeback_buffer: {{ .writebackBuffer }}\n        writeback_size_limit: {{ .writebackSizeLimit }}\n      memcached_client:\n        consistent_hash: true\n        addresses: dnssrvnoa+_memcached-client._tcp.{{ template \"loki.fullname\" $ }}-results-cache.{{ $.Release.Namespace }}.svc\n        timeout: {{ .timeout }}\n        update_interval: 1m\n  {{- end }}\n  {{- end }}\n\n{{- with .Values.loki.storage_config }}\nstorage_config:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.query_scheduler }}\nquery_scheduler:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.compactor }}\ncompactor:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.analytics }}\nanalytics:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.querier }}\nquerier:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.index_gateway }}\nindex_gateway:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.frontend }}\nfrontend:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.frontend_worker }}\nfrontend_worker:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.distributor }}\ndistributor:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\ntracing:\n  enabled: {{ .Values.loki.tracing.enabled }}\n",
-  "configObjectName": "{{ include \"loki.name\" . }}",
-  "configStorageType": "ConfigMap",
-  "containerSecurityContext": {
-    "allowPrivilegeEscalation": false,
-    "capabilities": {
-      "drop": [
-        "ALL"
-      ]
-    },
-    "readOnlyRootFilesystem": true
-  },
-  "distributor": {},
-  "enableServiceLinks": true,
-  "extraMemberlistConfig": {},
-  "frontend": {
-    "scheduler_address": "{{ include \"loki.querySchedulerAddress\" . }}",
-    "tail_proxy_url": "{{ include \"loki.querierAddress\" . }}"
-  },
-  "frontend_worker": {
-    "scheduler_address": "{{ include \"loki.querySchedulerAddress\" . }}"
-  },
-  "generatedConfigObjectName": "{{ include \"loki.name\" . }}",
-  "image": {
-    "digest": null,
-    "pullPolicy": "IfNotPresent",
-    "registry": "docker.io",
-    "repository": "grafana/loki",
-    "tag": null
-  },
-  "index_gateway": {
-    "mode": "simple"
-  },
-  "ingester": {},
-  "limits_config": {
-    "max_cache_freshness_per_query": "10m",
-    "query_timeout": "300s",
-    "reject_old_samples": true,
-    "reject_old_samples_max_age": "168h",
-    "split_queries_by_interval": "15m"
-  },
-  "memberlistConfig": {},
-  "memcached": {
-    "chunk_cache": {
-      "batch_size": 256,
-      "enabled": false,
-      "host": "",
-      "parallelism": 10,
-      "service": "memcached-client"
-    },
-    "results_cache": {
-      "default_validity": "12h",
-      "enabled": false,
-      "host": "",
-      "service": "memcached-client",
-      "timeout": "500ms"
-    }
-  },
-  "podAnnotations": {},
-  "podLabels": {},
-  "podSecurityContext": {
-    "fsGroup": 10001,
-    "runAsGroup": 10001,
-    "runAsNonRoot": true,
-    "runAsUser": 10001
-  },
-  "querier": {},
-  "query_range": {},
-  "query_scheduler": {},
-  "readinessProbe": {
-    "httpGet": {
-      "path": "/ready",
-      "port": "http-metrics"
-    },
-    "initialDelaySeconds": 30,
-    "timeoutSeconds": 1
-  },
-  "revisionHistoryLimit": 10,
-  "rulerConfig": {},
-  "runtimeConfig": {},
-  "schemaConfig": {},
-  "server": {
-    "grpc_listen_port": 9095,
-    "http_listen_port": 3100,
-    "http_server_read_timeout": "600s",
-    "http_server_write_timeout": "600s"
-  },
-  "serviceAnnotations": {},
-  "serviceLabels": {},
-  "storage": {
-    "azure": {
-      "accountKey": null,
-      "accountName": null,
-      "connectionString": null,
-      "endpointSuffix": null,
-      "requestTimeout": null,
-      "useFederatedToken": false,
-      "useManagedIdentity": false,
-      "userAssignedId": null
-    },
-    "filesystem": {
-      "chunks_directory": "/var/loki/chunks",
-      "rules_directory": "/var/loki/rules"
-    },
-    "gcs": {
-      "chunkBufferSize": 0,
-      "enableHttp2": true,
-      "requestTimeout": "0s"
-    },
-    "s3": {
-      "accessKeyId": null,
-      "backoff_config": {},
-      "endpoint": null,
-      "http_config": {},
-      "insecure": false,
-      "region": null,
-      "s3": null,
-      "s3ForcePathStyle": false,
-      "secretAccessKey": null,
-      "signatureVersion": null
-    },
-    "swift": {
-      "auth_url": null,
-      "auth_version": null,
-      "connect_timeout": null,
-      "container_name": null,
-      "domain_id": null,
-      "domain_name": null,
-      "internal": null,
-      "max_retries": null,
-      "password": null,
-      "project_domain_id": null,
-      "project_domain_name": null,
-      "project_id": null,
-      "project_name": null,
-      "region_name": null,
-      "request_timeout": null,
-      "user_domain_id": null,
-      "user_domain_name": null,
-      "user_id": null,
-      "username": null
-    },
-    "type": "s3"
-  },
-  "storage_config": {
-    "boltdb_shipper": {
-      "index_gateway_client": {
-        "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"
-      }
-    },
-    "hedging": {
-      "at": "250ms",
-      "max_per_second": 20,
-      "up_to": 3
-    },
-    "tsdb_shipper": {
-      "index_gateway_client": {
-        "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"
-      }
-    }
-  },
-  "structuredConfig": {},
-  "tenants": [],
-  "testSchemaConfig": {
-    "configs": [
-      {
-        "from": "2024-04-01",
-        "index": {
-          "period": "24h",
-          "prefix": "index_"
-        },
-        "object_store": "filesystem",
-        "schema": "v13",
-        "store": "tsdb"
-      }
-    ]
-  },
-  "tracing": {
-    "enabled": false
-  },
-  "useTestSchema": false
-}
+			<td><pre lang="">
+See values.yaml
 </pre>
 </td>
 		</tr>
@@ -5591,7 +5474,8 @@ null
   "query_timeout": "300s",
   "reject_old_samples": true,
   "reject_old_samples_max_age": "168h",
-  "split_queries_by_interval": "15m"
+  "split_queries_by_interval": "15m",
+  "volume_enabled": true
 }
 </pre>
 </td>
@@ -5625,6 +5509,17 @@ null
     "service": "memcached-client",
     "timeout": "500ms"
   }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.pattern_ingester</td>
+			<td>object</td>
+			<td>Optional pattern ingester configuration</td>
+			<td><pre lang="json">
+{
+  "enabled": false
 }
 </pre>
 </td>
@@ -5773,6 +5668,7 @@ null
     "userAssignedId": null
   },
   "filesystem": {
+    "admin_api_directory": "/var/loki/admin",
     "chunks_directory": "/var/loki/chunks",
     "rules_directory": "/var/loki/rules"
   },
@@ -6319,6 +6215,7 @@ false
 			<td>Configuration for the minio subchart</td>
 			<td><pre lang="json">
 {
+  "address": null,
   "buckets": [
     {
       "name": "chunks",
@@ -6339,6 +6236,7 @@ false
   "drivesPerNode": 2,
   "enabled": false,
   "persistence": {
+    "annotations": {},
     "size": "5Gi"
   },
   "replicas": 1,
@@ -6403,6 +6301,7 @@ false
     },
     "tenant": {
       "name": "self-monitoring",
+      "password": null,
       "secretNamespace": "{{ .Release.Namespace }}"
     }
   },
@@ -6680,6 +6579,7 @@ null
 			<td><pre lang="json">
 {
   "name": "self-monitoring",
+  "password": null,
   "secretNamespace": "{{ .Release.Namespace }}"
 }
 </pre>
@@ -6691,6 +6591,15 @@ null
 			<td>Name of the tenant</td>
 			<td><pre lang="json">
 "self-monitoring"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.tenant.password</td>
+			<td>string</td>
+			<td>Password of the gateway for Basic auth</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -8544,6 +8453,7 @@ false
   "lifecycle": {},
   "nodeSelector": {},
   "persistence": {
+    "annotations": {},
     "enableStatefulSetAutoDeletePVC": true,
     "selector": null,
     "size": "10Gi",
@@ -8752,6 +8662,15 @@ false
 			<td>read.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for read pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -9998,6 +9917,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -10776,6 +10704,15 @@ null
 			<td>write.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for write pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>

@@ -12,8 +12,10 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/buger/jsonparser"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/go-logfmt/logfmt"
 	"github.com/gogo/status"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -59,19 +61,27 @@ const (
 
 	labelServiceName = "service_name"
 	serviceUnknown   = "unknown_service"
-	labelLevel       = "level"
+	levelLabel       = "detected_level"
 	logLevelDebug    = "debug"
 	logLevelInfo     = "info"
 	logLevelWarn     = "warn"
 	logLevelError    = "error"
 	logLevelFatal    = "fatal"
 	logLevelCritical = "critical"
+	logLevelTrace    = "trace"
+	logLevelUnknown  = "unknown"
 )
 
 var (
 	maxLabelCacheSize = 100000
 	rfStats           = analytics.NewInt("distributor_replication_factor")
 )
+
+var allowedLabelsForLevel = map[string]struct{}{
+	"level": {}, "LEVEL": {}, "Level": {},
+	"severity": {}, "SEVERITY": {}, "Severity": {},
+	"lvl": {}, "LVL": {}, "Lvl": {},
+}
 
 // Config for a Distributor.
 type Config struct {
@@ -376,7 +386,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			n := 0
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
-			addLogLevel := validationContext.allowStructuredMetadata && validationContext.discoverLogLevels && !lbs.Has(labelLevel)
+
+			shouldDiscoverLevels := validationContext.allowStructuredMetadata && validationContext.discoverLogLevels
+			levelFromLabel, hasLevelLabel := hasAnyLevelLabels(lbs)
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
@@ -385,12 +397,21 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-				if addLogLevel && !structuredMetadata.Has(labelLevel) {
-					logLevel := detectLogLevelFromLogEntry(entry, structuredMetadata)
-					entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
-						Name:  labelLevel,
-						Value: logLevel,
-					})
+				if shouldDiscoverLevels {
+					var logLevel string
+					if hasLevelLabel {
+						logLevel = levelFromLabel
+					} else if levelFromMetadata, ok := hasAnyLevelLabels(structuredMetadata); ok {
+						logLevel = levelFromMetadata
+					} else {
+						logLevel = detectLogLevelFromLogEntry(entry, structuredMetadata)
+					}
+					if logLevel != logLevelUnknown && logLevel != "" {
+						entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
+							Name:  levelLabel,
+							Value: logLevel,
+						})
+					}
 				}
 				stream.Entries[n] = entry
 
@@ -537,6 +558,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
+func hasAnyLevelLabels(l labels.Labels) (string, bool) {
+	for lbl := range allowedLabelsForLevel {
+		if l.Has(lbl) {
+			return l.Get(lbl), true
+		}
+	}
+	return "", false
+}
+
 // shardStream shards (divides) the given stream into N smaller streams, where
 // N is the sharding size for the given stream. shardSteam returns the smaller
 // streams and their associated keys for hashing to ingesters.
@@ -559,7 +589,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 	return d.divideEntriesBetweenShards(tenantID, shardCount, shardStreamsCfg, stream)
 }
 
-func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg *shardstreams.Config, stream logproto.Stream) []KeyedStream {
+func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg shardstreams.Config, stream logproto.Stream) []KeyedStream {
 	derivedStreams := d.createShards(stream, totalShards, tenantID, shardStreamsCfg)
 
 	for i := 0; i < len(stream.Entries); i++ {
@@ -571,7 +601,7 @@ func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards in
 	return derivedStreams
 }
 
-func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg *shardstreams.Config) []KeyedStream {
+func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg shardstreams.Config) []KeyedStream {
 	var (
 		streamLabels   = labelTemplate(stream.Labels, d.logger)
 		streamPattern  = streamLabels.String()
@@ -779,7 +809,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 // based on the rate stored in the rate store and will store the new evaluated number of shards.
 //
 // desiredRate is expected to be given in bytes.
-func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, pushSize int, tenantID string, streamShardcfg *shardstreams.Config) int {
+func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, pushSize int, tenantID string, streamShardcfg shardstreams.Config) int {
 	if streamShardcfg.DesiredRate.Val() <= 0 {
 		if streamShardcfg.LoggingEnabled {
 			level.Error(logger).Log("msg", "invalid desired rate", "desired_rate", streamShardcfg.DesiredRate.String())
@@ -865,7 +895,11 @@ func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.
 		if err != nil {
 			return logLevelInfo
 		}
-		if otlpSeverityNumber <= int(plog.SeverityNumberDebug4) {
+		if otlpSeverityNumber == int(plog.SeverityNumberUnspecified) {
+			return logLevelUnknown
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberTrace4) {
+			return logLevelTrace
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberDebug4) {
 			return logLevelDebug
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberInfo4) {
 			return logLevelInfo
@@ -876,18 +910,68 @@ func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberFatal4) {
 			return logLevelFatal
 		}
-		return logLevelInfo
+		return logLevelUnknown
 	}
 
 	return extractLogLevelFromLogLine(entry.Line)
 }
 
 func extractLogLevelFromLogLine(log string) string {
-	// check for log levels in known log formats to avoid any false detection
+	var v string
+	if isJSON(log) {
+		v = getValueUsingJSONParser(log)
+	} else {
+		v = getValueUsingLogfmtParser(log)
+	}
 
-	// json logs:
+	switch strings.ToLower(v) {
+	case "trace", "trc":
+		return logLevelTrace
+	case "debug", "dbg":
+		return logLevelDebug
+	case "info", "inf":
+		return logLevelInfo
+	case "warn", "wrn":
+		return logLevelWarn
+	case "error", "err":
+		return logLevelError
+	case "critical":
+		return logLevelCritical
+	case "fatal":
+		return logLevelFatal
+	default:
+		return detectLevelFromLogLine(log)
+	}
+}
+
+func getValueUsingLogfmtParser(line string) string {
+	equalIndex := strings.Index(line, "=")
+	if len(line) == 0 || equalIndex == -1 {
+		return logLevelUnknown
+	}
+	d := logfmt.NewDecoder(strings.NewReader(line))
+	d.ScanRecord()
+	for d.ScanKeyval() {
+		if _, ok := allowedLabelsForLevel[string(d.Key())]; ok {
+			return string(d.Value())
+		}
+	}
+	return logLevelUnknown
+}
+
+func getValueUsingJSONParser(log string) string {
+	for allowedLabel := range allowedLabelsForLevel {
+		l, err := jsonparser.GetString([]byte(log), allowedLabel)
+		if err == nil {
+			return l
+		}
+	}
+	return logLevelUnknown
+}
+
+func isJSON(line string) bool {
 	var firstNonSpaceChar rune
-	for _, char := range log {
+	for _, char := range line {
 		if !unicode.IsSpace(char) {
 			firstNonSpaceChar = char
 			break
@@ -895,55 +979,18 @@ func extractLogLevelFromLogLine(log string) string {
 	}
 
 	var lastNonSpaceChar rune
-	for i := len(log) - 1; i >= 0; i-- {
-		char := rune(log[i])
+	for i := len(line) - 1; i >= 0; i-- {
+		char := rune(line[i])
 		if !unicode.IsSpace(char) {
 			lastNonSpaceChar = char
 			break
 		}
 	}
 
-	if firstNonSpaceChar == '{' && lastNonSpaceChar == '}' {
-		if strings.Contains(log, `:"err"`) || strings.Contains(log, `:"ERR"`) ||
-			strings.Contains(log, `:"error"`) || strings.Contains(log, `:"ERROR"`) {
-			return logLevelError
-		}
-		if strings.Contains(log, `:"warn"`) || strings.Contains(log, `:"WARN"`) ||
-			strings.Contains(log, `:"warning"`) || strings.Contains(log, `:"WARNING"`) {
-			return logLevelWarn
-		}
-		if strings.Contains(log, `:"critical"`) || strings.Contains(log, `:"CRITICAL"`) {
-			return logLevelCritical
-		}
-		if strings.Contains(log, `:"debug"`) || strings.Contains(log, `:"DEBUG"`) {
-			return logLevelDebug
-		}
-		if strings.Contains(log, `:"info"`) || strings.Contains(log, `:"INFO"`) {
-			return logLevelInfo
-		}
-	}
+	return firstNonSpaceChar == '{' && lastNonSpaceChar == '}'
+}
 
-	// logfmt logs:
-	if strings.Contains(log, "=") {
-		if strings.Contains(log, "=err") || strings.Contains(log, "=ERR") ||
-			strings.Contains(log, "=error") || strings.Contains(log, "=ERROR") {
-			return logLevelError
-		}
-		if strings.Contains(log, "=warn") || strings.Contains(log, "=WARN") ||
-			strings.Contains(log, "=warning") || strings.Contains(log, "=WARNING") {
-			return logLevelWarn
-		}
-		if strings.Contains(log, "=critical") || strings.Contains(log, "=CRITICAL") {
-			return logLevelCritical
-		}
-		if strings.Contains(log, "=debug") || strings.Contains(log, "=DEBUG") {
-			return logLevelDebug
-		}
-		if strings.Contains(log, "=info") || strings.Contains(log, "=INFO") {
-			return logLevelInfo
-		}
-	}
-
+func detectLevelFromLogLine(log string) string {
 	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
 		strings.Contains(log, "error") || strings.Contains(log, "ERROR") {
 		return logLevelError
@@ -958,7 +1005,5 @@ func extractLogLevelFromLogLine(log string) string {
 	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
 		return logLevelDebug
 	}
-
-	// Default to info if no specific level is found
-	return logLevelInfo
+	return logLevelUnknown
 }
