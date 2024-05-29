@@ -28,12 +28,12 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/hashicorp/golang-lru/v2/simplelru"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type Config struct {
@@ -188,6 +188,9 @@ func (d *Drain) Train(content string, ts int64) *LogCluster {
 }
 
 func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64) *LogCluster {
+	if len(tokens) < 3 {
+		return nil
+	}
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
 	// Match no existing log cluster
 	if matchCluster == nil {
@@ -210,8 +213,11 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 	} else {
 		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
 		clusterName := strings.Join(newTemplateTokens, " ")
-		if len(strings.ReplaceAll(strings.ReplaceAll(clusterName, d.config.ParamString, ""), " ", "")) < 8 {
+		if strings.Contains(clusterName, "I0529") {
 			level.Debug(util_log.Logger).Log("msg", "cluster name too short", "new_token", strings.Join(tokens, " "), "matched_token", strings.Join(matchCluster.Tokens, " "), "new_cluster", clusterName)
+		}
+		if len(strings.ReplaceAll(strings.ReplaceAll(clusterName, d.config.ParamString, ""), " ", "")) < 8 {
+			// level.Debug(util_log.Logger).Log("msg", "cluster name too short", "new_token", strings.Join(tokens, " "), "matched_token", strings.Join(matchCluster.Tokens, " "), "new_cluster", clusterName)
 			return nil
 		}
 		matchCluster.Tokens = newTemplateTokens
