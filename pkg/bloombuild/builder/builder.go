@@ -123,7 +123,7 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 		}
 
 		b.metrics.taskCompleted.WithLabelValues(status).Inc()
-		b.metrics.taskTime.WithLabelValues(status).Observe(time.Since(start).Seconds())
+		b.metrics.taskDuration.WithLabelValues(status).Observe(time.Since(start).Seconds())
 
 		// Acknowledge task completion to planner
 		if err = b.notifyTaskCompletedToPlanner(c, err); err != nil {

@@ -18,7 +18,7 @@ type Metrics struct {
 
 	taskStarted   prometheus.Counter
 	taskCompleted *prometheus.CounterVec
-	taskTime      *prometheus.HistogramVec
+	taskDuration  *prometheus.HistogramVec
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
@@ -42,12 +42,18 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Name:      "task_completed_total",
 			Help:      "Total number of task completed",
 		}, []string{"status"}),
-		taskTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+		taskDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "task_time_seconds",
+			Name:      "task_duration_seconds",
 			Help:      "Time spent processing a task.",
-			Buckets:   prometheus.DefBuckets,
+			// Buckets in seconds:  and
+			Buckets: append(
+				// 1s --> 1h (steps of 10 minutes)
+				prometheus.LinearBuckets(1, 600, 6),
+				// 1h --> 24h (steps of 1 hour)
+				prometheus.LinearBuckets(3600, 3600, 24)...,
+			),
 		}, []string{"status"}),
 	}
 }
