@@ -582,9 +582,11 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 			if err := p.enqueueTask(task); err != nil {
 				p.metrics.taskLost.Inc()
 				level.Error(logger).Log("msg", "error re-enqueuing task. this task will be lost", "err", err)
+				continue
 			}
 
-			return fmt.Errorf("error forwarding task to builder (%s). Task requeued: %w", builderID, err)
+			p.metrics.tasksRequeued.Inc()
+			level.Error(logger).Log("msg", "error forwarding task to builder, Task requeued", "err", err)
 		}
 
 	}
@@ -607,16 +609,34 @@ func (p *Planner) forwardTaskToBuilder(
 		return fmt.Errorf("error sending task to builder (%s): %w", builderID, err)
 	}
 
-	// TODO(salvacorts): Implement timeout and retry for builder response.
-	res, err := builder.Recv()
-	if err != nil {
-		return fmt.Errorf("error receiving response from builder (%s): %w", builderID, err)
-	}
-	if res.GetError() != "" {
-		return fmt.Errorf("error processing task in builder (%s): %s", builderID, res.GetError())
+	// Launch a goroutine to wait for the response from the builder so we can
+	// wait for a timeout, error or a response from the builder
+	errCh := make(chan error)
+	go func() {
+		// If connection is closed, Recv() will return an error
+		res, err := builder.Recv()
+		if err != nil {
+			err = fmt.Errorf("error receiving response from builder (%s): %w", builderID, err)
+		}
+		if res.GetError() != "" {
+			err = fmt.Errorf("error processing task in builder (%s): %s", builderID, res.GetError())
+		}
+		errCh <- err // Error will be nil on successful completion
+	}()
+
+	taskTimeout := p.limits.BuilderResponseTimeout(task.Tenant)
+	if taskTimeout == 0 {
+		// If the timeout is 0 (disabled), just wait for the builder to respond
+		return <-errCh
 	}
 
-	return nil
+	timeout := time.After(taskTimeout)
+	select {
+	case err := <-errCh:
+		return err
+	case <-timeout:
+		return fmt.Errorf("timeout waiting for response from builder (%s)", builderID)
+	}
 }
 
 func (p *Planner) isRunningOrStopping() bool {

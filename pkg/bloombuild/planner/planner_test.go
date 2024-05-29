@@ -333,18 +333,25 @@ func Test_blockPlansForGaps(t *testing.T) {
 	}
 }
 
-func Test_BuilderLoop(t *testing.T) {
-	const (
-		nTasks    = 100
-		nBuilders = 10
-	)
-	logger := log.NewNopLogger()
-
-	limits := &fakeLimits{}
-	cfg := Config{
-		PlanningInterval:        1 * time.Hour,
-		MaxQueuedTasksPerTenant: 10000,
+func createTasks(n int) []*Task {
+	tasks := make([]*Task, 0, n)
+	// Enqueue tasks
+	for i := 0; i < n; i++ {
+		task := NewTask(
+			context.Background(), time.Now(),
+			protos.NewTask(config.NewDayTable(config.NewDayTime(0), "fake"), "fakeTenant", v1.NewBounds(0, 10), tsdbID(1), nil),
+		)
+		tasks = append(tasks, task)
 	}
+	return tasks
+}
+
+func createPlanner(
+	t *testing.T,
+	cfg Config,
+	limits Limits,
+	logger log.Logger,
+) *Planner {
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
@@ -377,62 +384,163 @@ func Test_BuilderLoop(t *testing.T) {
 		},
 	}
 
-	// Create planner
-	planner, err := New(cfg, limits, schemaCfg, storageCfg, storage.NewClientMetrics(), nil, logger, prometheus.DefaultRegisterer)
+	reg := prometheus.NewPedanticRegistry()
+	planner, err := New(cfg, limits, schemaCfg, storageCfg, storage.ClientMetrics{}, nil, logger, reg)
 	require.NoError(t, err)
 
-	// Start planner
-	err = services.StartAndAwaitRunning(context.Background(), planner)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		err := services.StopAndAwaitTerminated(context.Background(), planner)
-		require.NoError(t, err)
-	})
+	return planner
+}
 
-	// Enqueue tasks
-	for i := 0; i < nTasks; i++ {
-		task := NewTask(
-			context.Background(), time.Now(),
-			protos.NewTask(config.NewDayTable(config.NewDayTime(0), "fake"), "fakeTenant", v1.NewBounds(0, 10), tsdbID(1), nil),
-		)
+func Test_BuilderLoop(t *testing.T) {
+	const (
+		nTasks    = 100
+		nBuilders = 10
+	)
 
-		err = planner.enqueueTask(task)
-		require.NoError(t, err)
+	for _, tc := range []struct {
+		name   string
+		limits Limits
+
+		testRetry bool
+
+		// modifyBuilders should leave the builders in a state where they will not return or return an error
+		modifyBuilders func(builders []*fakeBuilder)
+		// resetBuilders should reset the builders to a state where they will return no errors
+		resetBuilders func(builders []*fakeBuilder)
+	}{
+		{
+			name:   "success",
+			limits: &fakeLimits{},
+		},
+		{
+			name:      "error",
+			limits:    &fakeLimits{},
+			testRetry: true,
+			modifyBuilders: func(builders []*fakeBuilder) {
+				for _, builder := range builders {
+					builder.SetReturnError(true)
+				}
+			},
+			resetBuilders: func(builders []*fakeBuilder) {
+				for _, builder := range builders {
+					builder.SetReturnError(false)
+				}
+			},
+		},
+		{
+			name: "timeout",
+			limits: &fakeLimits{
+				timeout: 1 * time.Second,
+			},
+			testRetry: true,
+			modifyBuilders: func(builders []*fakeBuilder) {
+				for _, builder := range builders {
+					builder.SetWait(true)
+				}
+			},
+			resetBuilders: func(builders []*fakeBuilder) {
+				for _, builder := range builders {
+					builder.SetWait(false)
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := log.NewNopLogger()
+			//logger := log.NewLogfmtLogger(os.Stdout)
+
+			cfg := Config{
+				PlanningInterval:        1 * time.Hour,
+				MaxQueuedTasksPerTenant: 10000,
+			}
+			planner := createPlanner(t, cfg, tc.limits, logger)
+
+			// Start planner
+			err := services.StartAndAwaitRunning(context.Background(), planner)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				err := services.StopAndAwaitTerminated(context.Background(), planner)
+				require.NoError(t, err)
+			})
+
+			// Enqueue tasks
+			tasks := createTasks(nTasks)
+			for _, task := range tasks {
+				err = planner.enqueueTask(task)
+				require.NoError(t, err)
+			}
+
+			// Create builders and call planner.BuilderLoop
+			builders := make([]*fakeBuilder, 0, nBuilders)
+			for i := 0; i < nBuilders; i++ {
+				builder := newMockBuilder(fmt.Sprintf("builder-%d", i))
+				builders = append(builders, builder)
+
+				go func() {
+					// We ignore the error since when the planner is stopped,
+					// the loop will return an error (queue closed)
+					_ = planner.BuilderLoop(builder)
+				}()
+			}
+
+			// Eventually, all tasks should be sent to builders
+			require.Eventually(t, func() bool {
+				var receivedTasks int
+				for _, builder := range builders {
+					receivedTasks += len(builder.ReceivedTasks())
+				}
+				return receivedTasks == nTasks
+			}, 5*time.Second, 10*time.Millisecond)
+
+			// Finally, the queue should be empty
+			require.Equal(t, 0, planner.totalPendingTasks())
+
+			if !tc.testRetry {
+				// We are done with the test
+				return
+			}
+
+			// Configure builders to return errors
+			tc.modifyBuilders(builders)
+
+			// Enqueue tasks again
+			for _, task := range tasks {
+				err = planner.enqueueTask(task)
+				require.NoError(t, err)
+			}
+
+			// Tasks should not be consumed
+			require.Neverf(
+				t, func() bool {
+					return planner.totalPendingTasks() == 0
+				},
+				5*time.Second, 10*time.Millisecond,
+				"all tasks were consumed but they should not be",
+			)
+
+			// Configure builders to return no errors
+			tc.resetBuilders(builders)
+
+			// Now all tasks should be consumed
+			require.Eventuallyf(
+				t, func() bool {
+					return planner.totalPendingTasks() == 0
+				},
+				5*time.Second, 10*time.Millisecond,
+				"tasks not consumed, pending: %d", planner.totalPendingTasks(),
+			)
+
+		})
 	}
-
-	// All tasks should be pending
-	require.Equal(t, nTasks, planner.totalPendingTasks())
-
-	// Create builders and call planner.BuilderLoop
-	builders := make([]*fakeBuilder, 0, nBuilders)
-	for i := 0; i < nBuilders; i++ {
-		builder := newMockBuilder(fmt.Sprintf("builder-%d", i))
-		builders = append(builders, builder)
-
-		go func() {
-			// We ignore the error since when the planner is stopped,
-			// the loop will return an error (queue closed)
-			_ = planner.BuilderLoop(builder)
-		}()
-	}
-
-	// Eventually, all tasks should be sent to builders
-	require.Eventually(t, func() bool {
-		var receivedTasks int
-		for _, builder := range builders {
-			receivedTasks += len(builder.ReceivedTasks())
-		}
-		return receivedTasks == nTasks
-	}, 15*time.Second, 10*time.Millisecond)
-
-	// Finally, the queue should be empty
-	require.Equal(t, 0, planner.totalPendingTasks())
 }
 
 type fakeBuilder struct {
 	id    string
 	tasks []*protos.Task
 	grpc.ServerStream
+
+	returnError bool
+	wait        bool
 }
 
 func newMockBuilder(id string) *fakeBuilder {
@@ -441,6 +549,14 @@ func newMockBuilder(id string) *fakeBuilder {
 
 func (f *fakeBuilder) ReceivedTasks() []*protos.Task {
 	return f.tasks
+}
+
+func (f *fakeBuilder) SetReturnError(b bool) {
+	f.returnError = b
+}
+
+func (f *fakeBuilder) SetWait(b bool) {
+	f.wait = b
 }
 
 func (f *fakeBuilder) Context() context.Context {
@@ -458,12 +574,26 @@ func (f *fakeBuilder) Send(req *protos.PlannerToBuilder) error {
 }
 
 func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
+	if f.returnError {
+		return nil, fmt.Errorf("fake error from %s", f.id)
+	}
+
+	// Wait until `wait` is false
+	for f.wait {
+		time.Sleep(time.Second)
+	}
+
 	return &protos.BuilderToPlanner{
 		BuilderID: f.id,
 	}, nil
 }
 
 type fakeLimits struct {
+	timeout time.Duration
+}
+
+func (f *fakeLimits) BuilderResponseTimeout(_ string) time.Duration {
+	return f.timeout
 }
 
 func (f *fakeLimits) BloomCreationEnabled(_ string) bool {
