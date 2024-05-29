@@ -16,7 +16,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 	t.Parallel()
 
 	// Set this so the test will print the patterns found, in string slice format for easy copy-paste
-	outputPatternsForTestUpdate := true
+	outputPatternsForTestUpdate := false
 
 	tests := []struct {
 		drain     *Drain
@@ -454,6 +454,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			}
 
 			require.Equal(t, tt.patterns, output)
+			require.Falsef(t, outputPatternsForTestUpdate, `outputPatternsForTestUpdate should only be used locally to update test patterns.`)
 		})
 	}
 }
