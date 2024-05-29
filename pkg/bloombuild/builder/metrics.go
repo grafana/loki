@@ -47,7 +47,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Subsystem: metricsSubsystem,
 			Name:      "task_duration_seconds",
 			Help:      "Time spent processing a task.",
-			// Buckets in seconds:  and
+			// Buckets in seconds:
 			Buckets: append(
 				// 1s --> 1h (steps of 10 minutes)
 				prometheus.LinearBuckets(1, 600, 6),
