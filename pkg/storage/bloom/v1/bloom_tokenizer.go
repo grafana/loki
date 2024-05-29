@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
@@ -113,9 +114,15 @@ func (bt *BloomTokenizer) Populate(
 
 	for chks.Next() {
 		chk := chks.At()
+		itr := newPeekingEntryIterAdapter(chk.Itr)
 
 		for {
-			full, newBytes := bt.addChunkToBloom(bloom, series, chk)
+			full, newBytes := bt.addChunkToBloom(
+				bloom,
+				series,
+				chk.Ref,
+				itr,
+			)
 			bytesAdded += newBytes
 
 			// If a bloom is full, the chunk wasn't completely added
@@ -152,22 +159,18 @@ func (bt *BloomTokenizer) Populate(
 
 // addChunkToBloom adds the tokens from the given chunk to the given bloom.
 // It continues until the chunk is exhausted or the bloom is full.
-func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, series *Series, chk ChunkRefWithIter) (full bool, bytesAdded int) {
+func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, series *Series, ref ChunkRef, entryIter PeekingIterator[push.Entry]) (full bool, bytesAdded int) {
 	var (
-		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N(), chk.Ref, nil)
+		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N(), ref, nil)
 		tokens             int
 		successfulInserts  int
 		cachedInserts      int
 		collisionInserts   int
 		chunkBytes         int
-
-		// We use a peeking iterator to avoid advancing the iterator until we're sure
-		// the bloom has accepted the line
-		entryIter = newPeekingEntryIterAdapter(chk.Itr)
+		linesAdded         int
 	)
 
-	// Iterate over lines in the chunk
-	// for line, ok := entryIter.Peek
+	// We use a peeking iterator to avoid advancing the iterator until we're sure the bloom has accepted the line.
 outer:
 	for entry, ok := entryIter.Peek(); ok; entry, ok = entryIter.Peek() {
 		line := entry.Line
@@ -198,6 +201,12 @@ outer:
 				collision, full = bloom.ScalableBloomFilter.TestAndAddWithMaxSize(tok, bt.maxBloomSize*eightBits)
 
 				if full {
+					// edge case: one line maxed out the bloom size -- retrying is futile
+					// (and will loop endlessly), so we'll just skip indexing it
+					if linesAdded == 0 {
+						_ = entryIter.Next()
+					}
+
 					break outer
 				}
 
@@ -217,6 +226,7 @@ outer:
 		}
 
 		// Only advance the iterator once we're sure the bloom has accepted the line
+		linesAdded++
 		_ = entryIter.Next()
 	}
 
