@@ -44,11 +44,11 @@ type Config struct {
 	ParamString     string
 }
 
-func createLogClusterCache(maxSize int) *LogClusterCache {
+func createLogClusterCache(maxSize int, onEvict func(int, *LogCluster)) *LogClusterCache {
 	if maxSize == 0 {
 		maxSize = math.MaxInt
 	}
-	cache, _ := simplelru.NewLRU[int, *LogCluster](maxSize, nil)
+	cache, _ := simplelru.NewLRU[int, *LogCluster](maxSize, onEvict)
 	return &LogClusterCache{
 		cache: cache,
 	}
@@ -130,7 +130,7 @@ func DefaultConfig() *Config {
 		//  > message are more likely to be constants. Specifically, Drain
 		//  > selects the next internal node by the tokens in the beginning
 		//  > positions of the log message
-		LogClusterDepth: 8,
+		LogClusterDepth: 30,
 		// SimTh is basically a ratio of matching/total in the cluster.
 		// Cluster tokens: "foo <*> bar fred"
 		//       Log line: "foo bar baz qux"
@@ -146,16 +146,21 @@ func DefaultConfig() *Config {
 	}
 }
 
-func New(config *Config) *Drain {
+func New(config *Config, metrics *Metrics) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
 	config.maxNodeDepth = config.LogClusterDepth - 2
+	var evictFn func(int, *LogCluster)
+	if metrics != nil {
+		evictFn = func(int, *LogCluster) { metrics.PatternsEvictedTotal.Inc() }
+	}
 
 	d := &Drain{
 		config:      config,
 		rootNode:    createNode(),
-		idToCluster: createLogClusterCache(config.MaxClusters),
+		idToCluster: createLogClusterCache(config.MaxClusters, evictFn),
+		metrics:     metrics,
 	}
 	return d
 }
@@ -165,6 +170,7 @@ type Drain struct {
 	rootNode        *Node
 	idToCluster     *LogClusterCache
 	clustersCounter int
+	metrics         *Metrics
 }
 
 func (d *Drain) Clusters() []*LogCluster {
@@ -195,6 +201,9 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 		matchCluster.append(model.TimeFromUnixNano(ts))
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
+		if d.metrics != nil {
+			d.metrics.PatternsDetectedTotal.Inc()
+		}
 	} else {
 		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
 		matchCluster.Tokens = newTemplateTokens

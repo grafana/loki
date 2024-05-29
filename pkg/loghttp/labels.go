@@ -1,6 +1,7 @@
 package loghttp
 
 import (
+	"errors"
 	"net/http"
 	"sort"
 	"strconv"
@@ -88,14 +89,20 @@ func ParseLabelQuery(r *http.Request) (*logproto.LabelRequest, error) {
 }
 
 func ParseDetectedLabelsQuery(r *http.Request) (*logproto.DetectedLabelsRequest, error) {
+	var err error
+
 	start, end, err := bounds(r)
 	if err != nil {
 		return nil, err
 	}
 
+	if end.Before(start) {
+		return nil, errors.New("end timestamp must not be before or equal to start time")
+	}
+
 	return &logproto.DetectedLabelsRequest{
-		Start: &start,
-		End:   &end,
+		Start: start,
+		End:   end,
 		Query: query(r),
 	}, nil
 }

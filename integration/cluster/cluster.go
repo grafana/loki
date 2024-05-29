@@ -68,6 +68,9 @@ limits_config:
       attributes_config:
         - action: index_label
           attributes: ["service.name"]
+    log_attributes:
+      - action: drop
+        attributes: [email]
 
 storage_config:
   named_stores:
@@ -430,6 +433,7 @@ func (c *Component) run() error {
 		return err
 	}
 
+	config.LimitsConfig.SetGlobalOTLPConfig(config.Distributor.OTLPConfig)
 	var err error
 	c.loki, err = loki.New(config.Config)
 	if err != nil {

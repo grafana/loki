@@ -2,6 +2,7 @@ package bloomgateway
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -13,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
@@ -61,19 +63,26 @@ func newQuerierMetrics(registerer prometheus.Registerer, namespace, subsystem st
 	}
 }
 
+type QuerierConfig struct {
+	// MinTableOffset is derived from the compactor's MinTableOffset
+	MinTableOffset int
+}
+
 // BloomQuerier is a store-level abstraction on top of Client
 // It is used by the index gateway to filter ChunkRefs based on given line fiter expression.
 type BloomQuerier struct {
 	c             Client
+	cfg           QuerierConfig
 	logger        log.Logger
 	metrics       *querierMetrics
 	limits        Limits
 	blockResolver BlockResolver
 }
 
-func NewQuerier(c Client, limits Limits, resolver BlockResolver, r prometheus.Registerer, logger log.Logger) *BloomQuerier {
+func NewQuerier(c Client, cfg QuerierConfig, limits Limits, resolver BlockResolver, r prometheus.Registerer, logger log.Logger) *BloomQuerier {
 	return &BloomQuerier{
 		c:             c,
+		cfg:           cfg,
 		logger:        logger,
 		metrics:       newQuerierMetrics(r, constants.Loki, querierMetricsSubsystem),
 		limits:        limits,
@@ -100,6 +109,33 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 
 	preFilterChunks := len(chunkRefs)
 	preFilterSeries := len(grouped)
+
+	// Do not attempt to filter chunks for which there are no blooms
+	if bq.cfg.MinTableOffset > 0 {
+		minAge := truncateDay(model.Now()).Add(-1 * config.ObjectStorageIndexRequiredPeriod * time.Duration(bq.cfg.MinTableOffset-1))
+		if through.After(minAge) {
+			level.Debug(logger).Log(
+				"msg", "skip too recent chunks",
+				"tenant", tenant,
+				"from", from.Time(),
+				"through", through.Time(),
+				"responses", 0,
+				"preFilterChunks", preFilterChunks,
+				"postFilterChunks", preFilterChunks,
+				"filteredChunks", 0,
+				"preFilterSeries", preFilterSeries,
+				"postFilterSeries", preFilterSeries,
+				"filteredSeries", 0,
+			)
+
+			bq.metrics.chunksTotal.Add(float64(preFilterChunks))
+			bq.metrics.chunksFiltered.Add(0)
+			bq.metrics.seriesTotal.Add(float64(preFilterSeries))
+			bq.metrics.seriesFiltered.Add(0)
+
+			return chunkRefs, nil
+		}
+	}
 
 	responses := make([][]*logproto.GroupedChunkRefs, 0, 2)
 	// We can perform requests sequentially, because most of the time the request
@@ -153,7 +189,6 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		"preFilterSeries", preFilterSeries,
 		"postFilterSeries", postFilterSeries,
 		"filteredSeries", preFilterSeries-postFilterSeries,
-		"operation", "bloomquerier.FilterChunkRefs",
 	)
 
 	bq.metrics.chunksTotal.Add(float64(preFilterChunks))

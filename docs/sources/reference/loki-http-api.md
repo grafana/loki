@@ -24,6 +24,7 @@ Authorization needs to be done separately, for example, using an open-source loa
 These endpoints are exposed by the `distributor`, `write`, and `all` components:
 
 - [`POST /loki/api/v1/push`](#ingest-logs)
+- [`POST /otlp/v1/logs`](#ingest-logs-using-otlp)
 
 A [list of clients]({{< relref "../send-data" >}}) can be found in the clients documentation.
 
@@ -259,6 +260,16 @@ curl -H "Content-Type: application/json" \
   -s -X POST "http://localhost:3100/loki/api/v1/push" \
   --data-raw '{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}'
 ```
+
+## Ingest logs using OTLP
+
+```bash
+POST /otlp/v1/logs
+```
+
+`/otlp/v1/logs` lets the OpenTelemetry Collector send logs to Loki using `otlphttp` procotol.
+
+For information on how to configure Loki, refer to the [OTel Collector topic](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/).
 
 ## Query logs at a single point in time
 
