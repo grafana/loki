@@ -96,7 +96,7 @@ func (bt *BloomTokenizer) Populate(
 	series *Series,
 	blooms SizedIterator[*Bloom],
 	chks Iterator[ChunkRefWithIter],
-	ch chan<- *BloomCreation,
+	ch chan *BloomCreation,
 ) {
 	// All but the last bloom are considered full -- send back unaltered
 	for blooms.Next() && blooms.Remaining() > 0 {
@@ -145,6 +145,7 @@ func (bt *BloomTokenizer) Populate(
 		Bloom:            bloom,
 		sourceBytesAdded: bytesAdded,
 	}
+	close(ch)
 	return
 
 }

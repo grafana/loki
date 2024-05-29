@@ -145,8 +145,7 @@ func populateAndConsumeBloom(
 	var e multierror.MultiError
 	ch := make(chan *BloomCreation)
 	go bt.Populate(&s, blooms, chks, ch)
-	for range ch {
-		x := <-ch
+	for x := range ch {
 		if x.err != nil {
 			e = append(e, x.err)
 		} else {

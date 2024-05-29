@@ -321,8 +321,8 @@ func TestChunkRefsUnion(t *testing.T) {
 				{From: 2, Through: 4},
 				{From: 3, Through: 5},
 				{From: 4, Through: 6},
-				{From: 5, Through: 7},
 				{From: 5, Through: 6},
+				{From: 5, Through: 7},
 			},
 		},
 	} {

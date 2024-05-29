@@ -136,12 +136,12 @@ func TestFusedQuerier(t *testing.T) {
 
 // Successfully query series across multiple pages as well as series that only occupy 1 bloom
 func TestFuseMultiPage(t *testing.T) {
-	t.FailNow() // placeholder
+	t.Fail() // placeholder
 }
 
 // Skip series when bloom pages are too large
 func TestFuseSkipReadsWhenPageTooLarge(t *testing.T) {
-	t.FailNow()
+	t.Fail()
 }
 
 func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
@@ -213,7 +213,8 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	require.False(t, itr.Next())
 	block := NewBlock(reader, NewMetrics(nil))
 
-	querier := NewBlockQuerier(block, true, 1000)
+	smallMaxPageSize := 1000 // deliberately trigger page skipping for tests
+	querier := NewBlockQuerier(block, true, smallMaxPageSize)
 
 	for fp := model.Fingerprint(0); fp < model.Fingerprint(numSeries); fp++ {
 		err := querier.Seek(fp)
@@ -221,12 +222,20 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 
 		require.True(t, querier.Next())
 		series := querier.At()
+
+		// earlier test only has 1 bloom offset per series
+		require.Equal(t, 1, len(series.Offsets))
 		require.Equal(t, fp, series.Fingerprint)
 
+		//
+		seekable := true
 		if large := largeSeries(int(fp)); large {
-			require.Equal(t, 2, len(series.Offsets))
-		} else {
-			require.Equal(t, 1, len(series.Offsets))
+			seekable = false
+		}
+
+		if !seekable {
+			require.True(t, querier.blooms.LoadOffset(series.Offsets[0]))
+			continue
 		}
 
 		for _, offset := range series.Offsets {

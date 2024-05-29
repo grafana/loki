@@ -164,7 +164,7 @@ func NewSliceIter[T any](xs []T) *SliceIter[T] {
 }
 
 func (it *SliceIter[T]) Remaining() int {
-	return len(it.xs) - (max(0, it.cur))
+	return max(0, len(it.xs)-(it.cur+1))
 }
 
 func (it *SliceIter[T]) Next() bool {
