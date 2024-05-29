@@ -130,7 +130,7 @@ func DefaultConfig() *Config {
 		//  > message are more likely to be constants. Specifically, Drain
 		//  > selects the next internal node by the tokens in the beginning
 		//  > positions of the log message
-		LogClusterDepth: 8,
+		LogClusterDepth: 20,
 		// SimTh is basically a ratio of matching/total in the cluster.
 		// Cluster tokens: "foo <*> bar fred"
 		//       Log line: "foo bar baz qux"
