@@ -66,7 +66,7 @@ func TestFusedQuerier(t *testing.T) {
 	block := NewBlock(reader, NewMetrics(nil))
 	querier := NewBlockQuerier(block, true, DefaultMaxPageSize)
 
-	n := 2
+	n := 500 // series per request
 	nReqs := numSeries / n
 	var inputs [][]Request
 	var resChans []chan Output

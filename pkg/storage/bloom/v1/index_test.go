@@ -74,6 +74,8 @@ func TestSeriesEncoding_V2(t *testing.T) {
 			},
 		},
 		Offsets: []BloomOffset{
+			{Page: 0, ByteOffset: 0},
+			{Page: 0, ByteOffset: 100},
 			{Page: 1, ByteOffset: 2},
 			{Page: 2, ByteOffset: 1},
 		},

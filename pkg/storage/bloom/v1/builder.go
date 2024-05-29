@@ -415,16 +415,16 @@ func (b *IndexBuilder) Append(series SeriesWithOffsets) error {
 	// we don't want to update the previous pointers yet in case
 	// we need to flush the page first which would
 	// be passed the incorrect final fp/offset
-	previousFp, previousOffset := series.Encode(b.scratch, b.previousFp, b.previousOffset)
+	lastOffset := series.Encode(b.scratch, b.previousFp, b.previousOffset)
 
-	if !b.page.SpaceFor(b.scratch.Len()) {
+	if !b.page.SpaceFor(b.scratch.Len()) && b.page.Count() > 0 {
 		if err := b.flushPage(); err != nil {
 			return errors.Wrap(err, "flushing series page")
 		}
 
 		// re-encode now that a new page has been cut and we use delta-encoding
 		b.scratch.Reset()
-		previousFp, previousOffset = series.Encode(b.scratch, b.previousFp, b.previousOffset)
+		lastOffset = series.Encode(b.scratch, b.previousFp, b.previousOffset)
 	}
 
 	switch {
@@ -448,8 +448,8 @@ func (b *IndexBuilder) Append(series SeriesWithOffsets) error {
 	}
 
 	_ = b.page.Add(b.scratch.Get())
-	b.previousFp = previousFp
-	b.previousOffset = previousOffset
+	b.previousFp = series.Fingerprint
+	b.previousOffset = lastOffset
 	return nil
 }
 
@@ -548,7 +548,7 @@ type MergeBuilder struct {
 	// store
 	store Iterator[*Series]
 	// Add chunks to a bloom
-	populate func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch <-chan *BloomCreation)
+	populate func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
 	metrics  *Metrics
 }
 
@@ -559,7 +559,7 @@ type MergeBuilder struct {
 func NewMergeBuilder(
 	blocks Iterator[*SeriesWithBlooms],
 	store Iterator[*Series],
-	populate func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch <-chan *BloomCreation),
+	populate func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation),
 	metrics *Metrics,
 ) *MergeBuilder {
 	// combinedSeriesIter handles series with fingerprint collisions:

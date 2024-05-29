@@ -242,8 +242,15 @@ func TestMergeBuilder(t *testing.T) {
 	}
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch <-chan *BloomCreation) {
-		return
+	pop := func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation) {
+		for srcBlooms.Next() {
+			bloom := srcBlooms.At()
+			ch <- &BloomCreation{
+				Bloom:            bloom,
+				sourceBytesAdded: int(bloom.Capacity()) / 8,
+			}
+		}
+		close(ch)
 	}
 
 	// storage should contain references to all the series we ingested,
@@ -419,6 +426,18 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 		NewPeekingIter[*SeriesWithBlooms](orderedStore),
 	)
 
+	// We're not testing the ability to extend a bloom in this test
+	pop := func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation) {
+		for srcBlooms.Next() {
+			bloom := srcBlooms.At()
+			ch <- &BloomCreation{
+				Bloom:            bloom,
+				sourceBytesAdded: int(bloom.Capacity()) / 8,
+			}
+		}
+		close(ch)
+	}
+
 	// build the new block from the old ones
 	indexBuf, bloomBuf := bytes.NewBuffer(nil), bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomBuf)
@@ -426,8 +445,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	mb := NewMergeBuilder(
 		dedupedBlocks(blocks),
 		dedupedStore,
-		// We're not actually indexing new data in this test
-		func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch <-chan *BloomCreation) {},
+		pop,
 		NewMetrics(nil),
 	)
 	builder, err := NewBlockBuilder(blockOpts, writer)
@@ -435,7 +453,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 	checksum, _, err := mb.Build(builder)
 	require.Nil(t, err)
-	require.Equal(t, uint32(0xc7b4210b), checksum)
+	require.Equal(t, uint32(0xe150740d), checksum)
 
 	// ensure the new block contains one copy of all the data
 	// by comparing it against an iterator over the source data

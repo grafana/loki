@@ -378,10 +378,10 @@ func (s *SeriesWithOffsets) Encode(
 	enc *encoding.Encbuf,
 	previousFp model.Fingerprint,
 	previousOffset BloomOffset,
-) (model.Fingerprint, BloomOffset) {
+) BloomOffset {
 	sort.Sort(s.Chunks) // ensure order
 	// delta encode fingerprint
-	enc.PutBE64(uint64(s.Fingerprint - previousFp))
+	enc.PutUvarint64(uint64(s.Fingerprint - previousFp))
 	// encode number of bloom offsets in this series
 	enc.PutUvarint(len(s.Offsets))
 
@@ -399,7 +399,7 @@ func (s *SeriesWithOffsets) Encode(
 		lastEnd = chunk.Encode(enc, lastEnd)
 	}
 
-	return s.Fingerprint, lastOffset
+	return lastOffset
 }
 
 func (s *SeriesWithOffsets) Decode(
@@ -414,14 +414,14 @@ func (s *SeriesWithOffsets) Decode(
 		return s.decodeV1(dec, previousFp, previousOffset)
 	}
 
-	s.Fingerprint = previousFp + model.Fingerprint(dec.Be64())
+	s.Fingerprint = previousFp + model.Fingerprint(dec.Uvarint64())
 	numOffsets := dec.Uvarint()
 
 	s.Offsets = make([]BloomOffset, numOffsets)
 	var (
 		err        error
 		lastEnd    model.Time
-		lastOffset BloomOffset
+		lastOffset BloomOffset = previousOffset
 	)
 	for i := range s.Offsets {
 		err = s.Offsets[i].Decode(dec, lastOffset)
@@ -553,13 +553,16 @@ type BloomOffset struct {
 }
 
 func (o *BloomOffset) Encode(enc *encoding.Encbuf, previousOffset BloomOffset) {
+	// page offsets diffs are always ascending
 	enc.PutUvarint(o.Page - previousOffset.Page)
-	enc.PutUvarint(o.ByteOffset - previousOffset.ByteOffset)
+	// byte offset diffs will not be ascending when a new
+	// page is written
+	enc.PutVarint64(int64(o.ByteOffset - previousOffset.ByteOffset))
 }
 
 func (o *BloomOffset) Decode(dec *encoding.Decbuf, previousOffset BloomOffset) error {
 	o.Page = previousOffset.Page + dec.Uvarint()
-	o.ByteOffset = previousOffset.ByteOffset + dec.Uvarint()
+	o.ByteOffset = previousOffset.ByteOffset + int(dec.Varint64())
 	return dec.Err()
 }
 
