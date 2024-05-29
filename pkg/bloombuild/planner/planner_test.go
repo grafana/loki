@@ -414,7 +414,7 @@ func Test_BuilderLoop(t *testing.T) {
 			expectedBuilderLoopError: errPlannerIsNotRunning,
 		},
 		{
-			name:                     "error",
+			name:                     "error rpc",
 			limits:                   &fakeLimits{},
 			expectedBuilderLoopError: errPlannerIsNotRunning,
 			modifyBuilders: func(builders []*fakeBuilder) {
@@ -425,6 +425,21 @@ func Test_BuilderLoop(t *testing.T) {
 			resetBuilders: func(builders []*fakeBuilder) {
 				for _, builder := range builders {
 					builder.SetReturnError(false)
+				}
+			},
+		},
+		{
+			name:                     "error msg",
+			limits:                   &fakeLimits{},
+			expectedBuilderLoopError: errPlannerIsNotRunning,
+			modifyBuilders: func(builders []*fakeBuilder) {
+				for _, builder := range builders {
+					builder.SetReturnErrorMsg(true)
+				}
+			},
+			resetBuilders: func(builders []*fakeBuilder) {
+				for _, builder := range builders {
+					builder.SetReturnErrorMsg(false)
 				}
 			},
 		},
@@ -548,10 +563,11 @@ type fakeBuilder struct {
 	tasks []*protos.Task
 	grpc.ServerStream
 
-	returnError bool
-	wait        bool
-	ctx         context.Context
-	ctxCancel   context.CancelFunc
+	returnError    bool
+	returnErrorMsg bool
+	wait           bool
+	ctx            context.Context
+	ctxCancel      context.CancelFunc
 }
 
 func newMockBuilder(id string) *fakeBuilder {
@@ -570,6 +586,10 @@ func (f *fakeBuilder) ReceivedTasks() []*protos.Task {
 
 func (f *fakeBuilder) SetReturnError(b bool) {
 	f.returnError = b
+}
+
+func (f *fakeBuilder) SetReturnErrorMsg(b bool) {
+	f.returnErrorMsg = b
 }
 
 func (f *fakeBuilder) SetWait(b bool) {
@@ -620,8 +640,14 @@ func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
 		return nil, f.ctx.Err()
 	}
 
+	var errMsg string
+	if f.returnErrorMsg {
+		errMsg = fmt.Sprintf("fake error from %s", f.id)
+	}
+
 	return &protos.BuilderToPlanner{
 		BuilderID: f.id,
+		Error:     errMsg,
 	}, nil
 }
 
