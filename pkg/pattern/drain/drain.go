@@ -213,7 +213,7 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 	} else {
 		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
 		clusterName := strings.Join(newTemplateTokens, " ")
-		if strings.Contains(clusterName, "I0529") {
+		if strings.Contains(clusterName, "I0529") && len(clusterName) < 20 {
 			level.Debug(util_log.Logger).Log("msg", "cluster name too short", "new_token", strings.Join(tokens, " "), "matched_token", strings.Join(matchCluster.Tokens, " "), "new_cluster", clusterName)
 		}
 		if len(strings.ReplaceAll(strings.ReplaceAll(clusterName, d.config.ParamString, ""), " ", "")) < 8 {
