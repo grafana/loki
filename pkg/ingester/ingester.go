@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime/pprof"
 	"sync"
 	"time"
 
@@ -837,7 +838,12 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	if err != nil {
 		return &logproto.PushResponse{}, err
 	}
-	return &logproto.PushResponse{}, instance.Push(ctx, req)
+
+	pprof.Do(ctx, pprof.Labels("path", "write"), func(c context.Context) {
+		err = instance.Push(ctx, req)
+	})
+
+	return &logproto.PushResponse{}, err
 }
 
 // GetStreamRates returns a response containing all streams and their current rate
@@ -848,7 +854,11 @@ func (i *Ingester) GetStreamRates(ctx context.Context, _ *logproto.StreamRatesRe
 		defer sp.LogKV("event", "ingester finished handling GetStreamRates")
 	}
 
-	allRates := i.streamRateCalculator.Rates()
+	var allRates []logproto.StreamRate
+	pprof.Do(ctx, pprof.Labels("path", "write"), func(c context.Context) {
+		allRates = i.streamRateCalculator.Rates()
+	})
+
 	rates := make([]*logproto.StreamRate, len(allRates))
 	for idx := range allRates {
 		rates[idx] = &allRates[idx]
@@ -902,39 +912,45 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	if err != nil {
 		return err
 	}
-	it, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
-	if err != nil {
-		return err
-	}
 
-	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
-		storeReq := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
-			Selector:  req.Selector,
-			Direction: req.Direction,
-			Start:     start,
-			End:       end,
-			Limit:     req.Limit,
-			Shards:    req.Shards,
-			Deletes:   req.Deletes,
-			Plan:      req.Plan,
-		}}
-		storeItr, err := i.store.SelectLogs(ctx, storeReq)
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "log"), func(c context.Context) {
+		var it iter.EntryIterator
+		it, err = instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
 		if err != nil {
-			util.LogErrorWithContext(ctx, "closing iterator", it.Close)
-			return err
+			return
 		}
-		it = iter.NewMergeEntryIterator(ctx, []iter.EntryIterator{it, storeItr}, req.Direction)
-	}
 
-	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+		if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+			storeReq := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+				Selector:  req.Selector,
+				Direction: req.Direction,
+				Start:     start,
+				End:       end,
+				Limit:     req.Limit,
+				Shards:    req.Shards,
+				Deletes:   req.Deletes,
+				Plan:      req.Plan,
+			}}
+			var storeItr iter.EntryIterator
+			storeItr, err = i.store.SelectLogs(ctx, storeReq)
+			if err != nil {
+				util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+				return
+			}
+			it = iter.NewMergeEntryIterator(ctx, []iter.EntryIterator{it, storeItr}, req.Direction)
+		}
 
-	// sendBatches uses -1 to specify no limit.
-	batchLimit := int32(req.Limit)
-	if batchLimit == 0 {
-		batchLimit = -1
-	}
+		defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	return sendBatches(ctx, it, queryServer, batchLimit)
+		// sendBatches uses -1 to specify no limit.
+		batchLimit := int32(req.Limit)
+		if batchLimit == 0 {
+			batchLimit = -1
+		}
+		err = sendBatches(ctx, it, queryServer, batchLimit)
+	})
+
+	return err
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
@@ -965,35 +981,41 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		return err
 	}
 
-	it, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
-	if err != nil {
-		return err
-	}
-	if sp != nil {
-		sp.LogKV("event", "finished instance query sample", "selector", req.Selector, "start", req.Start, "end", req.End)
-	}
-
-	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
-		storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
-			Start:    start,
-			End:      end,
-			Selector: req.Selector,
-			Shards:   req.Shards,
-			Deletes:  req.Deletes,
-			Plan:     req.Plan,
-		}}
-		storeItr, err := i.store.SelectSamples(ctx, storeReq)
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "metric"), func(c context.Context) {
+		var it iter.SampleIterator
+		it, err = instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
 		if err != nil {
-			util.LogErrorWithContext(ctx, "closing iterator", it.Close)
-			return err
+			return
+		}
+		if sp != nil {
+			sp.LogKV("event", "finished instance query sample", "selector", req.Selector, "start", req.Start, "end", req.End)
 		}
 
-		it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
-	}
+		if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+			storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+				Start:    start,
+				End:      end,
+				Selector: req.Selector,
+				Shards:   req.Shards,
+				Deletes:  req.Deletes,
+				Plan:     req.Plan,
+			}}
+			var storeItr iter.SampleIterator
+			storeItr, err = i.store.SelectSamples(ctx, storeReq)
+			if err != nil {
+				util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+				return
+			}
 
-	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+			it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+		}
 
-	return sendSampleBatches(ctx, it, queryServer)
+		defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+
+		err = sendSampleBatches(ctx, it, queryServer)
+	})
+
+	return err
 }
 
 // asyncStoreMaxLookBack returns a max look back period only if active index type is one of async index stores like `boltdb-shipper` and `tsdb`.
