@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 )
@@ -134,23 +133,4 @@ func EqualIterators[T any](t *testing.T, test func(a, b T), expected, actual Ite
 	require.False(t, actual.Next())
 	require.Nil(t, expected.Err())
 	require.Nil(t, actual.Err())
-}
-
-func populateAndConsumeBloom(
-	bt *BloomTokenizer,
-	s Series,
-	blooms SizedIterator[*Bloom],
-	chks Iterator[ChunkRefWithIter],
-) (res []*Bloom, err error) {
-	var e multierror.MultiError
-	ch := make(chan *BloomCreation)
-	go bt.Populate(&s, blooms, chks, ch)
-	for x := range ch {
-		if x.err != nil {
-			e = append(e, x.err)
-		} else {
-			res = append(res, x.Bloom)
-		}
-	}
-	return res, e.Err()
 }

@@ -136,7 +136,114 @@ func TestFusedQuerier(t *testing.T) {
 
 // Successfully query series across multiple pages as well as series that only occupy 1 bloom
 func TestFuseMultiPage(t *testing.T) {
-	t.Fail() // placeholder
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+	reader := NewByteReader(indexBuf, bloomsBuf)
+
+	builder, err := NewBlockBuilder(
+		BlockOptions{
+			Schema: Schema{
+				version:     DefaultSchemaVersion,
+				encoding:    chunkenc.EncSnappy,
+				nGramLength: 3, // we test trigrams
+				nGramSkip:   0,
+			},
+			SeriesPageSize: 100,
+			BloomPageSize:  10, // So we force one bloom per page
+		},
+		writer,
+	)
+	require.Nil(t, err)
+
+	fp := model.Fingerprint(1)
+	chk := ChunkRef{
+		From:     0,
+		Through:  10,
+		Checksum: 0,
+	}
+	series := &Series{
+		Fingerprint: fp,
+		Chunks:      []ChunkRef{chk},
+	}
+
+	buf, prefixLn := prefixedToken(3, chk, nil)
+
+	b1 := &Bloom{
+		*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+	}
+	key1, key2 := []byte("foo"), []byte("bar")
+	b1.Add(key1)
+	b1.Add(append(buf[:prefixLn], key1...))
+
+	b2 := &Bloom{
+		*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+	}
+	b2.Add(key2)
+	b2.Add(append(buf[:prefixLn], key2...))
+
+	_, err = builder.BuildFrom(NewSliceIter([]SeriesWithBlooms{
+		{
+			series,
+			NewSliceIter([]*Bloom{
+				b1, b2,
+			}),
+		},
+	}))
+	require.NoError(t, err)
+
+	block := NewBlock(reader, NewMetrics(nil))
+
+	querier := NewBlockQuerier(block, true, 100<<20) // 100MB too large to interfere
+
+	keys := [][]byte{
+		key1,          // found in the first bloom
+		key2,          // found in the second bloom
+		[]byte("not"), // not found in any bloom
+	}
+
+	chans := make([]chan Output, len(keys))
+	for i := range chans {
+		chans[i] = make(chan Output, 1) // buffered once to not block in test
+	}
+
+	req := func(ngram []byte, ch chan Output) Request {
+		return Request{
+			Fp:   fp,
+			Chks: []ChunkRef{chk},
+			Search: stringTest{
+				ngrams: [][]byte{ngram},
+			},
+			Response: ch,
+			Recorder: NewBloomRecorder(context.Background(), "unknown"),
+		}
+	}
+	var reqs []Request
+	for i, key := range keys {
+		reqs = append(reqs, req(key, chans[i]))
+	}
+
+	fused := querier.Fuse(
+		[]PeekingIterator[Request]{
+			NewPeekingIter(NewSliceIter(reqs)),
+		},
+		log.NewNopLogger(),
+	)
+
+	require.NoError(t, fused.Run())
+
+	// assume they're returned in order
+	for i := range reqs {
+		out := <-chans[i]
+
+		// the last check doesn't match
+		if i == len(keys)-1 {
+			require.Equal(t, ChunkRefs{chk}, out.Removals)
+			continue
+		}
+		require.Equal(t, ChunkRefs(nil), out.Removals, "on index %d and key %s", i, string(keys[i]))
+	}
+
 }
 
 // Skip series when bloom pages are too large

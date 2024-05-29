@@ -453,7 +453,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 	checksum, _, err := mb.Build(builder)
 	require.Nil(t, err)
-	require.Equal(t, uint32(0xe150740d), checksum)
+	require.Equal(t, uint32(0x2a6cdba6), checksum)
 
 	// ensure the new block contains one copy of all the data
 	// by comparing it against an iterator over the source data

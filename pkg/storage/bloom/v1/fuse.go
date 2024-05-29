@@ -256,7 +256,10 @@ func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs
 	type inputChunks struct {
 		Missing  ChunkRefs // chunks that do not exist in the blooms and cannot be queried
 		InBlooms ChunkRefs // chunks which do exist in the blooms and can be queried
-		Removals ChunkRefs // chunks which should be removed
+
+		found map[int]bool // map of the index in `InBlooms` to whether the chunk
+		// was found in _any_ of the blooms for the series. In order to
+		// be eligible for removal, a chunk must be found in _no_ blooms.
 	}
 
 	inputs := make([]inputChunks, 0, len(reqs))
@@ -265,6 +268,8 @@ func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs
 		inputs = append(inputs, inputChunks{
 			Missing:  missing,
 			InBlooms: inBlooms,
+
+			found: make(map[int]bool, len(inBlooms)),
 		})
 	}
 
@@ -298,13 +303,10 @@ func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs
 			// shortcut: series level removal
 			// we can skip testing chunk keys individually if the bloom doesn't match
 			// the query
-			if matchedSeries := req.Search.Matches(bloom); !matchedSeries {
-				if inputs[j].Removals == nil {
-					inputs[j].Removals = inputs[j].InBlooms
-				}
-				// NB(owen-d): if removals for this query are non-nil, we don't need to do anything here
-				// because `intersect(set, subset)` will always return `subset`
-
+			// NB(owen-d): we can only apply this if there is 1 bloom in the series.
+			// Otherwise, some of the keys may be in the first and some in the second -- neither
+			// are sufficient to perform this optimization
+			if len(series.Offsets) == 1 && !req.Search.Matches(bloom) {
 				// Nothing else needs to be done for this (bloom, request);
 				// check the next input request
 				continue
@@ -315,37 +317,59 @@ func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs
 			// all chunks have the same encoding length. tl;dr: it's weird/unnecessary to have
 			// these defined this way and recreated across each bloom
 			var (
-				perBloomRemovals ChunkRefs
-				tokenBuf         []byte
-				prefixLen        int
+				tokenBuf  []byte
+				prefixLen int
 			)
-			for _, chk := range inputs[j].InBlooms {
+			for k, chk := range inputs[j].InBlooms {
+				// if we've already found this chunk in a previous bloom, skip testing it
+				if inputs[j].found[k] {
+					continue
+				}
+
 				// Get buf to concatenate the chunk and search token
 				tokenBuf, prefixLen = prefixedToken(schema.NGramLen(), chk, tokenBuf)
-				if !req.Search.MatchesWithPrefixBuf(bloom, tokenBuf, prefixLen) {
-					perBloomRemovals = append(perBloomRemovals, chk)
+				if matched := req.Search.MatchesWithPrefixBuf(bloom, tokenBuf, prefixLen); matched {
+					inputs[j].found[k] = true
 				}
 			}
 
-			if inputs[j].Removals == nil {
-				inputs[j].Removals = perBloomRemovals
-			} else {
-				inputs[j].Removals = inputs[j].Removals.Intersect(perBloomRemovals)
-			}
 		}
 
 	}
 
 	for i, req := range reqs {
+
+		removals := removalsFor(inputs[i].InBlooms, inputs[i].found)
+
 		req.Recorder.record(
 			1, len(inputs[i].InBlooms), // found
 			0, 0, // skipped
 			0, len(inputs[i].Missing), // missed
-			len(inputs[i].Removals), // filtered
+			len(removals), // filtered
 		)
 		req.Response <- Output{
 			Fp:       series.Fingerprint,
-			Removals: inputs[i].Removals,
+			Removals: removals,
 		}
 	}
+}
+
+func removalsFor(chunks ChunkRefs, found map[int]bool) ChunkRefs {
+	// shortcut: all chunks removed
+	if len(found) == 0 {
+		return chunks
+	}
+
+	// shortcut: no chunks removed
+	if len(found) == len(chunks) {
+		return nil
+	}
+
+	removals := make(ChunkRefs, 0, len(chunks))
+	for i, chk := range chunks {
+		if !found[i] {
+			removals = append(removals, chk)
+		}
+	}
+	return removals
 }
