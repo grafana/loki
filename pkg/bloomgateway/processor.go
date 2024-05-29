@@ -126,7 +126,7 @@ func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.Close
 	return concurrency.ForEachJob(ctx, len(bqs), p.concurrency, func(ctx context.Context, i int) error {
 		bq := bqs[i]
 		if bq == nil {
-			// TODO(chaudum): Add metric for skipped blocks
+			p.metrics.blocksNotAvailable.WithLabelValues(p.id).Inc()
 			return nil
 		}
 

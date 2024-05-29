@@ -22,7 +22,7 @@ Log data is then compressed and stored in chunks in an object store such as Amaz
 
 A typical Loki-based logging stack consists of 3 components:
 
-- **Agent** - An agent or client, for example Promtail, which is distributed with Loki, or the Grafana Agent. The agent scrapes logs, turns the logs into streams by adding labels, and pushes the streams to Loki through an HTTP API.
+- **Agent** - An agent or client, for example Grafana Alloy, or Promtail, which is distributed with Loki. The agent scrapes logs, turns the logs into streams by adding labels, and pushes the streams to Loki through an HTTP API.
 
 - **Loki** - The main server, responsible for ingesting and storing logs and processing queries. It can be deployed in three different configurations, for more information see [deployment modes]({{< relref "../get-started/deployment-modes" >}}).
   

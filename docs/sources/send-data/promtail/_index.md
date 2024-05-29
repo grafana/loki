@@ -12,6 +12,10 @@ Promtail is an agent which ships the contents of local logs to a private Grafana
 instance or [Grafana Cloud](/oss/loki). It is usually
 deployed to every machine that runs applications which need to be monitored.
 
+{{< admonition type="note" >}}
+Promtail is feature complete.  All future feature development will occur in Grafana Alloy.
+{{< /admonition >}}
+
 It primarily:
 
 - Discovers targets
