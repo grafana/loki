@@ -425,16 +425,21 @@ func (r *ChunkRef) Less(other ChunkRef) bool {
 	return r.Checksum < other.Checksum
 }
 
+// Compare returns
+//
+//	-1 if r is less than other,
+//	 0 if r equals other,
+//	+1 if r is greater than other.
 func (r *ChunkRef) Cmp(other ChunkRef) int {
 	if r.From != other.From {
-		return int(other.From) - int(r.From)
+		return int(r.From) - int(other.From)
 	}
 
 	if r.Through != other.Through {
-		return int(other.Through) - int(r.Through)
+		return int(r.Through) - int(other.Through)
 	}
 
-	return int(other.Checksum) - int(r.Checksum)
+	return int(r.Checksum) - int(other.Checksum)
 }
 
 func (r *ChunkRef) Encode(enc *encoding.Encbuf, previousEnd model.Time) model.Time {
