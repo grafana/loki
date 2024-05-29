@@ -557,6 +557,10 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 	for p.isRunningOrStopping() {
 		item, idx, err := p.tasksQueue.Dequeue(builder.Context(), lastIndex, builderID)
 		if err != nil {
+			if errors.Is(err, queue.ErrStopped) {
+				// Planner is stopping, break the loop and return
+				break
+			}
 			return fmt.Errorf("error dequeuing task: %w", err)
 		}
 		lastIndex = idx

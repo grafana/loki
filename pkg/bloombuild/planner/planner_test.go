@@ -3,6 +3,7 @@ package planner
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -398,10 +399,9 @@ func Test_BuilderLoop(t *testing.T) {
 	)
 
 	for _, tc := range []struct {
-		name   string
-		limits Limits
-
-		testRetry bool
+		name                     string
+		limits                   Limits
+		expectedBuilderLoopError error
 
 		// modifyBuilders should leave the builders in a state where they will not return or return an error
 		modifyBuilders func(builders []*fakeBuilder)
@@ -409,13 +409,14 @@ func Test_BuilderLoop(t *testing.T) {
 		resetBuilders func(builders []*fakeBuilder)
 	}{
 		{
-			name:   "success",
-			limits: &fakeLimits{},
+			name:                     "success",
+			limits:                   &fakeLimits{},
+			expectedBuilderLoopError: errPlannerIsNotRunning,
 		},
 		{
-			name:      "error",
-			limits:    &fakeLimits{},
-			testRetry: true,
+			name:                     "error",
+			limits:                   &fakeLimits{},
+			expectedBuilderLoopError: errPlannerIsNotRunning,
 			modifyBuilders: func(builders []*fakeBuilder) {
 				for _, builder := range builders {
 					builder.SetReturnError(true)
@@ -432,7 +433,7 @@ func Test_BuilderLoop(t *testing.T) {
 			limits: &fakeLimits{
 				timeout: 1 * time.Second,
 			},
-			testRetry: true,
+			expectedBuilderLoopError: errPlannerIsNotRunning,
 			modifyBuilders: func(builders []*fakeBuilder) {
 				for _, builder := range builders {
 					builder.SetWait(true)
@@ -444,10 +445,21 @@ func Test_BuilderLoop(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:   "context cancel",
+			limits: &fakeLimits{},
+			// Builders cancel the context when they disconnect. We forward this error to the planner.
+			expectedBuilderLoopError: context.Canceled,
+			modifyBuilders: func(builders []*fakeBuilder) {
+				for _, builder := range builders {
+					builder.CancelContext(true)
+				}
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			logger := log.NewNopLogger()
-			//logger := log.NewLogfmtLogger(os.Stdout)
+			//logger := log.NewNopLogger()
+			logger := log.NewLogfmtLogger(os.Stdout)
 
 			cfg := Config{
 				PlanningInterval:        1 * time.Hour,
@@ -477,9 +489,8 @@ func Test_BuilderLoop(t *testing.T) {
 				builders = append(builders, builder)
 
 				go func() {
-					// We ignore the error since when the planner is stopped,
-					// the loop will return an error (queue closed)
-					_ = planner.BuilderLoop(builder)
+					err = planner.BuilderLoop(builder)
+					require.ErrorIs(t, err, tc.expectedBuilderLoopError)
 				}()
 			}
 
@@ -495,41 +506,39 @@ func Test_BuilderLoop(t *testing.T) {
 			// Finally, the queue should be empty
 			require.Equal(t, 0, planner.totalPendingTasks())
 
-			if !tc.testRetry {
-				// We are done with the test
-				return
+			if tc.modifyBuilders != nil {
+				// Configure builders to return errors
+				tc.modifyBuilders(builders)
+
+				// Enqueue tasks again
+				for _, task := range tasks {
+					err = planner.enqueueTask(task)
+					require.NoError(t, err)
+				}
+
+				// Tasks should not be consumed
+				require.Neverf(
+					t, func() bool {
+						return planner.totalPendingTasks() == 0
+					},
+					5*time.Second, 10*time.Millisecond,
+					"all tasks were consumed but they should not be",
+				)
 			}
 
-			// Configure builders to return errors
-			tc.modifyBuilders(builders)
+			if tc.resetBuilders != nil {
+				// Configure builders to return no errors
+				tc.resetBuilders(builders)
 
-			// Enqueue tasks again
-			for _, task := range tasks {
-				err = planner.enqueueTask(task)
-				require.NoError(t, err)
+				// Now all tasks should be consumed
+				require.Eventuallyf(
+					t, func() bool {
+						return planner.totalPendingTasks() == 0
+					},
+					5*time.Second, 10*time.Millisecond,
+					"tasks not consumed, pending: %d", planner.totalPendingTasks(),
+				)
 			}
-
-			// Tasks should not be consumed
-			require.Neverf(
-				t, func() bool {
-					return planner.totalPendingTasks() == 0
-				},
-				5*time.Second, 10*time.Millisecond,
-				"all tasks were consumed but they should not be",
-			)
-
-			// Configure builders to return no errors
-			tc.resetBuilders(builders)
-
-			// Now all tasks should be consumed
-			require.Eventuallyf(
-				t, func() bool {
-					return planner.totalPendingTasks() == 0
-				},
-				5*time.Second, 10*time.Millisecond,
-				"tasks not consumed, pending: %d", planner.totalPendingTasks(),
-			)
-
 		})
 	}
 }
@@ -541,10 +550,18 @@ type fakeBuilder struct {
 
 	returnError bool
 	wait        bool
+	ctx         context.Context
+	ctxCancel   context.CancelFunc
 }
 
 func newMockBuilder(id string) *fakeBuilder {
-	return &fakeBuilder{id: id}
+	ctx, cancel := context.WithCancel(context.Background())
+
+	return &fakeBuilder{
+		id:        id,
+		ctx:       ctx,
+		ctxCancel: cancel,
+	}
 }
 
 func (f *fakeBuilder) ReceivedTasks() []*protos.Task {
@@ -559,11 +576,26 @@ func (f *fakeBuilder) SetWait(b bool) {
 	f.wait = b
 }
 
+func (f *fakeBuilder) CancelContext(b bool) {
+	if b {
+		f.ctxCancel()
+		return
+	}
+
+	// Reset context
+	f.ctx, f.ctxCancel = context.WithCancel(context.Background())
+}
+
 func (f *fakeBuilder) Context() context.Context {
-	return context.Background()
+	return f.ctx
 }
 
 func (f *fakeBuilder) Send(req *protos.PlannerToBuilder) error {
+	if f.ctx.Err() != nil {
+		// Context was canceled
+		return f.ctx.Err()
+	}
+
 	task, err := protos.FromProtoTask(req.Task)
 	if err != nil {
 		return err
@@ -581,6 +613,11 @@ func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
 	// Wait until `wait` is false
 	for f.wait {
 		time.Sleep(time.Second)
+	}
+
+	if f.ctx.Err() != nil {
+		// Context was canceled
+		return nil, f.ctx.Err()
 	}
 
 	return &protos.BuilderToPlanner{
