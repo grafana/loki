@@ -363,6 +363,7 @@ func (i *Ingester) encodeChunk(ctx context.Context, ch *chunk.Chunk, desc *chunk
 // chunk to have another opportunity to be flushed.
 func (i *Ingester) flushChunk(ctx context.Context, ch *chunk.Chunk) error {
 	if err := i.store.Put(ctx, []chunk.Chunk{*ch}); err != nil {
+		i.metrics.chunksFlushFailures.Inc()
 		return fmt.Errorf("store put chunk: %w", err)
 	}
 	i.metrics.flushedChunksStats.Inc(1)

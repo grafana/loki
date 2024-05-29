@@ -46,6 +46,7 @@ type ingesterMetrics struct {
 	chunkSizePerTenant            *prometheus.CounterVec
 	chunkAge                      prometheus.Histogram
 	chunkEncodeTime               prometheus.Histogram
+	chunksFlushFailures           prometheus.Counter
 	chunksFlushedPerReason        *prometheus.CounterVec
 	chunkLifespan                 prometheus.Histogram
 	flushedChunksStats            *analytics.Counter
@@ -228,6 +229,11 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			Help:      "Distribution of chunk encode times.",
 			// 10ms to 10s.
 			Buckets: prometheus.ExponentialBuckets(0.01, 4, 6),
+		}),
+		chunksFlushFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_chunks_flush_failures_total",
+			Help:      "Total number of flush failures.",
 		}),
 		chunksFlushedPerReason: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
