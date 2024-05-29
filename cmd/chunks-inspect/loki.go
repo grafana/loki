@@ -257,14 +257,14 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 		block.rawData = data[block.dataOffset : block.dataOffset+dataLength]
 		block.storedChecksum = binary.BigEndian.Uint32(data[block.dataOffset+dataLength : block.dataOffset+dataLength+4])
 		block.computedChecksum = crc32.Checksum(block.rawData, castagnoliTable)
-		block.originalData, block.entries, err = parseLokiBlock(compression, block.rawData, structuredMetadataSymbols)
+		block.originalData, block.entries, err = parseLokiBlock(f, compression, block.rawData, structuredMetadataSymbols)
 		lokiChunk.blocks = append(lokiChunk.blocks, block)
 	}
 
 	return lokiChunk, nil
 }
 
-func parseLokiBlock(compression Encoding, data []byte, symbols []string) ([]byte, []LokiEntry, error) {
+func parseLokiBlock(format byte, compression Encoding, data []byte, symbols []string) ([]byte, []LokiEntry, error) {
 	r, err := compression.readerFn(bytes.NewReader(data))
 	if err != nil {
 		return nil, nil, err
@@ -294,7 +294,7 @@ func parseLokiBlock(compression Encoding, data []byte, symbols []string) ([]byte
 		decompressed = decompressed[lineLength:]
 
 		var structuredMetdata []label
-		if symbols != nil && len(symbols) > 0 {
+		if format >= chunkFormatV4 {
 			// The length of the symbols section is encoded first, but we don't really need it here because everything is a Uvarint
 			// Read it to advance the buffer to the next element.
 			_, decompressed, err = readUvarint(err, decompressed)
