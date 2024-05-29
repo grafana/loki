@@ -2,7 +2,9 @@ package drain
 
 import (
 	"bufio"
+	"fmt"
 	"os"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -420,7 +422,6 @@ func TestDrain_TrainGeneratesMatchablePatterns(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) {
@@ -493,5 +494,65 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 			}
 		})
 	}
+}
 
+func TestManyStreams(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		drain     *Drain
+		inputFile string
+		patterns  []string
+	}{
+		// {
+		// 	name:      `Systemd default`,
+		// 	drain:     New(DefaultConfig(), nil),
+		// 	inputFile: `testdata/systemd-journal.txt`,
+		// 	patterns:  []string{},
+		// },
+		{
+			name: `Systemd 30`,
+			drain: New(&Config{
+				LogClusterDepth: 20,
+				SimTh:           0.3,
+				MaxChildren:     100,
+				ParamString:     `<_>`,
+				MaxClusters:     50000,
+				// ExtraDelimiters: []string{":", "-", ","},
+			}, nil),
+			inputFile: `testdata/agent-logfmt.txt`,
+			patterns:  []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, err := os.Open(tt.inputFile)
+			require.NoError(t, err)
+			defer file.Close()
+
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				line := scanner.Text()
+
+				// line = strings.TrimSpace(strings.Join(strings.Split(line, "}")[1:], "}"))
+				tt.drain.Train(line, 0)
+			}
+
+			clusters := tt.drain.Clusters()
+			sort.Slice(clusters, func(i, j int) bool {
+				return clusters[i].String() > clusters[j].String()
+			})
+			fmt.Println(len(clusters))
+			for _, cluster := range clusters {
+				total := int64(0)
+				for _, s := range cluster.Chunks.samples() {
+					total += s.Value
+				}
+				if total > 1 {
+					fmt.Printf("%d "+cluster.String()+"\n", total)
+				}
+			}
+		})
+	}
 }
