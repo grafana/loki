@@ -28,10 +28,12 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/hashicorp/golang-lru/v2/simplelru"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type Config struct {
@@ -130,7 +132,7 @@ func DefaultConfig() *Config {
 		//  > message are more likely to be constants. Specifically, Drain
 		//  > selects the next internal node by the tokens in the beginning
 		//  > positions of the log message
-		LogClusterDepth: 30,
+		LogClusterDepth: 20,
 		// SimTh is basically a ratio of matching/total in the cluster.
 		// Cluster tokens: "foo <*> bar fred"
 		//       Log line: "foo bar baz qux"
@@ -139,7 +141,7 @@ func DefaultConfig() *Config {
 		// Both SimTh and MaxClusterDepth impact branching factor: the greater
 		// MaxClusterDepth and SimTh, the less the chance that there will be
 		// "similar" clusters, but the greater the footprint.
-		SimTh:       0.6,
+		SimTh:       0.3,
 		MaxChildren: 100,
 		ParamString: `<_>`,
 		MaxClusters: 300,
@@ -191,6 +193,7 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 	if matchCluster == nil {
 		d.clustersCounter++
 		clusterID := d.clustersCounter
+
 		matchCluster = &LogCluster{
 			Tokens:   tokens,
 			id:       clusterID,
@@ -206,6 +209,11 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 		}
 	} else {
 		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
+		clusterName := stringer(newTemplateTokens)
+		if len(strings.ReplaceAll(strings.ReplaceAll(clusterName, d.config.ParamString, ""), " ", "")) < 8 {
+			level.Debug(util_log.Logger).Log("msg", "cluster name too short", "new_token", tokens, "matched_token", matchCluster.Tokens, "new_cluster", clusterName)
+			return nil
+		}
 		matchCluster.Tokens = newTemplateTokens
 		matchCluster.append(model.TimeFromUnixNano(ts))
 		// Touch cluster to update its state in the cache.
