@@ -3828,7 +3828,8 @@ results_cache:
 [parallelise_shardable_queries: <boolean> | default = true]
 
 # A comma-separated list of LogQL vector and range aggregations that should be
-# sharded
+# sharded. Possible values 'quantile_over_time', 'last_over_time',
+# 'first_over_time'.
 # CLI flag: -querier.shard-aggregations
 [shard_aggregations: <string> | default = ""]
 
