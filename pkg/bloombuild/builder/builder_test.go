@@ -11,14 +11,52 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
 func Test_BuilderLoop(t *testing.T) {
 	logger := log.NewNopLogger()
+
+	schemaCfg := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From: parseDayTime("2023-09-01"),
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: 24 * time.Hour,
+					},
+				},
+				IndexType:  types.TSDBType,
+				ObjectType: types.StorageTypeFileSystem,
+				Schema:     "v13",
+				RowShards:  16,
+			},
+		},
+	}
+	storageCfg := storage.Config{
+		BloomShipperConfig: bloomshipperconfig.Config{
+			WorkingDirectory:    []string{t.TempDir()},
+			DownloadParallelism: 1,
+			BlocksCache: bloomshipperconfig.BlocksCacheConfig{
+				SoftLimit: flagext.Bytes(10 << 20),
+				HardLimit: flagext.Bytes(20 << 20),
+				TTL:       time.Hour,
+			},
+		},
+		FSConfig: local.FSConfig{
+			Directory: t.TempDir(),
+		},
+	}
 
 	tasks := make([]*protos.ProtoTask, 256)
 	for i := range tasks {
@@ -30,12 +68,13 @@ func Test_BuilderLoop(t *testing.T) {
 	server, err := newFakePlannerServer(tasks)
 	require.NoError(t, err)
 
+	limits := fakeLimits{}
 	cfg := Config{
 		PlannerAddress: server.Addr(),
 	}
 	flagext.DefaultValues(&cfg.GrpcConfig)
 
-	builder, err := New(cfg, logger, prometheus.DefaultRegisterer)
+	builder, err := New(cfg, limits, schemaCfg, storageCfg, storage.NewClientMetrics(), nil, nil, logger, prometheus.DefaultRegisterer)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err = services.StopAndAwaitTerminated(context.Background(), builder)
@@ -120,4 +159,42 @@ func (f *fakePlannerServer) BuilderLoop(srv protos.PlannerForBuilder_BuilderLoop
 func (f *fakePlannerServer) NotifyBuilderShutdown(_ context.Context, _ *protos.NotifyBuilderShutdownRequest) (*protos.NotifyBuilderShutdownResponse, error) {
 	f.shutdownCalled = true
 	return &protos.NotifyBuilderShutdownResponse{}, nil
+}
+
+type fakeLimits struct {
+}
+
+func (f fakeLimits) BloomBlockEncoding(tenantID string) string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (f fakeLimits) BloomNGramLength(tenantID string) int {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (f fakeLimits) BloomNGramSkip(tenantID string) int {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (f fakeLimits) BloomCompactorMaxBlockSize(tenantID string) int {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (f fakeLimits) BloomCompactorMaxBloomSize(tenantID string) int {
+	//TODO implement me
+	panic("implement me")
+}
+
+func parseDayTime(s string) config.DayTime {
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		panic(err)
+	}
+	return config.DayTime{
+		Time: model.TimeFromUnix(t.Unix()),
+	}
 }
