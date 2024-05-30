@@ -36,7 +36,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/bloomcompactor"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/mempool"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -81,6 +80,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/limiter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 	"github.com/grafana/loki/v3/pkg/util/querylimits"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -732,6 +732,7 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 	reg := prometheus.DefaultRegisterer
 	bsCfg := t.Cfg.StorageConfig.BloomShipperConfig
 
+	// Set global BloomPageAllocator variable
 	switch bsCfg.MemoryManagement.BloomPageAllocationType {
 	case "simple":
 		bloomshipper.BloomPageAllocator = v1.HeapAllocator

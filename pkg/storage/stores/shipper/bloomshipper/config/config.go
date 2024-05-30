@@ -11,9 +11,9 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/mempool"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	lokiflagext "github.com/grafana/loki/v3/pkg/util/flagext"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 type Config struct {
