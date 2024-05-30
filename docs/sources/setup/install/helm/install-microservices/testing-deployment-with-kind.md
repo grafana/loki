@@ -10,7 +10,7 @@ keywords:
 ---
 
 
-# Test the Microservice Helm chart with Kind
+# Test the microservice Helm chart with Kind
 <!-- vale Grafana.Quotes = NO -->
 <!-- vale Grafana.Quotes = YES -->
 
