@@ -1,6 +1,7 @@
 package pattern
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 
@@ -151,6 +152,37 @@ var fixtures = []struct {
 		[]string{"POST", "/api/v1/locations", "204", "154", "0", "226", "100", "10.0.35.28", "nsq2http", "tcp://10.0.2.1:80"},
 		true,
 	},
+	{
+		// UTF-8
+		`unicode <emoji> character`,
+		`unicode 🤷 character`,
+		[]string{`🤷`},
+		true,
+	},
+	{
+		"unicode ▶ <what>",
+		"unicode ▶ character",
+		[]string{"character"},
+		true,
+	},
+	{
+		`13:25:18.033494 ▶ INFO  route <what> sending to`,
+		`13:25:18.033494 ▶ INFO  route ops sending to`,
+		[]string{"ops"},
+		true,
+	},
+	{
+		`<one> ▶ <two>`,
+		`Hello ▶ World`,
+		[]string{"Hello", "World"},
+		true,
+	},
+}
+
+func Test_BytesIndexUnicode(t *testing.T) {
+	data := []byte("Hello ▶ World")
+	index := bytes.Index(data, []byte("▶"))
+	require.Equal(t, 6, index)
 }
 
 func Test_matcher_Matches(t *testing.T) {
