@@ -63,7 +63,7 @@ func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatte
 	if err != nil {
 		return nil, err
 	}
-	return prunePatterns(resp, minClusterSize), nil
+	return resp, nil
 }
 
 func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int) *logproto.QueryPatternsResponse {
