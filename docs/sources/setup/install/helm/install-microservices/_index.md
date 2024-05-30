@@ -176,6 +176,7 @@ To configure Loki to use AWS S3 as the object storage, you need to provide the f
         admin: "admin"
       s3:
         s3: <endpoint>
+        endpoint: <endpoint>
         accessKeyId: <accessKeyID>
         secretAccessKey: <secretAccessKey>
         s3ForcePathStyle: true
