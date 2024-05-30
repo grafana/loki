@@ -142,6 +142,50 @@ func TestTokenizerPopulate(t *testing.T) {
 	}
 }
 
+func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
+	var testLine = "this is a log line"
+	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
+
+	var lbsList []labels.Labels
+	lbsList = append(lbsList, labels.FromStrings("foo", "bar"))
+
+	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+	_ = memChunk.Append(&push.Entry{
+		Timestamp: time.Unix(0, 1),
+		Line:      testLine,
+	})
+	itr, err := memChunk.Iterator(
+		context.Background(),
+		time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
+		time.Unix(0, math.MaxInt64),
+		logproto.FORWARD,
+		log.NewNoopPipeline().ForStream(nil),
+	)
+	require.Nil(t, err)
+
+	series := Series{
+		Fingerprint: model.Fingerprint(lbsList[0].Hash()),
+	}
+
+	blooms, err := populateAndConsumeBloom(
+		bt,
+		series,
+		NewEmptyIter[*Bloom](),
+		NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
+			Itr: itr}}),
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(blooms))
+
+	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
+	toks := tokenizer.Tokens(testLine)
+	for toks.Next() {
+		token := toks.At()
+		require.True(t, blooms[0].Test(token))
+	}
+
+}
+
 func chunkRefItrFromLines(lines ...string) (iter.EntryIterator, error) {
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	for i, line := range lines {
@@ -277,7 +321,7 @@ func BenchmarkMapClear(b *testing.B) {
 			bt.cache[fmt.Sprint(k)] = k
 		}
 
-		clearCache(bt.cache)
+		clear(bt.cache)
 	}
 }
 

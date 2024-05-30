@@ -89,22 +89,36 @@ func estimatedCount(m uint, p float64) uint {
 	return uint(-float64(m) * math.Log(1-p))
 }
 
+func (bt *BloomTokenizer) newBloom() *Bloom {
+	return &Bloom{
+		// TODO parameterise SBF options. fp_rate
+		ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+	}
+}
+
 func (bt *BloomTokenizer) Populate(
 	series *Series,
 	blooms SizedIterator[*Bloom],
 	chks Iterator[ChunkRefWithIter],
 	ch chan *BloomCreation,
 ) {
+	var next bool
+
 	// All but the last bloom are considered full -- send back unaltered
-	for blooms.Next() && blooms.Remaining() > 0 {
+	for next = blooms.Next(); next && blooms.Remaining() > 0; next = blooms.Next() {
 		ch <- &BloomCreation{
 			Bloom:            blooms.At(),
 			sourceBytesAdded: 0,
 		}
 	}
 
-	// The last bloom has been made available via the `Next()` call above
-	bloom := blooms.At()
+	var bloom *Bloom
+	if next {
+		// The last bloom has been made available via the `Next()` call above
+		bloom = blooms.At()
+	} else {
+		bloom = bt.newBloom()
+	}
 
 	var bytesAdded int
 
@@ -130,10 +144,7 @@ func (bt *BloomTokenizer) Populate(
 
 				// start a new bloom + reset bytesAdded counter
 				bytesAdded = 0
-				bloom = &Bloom{
-					// TODO parameterise SBF options. fp_rate
-					ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
-				}
+				bloom = bt.newBloom()
 
 				// cache _MUST_ be cleared when a new bloom is created to ensure that all tokens from
 				// each line are indexed into at least one bloom
