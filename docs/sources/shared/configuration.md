@@ -351,7 +351,20 @@ bloom_build:
     # CLI flag: -bloom-build.planner.max-table-offset
     [max_table_offset: <int> | default = 2]
 
+    # Maximum number of tasks to queue per tenant.
+    # CLI flag: -bloom-build.planner.max-tasks-per-tenant
+    [max_queued_tasks_per_tenant: <int> | default = 30000]
+
   builder:
+    # The grpc_client block configures the gRPC client used to communicate
+    # between a client and server component in Loki.
+    # The CLI flags prefix for this block configuration is:
+    # bloom-build.builder.grpc
+    [grpc_config: <grpc_client>]
+
+    # Hostname (and port) of the bloom planner
+    # CLI flag: -bloom-build.builder.planner-address
+    [planner_address: <string> | default = ""]
 
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
 # server, responsible for serving queries for filtering chunks based on filter
@@ -2331,6 +2344,7 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 The `grpc_client` block configures the gRPC client used to communicate between a client and server component in Loki. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
+- `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`
@@ -2974,6 +2988,11 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
 
+# When true an ingester takes into account only the streams that it owns
+# according to the ring while applying the stream limit.
+# CLI flag: -ingester.use-owned-stream-count
+[use_owned_stream_count: <boolean> | default = false]
+
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
 [max_streams_per_user: <int> | default = 0]
@@ -3408,6 +3427,11 @@ shard_streams:
 # creation.
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
+
+# Experimental. Maximum number of builders to use when building blooms. 0 allows
+# unlimited builders.
+# CLI flag: -bloom-build.max-builders
+[bloom_build_max_builders: <int> | default = 0]
 
 # Experimental. Length of the n-grams created when computing blooms from log
 # lines.
@@ -3865,7 +3889,8 @@ results_cache:
 [parallelise_shardable_queries: <boolean> | default = true]
 
 # A comma-separated list of LogQL vector and range aggregations that should be
-# sharded
+# sharded. Possible values 'quantile_over_time', 'last_over_time',
+# 'first_over_time'.
 # CLI flag: -querier.shard-aggregations
 [shard_aggregations: <string> | default = ""]
 

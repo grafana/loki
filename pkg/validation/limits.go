@@ -85,6 +85,7 @@ type Limits struct {
 	DiscoverLogLevels           bool             `yaml:"discover_log_levels" json:"discover_log_levels"`
 
 	// Ingester enforced limits.
+	UseOwnedStreamCount     bool             `yaml:"use_owned_stream_count" json:"use_owned_stream_count"`
 	MaxLocalStreamsPerUser  int              `yaml:"max_streams_per_user" json:"max_streams_per_user"`
 	MaxGlobalStreamsPerUser int              `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
 	UnorderedWrites         bool             `yaml:"unordered_writes" json:"unordered_writes"`
@@ -207,6 +208,7 @@ type Limits struct {
 
 	BloomCreationEnabled       bool `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
 	BloomSplitSeriesKeyspaceBy int  `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
+	BloomBuildMaxBuilders      int  `yaml:"bloom_build_max_builders" json:"bloom_build_max_builders" category:"experimental"`
 
 	BloomNGramLength       int     `yaml:"bloom_ngram_length" json:"bloom_ngram_length" category:"experimental"`
 	BloomNGramSkip         int     `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip" category:"experimental"`
@@ -269,6 +271,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.CreationGracePeriod, "validation.create-grace-period", "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
 	f.IntVar(&l.MaxEntriesLimitPerQuery, "validation.max-entries-limit", 5000, "Maximum number of log entries that will be returned for a query.")
 
+	f.BoolVar(&l.UseOwnedStreamCount, "ingester.use-owned-stream-count", false, "When true an ingester takes into account only the streams that it owns according to the ring while applying the stream limit.")
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 0, "Maximum number of active streams per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 5000, "Maximum number of active streams per user, across the cluster. 0 to disable. When the global limit is enabled, each ingester is configured with a dynamic local limit based on the replication factor and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.")
 
@@ -385,6 +388,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&l.BloomCreationEnabled, "bloom-build.enable", false, "Experimental. Whether to create blooms for the tenant.")
 	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Experimental. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
+	f.IntVar(&l.BloomBuildMaxBuilders, "bloom-build.max-builders", 0, "Experimental. Maximum number of builders to use when building blooms. 0 allows unlimited builders.")
 
 	_ = l.BloomCompactorMaxBloomSize.Set(defaultBloomCompactorMaxBloomSize)
 	f.Var(&l.BloomCompactorMaxBloomSize, "bloom-compactor.max-bloom-size",
@@ -584,6 +588,10 @@ func (o *Overrides) RejectOldSamplesMaxAge(userID string) time.Duration {
 // we should accept samples.
 func (o *Overrides) CreationGracePeriod(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).CreationGracePeriod)
+}
+
+func (o *Overrides) UseOwnedStreamCount(userID string) bool {
+	return o.getOverridesForUser(userID).UseOwnedStreamCount
 }
 
 // MaxLocalStreamsPerUser returns the maximum number of streams a user is allowed to store
@@ -985,6 +993,10 @@ func (o *Overrides) BloomCreationEnabled(userID string) bool {
 
 func (o *Overrides) BloomSplitSeriesKeyspaceBy(userID string) int {
 	return o.getOverridesForUser(userID).BloomSplitSeriesKeyspaceBy
+}
+
+func (o *Overrides) BloomBuildMaxBuilders(userID string) int {
+	return o.getOverridesForUser(userID).BloomBuildMaxBuilders
 }
 
 func (o *Overrides) BloomNGramLength(userID string) int {
