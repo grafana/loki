@@ -1448,19 +1448,22 @@ func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.Detected
 		}
 	}
 
-	labelMap, err := instance.LabelsWithValues(ctx, req.Start, matchers...)
-
-	if err != nil {
-		return nil, err
-	}
-	result := make(map[string]*logproto.UniqueLabelValues)
-	for label, values := range labelMap {
-		var uniqueValues []string
-		for v := range values {
-			uniqueValues = append(uniqueValues, v)
+	var result map[string]*logproto.UniqueLabelValues
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "detectedLabels", "tenant", userID), func(c context.Context) {
+		labelMap, err := instance.LabelsWithValues(ctx, req.Start, matchers...)
+		if err != nil {
+			return
 		}
+		result = make(map[string]*logproto.UniqueLabelValues)
+		for label, values := range labelMap {
+			var uniqueValues []string
+			for v := range values {
+				uniqueValues = append(uniqueValues, v)
+			}
 
-		result[label] = &logproto.UniqueLabelValues{Values: uniqueValues}
-	}
+			result[label] = &logproto.UniqueLabelValues{Values: uniqueValues}
+		}
+	})
+
 	return &logproto.LabelToValuesResponse{Labels: result}, nil
 }
