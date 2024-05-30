@@ -1061,24 +1061,27 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 		return nil, err
 	}
 
-	// get chunk references
-	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	// todo (Callum) ingester should maybe store the whole schema config?
-	s := config.SchemaConfig{
-		Configs: i.periodicConfigs,
-	}
-
-	// build the response
-	resp := logproto.GetChunkIDsResponse{ChunkIDs: []string{}}
-	for _, chunks := range chunksGroups {
-		for _, chk := range chunks {
-			resp.ChunkIDs = append(resp.ChunkIDs, s.ExternalKey(chk.ChunkRef))
+	var resp logproto.GetChunkIDsResponse
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "getChunkIDs"), func(c context.Context) {
+		// get chunk references
+		chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil), nil)
+		if err != nil {
+			return
 		}
-	}
+
+		// todo (Callum) ingester should maybe store the whole schema config?
+		s := config.SchemaConfig{
+			Configs: i.periodicConfigs,
+		}
+
+		// build the response
+		resp = logproto.GetChunkIDsResponse{ChunkIDs: []string{}}
+		for _, chunks := range chunksGroups {
+			for _, chk := range chunks {
+				resp.ChunkIDs = append(resp.ChunkIDs, s.ExternalKey(chk.ChunkRef))
+			}
+		}
+	})
 
 	return &resp, nil
 }
@@ -1185,43 +1188,47 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		return nil, err
 	}
 
-	type f func() (*logproto.IndexStatsResponse, error)
-	jobs := []f{
-		f(func() (*logproto.IndexStatsResponse, error) {
-			return instance.GetStats(ctx, req)
-		}),
-		f(func() (*logproto.IndexStatsResponse, error) {
-			return i.store.Stats(ctx, user, req.From, req.Through, matchers...)
-		}),
-	}
-	resps := make([]*logproto.IndexStatsResponse, len(jobs))
+	var merged logproto.IndexStatsResponse
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "getStats"), func(c context.Context) {
 
-	if err := concurrency.ForEachJob(
-		ctx,
-		len(jobs),
-		2,
-		func(_ context.Context, idx int) error {
-			res, err := jobs[idx]()
-			resps[idx] = res
-			return err
-		},
-	); err != nil {
-		return nil, err
-	}
+		type f func() (*logproto.IndexStatsResponse, error)
+		jobs := []f{
+			f(func() (*logproto.IndexStatsResponse, error) {
+				return instance.GetStats(ctx, req)
+			}),
+			f(func() (*logproto.IndexStatsResponse, error) {
+				return i.store.Stats(ctx, user, req.From, req.Through, matchers...)
+			}),
+		}
+		resps := make([]*logproto.IndexStatsResponse, len(jobs))
 
-	merged := index_stats.MergeStats(resps...)
-	if sp != nil {
-		sp.LogKV(
-			"user", user,
-			"from", req.From.Time(),
-			"through", req.Through.Time(),
-			"matchers", syntax.MatchersString(matchers),
-			"streams", merged.Streams,
-			"chunks", merged.Chunks,
-			"bytes", merged.Bytes,
-			"entries", merged.Entries,
-		)
-	}
+		if err := concurrency.ForEachJob(
+			ctx,
+			len(jobs),
+			2,
+			func(_ context.Context, idx int) error {
+				res, err := jobs[idx]()
+				resps[idx] = res
+				return err
+			},
+		); err != nil {
+			return
+		}
+
+		merged = index_stats.MergeStats(resps...)
+		if sp != nil {
+			sp.LogKV(
+				"user", user,
+				"from", req.From.Time(),
+				"through", req.Through.Time(),
+				"matchers", syntax.MatchersString(matchers),
+				"streams", merged.Streams,
+				"chunks", merged.Chunks,
+				"bytes", merged.Bytes,
+				"entries", merged.Entries,
+			)
+		}
+	})
 
 	return &merged, nil
 }
@@ -1242,31 +1249,33 @@ func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 		return nil, err
 	}
 
-	type f func() (*logproto.VolumeResponse, error)
-	jobs := []f{
-		f(func() (*logproto.VolumeResponse, error) {
-			return instance.GetVolume(ctx, req)
-		}),
-		f(func() (*logproto.VolumeResponse, error) {
-			return i.store.Volume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, req.AggregateBy, matchers...)
-		}),
-	}
-	resps := make([]*logproto.VolumeResponse, len(jobs))
+	var merged *logproto.VolumeResponse
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "getVolume"), func(c context.Context) {
+		type f func() (*logproto.VolumeResponse, error)
+		jobs := []f{
+			f(func() (*logproto.VolumeResponse, error) {
+				return instance.GetVolume(ctx, req)
+			}),
+			f(func() (*logproto.VolumeResponse, error) {
+				return i.store.Volume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, req.AggregateBy, matchers...)
+			}),
+		}
+		resps := make([]*logproto.VolumeResponse, len(jobs))
 
-	if err := concurrency.ForEachJob(
-		ctx,
-		len(jobs),
-		2,
-		func(_ context.Context, idx int) error {
-			res, err := jobs[idx]()
-			resps[idx] = res
-			return err
-		},
-	); err != nil {
-		return nil, err
-	}
-
-	merged := seriesvolume.Merge(resps, req.Limit)
+		if err := concurrency.ForEachJob(
+			ctx,
+			len(jobs),
+			2,
+			func(_ context.Context, idx int) error {
+				res, err := jobs[idx]()
+				resps[idx] = res
+				return err
+			},
+		); err != nil {
+			return
+		}
+		merged = seriesvolume.Merge(resps, req.Limit)
+	})
 	return merged, nil
 }
 
