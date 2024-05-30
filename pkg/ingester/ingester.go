@@ -1062,7 +1062,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	}
 
 	var resp logproto.GetChunkIDsResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "getChunkIDs"), func(c context.Context) {
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "chunkIDs"), func(c context.Context) {
 		// get chunk references
 		chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil), nil)
 		if err != nil {
@@ -1106,49 +1106,59 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		}
 	}
 
-	resp, err := instance.Label(ctx, req, matchers...)
+	var resp *logproto.LabelResponse
+	var storeValues []string
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "labels"), func(c context.Context) {
+		resp, err = instance.Label(ctx, req, matchers...)
+		if err != nil {
+			return
+		}
+		if req.Start == nil {
+			return
+		}
+
+		// Only continue if the active index type is one of async index store types or QueryStore flag is true.
+		asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
+		if asyncStoreMaxLookBack == 0 && !i.cfg.QueryStore {
+			return
+		}
+
+		var cs storage.Store
+		var ok bool
+		if cs, ok = i.store.(storage.Store); !ok {
+			return
+		}
+
+		maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
+		if asyncStoreMaxLookBack != 0 {
+			maxLookBackPeriod = asyncStoreMaxLookBack
+		}
+		// Adjust the start time based on QueryStoreMaxLookBackPeriod.
+		start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())
+		if start.After(*req.End) {
+			// The request is older than we are allowed to query the store, just return what we have.
+			return
+		}
+		from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+
+		if req.Values {
+			storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
+			if err != nil {
+				return
+			}
+		} else {
+			storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs")
+			if err != nil {
+				return
+			}
+		}
+	})
+
+	// When wrapping the work above in the pprof.Do function we created a possible scenario where resp could
+	// be populated with values but an error occurred later on, prior to this profiling wrapper we would have
+	// always excited with a nil respond and the error message, this is here to keep that behavior.
 	if err != nil {
 		return nil, err
-	}
-
-	if req.Start == nil {
-		return resp, nil
-	}
-
-	// Only continue if the active index type is one of async index store types or QueryStore flag is true.
-	asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
-	if asyncStoreMaxLookBack == 0 && !i.cfg.QueryStore {
-		return resp, nil
-	}
-
-	var cs storage.Store
-	var ok bool
-	if cs, ok = i.store.(storage.Store); !ok {
-		return resp, nil
-	}
-
-	maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
-	if asyncStoreMaxLookBack != 0 {
-		maxLookBackPeriod = asyncStoreMaxLookBack
-	}
-	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
-	start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())
-	if start.After(*req.End) {
-		// The request is older than we are allowed to query the store, just return what we have.
-		return resp, nil
-	}
-	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
-	var storeValues []string
-	if req.Values {
-		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs")
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	return &logproto.LabelResponse{
@@ -1167,7 +1177,13 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 	if err != nil {
 		return nil, err
 	}
-	return instance.Series(ctx, req)
+
+	var series *logproto.SeriesResponse
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "series"), func(c context.Context) {
+		series, err = instance.Series(ctx, req)
+	})
+
+	return series, err
 }
 
 func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
@@ -1189,7 +1205,7 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	}
 
 	var merged logproto.IndexStatsResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "getStats"), func(c context.Context) {
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "stats"), func(c context.Context) {
 
 		type f func() (*logproto.IndexStatsResponse, error)
 		jobs := []f{
@@ -1250,7 +1266,7 @@ func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 	}
 
 	var merged *logproto.VolumeResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "getVolume"), func(c context.Context) {
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "volume"), func(c context.Context) {
 		type f func() (*logproto.VolumeResponse, error)
 		jobs := []f{
 			f(func() (*logproto.VolumeResponse, error) {
