@@ -67,7 +67,6 @@ const (
 	StructuredMetadataTooLargeErrorMsg   = "stream '%s' has structured metadata too large: '%d' bytes, limit: '%d' bytes. Please see `limits_config.max_structured_metadata_size` or contact your Loki administrator to increase it."
 	StructuredMetadataTooMany            = "structured_metadata_too_many"
 	StructuredMetadataTooManyErrorMsg    = "stream '%s' has too many structured metadata labels: '%d', limit: '%d'. Please see `limits_config.max_structured_metadata_entries_count` or contact your Loki administrator to increase it."
-	DiscardedBytesTotal                  = "discarded_bytes_total"
 )
 
 type ErrStreamRateLimit struct {
@@ -129,13 +128,3 @@ var LineLengthHist = promauto.NewHistogram(prometheus.HistogramOpts{
 	Help:      "The total number of bytes per line.",
 	Buckets:   prometheus.ExponentialBuckets(1, 8, 8), // 1B -> 16MB
 })
-
-// DuplicateLogBytes is a metric of the total discarded duplicate bytes, by tenant.
-var DuplicateLogBytes = promauto.NewCounterVec(
-	prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "duplicate_log_bytes_total",
-		Help:      "The total number of bytes that were discarded for duplicate log lines.",
-	},
-	[]string{ReasonLabel, "tenant"},
-)

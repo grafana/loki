@@ -205,7 +205,7 @@ func TestPushDeduplicationExtraMetrics(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, s.chunks, 1)
 	require.Equal(t, 2, s.chunks[0].chunk.Size(), "expected exact duplicate to be dropped and newer content with same timestamp to be appended")
-	require.Equal(t, float64(4), testutil.ToFloat64(validation.DuplicateLogBytes.WithLabelValues(validation.DiscardedBytesTotal, "fake")))
+	require.Equal(t, float64(4), testutil.ToFloat64(chunkenc.DuplicateLogBytes.WithLabelValues(chunkenc.DiscardedBytesTotal, "fake")))
 
 	content := buf.String()
 	require.NotEmpty(t, content)

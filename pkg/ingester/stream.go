@@ -340,7 +340,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		}
 
 		chunk.lastUpdated = time.Now()
-		if err := chunk.chunk.Append(&entries[i]); err != nil {
+		if err := chunk.chunk.AppendForTenant(&entries[i], s.tenant, s.configs, s.labelsString, s.writeFailures); err != nil {
 			invalid = append(invalid, entryWithError{&entries[i], err})
 			if chunkenc.IsOutOfOrderErr(err) {
 				s.writeFailures.Log(s.tenant, err)
@@ -468,10 +468,6 @@ func (s *stream) reportMetrics(ctx context.Context, outOfOrderSamples, outOfOrde
 			usageTracker.DiscardedBytesAdd(ctx, s.tenant, validation.StreamRateLimit, s.labels, float64(rateLimitedBytes))
 		}
 	}
-}
-
-func (s *stream) reportDuplicateMetrics(duplicateLogLineBytes int) {
-	validation.DuplicateLogBytes.WithLabelValues(validation.DiscardedBytesTotal, s.tenant).Add(float64(duplicateLogLineBytes))
 }
 
 func (s *stream) cutChunk(ctx context.Context) *chunkDesc {

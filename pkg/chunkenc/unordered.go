@@ -5,6 +5,11 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"io"
 	"math"
 	"time"
@@ -14,10 +19,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/runtime"
 )
 
 var noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
@@ -35,6 +42,7 @@ type HeadBlock interface {
 	UncompressedSize() int
 	Convert(HeadBlockFmt, *symbolizer) (HeadBlock, error)
 	Append(int64, string, labels.Labels) error
+	AppendForTenant(int64, string, labels.Labels, string, *runtime.TenantConfigs, string, *writefailures.Manager) error
 	Iterator(
 		ctx context.Context,
 		direction logproto.Direction,
@@ -63,6 +71,16 @@ type unorderedHeadBlock struct {
 	size       int   // size of uncompressed bytes.
 	mint, maxt int64 // upper and lower bounds
 }
+
+// DuplicateLogBytes is a metric of the total discarded duplicate bytes, by tenant.
+var DuplicateLogBytes = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "duplicate_log_bytes_total",
+		Help:      "The total number of bytes that were discarded for duplicate log lines.",
+	},
+	[]string{"reason", "tenant"},
+)
 
 func newUnorderedHeadBlock(headBlockFmt HeadBlockFmt, symbolizer *symbolizer) *unorderedHeadBlock {
 	return &unorderedHeadBlock{
@@ -111,6 +129,10 @@ func (e *nsEntries) ValueAtDimension(_ uint64) int64 {
 }
 
 func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata labels.Labels) error {
+	return hb.AppendForTenant(ts, line, structuredMetadata, "", nil, "", nil)
+}
+
+func (hb *unorderedHeadBlock) AppendForTenant(ts int64, line string, structuredMetadata labels.Labels, tenant string, configs *runtime.TenantConfigs, labelsString string, manager *writefailures.Manager) error {
 	if hb.format < UnorderedWithStructuredMetadataHeadBlockFmt {
 		// structuredMetadata must be ignored for the previous head block formats
 		structuredMetadata = nil
@@ -135,20 +157,17 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 		for _, et := range displaced[0].(*nsEntries).entries {
 			if et.line == line {
 				e.entries = displaced[0].(*nsEntries).entries
+				if configs != nil {
+					if configs.LogDuplicateMetrics(tenant) {
+						reportDuplicateMetrics(len(line), tenant)
+					}
+					if configs.LogDuplicateStreamInfo(tenant) {
+						errMsg := fmt.Sprintf("duplicate log entry at timestamp %d for stream %s", ts, labelsString)
+						err := errors.New(errMsg)
+						manager.Log(tenant, err)
+					}
+				}
 				return nil
-				/*
-					TODO
-
-					if s.configs.LogDuplicateMetrics(s.tenant) {
-						s.reportDuplicateMetrics(len(entries[i].Line))
-					}
-					if s.configs.LogDuplicateStreamInfo(s.tenant) {
-						err = chunkenc.ErrDuplicateLogEntry(entries[i].Timestamp, s.labelsString)
-						s.writeFailures.Log(s.tenant, err)
-					}
-					return nil
-
-				*/
 			}
 		}
 		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, hb.symbolizer.Add(structuredMetadata)})
@@ -170,6 +189,12 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 	hb.lines++
 
 	return nil
+}
+
+var DiscardedBytesTotal = "discarded_bytes_total"
+
+func reportDuplicateMetrics(duplicateLogLineBytes int, tenant string) {
+	DuplicateLogBytes.WithLabelValues(DiscardedBytesTotal, tenant).Add(float64(duplicateLogLineBytes))
 }
 
 func metaLabelsLen(metaLabels labels.Labels) int {

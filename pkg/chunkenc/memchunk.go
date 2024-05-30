@@ -17,10 +17,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -194,6 +196,10 @@ func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) error {
 	hb.size += len(line)
 
 	return nil
+}
+
+func (hb *headBlock) AppendForTenant(ts int64, line string, _ labels.Labels, _ string, _ *runtime.TenantConfigs, _ string, _ *writefailures.Manager) error {
+	return hb.Append(ts, line, nil)
 }
 
 func (hb *headBlock) Serialise(pool WriterPool) ([]byte, error) {
@@ -835,6 +841,11 @@ func (c *MemChunk) Utilization() float64 {
 
 // Append implements Chunk.
 func (c *MemChunk) Append(entry *logproto.Entry) error {
+	return c.AppendForTenant(entry, "", nil, "", nil)
+}
+
+// Append implements Chunk.
+func (c *MemChunk) AppendForTenant(entry *logproto.Entry, tenant string, configs *runtime.TenantConfigs, labelsString string, manager *writefailures.Manager) error {
 	entryTimestamp := entry.Timestamp.UnixNano()
 
 	// If the head block is empty but there are cut blocks, we have to make
@@ -846,7 +857,7 @@ func (c *MemChunk) Append(entry *logproto.Entry) error {
 	if c.format < ChunkFormatV4 {
 		entry.StructuredMetadata = nil
 	}
-	if err := c.head.Append(entryTimestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)); err != nil {
+	if err := c.head.AppendForTenant(entryTimestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata), tenant, configs, labelsString, manager); err != nil {
 		return err
 	}
 
