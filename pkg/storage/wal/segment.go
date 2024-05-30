@@ -144,7 +144,7 @@ func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
 	return 0, nil
 }
 
-func writeEntriesChunk(w io.Writer, entries []*logproto.Entry) (int64, error) {
+func writeChunk(w io.Writer, entries []*logproto.Entry) (int64, error) {
 	if len(entries) == 0 {
 		return 0, nil
 	}
