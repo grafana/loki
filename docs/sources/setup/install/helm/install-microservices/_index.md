@@ -9,7 +9,7 @@ weight: 300
 keywords: 
 ---
 
-# Install the Microservice Helm chart
+# Install the microservice Helm chart
 <!-- vale Grafana.Quotes = NO -->
 <!-- vale Grafana.Quotes = YES -->
 
