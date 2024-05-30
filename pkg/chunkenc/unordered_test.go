@@ -86,7 +86,6 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		desc       string
 		input, exp []entry
 		dir        logproto.Direction
-		hasDup     bool
 	}{
 		{
 			desc: "simple forward",
@@ -153,8 +152,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			exp: []entry{
 				{0, "a", nil}, {0, "b", nil}, {1, "c", nil},
 			},
-			dir:    logproto.FORWARD,
-			hasDup: true,
+			dir: logproto.FORWARD,
 		},
 		{
 			desc: "ts remove exact dupe backward",
@@ -164,8 +162,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			exp: []entry{
 				{1, "c", nil}, {0, "b", nil}, {0, "a", nil},
 			},
-			dir:    logproto.BACKWARD,
-			hasDup: true,
+			dir: logproto.BACKWARD,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -176,14 +173,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 				t.Run(format.String(), func(t *testing.T) {
 					hb := newUnorderedHeadBlock(format, newSymbolizer())
 					for _, e := range tc.input {
-						err := hb.Append(e.t, e.s, e.structuredMetadata)
-						if tc.hasDup {
-							if err != nil && err != ErrDuplicateEntry {
-								require.Equal(t, err, ErrDuplicateEntry)
-							}
-						} else {
-							require.Nil(t, err)
-						}
+						require.Nil(t, hb.Append(e.t, e.s, e.structuredMetadata))
 					}
 
 					itr := hb.Iterator(

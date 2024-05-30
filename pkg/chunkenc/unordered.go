@@ -135,7 +135,20 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 		for _, et := range displaced[0].(*nsEntries).entries {
 			if et.line == line {
 				e.entries = displaced[0].(*nsEntries).entries
-				return ErrDuplicateEntry
+				return nil
+				/*
+					TODO
+
+					if s.configs.LogDuplicateMetrics(s.tenant) {
+						s.reportDuplicateMetrics(len(entries[i].Line))
+					}
+					if s.configs.LogDuplicateStreamInfo(s.tenant) {
+						err = chunkenc.ErrDuplicateLogEntry(entries[i].Timestamp, s.labelsString)
+						s.writeFailures.Log(s.tenant, err)
+					}
+					return nil
+
+				*/
 			}
 		}
 		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, hb.symbolizer.Add(structuredMetadata)})

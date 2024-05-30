@@ -37,13 +37,3 @@ func TestIsOutOfOrderErr(t *testing.T) {
 		require.Equal(t, true, IsOutOfOrderErr(err))
 	}
 }
-
-func TestIsDuplicateEntryErr(t *testing.T) {
-	if !IsDuplicateEntryErr(ErrDuplicateEntry) {
-		t.Errorf("IsDuplicateEntryErr() = false, want true for ErrDuplicateEntry")
-	}
-
-	if IsDuplicateEntryErr(ErrOutOfOrder) {
-		t.Errorf("IsDuplicateEntryErr() = true, want false for errors other than ErrDuplicateEntry")
-	}
-}

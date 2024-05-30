@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	gokitlog "github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
 	"math/rand"
 	"net/http"
 	"testing"
 	"time"
+
+	gokitlog "github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -192,14 +193,19 @@ func TestPushDeduplicationExtraMetrics(t *testing.T) {
 
 	_, err = s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
-	}, recordPool.GetRecord(), 0, true, false)
+	}, recordPool.GetRecord(), 0, true, false, nil)
+	require.NoError(t, err)
+	_, err = s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "not a test"},
+	}, recordPool.GetRecord(), 0, true, false, nil)
 	require.NoError(t, err)
 	_, err = s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
-	}, recordPool.GetRecord(), 0, true, false)
+	}, recordPool.GetRecord(), 0, true, false, nil)
+	require.NoError(t, err)
 	require.Len(t, s.chunks, 1)
-	require.Equal(t, s.chunks[0].chunk.Size(), 1, "expected exact duplicate to be dropped and newer content with same timestamp to be appended")
-	require.Equal(t, float64(4), testutil.ToFloat64(validation.DuplicateLogEntries.WithLabelValues(validation.DiscardedBytesTotal, "fake")))
+	require.Equal(t, 2, s.chunks[0].chunk.Size(), "expected exact duplicate to be dropped and newer content with same timestamp to be appended")
+	require.Equal(t, float64(4), testutil.ToFloat64(validation.DuplicateLogBytes.WithLabelValues(validation.DiscardedBytesTotal, "fake")))
 
 	content := buf.String()
 	require.NotEmpty(t, content)

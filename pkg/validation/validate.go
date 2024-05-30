@@ -130,11 +130,11 @@ var LineLengthHist = promauto.NewHistogram(prometheus.HistogramOpts{
 	Buckets:   prometheus.ExponentialBuckets(1, 8, 8), // 1B -> 16MB
 })
 
-// DuplicateLogEntries is a metric of the total discarded duplicate bytes, by tenant.
-var DuplicateLogEntries = promauto.NewCounterVec(
+// DuplicateLogBytes is a metric of the total discarded duplicate bytes, by tenant.
+var DuplicateLogBytes = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: constants.Loki,
-		Name:      "duplicate_log_entries_total",
+		Name:      "duplicate_log_bytes_total",
 		Help:      "The total number of bytes that were discarded for duplicate log lines.",
 	},
 	[]string{ReasonLabel, "tenant"},
