@@ -121,6 +121,8 @@ func (p *Planner) stopping(_ error) error {
 
 func (p *Planner) running(ctx context.Context) error {
 	// run once at beginning
+	// TODO(salvacorts): Doing this will prevent us from checking the context for cancellation or updating the
+	//                   inflight tasks metrics. We should run the for loop below right away.
 	if err := p.runOne(ctx); err != nil {
 		level.Error(p.logger).Log("msg", "bloom build iteration failed for the first time", "err", err)
 	}
@@ -149,6 +151,8 @@ func (p *Planner) running(ctx context.Context) error {
 			}
 
 		case <-inflightTasksTicker.C:
+			// TODO(salvacorts): Is think this won't evaluate while the runOne is running.
+			//                   We should run the runOne in a goroutine and check the context inside (as we already do).
 			inflight := p.totalPendingTasks()
 			p.metrics.inflightRequests.Observe(float64(inflight))
 		}
@@ -198,6 +202,8 @@ func (p *Planner) runOne(ctx context.Context) error {
 				level.Error(logger).Log("msg", "error enqueuing task", "err", err)
 				continue
 			}
+
+			p.metrics.tenantTasksPlanned.WithLabelValues(w.tenant).Inc()
 		}
 	}
 
@@ -271,6 +277,12 @@ func (p *Planner) loadWork(
 					ownershipRange: bounds,
 				})
 			}
+
+			// Reset progress tracking metrics for this tenant
+			// NOTE(salvacorts): We will reset them multiple times for the same tenant, for each table, but it's not a big deal.
+			//                   Alternatively, we can use a Counter instead of a Gauge, but I think a Gauge is easier to reason about.
+			p.metrics.tenantTasksPlanned.WithLabelValues(tenant).Set(0)
+			p.metrics.tenantTasksCompleted.WithLabelValues(tenant).Set(0)
 
 			level.Debug(p.logger).Log("msg", "loading work for tenant", "table", table, "tenant", tenant, "splitFactor", splitFactor)
 		}
@@ -586,6 +598,7 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 			return fmt.Errorf("error forwarding task to builder (%s). Task requeued: %w", builderID, err)
 		}
 
+		p.metrics.tenantTasksCompleted.WithLabelValues(task.Tenant).Inc()
 	}
 
 	return errPlannerIsNotRunning

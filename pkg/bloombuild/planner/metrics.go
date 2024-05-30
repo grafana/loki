@@ -30,7 +30,9 @@ type Metrics struct {
 	buildCompleted *prometheus.CounterVec
 	buildTime      *prometheus.HistogramVec
 
-	tenantsDiscovered prometheus.Counter
+	tenantsDiscovered    prometheus.Counter
+	tenantTasksPlanned   *prometheus.GaugeVec
+	tenantTasksCompleted *prometheus.GaugeVec
 }
 
 func NewMetrics(
@@ -99,6 +101,18 @@ func NewMetrics(
 			Name:      "tenants_discovered_total",
 			Help:      "Number of tenants discovered during the current build iteration",
 		}),
+		tenantTasksPlanned: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "tenant_tasks_planned",
+			Help:      "Number of tasks planned for a tenant during the current build iteration.",
+		}, []string{"tenant"}),
+		tenantTasksCompleted: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "tenant_tasks_completed",
+			Help:      "Number of tasks completed for a tenant during the current build iteration.",
+		}, []string{"tenant"}),
 	}
 }
 
