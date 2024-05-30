@@ -63,8 +63,6 @@ The index format is designed to enable efficient seeking to specific chunks requ
 │ │              ├────────────────────────────────────────────────┤        │ │
 │ │              │ ref(c_0.data) <uvarint64>                      │        │ │
 │ │              ├────────────────────────────────────────────────┤        │ │
-│ │              │ c_0.offset <uvarint32>                         │        │ │
-│ │              ├────────────────────────────────────────────────┤        │ │
 │ │              │ c_0.entries <uvarint32>                        │        │ │
 │ │              └────────────────────────────────────────────────┘        │ │
 │ │              ┌────────────────────────────────────────────────┐        │ │
@@ -73,8 +71,6 @@ The index format is designed to enable efficient seeking to specific chunks requ
 │ │              │ c_i.maxt - c_i.mint <uvarint64>                │        │ │
 │ │              ├────────────────────────────────────────────────┤        │ │
 │ │              │ ref(c_i.data) - ref(c_i-1.data) <varint64>     │        │ │
-│ │              ├────────────────────────────────────────────────┤        │ │
-│ │              │ c_i.offset <uvarint32>                         │        │ │
 │ │              ├────────────────────────────────────────────────┤        │ │
 │ │              │ c_i.entries <uvarint32>                        │        │ │
 │ │              └────────────────────────────────────────────────┘        │ │
@@ -87,8 +83,6 @@ The index format is designed to enable efficient seeking to specific chunks requ
 │ │              ├────────────────────────────────────────────────┤        │ │
 │ │              │ ref(last_chunk.data) - ref(prev_chunk.data)    │        │ │
 │ │              │ <varint64>                                     │        │ │
-│ │              ├────────────────────────────────────────────────┤        │ │
-│ │              │ last_chunk.offset <uvarint32>                  │        │ │
 │ │              ├────────────────────────────────────────────────┤        │ │
 │ │              │ last_chunk.entries <uvarint32>                 │        │ │
 │ │              ├────────────────────────────────────────────────┤        │ │
@@ -112,12 +106,10 @@ The index format is designed to enable efficient seeking to specific chunks requ
 - **c_0.mint <varint64>**: Minimum timestamp of the first chunk.
 - **c_0.maxt - c_0.mint <uvarint64>**: Time delta between the minimum and maximum timestamp of the first chunk.
 - **ref(c_0.data) <uvarint64>**: Reference to the chunk data.
-- **c_0.offset <uvarint32>**: Offset in the chunk where raw logs start.
 - **c_0.entries <uvarint32>**: Number of entries in the chunk.
 - **c_i.mint - c_i-1.maxt <uvarint64>**: Time delta between the minimum timestamp of the current chunk and the maximum timestamp of the previous chunk.
 - **c_i.maxt - c_i.mint <uvarint64>**: Time delta between the minimum and maximum timestamp of the current chunk.
 - **ref(c_i.data) - ref(c_i-1.data) <varint64>**: Delta between the current chunk reference and the previous chunk reference.
-- **c_i.offset <uvarint32>**: Offset in the chunk where raw logs start.
 - **c_i.entries <uvarint32>**: Number of entries in the chunk.
 - **last_chunk.data_len <uvarint64>**: Length of the last chunk data.
 - **CRC32 <4b>**: CRC32 checksum of the series entry.
@@ -167,6 +159,8 @@ Unlike the current Loki chunk format, this format does not use smaller blocks be
 ├──────────────────────────────────────────────────────────────────────────┤
 │ compressed logs <bytes>                                                  │
 ├──────────────────────────────────────────────────────────────────────────┤
+| compressed logs len <4b>                                                 |
+├──────────────────────────────────────────────────────────────────────────┤
 │ crc32 <4 bytes>                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
@@ -181,6 +175,7 @@ Unlike the current Loki chunk format, this format does not use smaller blocks be
 - **ts_2_dod <uvarint>**: The delta of deltas, representing the difference from the previous delta (i.e., double-delta encoding).
 - **len_line_2 <uvarint>**: The length of the third log line.
 - **compressed logs <bytes>**: The actual log data, compressed according to the specified encoding.
+- **compressed logs len <4 bytes>**: The size of the compressed log data.
 - **crc32 (4 bytes)**: CRC32 checksum for the metadata (excluding the compressed data), ensuring the integrity of the timestamp and length information.
 
 The offset to the compressed logs is known from the index, allowing efficient access and decompression. The CRC32 checksum at the end verifies the integrity of the metadata, as the compressed data typically includes its own CRC for verification.
