@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.7.0
+
+- [CHANGE] **BREAKING** Remove `ingester.unregister-on-shutdown=false` for zone aware ingesters in favour of being able to set this via the configuration option `unregister_on_shutdown` (defaults `true`).
+
 ## 6.6.2
 
 - [BUGFIX] Fix query-frontend (headless) and ruler http-metrics targetPort
@@ -27,7 +31,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.5.2
 
-- [BUGFIX] Fixed Ingress routing for all deployment modes.  
+- [BUGFIX] Fixed Ingress routing for all deployment modes.
 
 ## 6.5.0
 

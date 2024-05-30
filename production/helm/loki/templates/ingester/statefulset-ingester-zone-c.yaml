@@ -101,7 +101,6 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -ingester.availability-zone=zone-c
-            - -ingester.unregister-on-shutdown=false
             - -ingester.tokens-file-path=/var/loki/ring-tokens
             - -target=ingester
             {{- with .Values.ingester.extraArgs }}
