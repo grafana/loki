@@ -387,13 +387,6 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		// NOTE: it's still possible for duplicates to be appended if a stream is
 		// deleted from inactivity.
 		if entries[i].Timestamp.Equal(lastLine.ts) && entries[i].Line == lastLine.content {
-			/*if s.configs.LogDuplicateMetrics(s.tenant) {
-				s.reportDuplicateMetrics(len(entries[i].Line))
-			}
-			if s.configs.LogDuplicateStreamInfo(s.tenant) {
-				err := chunkenc.ErrDuplicateLogEntry(entries[i].Timestamp, s.labelsString)
-				s.writeFailures.Log(s.tenant, err)
-			}*/
 			continue
 		}
 
