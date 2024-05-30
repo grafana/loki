@@ -171,7 +171,7 @@ func (b BlockDirectory) BlockQuerier(
 	if usePool && BloomPageAllocator != nil {
 		alloc = BloomPageAllocator
 	} else {
-		alloc = v1.HeapAllocator
+		alloc = &v1.SimpleHeapAllocator{}
 	}
 
 	bq := v1.NewBlockQuerier(b.Block(metrics), alloc, maxPageSize)

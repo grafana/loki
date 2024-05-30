@@ -51,8 +51,6 @@ var (
 				return make([]byte, size)
 			}),
 	}
-
-	HeapAllocator = &simpleHeapAllocator{}
 )
 
 // Allocator handles byte slices for bloom queriers.
@@ -62,14 +60,14 @@ type Allocator interface {
 	Put([]byte) bool
 }
 
-// simpleHeapAllocator allocates a new byte slice every time and does not re-cycle buffers.
-type simpleHeapAllocator struct{}
+// SimpleHeapAllocator allocates a new byte slice every time and does not re-cycle buffers.
+type SimpleHeapAllocator struct{}
 
-func (a *simpleHeapAllocator) Get(size int) ([]byte, error) {
+func (a *SimpleHeapAllocator) Get(size int) ([]byte, error) {
 	return make([]byte, size), nil
 }
 
-func (a *simpleHeapAllocator) Put([]byte) bool {
+func (a *SimpleHeapAllocator) Put([]byte) bool {
 	return true
 }
 

@@ -735,7 +735,7 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 	// Set global BloomPageAllocator variable
 	switch bsCfg.MemoryManagement.BloomPageAllocationType {
 	case "simple":
-		bloomshipper.BloomPageAllocator = v1.HeapAllocator
+		bloomshipper.BloomPageAllocator = &v1.SimpleHeapAllocator{}
 	case "dynamic":
 		bloomshipper.BloomPageAllocator = v1.BloomPagePool
 	case "fixed":
