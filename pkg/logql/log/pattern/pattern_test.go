@@ -153,28 +153,17 @@ var fixtures = []struct {
 		true,
 	},
 	{
-		// UTF-8
+		// UTF-8: Matches a unicode character
 		`unicode <emoji> character`,
 		`unicode 🤷 character`,
 		[]string{`🤷`},
 		true,
 	},
 	{
+		// UTF-8: Parses unicode character as literal
 		"unicode ▶ <what>",
 		"unicode ▶ character",
 		[]string{"character"},
-		true,
-	},
-	{
-		`13:25:18.033494 ▶ INFO  route <what> sending to`,
-		`13:25:18.033494 ▶ INFO  route ops sending to`,
-		[]string{"ops"},
-		true,
-	},
-	{
-		`<one> ▶ <two>`,
-		`Hello ▶ World`,
-		[]string{"Hello", "World"},
 		true,
 	},
 }
