@@ -44,6 +44,8 @@ ruler:
 compactor:
   working_directory: /tmp/compactor
 
-# Needed to avoid 'Maximum active stream limit exceeded' errors
 limits_config:
+  # Needed to avoid 'Maximum active stream limit exceeded' error
   max_global_streams_per_user: 0
+  # Needed to avoid 'maximum of series (500) reached for a single query' error
+  max_query_series: 100000
