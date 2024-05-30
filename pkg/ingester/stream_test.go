@@ -12,8 +12,9 @@ import (
 	gokitlog "github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+
+	"github.com/grafana/loki/v3/pkg/runtime"
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/common/model"

@@ -6,9 +6,10 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"io"
 	"math"
