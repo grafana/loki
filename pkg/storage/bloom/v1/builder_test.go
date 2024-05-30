@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
@@ -289,6 +290,100 @@ func TestMergeBuilder(t *testing.T) {
 		NewSliceIter[*SeriesWithBlooms](PointerSlice(data)),
 		querier.Iter(),
 	)
+}
+
+// Fingerprint collisions are treated as the same series.
+func TestMergeBuilderFingerprintCollision(t *testing.T) {
+	t.Parallel()
+
+	// references for linking in memory reader+writer
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+	reader := NewByteReader(indexBuf, bloomsBuf)
+
+	blockOpts := BlockOptions{
+		Schema: Schema{
+			version:  DefaultSchemaVersion,
+			encoding: chunkenc.EncSnappy,
+		},
+		SeriesPageSize: 100,
+		BloomPageSize:  10 << 10,
+	}
+
+	builder, err := NewBlockBuilder(
+		blockOpts,
+		writer,
+	)
+
+	// two series with the same fingerprint but different chunks
+	chks := []ChunkRef{
+		{
+			From:     0,
+			Through:  0,
+			Checksum: 0,
+		},
+		{
+			From:     1,
+			Through:  1,
+			Checksum: 1,
+		},
+		{
+			From:     2,
+			Through:  2,
+			Checksum: 2,
+		},
+	}
+
+	data := []*Series{
+		{
+			Fingerprint: 0,
+			Chunks: []ChunkRef{
+				chks[0], chks[1],
+			},
+		},
+		{
+			Fingerprint: 0,
+			Chunks: []ChunkRef{
+				chks[2],
+			},
+		},
+	}
+
+	// We're not testing the ability to extend a bloom in this test
+	pop := func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation) {
+		ch <- &BloomCreation{
+			Bloom: &Bloom{
+				ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+			},
+		}
+		close(ch)
+	}
+
+	require.Nil(t, err)
+	mergeBuilder := NewMergeBuilder(
+		NewEmptyIter[*SeriesWithBlooms](),
+		NewSliceIter(data),
+		pop,
+		NewMetrics(nil),
+	)
+
+	_, _, err = mergeBuilder.Build(builder)
+	require.Nil(t, err)
+
+	block := NewBlock(reader, NewMetrics(nil))
+	querier := NewBlockQuerier(block, false, DefaultMaxPageSize)
+
+	require.True(t, querier.Next())
+	require.Equal(t,
+		Series{
+			Fingerprint: 0,
+			Chunks:      chks,
+		},
+		querier.At().Series,
+	)
+
+	require.False(t, querier.Next())
 }
 
 func TestBlockReset(t *testing.T) {
