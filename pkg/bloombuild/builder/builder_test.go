@@ -164,28 +164,23 @@ func (f *fakePlannerServer) NotifyBuilderShutdown(_ context.Context, _ *protos.N
 type fakeLimits struct {
 }
 
-func (f fakeLimits) BloomBlockEncoding(tenantID string) string {
-	//TODO implement me
+func (f fakeLimits) BloomBlockEncoding(_ string) string {
 	panic("implement me")
 }
 
-func (f fakeLimits) BloomNGramLength(tenantID string) int {
-	//TODO implement me
+func (f fakeLimits) BloomNGramLength(_ string) int {
 	panic("implement me")
 }
 
-func (f fakeLimits) BloomNGramSkip(tenantID string) int {
-	//TODO implement me
+func (f fakeLimits) BloomNGramSkip(_ string) int {
 	panic("implement me")
 }
 
-func (f fakeLimits) BloomCompactorMaxBlockSize(tenantID string) int {
-	//TODO implement me
+func (f fakeLimits) BloomCompactorMaxBlockSize(_ string) int {
 	panic("implement me")
 }
 
-func (f fakeLimits) BloomCompactorMaxBloomSize(tenantID string) int {
-	//TODO implement me
+func (f fakeLimits) BloomCompactorMaxBloomSize(_ string) int {
 	panic("implement me")
 }
 
