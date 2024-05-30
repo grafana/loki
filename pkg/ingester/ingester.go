@@ -839,7 +839,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return &logproto.PushResponse{}, err
 	}
 
-	pprof.Do(ctx, pprof.Labels("path", "write"), func(c context.Context) {
+	pprof.Do(ctx, pprof.Labels("path", "write", "tenant", instanceID), func(c context.Context) {
 		err = instance.Push(ctx, req)
 	})
 
@@ -913,7 +913,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "log"), func(c context.Context) {
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "log", "tenant", instanceID), func(c context.Context) {
 		var it iter.EntryIterator
 		it, err = instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
 		if err != nil {
@@ -981,7 +981,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		return err
 	}
 
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "metric"), func(c context.Context) {
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "metric", "tenant", instanceID), func(c context.Context) {
 		var it iter.SampleIterator
 		it, err = instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
 		if err != nil {
@@ -1062,7 +1062,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	}
 
 	var resp logproto.GetChunkIDsResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "chunkIDs"), func(c context.Context) {
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "chunkIDs", "tenant", orgID), func(c context.Context) {
 		// get chunk references
 		chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil), nil)
 		if err != nil {
@@ -1108,7 +1108,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 	var resp *logproto.LabelResponse
 	var storeValues []string
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "labels"), func(c context.Context) {
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "labels", "tenant", userID), func(c context.Context) {
 		resp, err = instance.Label(ctx, req, matchers...)
 		if err != nil {
 			return
@@ -1179,7 +1179,7 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 	}
 
 	var series *logproto.SeriesResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "series"), func(c context.Context) {
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "series", "tenant", instanceID), func(c context.Context) {
 		series, err = instance.Series(ctx, req)
 	})
 
@@ -1205,7 +1205,7 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	}
 
 	var merged logproto.IndexStatsResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "stats"), func(c context.Context) {
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "stats", "tenant", user), func(c context.Context) {
 
 		type f func() (*logproto.IndexStatsResponse, error)
 		jobs := []f{
@@ -1266,7 +1266,7 @@ func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 	}
 
 	var merged *logproto.VolumeResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "volume"), func(c context.Context) {
+	pprof.Do(ctx, pprof.Labels("path", "read", "type", "volume", "tenant", user), func(c context.Context) {
 		type f func() (*logproto.VolumeResponse, error)
 		jobs := []f{
 			f(func() (*logproto.VolumeResponse, error) {
