@@ -56,10 +56,6 @@ func (bt *BloomTokenizer) SkipFactor() uint64 {
 	return uint64(bt.lineTokenizer.SkipFactor())
 }
 
-func clearCache(cache map[string]interface{}) {
-	clear(cache)
-}
-
 // prefixedToken returns a byte slice with sufficient capacity for a chunk-ref prefixed token
 // of specific ngram length, along with the length of the prefix.
 // It ensures enough capacity for the prefix and the token so additional tokens can be created
@@ -119,7 +115,6 @@ func (bt *BloomTokenizer) Populate(
 		for {
 			full, newBytes := bt.addChunkToBloom(
 				bloom,
-				series,
 				chk.Ref,
 				itr,
 			)
@@ -139,6 +134,10 @@ func (bt *BloomTokenizer) Populate(
 					// TODO parameterise SBF options. fp_rate
 					ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
 				}
+
+				// cache _MUST_ be cleared when a new bloom is created to ensure that all tokens from
+				// each line are indexed into at least one bloom
+				clear(bt.cache)
 				continue
 			}
 
@@ -159,7 +158,12 @@ func (bt *BloomTokenizer) Populate(
 
 // addChunkToBloom adds the tokens from the given chunk to the given bloom.
 // It continues until the chunk is exhausted or the bloom is full.
-func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, series *Series, ref ChunkRef, entryIter PeekingIterator[push.Entry]) (full bool, bytesAdded int) {
+// NB(owen-d): We ensure the invariant that each line is indexed entirely into at least one bloom.
+// This includes both raw ngrams and chunk-prefixed ngrams and is why we use a peeking iterator --
+// so we can advance the iterator only after we're sure the bloom has accepted the line.
+// This is because the _line_ is the atom in Loki's data model and a query must either match (or not) an individual line.
+// Therefore, we index entire lines into a bloom to ensure a lookups are accurate.
+func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, ref ChunkRef, entryIter PeekingIterator[push.Entry]) (full bool, bytesAdded int) {
 	var (
 		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N(), ref, nil)
 		tokens             int
@@ -220,7 +224,7 @@ outer:
 				// as can prevent us from trying subsequent copies
 				bt.cache[str] = nil
 				if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
-					clearCache(bt.cache)
+					clear(bt.cache)
 				}
 			}
 		}

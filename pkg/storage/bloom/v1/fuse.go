@@ -302,11 +302,8 @@ func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs
 
 			// shortcut: series level removal
 			// we can skip testing chunk keys individually if the bloom doesn't match
-			// the query
-			// NB(owen-d): we can only apply this if there is 1 bloom in the series.
-			// Otherwise, some of the keys may be in the first and some in the second -- neither
-			// are sufficient to perform this optimization
-			if len(series.Offsets) == 1 && !req.Search.Matches(bloom) {
+			// the query.
+			if !req.Search.Matches(bloom) {
 				// Nothing else needs to be done for this (bloom, request);
 				// check the next input request
 				continue

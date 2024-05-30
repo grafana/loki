@@ -246,11 +246,6 @@ func TestFuseMultiPage(t *testing.T) {
 
 }
 
-// Skip series when bloom pages are too large
-func TestFuseSkipReadsWhenPageTooLarge(t *testing.T) {
-	t.Fail()
-}
-
 func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
