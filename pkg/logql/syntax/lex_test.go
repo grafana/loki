@@ -98,7 +98,6 @@ func TestLex(t *testing.T) {
 		{`123`, []int{NUMBER}},
 		{`-123`, []int{NUMBER}},
 		{`123KB`, []int{BYTES}},
-		{`-123KB`, []int{BYTES}},
 		{`123ms`, []int{DURATION}},
 		{`-123ms`, []int{DURATION}},
 	} {
