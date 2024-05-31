@@ -201,6 +201,17 @@ func (b *V1Builder) AddBloom(bloom *Bloom) (BloomOffset, error) {
 }
 
 func (b *V1Builder) AddSeries(series Series, offset BloomOffset) (bool, error) {
-	// Implement your logic here
-	return false, nil
+	if err := b.index.AppendV1(SeriesWithOffset{
+		Series: series,
+		Offset: offset,
+	}); err != nil {
+		return false, errors.Wrapf(err, "writing index for series %v", series.Fingerprint)
+	}
+
+	full, _, err := b.writer.Full(b.opts.BlockSize)
+	if err != nil {
+		return false, errors.Wrap(err, "checking if block is full")
+	}
+
+	return full, nil
 }
