@@ -23,9 +23,6 @@ The default Helm chart deploys the following components:
 - Gateway (1 NGINX replica)
 - Minio (optional, if `minio.enabled=true`)
 
-
-<!--TODO - Update when meta-monitoring chart releases-->
-
 It is not recommended to run scalable mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
 
 **Prerequisites**
