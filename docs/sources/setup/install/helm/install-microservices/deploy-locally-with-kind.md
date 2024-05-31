@@ -2,7 +2,6 @@
 title: Deploy the Helm chart localy with Kind
 menuTitle: Deploy the Helm chart localy with Kind
 description: Installing Loki in microservice (distributed) with Kind for local development and testing purposes.
-aliases:
 weight: 300
 keywords: 
 ---

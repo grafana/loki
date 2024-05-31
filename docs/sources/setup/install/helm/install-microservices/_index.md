@@ -2,7 +2,6 @@
 title: Install the microservice Helm chart 
 menuTitle: Install microservice Loki
 description: Installing Loki in microservice (distributed) mode using the Helm chart.
-aliases:
 weight: 300
 keywords: 
 ---
