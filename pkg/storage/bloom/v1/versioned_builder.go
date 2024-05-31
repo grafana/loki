@@ -108,7 +108,7 @@ func (b *V2Builder) AddBloom(bloom *Bloom) (BloomOffset, error) {
 
 // AddSeries adds a series to the block. It returns true after adding the series, the block is full.
 func (b *V2Builder) AddSeries(series Series, offsets []BloomOffset) (bool, error) {
-	if err := b.index.Append(SeriesWithOffsets{
+	if err := b.index.AppendV2(SeriesWithOffsets{
 		Offsets: offsets,
 		Series:  series,
 	}); err != nil {
@@ -185,13 +185,19 @@ func (b *V1Builder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) {
 }
 
 func (b *V1Builder) Close() (uint32, error) {
-	// Implement your logic here
-	return 0, nil
+	bloomChecksum, err := b.blooms.Close()
+	if err != nil {
+		return 0, errors.Wrap(err, "closing bloom file")
+	}
+	indexCheckSum, err := b.index.Close()
+	if err != nil {
+		return 0, errors.Wrap(err, "closing series file")
+	}
+	return combineChecksums(indexCheckSum, bloomChecksum), nil
 }
 
 func (b *V1Builder) AddBloom(bloom *Bloom) (BloomOffset, error) {
-	// Implement your logic here
-	return BloomOffset{}, nil
+	return b.blooms.Append(bloom)
 }
 
 func (b *V1Builder) AddSeries(series Series, offset BloomOffset) (bool, error) {
