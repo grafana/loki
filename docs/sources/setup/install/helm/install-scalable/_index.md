@@ -10,12 +10,10 @@ keywords:
 ---
 
 # Install the simple scalable Helm chart
-<!-- vale Grafana.Quotes = NO -->
-<!-- vale Grafana.Quotes = YES -->
 
 This Helm Chart deploys Grafana Loki on Kubernetes.
 
-This chart configures Loki to run `read`, `write`, and `backend` targets in a [scalable mode]({{< relref "../../../../get-started/deployment-modes#simple-scalable" >}}), highly available architecture designed to work with AWS S3 object storage. The chart also supports self-monitoring or meta-monitoring by deploying Grafana Agent to monitor Loki itself, by scraping its metrics and logs. 
+This chart configures Loki to run `read`, `write`, and `backend` targets in a [scalable mode]({{< relref "../../../../get-started/deployment-modes#simple-scalable" >}}). Loki’s simple scalable deployment mode separates execution paths into read, write, and backend targets.
 
 The default Helm chart deploys the following components:
 - Read component (3 replicas)
@@ -28,7 +26,7 @@ The default Helm chart deploys the following components:
 
 <!--TODO - Update when meta-monitoring chart releases-->
 
-It is not recommended to run scalable mode with `filesystem` storage.
+It is not recommended to run scalable mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
 
 **Prerequisites**
 
@@ -37,7 +35,7 @@ It is not recommended to run scalable mode with `filesystem` storage.
 - (Optional) A Memcached deployment for better query performance. For information on configuring Memcached, refer to [caching section]({{< relref "../../../../operations/caching" >}}).
 
 
-**To deploy Loki in microservices mode:**
+**To deploy Loki in simple scalable mode:**
 
 
 1. Add [Grafana's chart repository](https://github.com/grafana/helm-charts) to Helm:
@@ -52,9 +50,7 @@ It is not recommended to run scalable mode with `filesystem` storage.
    helm repo update
    ```
 
-3. Configure the object storage:
-
-   - Create the configuration file `values.yaml`. The example below illustrates how to deploy Loki in test mode using MinIO as storage:
+3. Create the configuration file `values.yaml`. The example below illustrates how to deploy Loki in test mode using MinIO as storage:
 
      ```yaml
       loki:
@@ -121,10 +117,7 @@ It is not recommended to run scalable mode with `filesystem` storage.
         replicas: 0
      ```
 
-     To configure other storage providers, refer to the [Helm Chart Reference]({{< relref "../reference" >}}).
-
-
-1. Install or upgrade the Loki deployment.
+4. Install or upgrade the Loki deployment.
      - To install:
         ```bash
        helm install --values values.yaml loki grafana/loki
@@ -136,7 +129,7 @@ It is not recommended to run scalable mode with `filesystem` storage.
 
 ## AWS S3 Configuration
 
-To configure Loki to use AWS S3 as the object storage, you need to provide the following values in the `values.yaml` file:
+To configure Loki to use AWS S3 as the object storage rather than MinIO, you need to provide the following values in the `values.yaml` file:
 
 ```yaml
     loki:
@@ -179,7 +172,7 @@ To configure Loki to use AWS S3 as the object storage, you need to provide the f
     write:
       replicas: 3
 
-    # Enable minio for storage
+    # Disable minio storage
     minio:
       enabled: false
 
@@ -207,5 +200,8 @@ To configure Loki to use AWS S3 as the object storage, you need to provide the f
       replicas: 0
 ```
 
+To configure other storage providers, refer to the [Helm Chart Reference]({{< relref "../reference" >}}).
+
 ## Next Steps 
-Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).
+* Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).
+* Monitor the Loki deployment using the [Meta Monitoring Healm chart](/docs/loki/<LOKI_VERSION>/monitor-and-alert/)

@@ -1,20 +1,16 @@
 ---
-title: Test the microservice Helm chart with Kind
-menuTitle: Test the microservice Helm chart with Kind
-description: Installing Loki in microservice (distributed) mode using the Helm chart.
+title: Deploy the Helm chart localy with Kind
+menuTitle: Deploy the Helm chart localy with Kind
+description: Installing Loki in microservice (distributed) with Kind for local development and testing purposes.
 aliases:
-  - ../../../installation/helm/test-microservice/
-  - ../../../installation/helm/test-install-microservice/
 weight: 300
 keywords: 
 ---
 
 
-# Test the microservice Helm chart with Kind
-<!-- vale Grafana.Quotes = NO -->
-<!-- vale Grafana.Quotes = YES -->
+# Deploy the Helm chart localy with Kind
 
-This guide walks you through testing the Grafana Loki Helm chart in microservice mode using [Kind](https://kind.sigs.k8s.io/), a tool for running local Kubernetes clusters using Docker container nodes.
+This guide walks you through testing the Grafana Loki Helm chart localy in microservice mode using [Kind](https://kind.sigs.k8s.io/), a tool for running local Kubernetes clusters using Docker container nodes.
 
 ## Prerequisites
 
