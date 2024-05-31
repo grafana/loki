@@ -508,6 +508,19 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 				`			test 4 test test`,
 			},
 		},
+		{
+			name:  "Unicode characters are matchable",
+			drain: New(DefaultConfig(), nil),
+			inputLines: []string{
+				`13:25:18.033470 ▶ INFO  route ops sending to dest https://graphite-cortex-ops-blocks-us-east4.grafana.net/graphite/metrics: service_is_carbon-relay-ng.instance_is_carbon-relay-ng-c665b7b-j2trk.mtype_is_gauge.dest_is_https_graphite-cortex-ops-blocks-us-east4_grafana_netgraphitemetrics.unit_is_B.what_is_FlushSize.type_is_manual.stat_is_max_999 0.00 1717075518`,
+				`13:25:18.033422 ▶ INFO  route ops sending to dest https://graphite-cortex-ops-blocks-us-east4.grafana.net/graphite/metrics: service_is_carbon-relay-ng.instance_is_carbon-relay-ng-c665b7b-j2trk.mtype_is_gauge.dest_is_https_graphite-cortex-ops-blocks-us-east4_grafana_netgraphitemetrics.unit_is_B.what_is_FlushSize.type_is_manual.stat_is_max_99 0.00 1717075518`,
+				`13:25:18.033394 ▶ INFO  route ops sending to dest https://graphite-cortex-ops-blocks-us-east4.grafana.net/graphite/metrics: service_is_carbon-relay-ng.instance_is_carbon-relay-ng-c665b7b-j2trk.mtype_is_gauge.dest_is_https_graphite-cortex-ops-blocks-us-east4_grafana_netgraphitemetrics.unit_is_B.what_is_FlushSize.type_is_manual.stat_is_max_95 0.00 1717075518`,
+				`13:25:18.033364 ▶ INFO  route ops sending to dest https://graphite-cortex-ops-blocks-us-east4.grafana.net/graphite/metrics: service_is_carbon-relay-ng.instance_is_carbon-relay-ng-c665b7b-j2trk.mtype_is_gauge.dest_is_https_graphite-cortex-ops-blocks-us-east4_grafana_netgraphitemetrics.unit_is_B.what_is_FlushSize.type_is_manual.stat_is_max_75 0.00 1717075518`,
+				`13:25:18.033335 ▶ INFO  route ops sending to dest https://graphite-cortex-ops-blocks-us-east4.grafana.net/graphite/metrics: service_is_carbon-relay-ng.instance_is_carbon-relay-ng-c665b7b-j2trk.mtype_is_gauge.dest_is_https_graphite-cortex-ops-blocks-us-east4_grafana_netgraphitemetrics.unit_is_B.what_is_FlushSize.type_is_manual.stat_is_max_50 0.00 1717075518`,
+				`13:25:18.033304 ▶ INFO  route ops sending to dest https://graphite-cortex-ops-blocks-us-east4.grafana.net/graphite/metrics: service_is_carbon-relay-ng.instance_is_carbon-relay-ng-c665b7b-j2trk.mtype_is_gauge.dest_is_https_graphite-cortex-ops-blocks-us-east4_grafana_netgraphitemetrics.unit_is_B.what_is_FlushSize.type_is_manual.stat_is_std 0.00 1717075518`,
+				`13:25:18.033281 ▶ INFO  route ops sending to dest https://graphite-cortex-ops-blocks-us-east4.grafana.net/graphite/metrics: service_is_carbon-relay-ng.instance_is_carbon-relay-ng-c665b7b-j2trk.mtype_is_gauge.dest_is_https_graphite-cortex-ops-blocks-us-east4_grafana_netgraphitemetrics.unit_is_B.what_is_FlushSize.type_is_manual.stat_is_mean 0.00 1717075518`,
+			},
+		},
 	}
 	for _, tt := range tests {
 		tt := tt
@@ -523,7 +536,8 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 
 			for _, line := range tt.inputLines {
 				passes := matcher.Test([]byte(line))
-				require.Truef(t, passes, `Line %q should match extracted pattern`, line)
+				require.Truef(t, passes, "Line should match extracted pattern: \nPatt[%q] \nLine[%q]", cluster.String(), line)
+
 			}
 		})
 	}
