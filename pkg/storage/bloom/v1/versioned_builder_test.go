@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
-	"github.com/stretchr/testify/require"
 )
 
 // smallBlockOpts returns a set of block options that are suitable for testing

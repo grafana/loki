@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/loki/v3/pkg/util/encoding"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
 type IndexBuilder struct {
