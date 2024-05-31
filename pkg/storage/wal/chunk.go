@@ -168,7 +168,7 @@ func writeChunk(w io.Writer, entries []*logproto.Entry, encoding EncodingType) (
 }
 
 type ChunkReader struct {
-	reader io.ReadSeekCloser
+	b []byte
 }
 
 // Close implements iter.EntryIterator.
@@ -190,9 +190,9 @@ func (r *ChunkReader) Next() bool {
 	panic("implement me")
 }
 
-func NewChunkReader(reader io.ReadSeekCloser) *ChunkReader {
+func NewChunkReader(b []byte) *ChunkReader {
 	return &ChunkReader{
-		reader: reader,
+		b: b,
 	}
 }
 
