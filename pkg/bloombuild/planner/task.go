@@ -34,10 +34,10 @@ func NewTask(
 }
 
 type TaskResult struct {
-	metas []bloomshipper.MetaRef
+	metas []bloomshipper.Meta
 }
 
-func NewTaskResult(metas []bloomshipper.MetaRef) *TaskResult {
+func NewTaskResult(metas []bloomshipper.Meta) *TaskResult {
 	return &TaskResult{
 		metas: metas,
 	}

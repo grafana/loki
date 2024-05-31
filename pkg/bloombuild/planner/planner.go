@@ -3,6 +3,7 @@ package planner
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 	"time"
@@ -157,8 +158,9 @@ func (p *Planner) running(ctx context.Context) error {
 }
 
 type tenantTableTaskResults struct {
-	totalTasks int
-	resultsCh  chan *TaskResult
+	totalTasks    int
+	originalMetas []bloomshipper.Meta
+	resultsCh     chan *TaskResult
 }
 
 type tableTenant struct {
@@ -201,12 +203,31 @@ func (p *Planner) runOne(ctx context.Context) error {
 			}
 			var tasks []*protos.Task
 
+			// Fetch source metas to be used in both build and cleanup of out-of-date metas+blooms
+			metas, err := p.bloomStore.FetchMetas(
+				ctx,
+				bloomshipper.MetaSearchParams{
+					TenantID: tenant,
+					Interval: bloomshipper.NewInterval(table.Bounds()),
+					Keyspace: v1.NewBounds(0, math.MaxUint64),
+				},
+			)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to get metas", "err", err)
+				continue
+			}
+
 			for _, ownershipRange := range ownershipRanges {
 				logger := log.With(logger, "ownership", ownershipRange.String())
 
-				gaps, err := p.findGapsForBounds(ctx, tenant, table, ownershipRange)
+				// Filter only the metas that overlap in the ownership range
+				metasInBounds := bloomshipper.FilterMetasOverlappingBounds(metas, ownershipRange)
+				level.Debug(logger).Log("msg", "found relevant metas", "metas", len(metasInBounds))
+
+				// Find gaps in the TSDBs for this tenant/table
+				gaps, err := p.findOutdatedGaps(ctx, tenant, table, ownershipRange, metasInBounds, logger)
 				if err != nil {
-					level.Error(logger).Log("msg", "error finding gaps", "err", err)
+					level.Error(logger).Log("msg", "failed to find outdated gaps", "err", err)
 					continue
 				}
 
@@ -232,8 +253,9 @@ func (p *Planner) runOne(ctx context.Context) error {
 			}
 
 			tasksResultForTableTenant[tt] = tenantTableTaskResults{
-				totalTasks: enqueuedTasks,
-				resultsCh:  resultsCh,
+				totalTasks:    enqueuedTasks,
+				originalMetas: metas,
+				resultsCh:     resultsCh,
 			}
 
 			level.Debug(logger).Log("msg", "enqueued tasks", "tasks", enqueuedTasks)
@@ -247,8 +269,14 @@ func (p *Planner) runOne(ctx context.Context) error {
 	for tt, results := range tasksResultForTableTenant {
 		wg.Add(1)
 		go func(table config.DayTable, tenant string, results tenantTableTaskResults) {
-			p.processTenantTaskResults(ctx, table, tenant, results.totalTasks, results.resultsCh)
-			wg.Done()
+			defer wg.Done()
+
+			if err := p.processTenantTaskResults(
+				ctx, table, tenant,
+				results.originalMetas, results.totalTasks, results.resultsCh,
+			); err != nil {
+				level.Error(p.logger).Log("msg", "failed to process tenant task results", "err", err)
+			}
 		}(tt.table, tt.tenant, results)
 	}
 
@@ -267,26 +295,98 @@ func (p *Planner) processTenantTaskResults(
 	ctx context.Context,
 	table config.DayTable,
 	tenant string,
+	originalMetas []bloomshipper.Meta,
 	totalTasks int,
 	resultsCh <-chan *TaskResult,
-) {
+) error {
 	logger := log.With(p.logger, table, table.Addr(), "tenant", tenant)
 	level.Debug(logger).Log("msg", "waiting for all tasks to be completed", "tasks", totalTasks)
 
-	newMetas := make([]bloomshipper.MetaRef, 0, totalTasks)
+	newMetas := make([]bloomshipper.Meta, 0, totalTasks)
 	for i := 0; i < totalTasks; i++ {
 		select {
 		case <-ctx.Done():
 			level.Warn(logger).Log("msg", "context done while waiting for task results", "err", ctx.Err())
-			return
+			return ctx.Err()
 		case result := <-resultsCh:
 			newMetas = append(newMetas, result.metas...)
 		}
 	}
 
-	level.Debug(logger).Log("msg", "all tasks completed", "tasks", totalTasks)
+	level.Debug(logger).Log("msg", "all tasks completed", "tasks", totalTasks, "originalMetas", len(originalMetas))
+	combined := append(originalMetas, newMetas...)
 
-	// TODO(salvacorts): Now delete all tombstoned metas.
+	outdated, err := outdatedMetas(combined)
+	if err != nil {
+		return fmt.Errorf("failed to find outdated metas: %w", err)
+	}
+	level.Debug(logger).Log("msg", "found outdated metas", "outdated", len(outdated))
+
+	if err := p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, outdated); err != nil {
+		return fmt.Errorf("failed to delete outdated metas: %w", err)
+	}
+
+	return nil
+}
+
+func (p *Planner) deleteOutdatedMetasAndBlocks(
+	ctx context.Context,
+	table config.DayTable,
+	tenant string,
+	metas []bloomshipper.Meta,
+) error {
+	logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant)
+
+	client, err := p.bloomStore.Client(table.ModelTime())
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to get client", "err", err)
+		return errors.Wrap(err, "failed to get client")
+	}
+
+	var (
+		deletedMetas  int
+		deletedBlocks int
+	)
+	defer func() {
+		p.metrics.metasDeleted.Add(float64(deletedMetas))
+		p.metrics.blocksDeleted.Add(float64(deletedBlocks))
+	}()
+
+	for _, meta := range metas {
+		for _, block := range meta.Blocks {
+			if err := client.DeleteBlocks(ctx, []bloomshipper.BlockRef{block}); err != nil {
+				if client.IsObjectNotFoundErr(err) {
+					level.Debug(logger).Log("msg", "block not found while attempting delete, continuing", "block", block.String())
+				} else {
+					level.Error(logger).Log("msg", "failed to delete block", "err", err, "block", block.String())
+					return errors.Wrap(err, "failed to delete block")
+				}
+			}
+
+			deletedBlocks++
+			level.Debug(logger).Log("msg", "removed outdated block", "block", block.String())
+		}
+
+		err = client.DeleteMetas(ctx, []bloomshipper.MetaRef{meta.MetaRef})
+		if err != nil {
+			if client.IsObjectNotFoundErr(err) {
+				level.Debug(logger).Log("msg", "meta not found while attempting delete, continuing", "meta", meta.MetaRef.String())
+			} else {
+				level.Error(logger).Log("msg", "failed to delete meta", "err", err, "meta", meta.MetaRef.String())
+				return errors.Wrap(err, "failed to delete meta")
+			}
+		}
+		deletedMetas++
+		level.Debug(logger).Log("msg", "removed outdated meta", "meta", meta.MetaRef.String())
+	}
+
+	level.Debug(logger).Log(
+		"msg", "deleted outdated metas and blocks",
+		"metas", deletedMetas,
+		"blocks", deletedBlocks,
+	)
+
+	return nil
 }
 
 func (p *Planner) tables(ts time.Time) *dayRangeIterator {
@@ -364,47 +464,6 @@ func (p *Planner) tenants(ctx context.Context, table config.DayTable) (*v1.Slice
 	}
 
 	return v1.NewSliceIter(tenants), nil
-}
-
-/*
-Planning works as follows, split across many functions for clarity:
- 1. Fetch all meta.jsons for the given tenant and table which overlap the ownership range of this compactor.
- 2. Load current TSDBs for this tenant/table.
- 3. For each live TSDB (there should be only 1, but this works with multiple), find any gaps
-    (fingerprint ranges) which are not up-to-date, determined by checking other meta.json files and comparing
-    the TSDBs they were generated from as well as their ownership ranges.
-*/
-func (p *Planner) findGapsForBounds(
-	ctx context.Context,
-	tenant string,
-	table config.DayTable,
-	ownershipRange v1.FingerprintBounds,
-) ([]blockPlan, error) {
-	logger := log.With(p.logger, "org_id", tenant, "table", table.Addr(), "ownership", ownershipRange.String())
-
-	// Fetch source metas to be used in both build and cleanup of out-of-date metas+blooms
-	metas, err := p.bloomStore.FetchMetas(
-		ctx,
-		bloomshipper.MetaSearchParams{
-			TenantID: tenant,
-			Interval: bloomshipper.NewInterval(table.Bounds()),
-			Keyspace: ownershipRange,
-		},
-	)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to get metas", "err", err)
-		return nil, fmt.Errorf("failed to get metas: %w", err)
-	}
-
-	level.Debug(logger).Log("msg", "found relevant metas", "metas", len(metas))
-
-	// Find gaps in the TSDBs for this tenant/table
-	gaps, err := p.findOutdatedGaps(ctx, tenant, table, ownershipRange, metas, logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find outdated gaps: %w", err)
-	}
-
-	return gaps, nil
 }
 
 // blockPlan is a plan for all the work needed to build a meta.json

@@ -113,6 +113,28 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 	return [][]MetaRef{refs}, []*Fetcher{b.fetcher}, nil
 }
 
+// FilterMetasOverlappingBounds filters metas that are within the given bounds.
+// the input metas are expected to be sorted by fingerprint.
+func FilterMetasOverlappingBounds(metas []Meta, bounds v1.FingerprintBounds) []Meta {
+	withinBounds := make([]Meta, 0, len(metas))
+	for _, meta := range metas {
+		// We can stop iterating once we find an item greater
+		// than the keyspace we're looking for
+		if bounds.Cmp(meta.Bounds.Min) == v1.After {
+			break
+		}
+
+		// Only check keyspace for now, because we don't have start/end timestamps in the refs
+		if !bounds.Overlaps(meta.Bounds) {
+			continue
+		}
+
+		withinBounds = append(withinBounds, meta)
+	}
+
+	return withinBounds
+}
+
 // FetchMetas implements store.
 func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
 	logger := spanlogger.FromContext(ctx)
