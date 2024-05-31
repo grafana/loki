@@ -40,7 +40,7 @@ func (c Chunk) spaceFor(ts model.Time) bool {
 }
 
 // ForRange returns samples with only the values
-// in the given range [start:end] and aggregates them by step duration.
+// in the given range [start:end) and aggregates them by step duration.
 // start and end are in milliseconds since epoch. step is a duration in milliseconds.
 func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 	if len(c.Samples) == 0 {
@@ -48,7 +48,7 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 	}
 	first := c.Samples[0].Timestamp
 	last := c.Samples[len(c.Samples)-1].Timestamp
-	if start >= end || first > end || last < start {
+	if start >= end || first >= end || last < start {
 		return nil
 	}
 	var lo int
@@ -58,10 +58,9 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 		})
 	}
 	hi := len(c.Samples)
-
-	if end <= last {
+	if end < last {
 		hi = sort.Search(len(c.Samples), func(i int) bool {
-			return c.Samples[i].Timestamp > end
+			return c.Samples[i].Timestamp >= end
 		})
 	}
 	if step == chunk.TimeResolution {
@@ -121,9 +120,9 @@ func (c Chunks) Iterator(pattern string, from, through, step model.Time) iter.It
 		if len(samples) == 0 {
 			continue
 		}
-		iters = append(iters, iter.NewPatternSlice(pattern, samples))
+		iters = append(iters, iter.NewSlice(pattern, samples))
 	}
-	return iter.NewNonOverlappingPatternIterator(pattern, iters)
+	return iter.NewNonOverlappingIterator(pattern, iters)
 }
 
 func (c Chunks) samples() []*logproto.PatternSample {

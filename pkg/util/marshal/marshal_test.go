@@ -1077,11 +1077,13 @@ func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
 		{
 			&logproto.QueryPatternsResponse{
 				Series: []*logproto.PatternSeries{
-					logproto.NewPatternSeriesWithPattern("foo <*> bar", []*logproto.PatternSample{
-						{Timestamp: model.TimeFromUnix(1), Value: 1},
-						{Timestamp: model.TimeFromUnix(2), Value: 2},
+					{
+						Pattern: "foo <*> bar",
+						Samples: []*logproto.PatternSample{
+							{Timestamp: model.TimeFromUnix(1), Value: 1},
+							{Timestamp: model.TimeFromUnix(2), Value: 2},
+						},
 					},
-					),
 				},
 			},
 			`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[[1,1],[2,2]]}]}`,
@@ -1089,17 +1091,20 @@ func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
 		{
 			&logproto.QueryPatternsResponse{
 				Series: []*logproto.PatternSeries{
-					logproto.NewPatternSeriesWithPattern("foo <*> bar", []*logproto.PatternSample{
-						{Timestamp: model.TimeFromUnix(1), Value: 1},
-						{Timestamp: model.TimeFromUnix(2), Value: 2},
+					{
+						Pattern: "foo <*> bar",
+						Samples: []*logproto.PatternSample{
+							{Timestamp: model.TimeFromUnix(1), Value: 1},
+							{Timestamp: model.TimeFromUnix(2), Value: 2},
+						},
 					},
-					),
-					logproto.NewPatternSeriesWithPattern("foo <*> buzz",
-						[]*logproto.PatternSample{
+					{
+						Pattern: "foo <*> buzz",
+						Samples: []*logproto.PatternSample{
 							{Timestamp: model.TimeFromUnix(3), Value: 1},
 							{Timestamp: model.TimeFromUnix(3), Value: 2},
 						},
-					),
+					},
 				},
 			},
 			`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[[1,1],[2,2]]},{"pattern":"foo <*> buzz","samples":[[3,1],[3,2]]}]}`,
@@ -1107,64 +1112,148 @@ func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
 		{
 			&logproto.QueryPatternsResponse{
 				Series: []*logproto.PatternSeries{
-					logproto.NewPatternSeriesWithPattern("foo <*> bar",
-						[]*logproto.PatternSample{},
-					),
-					logproto.NewPatternSeriesWithPattern("foo <*> buzz",
-						[]*logproto.PatternSample{},
-					),
+					{
+						Pattern: "foo <*> bar",
+						Samples: []*logproto.PatternSample{},
+					},
+					{
+						Pattern: "foo <*> buzz",
+						Samples: []*logproto.PatternSample{},
+					},
 				},
 			},
 			`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[]},{"pattern":"foo <*> buzz","samples":[]}]}`,
-		},
-		{
-			&logproto.QueryPatternsResponse{
-				Series: []*logproto.PatternSeries{
-					logproto.NewPatternSeriesWithLabels(`{foo="bar"}`, []*logproto.PatternSample{
-						{Timestamp: model.TimeFromUnix(1), Value: 1},
-						{Timestamp: model.TimeFromUnix(2), Value: 2},
-					},
-					),
-				},
-			},
-			`{"status":"success","data":[{"labels":"{foo=\"bar\"}","samples":[[1,1],[2,2]]}]}`,
-		},
-		{
-			&logproto.QueryPatternsResponse{
-				Series: []*logproto.PatternSeries{
-					logproto.NewPatternSeriesWithLabels(`{foo="bar"}`, []*logproto.PatternSample{
-						{Timestamp: model.TimeFromUnix(1), Value: 1},
-						{Timestamp: model.TimeFromUnix(2), Value: 2},
-					},
-					),
-					logproto.NewPatternSeriesWithLabels(`{foo="buzz"}`,
-						[]*logproto.PatternSample{
-							{Timestamp: model.TimeFromUnix(3), Value: 1},
-							{Timestamp: model.TimeFromUnix(3), Value: 2},
-						},
-					),
-				},
-			},
-			`{"status":"success","data":[{"labels":"{foo=\"bar\"}","samples":[[1,1],[2,2]]},{"labels":"{foo=\"buzz\"}","samples":[[3,1],[3,2]]}]}`,
-		},
-		{
-			&logproto.QueryPatternsResponse{
-				Series: []*logproto.PatternSeries{
-					logproto.NewPatternSeriesWithLabels(`{foo="bar"}`,
-						[]*logproto.PatternSample{},
-					),
-					logproto.NewPatternSeriesWithPattern(`{foo="buzz"}`,
-						[]*logproto.PatternSample{},
-					),
-				},
-			},
-			`{"status":"success","data":[{"labels":"{foo=\"bar\"}","samples":[]},{"pattern":"{foo=\"buzz\"}","samples":[]}]}`,
 		},
 	} {
 		tc := tc
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			var b bytes.Buffer
 			err := WriteQueryPatternsResponseJSON(tc.input, &b)
+			require.NoError(t, err)
+			got := b.String()
+			require.JSONEqf(t, tc.expected, got, "Patterns Test %d failed", i)
+		})
+	}
+}
+
+//TODO: use real times for clarity
+func Test_WriteQuerySamplesResponseJSON(t *testing.T) {
+	expected := func(result string) string {
+		return fmt.Sprintf(`{
+			"status": "success",
+			"data": {
+				"result": %s,
+				"resultType": "matrix",
+				"stats" : %s
+			}
+		}`, result, emptyStats)
+	}
+
+	for i, tc := range []struct {
+		input    *logproto.QuerySamplesResponse
+		expected string
+	}{
+		{
+			&logproto.QuerySamplesResponse{},
+			expected("[]"),
+		},
+		{
+			&logproto.QuerySamplesResponse{
+				Series: []logproto.Series{
+					{
+						Labels: `{foo="bar"}`,
+						Samples: []logproto.Sample{
+							{Timestamp: 1, Value: 1},
+							{Timestamp: 2, Value: 2},
+						},
+					},
+				},
+			},
+			expected(`[
+        {
+          "metric": {
+            "foo": "bar"
+          },
+          "values": [
+            [0.001, "1"],
+            [0.002, "2"]
+          ]
+        }
+      ]`),
+		},
+		{
+			&logproto.QuerySamplesResponse{
+				Series: []logproto.Series{
+					{
+						Labels: `{foo="bar"}`,
+						Samples: []logproto.Sample{
+							{Timestamp: 1, Value: 1},
+							{Timestamp: 2, Value: 2},
+						},
+					},
+					{
+						Labels: `{foo="buzz"}`,
+						Samples: []logproto.Sample{
+							{Timestamp: 3, Value: 1},
+							{Timestamp: 3, Value: 2},
+						},
+					},
+				},
+			},
+			expected(`[
+        {
+          "metric": {
+            "foo": "bar"
+          },
+          "values": [
+            [0.001, "1"],
+            [0.002, "2"]
+          ]
+        },
+        {
+          "metric": {
+            "foo": "buzz"
+          },
+          "values": [
+            [0.003, "1"],
+            [0.003, "2"]
+          ]
+        }
+      ]`),
+		},
+		{
+			&logproto.QuerySamplesResponse{
+				Series: []logproto.Series{
+					{
+						Labels:  `{foo="bar"}`,
+						Samples: []logproto.Sample{},
+					},
+					{
+						Labels:  `{foo="buzz"}`,
+						Samples: []logproto.Sample{},
+					},
+				},
+			},
+			expected(`[
+        {
+          "metric": {
+            "foo": "bar"
+          },
+          "values": []
+        },
+        {
+          "metric": {
+            "foo": "buzz"
+          },
+          "values": []
+        }
+      ]`),
+		},
+	} {
+		tc := tc
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			var b bytes.Buffer
+			err := WriteQuerySamplesResponseJSON(tc.input, &b)
 			require.NoError(t, err)
 			got := b.String()
 			require.JSONEqf(t, tc.expected, got, "Patterns Test %d failed", i)

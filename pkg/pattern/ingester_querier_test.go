@@ -25,7 +25,7 @@ func Test_prunePatterns(t *testing.T) {
 	resp := new(logproto.QueryPatternsResponse)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		resp.Series = append(resp.Series, logproto.NewPatternSeriesWithPattern(scanner.Text(), []*logproto.PatternSample{}))
+		resp.Series = append(resp.Series, logproto.NewPatternSeries(scanner.Text(), []*logproto.PatternSample{}))
 	}
 	require.NoError(t, scanner.Err())
 	prunePatterns(resp, 0)
@@ -47,7 +47,7 @@ func Test_prunePatterns(t *testing.T) {
 	require.Equal(t, expectedPatterns, patterns)
 }
 
-func Test_Patterns(t *testing.T) {
+func Test_Samples(t *testing.T) {
 	t.Run("it rejects metric queries with filters", func(t *testing.T) {
 		q := &IngesterQuerier{
 			cfg: Config{
@@ -69,19 +69,18 @@ func Test_Patterns(t *testing.T) {
 			`sum by (label)(count_over_time({foo="bar"} |= "baz" [5m]))`,
 			`bytes_over_time({foo="bar"} |= "baz" [5m])`,
 		} {
-			_, err := q.Patterns(
+			_, err := q.Samples(
 				context.Background(),
-				&logproto.QueryPatternsRequest{
+				&logproto.QuerySamplesRequest{
 					Query: query,
 				},
 			)
 			require.Error(t, err, query)
 			require.ErrorIs(t, err, ErrParseQuery, query)
-
 		}
 	})
 
-	t.Run("accepts log selector queries and count and bytes metric queries", func(t *testing.T) {
+	t.Run("it rejects log selector queries", func(t *testing.T) {
 		q := &IngesterQuerier{
 			cfg: Config{
 				MetricAggregation: metric.AggregationConfig{
@@ -94,6 +93,30 @@ func Test_Patterns(t *testing.T) {
 		}
 		for _, query := range []string{
 			`{foo="bar"}`,
+		} {
+			_, err := q.Samples(
+				context.Background(),
+				&logproto.QuerySamplesRequest{
+					Query: query,
+				},
+			)
+			require.Error(t, err, query)
+			require.Equal(t, "only sample expression supported", err.Error(), query)
+		}
+	})
+
+	t.Run("accepts count and bytes metric queries", func(t *testing.T) {
+		q := &IngesterQuerier{
+			cfg: Config{
+				MetricAggregation: metric.AggregationConfig{
+					Enabled: true,
+				},
+			},
+			logger:     log.NewNopLogger(),
+			ringClient: &fakeRingClient{},
+			registerer: nil,
+		}
+		for _, query := range []string{
 			`count_over_time({foo="bar"}[5m])`,
 			`bytes_over_time({foo="bar"}[5m])`,
 			`sum(count_over_time({foo="bar"}[5m]))`,
@@ -101,9 +124,9 @@ func Test_Patterns(t *testing.T) {
 			`sum by (level)(count_over_time({foo="bar"}[5m]))`,
 			`sum by (level)(bytes_over_time({foo="bar"}[5m]))`,
 		} {
-			_, err := q.Patterns(
+			_, err := q.Samples(
 				context.Background(),
-				&logproto.QueryPatternsRequest{
+				&logproto.QuerySamplesRequest{
 					Query: query,
 				},
 			)

@@ -12,7 +12,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
@@ -24,10 +23,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
-	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/pattern/metric"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+
+	loki_iter "github.com/grafana/loki/v3/pkg/iter"
+	pattern_iter "github.com/grafana/loki/v3/pkg/pattern/iter"
 )
 
 const readBatchSize = 1024
@@ -244,57 +245,64 @@ func (i *Ingester) Query(req *logproto.QueryPatternsRequest, stream logproto.Pat
 	if err != nil {
 		return err
 	}
-
-	expr, err := syntax.ParseExpr(req.Query)
-
-	switch e := expr.(type) {
-	case syntax.SampleExpr:
-		var err error
-		iterator, err := instance.QuerySample(ctx, e, req) // this is returning a first value of 0,0
-		if err != nil {
-			return err
-		}
-
-		// TODO(twhitney): query store
-		// if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
-		// 	storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
-		// 		Start:    start,
-		// 		End:      end,
-		// 		Selector: req.Selector,
-		// 		Shards:   req.Shards,
-		// 		Deletes:  req.Deletes,
-		// 		Plan:     req.Plan,
-		// 	}}
-		// 	storeItr, err := i.store.SelectSamples(ctx, storeReq)
-		// 	if err != nil {
-		// 		util.LogErrorWithContext(ctx, "closing iterator", it.Close)
-		// 		return err
-		// 	}
-
-		// 	it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
-		// }
-
-		defer util.LogErrorWithContext(ctx, "closing iterator", iterator.Close)
-		return sendMetricsSample(ctx, iterator, stream)
-	case syntax.LogSelectorExpr:
-		var err error
-		iterator, err := instance.Iterator(ctx, req)
-		if err != nil {
-			return err
-		}
-		defer util.LogErrorWithContext(ctx, "closing iterator", iterator.Close)
-		return sendPatternSample(ctx, iterator, stream)
-	default:
-		return httpgrpc.Errorf(
-			http.StatusBadRequest,
-			fmt.Sprintf("unexpected type (%T): cannot evaluate", e),
-		)
+	iterator, err := instance.Iterator(ctx, req)
+	if err != nil {
+		return err
 	}
+	defer util.LogErrorWithContext(ctx, "closing iterator", iterator.Close)
+	return sendPatternSample(ctx, iterator, stream)
 }
 
-func sendPatternSample(ctx context.Context, it iter.Iterator, stream logproto.Pattern_QueryServer) error {
+func (i *Ingester) QuerySample(
+	req *logproto.QuerySamplesRequest,
+	stream logproto.Pattern_QuerySampleServer,
+) error {
+	ctx := stream.Context()
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return err
+	}
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return err
+	}
+
+	expr, err := syntax.ParseSampleExpr(req.Query)
+	if err != nil {
+		return err
+	}
+
+	iterator, err := instance.QuerySample(ctx, expr, req) // this is returning a first value of 0,0
+	if err != nil {
+		return err
+	}
+
+	// TODO(twhitney): query store
+	// if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+	// 	storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+	// 		Start:    start,
+	// 		End:      end,
+	// 		Selector: req.Selector,
+	// 		Shards:   req.Shards,
+	// 		Deletes:  req.Deletes,
+	// 		Plan:     req.Plan,
+	// 	}}
+	// 	storeItr, err := i.store.SelectSamples(ctx, storeReq)
+	// 	if err != nil {
+	// 		util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+	// 		return err
+	// 	}
+
+	// 	it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+	// }
+
+	defer util.LogErrorWithContext(ctx, "closing iterator", iterator.Close)
+	return sendMetricSamples(ctx, iterator, stream)
+}
+
+func sendPatternSample(ctx context.Context, it pattern_iter.Iterator, stream logproto.Pattern_QueryServer) error {
 	for ctx.Err() == nil {
-		batch, err := iter.ReadPatternsBatch(it, readBatchSize)
+		batch, err := pattern_iter.ReadBatch(it, readBatchSize)
 		if err != nil {
 			return err
 		}
@@ -308,13 +316,13 @@ func sendPatternSample(ctx context.Context, it iter.Iterator, stream logproto.Pa
 	return nil
 }
 
-func sendMetricsSample(
+func sendMetricSamples(
 	ctx context.Context,
-	it iter.Iterator,
-	stream logproto.Pattern_QueryServer,
+	it loki_iter.SampleIterator,
+	stream logproto.Pattern_QuerySampleServer,
 ) error {
 	for ctx.Err() == nil {
-		batch, err := iter.ReadMetricsBatch(it, readBatchSize)
+		batch, err := pattern_iter.ReadMetricsBatch(it, readBatchSize)
 		if err != nil {
 			return err
 		}

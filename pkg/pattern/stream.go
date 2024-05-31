@@ -2,7 +2,6 @@ package pattern
 
 import (
 	"context"
-	"errors"
 	"math"
 	"sync"
 	"time"
@@ -12,8 +11,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
-	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/pattern/metric"
+
+	loki_iter "github.com/grafana/loki/v3/pkg/iter"
+	pattern_iter "github.com/grafana/loki/v3/pkg/pattern/iter"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -70,14 +71,14 @@ func (s *stream) Push(
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	bytes := uint64(0)
-	count := uint64(len(entries))
+	bytes := float64(0)
+	count := float64(len(entries))
 	for _, entry := range entries {
 		if entry.Timestamp.UnixNano() < s.lastTs {
 			continue
 		}
 
-		bytes += uint64(len(entry.Line))
+		bytes += float64(len(entry.Line))
 
 		s.lastTs = entry.Timestamp.UnixNano()
 		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
@@ -89,13 +90,13 @@ func (s *stream) Push(
 	return nil
 }
 
-func (s *stream) Iterator(_ context.Context, from, through, step model.Time) (iter.Iterator, error) {
+func (s *stream) Iterator(_ context.Context, from, through, step model.Time) (pattern_iter.Iterator, error) {
 	// todo we should improve locking.
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
 	clusters := s.patterns.Clusters()
-	iters := make([]iter.Iterator, 0, len(clusters))
+	iters := make([]pattern_iter.Iterator, 0, len(clusters))
 
 	for _, cluster := range clusters {
 		if cluster.String() == "" {
@@ -103,14 +104,14 @@ func (s *stream) Iterator(_ context.Context, from, through, step model.Time) (it
 		}
 		iters = append(iters, cluster.Iterator(from, through, step))
 	}
-	return iter.NewMerge(iters...), nil
+	return pattern_iter.NewMerge(iters...), nil
 }
 
 func (s *stream) SampleIterator(
 	ctx context.Context,
 	expr syntax.SampleExpr,
 	from, through, step model.Time,
-) (iter.Iterator, error) {
+) (loki_iter.SampleIterator, error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -135,7 +136,7 @@ func (s *stream) SampleIterator(
 	// this is only 1 series since we're already on a stream
 	// this this limit needs to also be enforced higher up
 	maxSeries := 1000
-	series, err := s.JoinSampleVector(
+	matrix, err := s.JoinSampleVectors(
 		next,
 		ts,
 		r,
@@ -146,18 +147,17 @@ func (s *stream) SampleIterator(
 		return nil, err
 	}
 
-	return metric.NewSeriesToSampleIterator(series), nil
+	return loki_iter.NewMultiSeriesIterator(matrix), nil
 }
 
-//TODO: should this join multiple series into a matrix, so we don't have the weird hack?
-func (s *stream) JoinSampleVector(
+func (s *stream) JoinSampleVectors(
 	next bool,
 	ts int64,
 	r logql.StepResult,
 	stepEvaluator logql.StepEvaluator,
 	maxSeries int,
 	from, through, step model.Time,
-) (*promql.Series, error) {
+) ([]logproto.Series, error) {
 	stepCount := int(math.Ceil(float64(through.Sub(from).Nanoseconds()) / float64(step.UnixNano())))
 	if stepCount <= 0 {
 		stepCount = 1
@@ -173,24 +173,31 @@ func (s *stream) JoinSampleVector(
 		return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 	}
 
-	var seriesHash string
-	series := map[string]*promql.Series{}
-	for next {
+	series := map[uint64]*logproto.Series{}
+
+	// step evaluator logic is slightly different than the normal contract in Loki
+	// when evaluating a selection range, it's counts datapoints within (start, end]
+	// so an additional condition of ts < through is needed to make sure this loop
+	// doesn't go beyond the through time. the contract for Loki queries is [start, end),
+	// and the samples to evaluate are selected based on [start, end) so the last result
+	// is likely incorrect anyway
+	for next && ts < int64(through) {
 		vec = r.SampleVector()
 		for _, p := range vec {
-			seriesHash = p.Metric.String()
-			s, ok := series[seriesHash]
+			hash := p.Metric.Hash()
+			s, ok := series[hash]
 			if !ok {
-				s = &promql.Series{
-					Metric: p.Metric,
-					Floats: make([]promql.FPoint, 0, stepCount),
+				s = &logproto.Series{
+					Labels:     p.Metric.String(),
+					Samples:    make([]logproto.Sample, 0, stepCount),
+					StreamHash: hash,
 				}
-				series[p.Metric.String()] = s
+				series[hash] = s
 			}
 
-			s.Floats = append(s.Floats, promql.FPoint{
-				T: ts,
-				F: p.F,
+			s.Samples = append(s.Samples, logproto.Sample{
+				Timestamp: ts * 1e6, // convert milliseconds to nanoseconds
+				Value:     p.F,
 			})
 		}
 
@@ -200,12 +207,12 @@ func (s *stream) JoinSampleVector(
 		}
 	}
 
-	if len(series) > 1 {
-		// TODO: is this actually a problem? Should this just become a Matrix
-		return nil, errors.New("multiple series found in a single stream")
+	matrix := make([]logproto.Series, 0, len(series))
+	for _, s := range series {
+		matrix = append(matrix, *s)
 	}
 
-	return series[seriesHash], stepEvaluator.Error()
+	return matrix, stepEvaluator.Error()
 }
 
 func (s *stream) prune(olderThan time.Duration) bool {

@@ -138,7 +138,7 @@ func TestForRange(t *testing.T) {
 			},
 		},
 		{
-			name: "Start before First and End Inclusive of First Element",
+			name: "Start and End Before First Element",
 			c: &Chunk{Samples: []logproto.PatternSample{
 				{Timestamp: 2, Value: 2},
 				{Timestamp: 4, Value: 4},
@@ -146,17 +146,6 @@ func TestForRange(t *testing.T) {
 			}},
 			start:    0,
 			end:      2,
-			expected: []logproto.PatternSample{{Timestamp: 2, Value: 2}},
-		},
-		{
-			name: "Start and End before First Element",
-			c: &Chunk{Samples: []logproto.PatternSample{
-				{Timestamp: 2, Value: 2},
-				{Timestamp: 4, Value: 4},
-				{Timestamp: 6, Value: 6},
-			}},
-			start:    0,
-			end:      1,
 			expected: nil,
 		},
 		{

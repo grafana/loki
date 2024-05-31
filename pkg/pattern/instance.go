@@ -16,9 +16,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/chunk"
-	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/pattern/metric"
 	"github.com/grafana/loki/v3/pkg/util"
+
+	loki_iter "github.com/grafana/loki/v3/pkg/iter"
+	pattern_iter "github.com/grafana/loki/v3/pkg/pattern/iter"
 )
 
 const indexShards = 32
@@ -78,7 +80,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 }
 
 // Iterator returns an iterator of pattern samples matching the given query patterns request.
-func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequest) (iter.Iterator, error) {
+func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequest) (pattern_iter.Iterator, error) {
 	matchers, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -89,7 +91,7 @@ func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequ
 		step = chunk.TimeResolution
 	}
 
-	var iters []iter.Iterator
+	var iters []pattern_iter.Iterator
 	err = i.forMatchingStreams(matchers, func(s *stream) error {
 		iter, err := s.Iterator(ctx, from, through, step)
 		if err != nil {
@@ -101,17 +103,17 @@ func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequ
 	if err != nil {
 		return nil, err
 	}
-	return iter.NewMerge(iters...), nil
+	return pattern_iter.NewMerge(iters...), nil
 }
 
 func (i *instance) QuerySample(
 	ctx context.Context,
 	expr syntax.SampleExpr,
-	req *logproto.QueryPatternsRequest,
-) (iter.Iterator, error) {
+	req *logproto.QuerySamplesRequest,
+) (loki_iter.SampleIterator, error) {
 	if !i.aggregationCfg.Enabled {
 		// Should never get here, but this will prevent nil pointer panics in test
-		return iter.Empty, nil
+		return loki_iter.NoopIterator, nil
 	}
 
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
@@ -125,11 +127,11 @@ func (i *instance) QuerySample(
 		return nil, err
 	}
 
-	var iters []iter.Iterator
+	var iters []loki_iter.SampleIterator
 	err = i.forMatchingStreams(
 		selector.Matchers(),
 		func(stream *stream) error {
-			var iter iter.Iterator
+			var iter loki_iter.SampleIterator
 			var err error
 			iter, err = stream.SampleIterator(ctx, expr, from, through, step)
 
@@ -145,7 +147,7 @@ func (i *instance) QuerySample(
 		return nil, err
 	}
 
-	return iter.NewMerge(iters...), nil
+	return loki_iter.NewSortSampleIterator(iters), nil
 }
 
 // forMatchingStreams will execute a function for each stream that matches the given matchers.

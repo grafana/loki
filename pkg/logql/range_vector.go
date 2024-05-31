@@ -193,6 +193,7 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 			series.Metric = metric
 			r.window[lbs] = series
 		}
+		// TODO(twhitney): Everywhere else, an FPoint.T is in milliseconds, but here it's in nanoseconds.
 		p := promql.FPoint{
 			T: sample.Timestamp,
 			F: sample.Value,

@@ -32,7 +32,7 @@ func TestReadBatch(t *testing.T) {
 			batchSize: 2,
 			expected: &logproto.QueryPatternsResponse{
 				Series: []*logproto.PatternSeries{
-					logproto.NewPatternSeriesWithPattern(
+					logproto.NewPatternSeries(
 						"foo",
 						[]*logproto.PatternSample{
 							{Timestamp: 10, Value: 2},
@@ -49,7 +49,7 @@ func TestReadBatch(t *testing.T) {
 			batchSize: 4,
 			expected: &logproto.QueryPatternsResponse{
 				Series: []*logproto.PatternSeries{
-					logproto.NewPatternSeriesWithPattern(
+					logproto.NewPatternSeries(
 						"foo",
 						[]*logproto.PatternSample{
 							{Timestamp: 10, Value: 2},
@@ -64,8 +64,8 @@ func TestReadBatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			it := NewPatternSlice(tt.pattern, tt.samples)
-			got, err := ReadPatternsBatch(it, tt.batchSize)
+			it := NewSlice(tt.pattern, tt.samples)
+			got, err := ReadBatch(it, tt.batchSize)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, got)
 		})

@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -118,11 +117,11 @@ func (ev *DefaultEvaluatorFactory) NewStepEvaluator(
 
 					params := NewParams(
 						e,
-						from.Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
-						through.Add(-rangExpr.Left.Offset),
+						from,
+						through,
 						step,
 					)
-					return NewPatternSampleRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, params, rangExpr.Left.Offset)
+					return NewSampleRangeAggEvaluator(loki_iter.NewPeekingSampleIterator(it), rangExpr, params, rangExpr.Left.Offset)
 				})
 		}
 
@@ -152,11 +151,11 @@ func (ev *DefaultEvaluatorFactory) NewStepEvaluator(
 
 		params := NewParams(
 			e,
-			from.Add(-e.Left.Interval).Add(-e.Left.Offset),
-			through.Add(-e.Left.Offset),
-			step, // expecting nanoseconds
+			from,
+			through,
+			step,
 		)
-		return NewPatternSampleRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, params, e.Left.Offset)
+		return NewSampleRangeAggEvaluator(loki_iter.NewPeekingSampleIterator(it), e, params, e.Left.Offset)
 	default:
 		return nil, errors.Errorf("unexpected expr type (%T)", e)
 	}
@@ -165,7 +164,7 @@ func (ev *DefaultEvaluatorFactory) NewStepEvaluator(
 // Need to create our own StepEvaluator since we only support bytes and count over time,
 // and always sum to get those values. In order to accomplish this we need control over the
 // aggregation operation..
-func NewPatternSampleRangeAggEvaluator(
+func NewSampleRangeAggEvaluator(
 	it loki_iter.PeekingSampleIterator,
 	expr *syntax.RangeAggregationExpr,
 	q logql.Params,
@@ -243,7 +242,7 @@ func newRangeVectorIterator(
 	), nil
 }
 
-type SeriesToSampleIterator struct {
+type seriesToSampleIterator struct {
 	floats []promql.FPoint
 	curTs  int64
 	cur    float64
@@ -252,47 +251,47 @@ type SeriesToSampleIterator struct {
 
 // TODO: could this me a matrix iterator that returned multiple samples with
 // different labels for the same timestamp?
-func NewSeriesToSampleIterator(series *promql.Series) *SeriesToSampleIterator {
-	return &SeriesToSampleIterator{
+func NewSeriesToSampleIterator(series *promql.Series) *seriesToSampleIterator {
+	return &seriesToSampleIterator{
 		floats: series.Floats,
 		lbls:   series.Metric,
 	}
 }
 
-func (s *SeriesToSampleIterator) Next() bool {
+func (s *seriesToSampleIterator) Next() bool {
 	if len(s.floats) == 0 {
 		return false
 	}
 
 	current, rest := s.floats[0], s.floats[1:]
 
-	s.curTs = current.T
+	s.curTs = current.T * 1e6 // convert to nanoseconds
 	s.cur = current.F
 
 	s.floats = rest
 	return true
 }
 
-func (s *SeriesToSampleIterator) Pattern() string {
-	return ""
+func (s *seriesToSampleIterator) Labels() string {
+	return s.lbls.String()
 }
 
-func (s *SeriesToSampleIterator) Labels() labels.Labels {
-	return s.lbls
-}
-
-func (s *SeriesToSampleIterator) At() logproto.PatternSample {
-	return logproto.PatternSample{
-		Timestamp: model.Time(s.curTs),
-		Value:     int64(s.cur),
+func (s *seriesToSampleIterator) Sample() logproto.Sample {
+	return logproto.Sample{
+		Timestamp: s.curTs,
+		Value:     s.cur,
 	}
 }
 
-func (s *SeriesToSampleIterator) Error() error {
+func (s *seriesToSampleIterator) StreamHash() uint64 {
+	return s.lbls.Hash()
+}
+
+func (s *seriesToSampleIterator) Error() error {
 	return nil
 }
 
-func (s *SeriesToSampleIterator) Close() error {
+func (s *seriesToSampleIterator) Close() error {
 	return nil
 }
 

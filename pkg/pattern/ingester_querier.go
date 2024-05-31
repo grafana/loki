@@ -4,21 +4,25 @@ import (
 	"context"
 	"errors"
 	"math"
+	"net/http"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
-	"github.com/grafana/loki/v3/pkg/pattern/iter"
+
+	loki_iter "github.com/grafana/loki/v3/pkg/iter"
+	pattern_iter "github.com/grafana/loki/v3/pkg/pattern/iter"
 )
 
 // TODO(kolesnikovae): parametrise QueryPatternsRequest
 const minClusterSize = 30
 
-var ErrParseQuery = errors.New("only label matcher, byte_over_time, and count_over_time queries without filters are supported")
+var ErrParseQuery = errors.New("only byte_over_time and count_over_time queries without filters are supported")
 
 type IngesterQuerier struct {
 	cfg    Config
@@ -47,32 +51,30 @@ func NewIngesterQuerier(
 func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
 	_, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
-		// not a pattern query, so either a metric query or an error
-		if q.cfg.MetricAggregation.Enabled {
-			return q.queryMetricSamples(ctx, req)
-		}
-
-		return nil, err
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
-
-	return q.queryPatternSamples(ctx, req)
-}
-
-func (q *IngesterQuerier) queryPatternSamples(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
-	iterators, err := q.query(ctx, req)
+	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
+		return client.Query(ctx, req)
+	})
 	if err != nil {
 		return nil, err
 	}
-
+	iterators := make([]pattern_iter.Iterator, len(resps))
+	for i := range resps {
+		iterators[i] = pattern_iter.NewQueryClientIterator(resps[i].response.(logproto.Pattern_QueryClient))
+	}
 	// TODO(kolesnikovae): Incorporate with pruning
-	resp, err := iter.ReadPatternsBatch(iter.NewMerge(iterators...), math.MaxInt32)
+	resp, err := pattern_iter.ReadBatch(pattern_iter.NewMerge(iterators...), math.MaxInt32)
 	if err != nil {
 		return nil, err
 	}
 	return prunePatterns(resp, minClusterSize), nil
 }
 
-func (q *IngesterQuerier) queryMetricSamples(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+func (q *IngesterQuerier) Samples(
+	ctx context.Context,
+	req *logproto.QuerySamplesRequest,
+) (*logproto.QuerySamplesResponse, error) {
 	expr, err := syntax.ParseSampleExpr(req.Query)
 	if err != nil {
 		return nil, err
@@ -96,28 +98,43 @@ func (q *IngesterQuerier) queryMetricSamples(ctx context.Context, req *logproto.
 		return nil, ErrParseQuery
 	}
 
-	iterators, err := q.query(ctx, req)
+	iterators, err := q.querySample(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := iter.ReadMetricsBatch(iter.NewMerge(iterators...), math.MaxInt32)
+	// TODO: what should batch size be here?
+	resp, err := pattern_iter.ReadMetricsBatch(loki_iter.NewSortSampleIterator(iterators), math.MaxInt32)
 	if err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
-func (q *IngesterQuerier) query(ctx context.Context, req *logproto.QueryPatternsRequest) ([]iter.Iterator, error) {
+func (q *IngesterQuerier) queryPattern(ctx context.Context, req *logproto.QueryPatternsRequest) ([]pattern_iter.Iterator, error) {
 	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
 		return client.Query(ctx, req)
 	})
 	if err != nil {
 		return nil, err
 	}
-	iterators := make([]iter.Iterator, len(resps))
+	iterators := make([]pattern_iter.Iterator, len(resps))
 	for i := range resps {
-		iterators[i] = iter.NewQueryClientIterator(resps[i].response.(logproto.Pattern_QueryClient))
+		iterators[i] = pattern_iter.NewQueryClientIterator(resps[i].response.(logproto.Pattern_QueryClient))
+	}
+	return iterators, nil
+}
+
+func (q *IngesterQuerier) querySample(ctx context.Context, req *logproto.QuerySamplesRequest) ([]loki_iter.SampleIterator, error) {
+	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
+		return client.QuerySample(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+	iterators := make([]loki_iter.SampleIterator, len(resps))
+	for i := range resps {
+		iterators[i] = pattern_iter.NewQuerySamplesClientIterator(resps[i].response.(logproto.Pattern_QuerySampleClient))
 	}
 	return iterators, nil
 }
@@ -141,7 +158,7 @@ func prunePatterns(
 			continue
 		}
 		resp.Series = append(resp.Series,
-			logproto.NewPatternSeriesWithPattern(pattern, cluster.Samples()))
+			logproto.NewPatternSeries(pattern, cluster.Samples()))
 	}
 	return resp
 }

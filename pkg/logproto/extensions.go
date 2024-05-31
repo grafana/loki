@@ -161,8 +161,7 @@ func (r *QueryPatternsResponse) UnmarshalJSON(data []byte) error {
 	var v struct {
 		Status string `json:"status"`
 		Data   []struct {
-			Pattern string    `json:"pattern,omitempty"`
-			Labels  string    `json:"labels,omitempty"`
+			Pattern string    `json:"pattern"`
 			Samples [][]int64 `json:"samples"`
 		} `json:"data"`
 	}
@@ -175,12 +174,7 @@ func (r *QueryPatternsResponse) UnmarshalJSON(data []byte) error {
 		for _, s := range d.Samples {
 			samples = append(samples, &PatternSample{Timestamp: model.TimeFromUnix(s[0]), Value: s[1]})
 		}
-
-		if pattern := d.Pattern; pattern != "" {
-			r.Series = append(r.Series, NewPatternSeriesWithPattern(pattern, samples))
-		} else if labels := d.Labels; labels != "" {
-			r.Series = append(r.Series, NewPatternSeriesWithLabels(labels, samples))
-		}
+		r.Series = append(r.Series, &PatternSeries{Pattern: d.Pattern, Samples: samples})
 	}
 	return nil
 }
@@ -195,10 +189,6 @@ func (m *ShardsResponse) Merge(other *ShardsResponse) {
 	m.Statistics.Merge(other.Statistics)
 }
 
-func NewPatternSeriesWithPattern(pattern string, samples []*PatternSample) *PatternSeries {
-	return &PatternSeries{Identifier: &PatternSeries_Pattern{pattern}, Samples: samples}
-}
-
-func NewPatternSeriesWithLabels(labels string, samples []*PatternSample) *PatternSeries {
-	return &PatternSeries{Identifier: &PatternSeries_Labels{labels}, Samples: samples}
+func NewPatternSeries(pattern string, samples []*PatternSample) *PatternSeries {
+	return &PatternSeries{Pattern: pattern, Samples: samples}
 }

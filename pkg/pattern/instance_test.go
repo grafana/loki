@@ -17,26 +17,29 @@ import (
 
 func TestInstance_QuerySample(t *testing.T) {
 	ctx := context.Background()
+
 	thirtySeconds := int64(30000)
 	oneMin := int64(60000)
 	fiveMin := oneMin * 5
-	now := int64(1715964275000)
-	then := now - fiveMin // 1715963975000
+	now := fiveMin
+	then := int64(0)
 
-	mockReq := &logproto.QueryPatternsRequest{
-		Start: time.Unix(then/1000, 0),
-		End:   time.Now(),
+	mockReq := &logproto.QuerySamplesRequest{
+		Start: time.UnixMilli(then),
+		End:   time.UnixMilli(now + 1e4),
 		Step:  oneMin,
 	}
 
-	instance, err := newInstance("test", log.NewNopLogger(), nil, metric.AggregationConfig{})
+	instance, err := newInstance("test", log.NewNopLogger(), newIngesterMetrics(nil, "test"), metric.AggregationConfig{
+		Enabled: true,
+	})
 	require.NoError(t, err)
 
 	labels := model.LabelSet{
 		model.LabelName("foo"): model.LabelValue("bar"),
 	}
 
-	lastTsMilli := (then + oneMin + oneMin) // 1715964095000
+	lastTsMilli := (then + oneMin + thirtySeconds) // 0 + 60000 + 30000 = 90000
 
 	// TODO(twhitney): Add a few more pushes to this or another test
 	instance.Push(ctx, &logproto.PushRequest{
@@ -45,19 +48,19 @@ func TestInstance_QuerySample(t *testing.T) {
 				Labels: labels.String(),
 				Entries: []push.Entry{
 					{
-						Timestamp: time.Unix(then/1000, 0),
+						Timestamp: time.UnixMilli(then),
 						Line:      "this=that color=blue",
 					},
 					{
-						Timestamp: time.Unix((then+thirtySeconds)/1000, 0),
+						Timestamp: time.UnixMilli(then + thirtySeconds),
 						Line:      "this=that color=blue",
 					},
 					{
-						Timestamp: time.Unix((then+oneMin)/1000, 0),
+						Timestamp: time.UnixMilli(then + oneMin),
 						Line:      "this=that color=blue",
 					},
 					{
-						Timestamp: time.Unix(lastTsMilli/1000, 0),
+						Timestamp: time.UnixMilli(lastTsMilli),
 						Line:      "this=that color=blue",
 					},
 				},
@@ -66,36 +69,44 @@ func TestInstance_QuerySample(t *testing.T) {
 		},
 	})
 
+	// 5 min query range
+	// 1 min step
+	// 1 min selection range
+
+	// first: -60000  to 0
+	// second: 0      to 60000
+	// third:  60000  to 120000
+	// fourth: 120000 to 180000
+	// fifth:  180000 to 240000
+	// sixth:  240000 to 300000
+
+	// lastTsMilli is 90000
+	// would expect it in the 3rd bucket
+	start := then
+	secondPoint := start + oneMin
+	thirdPoint := secondPoint + oneMin
+
 	t.Run("successful count over time query", func(t *testing.T) {
-		expr, err := syntax.ParseSampleExpr(`count_over_time({foo="bar"}[30s])`)
+		expr, err := syntax.ParseSampleExpr(`count_over_time({foo="bar"}[60s])`)
 		require.NoError(t, err)
 
 		iter, err := instance.QuerySample(ctx, expr, mockReq)
 		assert.NoError(t, err)
 		assert.NotNil(t, iter)
 
-		// start is request start minus range, which is 30s here
-		start := then - 30000
-		require.True(t, start < lastTsMilli-30000)
-		secondPoint := start + oneMin
-		require.True(t, secondPoint < lastTsMilli-30000)
-		// this is the first point past the lastTsMilli
-		thirdPoint := secondPoint + oneMin
-		require.Equal(t, lastTsMilli-30000, thirdPoint)
-
 		next := iter.Next()
 		require.True(t, next)
 
-		sample := iter.At()
-		require.Equal(t, int64(4), sample.Value)
-		require.Equal(t, model.Time(thirdPoint), sample.Timestamp)
+		sample := iter.Sample()
+		require.Equal(t, float64(4), sample.Value)
+		require.Equal(t, model.Time(thirdPoint).UnixNano(), sample.Timestamp)
 
 		next = iter.Next()
 		require.False(t, next)
 	})
 
 	t.Run("successful bytes over time query", func(t *testing.T) {
-		expr, err := syntax.ParseSampleExpr(`bytes_over_time({foo="bar"}[30s])`)
+		expr, err := syntax.ParseSampleExpr(`bytes_over_time({foo="bar"}[60s])`)
 		require.NoError(t, err)
 
 		iter, err := instance.QuerySample(ctx, expr, mockReq)
@@ -105,10 +116,9 @@ func TestInstance_QuerySample(t *testing.T) {
 		next := iter.Next()
 		require.True(t, next)
 
-		expctedTs := (then - 30000) + oneMin + oneMin
-		sample := iter.At()
-		require.Equal(t, int64(80), sample.Value)
-		require.Equal(t, model.Time(expctedTs), sample.Timestamp)
+		sample := iter.Sample()
+		require.Equal(t, float64(80), sample.Value)
+		require.Equal(t, model.Time(thirdPoint).UnixNano(), sample.Timestamp)
 
 		next = iter.Next()
 		require.False(t, next)

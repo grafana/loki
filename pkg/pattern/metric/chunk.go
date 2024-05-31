@@ -3,15 +3,17 @@ package metric
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/chunk"
-	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/v3/pkg/iter"
 )
 
 type MetricType int
@@ -34,7 +36,7 @@ func NewChunks(labels labels.Labels) *Chunks {
 	}
 }
 
-func (c *Chunks) Observe(bytes, count uint64, ts model.Time) {
+func (c *Chunks) Observe(bytes, count float64, ts model.Time) {
 	if len(c.chunks) == 0 {
 		c.chunks = append(c.chunks, newChunk(bytes, count, ts))
 		return
@@ -54,14 +56,14 @@ func (c *Chunks) Iterator(
 	typ MetricType,
 	grouping *syntax.Grouping,
 	from, through, step model.Time,
-) (iter.Iterator, error) {
+) (iter.SampleIterator, error) {
 	if typ == Unsupported {
 		return nil, fmt.Errorf("unsupported metric type")
 	}
 
 	lbls := c.labels
 	if grouping != nil {
-    sort.Strings(grouping.Groups)
+		sort.Strings(grouping.Groups)
 		lbls = make(labels.Labels, 0, len(grouping.Groups))
 		for _, group := range grouping.Groups {
 			value := c.labels.Get(group)
@@ -69,31 +71,44 @@ func (c *Chunks) Iterator(
 		}
 	}
 
-	iters := make([]iter.Iterator, 0, len(c.chunks))
+	// could have up to through-from/step steps for each chunk
+	maximumSteps := int64(((through-from)/step)+1) * int64(len(c.chunks))
+	samples := make([]logproto.Sample, 0, maximumSteps)
 	for _, chunk := range c.chunks {
-		samples, err := chunk.ForRangeAndType(typ, from, through, step)
+		ss, err := chunk.ForTypeAndRange(typ, from, through)
 		if err != nil {
 			return nil, err
 		}
 
-		if len(samples) == 0 {
+		if len(ss) == 0 {
 			continue
 		}
 
-		iters = append(iters, iter.NewLabelsSlice(lbls, samples))
+		samples = append(samples, ss...)
 	}
 
-	return iter.NewNonOverlappingLabelsIterator(lbls, iters), nil
+	slices.SortFunc(samples, func(i, j logproto.Sample) int {
+		if i.Timestamp < j.Timestamp {
+			return -1
+		}
+
+		if i.Timestamp > j.Timestamp {
+			return 1
+		}
+		return 0
+	})
+
+	series := logproto.Series{Labels: lbls.String(), Samples: samples, StreamHash: lbls.Hash()}
+	return iter.NewSeriesIterator(series), nil
 }
 
-// TODO(twhitney): These values should be float64s (to match prometheus samples) or int64s (to match pattern samples)
 type MetricSample struct {
 	Timestamp model.Time
-	Bytes     uint64
-	Count     uint64
+	Bytes     float64
+	Count     float64
 }
 
-func newSample(bytes, count uint64, ts model.Time) MetricSample {
+func newSample(bytes, count float64, ts model.Time) MetricSample {
 	return MetricSample{
 		Timestamp: ts,
 		Bytes:     bytes,
@@ -125,7 +140,7 @@ func (c *Chunk) AddSample(s MetricSample) {
 	}
 }
 
-func newChunk(bytes, count uint64, ts model.Time) Chunk {
+func newChunk(bytes, count float64, ts model.Time) Chunk {
 	maxSize := int(chunk.MaxChunkTime.Nanoseconds()/chunk.TimeResolution.UnixNano()) + 1
 	v := Chunk{Samples: make(MetricSamples, 1, maxSize)}
 	v.Samples[0] = newSample(bytes, count, ts)
@@ -140,14 +155,14 @@ func (c *Chunk) spaceFor(ts model.Time) bool {
 	return ts.Sub(c.Samples[0].Timestamp) < chunk.MaxChunkTime
 }
 
-// TODO(twhitney): any way to remove the duplication between this and the drain chunk ForRange method?
-// ForRangeAndType returns samples with only the values
-// in the given range [start:end] and aggregates them by step duration.
-// start and end are in milliseconds since epoch. step is a duration in milliseconds.
-func (c *Chunk) ForRangeAndType(
+// ForTypeAndRange returns samples with only the values
+// in the given range [start:end), with no aggregation as that will be done in
+// the step evaluator. start and end are in milliseconds since epoch.
+// step is a duration in milliseconds.
+func (c *Chunk) ForTypeAndRange(
 	typ MetricType,
-	start, end, step model.Time,
-) ([]logproto.PatternSample, error) {
+	start, end model.Time,
+) ([]logproto.Sample, error) {
 	if typ == Unsupported {
 		return nil, fmt.Errorf("unsupported metric type")
 	}
@@ -156,58 +171,55 @@ func (c *Chunk) ForRangeAndType(
 		return nil, nil
 	}
 
-	first := c.Samples[0].Timestamp // why is this in the future?
+	first := c.Samples[0].Timestamp
 	last := c.Samples[len(c.Samples)-1].Timestamp
 	startBeforeEnd := start >= end
-	samplesAreAfterRange := first > end
+	samplesAreAfterRange := first >= end
 	samplesAreBeforeRange := last < start
 	if startBeforeEnd || samplesAreAfterRange || samplesAreBeforeRange {
 		return nil, nil
 	}
 
-	var lo int
-	if start > first {
-		lo = sort.Search(len(c.Samples), func(i int) bool {
-			return c.Samples[i].Timestamp >= start
-		})
-	}
+	lo := 0
 	hi := len(c.Samples)
-	if end < last {
-		hi = sort.Search(len(c.Samples), func(i int) bool {
-			return c.Samples[i].Timestamp > end
-		})
+
+	for i, sample := range c.Samples {
+		if first >= start {
+			break
+		}
+
+		if first < start && sample.Timestamp >= start {
+			lo = i
+			first = sample.Timestamp
+		}
 	}
 
-	// Re-scale samples into step-sized buckets
-	currentStep := chunk.TruncateTimestamp(c.Samples[lo].Timestamp, step)
-	numOfSteps := ((c.Samples[hi-1].Timestamp - currentStep) / step) + 1
-	aggregatedSamples := make([]logproto.PatternSample, 0, numOfSteps)
-	aggregatedSamples = append(aggregatedSamples,
-		logproto.PatternSample{
-			Timestamp: currentStep,
-			Value:     0,
-		})
+	for i := hi - 1; i >= 0; i-- {
+		if last < end {
+			break
+		}
 
-	for _, sample := range c.Samples[lo:hi] {
-		if sample.Timestamp >= currentStep+step {
-			stepForSample := chunk.TruncateTimestamp(sample.Timestamp, step)
-			for i := currentStep + step; i <= stepForSample; i += step {
-				aggregatedSamples = append(aggregatedSamples, logproto.PatternSample{
-					Timestamp: i,
-					Value:     0,
-				})
+		sample := c.Samples[i]
+		if last >= end && sample.Timestamp < end {
+			hi = i + 1
+			last = sample.Timestamp
+		}
+	}
+
+	aggregatedSamples := make([]logproto.Sample, len(c.Samples[lo:hi]))
+	for i, sample := range c.Samples[lo:hi] {
+		if sample.Timestamp >= start && sample.Timestamp < end {
+			var v float64
+			if typ == Bytes {
+				v = sample.Bytes
+			} else {
+				v = sample.Count
 			}
-			currentStep = stepForSample
+			aggregatedSamples[i] = logproto.Sample{
+				Timestamp: sample.Timestamp.UnixNano(),
+				Value:     v,
+			}
 		}
-
-		var v int64
-		if typ == Bytes {
-			v = int64(sample.Bytes)
-		} else {
-			v = int64(sample.Count)
-		}
-
-		aggregatedSamples[len(aggregatedSamples)-1].Value += v
 	}
 
 	return aggregatedSamples, nil

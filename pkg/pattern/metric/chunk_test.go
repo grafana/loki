@@ -13,14 +13,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestForRangeAndType(t *testing.T) {
+func TestForTypeAndRange(t *testing.T) {
 	testCases := []struct {
 		name       string
 		c          *Chunk
 		metricType MetricType
 		start      model.Time
 		end        model.Time
-		expected   []logproto.PatternSample
+		expected   []logproto.Sample
 	}{
 		{
 			name:       "Empty count",
@@ -72,10 +72,10 @@ func TestForRangeAndType(t *testing.T) {
 			metricType: Count,
 			start:      0,
 			end:        10,
-			expected: []logproto.PatternSample{
-				{Timestamp: 2, Value: 2},
-				{Timestamp: 4, Value: 4},
-				{Timestamp: 6, Value: 6},
+			expected: []logproto.Sample{
+				{Timestamp: 2 * 1e6, Value: 2},
+				{Timestamp: 4 * 1e6, Value: 4},
+				{Timestamp: 6 * 1e6, Value: 6},
 			},
 		},
 		{
@@ -88,10 +88,10 @@ func TestForRangeAndType(t *testing.T) {
 			metricType: Bytes,
 			start:      0,
 			end:        10,
-			expected: []logproto.PatternSample{
-				{Timestamp: 2, Value: 2},
-				{Timestamp: 4, Value: 4},
-				{Timestamp: 6, Value: 6},
+			expected: []logproto.Sample{
+				{Timestamp: 2 * 1e6, Value: 2},
+				{Timestamp: 4 * 1e6, Value: 4},
+				{Timestamp: 6 * 1e6, Value: 6},
 			},
 		},
 		{
@@ -102,9 +102,12 @@ func TestForRangeAndType(t *testing.T) {
 				{Timestamp: 6, Count: 6},
 			}},
 			metricType: Count,
-			start:      3,
+			start:      2,
 			end:        5,
-			expected:   []logproto.PatternSample{{Timestamp: 4, Value: 4}},
+			expected: []logproto.Sample{
+				{Timestamp: 2 * 1e6, Value: 2},
+				{Timestamp: 4 * 1e6, Value: 4},
+			},
 		},
 		{
 			name: "Partial Overlap -- bytes",
@@ -114,9 +117,12 @@ func TestForRangeAndType(t *testing.T) {
 				{Timestamp: 6, Bytes: 6},
 			}},
 			metricType: Bytes,
-			start:      3,
+			start:      2,
 			end:        5,
-			expected:   []logproto.PatternSample{{Timestamp: 4, Value: 4}},
+			expected: []logproto.Sample{
+				{Timestamp: 2 * 1e6, Value: 2},
+				{Timestamp: 4 * 1e6, Value: 4},
+			},
 		},
 		{
 			name: "Single Element in Range -- count",
@@ -128,7 +134,7 @@ func TestForRangeAndType(t *testing.T) {
 			metricType: Count,
 			start:      4,
 			end:        5,
-			expected:   []logproto.PatternSample{{Timestamp: 4, Value: 4}},
+			expected:   []logproto.Sample{{Timestamp: 4 * 1e6, Value: 4}},
 		},
 		{
 			name: "Single Element in Range -- bytes",
@@ -140,7 +146,7 @@ func TestForRangeAndType(t *testing.T) {
 			metricType: Bytes,
 			start:      4,
 			end:        5,
-			expected:   []logproto.PatternSample{{Timestamp: 4, Value: 4}},
+			expected:   []logproto.Sample{{Timestamp: 4 * 1e6, Value: 4}},
 		},
 		{
 			name: "Start Before First Element -- count",
@@ -152,9 +158,9 @@ func TestForRangeAndType(t *testing.T) {
 			metricType: Count,
 			start:      0,
 			end:        5,
-			expected: []logproto.PatternSample{
-				{Timestamp: 2, Value: 2},
-				{Timestamp: 4, Value: 4},
+			expected: []logproto.Sample{
+				{Timestamp: 2 * 1e6, Value: 2},
+				{Timestamp: 4 * 1e6, Value: 4},
 			},
 		},
 		{
@@ -167,9 +173,9 @@ func TestForRangeAndType(t *testing.T) {
 			metricType: Bytes,
 			start:      0,
 			end:        5,
-			expected: []logproto.PatternSample{
-				{Timestamp: 2, Value: 2},
-				{Timestamp: 4, Value: 4},
+			expected: []logproto.Sample{
+				{Timestamp: 2 * 1e6, Value: 2},
+				{Timestamp: 4 * 1e6, Value: 4},
 			},
 		},
 		{
@@ -182,8 +188,8 @@ func TestForRangeAndType(t *testing.T) {
 			metricType: Count,
 			start:      5,
 			end:        10,
-			expected: []logproto.PatternSample{
-				{Timestamp: 6, Value: 6},
+			expected: []logproto.Sample{
+				{Timestamp: 6 * 1e6, Value: 6},
 			},
 		},
 		{
@@ -196,8 +202,36 @@ func TestForRangeAndType(t *testing.T) {
 			metricType: Bytes,
 			start:      5,
 			end:        10,
-			expected: []logproto.PatternSample{
-				{Timestamp: 6, Value: 6},
+			expected: []logproto.Sample{
+				{Timestamp: 6 * 1e6, Value: 6},
+			},
+		},
+		{
+			name: "End Exclusive -- count",
+			c: &Chunk{Samples: MetricSamples{
+				{Timestamp: 2, Count: 2},
+				{Timestamp: 4, Count: 4},
+				{Timestamp: 6, Count: 6},
+			}},
+			metricType: Count,
+			start:      4,
+			end:        6,
+			expected: []logproto.Sample{
+				{Timestamp: 4 * 1e6, Value: 4},
+			},
+		},
+		{
+			name: "End Exclusive -- bytes",
+			c: &Chunk{Samples: MetricSamples{
+				{Timestamp: 2, Bytes: 2},
+				{Timestamp: 4, Bytes: 4},
+				{Timestamp: 6, Bytes: 6},
+			}},
+			metricType: Bytes,
+			start:      4,
+			end:        6,
+			expected: []logproto.Sample{
+				{Timestamp: 4 * 1e6, Value: 4},
 			},
 		},
 		{
@@ -209,8 +243,8 @@ func TestForRangeAndType(t *testing.T) {
 			}},
 			metricType: Count,
 			start:      0,
-			end:        2,
-			expected:   []logproto.PatternSample{{Timestamp: 2, Value: 2}},
+			end:        3,
+			expected:   []logproto.Sample{{Timestamp: 2 * 1e6, Value: 2}},
 		},
 		{
 			name: "Start before First and End Inclusive of First Element -- bytes",
@@ -221,8 +255,8 @@ func TestForRangeAndType(t *testing.T) {
 			}},
 			metricType: Bytes,
 			start:      0,
-			end:        2,
-			expected:   []logproto.PatternSample{{Timestamp: 2, Value: 2}},
+			end:        3,
+			expected:   []logproto.Sample{{Timestamp: 2 * 1e6, Value: 2}},
 		},
 		{
 			name: "Start and End before First Element -- count",
@@ -248,81 +282,11 @@ func TestForRangeAndType(t *testing.T) {
 			end:        1,
 			expected:   nil,
 		},
-		{
-			name: "Higher resolution samples down-sampled to preceding step bucket -- count",
-			c: &Chunk{Samples: MetricSamples{
-				{Timestamp: 1, Count: 2},
-				{Timestamp: 2, Count: 4},
-				{Timestamp: 3, Count: 6},
-				{Timestamp: 4, Count: 8},
-				{Timestamp: 5, Count: 10},
-				{Timestamp: 6, Count: 12},
-			}},
-			metricType: Count,
-			start:      1,
-			end:        6,
-			expected: []logproto.PatternSample{
-				{Timestamp: 0, Value: 2},
-				{Timestamp: 2, Value: 10},
-				{Timestamp: 4, Value: 18},
-				{Timestamp: 6, Value: 12},
-			},
-		},
-		{
-			name: "Higher resolution samples down-sampled to preceding step bucket -- bytes",
-			c: &Chunk{Samples: MetricSamples{
-				{Timestamp: 1, Bytes: 2},
-				{Timestamp: 2, Bytes: 4},
-				{Timestamp: 3, Bytes: 6},
-				{Timestamp: 4, Bytes: 8},
-				{Timestamp: 5, Bytes: 10},
-				{Timestamp: 6, Bytes: 12},
-			}},
-			metricType: Bytes,
-			start:      1,
-			end:        6,
-			expected: []logproto.PatternSample{
-				{Timestamp: 0, Value: 2},
-				{Timestamp: 2, Value: 10},
-				{Timestamp: 4, Value: 18},
-				{Timestamp: 6, Value: 12},
-			},
-		},
-		{
-			name: "Low resolution samples insert 0 values for empty steps -- count",
-			c: &Chunk{Samples: MetricSamples{
-				{Timestamp: 1, Count: 2},
-				{Timestamp: 5, Count: 10},
-			}},
-			metricType: Count,
-			start:      1,
-			end:        6,
-			expected: []logproto.PatternSample{
-				{Timestamp: 0, Value: 2},
-				{Timestamp: 2, Value: 0},
-				{Timestamp: 4, Value: 10},
-			},
-		},
-		{
-			name: "Low resolution samples insert 0 values for empty steps -- bytes",
-			c: &Chunk{Samples: MetricSamples{
-				{Timestamp: 1, Bytes: 2},
-				{Timestamp: 5, Bytes: 10},
-			}},
-			metricType: Bytes,
-			start:      1,
-			end:        6,
-			expected: []logproto.PatternSample{
-				{Timestamp: 0, Value: 2},
-				{Timestamp: 2, Value: 0},
-				{Timestamp: 4, Value: 10},
-			},
-		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := tc.c.ForRangeAndType(tc.metricType, tc.start, tc.end, model.Time(2))
+			result, err := tc.c.ForTypeAndRange(tc.metricType, tc.start, tc.end)
 			require.NoError(t, err)
 			if !reflect.DeepEqual(result, tc.expected) {
 				t.Errorf("Expected %v, got %v", tc.expected, result)
@@ -332,6 +296,7 @@ func TestForRangeAndType(t *testing.T) {
 	}
 }
 
+// TODO(twhitney): test the maximum steps logic
 func Test_Chunks_Iterator(t *testing.T) {
 	ctx := context.Background()
 	lbls := labels.Labels{
@@ -357,7 +322,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 		it, err := chunks.Iterator(ctx, Bytes, nil, 0, 10, 2)
 		require.NoError(t, err)
 
-		res, err := iter.ReadAllWithLabels(it)
+		res, err := iter.ReadAllSamples(it)
 		require.NoError(t, err)
 
 		require.Equal(t, 1, len(res.Series))
@@ -366,7 +331,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 		it, err = chunks.Iterator(ctx, Count, nil, 0, 10, 2)
 		require.NoError(t, err)
 
-		res, err = iter.ReadAllWithLabels(it)
+		res, err = iter.ReadAllSamples(it)
 		require.NoError(t, err)
 
 		require.Equal(t, 1, len(res.Series))
@@ -389,7 +354,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 		it, err := chunks.Iterator(ctx, Bytes, grouping, 0, 10, 2)
 		require.NoError(t, err)
 
-		res, err := iter.ReadAllWithLabels(it)
+		res, err := iter.ReadAllSamples(it)
 		require.NoError(t, err)
 
 		require.Equal(t, 1, len(res.Series))
@@ -398,7 +363,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 		it, err = chunks.Iterator(ctx, Count, grouping, 0, 10, 2)
 		require.NoError(t, err)
 
-		res, err = iter.ReadAllWithLabels(it)
+		res, err = iter.ReadAllSamples(it)
 		require.NoError(t, err)
 
 		require.Equal(t, 1, len(res.Series))
@@ -421,7 +386,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 		it, err := chunks.Iterator(ctx, Bytes, grouping, 0, 10, 2)
 		require.NoError(t, err)
 
-		res, err := iter.ReadAllWithLabels(it)
+		res, err := iter.ReadAllSamples(it)
 		require.NoError(t, err)
 
 		require.Equal(t, 1, len(res.Series))
@@ -430,7 +395,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 		it, err = chunks.Iterator(ctx, Count, grouping, 0, 10, 2)
 		require.NoError(t, err)
 
-		res, err = iter.ReadAllWithLabels(it)
+		res, err = iter.ReadAllSamples(it)
 		require.NoError(t, err)
 
 		require.Equal(t, 1, len(res.Series))
