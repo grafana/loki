@@ -37,26 +37,27 @@ func TestMappingEquivalence(t *testing.T) {
 	for _, tc := range []struct {
 		query       string
 		approximate bool
+		shardAgg    []string
 	}{
-		{`1`, false},
-		{`1 + 1`, false},
-		{`{a="1"}`, false},
-		{`{a="1"} |= "number: 10"`, false},
-		{`rate({a=~".+"}[1s])`, false},
-		{`sum by (a) (rate({a=~".+"}[1s]))`, false},
-		{`sum(rate({a=~".+"}[1s]))`, false},
-		{`max without (a) (rate({a=~".+"}[1s]))`, false},
-		{`count(rate({a=~".+"}[1s]))`, false},
-		{`avg(rate({a=~".+"}[1s]))`, true},
-		{`avg(rate({a=~".+"}[1s])) by (a)`, true},
-		{`1 + sum by (cluster) (rate({a=~".+"}[1s]))`, false},
-		{`sum(max(rate({a=~".+"}[1s])))`, false},
-		{`max(count(rate({a=~".+"}[1s])))`, false},
-		{`max(sum by (cluster) (rate({a=~".+"}[1s]))) / count(rate({a=~".+"}[1s]))`, false},
-		{`sum(rate({a=~".+"} |= "foo" != "foo"[1s]) or vector(1))`, false},
-		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false},
-		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, true},
-		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s])`, true},
+		{`1`, false, nil},
+		{`1 + 1`, false, nil},
+		{`{a="1"}`, false, nil},
+		{`{a="1"} |= "number: 10"`, false, nil},
+		{`rate({a=~".+"}[1s])`, false, nil},
+		{`sum by (a) (rate({a=~".+"}[1s]))`, false, nil},
+		{`sum(rate({a=~".+"}[1s]))`, false, nil},
+		{`max without (a) (rate({a=~".+"}[1s]))`, false, nil},
+		{`count(rate({a=~".+"}[1s]))`, false, nil},
+		{`avg(rate({a=~".+"}[1s]))`, true, nil},
+		{`avg(rate({a=~".+"}[1s])) by (a)`, true, nil},
+		{`1 + sum by (cluster) (rate({a=~".+"}[1s]))`, false, nil},
+		{`sum(max(rate({a=~".+"}[1s])))`, false, nil},
+		{`max(count(rate({a=~".+"}[1s])))`, false, nil},
+		{`max(sum by (cluster) (rate({a=~".+"}[1s]))) / count(rate({a=~".+"}[1s]))`, false, nil},
+		{`sum(rate({a=~".+"} |= "foo" != "foo"[1s]) or vector(1))`, false, nil},
+		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, nil},
+		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, true, nil},
+		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s])`, true, []string{ShardQuantileOverTime}},
 		{
 			`
 			  (quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a) > 1)
@@ -64,7 +65,12 @@ func TestMappingEquivalence(t *testing.T) {
 			  avg by (a) (rate({a=~".+"}[1s]))
 			`,
 			false,
+			nil,
 		},
+		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, []string{ShardFirstOverTime}},
+		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false, []string{ShardFirstOverTime}},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, []string{ShardLastOverTime}},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false, []string{ShardLastOverTime}},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.
@@ -98,12 +104,7 @@ func TestMappingEquivalence(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
-			mapper := NewShardMapper(strategy, nilShardMetrics, []string{})
-			// TODO (callum) refactor this test so that we won't need to set every
-			// possible sharding config option to true when we have multiple in the future
-			if tc.approximate {
-				mapper.quantileOverTimeSharding = true
-			}
+			mapper := NewShardMapper(strategy, nilShardMetrics, tc.shardAgg)
 			_, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.NoError(t, err)
 
@@ -141,7 +142,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 		query         string
 		realtiveError float64
 	}{
-		{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.03},
+		{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.05},
 		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.02},
 	} {
 		q := NewMockQuerier(

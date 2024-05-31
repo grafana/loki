@@ -24,7 +24,7 @@ type Bloom struct {
 
 func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	// divide by 8 b/c bloom capacity is measured in bits, but we want bytes
-	buf := bytes.NewBuffer(BlockPool.Get(int(b.Capacity() / 8)))
+	buf := bytes.NewBuffer(BloomPagePool.Get(int(b.Capacity() / 8)))
 
 	// TODO(owen-d): have encoder implement writer directly so we don't need
 	// to indirect via a buffer
@@ -36,7 +36,7 @@ func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	data := buf.Bytes()
 	enc.PutUvarint(len(data)) // length of bloom filter
 	enc.PutBytes(data)
-	BlockPool.Put(data[:0]) // release to pool
+	BloomPagePool.Put(data[:0]) // release to pool
 	return nil
 }
 
@@ -65,8 +65,8 @@ func (b *Bloom) Decode(dec *encoding.Decbuf) error {
 }
 
 func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHeader) (*BloomPageDecoder, error) {
-	data := BlockPool.Get(page.Len)[:page.Len]
-	defer BlockPool.Put(data)
+	data := BloomPagePool.Get(page.Len)[:page.Len]
+	defer BloomPagePool.Put(data)
 
 	_, err := io.ReadFull(r, data)
 	if err != nil {
@@ -84,7 +84,7 @@ func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHe
 	}
 	defer pool.PutReader(decompressor)
 
-	b := BlockPool.Get(page.DecompressedLen)[:page.DecompressedLen]
+	b := BloomPagePool.Get(page.DecompressedLen)[:page.DecompressedLen]
 
 	if _, err = io.ReadFull(decompressor, b); err != nil {
 		return nil, errors.Wrap(err, "decompressing bloom page")
@@ -101,7 +101,7 @@ func LazyDecodeBloomPageNoCompression(r io.Reader, page BloomPageHeader) (*Bloom
 	if page.Len != page.DecompressedLen+4 {
 		return nil, errors.New("the Len and DecompressedLen of the page do not match")
 	}
-	data := BlockPool.Get(page.Len)[:page.Len]
+	data := BloomPagePool.Get(page.Len)[:page.Len]
 
 	_, err := io.ReadFull(r, data)
 	if err != nil {
@@ -163,7 +163,7 @@ func (d *BloomPageDecoder) Relinquish() {
 	d.data = nil
 
 	if cap(data) > 0 {
-		BlockPool.Put(data)
+		BloomPagePool.Put(data)
 	}
 }
 

@@ -290,6 +290,13 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
 
+	var preFilterSeries, preFilterChunks int
+
+	preFilterSeries = len(req.Refs)
+	for _, series := range req.Refs {
+		preFilterChunks += len(series.Refs)
+	}
+
 	// Ideally we could use an unbuffered channel here, but since we return the
 	// request on the first error, there can be cases where the request context
 	// is not done yet and the consumeTask() function wants to send to the
@@ -315,13 +322,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	sp.LogKV("msg", "enqueued tasks", "duration", time.Since(queueStart).String())
 
 	remaining := len(tasks)
-
-	preFilterSeries := len(req.Refs)
-	var preFilterChunks, postFilterChunks int
-
-	for _, series := range req.Refs {
-		preFilterChunks += len(series.Refs)
-	}
 
 	combinedRecorder := v1.NewBloomRecorder(ctx, "combined")
 	for remaining > 0 {
@@ -353,11 +353,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		responsesPool.Put(resp)
 	}
 
-	postFilterSeries := len(filtered)
-
+	var postFilterSeries, postFilterChunks int
+	postFilterSeries = len(filtered)
 	for _, group := range filtered {
 		postFilterChunks += len(group.Refs)
 	}
+
 	g.metrics.requestedSeries.Observe(float64(preFilterSeries))
 	g.metrics.filteredSeries.Observe(float64(preFilterSeries - postFilterSeries))
 	g.metrics.requestedChunks.Observe(float64(preFilterChunks))
