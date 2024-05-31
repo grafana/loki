@@ -62,11 +62,11 @@ func blocksFromSchemaWithRange(t *testing.T, n int, options v1.BlockOptions, fro
 // doesn't actually load any chunks
 type dummyChunkLoader struct{}
 
-func (dummyChunkLoader) Load(_ context.Context, _ string, series *v1.Series) (*ChunkItersByFingerprint, error) {
+func (dummyChunkLoader) Load(_ context.Context, _ string, series *v1.Series) *ChunkItersByFingerprint {
 	return &ChunkItersByFingerprint{
 		fp:  series.Fingerprint,
 		itr: v1.NewEmptyIter[v1.ChunkRefWithIter](),
-	}, nil
+	}
 }
 
 func dummyBloomGen(t *testing.T, opts v1.BlockOptions, store v1.Iterator[*v1.Series], blocks []*v1.Block, refs []bloomshipper.BlockRef) *SimpleBloomGenerator {
@@ -152,7 +152,7 @@ func TestSimpleBloomGenerator(t *testing.T) {
 				expectedRefs := v1.PointerSlice(data)
 				outputRefs := make([]*v1.SeriesWithBlooms, 0, len(data))
 				for _, block := range outputBlocks {
-					bq := v1.NewBlockQuerier(block, false, v1.DefaultMaxPageSize)
+					bq := v1.NewBlockQuerier(block, false, v1.DefaultMaxPageSize).Iter()
 					for bq.Next() {
 						outputRefs = append(outputRefs, bq.At())
 					}
