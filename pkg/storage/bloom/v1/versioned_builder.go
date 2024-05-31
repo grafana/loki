@@ -129,6 +129,7 @@ type SeriesWithBloom struct {
 	Bloom  *Bloom
 }
 
+//nolint:revive
 type V1Builder struct {
 	opts BlockOptions
 

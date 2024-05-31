@@ -5,10 +5,11 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
+
+	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -97,7 +98,6 @@ func (bt *BloomTokenizer) newBloom() *Bloom {
 }
 
 func (bt *BloomTokenizer) Populate(
-	series *Series,
 	blooms SizedIterator[*Bloom],
 	chks Iterator[ChunkRefWithIter],
 	ch chan *BloomCreation,
@@ -163,8 +163,6 @@ func (bt *BloomTokenizer) Populate(
 		SourceBytesAdded: bytesAdded,
 	}
 	close(ch)
-	return
-
 }
 
 // addChunkToBloom adds the tokens from the given chunk to the given bloom.

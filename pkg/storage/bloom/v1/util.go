@@ -16,8 +16,8 @@ const (
 	magicNumber = uint32(0xCA7CAFE5)
 	// Add new versions below
 	V1 Version = iota
-	// V2 supports single series blooms encoded over multipe pages
-	// to accomodate larger single series
+	// V2 supports single series blooms encoded over multiple pages
+	// to accommodate larger single series
 	V2
 )
 

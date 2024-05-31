@@ -421,7 +421,7 @@ func (s *SeriesWithOffsets) Decode(
 	var (
 		err        error
 		lastEnd    model.Time
-		lastOffset BloomOffset = previousOffset
+		lastOffset = previousOffset
 	)
 	for i := range s.Offsets {
 		err = s.Offsets[i].Decode(dec, lastOffset)

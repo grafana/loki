@@ -115,7 +115,7 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) v1.BloomPopulatorF
 			Chunks:      toAdd,
 		})
 
-		s.tokenizer.Populate(series, srcBlooms, chunkItersWithFP.itr, ch)
+		s.tokenizer.Populate(srcBlooms, chunkItersWithFP.itr, ch)
 
 		if s.reporter != nil {
 			s.reporter(series.Fingerprint)

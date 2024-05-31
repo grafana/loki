@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/grafana/dskit/multierror"
 
 	"github.com/grafana/loki/pkg/push"
@@ -101,8 +99,6 @@ func TestTokenizerPopulate(t *testing.T) {
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
 
 	sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
-	var lbsList []labels.Labels
-	lbsList = append(lbsList, labels.FromStrings("foo", "bar"))
 
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	_ = memChunk.Append(&push.Entry{
@@ -121,13 +117,9 @@ func TestTokenizerPopulate(t *testing.T) {
 	bloom := Bloom{
 		ScalableBloomFilter: *sbf,
 	}
-	series := Series{
-		Fingerprint: model.Fingerprint(lbsList[0].Hash()),
-	}
 
 	blooms, err := populateAndConsumeBloom(
 		bt,
-		series,
 		NewSliceIter([]*Bloom{&bloom}),
 		NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
 			Itr: itr}}),
@@ -147,9 +139,6 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 	var testLine = "this is a log line"
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
 
-	var lbsList []labels.Labels
-	lbsList = append(lbsList, labels.FromStrings("foo", "bar"))
-
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	_ = memChunk.Append(&push.Entry{
 		Timestamp: time.Unix(0, 1),
@@ -164,13 +153,8 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 	)
 	require.Nil(t, err)
 
-	series := Series{
-		Fingerprint: model.Fingerprint(lbsList[0].Hash()),
-	}
-
 	blooms, err := populateAndConsumeBloom(
 		bt,
-		series,
 		NewEmptyIter[*Bloom](),
 		NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
 			Itr: itr}}),
@@ -227,11 +211,6 @@ func TestTokenizerPopulateWontExceedMaxSize(t *testing.T) {
 	itr, err := chunkRefItrFromLines(line)
 	require.NoError(t, err)
 	go bt.Populate(
-		&Series{
-			Chunks: ChunkRefs{
-				{},
-			},
-		},
 		NewSliceIter([]*Bloom{
 			{
 				*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
@@ -258,13 +237,12 @@ func TestTokenizerPopulateWontExceedMaxSize(t *testing.T) {
 
 func populateAndConsumeBloom(
 	bt *BloomTokenizer,
-	s Series,
 	blooms SizedIterator[*Bloom],
 	chks Iterator[ChunkRefWithIter],
 ) (res []*Bloom, err error) {
 	var e multierror.MultiError
 	ch := make(chan *BloomCreation)
-	go bt.Populate(&s, blooms, chks, ch)
+	go bt.Populate(blooms, chks, ch)
 	for x := range ch {
 		if x.Err != nil {
 			e = append(e, x.Err)
@@ -281,8 +259,6 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 		bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
 
 		sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
-		var lbsList []labels.Labels
-		lbsList = append(lbsList, labels.FromStrings("foo", "bar"))
 
 		memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 		_ = memChunk.Append(&push.Entry{
@@ -301,12 +277,9 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 		bloom := Bloom{
 			ScalableBloomFilter: *sbf,
 		}
-		series := Series{
-			Fingerprint: model.Fingerprint(lbsList[0].Hash()),
-		}
+
 		_, err = populateAndConsumeBloom(
 			bt,
-			series,
 			NewSliceIter([]*Bloom{&bloom}),
 			NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
 				Itr: itr}}),
