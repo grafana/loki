@@ -556,6 +556,20 @@ func Test_FilterMatcher(t *testing.T) {
 			},
 			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
 		},
+		{
+			`{app="foo"} | logfmt | duration > -1s`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"duration=5m", true}, {"duration=1s", true}, {"duration=0s", true}, {"duration=-5m", false}},
+		},
+		{
+			`{app="foo"} | logfmt | count > -1`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"count=5", true}, {"count=1", true}, {"count=0", true}, {"count=-5", false}},
+		},
 	} {
 		tt := tt
 		t.Run(tt.q, func(t *testing.T) {

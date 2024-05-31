@@ -95,6 +95,12 @@ func TestLex(t *testing.T) {
 		{`{foo="bar"} | logfmt --strict code"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PARSER_FLAG, IDENTIFIER}},
 		{`{foo="bar"} | logfmt --keep-empty --strict code="response.code", IPAddress="host"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PARSER_FLAG, PARSER_FLAG, IDENTIFIER, EQ, STRING, COMMA, IDENTIFIER, EQ, STRING}},
 		{`decolorize`, []int{DECOLORIZE}},
+		{`123`, []int{NUMBER}},
+		{`-123`, []int{NUMBER}},
+		{`123KB`, []int{BYTES}},
+		{`-123KB`, []int{BYTES}},
+		{`123ms`, []int{DURATION}},
+		{`-123ms`, []int{DURATION}},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			actual := []int{}
@@ -179,6 +185,7 @@ func Test_parseDuration(t *testing.T) {
 		{"1w", WEEK},
 		{"1d", DAY},
 		{"1h15m30.918273645s", time.Hour + 15*time.Minute + 30*time.Second + 918273645*time.Nanosecond},
+		{"-1s", -1 * time.Second},
 	} {
 		actual, err := parseDuration(tc.input)
 
