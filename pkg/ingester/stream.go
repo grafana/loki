@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/v3/pkg/runtime"
 
 	"github.com/go-kit/log/level"
@@ -170,7 +172,21 @@ func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err er
 }
 
 func (s *stream) NewChunk() *chunkenc.MemChunk {
-	return chunkenc.NewMemChunk(s.chunkFormat, s.cfg.parsedEncoding, s.chunkHeadBlockFormat, s.cfg.BlockSize, s.cfg.TargetChunkSize)
+	chunk := chunkenc.NewMemChunk(s.chunkFormat, s.cfg.parsedEncoding, s.chunkHeadBlockFormat, s.cfg.BlockSize, s.cfg.TargetChunkSize)
+
+	if s.configs != nil {
+		var manager *writefailures.Manager
+		var metrics *prometheus.CounterVec
+		if s.configs.LogDuplicateMetrics(s.tenant) {
+			metrics = s.metrics.duplicateLogBytesTotal
+		}
+		if s.configs.LogDuplicateStreamInfo(s.tenant) {
+			manager = s.writeFailures
+		}
+		chunk.SetDuplicateLogLinesCapture(manager, metrics, s.tenant, s.labelsString)
+	}
+
+	return chunk
 }
 
 func (s *stream) Push(
@@ -340,7 +356,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		}
 
 		chunk.lastUpdated = time.Now()
-		if err := chunk.chunk.AppendForTenant(&entries[i], s.tenant, s.configs, s.labelsString, s.writeFailures); err != nil {
+		if err := chunk.chunk.Append(&entries[i]); err != nil {
 			invalid = append(invalid, entryWithError{&entries[i], err})
 			if chunkenc.IsOutOfOrderErr(err) {
 				s.writeFailures.Log(s.tenant, err)

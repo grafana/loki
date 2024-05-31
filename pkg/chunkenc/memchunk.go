@@ -12,6 +12,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -22,7 +24,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -139,6 +140,14 @@ type MemChunk struct {
 
 	// compressed size of chunk. Set when chunk is cut or while decoding chunk from storage.
 	compressedSize int
+
+	// Runtime-config overrides for a tenant may allow these to be non-nil, in which case
+	// they will be passed to the unordered head block, subsequently used
+	// to output information related to duplicate log lines and bytes discarded
+	writeFailures     *writefailures.Manager
+	duplicateLogBytes *prometheus.CounterVec
+	tenant            string
+	labelsString      string
 }
 
 type block struct {
@@ -196,10 +205,6 @@ func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) error {
 	hb.size += len(line)
 
 	return nil
-}
-
-func (hb *headBlock) AppendForTenant(ts int64, line string, _ labels.Labels, _ string, _ *runtime.TenantConfigs, _ string, _ *writefailures.Manager) error {
-	return hb.Append(ts, line, nil)
 }
 
 func (hb *headBlock) Serialise(pool WriterPool) ([]byte, error) {
@@ -841,11 +846,6 @@ func (c *MemChunk) Utilization() float64 {
 
 // Append implements Chunk.
 func (c *MemChunk) Append(entry *logproto.Entry) error {
-	return c.AppendForTenant(entry, "", nil, "", nil)
-}
-
-// Append implements Chunk.
-func (c *MemChunk) AppendForTenant(entry *logproto.Entry, tenant string, configs *runtime.TenantConfigs, labelsString string, manager *writefailures.Manager) error {
 	entryTimestamp := entry.Timestamp.UnixNano()
 
 	// If the head block is empty but there are cut blocks, we have to make
@@ -857,7 +857,7 @@ func (c *MemChunk) AppendForTenant(entry *logproto.Entry, tenant string, configs
 	if c.format < ChunkFormatV4 {
 		entry.StructuredMetadata = nil
 	}
-	if err := c.head.AppendForTenant(entryTimestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata), tenant, configs, labelsString, manager); err != nil {
+	if err := c.head.Append(entryTimestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)); err != nil {
 		return err
 	}
 
@@ -1147,6 +1147,21 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 	}
 
 	return newChunk, nil
+}
+
+func (c *MemChunk) SetDuplicateLogLinesCapture(writeFailures *writefailures.Manager, duplicateLogBytes *prometheus.CounterVec, tenant, labelsString string) {
+	c.writeFailures = writeFailures
+	c.duplicateLogBytes = duplicateLogBytes
+	c.tenant = tenant
+	c.labelsString = labelsString
+
+	unorderedHead, ok := c.head.(*unorderedHeadBlock)
+	if ok {
+		unorderedHead.writeFailures = c.writeFailures
+		unorderedHead.duplicateLogBytes = c.duplicateLogBytes
+		unorderedHead.tenant = c.tenant
+		unorderedHead.labelsString = c.labelsString
+	}
 }
 
 // encBlock is an internal wrapper for a block, mainly to avoid binding an encoding in a block itself.
