@@ -6,11 +6,12 @@ import (
 	"sort"
 	"time"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/chunk"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 )

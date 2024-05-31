@@ -3,9 +3,10 @@ package logproto
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestShard_SpaceFor(t *testing.T) {
