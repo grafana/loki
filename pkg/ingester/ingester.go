@@ -1156,7 +1156,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 	// When wrapping the work above in the pprof.Do function we created a possible scenario where resp could
 	// be populated with values but an error occurred later on, prior to this profiling wrapper we would have
-	// always excited with a nil respond and the error message, this is here to keep that behavior.
+	// always exited with a nil response and the error message, this is here to keep that behavior.
 	if err != nil {
 		return nil, err
 	}
