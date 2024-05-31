@@ -1,14 +1,10 @@
 package wal
 
 import (
-	"encoding/binary"
-	"hash"
-	"hash/crc32"
 	"io"
 	"sort"
 
 	"github.com/dolthub/swiss"
-	"github.com/klauspost/compress/s2"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/prometheus/model/labels"
@@ -115,21 +111,6 @@ func (b *WalSegmentWriter) WriteTo(w io.Writer) (int64, error) {
 
 var magicNumber = uint32(0x12EE56A)
 
-// The table gets initialized with sync.Once but may still cause a race
-// with any other use of the crc32 package anywhere. Thus we initialize it
-// before.
-var castagnoliTable *crc32.Table
-
-func init() {
-	castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
-}
-
-// newCRC32 initializes a CRC32 hash with a preconfigured polynomial, so the
-// polynomial may be easily changed in one location at a later time, if necessary.
-func newCRC32() hash.Hash32 {
-	return crc32.New(castagnoliTable)
-}
-
 func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
 	// todo how to encode stream segment ?
 	// blocks have a footer with min/max timestamp and offsets, and footer size.
@@ -142,70 +123,6 @@ func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
 	// 	// s2w.Write(p []byte)
 	// }
 	return 0, nil
-}
-
-func writeChunk(w io.Writer, entries []*logproto.Entry) (int64, error) {
-	if len(entries) == 0 {
-		return 0, nil
-	}
-	var written int64
-	// write lines entries
-	s2w := s2.NewWriter(w)
-	for _, e := range entries {
-		n, err := s2w.Write([]byte(e.Line))
-		if err != nil {
-			return written, err
-		}
-		written += int64(n)
-	}
-	linesSize := written
-	if err := s2w.Close(); err != nil {
-		return written, err
-	}
-
-	// double delta encode timestamp
-	var prevT, prevDelta, t, delta uint64
-	buf := make([]byte, binary.MaxVarintLen64)
-	for i, e := range entries {
-		t = uint64(e.Timestamp.UnixNano())
-		switch i {
-		case 0:
-			n := binary.PutUvarint(buf, t)
-			if _, err := w.Write(buf[:n]); err != nil {
-				return written, err
-			}
-			written += int64(n)
-		case 1:
-			delta = t - prevT
-			n := binary.PutUvarint(buf, delta)
-			if _, err := w.Write(buf[:n]); err != nil {
-				return written, err
-			}
-			written += int64(n)
-		default:
-			delta = t - prevT
-			dod := delta - prevDelta
-			n := binary.PutUvarint(buf, dod)
-			if _, err := w.Write(buf[:n]); err != nil {
-				return written, err
-			}
-			written += int64(n)
-		}
-		prevT = t
-		prevDelta = delta
-	}
-	timestampsSize := written - linesSize
-	// write lengths
-	for _, e := range entries {
-		n := binary.PutUvarint(buf, uint64(len(e.Line)))
-		if _, err := w.Write(buf[:n]); err != nil {
-			return written, err
-		}
-		written += int64(n)
-	}
-	// mint, maxt := entries[0].Timestamp.UnixNano(), entries[len(entries)-1].Timestamp.UnixNano()
-
-	return written, nil
 }
 
 // Reset clears the writer.
