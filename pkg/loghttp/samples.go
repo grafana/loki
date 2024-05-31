@@ -6,8 +6,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-func ParsePatternsQuery(r *http.Request) (*logproto.QueryPatternsRequest, error) {
-	req := &logproto.QueryPatternsRequest{}
+func ParseSamplesQuery(r *http.Request) (*logproto.QuerySamplesRequest, error) {
+	req := &logproto.QuerySamplesRequest{}
 
 	req.Query = query(r)
 	start, end, err := bounds(r)
@@ -33,4 +33,3 @@ func ParsePatternsQuery(r *http.Request) (*logproto.QueryPatternsRequest, error)
 
 	return req, nil
 }
-
