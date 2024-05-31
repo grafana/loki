@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -18,7 +19,7 @@ import (
 )
 
 func Test_prunePatterns(t *testing.T) {
-	file, err := os.Open("testdata/patterns.txt")
+	file, err := os.Open(`testdata/patterns.txt`)
 	require.NoError(t, err)
 	defer file.Close()
 
@@ -31,18 +32,20 @@ func Test_prunePatterns(t *testing.T) {
 	prunePatterns(resp, 0)
 
 	expectedPatterns := []string{
+		`<_> caller=aggregator.go:139 level=info msg="received kafka message" topic=cortex-dev-01-aggregations partition=<_>`,
+		`<_> caller=batcher.go:155 level=info msg="batcher:processing aggregation result" <_> partitionID=<_> +0000 UTC, <_>`,
+		`<_> caller=batcher.go:155 level=info msg="batcher:processing aggregation result" result="user=9960, partitionID=<_> +0000 UTC, <_>`,
+		`<_> caller=batcher.go:155 level=info msg="batcher:processing aggregation result" result="user=9960, partitionID=<_> sampleTimestamp=2024-04-03 <_> +0000 UTC, <_>`,
+		`<_> caller=offset_committer.go:174 level=info msg="partition offset committer committed offset" topic=cortex-dev-01-aggregations partition=<_> +0000 UTC" <_> +0000 UTC" <_> currentBuckets="unsupported value type"`,
+		`<_> caller=offset_committer.go:174 level=info msg="partition offset committer committed offset" topic=cortex-dev-01-aggregations partition=<_> handledMessageTime="2024-04-03 <_> +0000 UTC" <_> +0000 UTC" <_> currentBuckets="unsupported value type"`,
 		`<_> caller=wrapper.go:48 level=info component=distributor msg="sample remote write" eventType=bi <_>`,
-		`<_> caller=offset_committer.go:174 level=info msg="partition offset committer committed offset" topic=cortex-dev-01-aggregations <_> +0000 UTC" <_> +0000 UTC" <_> currentBuckets="unsupported value type"`,
-		`<_> caller=aggregator.go:139 level=info msg="received kafka message" topic=cortex-dev-01-aggregations <_>`,
-		`<_> caller=batcher.go:155 level=info msg="batcher: processing aggregation result" result="user=9960, <_> sampleTimestamp=2024-04-03 <_> +0000 UTC, <_>`,
-		`<_> caller=offset_committer.go:174 level=info msg="partition offset committer committed offset" topic=cortex-dev-01-aggregations <_> handledMessageTime="2024-04-03 <_> +0000 UTC" <_> +0000 UTC" <_> currentBuckets="unsupported value type"`,
-		`<_> caller=batcher.go:155 level=info msg="batcher: processing aggregation result" <_> +0000 UTC, <_>`,
 	}
 
 	patterns := make([]string, 0, len(resp.Series))
 	for _, p := range resp.Series {
 		patterns = append(patterns, p.GetPattern())
 	}
+	slices.Sort(patterns)
 
 	require.Equal(t, expectedPatterns, patterns)
 }
