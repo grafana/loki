@@ -134,3 +134,22 @@ func EqualIterators[T any](t *testing.T, test func(a, b T), expected, actual Ite
 	require.Nil(t, expected.Err())
 	require.Nil(t, actual.Err())
 }
+
+// CompareIterators is a testing utility for comparing iterators of different types.
+// It accepts a callback which can be used to assert characteristics of the corersponding elements
+// of the two iterators.
+// It also ensures that the lengths are the same and there are no errors from either iterator.
+func CompareIterators[A, B any](
+	t *testing.T,
+	f func(t *testing.T, a A, b B),
+	a Iterator[A],
+	b Iterator[B],
+) {
+	for a.Next() {
+		require.True(t, b.Next())
+		f(t, a.At(), b.At())
+	}
+	require.False(t, b.Next())
+	require.NoError(t, a.Err())
+	require.NoError(t, b.Err())
+}

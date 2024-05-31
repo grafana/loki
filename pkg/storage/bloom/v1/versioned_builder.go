@@ -21,7 +21,7 @@ func NewBlockBuilder(opts BlockOptions, writer BlockWriter) (*V2Builder, error) 
 	return NewBlockBuilderV2(opts, writer)
 }
 
-// Convenience alias for
+// Convenience alias for the most current version.
 type BlockBuilder = V2Builder
 
 type V2Builder struct {
@@ -137,7 +137,7 @@ type V1Builder struct {
 	blooms *BloomBlockBuilder
 }
 
-func NewBlockBuilderV1(opts BlockOptions, writer BlockWriter) (*V2Builder, error) {
+func NewBlockBuilderV1(opts BlockOptions, writer BlockWriter) (*V1Builder, error) {
 	if opts.Schema.version != V1 {
 		return nil, errors.Errorf("schema mismatch creating v1 builder, expected %v, got %v", V1, opts.Schema.version)
 	}
@@ -151,7 +151,7 @@ func NewBlockBuilderV1(opts BlockOptions, writer BlockWriter) (*V2Builder, error
 		return nil, errors.Wrap(err, "initializing blooms writer")
 	}
 
-	return &V2Builder{
+	return &V1Builder{
 		opts:   opts,
 		writer: writer,
 		index:  NewIndexBuilder(opts, index),

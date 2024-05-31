@@ -15,7 +15,7 @@ import (
 )
 
 type Schema struct {
-	version                BloomVersion
+	version                Version
 	encoding               chunkenc.Encoding
 	nGramLength, nGramSkip uint64
 }
@@ -77,7 +77,7 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 	if number != magicNumber {
 		return errors.Errorf("invalid magic number. expected %x, got  %x", magicNumber, number)
 	}
-	s.version = BloomVersion(dec.Byte())
+	s.version = Version(dec.Byte())
 	if s.version != 1 && s.version != 2 {
 		return errors.Errorf("invalid version. expected %d, got %d", 1, s.version)
 	}
@@ -403,7 +403,7 @@ func (s *SeriesWithOffsets) Encode(
 }
 
 func (s *SeriesWithOffsets) Decode(
-	version BloomVersion,
+	version Version,
 	dec *encoding.Decbuf,
 	previousFp model.Fingerprint,
 	previousOffset BloomOffset,
