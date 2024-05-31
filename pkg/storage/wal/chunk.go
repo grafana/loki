@@ -1,6 +1,7 @@
 package wal
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"hash"
@@ -8,11 +9,12 @@ import (
 	"io"
 	"reflect"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/golang/snappy"
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/klauspost/compress/s2"
 )
 
 // EncodingType defines the type for encoding enums
@@ -46,6 +48,13 @@ var crc32Pool = sync.Pool{
 var s2WriterPool = sync.Pool{
 	New: func() interface{} {
 		return snappy.NewBufferedWriter(nil)
+	},
+}
+
+// S2 reader pool
+var s2ReaderPool = sync.Pool{
+	New: func() interface{} {
+		return s2.NewReader(nil)
 	},
 }
 
@@ -167,33 +176,145 @@ func writeChunk(w io.Writer, entries []*logproto.Entry, encoding EncodingType) (
 	return written, nil
 }
 
+// ChunkReader reads chunks from a byte slice
 type ChunkReader struct {
-	b []byte
+	b         []byte
+	pos       int
+	entries   uint64
+	entryIdx  uint64
+	entry     logproto.Entry
+	dataPos   int
+	reader    io.Reader
+	prevT     int64
+	prevDelta int64
+	err       error
+}
+
+// NewChunkReader creates a new ChunkReader and performs CRC verification.
+func NewChunkReader(b []byte) (*ChunkReader, error) {
+	if len(b) < 8 {
+		return nil, errors.New("invalid chunk: too short")
+	}
+
+	// Extract the CRC32 checksum at the end
+	crcValue := binary.BigEndian.Uint32(b[len(b)-4:])
+	// Extract the offset
+	offset := binary.BigEndian.Uint32(b[len(b)-8 : len(b)-4])
+	if int(offset) >= len(b)-8 {
+		return nil, errors.New("invalid offset: out of bounds")
+	}
+
+	// Verify CRC32 checksum
+	if crc32.Checksum(b[:len(b)-4], castagnoliTable) != crcValue {
+		return nil, errors.New("CRC verification failed")
+	}
+
+	// Initialize ChunkReader
+	reader := &ChunkReader{
+		b: b[:len(b)-8], // Exclude the offset and CRC32 from the data
+	}
+
+	// Read the chunk header
+	if err := reader.readChunkHeader(); err != nil {
+		return nil, err
+	}
+
+	// Initialize the decompression reader
+	compressedData := b[offset : len(b)-8]
+	s2Reader := s2ReaderPool.Get().(*s2.Reader)
+	s2Reader.Reset(bytes.NewReader(compressedData))
+	reader.reader = s2Reader
+
+	return reader, nil
 }
 
 // Close implements iter.EntryIterator.
 func (r *ChunkReader) Close() error {
-	panic("unimplemented")
+	// Return the S2 reader to the pool
+	if r.reader != nil {
+		s2ReaderPool.Put(r.reader.(*s2.Reader))
+		r.reader = nil
+	}
+	return nil
 }
 
 // Entry implements iter.EntryIterator.
-func (r *ChunkReader) Entry() push.Entry {
-	panic("unimplemented")
+func (r *ChunkReader) Entry() logproto.Entry {
+	return r.entry
 }
 
 // Error implements iter.EntryIterator.
 func (r *ChunkReader) Error() error {
-	panic("unimplemented")
+	return nil
 }
 
+// Next implements iter.EntryIterator. Reads the next entry from the chunk.
 func (r *ChunkReader) Next() bool {
-	panic("implement me")
+	if r.entryIdx >= r.entries || r.err != nil {
+		return false
+	}
+
+	// Read timestamp
+	var timestamp int64
+	if r.entryIdx == 0 {
+		ts, n := binary.Uvarint(r.b[r.pos:])
+		r.pos += n
+		timestamp = int64(ts)
+	} else {
+		delta, n := binary.Uvarint(r.b[r.pos:])
+		r.pos += n
+		if r.entryIdx == 1 {
+			timestamp = r.prevT + int64(delta)
+		} else {
+			deltaDelta, n := binary.Uvarint(r.b[r.pos:])
+			r.pos += n
+			timestamp = r.prevT + r.prevDelta + int64(deltaDelta)
+			r.prevDelta += int64(deltaDelta)
+		}
+	}
+
+	r.entry.Timestamp = time.Unix(0, timestamp)
+	r.prevT = timestamp
+
+	// Read line length
+	lineLen, n := binary.Uvarint(r.b[r.pos:])
+	r.pos += n
+
+	// Read line from decompressed data
+	lineBuf := make([]byte, lineLen)
+	if _, err := io.ReadFull(r.reader, lineBuf); err != nil {
+		if err != io.EOF {
+			r.err = err
+		}
+		return false
+	}
+	r.entry.Line = string(lineBuf)
+
+	r.entryIdx++
+	return true
 }
 
-func NewChunkReader(b []byte) *ChunkReader {
-	return &ChunkReader{
-		b: b,
+// readChunkHeader reads the chunk header and initializes the reader state
+func (r *ChunkReader) readChunkHeader() error {
+	if len(r.b) < 1 {
+		return errors.New("invalid chunk header")
 	}
+
+	// Read encoding byte
+	encoding := r.b[r.pos]
+	r.pos++
+
+	// Read number of entries
+	entries, n := binary.Uvarint(r.b[r.pos:])
+	r.pos += n
+	r.entries = entries
+
+	// Validate encoding (assuming only Snappy is supported)
+	if EncodingType(encoding) != EncodingSnappy {
+		return errors.New("unsupported encoding type")
+	}
+
+	return nil
 }
 
 func unsafeGetBytes(s string) []byte {

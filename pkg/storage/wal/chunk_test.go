@@ -2,11 +2,92 @@ package wal
 
 import (
 	"bytes"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
+
+func TestChunkReaderWriter(t *testing.T) {
+	tests := []struct {
+		name    string
+		entries []*logproto.Entry
+	}{
+		{
+			name: "Single entry",
+			entries: []*logproto.Entry{
+				{Timestamp: time.Now(), Line: "This is a single log entry."},
+			},
+		},
+		{
+			name: "Multiple entries",
+			entries: []*logproto.Entry{
+				{Timestamp: time.Now(), Line: "Log entry 1"},
+				{Timestamp: time.Now().Add(1 * time.Second), Line: "Log entry 2"},
+				{Timestamp: time.Now().Add(2 * time.Second), Line: "Log entry 3"},
+			},
+		},
+		{
+			name: "Many entries",
+			entries: func() []*logproto.Entry {
+				entries := make([]*logproto.Entry, 1000)
+				for i := 0; i < 1000; i++ {
+					entries[i] = &logproto.Entry{
+						Timestamp: time.Now().Add(time.Duration(i) * time.Second),
+						Line:      "Log entry " + strconv.Itoa(i+1),
+					}
+				}
+				return entries
+			}(),
+		},
+		{
+			name: "Entries with varying lengths",
+			entries: []*logproto.Entry{
+				{Timestamp: time.Now(), Line: "Short"},
+				{Timestamp: time.Now().Add(1 * time.Second), Line: "A bit longer log entry"},
+				{Timestamp: time.Now().Add(2 * time.Second), Line: "An even longer log entry than the previous one"},
+			},
+		},
+		{
+			name: "Empty lines",
+			entries: []*logproto.Entry{
+				{Timestamp: time.Now(), Line: ""},
+				{Timestamp: time.Now().Add(1 * time.Second), Line: ""},
+				{Timestamp: time.Now().Add(2 * time.Second), Line: ""},
+			},
+		},
+		{
+			name:    "No entries",
+			entries: []*logproto.Entry{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+
+			// Write the chunk
+			_, err := writeChunk(&buf, tt.entries, EncodingSnappy)
+			require.NoError(t, err, "writeChunk failed")
+
+			// Read the chunk
+			reader, err := NewChunkReader(buf.Bytes())
+			require.NoError(t, err, "NewChunkReader failed")
+			defer reader.Close()
+
+			var readEntries []*logproto.Entry
+			for reader.Next() {
+				entry := reader.Entry()
+				readEntries = append(readEntries, &entry)
+			}
+			require.NoError(t, reader.Error(), "reader encountered error")
+			require.Equal(t, tt.entries, readEntries)
+		})
+	}
+}
 
 // BenchmarkWriteChunk benchmarks the writeChunk function.
 func BenchmarkWriteChunk(b *testing.B) {
