@@ -102,6 +102,10 @@ func TestLex(t *testing.T) {
 		{`123KB`, []int{BYTES}},
 		{`123ms`, []int{DURATION}},
 		{`-123ms`, []int{DURATION}},
+		{`34 + - 123`, []int{NUMBER, ADD, SUB, NUMBER}},
+		{`34 + -123`, []int{NUMBER, ADD, NUMBER}},
+		{`34+-123`, []int{NUMBER, ADD, NUMBER}},
+		{`34-123`, []int{NUMBER, NUMBER}},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			actual := []int{}

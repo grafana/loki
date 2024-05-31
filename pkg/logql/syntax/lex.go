@@ -292,6 +292,10 @@ func tryScanNegativeNumber(l *Scanner) (string, bool) {
 	var sb strings.Builder
 	sb.WriteRune('-')
 
+	if !unicode.IsNumber(l.Peek()) {
+		return "", false
+	}
+
 	// copy the scanner to avoid advancing it in case it's not a number
 	s := *l
 	r := s.Scan()
