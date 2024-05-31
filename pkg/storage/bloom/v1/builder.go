@@ -67,14 +67,6 @@ func (b BlockOptions) Encode(enc *encoding.Encbuf) {
 	enc.PutBE64(b.BlockSize)
 }
 
-type BlockBuilder struct {
-	opts BlockOptions
-
-	writer BlockWriter
-	index  *IndexBuilder
-	blooms *BloomBlockBuilder
-}
-
 func NewBlockOptions(enc chunkenc.Encoding, nGramLength, nGramSkip, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
 		version:     DefaultSchemaVersion,
@@ -94,107 +86,6 @@ func NewBlockOptionsFromSchema(s Schema) BlockOptions {
 		SeriesPageSize: 4 << 10,   // 4KB, typical page size
 		BloomPageSize:  256 << 10, // 256KB, no idea what to make this
 	}
-}
-
-func NewBlockBuilder(opts BlockOptions, writer BlockWriter) (*BlockBuilder, error) {
-	index, err := writer.Index()
-	if err != nil {
-		return nil, errors.Wrap(err, "initializing index writer")
-	}
-	blooms, err := writer.Blooms()
-	if err != nil {
-		return nil, errors.Wrap(err, "initializing blooms writer")
-	}
-
-	return &BlockBuilder{
-		opts:   opts,
-		writer: writer,
-		index:  NewIndexBuilder(opts, index),
-		blooms: NewBloomBlockBuilder(opts, blooms),
-	}, nil
-}
-
-type SeriesWithBlooms struct {
-	Series *Series
-	Blooms SizedIterator[*Bloom]
-}
-
-func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBlooms]) (uint32, error) {
-	for itr.Next() {
-		at := itr.At()
-		var offsets []BloomOffset
-		for at.Blooms.Next() {
-			offset, err := b.AddBloom(at.Blooms.At())
-			if err != nil {
-				return 0, errors.Wrap(err, "writing bloom")
-			}
-			offsets = append(offsets, offset)
-		}
-
-		if err := at.Blooms.Err(); err != nil {
-			return 0, errors.Wrap(err, "iterating blooms")
-		}
-		blockFull, err := b.AddSeries(*at.Series, offsets)
-		if err != nil {
-			return 0, errors.Wrapf(err, "writing series")
-		}
-		if blockFull {
-			break
-		}
-	}
-
-	if err := itr.Err(); err != nil {
-		return 0, errors.Wrap(err, "iterating series with blooms")
-	}
-
-	return b.Close()
-}
-
-func (b *BlockBuilder) Close() (uint32, error) {
-	bloomChecksum, err := b.blooms.Close()
-	if err != nil {
-		return 0, errors.Wrap(err, "closing bloom file")
-	}
-	indexCheckSum, err := b.index.Close()
-	if err != nil {
-		return 0, errors.Wrap(err, "closing series file")
-	}
-	return combineChecksums(indexCheckSum, bloomChecksum), nil
-}
-
-func (b *BlockBuilder) AddBloom(bloom *Bloom) (BloomOffset, error) {
-	return b.blooms.Append(bloom)
-}
-
-// AddSeries adds a series to the block. It returns true after adding the series, the block is full.
-func (b *BlockBuilder) AddSeries(series Series, offsets []BloomOffset) (bool, error) {
-	if err := b.index.Append(SeriesWithOffsets{
-		Offsets: offsets,
-		Series:  series,
-	}); err != nil {
-		return false, errors.Wrapf(err, "writing index for series %v", series.Fingerprint)
-	}
-
-	full, _, err := b.IsBlockFull()
-	if err != nil {
-		return false, errors.Wrap(err, "checking if block is full")
-	}
-
-	return full, nil
-}
-
-func (b *BlockBuilder) IsBlockFull() (full bool, size int, err error) {
-	size, err = b.writer.Size()
-	if err != nil {
-		return false, 0, errors.Wrap(err, "getting block size")
-	}
-
-	// if the block size is 0, the max size is unlimited
-	if b.opts.BlockSize == 0 {
-		return false, size, nil
-	}
-
-	return uint64(size) >= b.opts.BlockSize, size, nil
 }
 
 type BloomBlockBuilder struct {
@@ -702,7 +593,7 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (checksum uint32, totalByte
 	}
 
 	flushedFor := blockFlushReasonFinished
-	full, sz, _ := builder.IsBlockFull()
+	full, sz, _ := builder.writer.Full(builder.opts.BlockSize)
 	if full {
 		flushedFor = blockFlushReasonFull
 	}
