@@ -32,7 +32,7 @@ func (c *CloseableBlockQuerier) SeriesIter() (v1.PeekingIterator[*v1.SeriesWithB
 	if err := c.Reset(); err != nil {
 		return nil, err
 	}
-	return v1.NewPeekingIter[*v1.SeriesWithBlooms](c.BlockQuerier), nil
+	return v1.NewPeekingIter[*v1.SeriesWithBlooms](c.BlockQuerier.Iter()), nil
 }
 
 func LoadBlocksDirIntoCache(paths []string, c Cache, logger log.Logger) error {

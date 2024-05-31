@@ -265,8 +265,8 @@ func populateAndConsumeBloom(
 	ch := make(chan *BloomCreation)
 	go bt.Populate(&s, blooms, chks, ch)
 	for x := range ch {
-		if x.err != nil {
-			e = append(e, x.err)
+		if x.Err != nil {
+			e = append(e, x.Err)
 		} else {
 			res = append(res, x.Bloom)
 		}

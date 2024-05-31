@@ -248,7 +248,7 @@ func TestMergeBuilder(t *testing.T) {
 			bloom := srcBlooms.At()
 			ch <- &BloomCreation{
 				Bloom:            bloom,
-				sourceBytesAdded: int(bloom.Capacity()) / 8,
+				SourceBytesAdded: int(bloom.Capacity()) / 8,
 			}
 		}
 		close(ch)
@@ -527,7 +527,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 			bloom := srcBlooms.At()
 			ch <- &BloomCreation{
 				Bloom:            bloom,
-				sourceBytesAdded: int(bloom.Capacity()) / 8,
+				SourceBytesAdded: int(bloom.Capacity()) / 8,
 			}
 		}
 		close(ch)

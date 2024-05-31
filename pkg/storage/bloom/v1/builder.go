@@ -536,8 +536,8 @@ func (b *IndexBuilder) Close() (uint32, error) {
 
 type BloomCreation struct {
 	Bloom            *Bloom
-	sourceBytesAdded int
-	err              error
+	SourceBytesAdded int
+	Err              error
 }
 
 // Simplistic implementation of a merge builder that builds a single block
@@ -552,6 +552,8 @@ type MergeBuilder struct {
 	metrics  *Metrics
 }
 
+type BloomPopulatorFunc = func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
+
 // NewMergeBuilder is a specific builder which does the following:
 //  1. merges multiple blocks into a single ordered querier,
 //     i) When two blocks have the same series, it will prefer the one with the most chunks already indexed
@@ -559,7 +561,7 @@ type MergeBuilder struct {
 func NewMergeBuilder(
 	blocks Iterator[*SeriesWithBlooms],
 	store Iterator[*Series],
-	populate func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation),
+	populate BloomPopulatorFunc,
 	metrics *Metrics,
 ) *MergeBuilder {
 	// combinedSeriesIter handles series with fingerprint collisions:
@@ -656,8 +658,8 @@ func (mb *MergeBuilder) processNextSeries(
 	go mb.populate(nextInStore, preExistingBlooms, chunksToAdd, ch)
 
 	for bloom := range ch {
-		if bloom.err != nil {
-			return nil, bytesAdded, false, false, errors.Wrap(bloom.err, "populating bloom")
+		if bloom.Err != nil {
+			return nil, bytesAdded, false, false, errors.Wrap(bloom.Err, "populating bloom")
 		}
 		offset, err := builder.AddBloom(bloom.Bloom)
 		if err != nil {
@@ -666,7 +668,7 @@ func (mb *MergeBuilder) processNextSeries(
 			)
 		}
 		offsets = append(offsets, offset)
-		bytesAdded += bloom.sourceBytesAdded
+		bytesAdded += bloom.SourceBytesAdded
 	}
 
 	done, err := builder.AddSeries(*nextInStore, offsets)

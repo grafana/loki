@@ -108,7 +108,7 @@ func (bt *BloomTokenizer) Populate(
 	for next = blooms.Next(); next && blooms.Remaining() > 0; next = blooms.Next() {
 		ch <- &BloomCreation{
 			Bloom:            blooms.At(),
-			sourceBytesAdded: 0,
+			SourceBytesAdded: 0,
 		}
 	}
 
@@ -139,7 +139,7 @@ func (bt *BloomTokenizer) Populate(
 			if full {
 				ch <- &BloomCreation{
 					Bloom:            bloom,
-					sourceBytesAdded: bytesAdded,
+					SourceBytesAdded: bytesAdded,
 				}
 
 				// start a new bloom + reset bytesAdded counter
@@ -160,7 +160,7 @@ func (bt *BloomTokenizer) Populate(
 	// Send the last bloom
 	ch <- &BloomCreation{
 		Bloom:            bloom,
-		sourceBytesAdded: bytesAdded,
+		SourceBytesAdded: bytesAdded,
 	}
 	close(ch)
 	return
