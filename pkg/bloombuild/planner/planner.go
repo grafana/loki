@@ -156,6 +156,16 @@ func (p *Planner) running(ctx context.Context) error {
 	}
 }
 
+type tenantTableTaskResults struct {
+	totalTasks int
+	resultsCh  chan *TaskResult
+}
+
+type tableTenant struct {
+	table  config.DayTable
+	tenant string
+}
+
 func (p *Planner) runOne(ctx context.Context) error {
 	var (
 		start  = time.Now()
@@ -171,38 +181,79 @@ func (p *Planner) runOne(ctx context.Context) error {
 	tables := p.tables(time.Now())
 	level.Debug(p.logger).Log("msg", "loaded tables", "tables", tables.TotalDays())
 
-	work, err := p.loadWork(ctx, tables)
+	work, err := p.loadTenantWork(ctx, tables)
 	if err != nil {
 		return fmt.Errorf("error loading work: %w", err)
 	}
 
+	// For deletion, we need to aggregate the results for each table and tenant tuple
+	// We cannot delete the returned tombstoned metas as soon as a task finishes since
+	// other tasks may still be using the now tombstoned metas
+	tasksResultForTableTenant := make(map[tableTenant]tenantTableTaskResults)
 	var totalTasks int
-	for _, w := range work {
-		logger := log.With(p.logger, "tenant", w.tenant, "table", w.table.Addr(), "ownership", w.ownershipRange.String())
 
-		gaps, err := p.findGapsForBounds(ctx, w.tenant, w.table, w.ownershipRange)
-		if err != nil {
-			level.Error(logger).Log("msg", "error finding gaps", "err", err)
-			continue
-		}
-
-		now := time.Now()
-		for _, gap := range gaps {
-			totalTasks++
-
-			task := NewTask(
-				ctx, now,
-				protos.NewTask(w.table, w.tenant, w.ownershipRange, gap.tsdb, gap.gaps),
-			)
-
-			if err := p.enqueueTask(task); err != nil {
-				level.Error(logger).Log("msg", "error enqueuing task", "err", err)
-				continue
+	for table, tenants := range work {
+		for tenant, ownershipRanges := range tenants {
+			logger := log.With(p.logger, "tenant", tenant, "table", table.Addr())
+			tt := tableTenant{
+				tenant: tenant,
+				table:  table,
 			}
+			var tasks []*protos.Task
+
+			for _, ownershipRange := range ownershipRanges {
+				logger := log.With(logger, "ownership", ownershipRange.String())
+
+				gaps, err := p.findGapsForBounds(ctx, tenant, table, ownershipRange)
+				if err != nil {
+					level.Error(logger).Log("msg", "error finding gaps", "err", err)
+					continue
+				}
+
+				for _, gap := range gaps {
+					tasks = append(tasks, protos.NewTask(table, tenant, ownershipRange, gap.tsdb, gap.gaps))
+				}
+			}
+
+			var enqueuedTasks int
+			resultsCh := make(chan *TaskResult, len(tasks))
+
+			now := time.Now()
+			for _, task := range tasks {
+				queueTask := NewTask(ctx, now, task, resultsCh)
+
+				if err := p.enqueueTask(queueTask); err != nil {
+					level.Error(logger).Log("msg", "error enqueuing task", "err", err)
+					continue
+				}
+
+				totalTasks++
+				enqueuedTasks++
+			}
+
+			tasksResultForTableTenant[tt] = tenantTableTaskResults{
+				totalTasks: enqueuedTasks,
+				resultsCh:  resultsCh,
+			}
+
+			level.Debug(logger).Log("msg", "enqueued tasks", "tasks", enqueuedTasks)
 		}
 	}
 
 	level.Debug(p.logger).Log("msg", "planning completed", "tasks", totalTasks)
+
+	// Create a goroutine to process the results for each table tenant tuple
+	var wg sync.WaitGroup
+	for tt, results := range tasksResultForTableTenant {
+		wg.Add(1)
+		go func(table config.DayTable, tenant string, results tenantTableTaskResults) {
+			p.processTenantTaskResults(ctx, table, tenant, results.totalTasks, results.resultsCh)
+			wg.Done()
+		}(tt.table, tt.tenant, results)
+	}
+
+	level.Debug(p.logger).Log("msg", "waiting for all tasks to be completed", "tasks", totalTasks, "tableTenants", len(tasksResultForTableTenant))
+	wg.Wait()
 
 	status = statusSuccess
 	level.Info(p.logger).Log(
@@ -210,6 +261,32 @@ func (p *Planner) runOne(ctx context.Context) error {
 		"duration", time.Since(start).Seconds(),
 	)
 	return nil
+}
+
+func (p *Planner) processTenantTaskResults(
+	ctx context.Context,
+	table config.DayTable,
+	tenant string,
+	totalTasks int,
+	resultsCh <-chan *TaskResult,
+) {
+	logger := log.With(p.logger, table, table.Addr(), "tenant", tenant)
+	level.Debug(logger).Log("msg", "waiting for all tasks to be completed", "tasks", totalTasks)
+
+	newMetas := make([]bloomshipper.MetaRef, 0, totalTasks)
+	for i := 0; i < totalTasks; i++ {
+		select {
+		case <-ctx.Done():
+			level.Warn(logger).Log("msg", "context done while waiting for task results", "err", ctx.Err())
+			return
+		case result := <-resultsCh:
+			newMetas = append(newMetas, result.metas...)
+		}
+	}
+
+	level.Debug(logger).Log("msg", "all tasks completed", "tasks", totalTasks)
+
+	// TODO(salvacorts): Now delete all tombstoned metas.
 }
 
 func (p *Planner) tables(ts time.Time) *dayRangeIterator {
@@ -228,21 +305,13 @@ func (p *Planner) tables(ts time.Time) *dayRangeIterator {
 	return newDayRangeIterator(fromDay, throughDay, p.schemaCfg)
 }
 
-type tenantTableRange struct {
-	tenant         string
-	table          config.DayTable
-	ownershipRange v1.FingerprintBounds
-
-	// TODO: Add tracking
-	//finished                      bool
-	//queueTime, startTime, endTime time.Time
-}
-
-func (p *Planner) loadWork(
+// loadTenantWork loads the work for each tenant and table tuple.
+// work is the list of fingerprint ranges that need to be indexed in bloom filters.
+func (p *Planner) loadTenantWork(
 	ctx context.Context,
 	tables *dayRangeIterator,
-) ([]tenantTableRange, error) {
-	var work []tenantTableRange
+) (map[config.DayTable]map[string][]v1.FingerprintBounds, error) {
+	workPerTableTenant := make(map[config.DayTable]map[string][]v1.FingerprintBounds, tables.TotalDays())
 
 	for tables.Next() && tables.Err() == nil && ctx.Err() == nil {
 		table := tables.At()
@@ -253,6 +322,11 @@ func (p *Planner) loadWork(
 			return nil, fmt.Errorf("error loading tenants: %w", err)
 		}
 		level.Debug(p.logger).Log("msg", "loaded tenants", "table", table, "tenants", tenants.Len())
+
+		// If this is the first this we see this table, initialize the map
+		if workPerTableTenant[table] == nil {
+			workPerTableTenant[table] = make(map[string][]v1.FingerprintBounds, tenants.Len())
+		}
 
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
 			p.metrics.tenantsDiscovered.Inc()
@@ -265,13 +339,7 @@ func (p *Planner) loadWork(
 			splitFactor := p.limits.BloomSplitSeriesKeyspaceBy(tenant)
 			bounds := SplitFingerprintKeyspaceByFactor(splitFactor)
 
-			for _, bounds := range bounds {
-				work = append(work, tenantTableRange{
-					tenant:         tenant,
-					table:          table,
-					ownershipRange: bounds,
-				})
-			}
+			workPerTableTenant[table][tenant] = bounds
 
 			level.Debug(p.logger).Log("msg", "loading work for tenant", "table", table, "tenant", tenant, "splitFactor", splitFactor)
 		}
@@ -286,7 +354,7 @@ func (p *Planner) loadWork(
 		return nil, fmt.Errorf("error iterating tables: %w", err)
 	}
 
-	return work, ctx.Err()
+	return workPerTableTenant, ctx.Err()
 }
 
 func (p *Planner) tenants(ctx context.Context, table config.DayTable) (*v1.SliceIter[string], error) {
@@ -507,11 +575,11 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan
 	return plans, nil
 }
 
-func (p *Planner) addPendingTask(task *Task) {
+func (p *Planner) addPendingTask(task *QueueTask) {
 	p.pendingTasks.Store(task.ID, task)
 }
 
-func (p *Planner) removePendingTask(task *Task) {
+func (p *Planner) removePendingTask(task *QueueTask) {
 	p.pendingTasks.Delete(task.ID)
 }
 
@@ -523,7 +591,7 @@ func (p *Planner) totalPendingTasks() (total int) {
 	return total
 }
 
-func (p *Planner) enqueueTask(task *Task) error {
+func (p *Planner) enqueueTask(task *QueueTask) error {
 	p.activeUsers.UpdateUserTimestamp(task.Tenant, time.Now())
 	return p.tasksQueue.Enqueue(task.Tenant, nil, task, func() {
 		task.timesEnqueued++
@@ -570,7 +638,7 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 
 			return fmt.Errorf("dequeue() call resulted in nil response. builder: %s", builderID)
 		}
-		task := item.(*Task)
+		task := item.(*QueueTask)
 
 		queueTime := time.Since(task.queueTime)
 		p.metrics.queueDuration.Observe(queueTime.Seconds())
@@ -607,7 +675,6 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 			p.metrics.tasksRequeued.Inc()
 			level.Error(logger).Log("msg", "error forwarding task to builder, Task requeued", "err", err)
 		}
-
 	}
 
 	return errPlannerIsNotRunning
@@ -616,7 +683,7 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 func (p *Planner) forwardTaskToBuilder(
 	builder protos.PlannerForBuilder_BuilderLoopServer,
 	builderID string,
-	task *Task,
+	task *QueueTask,
 ) error {
 	defer p.removePendingTask(task)
 
@@ -652,6 +719,11 @@ func (p *Planner) forwardTaskToBuilder(
 	select {
 	case result := <-resultsCh:
 		// TODO: Return metas forward via channel
+
+		// Send the result back to the task. The channel is buffered, so this should not block.
+		// TODO(salvacorts): Pass new and tombstoned metas
+		//task.resultsChannel <- NewTaskResult(nil)
+
 		return result.Error
 	case err := <-errCh:
 		return err
@@ -666,7 +738,7 @@ func (p *Planner) forwardTaskToBuilder(
 func (p *Planner) receiveResultFromBuilder(
 	builder protos.PlannerForBuilder_BuilderLoopServer,
 	builderID string,
-	task *Task,
+	task *QueueTask,
 ) (*protos.TaskResult, error) {
 	// If connection is closed, Recv() will return an error
 	res, err := builder.Recv()
