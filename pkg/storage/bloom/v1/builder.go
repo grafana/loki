@@ -77,7 +77,7 @@ type BlockBuilder struct {
 
 func NewBlockOptions(enc chunkenc.Encoding, nGramLength, nGramSkip, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
-		version:     byte(1),
+		version:     DefaultSchemaVersion,
 		encoding:    enc,
 		nGramLength: nGramLength,
 		nGramSkip:   nGramSkip,

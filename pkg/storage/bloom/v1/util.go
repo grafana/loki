@@ -10,10 +10,12 @@ import (
 	"github.com/prometheus/prometheus/util/pool"
 )
 
+type BloomVersion byte
+
 const (
 	magicNumber = uint32(0xCA7CAFE5)
 	// Add new versions below
-	V1 byte = iota
+	V1 BloomVersion = iota
 	// V2 supports single series blooms encoded over multipe pages
 	// to accomodate larger single series
 	V2

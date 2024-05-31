@@ -15,7 +15,7 @@ import (
 )
 
 type Schema struct {
-	version                byte
+	version                BloomVersion
 	encoding               chunkenc.Encoding
 	nGramLength, nGramSkip uint64
 }
@@ -53,7 +53,7 @@ func (s *Schema) CompressorPool() chunkenc.WriterPool {
 func (s *Schema) Encode(enc *encoding.Encbuf) {
 	enc.Reset()
 	enc.PutBE32(magicNumber)
-	enc.PutByte(s.version)
+	enc.PutByte(byte(s.version))
 	enc.PutByte(byte(s.encoding))
 	enc.PutBE64(s.nGramLength)
 	enc.PutBE64(s.nGramSkip)
@@ -77,7 +77,7 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 	if number != magicNumber {
 		return errors.Errorf("invalid magic number. expected %x, got  %x", magicNumber, number)
 	}
-	s.version = dec.Byte()
+	s.version = BloomVersion(dec.Byte())
 	if s.version != 1 && s.version != 2 {
 		return errors.Errorf("invalid version. expected %d, got %d", 1, s.version)
 	}
@@ -403,14 +403,14 @@ func (s *SeriesWithOffsets) Encode(
 }
 
 func (s *SeriesWithOffsets) Decode(
-	version byte,
+	version BloomVersion,
 	dec *encoding.Decbuf,
 	previousFp model.Fingerprint,
 	previousOffset BloomOffset,
 ) (model.Fingerprint, BloomOffset, error) {
 	// Since *SeriesWithOffsets is is still representable by the v1 schema as a len=1 offset group,
 	// we can decode it even though multiple offsets were introduced in v2
-	if version == 1 {
+	if version == V1 {
 		return s.decodeV1(dec, previousFp, previousOffset)
 	}
 
