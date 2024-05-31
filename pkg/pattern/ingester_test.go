@@ -144,12 +144,6 @@ func TestInstancePushQuerySamples(t *testing.T) {
 		expr, err = syntax.ParseSampleExpr(`count_over_time({test="test"}[80s])`)
 		require.NoError(t, err)
 
-		// it, err := inst.QuerySample(context.Background(), expr, &logproto.QuerySamplesRequest{
-		// 	Query: expr.String(),
-		// 	Start: time.Unix(0, 0),
-		// 	End:   time.Unix(int64(20*30), 0),
-		// 	Step:  10000,
-		// })
 		it, err = inst.QuerySample(context.Background(), expr, &logproto.QuerySamplesRequest{
 			Query: expr.String(),
 			Start: time.Unix(0, 0),

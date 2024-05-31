@@ -103,7 +103,7 @@ func (q *IngesterQuerier) Samples(
 		return nil, err
 	}
 
-	// TODO: what should batch size be here?
+	// TODO(twhitney): what should batch size be here?
 	resp, err := pattern_iter.ReadMetricsBatch(loki_iter.NewSortSampleIterator(iterators), math.MaxInt32)
 	if err != nil {
 		return nil, err

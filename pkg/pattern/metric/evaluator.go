@@ -242,59 +242,6 @@ func newRangeVectorIterator(
 	), nil
 }
 
-type seriesToSampleIterator struct {
-	floats []promql.FPoint
-	curTs  int64
-	cur    float64
-	lbls   labels.Labels
-}
-
-// TODO: could this me a matrix iterator that returned multiple samples with
-// different labels for the same timestamp?
-func NewSeriesToSampleIterator(series *promql.Series) *seriesToSampleIterator {
-	return &seriesToSampleIterator{
-		floats: series.Floats,
-		lbls:   series.Metric,
-	}
-}
-
-func (s *seriesToSampleIterator) Next() bool {
-	if len(s.floats) == 0 {
-		return false
-	}
-
-	current, rest := s.floats[0], s.floats[1:]
-
-	s.curTs = current.T * 1e6 // convert to nanoseconds
-	s.cur = current.F
-
-	s.floats = rest
-	return true
-}
-
-func (s *seriesToSampleIterator) Labels() string {
-	return s.lbls.String()
-}
-
-func (s *seriesToSampleIterator) Sample() logproto.Sample {
-	return logproto.Sample{
-		Timestamp: s.curTs,
-		Value:     s.cur,
-	}
-}
-
-func (s *seriesToSampleIterator) StreamHash() uint64 {
-	return s.lbls.Hash()
-}
-
-func (s *seriesToSampleIterator) Error() error {
-	return nil
-}
-
-func (s *seriesToSampleIterator) Close() error {
-	return nil
-}
-
 type paramCompat struct {
 	expr    syntax.SampleExpr
 	from    model.Time

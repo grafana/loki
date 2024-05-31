@@ -1136,7 +1136,6 @@ func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
 	}
 }
 
-//TODO: use real times for clarity
 func Test_WriteQuerySamplesResponseJSON(t *testing.T) {
 	expected := func(result string) string {
 		return fmt.Sprintf(`{
