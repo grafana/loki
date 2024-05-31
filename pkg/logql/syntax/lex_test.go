@@ -97,6 +97,8 @@ func TestLex(t *testing.T) {
 		{`decolorize`, []int{DECOLORIZE}},
 		{`123`, []int{NUMBER}},
 		{`-123`, []int{NUMBER}},
+		{`123.45`, []int{NUMBER}},
+		{`-123.45`, []int{NUMBER}},
 		{`123KB`, []int{BYTES}},
 		{`123ms`, []int{DURATION}},
 		{`-123ms`, []int{DURATION}},
