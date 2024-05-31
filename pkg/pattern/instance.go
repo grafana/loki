@@ -64,7 +64,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
 				// add stream
-				return i.createStream(ctx, reqStream, i.aggregationCfg.Enabled)
+				return i.createStream(ctx, reqStream)
 			}, nil)
 		if err != nil {
 			appendErr.Add(err)
@@ -182,7 +182,7 @@ outer:
 	return nil
 }
 
-func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream, aggregateMetrics bool) (*stream, error) {
+func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream) (*stream, error) {
 	labels, err := syntax.ParseLabels(pushReqStream.Labels)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())

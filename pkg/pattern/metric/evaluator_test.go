@@ -34,7 +34,7 @@ func Test_SampleEvaluator(t *testing.T) {
 		evaluator, err := factory.NewStepEvaluator(
 			context.Background(),
 			factory,
-			expr.(syntax.SampleExpr),
+			expr,
 			// add 10s to the end to include chunks @ now
 			model.Time(from), model.Time(through), model.Time(fiveMinMs),
 		)
@@ -50,7 +50,7 @@ func Test_SampleEvaluator(t *testing.T) {
 		return Chunks{
 			chunks: []Chunk{
 				{
-					Samples: []MetricSample{
+					Samples: []Sample{
 						{
 							Timestamp: beforeThenTime,
 							Bytes:     1,

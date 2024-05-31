@@ -44,6 +44,7 @@ func TestInstancePushQuery(t *testing.T) {
 			},
 		},
 	})
+	require.NoError(t, err)
 
 	err = inst.Push(context.Background(), &push.PushRequest{
 		Streams: []push.Stream{
@@ -58,6 +59,8 @@ func TestInstancePushQuery(t *testing.T) {
 			},
 		},
 	})
+	require.NoError(t, err)
+
 	for i := 0; i <= 30; i++ {
 		err = inst.Push(context.Background(), &push.PushRequest{
 			Streams: []push.Stream{
@@ -74,7 +77,7 @@ func TestInstancePushQuery(t *testing.T) {
 		})
 		require.NoError(t, err)
 	}
-	require.NoError(t, err)
+
 	it, err := inst.Iterator(context.Background(), &logproto.QueryPatternsRequest{
 		Query: "{test=\"test\"}",
 		Start: time.Unix(0, 0),

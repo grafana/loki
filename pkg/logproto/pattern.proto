@@ -5,8 +5,8 @@ package logproto;
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logproto/logproto.proto";
-import "pkg/push/push.proto";
 import "pkg/logqlmodel/stats/stats.proto";
+import "pkg/push/push.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/logproto";
 
@@ -58,7 +58,6 @@ message QuerySamplesRequest {
   ];
   int64 step = 4;
 }
-
 
 message QuerySamplesResponse {
   repeated Series series = 1 [

@@ -83,7 +83,7 @@ func FromMetricsToLabelAdapters(metric model.Metric) []LabelAdapter {
 }
 
 func FromMetricsToLabels(metric model.Metric) labels.Labels {
-  return FromLabelAdaptersToLabels(FromMetricsToLabelAdapters(metric))
+	return FromLabelAdaptersToLabels(FromMetricsToLabelAdapters(metric))
 }
 
 type byLabel []LabelAdapter

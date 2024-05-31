@@ -144,11 +144,11 @@ func (f *fakeRingClient) Pool() *ring_client.Pool {
 	panic("not implemented")
 }
 
-func (f *fakeRingClient) StartAsync(ctx context.Context) error {
+func (f *fakeRingClient) StartAsync(_ context.Context) error {
 	panic("not implemented")
 }
 
-func (f *fakeRingClient) AwaitRunning(ctx context.Context) error {
+func (f *fakeRingClient) AwaitRunning(_ context.Context) error {
 	panic("not implemented")
 }
 
@@ -156,7 +156,7 @@ func (f *fakeRingClient) StopAsync() {
 	panic("not implemented")
 }
 
-func (f *fakeRingClient) AwaitTerminated(ctx context.Context) error {
+func (f *fakeRingClient) AwaitTerminated(_ context.Context) error {
 	panic("not implemented")
 }
 
@@ -168,7 +168,7 @@ func (f *fakeRingClient) State() services.State {
 	panic("not implemented")
 }
 
-func (f *fakeRingClient) AddListener(listener services.Listener) {
+func (f *fakeRingClient) AddListener(_ services.Listener) {
 	panic("not implemented")
 }
 
@@ -179,20 +179,20 @@ func (f *fakeRingClient) Ring() ring.ReadRing {
 type fakeRing struct{}
 
 func (f *fakeRing) Get(
-	key uint32,
-	op ring.Operation,
-	bufDescs []ring.InstanceDesc,
-	bufHosts []string,
-	bufZones []string,
+	_ uint32,
+	_ ring.Operation,
+	_ []ring.InstanceDesc,
+	_ []string,
+	_ []string,
 ) (ring.ReplicationSet, error) {
 	panic("not implemented")
 }
 
-func (f *fakeRing) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) {
+func (f *fakeRing) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, error) {
 	panic("not implemented")
 }
 
-func (f *fakeRing) GetReplicationSetForOperation(op ring.Operation) (ring.ReplicationSet, error) {
+func (f *fakeRing) GetReplicationSetForOperation(_ ring.Operation) (ring.ReplicationSet, error) {
 	return ring.ReplicationSet{}, nil
 }
 
@@ -204,31 +204,31 @@ func (f *fakeRing) InstancesCount() int {
 	panic("not implemented")
 }
 
-func (f *fakeRing) ShuffleShard(identifier string, size int) ring.ReadRing {
+func (f *fakeRing) ShuffleShard(_ string, _ int) ring.ReadRing {
 	panic("not implemented")
 }
 
-func (f *fakeRing) GetInstanceState(instanceID string) (ring.InstanceState, error) {
+func (f *fakeRing) GetInstanceState(_ string) (ring.InstanceState, error) {
 	panic("not implemented")
 }
 
 func (f *fakeRing) ShuffleShardWithLookback(
-	identifier string,
-	size int,
-	lookbackPeriod time.Duration,
-	now time.Time,
+	_ string,
+	_ int,
+	_ time.Duration,
+	_ time.Time,
 ) ring.ReadRing {
 	panic("not implemented")
 }
 
-func (f *fakeRing) HasInstance(instanceID string) bool {
+func (f *fakeRing) HasInstance(_ string) bool {
 	panic("not implemented")
 }
 
-func (f *fakeRing) CleanupShuffleShardCache(identifier string) {
+func (f *fakeRing) CleanupShuffleShardCache(_ string) {
 	panic("not implemented")
 }
 
-func (f *fakeRing) GetTokenRangesForInstance(instanceID string) (ring.TokenRanges, error) {
+func (f *fakeRing) GetTokenRangesForInstance(_ string) (ring.TokenRanges, error) {
 	panic("not implemented")
 }

@@ -1,7 +1,6 @@
 package metric
 
 import (
-	"context"
 	"fmt"
 	"slices"
 	"sort"
@@ -16,10 +15,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 )
 
-type MetricType int
+type Type int
 
 const (
-	Bytes MetricType = iota
+	Bytes Type = iota
 	Count
 	Unsupported
 )
@@ -52,8 +51,7 @@ func (c *Chunks) Observe(bytes, count float64, ts model.Time) {
 }
 
 func (c *Chunks) Iterator(
-	ctx context.Context,
-	typ MetricType,
+	typ Type,
 	grouping *syntax.Grouping,
 	from, through, step model.Time,
 ) (iter.SampleIterator, error) {
@@ -102,24 +100,24 @@ func (c *Chunks) Iterator(
 	return iter.NewSeriesIterator(series), nil
 }
 
-type MetricSample struct {
+type Sample struct {
 	Timestamp model.Time
 	Bytes     float64
 	Count     float64
 }
 
-func newSample(bytes, count float64, ts model.Time) MetricSample {
-	return MetricSample{
+func newSample(bytes, count float64, ts model.Time) Sample {
+	return Sample{
 		Timestamp: ts,
 		Bytes:     bytes,
 		Count:     count,
 	}
 }
 
-type MetricSamples []MetricSample
+type Samples []Sample
 
 type Chunk struct {
-	Samples    MetricSamples
+	Samples    Samples
 	mint, maxt int64
 }
 
@@ -127,7 +125,7 @@ func (c *Chunk) Bounds() (fromT, toT time.Time) {
 	return time.Unix(0, c.mint), time.Unix(0, c.maxt)
 }
 
-func (c *Chunk) AddSample(s MetricSample) {
+func (c *Chunk) AddSample(s Sample) {
 	c.Samples = append(c.Samples, s)
 	ts := int64(s.Timestamp)
 
@@ -142,7 +140,7 @@ func (c *Chunk) AddSample(s MetricSample) {
 
 func newChunk(bytes, count float64, ts model.Time) Chunk {
 	maxSize := int(chunk.MaxChunkTime.Nanoseconds()/chunk.TimeResolution.UnixNano()) + 1
-	v := Chunk{Samples: make(MetricSamples, 1, maxSize)}
+	v := Chunk{Samples: make(Samples, 1, maxSize)}
 	v.Samples[0] = newSample(bytes, count, ts)
 	return v
 }
@@ -160,7 +158,7 @@ func (c *Chunk) spaceFor(ts model.Time) bool {
 // the step evaluator. start and end are in milliseconds since epoch.
 // step is a duration in milliseconds.
 func (c *Chunk) ForTypeAndRange(
-	typ MetricType,
+	typ Type,
 	start, end model.Time,
 ) ([]logproto.Sample, error) {
 	if typ == Unsupported {

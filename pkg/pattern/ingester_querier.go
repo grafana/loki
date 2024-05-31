@@ -81,11 +81,11 @@ func (q *IngesterQuerier) Samples(
 	}
 
 	var selector syntax.LogSelectorExpr
-	switch expr.(type) {
+	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
-		selector, err = expr.(*syntax.VectorAggregationExpr).Selector()
+		selector, err = e.Selector()
 	case *syntax.RangeAggregationExpr:
-		selector, err = expr.(*syntax.RangeAggregationExpr).Selector()
+		selector, err = e.Selector()
 	default:
 		return nil, ErrParseQuery
 	}

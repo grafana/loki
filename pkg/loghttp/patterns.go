@@ -33,4 +33,3 @@ func ParsePatternsQuery(r *http.Request) (*logproto.QueryPatternsRequest, error)
 
 	return req, nil
 }
-

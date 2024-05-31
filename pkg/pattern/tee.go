@@ -38,8 +38,8 @@ func NewTee(
 			Name: "pattern_ingester_appends_total",
 			Help: "The total number of batch appends sent to pattern ingesters.",
 		}, []string{"ingester", "status"}),
-		cfg: cfg,
-		ringClient:  ringClient,
+		cfg:        cfg,
+		ringClient: ringClient,
 	}
 
 	return t, nil

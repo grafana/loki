@@ -18,8 +18,8 @@ import (
 )
 
 // TODO(twhitney): duplication with code in NewStepEvaluator
-func extractMetricType(expr syntax.SampleExpr) (MetricType, error) {
-	var typ MetricType
+func extractMetricType(expr syntax.SampleExpr) (Type, error) {
+	var typ Type
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if rangeExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
@@ -110,7 +110,7 @@ func (ev *DefaultEvaluatorFactory) NewStepEvaluator(
 				) (logql.StepEvaluator, error) {
 					fromWithRangeAndOffset := from.Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset)
 					throughWithOffset := through.Add(-rangExpr.Left.Offset)
-					it, err := ev.chunks.Iterator(ctx, metricType, e.Grouping, fromWithRangeAndOffset, throughWithOffset, step)
+					it, err := ev.chunks.Iterator(metricType, e.Grouping, fromWithRangeAndOffset, throughWithOffset, step)
 					if err != nil {
 						return nil, err
 					}
@@ -144,7 +144,7 @@ func (ev *DefaultEvaluatorFactory) NewStepEvaluator(
 	case *syntax.RangeAggregationExpr:
 		fromWithRangeAndOffset := from.Add(-e.Left.Interval).Add(-e.Left.Offset)
 		throughWithOffset := through.Add(-e.Left.Offset)
-		it, err := ev.chunks.Iterator(ctx, metricType, e.Grouping, fromWithRangeAndOffset, throughWithOffset, step)
+		it, err := ev.chunks.Iterator(metricType, e.Grouping, fromWithRangeAndOffset, throughWithOffset, step)
 		if err != nil {
 			return nil, err
 		}
@@ -171,7 +171,7 @@ func NewSampleRangeAggEvaluator(
 	o time.Duration,
 ) (logql.StepEvaluator, error) {
 	iter, err := newRangeVectorIterator(
-		it, expr,
+		it,
 		expr.Left.Interval.Nanoseconds(),
 		q.Step().Nanoseconds(),
 		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
@@ -185,7 +185,6 @@ func NewSampleRangeAggEvaluator(
 
 func newRangeVectorIterator(
 	it loki_iter.PeekingSampleIterator,
-	expr *syntax.RangeAggregationExpr,
 	selRange, step, start, end, offset int64,
 ) (logql.RangeVectorIterator, error) {
 	// forces at least one step.
@@ -242,7 +241,7 @@ func newRangeVectorIterator(
 	), nil
 }
 
-type paramCompat struct {
+type ParamCompat struct {
 	expr    syntax.SampleExpr
 	from    model.Time
 	through model.Time
@@ -252,8 +251,8 @@ type paramCompat struct {
 func NewParams(
 	expr syntax.SampleExpr,
 	from, through, step model.Time,
-) *paramCompat {
-	return &paramCompat{
+) *ParamCompat {
+	return &ParamCompat{
 		expr:    expr,
 		from:    from,
 		through: through,
@@ -261,46 +260,46 @@ func NewParams(
 	}
 }
 
-func (p *paramCompat) QueryString() string {
+func (p *ParamCompat) QueryString() string {
 	return p.expr.String()
 }
 
-func (p *paramCompat) Start() time.Time {
+func (p *ParamCompat) Start() time.Time {
 	return p.from.Time()
 }
 
-func (p *paramCompat) End() time.Time {
+func (p *ParamCompat) End() time.Time {
 	return p.through.Time()
 }
 
-func (p *paramCompat) Step() time.Duration {
+func (p *ParamCompat) Step() time.Duration {
 	return time.Duration(p.step.UnixNano())
 }
 
-func (p *paramCompat) Interval() time.Duration {
+func (p *ParamCompat) Interval() time.Duration {
 	return time.Duration(0)
 }
 
-func (p *paramCompat) Limit() uint32 {
+func (p *ParamCompat) Limit() uint32 {
 	return 0
 }
 
-func (p *paramCompat) Direction() logproto.Direction {
+func (p *ParamCompat) Direction() logproto.Direction {
 	return logproto.BACKWARD
 }
 
-func (p *paramCompat) Shards() []string {
+func (p *ParamCompat) Shards() []string {
 	return []string{}
 }
 
-func (p *paramCompat) GetExpression() syntax.Expr {
+func (p *ParamCompat) GetExpression() syntax.Expr {
 	return p.expr
 }
 
-func (p *paramCompat) GetStoreChunks() *logproto.ChunkRefGroup {
+func (p *ParamCompat) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
 }
 
-func (p *paramCompat) CachingOptions() (res resultscache.CachingOptions) {
+func (p *ParamCompat) CachingOptions() (res resultscache.CachingOptions) {
 	return
 }

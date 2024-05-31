@@ -22,7 +22,7 @@ func TestAdd(t *testing.T) {
 	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + chunk.TimeResolution + 1)
 	require.Equal(t, 2, len(cks))
 	require.Equal(t, 1, len(cks[1].Samples))
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) - TimeResolution)
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) - chunk.TimeResolution)
 	require.Equal(t, 2, len(cks))
 	require.Equalf(t, 1, len(cks[1].Samples), "Older samples should not be added if they arrive out of order")
 }

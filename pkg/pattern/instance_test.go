@@ -6,13 +6,14 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/metric"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 func TestInstance_QuerySample(t *testing.T) {
@@ -41,8 +42,7 @@ func TestInstance_QuerySample(t *testing.T) {
 
 	lastTsMilli := (then + oneMin + thirtySeconds) // 0 + 60000 + 30000 = 90000
 
-	// TODO(twhitney): Add a few more pushes to this or another test
-	instance.Push(ctx, &logproto.PushRequest{
+	err = instance.Push(ctx, &logproto.PushRequest{
 		Streams: []push.Stream{
 			{
 				Labels: labels.String(),
@@ -68,6 +68,7 @@ func TestInstance_QuerySample(t *testing.T) {
 			},
 		},
 	})
+	require.NoError(t, err)
 
 	// 5 min query range
 	// 1 min step

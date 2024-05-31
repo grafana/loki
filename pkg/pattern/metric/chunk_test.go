@@ -1,7 +1,6 @@
 package metric
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
@@ -17,7 +16,7 @@ func TestForTypeAndRange(t *testing.T) {
 	testCases := []struct {
 		name       string
 		c          *Chunk
-		metricType MetricType
+		metricType Type
 		start      model.Time
 		end        model.Time
 		expected   []logproto.Sample
@@ -40,7 +39,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "No Overlap -- count",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Count: 2},
 				{Timestamp: 4, Count: 4},
 				{Timestamp: 6, Count: 6},
@@ -52,7 +51,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "No Overlap -- bytes",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Bytes: 2},
 				{Timestamp: 4, Bytes: 4},
 				{Timestamp: 6, Bytes: 6},
@@ -64,7 +63,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "Complete Overlap -- count",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Count: 2},
 				{Timestamp: 4, Count: 4},
 				{Timestamp: 6, Count: 6},
@@ -80,7 +79,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "Complete Overlap -- bytes",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Bytes: 2},
 				{Timestamp: 4, Bytes: 4},
 				{Timestamp: 6, Bytes: 6},
@@ -96,7 +95,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "Partial Overlap -- count",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Count: 2},
 				{Timestamp: 4, Count: 4},
 				{Timestamp: 6, Count: 6},
@@ -111,7 +110,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "Partial Overlap -- bytes",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Bytes: 2},
 				{Timestamp: 4, Bytes: 4},
 				{Timestamp: 6, Bytes: 6},
@@ -126,7 +125,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "Single Element in Range -- count",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Count: 2},
 				{Timestamp: 4, Count: 4},
 				{Timestamp: 6, Count: 6},
@@ -138,7 +137,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "Single Element in Range -- bytes",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Bytes: 2},
 				{Timestamp: 4, Bytes: 4},
 				{Timestamp: 6, Bytes: 6},
@@ -150,7 +149,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "Start Before First Element -- count",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Count: 2},
 				{Timestamp: 4, Count: 4},
 				{Timestamp: 6, Count: 6},
@@ -165,7 +164,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "Start Before First Element -- bytes",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Bytes: 2},
 				{Timestamp: 4, Bytes: 4},
 				{Timestamp: 6, Bytes: 6},
@@ -180,7 +179,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "End After Last Element -- count",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Count: 2},
 				{Timestamp: 4, Count: 4},
 				{Timestamp: 6, Count: 6},
@@ -194,7 +193,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "End After Last Element -- bytes",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Bytes: 2},
 				{Timestamp: 4, Bytes: 4},
 				{Timestamp: 6, Bytes: 6},
@@ -208,7 +207,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "End Exclusive -- count",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Count: 2},
 				{Timestamp: 4, Count: 4},
 				{Timestamp: 6, Count: 6},
@@ -222,7 +221,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "End Exclusive -- bytes",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Bytes: 2},
 				{Timestamp: 4, Bytes: 4},
 				{Timestamp: 6, Bytes: 6},
@@ -236,7 +235,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "Start before First and End Inclusive of First Element -- count",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Count: 2},
 				{Timestamp: 4, Count: 4},
 				{Timestamp: 6, Count: 6},
@@ -248,7 +247,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "Start before First and End Inclusive of First Element -- bytes",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Bytes: 2},
 				{Timestamp: 4, Bytes: 4},
 				{Timestamp: 6, Bytes: 6},
@@ -260,7 +259,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "Start and End before First Element -- count",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Count: 2},
 				{Timestamp: 4, Count: 4},
 				{Timestamp: 6, Count: 6},
@@ -272,7 +271,7 @@ func TestForTypeAndRange(t *testing.T) {
 		},
 		{
 			name: "Start and End before First Element -- bytes",
-			c: &Chunk{Samples: MetricSamples{
+			c: &Chunk{Samples: Samples{
 				{Timestamp: 2, Bytes: 2},
 				{Timestamp: 4, Bytes: 4},
 				{Timestamp: 6, Bytes: 6},
@@ -298,7 +297,6 @@ func TestForTypeAndRange(t *testing.T) {
 
 // TODO(twhitney): test the maximum steps logic
 func Test_Chunks_Iterator(t *testing.T) {
-	ctx := context.Background()
 	lbls := labels.Labels{
 		labels.Label{Name: "foo", Value: "bar"},
 		labels.Label{Name: "container", Value: "jar"},
@@ -306,7 +304,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 	chunks := Chunks{
 		chunks: []Chunk{
 			{
-				Samples: []MetricSample{
+				Samples: []Sample{
 					{Timestamp: 2, Bytes: 2, Count: 1},
 					{Timestamp: 4, Bytes: 4, Count: 3},
 					{Timestamp: 6, Bytes: 6, Count: 5},
@@ -319,7 +317,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 	}
 
 	t.Run("without grouping", func(t *testing.T) {
-		it, err := chunks.Iterator(ctx, Bytes, nil, 0, 10, 2)
+		it, err := chunks.Iterator(Bytes, nil, 0, 10, 2)
 		require.NoError(t, err)
 
 		res, err := iter.ReadAllSamples(it)
@@ -328,7 +326,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 		require.Equal(t, 1, len(res.Series))
 		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
 
-		it, err = chunks.Iterator(ctx, Count, nil, 0, 10, 2)
+		it, err = chunks.Iterator(Count, nil, 0, 10, 2)
 		require.NoError(t, err)
 
 		res, err = iter.ReadAllSamples(it)
@@ -351,7 +349,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 			},
 		}
 
-		it, err := chunks.Iterator(ctx, Bytes, grouping, 0, 10, 2)
+		it, err := chunks.Iterator(Bytes, grouping, 0, 10, 2)
 		require.NoError(t, err)
 
 		res, err := iter.ReadAllSamples(it)
@@ -360,7 +358,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 		require.Equal(t, 1, len(res.Series))
 		require.Equal(t, expectedLabels.String(), res.Series[0].GetLabels())
 
-		it, err = chunks.Iterator(ctx, Count, grouping, 0, 10, 2)
+		it, err = chunks.Iterator(Count, grouping, 0, 10, 2)
 		require.NoError(t, err)
 
 		res, err = iter.ReadAllSamples(it)
@@ -383,7 +381,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 			},
 		}
 
-		it, err := chunks.Iterator(ctx, Bytes, grouping, 0, 10, 2)
+		it, err := chunks.Iterator(Bytes, grouping, 0, 10, 2)
 		require.NoError(t, err)
 
 		res, err := iter.ReadAllSamples(it)
@@ -392,7 +390,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 		require.Equal(t, 1, len(res.Series))
 		require.Equal(t, expectedLabels.String(), res.Series[0].GetLabels())
 
-		it, err = chunks.Iterator(ctx, Count, grouping, 0, 10, 2)
+		it, err = chunks.Iterator(Count, grouping, 0, 10, 2)
 		require.NoError(t, err)
 
 		res, err = iter.ReadAllSamples(it)

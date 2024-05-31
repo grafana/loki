@@ -49,7 +49,7 @@ func ReadMetricsBatch(it iter.SampleIterator, batchSize int) (*logproto.QuerySam
 				Samples:    []logproto.Sample{},
 				StreamHash: hash,
 			}
-      series[hash] = s
+			series[hash] = s
 		}
 
 		s.Samples = append(s.Samples, it.Sample())
