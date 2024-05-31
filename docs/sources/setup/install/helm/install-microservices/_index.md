@@ -7,7 +7,7 @@ weight: 300
 keywords: 
 ---
 
-# Install the microservice Helm charts
+# Install the microservice Helm chart
 
 This Helm Chart deploys Grafana Loki on Kubernetes.
 
