@@ -31,6 +31,7 @@ func TestChunkReaderWriter(t *testing.T) {
 			},
 		},
 		{
+			// todo: fix dod for variable timestamp delta causing negative dod
 			name: "Many entries",
 			entries: func() []*logproto.Entry {
 				entries := make([]*logproto.Entry, 1000)
@@ -83,8 +84,12 @@ func TestChunkReaderWriter(t *testing.T) {
 				entry := reader.Entry()
 				readEntries = append(readEntries, &entry)
 			}
-			require.NoError(t, reader.Error(), "reader encountered error")
-			require.Equal(t, tt.entries, readEntries)
+			require.NoError(t, reader.Err(), "reader encountered error")
+			require.Len(t, readEntries, len(tt.entries))
+			for i, entry := range tt.entries {
+				require.Equal(t, entry.Line, readEntries[i].Line, "Lines don't match", i)
+				require.Equal(t, entry.Timestamp.UnixNano(), readEntries[i].Timestamp.UnixNano(), "Timestamps don't match", i)
+			}
 		})
 	}
 }

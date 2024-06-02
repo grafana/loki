@@ -205,13 +205,13 @@ func NewChunkReader(b []byte) (*ChunkReader, error) {
 	}
 
 	// Verify CRC32 checksum
-	if crc32.Checksum(b[:len(b)-4], castagnoliTable) != crcValue {
+	if crc32.Checksum(b[:offset], castagnoliTable) != crcValue {
 		return nil, errors.New("CRC verification failed")
 	}
 
 	// Initialize ChunkReader
 	reader := &ChunkReader{
-		b: b[:len(b)-8], // Exclude the offset and CRC32 from the data
+		b: b[:offset],
 	}
 
 	// Read the chunk header
@@ -243,9 +243,9 @@ func (r *ChunkReader) Entry() logproto.Entry {
 	return r.entry
 }
 
-// Error implements iter.EntryIterator.
-func (r *ChunkReader) Error() error {
-	return nil
+// Err implements iter.EntryIterator.
+func (r *ChunkReader) Err() error {
+	return r.err
 }
 
 // Next implements iter.EntryIterator. Reads the next entry from the chunk.
@@ -266,11 +266,9 @@ func (r *ChunkReader) Next() bool {
 		if r.entryIdx == 1 {
 			timestamp = r.prevT + int64(delta)
 		} else {
-			deltaDelta, n := binary.Uvarint(r.b[r.pos:])
-			r.pos += n
-			timestamp = r.prevT + r.prevDelta + int64(deltaDelta)
-			r.prevDelta += int64(deltaDelta)
+			timestamp = r.prevT + r.prevDelta + int64(delta)
 		}
+		r.prevDelta = int64(delta)
 	}
 
 	r.entry.Timestamp = time.Unix(0, timestamp)
