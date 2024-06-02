@@ -566,7 +566,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
-  if configsFound > 1 {
+	if configsFound > 1 {
 		return ErrTooManyStorageConfigs
 	}
 
