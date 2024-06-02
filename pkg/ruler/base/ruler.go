@@ -769,7 +769,6 @@ func filterRules(shardingAlgo string, userID string, ruleGroups []*rulespb.RuleG
 				if _, ok := seenHashes[hash]; ok {
 					level.Error(rlog).Log("msg", "encountered duplicate rule", "group", g.Name, "rule", getRuleIdentifier(r))
 					continue
-				} else {
 					seenHashes[hash] = true
 				}
 
