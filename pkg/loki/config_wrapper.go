@@ -566,7 +566,17 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
+	if configsFound > 1 {
+		return ErrTooManyStorageConfigs
+	}
+
 	if !reflect.DeepEqual(cfg.Common.Storage.CongestionControl, defaults.StorageConfig.CongestionControl) {
+
+		//run any config func before setting the congestion control func
+		if applyConfig != nil {
+			applyConfig(cfg)
+		}
+
 		applyConfig = func(r *ConfigWrapper) {
 			r.StorageConfig.CongestionControl = r.Common.Storage.CongestionControl
 		}
