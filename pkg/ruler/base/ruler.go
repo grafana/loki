@@ -770,6 +770,7 @@ func filterRules(shardingAlgo string, userID string, ruleGroups []*rulespb.RuleG
 					level.Error(rlog).Log("msg", "encountered duplicate rule", "group", g.Name, "rule", getRuleIdentifier(r))
 					continue
 				} 
+				
 				seenHashes[hash] = true
 
 				// clone the group and replace the rules
