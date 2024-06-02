@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"regexp"
 	"sort"
 	"strconv"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
@@ -52,7 +52,9 @@ const (
 	tailerWaitEntryThrottle = time.Second / 2
 )
 
-var nowFunc = func() time.Time { return time.Now() }
+var (
+	nowFunc = func() time.Time { return time.Now() }
+)
 
 type interval struct {
 	start, end time.Time
@@ -915,7 +917,6 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	if err != nil {
 		return nil, err
 	}
-	var detectedLabels []*logproto.DetectedLabel
 	staticLabels := map[string]struct{}{"cluster": {}, "namespace": {}, "instance": {}, "pod": {}}
 
 	// Enforce the query timeout while querying backends
@@ -924,24 +925,26 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
 
-	if *req.Start, *req.End, err = validateQueryTimeRangeLimits(ctx, userID, q.limits, *req.Start, *req.End); err != nil {
+	if req.Start, req.End, err = validateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End); err != nil {
 		return nil, err
 	}
-	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(*req.Start, *req.End)
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.Start, req.End)
 
+	// Fetch labels from ingesters
 	var ingesterLabels *logproto.LabelToValuesResponse
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		g.Go(func() error {
 			var err error
 			splitReq := *req
-			splitReq.Start = &ingesterQueryInterval.start
-			splitReq.End = &ingesterQueryInterval.end
+			splitReq.Start = ingesterQueryInterval.start
+			splitReq.End = ingesterQueryInterval.end
 
 			ingesterLabels, err = q.ingesterQuerier.DetectedLabel(ctx, &splitReq)
 			return err
 		})
 	}
 
+	// Fetch labels from the store
 	storeLabelsMap := make(map[string][]string)
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		var matchers []*labels.Matcher
@@ -961,9 +964,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 				if err != nil {
 					return err
 				}
-				if q.isLabelRelevant(label, values, staticLabels) {
-					storeLabelsMap[label] = values
-				}
+				storeLabelsMap[label] = values
 			}
 			return err
 		})
@@ -979,40 +980,58 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 		}, nil
 	}
 
-	// append static labels before so they are in sorted order
-	for l := range staticLabels {
-		if values, present := ingesterLabels.Labels[l]; present {
-			detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: l, Cardinality: uint64(len(values.Values))})
-		}
-	}
+	return &logproto.DetectedLabelsResponse{
+		DetectedLabels: countLabelsAndCardinality(storeLabelsMap, ingesterLabels, staticLabels),
+	}, nil
+}
+
+func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabels *logproto.LabelToValuesResponse, staticLabels map[string]struct{}) []*logproto.DetectedLabel {
+	dlMap := make(map[string]*parsedFields)
 
 	if ingesterLabels != nil {
-		for label, values := range ingesterLabels.Labels {
-			if q.isLabelRelevant(label, values.Values, staticLabels) {
-				combinedValues := values.Values
-				storeValues, storeHasLabel := storeLabelsMap[label]
-				if storeHasLabel {
-					combinedValues = append(combinedValues, storeValues...)
+		for label, val := range ingesterLabels.Labels {
+			if _, isStatic := staticLabels[label]; isStatic || !containsAllIDTypes(val.Values) {
+				_, ok := dlMap[label]
+				if !ok {
+					dlMap[label] = newParsedLabels()
 				}
 
-				slices.Sort(combinedValues)
-				uniqueValues := slices.Compact(combinedValues)
-				// TODO(shantanu): There's a bug here. Unique values can go above 50. Will need a bit of refactoring
-				detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqueValues))})
-				delete(storeLabelsMap, label)
+				parsedFields := dlMap[label]
+				for _, v := range val.Values {
+					parsedFields.Insert(v)
+				}
 			}
 		}
 	}
 
 	for label, values := range storeLabelsMap {
-		slices.Sort(values)
-		uniqueValues := slices.Compact(values)
-		detectedLabels = append(detectedLabels, &logproto.DetectedLabel{Label: label, Cardinality: uint64(len(uniqueValues))})
+		if _, isStatic := staticLabels[label]; isStatic || !containsAllIDTypes(values) {
+			_, ok := dlMap[label]
+			if !ok {
+				dlMap[label] = newParsedLabels()
+			}
+
+			parsedFields := dlMap[label]
+			for _, v := range values {
+				parsedFields.Insert(v)
+			}
+		}
 	}
 
-	return &logproto.DetectedLabelsResponse{
-		DetectedLabels: detectedLabels,
-	}, nil
+	var detectedLabels []*logproto.DetectedLabel
+	for k, v := range dlMap {
+		sketch, err := v.sketch.MarshalBinary()
+		if err != nil {
+			// TODO: add log here
+			continue
+		}
+		detectedLabels = append(detectedLabels, &logproto.DetectedLabel{
+			Label:       k,
+			Cardinality: v.Estimate(),
+			Sketch:      sketch,
+		})
+	}
+	return detectedLabels
 }
 
 type PatterQuerier interface {
@@ -1031,28 +1050,15 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 	return res, err
 }
 
-// isLabelRelevant returns if the label is relevant for logs app. A label is relevant if it is not of any numeric, UUID or GUID type
-// It is also not relevant to return if the values are less than 1 or beyond 50.
-func (q *SingleTenantQuerier) isLabelRelevant(label string, values []string, staticLabels map[string]struct{}) bool {
-	cardinality := len(values)
-	_, isStaticLabel := staticLabels[label]
-	if isStaticLabel || (cardinality < 2 || cardinality > 50) ||
-		containsAllIDTypes(values) {
-		return false
-	}
-
-	return true
-}
-
 // containsAllIDTypes filters out all UUID, GUID and numeric types. Returns false if even one value is not of the type
 func containsAllIDTypes(values []string) bool {
-	pattern := `^(?:(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})|(?:(?:\{)?[0-9a-fA-F]{8}(?:-?[0-9a-fA-F]{4}){3}-?[0-9a-fA-F]{12}(?:\})?)|(\d+(?:\.\d+)?))$`
-
-	re := regexp.MustCompile(pattern)
-
 	for _, v := range values {
-		if !re.MatchString(v) {
-			return false
+		_, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			_, err = uuid.Parse(v)
+			if err != nil {
+				return false
+			}
 		}
 	}
 
@@ -1108,6 +1114,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 			Type:        v.fieldType,
 			Cardinality: v.Estimate(),
 			Sketch:      sketch,
+			Parsers:     v.parsers,
 		}
 
 		fieldCount++
@@ -1121,16 +1128,27 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 }
 
 type parsedFields struct {
-	sketch         *hyperloglog.Sketch
-	isTypeDetected bool
-	fieldType      logproto.DetectedFieldType
+	sketch    *hyperloglog.Sketch
+	fieldType logproto.DetectedFieldType
+	parsers   []string
 }
 
-func newParsedFields() *parsedFields {
+func newParsedFields(parser *string) *parsedFields {
+	p := ""
+	if parser != nil {
+		p = *parser
+	}
 	return &parsedFields{
-		sketch:         hyperloglog.New(),
-		isTypeDetected: false,
-		fieldType:      logproto.DetectedFieldString,
+		sketch:    hyperloglog.New(),
+		fieldType: logproto.DetectedFieldString,
+		parsers:   []string{p},
+	}
+}
+
+func newParsedLabels() *parsedFields {
+	return &parsedFields{
+		sketch:    hyperloglog.New(),
+		fieldType: logproto.DetectedFieldString,
 	}
 }
 
@@ -1148,7 +1166,6 @@ func (p *parsedFields) Marshal() ([]byte, error) {
 
 func (p *parsedFields) DetermineType(value string) {
 	p.fieldType = determineType(value)
-	p.isTypeDetected = true
 }
 
 func determineType(value string) logproto.DetectedFieldType {
@@ -1180,16 +1197,17 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 	fieldCount := uint32(0)
 
 	for _, stream := range streams {
+		detectType := true
 		level.Debug(spanlogger.FromContext(ctx)).Log(
 			"detected_fields", "true",
 			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
 
 		for _, entry := range stream.Entries {
-			detected := parseLine(entry.Line)
+			detected, parser := parseLine(entry.Line)
 			for k, vals := range detected {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
-					df = newParsedFields()
+					df = newParsedFields(parser)
 					detectedFields[k] = df
 					fieldCount++
 				}
@@ -1198,10 +1216,16 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 					continue
 				}
 
+				if !slices.Contains(df.parsers, *parser) {
+					df.parsers = append(df.parsers, *parser)
+				}
+
 				for _, v := range vals {
 					parsedFields := detectedFields[k]
-					if !parsedFields.isTypeDetected {
+					if detectType {
+						// we don't want to determine the type for every line, so we assume the type in each stream will be the same, and re-detect the type for the next stream
 						parsedFields.DetermineType(v)
+						detectType = false
 					}
 
 					parsedFields.Insert(v)
@@ -1217,17 +1241,19 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 	return detectedFields
 }
 
-func parseLine(line string) map[string][]string {
+func parseLine(line string) (map[string][]string, *string) {
+	parser := "logfmt"
 	logFmtParser := logql_log.NewLogfmtParser(true, false)
-	jsonParser := logql_log.NewJSONParser()
 
 	lbls := logql_log.NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
 	_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lbls)
 	if !logfmtSuccess || lbls.HasErr() {
+		parser = "json"
+		jsonParser := logql_log.NewJSONParser()
 		lbls.Reset()
 		_, jsonSuccess := jsonParser.Process(0, []byte(line), lbls)
 		if !jsonSuccess || lbls.HasErr() {
-			return map[string][]string{}
+			return map[string][]string{}, nil
 		}
 	}
 
@@ -1249,7 +1275,7 @@ func parseLine(line string) map[string][]string {
 		result[lbl] = vals
 	}
 
-	return result
+	return result, &parser
 }
 
 // streamsForFieldDetection reads the streams from the iterator and returns them sorted.

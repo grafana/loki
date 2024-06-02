@@ -326,6 +326,46 @@ pattern_ingester:
 # merging them as bloom blocks.
 [bloom_compactor: <bloom_compactor>]
 
+bloom_build:
+  # Flag to enable or disable the usage of the bloom-planner and bloom-builder
+  # components.
+  # CLI flag: -bloom-build.enabled
+  [enabled: <boolean> | default = false]
+
+  planner:
+    # Interval at which to re-run the bloom creation planning.
+    # CLI flag: -bloom-build.planner.interval
+    [planning_interval: <duration> | default = 8h]
+
+    # Newest day-table offset (from today, inclusive) to build blooms for.
+    # Increase to lower cost by not re-writing data to object storage too
+    # frequently since recent data changes more often at the cost of not having
+    # blooms available as quickly.
+    # CLI flag: -bloom-build.planner.min-table-offset
+    [min_table_offset: <int> | default = 1]
+
+    # Oldest day-table offset (from today, inclusive) to compact. This can be
+    # used to lower cost by not trying to compact older data which doesn't
+    # change. This can be optimized by aligning it with the maximum
+    # `reject_old_samples_max_age` setting of any tenant.
+    # CLI flag: -bloom-build.planner.max-table-offset
+    [max_table_offset: <int> | default = 2]
+
+    # Maximum number of tasks to queue per tenant.
+    # CLI flag: -bloom-build.planner.max-tasks-per-tenant
+    [max_queued_tasks_per_tenant: <int> | default = 30000]
+
+  builder:
+    # The grpc_client block configures the gRPC client used to communicate
+    # between a client and server component in Loki.
+    # The CLI flags prefix for this block configuration is:
+    # bloom-build.builder.grpc
+    [grpc_config: <grpc_client>]
+
+    # Hostname (and port) of the bloom planner
+    # CLI flag: -bloom-build.builder.planner-address
+    [planner_address: <string> | default = ""]
+
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
 # server, responsible for serving queries for filtering chunks based on filter
 # expressions.
@@ -543,19 +583,19 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 
 ```yaml
 # Name of OSS bucket.
-# CLI flag: -common.storage.oss.bucketname
+# CLI flag: -<prefix>.storage.oss.bucketname
 [bucket: <string> | default = ""]
 
 # oss Endpoint to connect to.
-# CLI flag: -common.storage.oss.endpoint
+# CLI flag: -<prefix>.storage.oss.endpoint
 [endpoint: <string> | default = ""]
 
 # alibabacloud Access Key ID
-# CLI flag: -common.storage.oss.access-key-id
+# CLI flag: -<prefix>.storage.oss.access-key-id
 [access_key_id: <string> | default = ""]
 
 # alibabacloud Secret Access Key
-# CLI flag: -common.storage.oss.secret-access-key
+# CLI flag: -<prefix>.storage.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
 ```
 
@@ -2236,10 +2276,23 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 # CLI flag: -querier.id
 [id: <string> | default = ""]
 
-# The grpc_client block configures the gRPC client used to communicate between a
-# client and server component in Loki.
+# Configures the querier gRPC client used to communicate with the
+# query-frontend. This can't be used in conjunction with 'grpc_client_config'.
+# The CLI flags prefix for this block configuration is:
+# querier.frontend-grpc-client
+[query_frontend_grpc_client: <grpc_client>]
+
+# Configures the querier gRPC client used to communicate with the query-frontend
+# and with the query-scheduler. This can't be used in conjunction with
+# 'query_frontend_grpc_client' or 'query_scheduler_grpc_client'.
 # The CLI flags prefix for this block configuration is: querier.frontend-client
 [grpc_client_config: <grpc_client>]
+
+# Configures the querier gRPC client used to communicate with the
+# query-scheduler. This can't be used in conjunction with 'grpc_client_config'.
+# The CLI flags prefix for this block configuration is:
+# querier.scheduler-grpc-client
+[query_scheduler_grpc_client: <grpc_client>]
 ```
 
 ### gcs_storage_config
@@ -2291,12 +2344,15 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 The `grpc_client` block configures the gRPC client used to communicate between a client and server component in Loki. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
+- `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`
 - `ingester.client`
 - `pattern-ingester.client`
 - `querier.frontend-client`
+- `querier.frontend-grpc-client`
+- `querier.scheduler-grpc-client`
 - `query-scheduler.grpc-client-config`
 - `ruler.client`
 - `tsdb.shipper.index-gateway-client.grpc`
@@ -2925,10 +2981,17 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 [discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name component workload job]]
 
 # Discover and add log levels during ingestion, if not present already. Levels
-# would be added to Structured Metadata with name 'level' and one of the values
-# from 'debug', 'info', 'warn', 'error', 'critical', 'fatal'.
+# would be added to Structured Metadata with name
+# level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and
+# one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical',
+# 'fatal' (case insensitive).
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
+
+# When true an ingester takes into account only the streams that it owns
+# according to the ring while applying the stream limit.
+# CLI flag: -ingester.use-owned-stream-count
+[use_owned_stream_count: <boolean> | default = false]
 
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
@@ -3002,6 +3065,12 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # nodes can recognize it.
 # CLI flag: -limits.tsdb-sharding-strategy
 [tsdb_sharding_strategy: <string> | default = "power_of_two"]
+
+# Precompute chunks for TSDB queries. This can improve query performance at the
+# cost of increased memory usage by computing chunks once during planning,
+# reducing index calls.
+# CLI flag: -querier.tsdb-precompute-chunks
+[tsdb_precompute_chunks: <boolean> | default = false]
 
 # Cardinality limit for index queries.
 # CLI flag: -store.cardinality-limit
@@ -3282,12 +3351,22 @@ ruler_remote_write_sigv4_config:
 # Deprecated: Use deletion_mode per tenant configuration instead.
 [allow_deletes: <boolean>]
 
+# Define streams sharding behavior.
 shard_streams:
-  [enabled: <boolean>]
+  # Automatically shard streams to keep them under the per-stream rate limit.
+  # Sharding is dictated by the desired rate.
+  # CLI flag: -shard-streams.enabled
+  [enabled: <boolean> | default = true]
 
-  [logging_enabled: <boolean>]
+  # Whether to log sharding streams behavior or not. Not recommended for
+  # production environments.
+  # CLI flag: -shard-streams.logging-enabled
+  [logging_enabled: <boolean> | default = false]
 
-  [desired_rate: <int>]
+  # Threshold used to cut a new shard. Default (1536KB) means if a rate is above
+  # 1536KB/s, it will be sharded into two streams.
+  # CLI flag: -shard-streams.desired-rate
+  [desired_rate: <int> | default = 1536KB]
 
 [blocked_queries: <blocked_query...>]
 
@@ -3338,6 +3417,21 @@ shard_streams:
 # an unlimited size. Default is 128MB.
 # CLI flag: -bloom-compactor.max-bloom-size
 [bloom_compactor_max_bloom_size: <int> | default = 128MB]
+
+# Experimental. Whether to create blooms for the tenant.
+# CLI flag: -bloom-build.enable
+[bloom_creation_enabled: <boolean> | default = false]
+
+# Experimental. Number of splits to create for the series keyspace when building
+# blooms. The series keyspace is split into this many parts to parallelize bloom
+# creation.
+# CLI flag: -bloom-build.split-keyspace-by
+[bloom_split_series_keyspace_by: <int> | default = 256]
+
+# Experimental. Maximum number of builders to use when building blooms. 0 allows
+# unlimited builders.
+# CLI flag: -bloom-build.max-builders
+[bloom_build_max_builders: <int> | default = 0]
 
 # Experimental. Length of the n-grams created when computing blooms from log
 # lines.
@@ -3795,7 +3889,8 @@ results_cache:
 [parallelise_shardable_queries: <boolean> | default = true]
 
 # A comma-separated list of LogQL vector and range aggregations that should be
-# sharded
+# sharded. Possible values 'quantile_over_time', 'last_over_time',
+# 'first_over_time'.
 # CLI flag: -querier.shard-aggregations
 [shard_aggregations: <string> | default = ""]
 
@@ -5274,6 +5369,26 @@ bloom_shipper:
   # component.
   # The CLI flags prefix for this block configuration is: bloom.metas-cache
   [metas_cache: <cache_config>]
+
+  metas_lru_cache:
+    # In-memory LRU cache for bloom metas. Whether embedded cache is enabled.
+    # CLI flag: -bloom.metas-lru-cache.enabled
+    [enabled: <boolean> | default = false]
+
+    # In-memory LRU cache for bloom metas. Maximum memory size of the cache in
+    # MB.
+    # CLI flag: -bloom.metas-lru-cache.max-size-mb
+    [max_size_mb: <int> | default = 100]
+
+    # In-memory LRU cache for bloom metas. Maximum number of entries in the
+    # cache.
+    # CLI flag: -bloom.metas-lru-cache.max-size-items
+    [max_size_items: <int> | default = 0]
+
+    # In-memory LRU cache for bloom metas. The time to live for items in the
+    # cache before they get purged.
+    # CLI flag: -bloom.metas-lru-cache.ttl
+    [ttl: <duration> | default = 1h]
 ```
 
 ### swift_storage_config

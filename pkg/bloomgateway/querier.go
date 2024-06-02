@@ -2,10 +2,11 @@ package bloomgateway
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -13,8 +14,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 type querierMetrics struct {
@@ -60,19 +63,26 @@ func newQuerierMetrics(registerer prometheus.Registerer, namespace, subsystem st
 	}
 }
 
+type QuerierConfig struct {
+	// MinTableOffset is derived from the compactor's MinTableOffset
+	MinTableOffset int
+}
+
 // BloomQuerier is a store-level abstraction on top of Client
 // It is used by the index gateway to filter ChunkRefs based on given line fiter expression.
 type BloomQuerier struct {
 	c             Client
+	cfg           QuerierConfig
 	logger        log.Logger
 	metrics       *querierMetrics
 	limits        Limits
 	blockResolver BlockResolver
 }
 
-func NewQuerier(c Client, limits Limits, resolver BlockResolver, r prometheus.Registerer, logger log.Logger) *BloomQuerier {
+func NewQuerier(c Client, cfg QuerierConfig, limits Limits, resolver BlockResolver, r prometheus.Registerer, logger log.Logger) *BloomQuerier {
 	return &BloomQuerier{
 		c:             c,
+		cfg:           cfg,
 		logger:        logger,
 		metrics:       newQuerierMetrics(r, constants.Loki, querierMetricsSubsystem),
 		limits:        limits,
@@ -89,8 +99,9 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	if !bq.limits.BloomGatewayEnabled(tenant) || len(chunkRefs) == 0 || len(v1.ExtractTestableLineFilters(queryPlan.AST)) == 0 {
 		return chunkRefs, nil
 	}
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomquerier.FilterChunkRefs")
-	defer sp.Finish()
+
+	logger, ctx := spanlogger.NewWithLogger(ctx, bq.logger, "bloomquerier.FilterChunkRefs")
+	defer logger.Finish()
 
 	grouped := groupedChunksRefPool.Get(len(chunkRefs))
 	defer groupedChunksRefPool.Put(grouped)
@@ -99,9 +110,34 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	preFilterChunks := len(chunkRefs)
 	preFilterSeries := len(grouped)
 
-	result := make([]*logproto.ChunkRef, 0, len(chunkRefs))
-	seriesSeen := make(map[uint64]struct{}, len(grouped))
+	// Do not attempt to filter chunks for which there are no blooms
+	if bq.cfg.MinTableOffset > 0 {
+		minAge := truncateDay(model.Now()).Add(-1 * config.ObjectStorageIndexRequiredPeriod * time.Duration(bq.cfg.MinTableOffset-1))
+		if through.After(minAge) {
+			level.Debug(logger).Log(
+				"msg", "skip too recent chunks",
+				"tenant", tenant,
+				"from", from.Time(),
+				"through", through.Time(),
+				"responses", 0,
+				"preFilterChunks", preFilterChunks,
+				"postFilterChunks", preFilterChunks,
+				"filteredChunks", 0,
+				"preFilterSeries", preFilterSeries,
+				"postFilterSeries", preFilterSeries,
+				"filteredSeries", 0,
+			)
 
+			bq.metrics.chunksTotal.Add(float64(preFilterChunks))
+			bq.metrics.chunksFiltered.Add(0)
+			bq.metrics.seriesTotal.Add(float64(preFilterSeries))
+			bq.metrics.seriesFiltered.Add(0)
+
+			return chunkRefs, nil
+		}
+	}
+
+	responses := make([][]*logproto.GroupedChunkRefs, 0, 2)
 	// We can perform requests sequentially, because most of the time the request
 	// only covers a single day, and if not, it's at most two days.
 	for _, s := range partitionSeriesByDay(from, through, grouped) {
@@ -110,19 +146,6 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		if err != nil {
 			return nil, err
 		}
-		var chunks int
-		for i := range s.series {
-			chunks += len(s.series[i].Refs)
-		}
-		sp.LogKV(
-			"day", s.day.Time.Time(),
-			"from", s.interval.Start.Time(),
-			"through", s.interval.End.Time(),
-			"series", len(s.series),
-			"chunks", chunks,
-			"blocks", len(blocks),
-			"skipped", len(skipped),
-		)
 
 		refs, err := bq.c.FilterChunks(ctx, tenant, s.interval, blocks, queryPlan)
 		if err != nil {
@@ -130,32 +153,43 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		}
 
 		// add chunk refs from series that were not mapped to any blocks
-		refs = append(refs, skipped...)
+		responses = append(responses, refs, skipped)
 		bq.metrics.seriesSkipped.Add(float64(len(skipped)))
+	}
 
-		for i := range refs {
-			seriesSeen[refs[i].Fingerprint] = struct{}{}
-			for _, ref := range refs[i].Refs {
-				result = append(result, &logproto.ChunkRef{
-					Fingerprint: refs[i].Fingerprint,
-					UserID:      tenant,
-					From:        ref.From,
-					Through:     ref.Through,
-					Checksum:    ref.Checksum,
-				})
-			}
+	deduped, err := mergeSeries(responses, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to dedupe results")
+	}
+
+	result := make([]*logproto.ChunkRef, 0, len(chunkRefs))
+	for i := range deduped {
+		for _, ref := range deduped[i].Refs {
+			result = append(result, &logproto.ChunkRef{
+				Fingerprint: deduped[i].Fingerprint,
+				UserID:      tenant,
+				From:        ref.From,
+				Through:     ref.Through,
+				Checksum:    ref.Checksum,
+			})
 		}
 	}
 
-	level.Debug(bq.logger).Log(
-		"preFilterChunks", preFilterChunks,
-		"postFilterChunks", len(result),
-		"preFilterSeries", preFilterSeries,
-		"postFilterSeries", len(seriesSeen),
-	)
-
 	postFilterChunks := len(result)
-	postFilterSeries := len(seriesSeen)
+	postFilterSeries := len(deduped)
+
+	level.Debug(logger).Log(
+		"tenant", tenant,
+		"from", from.Time(),
+		"through", through.Time(),
+		"responses", len(responses),
+		"preFilterChunks", preFilterChunks,
+		"postFilterChunks", postFilterChunks,
+		"filteredChunks", preFilterChunks-postFilterChunks,
+		"preFilterSeries", preFilterSeries,
+		"postFilterSeries", postFilterSeries,
+		"filteredSeries", preFilterSeries-postFilterSeries,
+	)
 
 	bq.metrics.chunksTotal.Add(float64(preFilterChunks))
 	bq.metrics.chunksFiltered.Add(float64(preFilterChunks - postFilterChunks))

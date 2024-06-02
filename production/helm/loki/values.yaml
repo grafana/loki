@@ -118,7 +118,6 @@ loki:
   # If empty, no configmap or secret will be created.
   # The value will be passed through tpl.
   generatedConfigObjectName: '{{ include "loki.name" . }}'
-
   # -- Config file contents for Loki
   # @default -- See values.yaml
   config: |
@@ -366,6 +365,7 @@ loki:
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
+      admin_api_directory: /var/loki/admin
   # -- Configure memcached as an external cache for chunk and results cache. Disabled by default
   # must enable and specify a host for each cache you would like to use.
   memcached:
@@ -450,7 +450,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default verion of GEL to deploy
-  version: v3.0.0
+  version: 3.0.1
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -477,13 +477,9 @@ enterprise:
   # enterprise specific sections of the config.yaml file
   config: |
     {{- if .Values.enterprise.adminApi.enabled }}
-    {{- if or .Values.minio.enabled (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "azure") }}
     admin_client:
-      storage:
-        s3:
-          bucket_name: admin
-    {{- end }}
-    {{- end }}
+      {{ include "enterprise-logs.adminAPIStorageConfig" . | nindent 2 }}
+    {{ end }}
     auth:
       type: {{ .Values.enterprise.adminApi.enabled | ternary "enterprise" "trust" }}
     auth_enabled: {{ .Values.loki.auth_enabled }}
@@ -845,8 +841,6 @@ adminApi:
   tolerations: []
   # -- Grace period to allow the admin-api to shutdown before it is killed
   terminationGracePeriodSeconds: 60
-
-
 ######################################################################################################################
 #
 # Gateway and Ingress
@@ -1015,12 +1009,8 @@ gateway:
     # @default -- Either `loki.tenants` or `gateway.basicAuth.username` and `gateway.basicAuth.password`.
     htpasswd: >-
       {{ if .Values.loki.tenants }}
-
-
         {{- range $t := .Values.loki.tenants }}
       {{ htpasswd (required "All tenants must have a 'name' set" $t.name) (required "All tenants must have a 'password' set" $t.password) }}
-
-
         {{- end }}
       {{ else }} {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }} {{ end }}
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
@@ -1141,24 +1131,47 @@ ingress:
   labels: {}
   #    blackbox.monitoring.exclude: "true"
   paths:
-    write:
+    # -- Paths that are exposed by Loki Distributor.
+    # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.distributorFullname"}}`.
+    # If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.writeFullname"}}`.
+    # If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`
+    distributor:
       - /api/prom/push
       - /loki/api/v1/push
-    read:
+      - /otlp/v1/logs
+    # -- Paths that are exposed by Loki Query Frontend.
+    # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.queryFrontendFullname"}}`.
+    # If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.readFullname"}}`.
+    # If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`
+    queryFrontend:
+      - /api/prom/query
+      # this path covers labels and labelValues endpoints
+      - /api/prom/label
+      - /api/prom/series
       - /api/prom/tail
+      - /loki/api/v1/query
+      - /loki/api/v1/query_range
       - /loki/api/v1/tail
-      - /loki/api
+      # this path covers labels and labelValues endpoints
+      - /loki/api/v1/label
+      - /loki/api/v1/labels
+      - /loki/api/v1/series
+      - /loki/api/v1/index/stats
+      - /loki/api/v1/index/volume
+      - /loki/api/v1/index/volume_range
+      - /loki/api/v1/format_query
+      - /loki/api/v1/detected_fields
+      - /loki/api/v1/detected_labels
+      - /loki/api/v1/patterns
+    # -- Paths that are exposed by Loki Ruler.
+    # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.rulerFullname"}}`.
+    # If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`.
+    # If deployment mode is SimpleScalable but `read.legacyReadTarget` is `true`, the requests are forwarded to k8s service: `{{"loki.readFullname"}}`.
+    # If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`
+    ruler:
       - /api/prom/rules
-      - /loki/api/v1/rules
-      - /prometheus/api/v1/rules
-      - /prometheus/api/v1/alerts
-    singleBinary:
-      - /api/prom/push
-      - /loki/api/v1/push
-      - /api/prom/tail
-      - /loki/api/v1/tail
-      - /loki/api
-      - /api/prom/rules
+      - /api/prom/api/v1/rules
+      - /api/prom/api/v1/alerts
       - /loki/api/v1/rules
       - /prometheus/api/v1/rules
       - /prometheus/api/v1/alerts
@@ -1186,7 +1199,6 @@ migrate:
     # -- If migrating from a distributed service, provide the distributed deployment's
     # memberlist service DNS so the new deployment can join its ring.
     memberlistService: ""
-
 ######################################################################################################################
 #
 # Single Binary Deployment
@@ -1282,6 +1294,8 @@ singleBinary:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 ######################################################################################################################
 #
 # Simple Scalable Deployment (SSD) Mode
@@ -1409,6 +1423,8 @@ write:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 # --  Configuration for the read pod(s)
 read:
   # -- Number of replicas for the read
@@ -1516,6 +1532,8 @@ read:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 # --  Configuration for the backend pod(s)
 backend:
   # -- Number of replicas for the backend
@@ -1624,6 +1642,8 @@ backend:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 ######################################################################################################################
 #
 # Microservices Mode
@@ -3079,6 +3099,7 @@ minio:
       purge: false
   persistence:
     size: 5Gi
+    annotations: {}
   resources:
     requests:
       cpu: 100m
@@ -3086,6 +3107,7 @@ minio:
   # Allow the address used by Loki to refer to Minio to be overridden
   address: null
 # Create extra manifests via values. Would be passed through `tpl` for templating
+# objects can also be provided as multiline strings, useful for templating field names
 extraObjects: []
 # - apiVersion: v1
 #   kind: ConfigMap
@@ -3105,6 +3127,16 @@ extraObjects: []
 #               category: logs
 #             annotations:
 #               message: "loki has encountered errors"
+# - |
+#     apiVersion: v1
+#     kind: Secret
+#     type: Opaque
+#     metadata:
+#       name: loki-distributed-basic-auth
+#     data:
+#       {{- range .Values.loki.tenants }}
+#       {{ .name }}: {{ b64enc .password | quote }}
+#       {{- end }}
 
 sidecar:
   image:

@@ -315,6 +315,7 @@ This is the generated reference for the Loki Helm Chart values.
   "initContainers": [],
   "nodeSelector": {},
   "persistence": {
+    "annotations": {},
     "dataVolumeParameters": {
       "emptyDir": {}
     },
@@ -509,6 +510,15 @@ null
 			<td>backend.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for backend pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2572,7 +2582,7 @@ null
   },
   "canarySecret": null,
   "cluster_name": null,
-  "config": "{{- if .Values.enterprise.adminApi.enabled }}\n{{- if or .Values.minio.enabled (eq .Values.loki.storage.type \"s3\") (eq .Values.loki.storage.type \"gcs\") (eq .Values.loki.storage.type \"azure\") }}\nadmin_client:\n  storage:\n    s3:\n      bucket_name: admin\n{{- end }}\n{{- end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n",
+  "config": "{{- if .Values.enterprise.adminApi.enabled }}\nadmin_client:\n  {{ include \"enterprise-logs.adminAPIStorageConfig\" . | nindent 2 }}\n{{ end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n",
   "enabled": false,
   "externalConfigName": "",
   "externalLicenseName": null,
@@ -2630,7 +2640,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "v3.0.0"
+  "version": "3.0.1"
 }
 </pre>
 </td>
@@ -5086,29 +5096,37 @@ null
   "ingressClassName": "",
   "labels": {},
   "paths": {
-    "read": [
-      "/api/prom/tail",
-      "/loki/api/v1/tail",
-      "/loki/api",
-      "/api/prom/rules",
-      "/loki/api/v1/rules",
-      "/prometheus/api/v1/rules",
-      "/prometheus/api/v1/alerts"
-    ],
-    "singleBinary": [
+    "distributor": [
       "/api/prom/push",
       "/loki/api/v1/push",
+      "/otlp/v1/logs"
+    ],
+    "queryFrontend": [
+      "/api/prom/query",
+      "/api/prom/label",
+      "/api/prom/series",
       "/api/prom/tail",
+      "/loki/api/v1/query",
+      "/loki/api/v1/query_range",
       "/loki/api/v1/tail",
-      "/loki/api",
+      "/loki/api/v1/label",
+      "/loki/api/v1/labels",
+      "/loki/api/v1/series",
+      "/loki/api/v1/index/stats",
+      "/loki/api/v1/index/volume",
+      "/loki/api/v1/index/volume_range",
+      "/loki/api/v1/format_query",
+      "/loki/api/v1/detected_fields",
+      "/loki/api/v1/detected_labels",
+      "/loki/api/v1/patterns"
+    ],
+    "ruler": [
       "/api/prom/rules",
+      "/api/prom/api/v1/rules",
+      "/api/prom/api/v1/alerts",
       "/loki/api/v1/rules",
       "/prometheus/api/v1/rules",
       "/prometheus/api/v1/alerts"
-    ],
-    "write": [
-      "/api/prom/push",
-      "/loki/api/v1/push"
     ]
   },
   "tls": []
@@ -5123,6 +5141,62 @@ null
 			<td><pre lang="json">
 [
   "loki.example.com"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.distributor</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Distributor. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.distributorFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.writeFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
+			<td><pre lang="json">
+[
+  "/api/prom/push",
+  "/loki/api/v1/push",
+  "/otlp/v1/logs"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.queryFrontend</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Query Frontend. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.queryFrontendFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.readFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
+			<td><pre lang="json">
+[
+  "/api/prom/query",
+  "/api/prom/label",
+  "/api/prom/series",
+  "/api/prom/tail",
+  "/loki/api/v1/query",
+  "/loki/api/v1/query_range",
+  "/loki/api/v1/tail",
+  "/loki/api/v1/label",
+  "/loki/api/v1/labels",
+  "/loki/api/v1/series",
+  "/loki/api/v1/index/stats",
+  "/loki/api/v1/index/volume",
+  "/loki/api/v1/index/volume_range",
+  "/loki/api/v1/format_query",
+  "/loki/api/v1/detected_fields",
+  "/loki/api/v1/detected_labels",
+  "/loki/api/v1/patterns"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.ruler</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Ruler. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.rulerFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`. If deployment mode is SimpleScalable but `read.legacyReadTarget` is `true`, the requests are forwarded to k8s service: `{{"loki.readFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
+			<td><pre lang="json">
+[
+  "/api/prom/rules",
+  "/api/prom/api/v1/rules",
+  "/api/prom/api/v1/alerts",
+  "/loki/api/v1/rules",
+  "/prometheus/api/v1/rules",
+  "/prometheus/api/v1/alerts"
 ]
 </pre>
 </td>
@@ -5594,6 +5668,7 @@ null
     "userAssignedId": null
   },
   "filesystem": {
+    "admin_api_directory": "/var/loki/admin",
     "chunks_directory": "/var/loki/chunks",
     "rules_directory": "/var/loki/rules"
   },
@@ -6161,6 +6236,7 @@ false
   "drivesPerNode": 2,
   "enabled": false,
   "persistence": {
+    "annotations": {},
     "size": "5Gi"
   },
   "replicas": 1,
@@ -8377,6 +8453,7 @@ false
   "lifecycle": {},
   "nodeSelector": {},
   "persistence": {
+    "annotations": {},
     "enableStatefulSetAutoDeletePVC": true,
     "selector": null,
     "size": "10Gi",
@@ -8585,6 +8662,15 @@ false
 			<td>read.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for read pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -9831,6 +9917,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -10609,6 +10704,15 @@ null
 			<td>write.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for write pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>

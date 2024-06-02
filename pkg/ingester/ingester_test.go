@@ -57,7 +57,7 @@ func TestPrepareShutdownMarkerPathNotSet(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -80,7 +80,7 @@ func TestPrepareShutdown(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -141,7 +141,7 @@ func TestIngester_GetStreamRates_Correctness(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -173,7 +173,7 @@ func BenchmarkGetStreamRatesAllocs(b *testing.B) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
 	require.NoError(b, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -197,7 +197,7 @@ func TestIngester(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -382,7 +382,7 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -457,7 +457,7 @@ func (s *mockStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) er
 	return nil
 }
 
-func (s *mockStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (s *mockStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate, _ *logproto.ChunkRefGroup) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
@@ -740,7 +740,7 @@ func Test_InMemoryLabels(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -794,7 +794,7 @@ func TestIngester_GetDetectedLabels(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -833,8 +833,8 @@ func TestIngester_GetDetectedLabels(t *testing.T) {
 	require.NoError(t, err)
 
 	res, err := i.GetDetectedLabels(ctx, &logproto.DetectedLabelsRequest{
-		Start: &[]time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
-		End:   nil,
+		Start: []time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
+		End:   []time.Time{time.Now().Add(12 * time.Nanosecond)}[0],
 		Query: "",
 	})
 
@@ -857,7 +857,7 @@ func TestIngester_GetDetectedLabelsWithQuery(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -893,8 +893,8 @@ func TestIngester_GetDetectedLabelsWithQuery(t *testing.T) {
 	require.NoError(t, err)
 
 	res, err := i.GetDetectedLabels(ctx, &logproto.DetectedLabelsRequest{
-		Start: &[]time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
-		End:   nil,
+		Start: []time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
+		End:   []time.Time{time.Now().Add(11 * time.Nanosecond)}[0],
 		Query: `{foo="bar"}`,
 	})
 
@@ -1224,7 +1224,7 @@ func TestStats(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	i.instances["test"] = defaultInstance(t)
@@ -1251,7 +1251,7 @@ func TestVolume(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	i.instances["test"] = defaultInstance(t)
@@ -1330,7 +1330,7 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	ing, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	ing, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	listener := bufconn.Listen(1024 * 1024)

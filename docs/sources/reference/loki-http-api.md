@@ -24,6 +24,7 @@ Authorization needs to be done separately, for example, using an open-source loa
 These endpoints are exposed by the `distributor`, `write`, and `all` components:
 
 - [`POST /loki/api/v1/push`](#ingest-logs)
+- [`POST /otlp/v1/logs`](#ingest-logs-using-otlp)
 
 A [list of clients]({{< relref "../send-data" >}}) can be found in the clients documentation.
 
@@ -259,6 +260,16 @@ curl -H "Content-Type: application/json" \
   -s -X POST "http://localhost:3100/loki/api/v1/push" \
   --data-raw '{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}'
 ```
+
+## Ingest logs using OTLP
+
+```bash
+POST /otlp/v1/logs
+```
+
+`/otlp/v1/logs` lets the OpenTelemetry Collector send logs to Loki using `otlphttp` procotol.
+
+For information on how to configure Loki, refer to the [OTel Collector topic](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/).
 
 ## Query logs at a single point in time
 
@@ -880,7 +891,7 @@ ts=2024-03-30T23:03:40 caller=grpc_logging.go:66 level=info method=/cortex.Inges
 ts=2024-03-30T23:03:41 caller=grpc_logging.go:66 level=info method=/cortex.Ingester/Push duration=500ms msg=gRPC
 ```
 
-The pattern detected would be:
+The pattern detected might be:
 
 ```log
 ts=<_> caller=grpc_logging.go:66 level=info method=/cortex.Ingester/Push duration=<_> msg=gRPC
@@ -891,6 +902,7 @@ URL query parameters:
 - `query`: The [LogQL]({{< relref "../query" >}}) matchers to check (that is, `{job="foo", env=~".+"}`). This parameter is required.
 - `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is required.
 - `end=<nanosecond Unix epoch>`: End timestamp. This parameter is required.
+- `step=<duration string or float number of seconds>`: Step between samples for occurrences of this pattern. This parameter is optional.
 
 ### Examples
 

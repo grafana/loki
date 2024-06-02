@@ -28,6 +28,9 @@ type Metrics struct {
 	pagesSkipped *prometheus.CounterVec
 	bytesRead    *prometheus.CounterVec
 	bytesSkipped *prometheus.CounterVec
+
+	recorderSeries *prometheus.CounterVec
+	recorderChunks *prometheus.CounterVec
 }
 
 const (
@@ -52,6 +55,12 @@ const (
 
 	bloomCreationTypeIndexed = "indexed"
 	bloomCreationTypeSkipped = "skipped"
+
+	recorderRequested = "requested"
+	recorderFound     = "found"
+	recorderSkipped   = "skipped"
+	recorderMissed    = "missed"
+	recorderFiltered  = "filtered"
 )
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
@@ -148,5 +157,16 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Name:      "bloom_bytes_skipped_total",
 			Help:      "Number of bytes skipped during query iteration",
 		}, []string{"type", "reason"}),
+
+		recorderSeries: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_recorder_series_total",
+			Help:      "Number of series reported by the bloom query recorder. Type can be requested (total), found (existed in blooms), skipped (due to page too large configurations, etc), missed (not found in blooms)",
+		}, []string{"type"}),
+		recorderChunks: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_recorder_chunks_total",
+			Help:      "Number of chunks reported by the bloom query recorder. Type can be requested (total), found (existed in blooms), skipped (due to page too large configurations, etc), missed (not found in blooms), filtered (filtered out)",
+		}, []string{"type"}),
 	}
 }
