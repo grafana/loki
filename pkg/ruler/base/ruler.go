@@ -771,7 +771,7 @@ func filterRules(shardingAlgo string, userID string, ruleGroups []*rulespb.RuleG
 					continue
 				} 
 				
-				seenHashes[hash] = true
+				  seenHashes[hash] = true
 
 				// clone the group and replace the rules
 				clone := cloneGroupWithRule(g, r)
