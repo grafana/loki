@@ -100,8 +100,11 @@ func TestChunkReaderWriter(t *testing.T) {
 
 			var readEntries []*logproto.Entry
 			for reader.Next() {
-				entry := reader.Entry()
-				readEntries = append(readEntries, &entry)
+				ts, l := reader.At()
+				readEntries = append(readEntries, &logproto.Entry{
+					Timestamp: time.Unix(0, ts),
+					Line:      string(l),
+				})
 			}
 			require.NoError(t, reader.Err(), "reader encountered error")
 			require.Len(t, readEntries, len(tt.entries))

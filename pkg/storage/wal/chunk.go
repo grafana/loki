@@ -4,15 +4,16 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
 	"reflect"
 	"sync"
-	"time"
 	"unsafe"
 
 	"github.com/golang/snappy"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/klauspost/compress/s2"
 )
@@ -178,12 +179,12 @@ type ChunkReader struct {
 	pos       int
 	entries   uint64
 	entryIdx  uint64
-	entry     logproto.Entry
 	dataPos   int
 	reader    io.Reader
-	prevT     int64
 	prevDelta int64
 	err       error
+	lineBuf   []byte
+	ts        int64
 }
 
 // NewChunkReader creates a new ChunkReader and performs CRC verification.
@@ -235,8 +236,8 @@ func (r *ChunkReader) Close() error {
 }
 
 // Entry implements iter.EntryIterator.
-func (r *ChunkReader) Entry() logproto.Entry {
-	return r.entry
+func (r *ChunkReader) At() (int64, []byte) {
+	return r.ts, r.lineBuf
 }
 
 // Err implements iter.EntryIterator.
@@ -251,40 +252,48 @@ func (r *ChunkReader) Next() bool {
 	}
 
 	// Read timestamp
-	var timestamp int64
 	switch r.entryIdx {
 	case 0:
 		ts, n := binary.Uvarint(r.b[r.pos:])
 		r.pos += n
-		timestamp = int64(ts)
+		r.ts = int64(ts)
 	case 1:
 		delta, n := binary.Uvarint(r.b[r.pos:])
 		r.pos += n
-		timestamp = r.prevT + int64(delta)
 		r.prevDelta = int64(delta)
+		r.ts += r.prevDelta
 	default:
 		dod, n := binary.Varint(r.b[r.pos:])
 		r.pos += n
 		r.prevDelta += dod
-		timestamp = r.prevT + r.prevDelta
+		r.ts += r.prevDelta
 	}
 
-	r.entry.Timestamp = time.Unix(0, timestamp)
-	r.prevT = timestamp
-
 	// Read line length
-	lineLen, n := binary.Uvarint(r.b[r.pos:])
+	l, n := binary.Uvarint(r.b[r.pos:])
+	lineLen := int(l)
 	r.pos += n
 
+	// If the buffer is not yet initialize or too small, we get a new one.
+	if r.lineBuf == nil || lineLen > cap(r.lineBuf) {
+		// in case of a replacement we replace back the buffer in the pool
+		if r.lineBuf != nil {
+			chunkenc.BytesBufferPool.Put(r.lineBuf)
+		}
+		r.lineBuf = chunkenc.BytesBufferPool.Get(lineLen).([]byte)
+		if lineLen > cap(r.lineBuf) {
+			r.err = fmt.Errorf("could not get a line buffer of size %d, actual %d", lineLen, cap(r.lineBuf))
+			return false
+		}
+	}
+	r.lineBuf = r.lineBuf[:lineLen]
 	// Read line from decompressed data
-	lineBuf := make([]byte, lineLen)
-	if _, err := io.ReadFull(r.reader, lineBuf); err != nil {
+	if _, err := io.ReadFull(r.reader, r.lineBuf); err != nil {
 		if err != io.EOF {
 			r.err = err
 		}
 		return false
 	}
-	r.entry.Line = string(lineBuf)
 
 	r.entryIdx++
 	return true
