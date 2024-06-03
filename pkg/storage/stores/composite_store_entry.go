@@ -108,7 +108,7 @@ func (c *storeEntry) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelNamesForMetricName")
 	defer sp.Finish()
 	log := spanlogger.FromContext(ctx)
@@ -122,7 +122,7 @@ func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string,
 	}
 	level.Debug(log).Log("metric", metricName)
 
-	return c.indexReader.LabelNamesForMetricName(ctx, userID, from, through, metricName)
+	return c.indexReader.LabelNamesForMetricName(ctx, userID, from, through, metricName, matchers...)
 }
 
 func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
