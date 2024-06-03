@@ -347,13 +347,20 @@ func (c *Comparator) cacheTest(currTime time.Time) {
 
 	// cacheTest is currently run using `reader.CountOverTime()` which is an instant query.
 	// We make the query with and without cache over the data that is not changing (e.g: --now="1hr ago") instead of on latest data that is a moving target.
-	now := currTime.Add(-c.cacheTestNow)
+	queryStartTime := currTime.Add(-c.cacheTestNow)
+
+	// We cannot query for range before the pod even started.
+	if queryStartTime.Add(-c.cacheTestRange).Before(c.startTime) {
+		// we wait.
+		fmt.Fprintf(c.w, "cacheTest not run. still waiting for query start time to past the process start time. ")
+		return
+	}
 
 	rangeDuration := c.cacheTestRange
 	rng := fmt.Sprintf("%.0fs", rangeDuration.Seconds())
 
 	// with cache
-	countCache, err := c.rdr.QueryCountOverTime(rng, now, true)
+	countCache, err := c.rdr.QueryCountOverTime(rng, queryStartTime, true)
 	if err != nil {
 		fmt.Fprintf(c.w, "error running cache query test with cache: %s\n", err.Error())
 		queryResultsTotal.WithLabelValues("failure").Inc()
@@ -361,7 +368,7 @@ func (c *Comparator) cacheTest(currTime time.Time) {
 	}
 
 	// without cache
-	countNocache, err := c.rdr.QueryCountOverTime(rng, now, false)
+	countNocache, err := c.rdr.QueryCountOverTime(rng, queryStartTime, false)
 	if err != nil {
 		fmt.Fprintf(c.w, "error running cache query test without cache: %s\n", err.Error())
 		queryResultsTotal.WithLabelValues("failure").Inc()
