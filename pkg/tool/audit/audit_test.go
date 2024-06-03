@@ -17,7 +17,7 @@ type testObjClient struct {
 	client.ObjectClient
 }
 
-func (t testObjClient) ObjectExists(ctx context.Context, object string) (bool, error) {
+func (t testObjClient) ObjectExists(_ context.Context, object string) (bool, error) {
 	if strings.Contains(object, "missing") {
 		return false, nil
 	}
@@ -30,7 +30,7 @@ type testCompactedIdx struct {
 	chunks []retention.ChunkEntry
 }
 
-func (t testCompactedIdx) ForEachChunk(ctx context.Context, f retention.ChunkEntryCallback) error {
+func (t testCompactedIdx) ForEachChunk(_ context.Context, f retention.ChunkEntryCallback) error {
 	for _, chunk := range t.chunks {
 		if _, err := f(chunk); err != nil {
 			return err
