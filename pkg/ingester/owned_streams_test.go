@@ -3,6 +3,7 @@ package ingester
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -16,9 +17,10 @@ func Test_OwnedStreamService(t *testing.T) {
 	require.NoError(t, err)
 	// Mock the ring
 	ring := &ringCountMock{count: 30}
+	readRingMock := mockReadRingWithOneActiveIngester()
 	limiter := NewLimiter(limits, NilMetrics, ring, 3)
 
-	service := newOwnedStreamService("test", limiter)
+	service := newOwnedStreamService("test", limiter, readRingMock, 1*time.Second)
 	require.Equal(t, 0, service.getOwnedStreamCount())
 	require.Equal(t, 10, service.getFixedLimit(), "fixed limit must be initialised during the instantiation")
 

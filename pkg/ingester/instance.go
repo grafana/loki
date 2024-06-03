@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/ring"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -145,13 +146,14 @@ func newInstance(
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
 	customStreamsTracker push.UsageTracker,
+	readRing ring.ReadRing,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
 		return nil, err
 	}
 	streams := newStreamsMap()
-	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter)
+	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter, readRing, cfg.OwnedStreamsCheckInterval)
 	c := config.SchemaConfig{Configs: periodConfigs}
 	i := &instance{
 		cfg:        cfg,
@@ -185,6 +187,14 @@ func newInstance(
 		customStreamsTracker: customStreamsTracker,
 	}
 	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
+
+	// Start the owned streams service which periodically checks the ring for changes and recalculates the owned stream count for an instance.
+	if ownedStreamsSvc.StartAsync(context.Background()); err != nil {
+		return nil, err
+	}
+	if err := ownedStreamsSvc.AwaitRunning(context.Background()); err != nil {
+		return nil, err
+	}
 	return i, err
 }
 

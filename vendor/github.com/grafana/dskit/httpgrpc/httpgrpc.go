@@ -89,7 +89,9 @@ func WriteError(w http.ResponseWriter, err error) {
 
 func ToHeader(hs []*Header, header http.Header) {
 	for _, h := range hs {
-		header[h.Key] = h.Values
+		// http.Header expects header to be stored in canonical form,
+		// otherwise they are inaccessible with Get() on a http.Header struct.
+		header[http.CanonicalHeaderKey(h.Key)] = h.Values
 	}
 }
 
