@@ -353,7 +353,7 @@ func tryScanBytes(number string, l *Scanner) (uint64, bool) {
 	s := *l
 	consumed := 0
 	for r := s.Peek(); r != scanner.EOF && !unicode.IsSpace(r); r = s.Peek() {
-		if !unicode.IsNumber(r) && !isBytesSizeRune(r) && r != '.' && r != '-' {
+		if !unicode.IsNumber(r) && !isBytesSizeRune(r) && r != '.' {
 			break
 		}
 		_, _ = sb.WriteRune(r)
