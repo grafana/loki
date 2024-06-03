@@ -1,7 +1,12 @@
 package wal
 
 import (
+	"bufio"
 	"bytes"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -116,6 +121,54 @@ func TestChunkReaderWriter(t *testing.T) {
 	}
 }
 
+func TestChunkReaderWriterWithLogGenerator(t *testing.T) {
+	filenames := testDataFile()
+
+	for _, filename := range filenames {
+		t.Run(filename, func(t *testing.T) {
+			gen := newLogGenerator(t, filename)
+			defer gen.Close()
+
+			var entries []*logproto.Entry
+			for more, line := gen.Next(); more; more, line = gen.Next() {
+				entries = append(entries, &logproto.Entry{
+					Timestamp: time.Now(),
+					Line:      string(line),
+				})
+				if len(entries) >= 10000 {
+					break
+				}
+			}
+
+			var buf bytes.Buffer
+
+			// Write the chunk
+			_, err := writeChunk(&buf, entries, EncodingSnappy)
+			require.NoError(t, err, "writeChunk failed")
+
+			// Read the chunk
+			reader, err := NewChunkReader(buf.Bytes())
+			require.NoError(t, err, "NewChunkReader failed")
+			defer reader.Close()
+
+			var readEntries []*logproto.Entry
+			for reader.Next() {
+				ts, l := reader.At()
+				readEntries = append(readEntries, &logproto.Entry{
+					Timestamp: time.Unix(0, ts),
+					Line:      string(l),
+				})
+			}
+			require.NoError(t, reader.Err(), "reader encountered error")
+			require.Len(t, readEntries, len(entries))
+			for i, entry := range entries {
+				require.Equal(t, entry.Line, readEntries[i].Line, "Lines don't match", i)
+				require.Equal(t, entry.Timestamp.UnixNano(), readEntries[i].Timestamp.UnixNano(), "Timestamps don't match", i)
+			}
+		})
+	}
+}
+
 // BenchmarkWriteChunk benchmarks the writeChunk function.
 func BenchmarkWriteChunk(b *testing.B) {
 	// Generate sample log entries
@@ -137,6 +190,113 @@ func BenchmarkWriteChunk(b *testing.B) {
 	}
 }
 
+var (
+	lineBuf []byte
+	ts      int64
+)
+
+// Benchmark reads with log generator
+func BenchmarkReadChunkWithLogGenerator(b *testing.B) {
+	filenames := testDataFile()
+	for _, filename := range filenames {
+		b.Run(filename, func(b *testing.B) {
+			gen := newLogGenerator(b, filename)
+			defer gen.Close()
+
+			var entries []*logproto.Entry
+			for more, line := gen.Next(); more; more, line = gen.Next() {
+				entries = append(entries, &logproto.Entry{
+					Timestamp: time.Now(),
+					Line:      string(line),
+				})
+				if len(entries) >= 100000 {
+					break
+				}
+			}
+
+			// Reset the buffer for each iteration
+			buf := bytes.NewBuffer(make([]byte, 0, 5<<20))
+			_, err := writeChunk(buf, entries, EncodingSnappy)
+			if err != nil {
+				b.Fatalf("writeChunk failed: %v", err)
+			}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			// Run the benchmark
+			for n := 0; n < b.N; n++ {
+				reader, err := NewChunkReader(buf.Bytes())
+				require.NoError(b, err, "NewChunkReader failed")
+
+				for reader.Next() {
+					ts, lineBuf = reader.At()
+				}
+				reader.Close()
+			}
+		})
+	}
+}
+
+// Benchmark with log generator
+func BenchmarkWriteChunkWithLogGenerator(b *testing.B) {
+	filenames := testDataFile()
+
+	for _, filename := range filenames {
+		for _, count := range []int{1000, 10000, 100000} {
+			b.Run(fmt.Sprintf("%s-%d", filename, count), func(b *testing.B) {
+				gen := newLogGenerator(b, filename)
+				defer gen.Close()
+
+				var entries []*logproto.Entry
+				for more, line := gen.Next(); more; more, line = gen.Next() {
+					entries = append(entries, &logproto.Entry{
+						Timestamp: time.Now(),
+						Line:      string(line),
+					})
+					if len(entries) >= count {
+						break
+					}
+				}
+
+				// Reset the buffer for each iteration
+				buf := bytes.NewBuffer(make([]byte, 0, 5<<20))
+
+				b.ReportAllocs()
+				b.ResetTimer()
+
+				// Run the benchmark
+				for n := 0; n < b.N; n++ {
+					buf.Reset()
+					// Call the writeChunk function
+					_, err := writeChunk(buf, entries, EncodingSnappy)
+					if err != nil {
+						b.Fatalf("writeChunk failed: %v", err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func testDataFile() []string {
+	testdataDir := "testdata"
+	files, err := ioutil.ReadDir(testdataDir)
+	if err != nil {
+		panic(err)
+	}
+
+	var fileNames []string
+	for _, file := range files {
+		if !file.IsDir() {
+			filePath := filepath.Join(testdataDir, file.Name())
+			fileNames = append(fileNames, filePath)
+		}
+	}
+
+	return fileNames
+}
+
 // generateLogEntries generates a slice of logproto.Entry with the given count.
 func generateLogEntries(count int) []*logproto.Entry {
 	entries := make([]*logproto.Entry, count)
@@ -147,4 +307,40 @@ func generateLogEntries(count int) []*logproto.Entry {
 		}
 	}
 	return entries
+}
+
+type logGenerator struct {
+	f *os.File
+	s *bufio.Scanner
+}
+
+func (g *logGenerator) Next() (bool, []byte) {
+	if g.s.Scan() {
+		return true, g.s.Bytes()
+	}
+	g.reset()
+	return g.s.Scan(), g.s.Bytes()
+}
+
+func (g *logGenerator) Close() {
+	if g.f != nil {
+		g.f.Close()
+	}
+	g.f = nil
+}
+
+func (g *logGenerator) reset() {
+	g.f.Seek(0, 0)
+	g.s = bufio.NewScanner(g.f)
+}
+
+func newLogGenerator(t testing.TB, filename string) *logGenerator {
+	t.Helper()
+	file, err := os.Open(filename)
+	require.NoError(t, err)
+
+	return &logGenerator{
+		f: file,
+		s: bufio.NewScanner(file),
+	}
 }
