@@ -132,9 +132,8 @@ type Comparator struct {
 	metricTestRunning   bool
 	cacheTestInterval   time.Duration
 	cacheTestRange      time.Duration
-	// how far back from current time the execustion time (--now) should be set for running this query.
-	cacheTestNow time.Duration
-
+	// how far back from current time the execution time (--now) should be set for running this query.
+	cacheTestNow     time.Duration
 	cacheTestRunning bool
 	writeInterval    time.Duration
 	confirmAsync     bool
@@ -378,7 +377,7 @@ func (c *Comparator) cacheTest(currTime time.Time) {
 	queryResultsTotal.WithLabelValues("success").Inc()
 	if math.Abs(countNocache-countCache) > floatDiffTolerance {
 		queryResultsDiff.Inc()
-		fmt.Fprintf(c.w, "found a diff in instant query results time: %s, result_with_cache: %v, result_without_cache: %v", queryStartTime, countCache, countNocache)
+		fmt.Fprintf(c.w, "found a diff in instant query results time: %s, result_with_cache: %v, result_without_cache: %v\n", queryStartTime, countCache, countNocache)
 	}
 }
 

@@ -394,7 +394,6 @@ func TestCacheTest(t *testing.T) {
 	// seems ugly but was easy, and multiple instantiations
 	// of the comparator should be an error
 	prometheus.Unregister(responseLatency)
-
 }
 
 func TestMetricTest(t *testing.T) {
