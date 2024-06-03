@@ -350,9 +350,9 @@ func (c *Comparator) cacheTest(currTime time.Time) {
 	queryStartTime := currTime.Add(-c.cacheTestNow)
 
 	// We cannot query for range before the pod even started.
-	if queryStartTime.Add(-c.cacheTestRange).Before(c.startTime) {
+	if queryStartTime.Before(c.startTime) {
 		// we wait.
-		fmt.Fprintf(c.w, "cacheTest not run. still waiting for query start time to past the process start time. ")
+		fmt.Fprintf(c.w, "cacheTest not run. still waiting for query start range(%s) to past the process start time(%s).\n", queryStartTime, c.startTime)
 		return
 	}
 
