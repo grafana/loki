@@ -430,7 +430,7 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 			if req.Values {
 				storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
 			} else {
-				storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
+				storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
 			}
 			return err
 		})
