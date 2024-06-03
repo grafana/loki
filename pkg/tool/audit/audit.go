@@ -42,7 +42,7 @@ func Run(ctx context.Context, cloudIndexPath, table string, cfg Config, logger l
 		return 0, 0, err
 	}
 
-	compactedIdx, err := ParseCompactexIndex(ctx, localFile, table, cfg, logger)
+	compactedIdx, err := ParseCompactexIndex(ctx, localFile, table, cfg)
 	if err != nil {
 		return 0, 0, err
 	}
