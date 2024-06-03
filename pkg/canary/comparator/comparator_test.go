@@ -372,23 +372,23 @@ func TestCacheTest(t *testing.T) {
 	// Force the start time to a known value
 	c.startTime = time.Unix(10, 0)
 
-	queryresultsdiff = &mockCounter{}
+	queryResultsDiff = &mockCounter{}
 	mr.countOverTime = 2.3
 	mr.noCacheCountOvertime = mr.countOverTime // same value for both with and without cache
 	c.cacheTest(now)
-	assert.Equal(t, 0, queryresultsdiff.(*mockCounter).count)
+	assert.Equal(t, 0, queryResultsDiff.(*mockCounter).count)
 
-	queryresultsdiff = &mockCounter{} // reset counter
+	queryResultsDiff = &mockCounter{} // reset counter
 	mr.countOverTime = 2.3            // value not important
 	mr.noCacheCountOvertime = 2.5     // different than `countOverTime` value.
 	c.cacheTest(now)
-	assert.Equal(t, 1, queryresultsdiff.(*mockCounter).count)
+	assert.Equal(t, 1, queryResultsDiff.(*mockCounter).count)
 
-	queryresultsdiff = &mockCounter{}    // reset counter
+	queryResultsDiff = &mockCounter{}    // reset counter
 	mr.countOverTime = 2.3               // value not important
 	mr.noCacheCountOvertime = 2.30000005 // different than `countOverTime` value but withing tolerance
 	c.cacheTest(now)
-	assert.Equal(t, 0, queryresultsdiff.(*mockCounter).count)
+	assert.Equal(t, 0, queryResultsDiff.(*mockCounter).count)
 
 	// This avoids a panic on subsequent test execution,
 	// seems ugly but was easy, and multiple instantiations
@@ -488,6 +488,42 @@ func (m *mockCounter) Add(float64) {
 }
 
 func (m *mockCounter) Inc() {
+	m.cLck.Lock()
+	defer m.cLck.Unlock()
+	m.count++
+}
+
+type mockCounterVec struct {
+	mockCounter
+	labels []string
+}
+
+func (m *mockCounterVec) WithLabelValues(lvs ...string) prometheus.Counter {
+	m.labels = lvs
+	return &m.mockCounter
+}
+
+func (m *mockCounterVec) Desc() *prometheus.Desc {
+	panic("implement me")
+}
+
+func (m *mockCounterVec) Write(*io_prometheus_client.Metric) error {
+	panic("implement me")
+}
+
+func (m *mockCounterVec) Describe(chan<- *prometheus.Desc) {
+	panic("implement me")
+}
+
+func (m *mockCounterVec) Collect(chan<- prometheus.Metric) {
+	panic("implement me")
+}
+
+func (m *mockCounterVec) Add(float64) {
+	panic("implement me")
+}
+
+func (m *mockCounterVec) Inc() {
 	m.cLck.Lock()
 	defer m.cLck.Unlock()
 	m.count++
