@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
@@ -42,6 +43,7 @@ type Params interface {
 	Shards() []string
 	GetExpression() syntax.Expr
 	GetStoreChunks() *logproto.ChunkRefGroup
+	CachingOptions() resultscache.CachingOptions
 }
 
 func NewLiteralParams(
@@ -53,21 +55,69 @@ func NewLiteralParams(
 	shards []string,
 	storeChunks *logproto.ChunkRefGroup,
 ) (LiteralParams, error) {
+	return newLiteralParams(
+		qs,
+		start,
+		end,
+		step,
+		interval,
+		direction,
+		limit,
+		shards,
+		storeChunks,
+		resultscache.CachingOptions{},
+	)
+}
+
+func NewLiteralParamsWithCaching(
+	qs string,
+	start, end time.Time,
+	step, interval time.Duration,
+	direction logproto.Direction,
+	limit uint32,
+	shards []string,
+	storeChunks *logproto.ChunkRefGroup,
+	cachingOptions resultscache.CachingOptions,
+) (LiteralParams, error) {
+	return newLiteralParams(
+		qs,
+		start,
+		end,
+		step,
+		interval,
+		direction,
+		limit,
+		shards,
+		storeChunks,
+		cachingOptions,
+	)
+}
+
+func newLiteralParams(
+	qs string,
+	start, end time.Time,
+	step, interval time.Duration,
+	direction logproto.Direction,
+	limit uint32,
+	shards []string,
+	storeChunks *logproto.ChunkRefGroup,
+	cachingOptions resultscache.CachingOptions,
+) (LiteralParams, error) {
 	p := LiteralParams{
-		queryString: qs,
-		start:       start,
-		end:         end,
-		step:        step,
-		interval:    interval,
-		direction:   direction,
-		limit:       limit,
-		shards:      shards,
-		storeChunks: storeChunks,
+		queryString:    qs,
+		start:          start,
+		end:            end,
+		step:           step,
+		interval:       interval,
+		direction:      direction,
+		limit:          limit,
+		shards:         shards,
+		storeChunks:    storeChunks,
+		cachingOptions: cachingOptions,
 	}
 	var err error
 	p.queryExpr, err = syntax.ParseExpr(qs)
 	return p, err
-
 }
 
 // LiteralParams impls Params
@@ -80,6 +130,7 @@ type LiteralParams struct {
 	shards         []string
 	queryExpr      syntax.Expr
 	storeChunks    *logproto.ChunkRefGroup
+	cachingOptions resultscache.CachingOptions
 }
 
 func (p LiteralParams) Copy() LiteralParams { return p }
@@ -113,6 +164,11 @@ func (p LiteralParams) Shards() []string { return p.shards }
 
 // StoreChunks impls Params
 func (p LiteralParams) GetStoreChunks() *logproto.ChunkRefGroup { return p.storeChunks }
+
+// CachingOptions returns whether Loki query created from this params should be cached.
+func (p LiteralParams) CachingOptions() resultscache.CachingOptions {
+	return p.cachingOptions
+}
 
 // GetRangeType returns whether a query is an instant query or range query
 func GetRangeType(q Params) QueryRangeType {
