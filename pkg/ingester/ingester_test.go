@@ -465,7 +465,7 @@ func (s *mockStore) LabelValuesForMetricName(_ context.Context, _ string, _, _ m
 	return []string{"val1", "val2"}, nil
 }
 
-func (s *mockStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string) ([]string, error) {
+func (s *mockStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 

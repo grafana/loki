@@ -3,6 +3,7 @@ package iter
 import (
 	"io"
 
+	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -61,4 +62,56 @@ func NewQueryResponseIterator(resp *logproto.QueryPatternsResponse) Iterator {
 		iters[i] = NewSlice(s.Pattern, samples)
 	}
 	return NewMerge(iters...)
+}
+
+type querySamplesClientIterator struct {
+	client logproto.Pattern_QuerySampleClient
+	err    error
+	curr   iter.SampleIterator
+}
+
+// NewQueryClientIterator returns an iterator over a QueryClient.
+func NewQuerySamplesClientIterator(client logproto.Pattern_QuerySampleClient) iter.SampleIterator {
+	return &querySamplesClientIterator{
+		client: client,
+	}
+}
+
+func (i *querySamplesClientIterator) Next() bool {
+	for i.curr == nil || !i.curr.Next() {
+		batch, err := i.client.Recv()
+		if err == io.EOF {
+			return false
+		} else if err != nil {
+			i.err = err
+			return false
+		}
+		i.curr = NewQuerySamplesResponseIterator(batch)
+	}
+
+	return true
+}
+
+func (i *querySamplesClientIterator) Sample() logproto.Sample {
+	return i.curr.Sample()
+}
+
+func (i *querySamplesClientIterator) StreamHash() uint64 {
+	return i.curr.StreamHash()
+}
+
+func (i *querySamplesClientIterator) Labels() string {
+	return i.curr.Labels()
+}
+
+func (i *querySamplesClientIterator) Error() error {
+	return i.err
+}
+
+func (i *querySamplesClientIterator) Close() error {
+	return i.client.CloseSend()
+}
+
+func NewQuerySamplesResponseIterator(resp *logproto.QuerySamplesResponse) iter.SampleIterator {
+	return iter.NewMultiSeriesIterator(resp.Series)
 }

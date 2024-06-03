@@ -15,36 +15,41 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/pattern/drain"
-	"github.com/grafana/loki/v3/pkg/pattern/iter"
+	"github.com/grafana/loki/v3/pkg/pattern/chunk"
+	"github.com/grafana/loki/v3/pkg/pattern/metric"
 	"github.com/grafana/loki/v3/pkg/util"
+
+	loki_iter "github.com/grafana/loki/v3/pkg/iter"
+	pattern_iter "github.com/grafana/loki/v3/pkg/pattern/iter"
 )
 
 const indexShards = 32
 
 // instance is a tenant instance of the pattern ingester.
 type instance struct {
-	instanceID string
-	buf        []byte             // buffer used to compute fps.
-	mapper     *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
-	streams    *streamsMap
-	index      *index.BitPrefixInvertedIndex
-	logger     log.Logger
-	metrics    *ingesterMetrics
+	instanceID     string
+	buf            []byte             // buffer used to compute fps.
+	mapper         *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
+	streams        *streamsMap
+	index          *index.BitPrefixInvertedIndex
+	logger         log.Logger
+	metrics        *ingesterMetrics
+	aggregationCfg metric.AggregationConfig
 }
 
-func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics) (*instance, error) {
+func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics, aggCfg metric.AggregationConfig) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
 	if err != nil {
 		return nil, err
 	}
 	i := &instance{
-		buf:        make([]byte, 0, 1024),
-		logger:     logger,
-		instanceID: instanceID,
-		streams:    newStreamsMap(),
-		index:      index,
-		metrics:    metrics,
+		buf:            make([]byte, 0, 1024),
+		logger:         logger,
+		instanceID:     instanceID,
+		streams:        newStreamsMap(),
+		index:          index,
+		metrics:        metrics,
+		aggregationCfg: aggCfg,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -75,18 +80,18 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 }
 
 // Iterator returns an iterator of pattern samples matching the given query patterns request.
-func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequest) (iter.Iterator, error) {
+func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequest) (pattern_iter.Iterator, error) {
 	matchers, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
 	step := model.Time(req.Step)
-	if step < drain.TimeResolution {
-		step = drain.TimeResolution
+	if step < chunk.TimeResolution {
+		step = chunk.TimeResolution
 	}
 
-	var iters []iter.Iterator
+	var iters []pattern_iter.Iterator
 	err = i.forMatchingStreams(matchers, func(s *stream) error {
 		iter, err := s.Iterator(ctx, from, through, step)
 		if err != nil {
@@ -98,7 +103,51 @@ func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequ
 	if err != nil {
 		return nil, err
 	}
-	return iter.NewMerge(iters...), nil
+	return pattern_iter.NewMerge(iters...), nil
+}
+
+func (i *instance) QuerySample(
+	ctx context.Context,
+	expr syntax.SampleExpr,
+	req *logproto.QuerySamplesRequest,
+) (loki_iter.SampleIterator, error) {
+	if !i.aggregationCfg.Enabled {
+		// Should never get here, but this will prevent nil pointer panics in test
+		return loki_iter.NoopIterator, nil
+	}
+
+	from, through := util.RoundToMilliseconds(req.Start, req.End)
+	step := model.Time(req.Step)
+	if step < chunk.TimeResolution {
+		step = chunk.TimeResolution
+	}
+
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, err
+	}
+
+	var iters []loki_iter.SampleIterator
+	err = i.forMatchingStreams(
+		selector.Matchers(),
+		func(stream *stream) error {
+			var iter loki_iter.SampleIterator
+			var err error
+			iter, err = stream.SampleIterator(ctx, expr, from, through, step)
+
+			if err != nil {
+				return err
+			}
+
+			iters = append(iters, iter)
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return loki_iter.NewSortSampleIterator(iters), nil
 }
 
 // forMatchingStreams will execute a function for each stream that matches the given matchers.
@@ -140,7 +189,7 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	}
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	s, err := newStream(fp, sortedLabels, i.metrics)
+	s, err := newStream(fp, sortedLabels, i.metrics, i.aggregationCfg.Enabled)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}

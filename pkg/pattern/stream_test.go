@@ -16,7 +16,7 @@ import (
 
 func TestAddStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-	stream, err := newStream(model.Fingerprint(lbs.Hash()), lbs, newIngesterMetrics(nil, "test"))
+	stream, err := newStream(model.Fingerprint(lbs.Hash()), lbs, newIngesterMetrics(nil, "test"), false)
 	require.NoError(t, err)
 
 	err = stream.Push(context.Background(), []push.Entry{
@@ -44,7 +44,12 @@ func TestAddStream(t *testing.T) {
 
 func TestPruneStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-	stream, err := newStream(model.Fingerprint(lbs.Hash()), lbs, newIngesterMetrics(nil, "test"))
+	stream, err := newStream(
+		model.Fingerprint(lbs.Hash()),
+		lbs,
+		newIngesterMetrics(nil, "test"),
+		false,
+	)
 	require.NoError(t, err)
 
 	err = stream.Push(context.Background(), []push.Entry{

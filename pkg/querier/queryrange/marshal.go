@@ -403,6 +403,8 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 		result.Request = &QueryRequest_DetectedLabels{DetectedLabels: &req.DetectedLabelsRequest}
 	case *DetectedFieldsRequest:
 		result.Request = &QueryRequest_DetectedFields{DetectedFields: &req.DetectedFieldsRequest}
+	case *logproto.QuerySamplesRequest:
+		result.Request = &QueryRequest_SamplesRequest{SamplesRequest: req}
 	default:
 		return nil, fmt.Errorf("unsupported request type while wrapping, got (%T)", r)
 	}

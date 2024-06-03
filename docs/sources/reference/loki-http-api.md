@@ -627,6 +627,7 @@ It accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now. Any value specified for `start` supersedes this parameter.
+- `query`: A set of log stream selector that selects the streams to match and return label names. Example: `{"app": "myapp", "environment": "dev"}`
 
 In microservices mode, `/loki/api/v1/labels` is exposed by the querier.
 

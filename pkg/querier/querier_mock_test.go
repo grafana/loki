@@ -352,7 +352,7 @@ func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string,
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, _ ...*labels.Matcher) ([]string, error) {
 	args := s.Called(ctx, userID, from, through, metricName)
 	return args.Get(0).([]string), args.Error(1)
 }
@@ -624,6 +624,21 @@ func (q *querierMock) DetectedLabels(ctx context.Context, req *logproto.Detected
 	}
 
 	return resp.(*logproto.DetectedLabelsResponse), err
+}
+
+func (q *querierMock) SelectMetricSamples(
+	ctx context.Context,
+	req *logproto.QuerySamplesRequest,
+) (*logproto.QuerySamplesResponse, error) {
+	args := q.MethodCalled("SelectMetricSamples", ctx, req)
+
+	resp := args.Get(0)
+	err := args.Error(1)
+	if resp == nil {
+		return nil, err
+	}
+
+	return resp.(*logproto.QuerySamplesResponse), err
 }
 
 type engineMock struct {
