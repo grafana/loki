@@ -181,10 +181,6 @@ func (l *lexer) Lex(lval *exprSymType) int {
 			lval.duration = duration
 			return DURATION
 		}
-		if number, ok := tryScanNegativeNumber(&l.Scanner); ok {
-			lval.str = number
-			return NUMBER
-		}
 
 	case scanner.String, scanner.RawString:
 		var err error
@@ -288,27 +284,6 @@ func tryScanFlag(l *Scanner) (string, bool) {
 	return flag, true
 }
 
-func tryScanNegativeNumber(l *Scanner) (string, bool) {
-	var sb strings.Builder
-	sb.WriteRune('-')
-
-	if !unicode.IsNumber(l.Peek()) {
-		return "", false
-	}
-
-	// copy the scanner to avoid advancing it in case it's not a number
-	s := *l
-	r := s.Scan()
-	switch r {
-	case scanner.Int, scanner.Float:
-		l.Scan()
-		sb.WriteString(l.TokenText())
-		return sb.String(), true
-	default:
-		return "", false
-	}
-}
-
 func tryScanDuration(number string, l *Scanner) (time.Duration, bool) {
 	var sb strings.Builder
 	sb.WriteString(number)
@@ -378,7 +353,7 @@ func tryScanBytes(number string, l *Scanner) (uint64, bool) {
 	s := *l
 	consumed := 0
 	for r := s.Peek(); r != scanner.EOF && !unicode.IsSpace(r); r = s.Peek() {
-		if !unicode.IsNumber(r) && !isBytesSizeRune(r) && r != '.' {
+		if !unicode.IsNumber(r) && !isBytesSizeRune(r) && r != '.' && r != '-' {
 			break
 		}
 		_, _ = sb.WriteRune(r)
