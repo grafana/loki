@@ -1147,7 +1147,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 				return
 			}
 		} else {
-		storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
+			storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
 			if err != nil {
 				return
 			}
