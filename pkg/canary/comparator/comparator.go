@@ -93,11 +93,16 @@ var (
 		Help:      "how long the spot check test query execution took in seconds.",
 		Buckets:   instrument.DefBuckets,
 	})
-	queryresultsdiff = promauto.NewCounter(prometheus.CounterOpts{
+	queryResultsDiff = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "cache_test_query_results_diff_count",
+		Name:      "cache_test_query_results_diff_total",
 		Help:      "counts number of times the query results was different with and without cache ",
 	})
+	queryResultsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "cache_test_query_results_total",
+		Help:      "counts number of times the query results test requests are done ",
+	}, []string{"status"}) // status=success/failure
 )
 
 type Comparator struct {
@@ -342,7 +347,7 @@ func (c *Comparator) cacheTest(currTime time.Time) {
 
 	// cacheTest is currently run using `reader.CountOverTime()` which is an instant query.
 	// We make the query with and without cache over the data that is not changing (e.g: --now="1hr ago") instead of on latest data that is a moving target.
-	now := time.Now().Add(-c.cacheTestNow)
+	now := currTime.Add(-c.cacheTestNow)
 
 	rangeDuration := c.cacheTestRange
 	rng := fmt.Sprintf("%.0fs", rangeDuration.Seconds())
@@ -351,6 +356,7 @@ func (c *Comparator) cacheTest(currTime time.Time) {
 	countCache, err := c.rdr.QueryCountOverTime(rng, now, true)
 	if err != nil {
 		fmt.Fprintf(c.w, "error running cache query test with cache: %s\n", err.Error())
+		queryResultsTotal.WithLabelValues("failure").Inc()
 		return
 	}
 
@@ -358,11 +364,13 @@ func (c *Comparator) cacheTest(currTime time.Time) {
 	countNocache, err := c.rdr.QueryCountOverTime(rng, now, false)
 	if err != nil {
 		fmt.Fprintf(c.w, "error running cache query test without cache: %s\n", err.Error())
+		queryResultsTotal.WithLabelValues("failure").Inc()
 		return
 	}
 
+	queryResultsTotal.WithLabelValues("success").Inc()
 	if math.Abs(countNocache-countCache) > floatDiffTolerance {
-		queryresultsdiff.Inc()
+		queryResultsDiff.Inc()
 	}
 }
 
