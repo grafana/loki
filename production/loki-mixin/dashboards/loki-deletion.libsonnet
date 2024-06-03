@@ -12,6 +12,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
         .addCluster()
         .addNamespace()
         .addTag()
+        .addLog()
         .addRow(
           ($.row('Headlines') +
            {

@@ -380,6 +380,10 @@ func (q *IngesterQuerier) DetectedLabel(ctx context.Context, req *logproto.Detec
 				"response", resp)
 		}
 
+		if thisIngester == nil {
+			continue
+		}
+
 		for label, thisIngesterValues := range thisIngester.Labels {
 			var combinedValues []string
 			allIngesterValues, isLabelPresent := labelMap[label]
