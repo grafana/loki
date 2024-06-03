@@ -223,10 +223,20 @@ type WriteAheadLog struct {
 	IngesterMemoryRequest int64
 }
 
+const (
+	// minimumReplayCeiling contains the minimum value that will be used for the replay_memory_ceiling.
+	// It is set, so that even when the ingester has a low memory request, the replay will not flush each block
+	// on its own.
+	minimumReplayCeiling = 512 * 1024 * 1024
+)
+
 // ReplayMemoryCeiling calculates 50% of the ingester memory
 // for the ingester to use for the write-ahead-log capbability.
 func (w WriteAheadLog) ReplayMemoryCeiling() string {
 	value := int64(math.Ceil(float64(w.IngesterMemoryRequest) * float64(0.5)))
+	if value < minimumReplayCeiling {
+		value = minimumReplayCeiling
+	}
 	return fmt.Sprintf("%d", value)
 }
 

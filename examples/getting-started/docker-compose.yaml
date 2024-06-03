@@ -46,7 +46,7 @@ services:
       <<: *loki-dns
 
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy-dev:latest
     volumes:
       - ./alloy-local-config.yaml:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock

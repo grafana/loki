@@ -136,9 +136,13 @@ func buildMetrics() map[string]interface{} {
 		"memstats":      memstats(),
 		"num_cpu":       runtime.NumCPU(),
 		"num_goroutine": runtime.NumGoroutine(),
+		// the highest recorded cpu usage over the interval
+		"cpu_usage": cpuUsage.Value(),
 	}
+	// reset cpu usage
+	cpuUsage.Set(0)
 	expvar.Do(func(kv expvar.KeyValue) {
-		if !strings.HasPrefix(kv.Key, statsPrefix) || kv.Key == statsPrefix+targetKey || kv.Key == statsPrefix+editionKey {
+		if !strings.HasPrefix(kv.Key, statsPrefix) || kv.Key == statsPrefix+targetKey || kv.Key == statsPrefix+editionKey || kv.Key == statsPrefix+cpuUsageKey {
 			return
 		}
 		var value interface{}

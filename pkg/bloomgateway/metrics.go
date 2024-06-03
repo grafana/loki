@@ -116,12 +116,13 @@ func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 }
 
 type workerMetrics struct {
-	dequeueDuration   *prometheus.HistogramVec
-	queueDuration     *prometheus.HistogramVec
-	processDuration   *prometheus.HistogramVec
-	tasksDequeued     *prometheus.CounterVec
-	tasksProcessed    *prometheus.CounterVec
-	blockQueryLatency *prometheus.HistogramVec
+	dequeueDuration    *prometheus.HistogramVec
+	queueDuration      *prometheus.HistogramVec
+	processDuration    *prometheus.HistogramVec
+	tasksDequeued      *prometheus.CounterVec
+	tasksProcessed     *prometheus.CounterVec
+	blocksNotAvailable *prometheus.CounterVec
+	blockQueryLatency  *prometheus.HistogramVec
 }
 
 func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem string) *workerMetrics {
@@ -158,6 +159,12 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Name:      "tasks_processed_total",
 			Help:      "Total amount of tasks that the worker processed",
 		}, append(labels, "status")),
+		blocksNotAvailable: r.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "blocks_not_available_total",
+			Help:      "Total amount of blocks that have been skipped because they were not found or not downloaded yet",
+		}, labels),
 		blockQueryLatency: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,

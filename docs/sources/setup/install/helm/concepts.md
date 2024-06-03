@@ -21,7 +21,7 @@ By default Loki will be installed in the scalable mode. This consists of a read 
 
 ## Dashboards
 
-This chart includes dashboards for monitoring Loki. These require the scrape configs defined in the `monitoring.serviceMonitor` and `monitoring.selfMonitoring` sections described below. The dashboards are deployed via a config map which can be mounted on a Grafana instance. The Dashboard require an installation of the Grafana Agent and the Prometheus operator. The agent is installed with this chart.
+This chart includes dashboards for monitoring Loki. These require the scrape configs defined in the `monitoring.serviceMonitor` and `monitoring.selfMonitoring` sections described below. The dashboards are deployed via a config map which can be mounted on a Grafana instance. The Dashboard requires an installation of the Grafana Agent and the Prometheus operator. The agent is installed with this chart.
 
 ## Canary
 

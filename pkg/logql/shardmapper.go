@@ -13,6 +13,8 @@ import (
 )
 
 const (
+	ShardLastOverTime     = "last_over_time"
+	ShardFirstOverTime    = "first_over_time"
 	ShardQuantileOverTime = "quantile_over_time"
 )
 
@@ -20,19 +22,30 @@ type ShardMapper struct {
 	shards                   ShardingStrategy
 	metrics                  *MapperMetrics
 	quantileOverTimeSharding bool
+	lastOverTimeSharding     bool
+	firstOverTimeSharding    bool
 }
 
 func NewShardMapper(strategy ShardingStrategy, metrics *MapperMetrics, shardAggregation []string) ShardMapper {
 	quantileOverTimeSharding := false
+	lastOverTimeSharding := false
+	firstOverTimeSharding := false
 	for _, a := range shardAggregation {
-		if a == ShardQuantileOverTime {
+		switch a {
+		case ShardQuantileOverTime:
 			quantileOverTimeSharding = true
+		case ShardLastOverTime:
+			lastOverTimeSharding = true
+		case ShardFirstOverTime:
+			firstOverTimeSharding = true
 		}
 	}
 	return ShardMapper{
 		shards:                   strategy,
 		metrics:                  metrics,
 		quantileOverTimeSharding: quantileOverTimeSharding,
+		firstOverTimeSharding:    firstOverTimeSharding,
+		lastOverTimeSharding:     lastOverTimeSharding,
 	}
 }
 
@@ -472,6 +485,10 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}, bytesPerShard, nil
 
 	case syntax.OpRangeTypeFirst:
+		if !m.firstOverTimeSharding {
+			return noOp(expr, m.shards.Resolver())
+		}
+
 		potentialConflict := syntax.ReducesLabels(expr)
 		if !potentialConflict && (expr.Grouping == nil || expr.Grouping.Noop()) {
 			return m.mapSampleExpr(expr, r)
@@ -499,6 +516,10 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			downstreams: downstreams,
 		}, bytesPerShard, nil
 	case syntax.OpRangeTypeLast:
+		if !m.lastOverTimeSharding {
+			return noOp(expr, m.shards.Resolver())
+		}
+
 		potentialConflict := syntax.ReducesLabels(expr)
 		if !potentialConflict && (expr.Grouping == nil || expr.Grouping.Noop()) {
 			return m.mapSampleExpr(expr, r)

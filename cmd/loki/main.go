@@ -118,6 +118,7 @@ func main() {
 	}
 
 	level.Info(util_log.Logger).Log("msg", "Starting Loki", "version", version.Info())
+	level.Info(util_log.Logger).Log("msg", "Loading configuration file", "filename", config.ConfigFile)
 
 	err = t.Run(loki.RunOpts{StartTime: startTime})
 	util_log.CheckFatal("running loki", err, util_log.Logger)

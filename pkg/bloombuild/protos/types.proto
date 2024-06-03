@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package protos;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "protos";
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+// FPBounds is identical to the definition in `pkg/storage/bloom/v1/bounds.FingerprintBounds`
+// which ensures we can cast between them without allocations.
+// TODO(salvacorts): Reuse from `pkg/logproto/indexgateway.proto`
+message ProtoFingerprintBounds {
+  uint64 min = 1 [
+    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint",
+    (gogoproto.jsontag) = "min"
+  ];
+  uint64 max = 2 [
+    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint",
+    (gogoproto.jsontag) = "max"
+  ];
+}
+
+message ProtoGapWithBlocks {
+  ProtoFingerprintBounds bounds = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "bounds"
+  ];
+  repeated string blockRef = 2;
+}
+
+// TODO: Define BlockRef and SingleTenantTSDBIdentifier as messages so we can use them right away
+//       instead of unmarshaling them from strings or doing unsafe casts.
+message ProtoTask {
+  string id = 1;
+  string table = 2;
+  string tenant = 3;
+  ProtoFingerprintBounds bounds = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "bounds"
+  ];
+  string tsdb = 5;
+  repeated ProtoGapWithBlocks gaps = 6;
+}

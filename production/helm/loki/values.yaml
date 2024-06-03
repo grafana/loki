@@ -1294,6 +1294,8 @@ singleBinary:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 ######################################################################################################################
 #
 # Simple Scalable Deployment (SSD) Mode
@@ -1421,6 +1423,8 @@ write:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 # --  Configuration for the read pod(s)
 read:
   # -- Number of replicas for the read
@@ -1528,6 +1532,8 @@ read:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 # --  Configuration for the backend pod(s)
 backend:
   # -- Number of replicas for the backend
@@ -1636,6 +1642,8 @@ backend:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 ######################################################################################################################
 #
 # Microservices Mode
@@ -3091,6 +3099,7 @@ minio:
       purge: false
   persistence:
     size: 5Gi
+    annotations: {}
   resources:
     requests:
       cpu: 100m

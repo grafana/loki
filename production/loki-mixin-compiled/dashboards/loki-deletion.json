@@ -701,6 +701,16 @@
                "tagsQuery": "",
                "type": "query",
                "useTags": false
+            },
+            {
+               "hide": 0,
+               "label": null,
+               "name": "loki_datasource",
+               "options": [ ],
+               "query": "loki",
+               "refresh": 1,
+               "regex": "",
+               "type": "datasource"
             }
          ]
       },

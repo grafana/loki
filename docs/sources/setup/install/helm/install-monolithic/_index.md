@@ -47,7 +47,7 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
           type: 'filesystem'
         schemaConfig:
           configs:
-          - from: 2024-01-01
+          - from: "2024-01-01"
             store: tsdb
             index:
               prefix: loki_index_
@@ -72,7 +72,7 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
           replication_factor: 3
         schemaConfig:
           configs:
-          - from: 2024-01-01
+          - from: "2024-01-01"
             store: tsdb
             index:
               prefix: loki_index_
