@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -11,6 +12,10 @@ import (
 )
 
 type Version byte
+
+func (v Version) String() string {
+	return fmt.Sprintf("v%d", v)
+}
 
 const (
 	magicNumber = uint32(0xCA7CAFE5)

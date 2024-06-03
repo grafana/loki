@@ -387,8 +387,10 @@ func (s *SeriesWithOffsets) Encode(
 
 	lastOffset := previousOffset
 	for _, offset := range s.Offsets {
-		// delta encode offsets
-		offset.Encode(enc, lastOffset)
+		// delta encode offsets.
+		// Multiple offsets per series is a v2+ feature with different encoding implementation,
+		// so we signal that to the encoder
+		offset.Encode(enc, V2, lastOffset)
 		lastOffset = offset
 	}
 
@@ -424,7 +426,9 @@ func (s *SeriesWithOffsets) Decode(
 		lastOffset = previousOffset
 	)
 	for i := range s.Offsets {
-		err = s.Offsets[i].Decode(dec, lastOffset)
+		// SeriesWithOffsets is a v2+ feature with multiple bloom offsets per series
+		// so we signal that to the decoder
+		err = s.Offsets[i].Decode(dec, V2, lastOffset)
 		lastOffset = s.Offsets[i]
 		if err != nil {
 			return 0, BloomOffset{}, errors.Wrapf(err, "decoding %dth bloom offset", i)
@@ -473,7 +477,9 @@ func (s *SeriesWithOffset) Encode(
 	// delta encode fingerprint
 	enc.PutBE64(uint64(s.Fingerprint - previousFp))
 	// delta encode offsets
-	s.Offset.Encode(enc, previousOffset)
+	// V1 only has 1 offset per series which has a legacy encoding scheme;
+	// we signal that to the encoder
+	s.Offset.Encode(enc, V1, previousOffset)
 
 	// encode chunks using delta encoded timestamps
 	var lastEnd model.Time
@@ -487,7 +493,9 @@ func (s *SeriesWithOffset) Encode(
 
 func (s *SeriesWithOffset) Decode(dec *encoding.Decbuf, previousFp model.Fingerprint, previousOffset BloomOffset) (model.Fingerprint, BloomOffset, error) {
 	s.Fingerprint = previousFp + model.Fingerprint(dec.Be64())
-	if err := s.Offset.Decode(dec, previousOffset); err != nil {
+	// V1 only has 1 offset per series which has a legacy encoding scheme;
+	// we signal that to the decoder
+	if err := s.Offset.Decode(dec, V1, previousOffset); err != nil {
 		return 0, BloomOffset{}, errors.Wrap(err, "decoding bloom offset")
 	}
 
@@ -552,17 +560,33 @@ type BloomOffset struct {
 	ByteOffset int // offset to beginning of bloom within page
 }
 
-func (o *BloomOffset) Encode(enc *encoding.Encbuf, previousOffset BloomOffset) {
+func (o *BloomOffset) Encode(enc *encoding.Encbuf, v Version, previousOffset BloomOffset) {
 	// page offsets diffs are always ascending
 	enc.PutUvarint(o.Page - previousOffset.Page)
-	// byte offset diffs will not be ascending when a new
-	// page is written
-	enc.PutVarint64(int64(o.ByteOffset - previousOffset.ByteOffset))
+
+	switch v {
+	case V1:
+		// V1 uses UVarint for bloom offset deltas. This is fine because there is only 1 bloom per series in v1
+		enc.PutUvarint(o.ByteOffset - previousOffset.ByteOffset)
+	default:
+		// V2 encodes multiple bloom offsets per series and successive blooms may belong to
+		// separate bloom pages. Therefore, we use Varint64 for byte offset deltas as
+		// byteOffsets will not be ascending when a new bloom page is written.
+		enc.PutVarint64(int64(o.ByteOffset - previousOffset.ByteOffset))
+	}
 }
 
-func (o *BloomOffset) Decode(dec *encoding.Decbuf, previousOffset BloomOffset) error {
+func (o *BloomOffset) Decode(dec *encoding.Decbuf, v Version, previousOffset BloomOffset) error {
 	o.Page = previousOffset.Page + dec.Uvarint()
-	o.ByteOffset = previousOffset.ByteOffset + int(dec.Varint64())
+
+	// Explained by the Encode method
+	switch v {
+	case V1:
+		o.ByteOffset = previousOffset.ByteOffset + dec.Uvarint()
+	default:
+		o.ByteOffset = previousOffset.ByteOffset + int(dec.Varint64())
+	}
+
 	return dec.Err()
 }
 

@@ -9,17 +9,23 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
+var SupportedVersions = []Version{V1, V2}
+
 func TestBloomOffsetEncoding(t *testing.T) {
-	t.Parallel()
-	src := BloomOffset{Page: 1, ByteOffset: 2}
-	enc := &encoding.Encbuf{}
-	src.Encode(enc, BloomOffset{})
+	for _, v := range SupportedVersions {
+		t.Run(v.String(), func(t *testing.T) {
+			src := BloomOffset{Page: 1, ByteOffset: 2}
+			enc := &encoding.Encbuf{}
+			src.Encode(enc, v, BloomOffset{})
 
-	var dst BloomOffset
-	dec := encoding.DecWith(enc.Get())
-	require.Nil(t, dst.Decode(&dec, BloomOffset{}))
+			var dst BloomOffset
+			dec := encoding.DecWith(enc.Get())
+			require.Nil(t, dst.Decode(&dec, v, BloomOffset{}))
 
-	require.Equal(t, src, dst)
+			require.Equal(t, src, dst)
+		})
+	}
+
 }
 
 func TestSeriesEncoding_V1(t *testing.T) {
