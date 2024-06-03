@@ -279,7 +279,7 @@ func logprotoSeriesToPromQLMatrix(series []logproto.Series) (promql.Matrix, erro
 			Floats: make([]promql.FPoint, len(s.Samples)),
 		}
 		for i, sample := range s.Samples {
-      t := model.TimeFromUnixNano(sample.Timestamp)
+			t := model.TimeFromUnixNano(sample.Timestamp)
 			promSeries.Floats[i] = promql.FPoint{T: int64(t), F: sample.Value}
 		}
 		promMatrix[i] = promSeries
