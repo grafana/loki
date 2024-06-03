@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -278,7 +279,8 @@ func logprotoSeriesToPromQLMatrix(series []logproto.Series) (promql.Matrix, erro
 			Floats: make([]promql.FPoint, len(s.Samples)),
 		}
 		for i, sample := range s.Samples {
-			promSeries.Floats[i] = promql.FPoint{T: sample.Timestamp / 1e6, F: sample.Value}
+      t := model.TimeFromUnixNano(sample.Timestamp)
+			promSeries.Floats[i] = promql.FPoint{T: int64(t), F: sample.Value}
 		}
 		promMatrix[i] = promSeries
 	}

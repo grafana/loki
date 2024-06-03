@@ -1162,8 +1162,8 @@ func Test_WriteQuerySamplesResponseJSON(t *testing.T) {
 					{
 						Labels: `{foo="bar"}`,
 						Samples: []logproto.Sample{
-							{Timestamp: 1, Value: 1},
-							{Timestamp: 2, Value: 2},
+							{Timestamp: 1e9, Value: 1},
+							{Timestamp: 2e9, Value: 2},
 						},
 					},
 				},
@@ -1174,8 +1174,8 @@ func Test_WriteQuerySamplesResponseJSON(t *testing.T) {
             "foo": "bar"
           },
           "values": [
-            [0.001, "1"],
-            [0.002, "2"]
+            [1, "1"],
+            [2, "2"]
           ]
         }
       ]`),
@@ -1186,15 +1186,15 @@ func Test_WriteQuerySamplesResponseJSON(t *testing.T) {
 					{
 						Labels: `{foo="bar"}`,
 						Samples: []logproto.Sample{
-							{Timestamp: 1, Value: 1},
-							{Timestamp: 2, Value: 2},
+							{Timestamp: 1e9, Value: 1},
+							{Timestamp: 2e9, Value: 2},
 						},
 					},
 					{
 						Labels: `{foo="buzz"}`,
 						Samples: []logproto.Sample{
-							{Timestamp: 3, Value: 1},
-							{Timestamp: 3, Value: 2},
+							{Timestamp: 3e9, Value: 1},
+							{Timestamp: 3e9, Value: 2},
 						},
 					},
 				},
@@ -1205,8 +1205,8 @@ func Test_WriteQuerySamplesResponseJSON(t *testing.T) {
             "foo": "bar"
           },
           "values": [
-            [0.001, "1"],
-            [0.002, "2"]
+            [1, "1"],
+            [2, "2"]
           ]
         },
         {
@@ -1214,8 +1214,8 @@ func Test_WriteQuerySamplesResponseJSON(t *testing.T) {
             "foo": "buzz"
           },
           "values": [
-            [0.003, "1"],
-            [0.003, "2"]
+            [3, "1"],
+            [3, "2"]
           ]
         }
       ]`),
