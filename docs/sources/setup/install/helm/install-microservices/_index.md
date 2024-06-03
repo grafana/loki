@@ -163,11 +163,15 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
       loki-results-cache-0                   2/2     Running   0          167m
     ```
 
-## AWS S3 Configuration
+## Object Storage Configuration
 
-To configure Loki to use AWS S3 as the object storage rather than MinIO, you need to provide the following values in the `values.yaml` file:
+After testing Loki with MinIO, it is recommended to configure Loki with an object storage provider. The following examples shows how to configure Loki with different object storage providers:
 
-```yaml
+{{< code >}}
+
+```s3
+# Example configuration for Loki with S3 storage
+
   loki:
     schemaConfig:
       configs:
@@ -192,12 +196,24 @@ To configure Loki to use AWS S3 as the object storage rather than MinIO, you nee
         ruler: "ruler"
         admin: "admin"
       s3:
-        s3: <endpoint>
-        endpoint: <endpoint>
-        accessKeyId: <accessKeyID>
-        secretAccessKey: <secretAccessKey>
-        s3ForcePathStyle: true
-        insecure: true
+        # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name
+        s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
+        # AWS endpoint URL
+        endpoint: <your-endpoint>
+        # AWS region where the S3 bucket is located
+        region: <your-region>
+        # AWS secret access key
+        secretAccessKey: <your-secret-access-key>
+        # AWS access key ID
+        accessKeyId: <your-access-key-id>
+        # AWS signature version (e.g., v2 or v4)
+        signatureVersion: <your-signature-version>
+        # Forces the path style for S3 (true/false)
+        s3ForcePathStyle: false
+        # Allows insecure (HTTP) connections (true/false)
+        insecure: false
+        # HTTP configuration settings
+        http_config: {}
 
   deploymentMode: Distributed
 
@@ -240,6 +256,88 @@ To configure Loki to use AWS S3 as the object storage rather than MinIO, you nee
     replicas: 0
 
 ```
+
+```azure
+# Example configuration for Loki with Azure Blob Storage
+
+loki:
+  schemaConfig:
+    configs:
+      - from: 2024-04-01
+        store: tsdb
+        object_store: azure
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  ingester:
+    chunk_encoding: snappy
+  tracing:
+    enabled: true
+  querier:
+    max_concurrent: 4
+
+  storage:
+    type: azure
+    azure:
+      # Name of the Azure Blob Storage account
+      accountName: <your-account-name>
+      # Key associated with the Azure Blob Storage account
+      accountKey: <your-account-key>
+      # Comprehensive connection string for Azure Blob Storage account (Can be used to replace endpoint, accountName, and accountKey)
+      connectionString: <your-connection-string>
+      # Flag indicating whether to use Azure Managed Identity for authentication
+      useManagedIdentity: false
+      # Flag indicating whether to use a federated token for authentication
+      useFederatedToken: false
+      # Client ID of the user-assigned managed identity (if applicable)
+      userAssignedId: <your-user-assigned-id>
+      # Timeout duration for requests made to the Azure Blob Storage account (in seconds)
+      requestTimeout: <your-request-timeout>
+      # Domain suffix of the Azure Blob Storage service endpoint (e.g., core.windows.net)
+      endpointSuffix: <your-endpoint-suffix>
+    bucketNames:
+      chunks: "chunks"
+      ruler: "ruler"
+      admin: "admin"
+deploymentMode: Distributed
+
+ingester:
+  replicas: 3
+querier:
+  replicas: 3
+  maxUnavailable: 2
+queryFrontend:
+  replicas: 2
+  maxUnavailable: 1
+queryScheduler:
+  replicas: 2
+distributor:
+  replicas: 3
+  maxUnavailable: 2
+compactor:
+  replicas: 1
+indexGateway:
+  replicas: 2
+  maxUnavailable: 1
+
+bloomCompactor:
+  replicas: 0
+bloomGateway:
+  replicas: 0
+
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+
+singleBinary:
+  replicas: 0
+
+```
+{{< /code >}}
 
 To configure other storage providers, refer to the [Helm Chart Reference]({{< relref "../reference" >}}).
 
