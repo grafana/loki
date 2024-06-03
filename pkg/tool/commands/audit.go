@@ -27,7 +27,6 @@ func (a *AuditCommand) auditIndex(_ *kingpin.ParseContext) error {
 	logger := log.NewLogfmtLogger(os.Stdout)
 
 	var auditCfg audit.Config
-	// configFileArg := fmt.Sprintf("-config.file=%s", a.configFile)
 	if err := util_cfg.DefaultUnmarshal(&auditCfg, a.extraArgs, flag.CommandLine); err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
