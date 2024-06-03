@@ -378,6 +378,7 @@ func (c *Comparator) cacheTest(currTime time.Time) {
 	queryResultsTotal.WithLabelValues("success").Inc()
 	if math.Abs(countNocache-countCache) > floatDiffTolerance {
 		queryResultsDiff.Inc()
+		fmt.Fprintf(c.w, "found a diff in instant query results time: %s, result_with_cache: %v, result_without_cache: %v", queryStartTime, countCache, countNocache)
 	}
 }
 
