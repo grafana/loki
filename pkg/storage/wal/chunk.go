@@ -60,10 +60,6 @@ var s2ReaderPool = sync.Pool{
 
 // writeChunk writes the log entries to the writer w with the specified encoding type.
 func writeChunk(w io.Writer, entries []*logproto.Entry, encoding EncodingType) (int64, error) {
-	if len(entries) == 0 {
-		return 0, nil
-	}
-
 	// Validate encoding type
 	if encoding != EncodingSnappy {
 		return 0, errors.New("unsupported encoding type")
@@ -200,7 +196,7 @@ func NewChunkReader(b []byte) (*ChunkReader, error) {
 	crcValue := binary.BigEndian.Uint32(b[len(b)-4:])
 	// Extract the offset
 	offset := binary.BigEndian.Uint32(b[len(b)-8 : len(b)-4])
-	if int(offset) >= len(b)-8 {
+	if int(offset) > len(b)-8 {
 		return nil, errors.New("invalid offset: out of bounds")
 	}
 

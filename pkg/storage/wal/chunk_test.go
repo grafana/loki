@@ -70,6 +70,16 @@ func TestChunkReaderWriter(t *testing.T) {
 			},
 		},
 		{
+			name: "Some Empty lines",
+			entries: []*logproto.Entry{
+				{Timestamp: time.Now(), Line: ""},
+				{Timestamp: time.Now().Add(1 * time.Second), Line: ""},
+				{Timestamp: time.Now().Add(2 * time.Second), Line: "foo"},
+				{Timestamp: time.Now().Add(4 * time.Second), Line: ""},
+				{Timestamp: time.Now().Add(9 * time.Second), Line: "bar"},
+			},
+		},
+		{
 			name:    "No entries",
 			entries: []*logproto.Entry{},
 		},
