@@ -89,8 +89,8 @@ func New(buckets []Bucket) *MemPool {
 }
 
 // Get satisfies Allocator interface
-// Allocating a buffer from an exhausted pool/slab will return an error.
-// Allocating a buffer that exceeds the largest slab size will cause a panic.
+// Allocating a buffer from an exhausted pool/slab, or allocating a buffer that
+// exceeds the largest slab size will return an error.
 func (a *MemPool) Get(size int) ([]byte, error) {
 	for i := 0; i < len(a.slabs); i++ {
 		if a.slabs[i].size < size {
@@ -98,7 +98,7 @@ func (a *MemPool) Get(size int) ([]byte, error) {
 		}
 		return a.slabs[i].get(size)
 	}
-	panic(fmt.Sprintf("no slab found for size: %d", size))
+	return nil, fmt.Errorf("no slab found for size: %d", size)
 }
 
 // Put satisfies Allocator interface

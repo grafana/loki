@@ -14,18 +14,16 @@ func TestMemPool(t *testing.T) {
 
 	t.Run("empty pool", func(t *testing.T) {
 		pool := New([]Bucket{})
-		require.Panics(t, func() {
-			_, _ = pool.Get(128)
-		})
+		_, err := pool.Get(256)
+		require.Error(t, err)
 	})
 
 	t.Run("requested size too big", func(t *testing.T) {
 		pool := New([]Bucket{
 			{Size: 1, Capacity: 128},
 		})
-		require.Panics(t, func() {
-			_, _ = pool.Get(256)
-		})
+		_, err := pool.Get(256)
+		require.Error(t, err)
 	})
 
 	t.Run("requested size within bucket", func(t *testing.T) {
