@@ -31,6 +31,15 @@ func TestChunkReaderWriter(t *testing.T) {
 			},
 		},
 		{
+			name: "Different spacing",
+			entries: []*logproto.Entry{
+				{Timestamp: time.Unix(0, 1), Line: "Log entry 1"},
+				{Timestamp: time.Unix(0, 2), Line: "Log entry 2"},
+				{Timestamp: time.Unix(0, 4), Line: "Log entry 3"},
+				{Timestamp: time.Unix(0, 5), Line: "Log entry 4"},
+			},
+		},
+		{
 			// todo: fix dod for variable timestamp delta causing negative dod
 			name: "Many entries",
 			entries: func() []*logproto.Entry {

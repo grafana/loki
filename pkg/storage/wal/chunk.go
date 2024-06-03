@@ -114,8 +114,8 @@ func writeChunk(w io.Writer, entries []*logproto.Entry, encoding EncodingType) (
 			written += int64(n)
 		default:
 			delta = t - prevT
-			dod := delta - prevDelta
-			n = binary.PutUvarint(buf, dod)
+			dod := int64(delta - prevDelta)
+			n = binary.PutVarint(buf, dod)
 			if _, err := w.Write(buf[:n]); err != nil {
 				return written, err
 			}
@@ -256,19 +256,21 @@ func (r *ChunkReader) Next() bool {
 
 	// Read timestamp
 	var timestamp int64
-	if r.entryIdx == 0 {
+	switch r.entryIdx {
+	case 0:
 		ts, n := binary.Uvarint(r.b[r.pos:])
 		r.pos += n
 		timestamp = int64(ts)
-	} else {
+	case 1:
 		delta, n := binary.Uvarint(r.b[r.pos:])
 		r.pos += n
-		if r.entryIdx == 1 {
-			timestamp = r.prevT + int64(delta)
-		} else {
-			timestamp = r.prevT + r.prevDelta + int64(delta)
-		}
+		timestamp = r.prevT + int64(delta)
 		r.prevDelta = int64(delta)
+	default:
+		dod, n := binary.Varint(r.b[r.pos:])
+		r.pos += n
+		r.prevDelta += dod
+		timestamp = r.prevT + r.prevDelta
 	}
 
 	r.entry.Timestamp = time.Unix(0, timestamp)

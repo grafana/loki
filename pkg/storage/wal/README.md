@@ -153,7 +153,7 @@ Unlike the current Loki chunk format, this format does not use smaller blocks be
 ├──────────────────────────────────────────────────────────────────────────┤
 │ len_line_1 <uvarint>                                                     │
 ├──────────────────────────────────────────────────────────────────────────┤
-│ ts_2_dod <uvarint>                                                       │
+│ ts_2_dod <varint>                                                        │
 ├──────────────────────────────────────────────────────────────────────────┤
 │ len_line_2 <uvarint>                                                     │
 ├──────────────────────────────────────────────────────────────────────────┤
@@ -175,7 +175,7 @@ Unlike the current Loki chunk format, this format does not use smaller blocks be
 - **len_line_0 <uvarint>**: The length of the first log line.
 - **ts_1_delta <uvarint>**: The delta from the initial timestamp to the second timestamp.
 - **len_line_1 <uvarint>**: The length of the second log line.
-- **ts_2_dod <uvarint>**: The delta of deltas, representing the difference from the previous delta (i.e., double-delta encoding).
+- **ts_2_dod <varint>**: The delta of deltas, representing the difference from the previous delta (i.e., double-delta encoding). Can be negative if the spacing between points is decreasing.
 - **len_line_2 <uvarint>**: The length of the third log line.
 - **compressed logs <bytes>**: The actual log data, compressed according to the specified encoding.
 - **compressed logs offset <4 bytes>**: The offset of the compressed log data.
