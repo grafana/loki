@@ -23,7 +23,7 @@ type Config struct {
 	BlocksCache         BlocksCacheConfig         `yaml:"blocks_cache"`
 	MetasCache          cache.Config              `yaml:"metas_cache"`
 	MetasLRUCache       cache.EmbeddedCacheConfig `yaml:"metas_lru_cache"`
-	MemoryManagement    MemoryManagementConfig    `yaml:"memory_management"`
+	MemoryManagement    MemoryManagementConfig    `yaml:"memory_management" doc:"hidden"`
 
 	// This will always be set to true when flags are registered.
 	// In tests, where config is created as literal, it can be set manually.
@@ -93,6 +93,7 @@ func (cfg *BlocksCacheConfig) Validate() error {
 }
 
 var (
+	// the default that describes a 4GiB memory pool
 	defaultMemPoolBuckets = mempool.Buckets{
 		{Size: 128, Capacity: 64 << 10}, // 8MiB -- for tests
 		{Size: 512, Capacity: 2 << 20},  // 1024MiB
