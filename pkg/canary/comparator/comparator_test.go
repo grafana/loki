@@ -19,7 +19,7 @@ func TestComparatorEntryReceivedOutOfOrder(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 4*time.Hour, 0, 1*time.Minute, 0, 1*time.Hour, 0, 1, make(chan time.Time), make(chan time.Time), nil, false)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 4*time.Hour, 0, 1*time.Minute, 0, 1*time.Hour, 3*time.Hour, 30*time.Minute, 0, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -60,7 +60,7 @@ func TestComparatorEntryReceivedNotExpected(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 4*time.Hour, 0, 1*time.Minute, 0, 1*time.Hour, 0, 1, make(chan time.Time), make(chan time.Time), nil, false)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 4*time.Hour, 0, 1*time.Minute, 0, 1*time.Hour, 3*time.Hour, 30*time.Minute, 0, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -101,7 +101,7 @@ func TestComparatorEntryReceivedDuplicate(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 4*time.Hour, 0, 1*time.Minute, 0, 1*time.Hour, 0, 1, make(chan time.Time), make(chan time.Time), nil, false)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 4*time.Hour, 0, 1*time.Minute, 0, 1*time.Hour, 3*time.Hour, 30*time.Minute, 0, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Unix(0, 0)
 	t2 := t1.Add(1 * time.Second)
@@ -159,7 +159,7 @@ func TestEntryNeverReceived(t *testing.T) {
 	wait := 60 * time.Second
 	maxWait := 300 * time.Second
 	//We set the prune interval timer to a huge value here so that it never runs, instead we call pruneEntries manually below
-	c := NewComparator(actual, wait, maxWait, 50*time.Hour, 15*time.Minute, 4*time.Hour, 4*time.Hour, 0, 1*time.Minute, 0, 1*time.Hour, 0, 1, make(chan time.Time), make(chan time.Time), mr, false)
+	c := NewComparator(actual, wait, maxWait, 50*time.Hour, 15*time.Minute, 4*time.Hour, 4*time.Hour, 0, 1*time.Minute, 0, 1*time.Hour, 3*time.Hour, 30*time.Minute, 0, 1, make(chan time.Time), make(chan time.Time), mr, false)
 
 	c.entrySent(t1)
 	c.entrySent(t2)
@@ -232,7 +232,7 @@ func TestConcurrentConfirmMissing(t *testing.T) {
 	wait := 30 * time.Millisecond
 	maxWait := 30 * time.Millisecond
 
-	c := NewComparator(output, wait, maxWait, 50*time.Hour, 15*time.Minute, 4*time.Hour, 4*time.Hour, 0, 1*time.Minute, 0, 1*time.Hour, 0, 1, make(chan time.Time), make(chan time.Time), mr, false)
+	c := NewComparator(output, wait, maxWait, 50*time.Hour, 15*time.Minute, 4*time.Hour, 4*time.Hour, 0, 1*time.Minute, 0, 1*time.Hour, 3*time.Hour, 30*time.Minute, 0, 1, make(chan time.Time), make(chan time.Time), mr, false)
 
 	for _, t := range found {
 		tCopy := t
@@ -263,7 +263,7 @@ func TestPruneAckdEntires(t *testing.T) {
 	wait := 30 * time.Millisecond
 	maxWait := 30 * time.Millisecond
 	//We set the prune interval timer to a huge value here so that it never runs, instead we call pruneEntries manually below
-	c := NewComparator(actual, wait, maxWait, 50*time.Hour, 15*time.Minute, 4*time.Hour, 4*time.Hour, 0, 1*time.Minute, 0, 1*time.Hour, 0, 1, make(chan time.Time), make(chan time.Time), nil, false)
+	c := NewComparator(actual, wait, maxWait, 50*time.Hour, 15*time.Minute, 4*time.Hour, 4*time.Hour, 0, 1*time.Minute, 0, 1*time.Hour, 3*time.Hour, 30*time.Minute, 0, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Unix(0, 0)
 	t2 := t1.Add(1 * time.Millisecond)
@@ -320,7 +320,7 @@ func TestSpotCheck(t *testing.T) {
 	spotCheck := 10 * time.Millisecond
 	spotCheckMax := 20 * time.Millisecond
 	//We set the prune interval timer to a huge value here so that it never runs, instead we call spotCheckEntries manually below
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 50*time.Hour, spotCheck, spotCheckMax, 4*time.Hour, 3*time.Millisecond, 1*time.Minute, 0, 1*time.Hour, 0, 1, make(chan time.Time), make(chan time.Time), mr, false)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 50*time.Hour, spotCheck, spotCheckMax, 4*time.Hour, 3*time.Millisecond, 1*time.Minute, 0, 1*time.Hour, 3*time.Hour, 30*time.Minute, 0, 1, make(chan time.Time), make(chan time.Time), mr, false)
 
 	// Send all the entries
 	for i := range entries {
@@ -363,10 +363,12 @@ func TestSpotCheck(t *testing.T) {
 func TestCacheTest(t *testing.T) {
 	actual := &bytes.Buffer{}
 	mr := &mockReader{}
-	cacheTestInterval := 500 * time.Millisecond
 	now := time.Now()
+	cacheTestInterval := 500 * time.Millisecond
+	cacheTestRange := 30 * time.Second
+	cacheTestNow := 2 * time.Second
 
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 50*time.Hour, 0, 0, 4*time.Hour, 0, 10*time.Minute, 0, cacheTestInterval, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), mr, false)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 50*time.Hour, 0, 0, 4*time.Hour, 0, 10*time.Minute, 0, cacheTestInterval, cacheTestRange, cacheTestNow, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), mr, false)
 	// Force the start time to a known value
 	c.startTime = time.Unix(10, 0)
 
@@ -406,7 +408,7 @@ func TestMetricTest(t *testing.T) {
 	mr := &mockReader{}
 	metricTestRange := 30 * time.Second
 	//We set the prune interval timer to a huge value here so that it never runs, instead we call spotCheckEntries manually below
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 50*time.Hour, 0, 0, 4*time.Hour, 0, 10*time.Minute, metricTestRange, 1*time.Hour, writeInterval, 1, make(chan time.Time), make(chan time.Time), mr, false)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 50*time.Hour, 0, 0, 4*time.Hour, 0, 10*time.Minute, metricTestRange, 1*time.Hour, 3*time.Hour, 30*time.Minute, writeInterval, 1, make(chan time.Time), make(chan time.Time), mr, false)
 	// Force the start time to a known value
 	c.startTime = time.Unix(10, 0)
 

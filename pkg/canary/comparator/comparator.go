@@ -126,15 +126,19 @@ type Comparator struct {
 	metricTestRange     time.Duration
 	metricTestRunning   bool
 	cacheTestInterval   time.Duration
-	cacheTestRunning    bool
-	writeInterval       time.Duration
-	confirmAsync        bool
-	startTime           time.Time
-	sent                chan time.Time
-	recv                chan time.Time
-	rdr                 reader.LokiReader
-	quit                chan struct{}
-	done                chan struct{}
+	cacheTestRange      time.Duration
+	// how far back from current time the execustion time (--now) should be set for running this query.
+	cacheTestNow time.Duration
+
+	cacheTestRunning bool
+	writeInterval    time.Duration
+	confirmAsync     bool
+	startTime        time.Time
+	sent             chan time.Time
+	recv             chan time.Time
+	rdr              reader.LokiReader
+	quit             chan struct{}
+	done             chan struct{}
 }
 
 func NewComparator(writer io.Writer,
@@ -145,6 +149,8 @@ func NewComparator(writer io.Writer,
 	metricTestInterval time.Duration,
 	metricTestRange time.Duration,
 	cacheTestInterval time.Duration,
+	cacheTestRange time.Duration,
+	cacheTestNow time.Duration,
 	writeInterval time.Duration,
 	buckets int,
 	sentChan chan time.Time,
@@ -168,6 +174,8 @@ func NewComparator(writer io.Writer,
 		metricTestRange:     metricTestRange,
 		metricTestRunning:   false,
 		cacheTestInterval:   cacheTestInterval,
+		cacheTestRange:      cacheTestRange,
+		cacheTestNow:        cacheTestNow,
 		cacheTestRunning:    false,
 		writeInterval:       writeInterval,
 		confirmAsync:        confirmAsync,
@@ -334,15 +342,19 @@ func (c *Comparator) cacheTest(currTime time.Time) {
 
 	// cacheTest is currently run using `reader.CountOverTime()` which is an instant query.
 	// We make the query with and without cache over the data that is not changing (e.g: --now="1hr ago") instead of on latest data that is a moving target.
-	now := time.Now().Add(-1 * time.Hour)
-	rng := "[3h]" // given we split 1hr, make sure we have some subqueries.
+	now := time.Now().Add(-c.cacheTestNow)
 
+	rangeDuration := c.cacheTestRange
+	rng := fmt.Sprintf("%.0fs", rangeDuration.Seconds())
+
+	// with cache
 	countCache, err := c.rdr.QueryCountOverTime(rng, now, true)
 	if err != nil {
 		fmt.Fprintf(c.w, "error running cache query test with cache: %s\n", err.Error())
 		return
 	}
 
+	// without cache
 	countNocache, err := c.rdr.QueryCountOverTime(rng, now, false)
 	if err != nil {
 		fmt.Fprintf(c.w, "error running cache query test without cache: %s\n", err.Error())
