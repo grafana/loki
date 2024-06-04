@@ -283,12 +283,7 @@ func (b *Builder) processTask(
 		)
 
 		level.Debug(logger).Log("msg", "generating blocks", "overlapping_blocks", len(gap.Blocks))
-
 		newBlocks := gen.Generate(ctx)
-		if err != nil {
-			level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
-			return nil, fmt.Errorf("failed to generate bloom: %w", err)
-		}
 
 		for newBlocks.Next() && newBlocks.Err() == nil {
 			blockCt++
