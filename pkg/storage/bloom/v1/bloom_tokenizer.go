@@ -137,10 +137,7 @@ func (bt *BloomTokenizer) Populate(
 			// If a bloom is full, the chunk wasn't completely added
 			// so we'll submit this bloom, start a new one, and continue indexing
 			if full {
-				ch <- &BloomCreation{
-					Bloom:            bloom,
-					SourceBytesAdded: bytesAdded,
-				}
+				bt.sendBloom(ch, bloom, bytesAdded)
 
 				// start a new bloom + reset bytesAdded counter
 				bytesAdded = 0
@@ -158,11 +155,26 @@ func (bt *BloomTokenizer) Populate(
 	}
 
 	// Send the last bloom
+	bt.sendBloom(ch, bloom, bytesAdded)
+	close(ch)
+}
+
+func (bt *BloomTokenizer) sendBloom(
+	ch chan<- *BloomCreation,
+	bloom *Bloom,
+	bytesAdded int,
+) {
+	fillRatio := bloom.ScalableBloomFilter.FillRatio()
+	bt.metrics.hammingWeightRatio.Observe(fillRatio)
+	bt.metrics.estimatedCount.Observe(
+		float64(estimatedCount(bloom.ScalableBloomFilter.Capacity(), fillRatio)),
+	)
+	bt.metrics.bloomSize.Observe(float64(bloom.ScalableBloomFilter.Capacity() / eightBits))
+	bt.metrics.bloomsTotal.Inc()
 	ch <- &BloomCreation{
 		Bloom:            bloom,
 		SourceBytesAdded: bytesAdded,
 	}
-	close(ch)
 }
 
 // addChunkToBloom adds the tokens from the given chunk to the given bloom.
