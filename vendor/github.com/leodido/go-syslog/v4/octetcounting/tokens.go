@@ -17,6 +17,7 @@ type TokenType int
 const (
 	ILLEGAL TokenType = iota
 	EOF
+	LF
 	WS
 	MSGLEN
 	SYSLOGMSG
@@ -32,9 +33,9 @@ func (t Token) String() string {
 	}
 }
 
-const tokentypename = "ILLEGALEOFWSMSGLENSYSLOGMSG"
+const tokentypename = "ILLEGALEOFLFWSMSGLENSYSLOGMSG"
 
-var tokentypeindex = [...]uint8{0, 7, 10, 12, 18, 27}
+var tokentypeindex = [...]uint8{0, 7, 10, 12, 14, 20, 29}
 
 // String outputs the string representation of the receiving TokenType.
 func (i TokenType) String() string {

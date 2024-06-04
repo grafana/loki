@@ -6,6 +6,8 @@
 
 _By [@leodido](https://github.com/leodido)_.
 
+_This is the official continuation of influxdata/go-syslog_.
+
 To wrap up, this package provides:
 
 - an [RFC5424-compliant parser and builder](/rfc5424)
@@ -24,12 +26,12 @@ For example:
 ## Installation
 
 ```
-go get github.com/influxdata/go-syslog/v3
+go get github.com/leodido/go-syslog/v4
 ```
 
 ## Docs
 
-[![Documentation](https://img.shields.io/badge/godoc-reference-blue.svg?style=for-the-badge)](http://godoc.org/github.com/influxdata/go-syslog)
+[![Documentation](https://img.shields.io/badge/godoc-reference-blue.svg?style=for-the-badge)](http://godoc.org/github.com/leodido/go-syslog)
 
 The [docs](docs/) directory contains `.dot` files representing the finite-state machines (FSMs) implementing the syslog parsers and transports.
 
@@ -204,39 +206,37 @@ make bench
 On my machine<sup>[1](#mymachine)</sup> these are the results obtained paring RFC5424 syslog messages with best effort mode on.
 
 ```
-[no]_empty_input__________________________________  4524100        274 ns/op      272 B/op        4 allocs/op
-[no]_multiple_syslog_messages_on_multiple_lines___  3039513        361 ns/op      288 B/op        8 allocs/op
-[no]_impossible_timestamp_________________________  1244562        951 ns/op      512 B/op       11 allocs/op
-[no]_malformed_structured_data____________________  2389249        512 ns/op      512 B/op        9 allocs/op
-[no]_with_duplicated_structured_data_id___________  1000000       1183 ns/op      712 B/op       17 allocs/op
-[ok]_minimal______________________________________  6876235        178 ns/op      227 B/op        5 allocs/op
-[ok]_average_message______________________________   730473       1653 ns/op     1520 B/op       24 allocs/op
-[ok]_complicated_message__________________________   908776       1344 ns/op     1264 B/op       24 allocs/op
-[ok]_very_long_message____________________________   392737       3114 ns/op     2448 B/op       25 allocs/op
-[ok]_all_max_length_and_complete__________________   510740       2431 ns/op     1872 B/op       28 allocs/op
-[ok]_all_max_length_except_structured_data_and_mes   755124       1593 ns/op      867 B/op       13 allocs/op
-[ok]_minimal_with_message_containing_newline______  6142984        199 ns/op      230 B/op        6 allocs/op
-[ok]_w/o_procid,_w/o_structured_data,_with_message  1670286        732 ns/op      348 B/op       10 allocs/op
-[ok]_minimal_with_UTF-8_message___________________  3013480        407 ns/op      339 B/op        6 allocs/op
-[ok]_minimal_with_UTF-8_message_starting_with_BOM_  2926410        423 ns/op      355 B/op        6 allocs/op
-[ok]_with_structured_data_id,_w/o_structured_data_  1558971        814 ns/op      570 B/op       11 allocs/op
-[ok]_with_multiple_structured_data________________  1000000       1243 ns/op     1205 B/op       16 allocs/op
-[ok]_with_escaped_backslash_within_structured_data  1000000       1025 ns/op      896 B/op       17 allocs/op
-[ok]_with_UTF-8_structured_data_param_value,_with_  1000000       1241 ns/op     1034 B/op       19 allocs/op
+[no]_empty_input__________________________________-10  32072733   185.3 ns/op   272 B/op   4 allocs/op
+[no]_multiple_syslog_messages_on_multiple_lines___-10  27058381   219.8 ns/op   267 B/op   7 allocs/op
+[no]_impossible_timestamp_________________________-10   8732960   683.8 ns/op   555 B/op  12 allocs/op
+[no]_malformed_structured_data____________________-10  17997814   335.6 ns/op   499 B/op   8 allocs/op
+[no]_with_duplicated_structured_data_id___________-10   9254920   645.7 ns/op   672 B/op  15 allocs/op
+[ok]_minimal______________________________________-10  48347473   123.2 ns/op   227 B/op   5 allocs/op
+[ok]_average_message______________________________-10   6058492   986.8 ns/op  1344 B/op  20 allocs/op
+[ok]_complicated_message__________________________-10   7052536   843.2 ns/op  1232 B/op  23 allocs/op
+[ok]_very_long_message____________________________-10   2644068  2279.0 ns/op  2272 B/op  21 allocs/op
+[ok]_all_max_length_and_complete__________________-10   3611186  1675.0 ns/op  1848 B/op  27 allocs/op
+[ok]_all_max_length_except_structured_data_and_mes-10   5729514  1059.0 ns/op   851 B/op  12 allocs/op
+[ok]_minimal_with_message_containing_newline______-10  43165338   142.9 ns/op   230 B/op   6 allocs/op
+[ok]_w/o_procid,_w/o_structured_data,_with_message-10  14832892   397.8 ns/op   308 B/op   9 allocs/op
+[ok]_minimal_with_UTF-8_message___________________-10  20229313   306.2 ns/op   339 B/op   6 allocs/op
+[ok]_minimal_with_UTF-8_message_starting_with_BOM_-10  19721539   306.7 ns/op   355 B/op   6 allocs/op
+[ok]_with_structured_data_id,_w/o_structured_data_-10  13860580   435.7 ns/op   538 B/op  10 allocs/op
+[ok]_with_multiple_structured_data________________-10   8368731   721.9 ns/op  1173 B/op  15 allocs/op
+[ok]_with_escaped_backslash_within_structured_data-10   9730569   632.6 ns/op   864 B/op  16 allocs/op
+[ok]_with_UTF-8_structured_data_param_value,_with_-10   8864156   660.6 ns/op   858 B/op  15 allocs/op
 ```
 
 As you can see it takes:
 
-* ~250ns to parse the smallest legal message
+* ~125ns to parse the smallest legal message
 
-* less than 2µs to parse an average legal message
+* less than 1µs to parse an average legal message
 
-* ~3µs to parse a very long legal message
+* ~2µs to parse a very long legal message
 
 Other RFC5424 implementations, like this [one](https://github.com/roguelazer/rust-syslog-rfc5424) in Rust, spend 8µs to parse an average legal message.
 
-_TBD: comparison against other Go parsers_.
-
 ---
 
-* <a name="mymachine">[1]</a>: Intel Core i7-8850H CPU @ 2.60GHz
+* <a name="mymachine">[1]</a>: Apple M1 Pro

@@ -1,18 +1,18 @@
-package rfc5424
+package rfc3164
 
 import (
 	"sync"
 
-	syslog "github.com/influxdata/go-syslog/v3"
+	syslog "github.com/leodido/go-syslog/v4"
 )
 
-// parser represent a RFC5424 parser with mutex capabilities.
+// parser represent a RFC3164 parser with mutex capabilities.
 type parser struct {
 	sync.Mutex
 	*machine
 }
 
-// NewParser creates a syslog.Machine that parses RFC5424 syslog messages.
+// NewParser creates a syslog.Machine that parses RFC3164 syslog messages.
 func NewParser(options ...syslog.MachineOption) syslog.Machine {
 	p := &parser{
 		machine: NewMachine(options...).(*machine),
@@ -26,7 +26,7 @@ func (p *parser) HasBestEffort() bool {
 	return p.bestEffort
 }
 
-// Parse parses the input RFC5424 syslog message using its FSM.
+// Parse parses the input RFC3164 syslog message using its FSM.
 //
 // Best effort mode enables the partial parsing.
 func (p *parser) Parse(input []byte) (syslog.Message, error) {

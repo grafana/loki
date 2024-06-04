@@ -5,11 +5,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/influxdata/go-syslog/v3/common"
+	"github.com/leodido/go-syslog/v4/common"
 )
 
 // todo(leodido) > support best effort for builder ?
-
 const builderStart int = 52
 
 const builderEnTimestamp int = 1
@@ -72,7 +71,6 @@ func (sm *SyslogMessage) set(from entrypoint, value string) *SyslogMessage {
 	eof := len(data)
 	cs := from.translate()
 	backslashes := []int{}
-
 	{
 		if p == pe {
 			goto _testEof
@@ -9252,7 +9250,6 @@ func (sm *SyslogMessage) set(from entrypoint, value string) *SyslogMessage {
 				if s := string(data[pb:p]); s != "" {
 					sm.Message = &s
 				}
-
 			}
 		}
 
@@ -9380,7 +9377,7 @@ func (sm *SyslogMessage) String() (string, error) {
 	if sm.StructuredData != nil {
 		// Sort element identifiers
 		identifiers := make([]string, 0)
-		for k := range *sm.StructuredData {
+		for k, _ := range *sm.StructuredData {
 			identifiers = append(identifiers, k)
 		}
 		sort.Strings(identifiers)
@@ -9392,7 +9389,7 @@ func (sm *SyslogMessage) String() (string, error) {
 			// Sort parameter names
 			params := (*sm.StructuredData)[id]
 			names := make([]string, 0)
-			for n := range params {
+			for n, _ := range params {
 				names = append(names, n)
 			}
 			sort.Strings(names)
