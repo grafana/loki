@@ -421,6 +421,23 @@ func TestFilterForTimeRange(t *testing.T) {
 			through: 7,
 			exp:     mkChks(5, 7),
 		},
+		{
+			desc: "ref with from == through",
+			input: []*logproto.ChunkRef{
+				{From: 1, Through: 1}, // outside
+				{From: 2, Through: 2}, // ref.From == from == ref.Through
+				{From: 3, Through: 3}, // inside
+				{From: 4, Through: 4}, // ref.From == through == ref.Through
+				{From: 5, Through: 5}, // outside
+			},
+			from:    2,
+			through: 4,
+			exp: []chunk.Chunk{
+				{ChunkRef: logproto.ChunkRef{From: 2, Through: 2}},
+				{ChunkRef: logproto.ChunkRef{From: 3, Through: 3}},
+				{ChunkRef: logproto.ChunkRef{From: 4, Through: 4}},
+			},
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			got := filterForTimeRange(tc.input, tc.from, tc.through)
