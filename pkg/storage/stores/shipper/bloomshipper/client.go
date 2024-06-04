@@ -386,7 +386,7 @@ func (b *BloomClient) Stop() {
 }
 
 func (b *BloomClient) GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, error) {
-	results := make([]Meta, len(refs))
+	results := make([]*Meta, len(refs))
 	err := concurrency.ForEachJob(ctx, len(refs), b.concurrency, func(ctx context.Context, idx int) error {
 		meta, err := b.GetMeta(ctx, refs[idx])
 		if err != nil {
@@ -395,11 +395,19 @@ func (b *BloomClient) GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, err
 				return fmt.Errorf("failed to get meta file %s: %w", key, err)
 			}
 			level.Error(b.logger).Log("msg", "failed to get meta file", "ref", key, "err", err)
+			return nil
 		}
-		results[idx] = meta
+		results[idx] = &meta
 		return nil
 	})
-	return results, err
+
+	filtered := make([]Meta, 0, len(results))
+	for _, r := range results {
+		if r != nil {
+			filtered = append(filtered, *r)
+		}
+	}
+	return filtered, err
 }
 
 // GetMeta fetches the meta file for given MetaRef from object storage and
