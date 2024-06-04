@@ -49,6 +49,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/deletion"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	mathutil "github.com/grafana/loki/v3/pkg/util/math"
+	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -441,6 +442,14 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 }
 
 func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	var status int
+	it, err := i.query(ctx, req)
+	status, err = server_util.ClientHTTPStatusAndError(err)
+	err = httpgrpc.Errorf(status, "%s", err.Error())
+	return it, err
+}
+
+func (i *instance) query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -495,6 +504,14 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 }
 
 func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	var status int
+	it, err := i.querySample(ctx, req)
+	status, err = server_util.ClientHTTPStatusAndError(err)
+	err = httpgrpc.Errorf(status, "%s", err.Error())
+	return it, err
+}
+
+func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	expr, err := req.Expr()
 	if err != nil {
 		return nil, err
@@ -556,6 +573,14 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 // If label matchers are given only the matching streams are fetched from the index.
 // The label names or values are then retrieved from those matching streams.
 func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matchers ...*labels.Matcher) (*logproto.LabelResponse, error) {
+	var status int
+	lr, err := i.label(ctx, req)
+	status, err = server_util.ClientHTTPStatusAndError(err)
+	err = httpgrpc.Errorf(status, "%s", err.Error())
+	return lr, err
+}
+
+func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matchers ...*labels.Matcher) (*logproto.LabelResponse, error) {
 	if len(matchers) == 0 {
 		var labels []string
 		if req.Values {
@@ -709,6 +734,14 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
+	var status int
+	isr, err := i.getStats(ctx, req)
+	status, err = server_util.ClientHTTPStatusAndError(err)
+	err = httpgrpc.Errorf(status, "%s", err.Error())
+	return isr, err
+}
+
+func (i *instance) getStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
 	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil {
 		return nil, err
@@ -765,6 +798,14 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 }
 
 func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	var status int
+	vr, err := i.getVolume(ctx, req)
+	status, err = server_util.ClientHTTPStatusAndError(err)
+	err = httpgrpc.Errorf(status, "%s", err.Error())
+	return vr, err
+}
+
+func (i *instance) getVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
