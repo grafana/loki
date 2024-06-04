@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -206,5 +207,14 @@ func TestOverlappingBlocksIter(t *testing.T) {
 			}
 			require.Equal(t, tc.exp, len(overlapping))
 		})
+	}
+}
+
+func genBlockRef(min, max model.Fingerprint) bloomshipper.BlockRef {
+	bounds := v1.NewBounds(min, max)
+	return bloomshipper.BlockRef{
+		Ref: bloomshipper.Ref{
+			Bounds: bounds,
+		},
 	}
 }
