@@ -90,7 +90,7 @@ func (c *storeEntry) GetChunks(
 func filterForTimeRange(refs []*logproto.ChunkRef, from, through model.Time) []chunk.Chunk {
 	filtered := make([]chunk.Chunk, 0, len(refs))
 	for _, ref := range refs {
-		if through >= ref.From && from < ref.Through {
+		if (through >= ref.From && from < ref.Through) || (ref.From == from && ref.Through == from) {
 			filtered = append(filtered, chunk.Chunk{
 				ChunkRef: *ref,
 			})
