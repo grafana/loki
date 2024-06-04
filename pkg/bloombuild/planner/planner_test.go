@@ -3,7 +3,6 @@ package planner
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
@@ -473,8 +472,8 @@ func Test_BuilderLoop(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			//logger := log.NewNopLogger()
-			logger := log.NewLogfmtLogger(os.Stdout)
+			logger := log.NewNopLogger()
+			//logger := log.NewLogfmtLogger(os.Stdout)
 
 			cfg := Config{
 				PlanningInterval:        1 * time.Hour,
