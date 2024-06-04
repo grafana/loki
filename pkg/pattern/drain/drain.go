@@ -25,7 +25,6 @@ package drain
 import (
 	"math"
 	"strconv"
-	"strings"
 	"unicode"
 
 	"github.com/hashicorp/golang-lru/v2/simplelru"
@@ -130,7 +129,7 @@ func DefaultConfig() *Config {
 		//  > message are more likely to be constants. Specifically, Drain
 		//  > selects the next internal node by the tokens in the beginning
 		//  > positions of the log message
-		LogClusterDepth: 8,
+		LogClusterDepth: 30,
 		// SimTh is basically a ratio of matching/total in the cluster.
 		// Cluster tokens: "foo <*> bar fred"
 		//       Log line: "foo bar baz qux"
@@ -161,6 +160,7 @@ func New(config *Config, metrics *Metrics) *Drain {
 		rootNode:    createNode(),
 		idToCluster: createLogClusterCache(config.MaxClusters, evictFn),
 		metrics:     metrics,
+		tokenizer:   splittingTokenizer{}, // Default to this for now
 	}
 	return d
 }
@@ -171,6 +171,7 @@ type Drain struct {
 	idToCluster     *LogClusterCache
 	clustersCounter int
 	metrics         *Metrics
+	tokenizer       LineTokenizer
 }
 
 func (d *Drain) Clusters() []*LogCluster {
@@ -182,10 +183,13 @@ func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts 
 }
 
 func (d *Drain) Train(content string, ts int64) *LogCluster {
-	return d.train(d.getContentAsTokens(content), nil, ts)
+	return d.train(d.tokenizer.Tokenize(content), d.tokenizer.Join, ts)
 }
 
 func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64) *LogCluster {
+	if len(tokens) < 4 {
+		return nil
+	}
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
 	// Match no existing log cluster
 	if matchCluster == nil {
@@ -215,7 +219,7 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 }
 
 func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
-	tokens := tokenizePattern(content, d.config.ParamString)
+	tokens := deduplicatePlaceholders(d.tokenizer.Tokenize(content), d.config.ParamString)
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
 	// Match no existing log cluster
 	if matchCluster == nil {
@@ -237,10 +241,6 @@ func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) 
 	return matchCluster
 }
 
-func tokenizePattern(content, param string) []string {
-	return deduplicatePlaceholders(strings.Split(content, " "), param)
-}
-
 func deduplicatePlaceholders(tokens []string, param string) []string {
 	if len(tokens) < 2 {
 		return tokens
@@ -258,7 +258,7 @@ func deduplicatePlaceholders(tokens []string, param string) []string {
 }
 
 func (d *Drain) PatternString(c *LogCluster) string {
-	s := strings.Join(deduplicatePlaceholders(c.Tokens, d.config.ParamString), " ")
+	s := d.tokenizer.Join(deduplicatePlaceholders(c.Tokens, d.config.ParamString))
 	if s == d.config.ParamString {
 		return ""
 	}
@@ -271,16 +271,9 @@ func (d *Drain) Delete(cluster *LogCluster) {
 
 // Match against an already existing cluster. Match shall be perfect (sim_th=1.0). New cluster will not be created as a result of this call, nor any cluster modifications.
 func (d *Drain) Match(content string) *LogCluster {
-	contentTokens := d.getContentAsTokens(content)
+	contentTokens := d.tokenizer.Tokenize(content)
 	matchCluster := d.treeSearch(d.rootNode, contentTokens, 1.0, true)
 	return matchCluster
-}
-
-func (d *Drain) getContentAsTokens(content string) []string {
-	for _, extraDelimiter := range d.config.ExtraDelimiters {
-		content = strings.Replace(content, extraDelimiter, " ", -1)
-	}
-	return strings.Split(content, " ")
 }
 
 func (d *Drain) treeSearch(rootNode *Node, tokens []string, simTh float64, includeParams bool) *LogCluster {

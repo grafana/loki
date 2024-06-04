@@ -45,7 +45,7 @@ func (m mockStore) GetSeries(_ context.Context, _ string, _, _ model.Time, _ ...
 	return nil, nil
 }
 
-func (m mockStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string) ([]string, error) {
+func (m mockStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
@@ -210,7 +210,7 @@ func (m mockStoreLabel) LabelValuesForMetricName(_ context.Context, _ string, _,
 	return m.values, nil
 }
 
-func (m mockStoreLabel) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string) ([]string, error) {
+func (m mockStoreLabel) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return m.values, nil
 }
 
