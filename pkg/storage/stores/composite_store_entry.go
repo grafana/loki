@@ -90,7 +90,10 @@ func (c *storeEntry) GetChunks(
 func filterForTimeRange(refs []*logproto.ChunkRef, from, through model.Time) []chunk.Chunk {
 	filtered := make([]chunk.Chunk, 0, len(refs))
 	for _, ref := range refs {
-		if (through >= ref.From && from < ref.Through) || (ref.From == from && ref.Through == from) {
+		// Only include chunks where the query start time (from) is < the chunk end time (ref.Through)
+		// and the query end time (through) is >= the chunk start time (ref.From)
+		// A special case also exists where a chunk can contain a single log line which results in ref.From being equal to ref.Through, but only include this chunk if this log line timestamp is in the timerange of the query
+		if (through >= ref.From && from < ref.Through) || (ref.From == ref.Through && (ref.From >= from && ref.From < through) {
 			filtered = append(filtered, chunk.Chunk{
 				ChunkRef: *ref,
 			})
