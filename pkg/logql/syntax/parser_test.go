@@ -499,19 +499,19 @@ var ParseTestCases = []struct {
 	// label filter for ip-matcher
 	{
 		in:  `{ foo = "bar" }|logfmt|addr>=ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 30),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 30),
 	},
 	{
 		in:  `{ foo = "bar" }|logfmt|addr>ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 29),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 29),
 	},
 	{
 		in:  `{ foo = "bar" }|logfmt|addr<=ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 30),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 30),
 	},
 	{
 		in:  `{ foo = "bar" }|logfmt|addr<ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 29),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 29),
 	},
 	{
 		in: `{ foo = "bar" }|logfmt|addr=ip("1.2.3.4")`,
