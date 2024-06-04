@@ -233,6 +233,8 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.DetectedLabels, nil
 	case *QueryResponse_DetectedFields:
 		return concrete.DetectedFields, nil
+	case *QueryResponse_SamplesResponse:
+		return concrete.SamplesResponse, nil
 	default:
 		return nil, fmt.Errorf("unsupported QueryResponse response type, got (%T)", res.Response)
 	}
@@ -274,6 +276,8 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_DetectedLabels{response}
 	case *DetectedFieldsResponse:
 		p.Response = &QueryResponse_DetectedFields{response}
+	case *QuerySamplesResponse:
+		p.Response = &QueryResponse_SamplesResponse{response}
 	default:
 		return nil, fmt.Errorf("invalid response format, got (%T)", res)
 	}
@@ -372,6 +376,8 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		return &DetectedFieldsRequest{
 			DetectedFieldsRequest: *concrete.DetectedFields,
 		}, ctx, nil
+	case *QueryRequest_SamplesRequest:
+		return concrete.SamplesRequest, ctx, nil
 	default:
 		return nil, ctx, fmt.Errorf("unsupported request type while unwrapping, got (%T)", req.Request)
 	}

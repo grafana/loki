@@ -522,6 +522,8 @@ const (
 
 func getOperation(path string) string {
 	switch {
+	case path == "/loki/api/v1/explore/query_range":
+		return SamplesQueryOp
 	case strings.HasSuffix(path, "/query_range") || strings.HasSuffix(path, "/prom/query"):
 		return QueryRangeOp
 	case strings.HasSuffix(path, "/series"):
@@ -544,8 +546,6 @@ func getOperation(path string) string {
 		return PatternsQueryOp
 	case path == "/loki/api/v1/detected_labels":
 		return DetectedLabelsOp
-	case path == "/loki/api/v1/explore/query_range":
-		return SamplesQueryOp
 	default:
 		return ""
 	}
