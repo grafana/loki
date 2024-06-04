@@ -172,8 +172,8 @@ func (c CompositeStore) GetChunks(
 ) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	chunkIDs := [][]chunk.Chunk{}
 	fetchers := []*fetcher.Fetcher{}
-	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		ids, fetcher, err := store.GetChunks(innerCtx, userID, from, through, predicate, storeChunksOverride)
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, innerFrom, innerThrough model.Time, store Store) error {
+		ids, fetcher, err := store.GetChunks(innerCtx, userID, innerFrom, innerThrough, predicate, storeChunksOverride)
 		if err != nil {
 			return err
 		}
