@@ -333,13 +333,14 @@ func Test_blockPlansForGaps(t *testing.T) {
 	}
 }
 
-func createTasks(n int) []*Task {
-	tasks := make([]*Task, 0, n)
+func createTasks(n int, resultsCh chan *TaskResult) []*QueueTask {
+	tasks := make([]*QueueTask, 0, n)
 	// Enqueue tasks
 	for i := 0; i < n; i++ {
 		task := NewTask(
 			context.Background(), time.Now(),
 			protos.NewTask(config.NewDayTable(config.NewDayTime(0), "fake"), "fakeTenant", v1.NewBounds(0, 10), tsdbID(1), nil),
+			resultsCh,
 		)
 		tasks = append(tasks, task)
 	}
