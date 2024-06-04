@@ -32,5 +32,9 @@ func (cfg *Config) Validate() error {
 }
 
 type Limits interface {
-	// TODO: Add limits
+	BloomBlockEncoding(tenantID string) string
+	BloomNGramLength(tenantID string) int
+	BloomNGramSkip(tenantID string) int
+	BloomCompactorMaxBlockSize(tenantID string) int
+	BloomCompactorMaxBloomSize(tenantID string) int
 }

@@ -1585,6 +1585,12 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 
 	return builder.New(
 		t.Cfg.BloomBuild.Builder,
+		t.Overrides,
+		t.Cfg.SchemaConfig,
+		t.Cfg.StorageConfig,
+		t.ClientMetrics,
+		t.Store,
+		t.BloomStore,
 		logger,
 		prometheus.DefaultRegisterer,
 	)

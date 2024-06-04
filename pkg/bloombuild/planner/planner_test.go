@@ -393,7 +393,7 @@ func Test_BuilderLoop(t *testing.T) {
 	for i := 0; i < nTasks; i++ {
 		task := NewTask(
 			context.Background(), time.Now(),
-			protos.NewTask("fakeTable", "fakeTenant", v1.NewBounds(0, 10), tsdbID(1), nil),
+			protos.NewTask(config.NewDayTable(config.NewDayTime(0), "fake"), "fakeTenant", v1.NewBounds(0, 10), tsdbID(1), nil),
 		)
 
 		err = planner.enqueueTask(task)
