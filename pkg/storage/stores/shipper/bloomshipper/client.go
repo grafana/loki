@@ -102,9 +102,9 @@ type Meta struct {
 	Blocks []BlockRef
 }
 
-func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, error) {
+func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, bool) {
 	if len(m.Sources) == 0 {
-		return tsdb.SingleTenantTSDBIdentifier{}, errors.New("no sources")
+		return tsdb.SingleTenantTSDBIdentifier{}, false
 	}
 
 	mostRecent := m.Sources[0]
@@ -114,7 +114,7 @@ func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, error) {
 		}
 	}
 
-	return mostRecent, nil
+	return mostRecent, true
 }
 
 func MetaRefFrom(
