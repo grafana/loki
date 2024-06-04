@@ -4,8 +4,10 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/common/model"
 
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
@@ -18,14 +20,14 @@ type GapWithBlocks struct {
 type Task struct {
 	ID string
 
-	Table           string
+	Table           config.DayTable
 	Tenant          string
 	OwnershipBounds v1.FingerprintBounds
 	TSDB            tsdb.SingleTenantTSDBIdentifier
 	Gaps            []GapWithBlocks
 }
 
-func NewTask(table, tenant string, bounds v1.FingerprintBounds, tsdb tsdb.SingleTenantTSDBIdentifier, gaps []GapWithBlocks) *Task {
+func NewTask(table config.DayTable, tenant string, bounds v1.FingerprintBounds, tsdb tsdb.SingleTenantTSDBIdentifier, gaps []GapWithBlocks) *Task {
 	return &Task{
 		ID: uuid.NewString(),
 
@@ -37,7 +39,6 @@ func NewTask(table, tenant string, bounds v1.FingerprintBounds, tsdb tsdb.Single
 	}
 }
 
-// TODO: Use it in the builder to parse the task
 func FromProtoTask(task *ProtoTask) (*Task, error) {
 	if task == nil {
 		return nil, nil
@@ -71,7 +72,7 @@ func FromProtoTask(task *ProtoTask) (*Task, error) {
 
 	return &Task{
 		ID:     task.Id,
-		Table:  task.Table,
+		Table:  config.NewDayTable(config.NewDayTime(model.Time(task.Table.DayTimestampMS)), task.Table.Prefix),
 		Tenant: task.Tenant,
 		OwnershipBounds: v1.FingerprintBounds{
 			Min: task.Bounds.Min,
@@ -100,8 +101,11 @@ func (t *Task) ToProtoTask() *ProtoTask {
 	}
 
 	return &ProtoTask{
-		Id:     t.ID,
-		Table:  t.Table,
+		Id: t.ID,
+		Table: DayTable{
+			DayTimestampMS: int64(t.Table.Time),
+			Prefix:         t.Table.Prefix,
+		},
 		Tenant: t.Tenant,
 		Bounds: ProtoFingerprintBounds{
 			Min: t.OwnershipBounds.Min,

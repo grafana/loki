@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/queue"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -37,7 +38,7 @@ type Planner struct {
 	limits    Limits
 	schemaCfg config.SchemaConfig
 
-	tsdbStore  TSDBStore
+	tsdbStore  common.TSDBStore
 	bloomStore bloomshipper.Store
 
 	tasksQueue  *queue.RequestQueue
@@ -61,7 +62,7 @@ func New(
 ) (*Planner, error) {
 	utillog.WarnExperimentalUse("Bloom Planner", logger)
 
-	tsdbStore, err := NewTSDBStores(schemaCfg, storeCfg, storageMetrics, logger)
+	tsdbStore, err := common.NewTSDBStores(schemaCfg, storeCfg, storageMetrics, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error creating TSDB store: %w", err)
 	}
@@ -191,7 +192,7 @@ func (p *Planner) runOne(ctx context.Context) error {
 
 			task := NewTask(
 				ctx, now,
-				protos.NewTask(w.table.Addr(), w.tenant, w.ownershipRange, gap.tsdb, gap.gaps),
+				protos.NewTask(w.table, w.tenant, w.ownershipRange, gap.tsdb, gap.gaps),
 			)
 
 			if err := p.enqueueTask(task); err != nil {
