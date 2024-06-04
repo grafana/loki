@@ -92,8 +92,8 @@ func filterForTimeRange(refs []*logproto.ChunkRef, from, through model.Time) []c
 	for _, ref := range refs {
 		// Only include chunks where the query start time (from) is < the chunk end time (ref.Through)
 		// and the query end time (through) is >= the chunk start time (ref.From)
-		// A special case also exists where a chunk can contain a single log line which results in ref.From being equal to ref.Through, but only include this chunk if this log line timestamp is in the timerange of the query
-		if (through >= ref.From && from < ref.Through) || (ref.From == ref.Through && (ref.From >= from && ref.From < through) {
+		// A special case also exists where a chunk can contain a single log line which results in ref.From being equal to ref.Through, and that is equal to the from time.
+		if (through >= ref.From && from < ref.Through) || (ref.From == from && ref.Through == from) {
 			filtered = append(filtered, chunk.Chunk{
 				ChunkRef: *ref,
 			})
