@@ -95,28 +95,31 @@ func (rep *Reporter) initLeader(ctx context.Context) *ClusterSeed {
 		MaxRetries: 0,
 	})
 	for backoff.Ongoing() {
-		// create a new cluster seed
-		seed := ClusterSeed{
-			UID:               uuid.NewString(),
-			PrometheusVersion: build.GetVersion(),
-			CreatedAt:         time.Now(),
-		}
-		if err := kvClient.CAS(ctx, seedKey, func(in interface{}) (out interface{}, retry bool, err error) {
-			// The key is already set, so we don't need to do anything
-			if in != nil {
-				if kvSeed, ok := in.(*ClusterSeed); ok && kvSeed != nil && kvSeed.UID != seed.UID {
-					seed = *kvSeed
-					return nil, false, nil
-				}
+		{
+			// create a new cluster seed
+			seed := ClusterSeed{
+				UID:               uuid.NewString(),
+				PrometheusVersion: build.GetVersion(),
+				CreatedAt:         time.Now(),
 			}
-			return &seed, true, nil
-		}); err != nil {
-			level.Info(rep.logger).Log("msg", "failed to CAS cluster seed key", "err", err)
-			continue
+			if err := kvClient.CAS(ctx, seedKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				// The key is already set, so we don't need to do anything
+				if in != nil {
+					if kvSeed, ok := in.(*ClusterSeed); ok && kvSeed != nil && kvSeed.UID != seed.UID {
+						seed = *kvSeed
+						return nil, false, nil
+					}
+				}
+				return &seed, true, nil
+			}); err != nil {
+				level.Info(rep.logger).Log("msg", "failed to CAS cluster seed key", "err", err)
+				continue
+			}
 		}
 		// ensure stability of the cluster seed
 		stableSeed := ensureStableKey(ctx, kvClient, rep.logger)
-		seed = *stableSeed
+		// This is a new local variable so that Go knows it's not racing with the previous usage.
+		seed := *stableSeed
 		// Fetch the remote cluster seed.
 		remoteSeed, err := rep.fetchSeed(ctx,
 			func(err error) bool {
