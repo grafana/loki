@@ -569,7 +569,7 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 // If label matchers are given only the matching streams are fetched from the index.
 // The label names or values are then retrieved from those matching streams.
 func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matchers ...*labels.Matcher) (*logproto.LabelResponse, error) {
-	lr, err := i.label(ctx, req)
+	lr, err := i.label(ctx, req, matchers...)
 	err = server_util.ClientGrpcStatusAndError(err)
 	return lr, err
 }
