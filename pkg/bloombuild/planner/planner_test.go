@@ -488,7 +488,8 @@ func Test_BuilderLoop(t *testing.T) {
 			})
 
 			// Enqueue tasks
-			tasks := createTasks(nTasks)
+			resultsCh := make(chan *TaskResult, nTasks)
+			tasks := createTasks(nTasks, resultsCh)
 			for _, task := range tasks {
 				err = planner.enqueueTask(task)
 				require.NoError(t, err)
