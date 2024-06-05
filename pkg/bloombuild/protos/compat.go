@@ -85,6 +85,10 @@ func FromProtoTask(task *ProtoTask) (*Task, error) {
 }
 
 func (t *Task) ToProtoTask() *ProtoTask {
+	if t == nil {
+		return nil
+	}
+
 	protoGaps := make([]*ProtoGapWithBlocks, 0, len(t.Gaps))
 	for _, gap := range t.Gaps {
 		blockRefs := make([]string, 0, len(gap.Blocks))
@@ -175,6 +179,10 @@ func FromProtoTaskResult(result *ProtoTaskResult) (*TaskResult, error) {
 }
 
 func (r *TaskResult) ToProtoTaskResult() *ProtoTaskResult {
+	if r == nil {
+		return nil
+	}
+
 	if r.Error != nil {
 		return &ProtoTaskResult{
 			TaskID: r.TaskID,
