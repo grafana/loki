@@ -120,18 +120,15 @@ func (p *Planner) stopping(_ error) error {
 }
 
 func (p *Planner) running(ctx context.Context) error {
+	go p.trackInflightRequests(ctx)
+
 	// run once at beginning
-	// TODO(salvacorts): Doing this will prevent us from checking the context for cancellation or updating the
-	//                   inflight tasks metrics. We should run the for loop below right away.
 	if err := p.runOne(ctx); err != nil {
 		level.Error(p.logger).Log("msg", "bloom build iteration failed for the first time", "err", err)
 	}
 
 	planningTicker := time.NewTicker(p.cfg.PlanningInterval)
 	defer planningTicker.Stop()
-
-	inflightTasksTicker := time.NewTicker(250 * time.Millisecond)
-	defer inflightTasksTicker.Stop()
 
 	for {
 		select {
@@ -149,10 +146,21 @@ func (p *Planner) running(ctx context.Context) error {
 			if err := p.runOne(ctx); err != nil {
 				level.Error(p.logger).Log("msg", "bloom build iteration failed", "err", err)
 			}
+		}
+	}
+}
+
+func (p *Planner) trackInflightRequests(ctx context.Context) {
+	inflightTasksTicker := time.NewTicker(250 * time.Millisecond)
+	defer inflightTasksTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			// We just return. Error handling and logging is done in the main loop (running method).
+			return
 
 		case <-inflightTasksTicker.C:
-			// TODO(salvacorts): Is think this won't evaluate while the runOne is running.
-			//                   We should run the runOne in a goroutine and check the context inside (as we already do).
 			inflight := p.totalPendingTasks()
 			p.metrics.inflightRequests.Observe(float64(inflight))
 		}
