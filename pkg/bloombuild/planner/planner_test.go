@@ -402,10 +402,10 @@ func Test_BuilderLoop(t *testing.T) {
 		limits                   Limits
 		expectedBuilderLoopError error
 
-		// modifyBuilders should leave the builders in a state where they will not return or return an error
-		modifyBuilders func(builders []*fakeBuilder)
-		// resetBuilders should reset the builders to a state where they will return no errors
-		resetBuilders func(builders []*fakeBuilder)
+		// modifyBuilder should leave the builder in a state where it will not return or return an error
+		modifyBuilder func(builder *fakeBuilder)
+		// resetBuilder should reset the builder to a state where it will return no errors
+		resetBuilder func(builder *fakeBuilder)
 	}{
 		{
 			name:                     "success",
@@ -416,30 +416,22 @@ func Test_BuilderLoop(t *testing.T) {
 			name:                     "error rpc",
 			limits:                   &fakeLimits{},
 			expectedBuilderLoopError: errPlannerIsNotRunning,
-			modifyBuilders: func(builders []*fakeBuilder) {
-				for _, builder := range builders {
-					builder.SetReturnError(true)
-				}
+			modifyBuilder: func(builder *fakeBuilder) {
+				builder.SetReturnError(true)
 			},
-			resetBuilders: func(builders []*fakeBuilder) {
-				for _, builder := range builders {
-					builder.SetReturnError(false)
-				}
+			resetBuilder: func(builder *fakeBuilder) {
+				builder.SetReturnError(false)
 			},
 		},
 		{
 			name:                     "error msg",
 			limits:                   &fakeLimits{},
 			expectedBuilderLoopError: errPlannerIsNotRunning,
-			modifyBuilders: func(builders []*fakeBuilder) {
-				for _, builder := range builders {
-					builder.SetReturnErrorMsg(true)
-				}
+			modifyBuilder: func(builder *fakeBuilder) {
+				builder.SetReturnErrorMsg(true)
 			},
-			resetBuilders: func(builders []*fakeBuilder) {
-				for _, builder := range builders {
-					builder.SetReturnErrorMsg(false)
-				}
+			resetBuilder: func(builder *fakeBuilder) {
+				builder.SetReturnErrorMsg(false)
 			},
 		},
 		{
@@ -448,15 +440,11 @@ func Test_BuilderLoop(t *testing.T) {
 				timeout: 1 * time.Second,
 			},
 			expectedBuilderLoopError: errPlannerIsNotRunning,
-			modifyBuilders: func(builders []*fakeBuilder) {
-				for _, builder := range builders {
-					builder.SetWait(true)
-				}
+			modifyBuilder: func(builder *fakeBuilder) {
+				builder.SetWait(true)
 			},
-			resetBuilders: func(builders []*fakeBuilder) {
-				for _, builder := range builders {
-					builder.SetWait(false)
-				}
+			resetBuilder: func(builder *fakeBuilder) {
+				builder.SetWait(false)
 			},
 		},
 		{
@@ -464,10 +452,8 @@ func Test_BuilderLoop(t *testing.T) {
 			limits: &fakeLimits{},
 			// Builders cancel the context when they disconnect. We forward this error to the planner.
 			expectedBuilderLoopError: context.Canceled,
-			modifyBuilders: func(builders []*fakeBuilder) {
-				for _, builder := range builders {
-					builder.CancelContext(true)
-				}
+			modifyBuilder: func(builder *fakeBuilder) {
+				builder.CancelContext(true)
 			},
 		},
 	} {
@@ -520,9 +506,11 @@ func Test_BuilderLoop(t *testing.T) {
 			// Finally, the queue should be empty
 			require.Equal(t, 0, planner.totalPendingTasks())
 
-			if tc.modifyBuilders != nil {
+			if tc.modifyBuilder != nil {
 				// Configure builders to return errors
-				tc.modifyBuilders(builders)
+				for _, builder := range builders {
+					tc.modifyBuilder(builder)
+				}
 
 				// Enqueue tasks again
 				for _, task := range tasks {
@@ -540,9 +528,11 @@ func Test_BuilderLoop(t *testing.T) {
 				)
 			}
 
-			if tc.resetBuilders != nil {
+			if tc.resetBuilder != nil {
 				// Configure builders to return no errors
-				tc.resetBuilders(builders)
+				for _, builder := range builders {
+					tc.resetBuilder(builder)
+				}
 
 				// Now all tasks should be consumed
 				require.Eventuallyf(
