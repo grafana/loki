@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -78,7 +79,7 @@ func (s *symbolizer) add(lbl string) uint32 {
 
 	idx, ok = s.symbolsMap[lbl]
 	if !ok {
-		lbl = copyString(lbl)
+		lbl = strings.Clone(lbl)
 		idx = uint32(len(s.labels))
 		s.symbolsMap[lbl] = idx
 		s.labels = append(s.labels, lbl)
@@ -86,13 +87,6 @@ func (s *symbolizer) add(lbl string) uint32 {
 	}
 
 	return idx
-}
-
-// copyString returns a copy of the string
-func copyString(s string) string {
-	buf := make([]byte, len(s))
-	copy(buf, s)
-	return string(buf)
 }
 
 // Lookup coverts and returns labels pairs for the given symbols
