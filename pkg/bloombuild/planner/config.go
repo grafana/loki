@@ -41,6 +41,7 @@ type Limits interface {
 	BloomSplitSeriesKeyspaceBy(tenantID string) int
 	BloomBuildMaxBuilders(tenantID string) int
 	BuilderResponseTimeout(tenantID string) time.Duration
+	BloomTaskMaxRetries(tenantID string) int
 }
 
 type QueueLimits struct {

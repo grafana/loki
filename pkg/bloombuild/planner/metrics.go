@@ -26,6 +26,7 @@ type Metrics struct {
 	inflightRequests  prometheus.Summary
 	tasksRequeued     prometheus.Counter
 	taskLost          prometheus.Counter
+	tasksFailed       prometheus.Counter
 
 	buildStarted   prometheus.Counter
 	buildCompleted *prometheus.CounterVec
@@ -78,6 +79,12 @@ func NewMetrics(
 			Subsystem: metricsSubsystem,
 			Name:      "tasks_lost_total",
 			Help:      "Total number of tasks lost due to not being picked up by a builder and failed to be requeued.",
+		}),
+		tasksFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "tasks_failed_total",
+			Help:      "Total number of tasks that failed to be processed by builders (after the configured retries).",
 		}),
 
 		buildStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{

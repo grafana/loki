@@ -526,6 +526,7 @@ func (p *Planner) totalPendingTasks() (total int) {
 func (p *Planner) enqueueTask(task *Task) error {
 	p.activeUsers.UpdateUserTimestamp(task.Tenant, time.Now())
 	return p.tasksQueue.Enqueue(task.Tenant, nil, task, func() {
+		task.timesEnqueued++
 		p.addPendingTask(task)
 	})
 }
@@ -582,9 +583,23 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 		}
 
 		if err := p.forwardTaskToBuilder(builder, builderID, task); err != nil {
+			maxRetries := p.limits.BloomTaskMaxRetries(task.Tenant)
+			if maxRetries > 0 && task.timesEnqueued >= maxRetries {
+				p.metrics.tasksFailed.Inc()
+				p.removePendingTask(task)
+				level.Error(logger).Log(
+					"msg", "task failed after max retries",
+					"retries", task.timesEnqueued,
+					"maxRetries", maxRetries,
+					"err", err,
+				)
+				continue
+			}
+
 			// Re-queue the task if the builder is failing to process the tasks
 			if err := p.enqueueTask(task); err != nil {
 				p.metrics.taskLost.Inc()
+				p.removePendingTask(task)
 				level.Error(logger).Log("msg", "error re-enqueuing task. this task will be lost", "err", err)
 				continue
 			}

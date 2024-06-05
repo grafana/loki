@@ -3439,6 +3439,12 @@ shard_streams:
 # CLI flag: -bloom-build.builder-response-timeout
 [bloom_build_builder_response_timeout: <duration> | default = 0s]
 
+# Experimental. Maximum number of retries for a failed task. If a task fails
+# more than this number of times, it is considered failed and will not be
+# retried. A value of 0 disables this limit.
+# CLI flag: -bloom-build.task-max-retries
+[bloom_build_task_max_retries: <int> | default = 3]
+
 # Experimental. Length of the n-grams created when computing blooms from log
 # lines.
 # CLI flag: -bloom-compactor.ngram-length
