@@ -403,7 +403,9 @@ func Test_BuilderLoop(t *testing.T) {
 		expectedBuilderLoopError error
 
 		// modifyBuilder should leave the builder in a state where it will not return or return an error
-		modifyBuilder func(builder *fakeBuilder)
+		modifyBuilder            func(builder *fakeBuilder)
+		shouldConsumeAfterModify bool
+
 		// resetBuilder should reset the builder to a state where it will return no errors
 		resetBuilder func(builder *fakeBuilder)
 	}{
@@ -433,6 +435,15 @@ func Test_BuilderLoop(t *testing.T) {
 			resetBuilder: func(builder *fakeBuilder) {
 				builder.SetReturnErrorMsg(false)
 			},
+		},
+		{
+			name:                     "exceed max retries",
+			limits:                   &fakeLimits{maxRetries: 1},
+			expectedBuilderLoopError: errPlannerIsNotRunning,
+			modifyBuilder: func(builder *fakeBuilder) {
+				builder.SetReturnError(true)
+			},
+			shouldConsumeAfterModify: true,
 		},
 		{
 			name: "timeout",
@@ -518,14 +529,24 @@ func Test_BuilderLoop(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				// Tasks should not be consumed
-				require.Neverf(
-					t, func() bool {
-						return planner.totalPendingTasks() == 0
-					},
-					5*time.Second, 10*time.Millisecond,
-					"all tasks were consumed but they should not be",
-				)
+				if tc.shouldConsumeAfterModify {
+					require.Eventuallyf(
+						t, func() bool {
+							return planner.totalPendingTasks() == 0
+						},
+						5*time.Second, 10*time.Millisecond,
+						"tasks not consumed, pending: %d", planner.totalPendingTasks(),
+					)
+				} else {
+					require.Neverf(
+						t, func() bool {
+							return planner.totalPendingTasks() == 0
+						},
+						5*time.Second, 10*time.Millisecond,
+						"all tasks were consumed but they should not be",
+					)
+				}
+
 			}
 
 			if tc.resetBuilder != nil {
@@ -655,7 +676,8 @@ func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
 }
 
 type fakeLimits struct {
-	timeout time.Duration
+	timeout    time.Duration
+	maxRetries int
 }
 
 func (f *fakeLimits) BuilderResponseTimeout(_ string) time.Duration {
@@ -672,6 +694,10 @@ func (f *fakeLimits) BloomSplitSeriesKeyspaceBy(_ string) int {
 
 func (f *fakeLimits) BloomBuildMaxBuilders(_ string) int {
 	return 0
+}
+
+func (f *fakeLimits) BloomTaskMaxRetries(_ string) int {
+	return f.maxRetries
 }
 
 func parseDayTime(s string) config.DayTime {
