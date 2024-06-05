@@ -633,6 +633,10 @@ func (p *Planner) forwardTaskToBuilder(
 			errCh <- fmt.Errorf("error processing task result in builder (%s): %w", builderID, err)
 			return
 		}
+		if result.TaskID != task.ID {
+			errCh <- fmt.Errorf("unexpected task ID (%s) in response from builder (%s). Expected task ID is %s", result.TaskID, builderID, task.ID)
+			return
+		}
 		if result.Error != nil {
 			errCh <- fmt.Errorf("error processing task in builder (%s): %w", builderID, result.Error)
 			return
