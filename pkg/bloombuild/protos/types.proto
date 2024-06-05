@@ -51,3 +51,15 @@ message ProtoTask {
   string tsdb = 5;
   repeated ProtoGapWithBlocks gaps = 6;
 }
+
+message ProtoMeta {
+  string metaRef = 1;
+  repeated string sourcesTSDBs = 2;
+  repeated string blockRefs = 3;
+}
+
+message ProtoTaskResult {
+  string taskID = 1;
+  string error = 2;
+  repeated ProtoMeta createdMetas = 3;
+}

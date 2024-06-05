@@ -91,6 +91,10 @@ func (r MetaRef) String() string {
 	return defaultKeyResolver{}.Meta(r).Addr()
 }
 
+func MetaRefFromKey(k string) (MetaRef, error) {
+	return defaultKeyResolver{}.ParseMetaKey(key(k))
+}
+
 // todo rename it
 type Meta struct {
 	MetaRef `json:"-"`

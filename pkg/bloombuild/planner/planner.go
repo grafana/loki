@@ -614,33 +614,63 @@ func (p *Planner) forwardTaskToBuilder(
 	}
 
 	// Launch a goroutine to wait for the response from the builder so we can
-	// wait for a timeout, error or a response from the builder
+	// wait for a timeout, or a response from the builder
+	resultsCh := make(chan *protos.TaskResult)
 	errCh := make(chan error)
 	go func() {
-		// If connection is closed, Recv() will return an error
-		res, err := builder.Recv()
+		result, err := p.receiveResultFromBuilder(builder, builderID, task)
 		if err != nil {
-			err = fmt.Errorf("error receiving response from builder (%s): %w", builderID, err)
+			errCh <- err
+			return
 		}
-		if res.GetError() != "" {
-			err = fmt.Errorf("error processing task in builder (%s): %s", builderID, res.GetError())
-		}
-		errCh <- err // Error will be nil on successful completion
+
+		resultsCh <- result
 	}()
 
+	timeout := make(<-chan time.Time)
 	taskTimeout := p.limits.BuilderResponseTimeout(task.Tenant)
-	if taskTimeout == 0 {
-		// If the timeout is 0 (disabled), just wait for the builder to respond
-		return <-errCh
+	if taskTimeout != 0 {
+		// If the timeout is not 0 (disabled), configure it
+		timeout = time.After(taskTimeout)
 	}
 
-	timeout := time.After(taskTimeout)
 	select {
+	case result := <-resultsCh:
+		// TODO: Return metas forward via channel
+		return result.Error
 	case err := <-errCh:
 		return err
 	case <-timeout:
 		return fmt.Errorf("timeout waiting for response from builder (%s)", builderID)
 	}
+}
+
+// receiveResultFromBuilder waits for a response from the builder and returns the result and an error if any
+// The error will be populated if there is an error receiving the response from the builder, in other words,
+// errors on the builder side will not be returned as an error here, but as an error in the TaskResult.
+func (p *Planner) receiveResultFromBuilder(
+	builder protos.PlannerForBuilder_BuilderLoopServer,
+	builderID string,
+	task *Task,
+) (*protos.TaskResult, error) {
+	// If connection is closed, Recv() will return an error
+	res, err := builder.Recv()
+	if err != nil {
+		return nil, fmt.Errorf("error receiving response from builder (%s): %w", builderID, err)
+	}
+	if res.GetBuilderID() != builderID {
+		return nil, fmt.Errorf("unexpected builder ID (%s) in response from builder (%s)", res.GetBuilderID(), builderID)
+	}
+
+	result, err := protos.FromProtoTaskResult(&res.Result)
+	if err != nil {
+		return nil, fmt.Errorf("error processing task result in builder (%s): %w", builderID, err)
+	}
+	if result.TaskID != task.ID {
+		return nil, fmt.Errorf("unexpected task ID (%s) in response from builder (%s). Expected task ID is %s", result.TaskID, builderID, task.ID)
+	}
+
+	return result, nil
 }
 
 func (p *Planner) isRunningOrStopping() bool {
