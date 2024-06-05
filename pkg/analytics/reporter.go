@@ -262,7 +262,7 @@ func (rep *Reporter) running(ctx context.Context) error {
 		}
 		return nil
 	}
-	rep.startCPUPercentCollection(ctx)
+	rep.startCPUPercentCollection(ctx, time.Minute)
 	// check every minute if we should report.
 	ticker := time.NewTicker(reportCheckInterval)
 	defer ticker.Stop()
@@ -317,13 +317,13 @@ func (rep *Reporter) reportUsage(ctx context.Context, interval time.Time) error 
 	return errs.Err()
 }
 
+const cpuUsageKey = "cpu_usage"
+
 var (
-	cpuUsageKey           = "cpu_usage"
-	cpuUsage              = NewFloat(cpuUsageKey)
-	cpuCollectionInterval = time.Minute
+	cpuUsage = NewFloat(cpuUsageKey)
 )
 
-func (rep *Reporter) startCPUPercentCollection(ctx context.Context) {
+func (rep *Reporter) startCPUPercentCollection(ctx context.Context, cpuCollectionInterval time.Duration) {
 	proc, err := process.NewProcess(int32(os.Getpid()))
 	if err != nil {
 		level.Debug(rep.logger).Log("msg", "failed to get process", "err", err)
