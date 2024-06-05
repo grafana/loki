@@ -1,7 +1,6 @@
 package drain
 
 import (
-	"regexp"
 	"strings"
 	"unicode"
 	"unsafe"
@@ -11,8 +10,6 @@ type LineTokenizer interface {
 	Tokenize(line string) ([]string, interface{})
 	Join(tokens []string, state interface{}) string
 }
-
-var pat = regexp.MustCompile("(<_>)+")
 
 type spacesTokenizer struct{}
 
