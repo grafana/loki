@@ -31,8 +31,8 @@ type stream struct {
 	patterns     *drain.Drain
 	mtx          sync.Mutex
 
-	cfg     metric.AggregationConfig
-	metrics *metric.Chunks
+	cfg    metric.AggregationConfig
+	chunks *metric.Chunks
 
 	evaluator metric.SampleEvaluatorFactory
 
@@ -64,7 +64,7 @@ func newStream(
 
 	if cfg.Enabled {
 		chunks := metric.NewChunks(labels, chunkMetrics, logger)
-		stream.metrics = chunks
+		stream.chunks = chunks
 		stream.evaluator = metric.NewDefaultEvaluatorFactory(chunks)
 	}
 
@@ -91,7 +91,7 @@ func (s *stream) Push(
 		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
 	}
 
-	if s.cfg.Enabled && s.metrics != nil {
+	if s.cfg.Enabled && s.chunks != nil {
 		if s.cfg.LogPushObservations {
 			level.Debug(s.logger).
 				Log("msg", "observing pushed log entries",
@@ -101,7 +101,7 @@ func (s *stream) Push(
 					"sample_ts_ns", s.lastTs,
 				)
 		}
-		s.metrics.Observe(bytes, count, model.TimeFromUnixNano(s.lastTs))
+		s.chunks.Observe(bytes, count, model.TimeFromUnixNano(s.lastTs))
 	}
 	return nil
 }
