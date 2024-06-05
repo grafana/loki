@@ -226,9 +226,8 @@ func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster 
 }
 
 func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
-	tokenizedContent, state := d.tokenizer.Tokenize(content)
-	tokens := deduplicatePlaceholders(tokenizedContent, d.config.ParamString)
-	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
+	tokens, state := d.tokenizer.Tokenize(content)
+	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, true)
 	// Match no existing log cluster
 	if matchCluster == nil {
 		d.clustersCounter++
@@ -250,24 +249,8 @@ func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) 
 	return matchCluster
 }
 
-func deduplicatePlaceholders(tokens []string, param string) []string {
-	if len(tokens) < 2 {
-		return tokens
-	}
-	i := 1
-	for k := 1; k < len(tokens); k++ {
-		if tokens[k] != param || tokens[k] != tokens[k-1] {
-			if i != k {
-				tokens[i] = tokens[k]
-			}
-			i++
-		}
-	}
-	return tokens[:i]
-}
-
 func (d *Drain) PatternString(c *LogCluster) string {
-	s := d.tokenizer.Join(deduplicatePlaceholders(c.Tokens, d.config.ParamString), c.TokenState)
+	s := deduplicatePlaceholders(d.tokenizer.Join(c.Tokens, c.TokenState))
 	if s == d.config.ParamString {
 		return ""
 	}
