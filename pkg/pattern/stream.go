@@ -63,7 +63,7 @@ func newStream(
 	}
 
 	if cfg.Enabled {
-		chunks := metric.NewChunks(labels, chunkMetrics)
+		chunks := metric.NewChunks(labels, chunkMetrics, logger)
 		stream.metrics = chunks
 		stream.evaluator = metric.NewDefaultEvaluatorFactory(chunks)
 	}

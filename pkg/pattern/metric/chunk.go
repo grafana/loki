@@ -6,6 +6,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -35,9 +37,10 @@ type Chunks struct {
 	labels  labels.Labels
 	service string
 	metrics metrics
+	logger  log.Logger
 }
 
-func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics) *Chunks {
+func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics, logger log.Logger) *Chunks {
 	service := labels.Get("service_name")
 	if service == "" {
 		service = "unknown_service"
@@ -51,6 +54,7 @@ func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics) *Chunks {
 			chunks:  chunkMetrics.chunks.WithLabelValues(service),
 			samples: chunkMetrics.samples.WithLabelValues(service),
 		},
+		logger: logger,
 	}
 }
 
@@ -95,6 +99,15 @@ func (c *Chunks) Iterator(
 	maximumSteps := int64(((through-from)/step)+1) * int64(len(c.chunks))
 	// prevent a panic if maximumSteps is negative
 	if maximumSteps < 0 {
+		level.Warn(c.logger).Log(
+			"msg", "returning an empty series because of a negative maximumSteps",
+			"labels", lbls.String(),
+			"from", from,
+			"through", through,
+			"step", step,
+			"maximumSteps", maximumSteps,
+			"num_chunks", len(c.chunks),
+		)
 		series := logproto.Series{
 			Labels:     lbls.String(),
 			Samples:    []logproto.Sample{},
@@ -127,6 +140,22 @@ func (c *Chunks) Iterator(
 		}
 		return 0
 	})
+
+	numSamples := 0
+	for _, chunk := range c.chunks {
+		numSamples += len(chunk.Samples)
+	}
+
+	level.Debug(c.logger).Log(
+		"msg", "found matching samples",
+		"samples", samples,
+		"labels", lbls.String(),
+		"from", from,
+		"through", through,
+		"step", step,
+		"num_chunks", len(c.chunks),
+		"num_samples", numSamples,
+	)
 
 	series := logproto.Series{Labels: lbls.String(), Samples: samples, StreamHash: lbls.Hash()}
 	return iter.NewSeriesIterator(series), nil
