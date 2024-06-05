@@ -548,8 +548,9 @@ func Test_BuilderLoop(t *testing.T) {
 }
 
 type fakeBuilder struct {
-	id    string
-	tasks []*protos.Task
+	id          string
+	tasks       []*protos.Task
+	currTaskIdx int
 	grpc.ServerStream
 
 	returnError    bool
@@ -563,9 +564,10 @@ func newMockBuilder(id string) *fakeBuilder {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &fakeBuilder{
-		id:        id,
-		ctx:       ctx,
-		ctxCancel: cancel,
+		id:          id,
+		currTaskIdx: -1,
+		ctx:         ctx,
+		ctxCancel:   cancel,
 	}
 }
 
@@ -611,10 +613,18 @@ func (f *fakeBuilder) Send(req *protos.PlannerToBuilder) error {
 	}
 
 	f.tasks = append(f.tasks, task)
+	f.currTaskIdx++
 	return nil
 }
 
 func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
+	if len(f.tasks) == 0 {
+		// First call to Recv answers with builderID
+		return &protos.BuilderToPlanner{
+			BuilderID: f.id,
+		}, nil
+	}
+
 	if f.returnError {
 		return nil, fmt.Errorf("fake error from %s", f.id)
 	}
@@ -636,7 +646,11 @@ func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
 
 	return &protos.BuilderToPlanner{
 		BuilderID: f.id,
-		Error:     errMsg,
+		Result: protos.ProtoTaskResult{
+			TaskID:       f.tasks[f.currTaskIdx].ID,
+			Error:        errMsg,
+			CreatedMetas: nil,
+		},
 	}, nil
 }
 

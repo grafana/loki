@@ -615,46 +615,64 @@ func (p *Planner) forwardTaskToBuilder(
 
 	// Launch a goroutine to wait for the response from the builder so we can
 	// wait for a timeout, or a response from the builder
-	errCh := make(chan error)
+	resultsCh := make(chan *protos.TaskResult)
 	go func() {
+
 		// If connection is closed, Recv() will return an error
 		res, err := builder.Recv()
 		if err != nil {
-			errCh <- fmt.Errorf("error receiving response from builder (%s): %w", builderID, err)
+			resultsCh <- &protos.TaskResult{
+				TaskID: task.ID,
+				Error:  fmt.Errorf("error receiving response from builder (%s): %w", builderID, err),
+			}
 			return
 		}
 		if res.GetBuilderID() != builderID {
-			errCh <- fmt.Errorf("unexpected builder ID (%s) in response from builder (%s)", res.GetBuilderID(), builderID)
+			resultsCh <- &protos.TaskResult{
+				TaskID: task.ID,
+				Error:  fmt.Errorf("unexpected builder ID (%s) in response from builder (%s)", res.GetBuilderID(), builderID),
+			}
 			return
 		}
 
 		result, err := protos.FromProtoTaskResult(&res.Result)
 		if err != nil {
-			errCh <- fmt.Errorf("error processing task result in builder (%s): %w", builderID, err)
+			resultsCh <- &protos.TaskResult{
+				TaskID: task.ID,
+				Error:  fmt.Errorf("error processing task result in builder (%s): %w", builderID, err),
+			}
 			return
 		}
 		if result.TaskID != task.ID {
-			errCh <- fmt.Errorf("unexpected task ID (%s) in response from builder (%s). Expected task ID is %s", result.TaskID, builderID, task.ID)
+			resultsCh <- &protos.TaskResult{
+				TaskID: task.ID,
+				Error:  fmt.Errorf("unexpected task ID (%s) in response from builder (%s). Expected task ID is %s", result.TaskID, builderID, task.ID),
+			}
 			return
 		}
 		if result.Error != nil {
-			errCh <- fmt.Errorf("error processing task in builder (%s): %w", builderID, result.Error)
+			resultsCh <- &protos.TaskResult{
+				TaskID: task.ID,
+				Error:  fmt.Errorf("error processing task in builder (%s): %w", builderID, result.Error),
+			}
 			return
 		}
 
-		errCh <- err // Error will be nil on successful completion
+		resultsCh <- result
 	}()
 
 	taskTimeout := p.limits.BuilderResponseTimeout(task.Tenant)
 	if taskTimeout == 0 {
 		// If the timeout is 0 (disabled), just wait for the builder to respond
-		return <-errCh
+		result := <-resultsCh
+		return result.Error
 	}
 
 	timeout := time.After(taskTimeout)
 	select {
-	case err := <-errCh:
-		return err
+	case result := <-resultsCh:
+		// TODO: Return metas forward via channel
+		return result.Error
 	case <-timeout:
 		return fmt.Errorf("timeout waiting for response from builder (%s)", builderID)
 	}
