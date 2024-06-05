@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
@@ -111,20 +112,6 @@ func (q *IngesterQuerier) Samples(
 	return resp, nil
 }
 
-func (q *IngesterQuerier) queryPattern(ctx context.Context, req *logproto.QueryPatternsRequest) ([]pattern_iter.Iterator, error) {
-	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
-		return client.Query(ctx, req)
-	})
-	if err != nil {
-		return nil, err
-	}
-	iterators := make([]pattern_iter.Iterator, len(resps))
-	for i := range resps {
-		iterators[i] = pattern_iter.NewQueryClientIterator(resps[i].response.(logproto.Pattern_QueryClient))
-	}
-	return iterators, nil
-}
-
 func (q *IngesterQuerier) querySample(ctx context.Context, req *logproto.QuerySamplesRequest) ([]loki_iter.SampleIterator, error) {
 	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
 		return client.QuerySample(ctx, req)
@@ -132,6 +119,10 @@ func (q *IngesterQuerier) querySample(ctx context.Context, req *logproto.QuerySa
 	if err != nil {
 		return nil, err
 	}
+	level.Debug(q.logger).Log("msg", "queried patterns ingesters for metric samples",
+		"query", req.Query,
+		"num_responses", len(resps))
+
 	iterators := make([]loki_iter.SampleIterator, len(resps))
 	for i := range resps {
 		iterators[i] = pattern_iter.NewQuerySamplesClientIterator(resps[i].response.(logproto.Pattern_QuerySampleClient))

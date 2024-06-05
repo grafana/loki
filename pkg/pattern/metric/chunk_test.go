@@ -400,4 +400,30 @@ func Test_Chunks_Iterator(t *testing.T) {
 		require.Equal(t, 1, len(res.Series))
 		require.Equal(t, expectedLabels.String(), res.Series[0].GetLabels())
 	})
+
+	t.Run("handle slice capacity out of range", func(t *testing.T) {
+		chunks := Chunks{
+			chunks: []Chunk{
+				{
+					Samples: []Sample{},
+				},
+			},
+			labels: lbls,
+		}
+		it, err := chunks.Iterator(Bytes, nil, 5e4, 0, 1e4)
+		require.NoError(t, err)
+
+		res, err := iter.ReadAllSamples(it)
+		require.NoError(t, err)
+
+		require.Equal(t, 0, len(res.Series))
+
+		it, err = chunks.Iterator(Count, nil, 5e4, 0, 1e4)
+		require.NoError(t, err)
+
+		res, err = iter.ReadAllSamples(it)
+		require.NoError(t, err)
+
+		require.Equal(t, 0, len(res.Series))
+	})
 }

@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -29,19 +31,23 @@ type stream struct {
 	patterns     *drain.Drain
 	mtx          sync.Mutex
 
-	aggregateMetrics bool
-	metrics          *metric.Chunks
+	cfg     metric.AggregationConfig
+	metrics *metric.Chunks
 
 	evaluator metric.SampleEvaluatorFactory
 
 	lastTs int64
+
+	logger log.Logger
 }
 
 func newStream(
 	fp model.Fingerprint,
 	labels labels.Labels,
 	metrics *ingesterMetrics,
-	aggregateMetrics bool,
+	chunkMetrics *metric.ChunkMetrics,
+	cfg metric.AggregationConfig,
+	logger log.Logger,
 ) (*stream, error) {
 	stream := &stream{
 		fp:           fp,
@@ -52,11 +58,12 @@ func newStream(
 			PatternsEvictedTotal:  metrics.patternsDiscardedTotal,
 			PatternsDetectedTotal: metrics.patternsDetectedTotal,
 		}),
-		aggregateMetrics: aggregateMetrics,
+		cfg:    cfg,
+		logger: logger,
 	}
 
-	if aggregateMetrics {
-		chunks := metric.NewChunks(labels)
+	if cfg.Enabled {
+		chunks := metric.NewChunks(labels, chunkMetrics)
 		stream.metrics = chunks
 		stream.evaluator = metric.NewDefaultEvaluatorFactory(chunks)
 	}
@@ -84,7 +91,16 @@ func (s *stream) Push(
 		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
 	}
 
-	if s.aggregateMetrics && s.metrics != nil {
+	if s.cfg.Enabled && s.metrics != nil {
+		if s.cfg.LogPushObservations {
+			level.Debug(s.logger).
+				Log("msg", "observing pushed log entries",
+					"stream", s.labelsString,
+					"bytes", bytes,
+					"count", count,
+					"sample_ts_ns", s.lastTs,
+				)
+		}
 		s.metrics.Observe(bytes, count, model.TimeFromUnixNano(s.lastTs))
 	}
 	return nil

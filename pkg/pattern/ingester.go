@@ -83,7 +83,8 @@ type Ingester struct {
 	loopDone        sync.WaitGroup
 	loopQuit        chan struct{}
 
-	metrics *ingesterMetrics
+	metrics      *ingesterMetrics
+	chunkMetrics *metric.ChunkMetrics
 }
 
 func New(
@@ -93,16 +94,18 @@ func New(
 	logger log.Logger,
 ) (*Ingester, error) {
 	metrics := newIngesterMetrics(registerer, metricsNamespace)
+	chunkMetrics := metric.NewChunkMetrics(registerer, metricsNamespace)
 	registerer = prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer)
 
 	i := &Ingester{
-		cfg:         cfg,
-		logger:      log.With(logger, "component", "pattern-ingester"),
-		registerer:  registerer,
-		metrics:     metrics,
-		instances:   make(map[string]*instance),
-		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		loopQuit:    make(chan struct{}),
+		cfg:          cfg,
+		logger:       log.With(logger, "component", "pattern-ingester"),
+		registerer:   registerer,
+		metrics:      metrics,
+		chunkMetrics: chunkMetrics,
+		instances:    make(map[string]*instance),
+		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		loopQuit:     make(chan struct{}),
 	}
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 	var err error
@@ -347,7 +350,13 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(instanceID, i.logger, i.metrics, i.cfg.MetricAggregation)
+		inst, err = newInstance(
+			instanceID,
+			i.logger,
+			i.metrics,
+			i.chunkMetrics,
+			i.cfg.MetricAggregation,
+		)
 		if err != nil {
 			return nil, err
 		}

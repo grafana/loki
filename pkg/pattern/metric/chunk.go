@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -24,27 +25,48 @@ const (
 	Unsupported
 )
 
-type Chunks struct {
-	chunks []Chunk
-	labels labels.Labels
+type metrics struct {
+	chunks  prometheus.Gauge
+	samples prometheus.Counter
 }
 
-func NewChunks(labels labels.Labels) *Chunks {
+type Chunks struct {
+	chunks  []Chunk
+	labels  labels.Labels
+	service string
+	metrics metrics
+}
+
+func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics) *Chunks {
+	service := labels.Get("service_name")
+	if service == "" {
+		service = "unknown_service"
+	}
+
 	return &Chunks{
-		chunks: make([]Chunk, 0),
-		labels: labels,
+		chunks:  make([]Chunk, 0),
+		labels:  labels,
+		service: service,
+		metrics: metrics{
+			chunks:  chunkMetrics.chunks.WithLabelValues(service),
+			samples: chunkMetrics.samples.WithLabelValues(service),
+		},
 	}
 }
 
 func (c *Chunks) Observe(bytes, count float64, ts model.Time) {
+	c.metrics.samples.Inc()
+
 	if len(c.chunks) == 0 {
 		c.chunks = append(c.chunks, newChunk(bytes, count, ts))
+		c.metrics.chunks.Set(float64(len(c.chunks)))
 		return
 	}
 
 	last := &(c.chunks)[len(c.chunks)-1]
 	if !last.spaceFor(ts) {
 		c.chunks = append(c.chunks, newChunk(bytes, count, ts))
+		c.metrics.chunks.Set(float64(len(c.chunks)))
 		return
 	}
 
@@ -70,8 +92,17 @@ func (c *Chunks) Iterator(
 		}
 	}
 
-	// could have up to through-from/step steps for each chunk
 	maximumSteps := int64(((through-from)/step)+1) * int64(len(c.chunks))
+	// prevent a panic if maximumSteps is negative
+	if maximumSteps < 0 {
+		series := logproto.Series{
+			Labels:     lbls.String(),
+			Samples:    []logproto.Sample{},
+			StreamHash: lbls.Hash(),
+		}
+		return iter.NewSeriesIterator(series), nil
+	}
+
 	samples := make([]logproto.Sample, 0, maximumSteps)
 	for _, chunk := range c.chunks {
 		ss, err := chunk.ForTypeAndRange(typ, from, through)
