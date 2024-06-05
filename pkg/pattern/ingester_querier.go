@@ -65,10 +65,10 @@ func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatte
 	if err != nil {
 		return nil, err
 	}
-	return q.prunePatterns(resp, minClusterSize), nil
+	return prunePatterns(resp, minClusterSize, q.ingesterQuerierMetrics), nil
 }
 
-func (q *IngesterQuerier) prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int) *logproto.QueryPatternsResponse {
+func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int, metrics *ingesterQuerierMetrics) *logproto.QueryPatternsResponse {
 	pruneConfig := drain.DefaultConfig()
 	pruneConfig.SimTh = 1.0 // Merge & de-dup patterns but don't modify them
 
@@ -92,8 +92,8 @@ func (q *IngesterQuerier) prunePatterns(resp *logproto.QueryPatternsResponse, mi
 			Samples: cluster.Samples(),
 		})
 	}
-	q.ingesterQuerierMetrics.patternsPrunedTotal.Add(float64(patternsBefore - len(resp.Series)))
-	q.ingesterQuerierMetrics.patternsRetainedTotal.Add(float64(len(resp.Series)))
+	metrics.patternsPrunedTotal.Add(float64(patternsBefore - len(resp.Series)))
+	metrics.patternsRetainedTotal.Add(float64(len(resp.Series)))
 	return resp
 }
 

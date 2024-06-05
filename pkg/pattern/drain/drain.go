@@ -220,7 +220,7 @@ func (d *Drain) train(tokens []string, stringer func([]string) string, ts int64)
 
 func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
 	tokens := deduplicatePlaceholders(d.tokenizer.Tokenize(content), d.config.ParamString)
-	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
+	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, true)
 	// Match no existing log cluster
 	if matchCluster == nil {
 		d.clustersCounter++
