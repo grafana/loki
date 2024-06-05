@@ -2,8 +2,8 @@ package protos
 
 import (
 	"fmt"
-
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -113,5 +113,95 @@ func (t *Task) ToProtoTask() *ProtoTask {
 		},
 		Tsdb: t.TSDB.Path(),
 		Gaps: protoGaps,
+	}
+}
+
+type TaskResult struct {
+	TaskID       string
+	Error        error
+	CreatedMetas []bloomshipper.Meta
+}
+
+func FromProtoTaskResult(result *ProtoTaskResult) (*TaskResult, error) {
+	if result == nil {
+		return nil, nil
+	}
+
+	if result.Error != "" {
+		return &TaskResult{
+			TaskID: result.TaskID,
+			Error:  errors.New(result.Error),
+		}, nil
+	}
+
+	metas := make([]bloomshipper.Meta, 0, len(result.CreatedMetas))
+	for _, meta := range result.CreatedMetas {
+		metaRef, err := bloomshipper.MetaRefFromKey(meta.MetaRef)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse meta ref %v: %w", meta, err)
+		}
+
+		sources := make([]tsdb.SingleTenantTSDBIdentifier, 0, len(meta.SourcesTSDBs))
+		for _, source := range meta.SourcesTSDBs {
+			tsdbRef, ok := tsdb.ParseSingleTenantTSDBPath(source)
+			if !ok {
+				return nil, fmt.Errorf("failed to parse tsdb path %s", source)
+			}
+			sources = append(sources, tsdbRef)
+		}
+
+		blockRefs := make([]bloomshipper.BlockRef, 0, len(meta.BlockRefs))
+		for _, block := range meta.BlockRefs {
+			b, err := bloomshipper.BlockRefFromKey(block)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse block ref %s: %w", block, err)
+			}
+
+			blockRefs = append(blockRefs, b)
+		}
+
+		metas = append(metas, bloomshipper.Meta{
+			MetaRef: metaRef,
+			Sources: sources,
+			Blocks:  blockRefs,
+		})
+	}
+
+	return &TaskResult{
+		TaskID:       result.TaskID,
+		CreatedMetas: metas,
+	}, nil
+}
+
+func (r *TaskResult) ToProtoTaskResult() *ProtoTaskResult {
+	if r.Error != nil {
+		return &ProtoTaskResult{
+			TaskID: r.TaskID,
+			Error:  r.Error.Error(),
+		}
+	}
+
+	protoMetas := make([]*ProtoMeta, 0, len(r.CreatedMetas))
+	for _, meta := range r.CreatedMetas {
+		metaRefs := make([]string, 0, len(meta.Sources))
+		for _, source := range meta.Sources {
+			metaRefs = append(metaRefs, source.Path())
+		}
+
+		blockRefs := make([]string, 0, len(meta.Blocks))
+		for _, block := range meta.Blocks {
+			blockRefs = append(blockRefs, block.String())
+		}
+
+		protoMetas = append(protoMetas, &ProtoMeta{
+			MetaRef:      meta.MetaRef.String(),
+			SourcesTSDBs: metaRefs,
+			BlockRefs:    blockRefs,
+		})
+	}
+
+	return &ProtoTaskResult{
+		TaskID:       r.TaskID,
+		CreatedMetas: protoMetas,
 	}
 }

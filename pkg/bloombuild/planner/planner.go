@@ -614,17 +614,30 @@ func (p *Planner) forwardTaskToBuilder(
 	}
 
 	// Launch a goroutine to wait for the response from the builder so we can
-	// wait for a timeout, error or a response from the builder
+	// wait for a timeout, or a response from the builder
 	errCh := make(chan error)
 	go func() {
 		// If connection is closed, Recv() will return an error
 		res, err := builder.Recv()
 		if err != nil {
-			err = fmt.Errorf("error receiving response from builder (%s): %w", builderID, err)
+			errCh <- fmt.Errorf("error receiving response from builder (%s): %w", builderID, err)
+			return
 		}
-		if res.GetError() != "" {
-			err = fmt.Errorf("error processing task in builder (%s): %s", builderID, res.GetError())
+		if res.GetBuilderID() != builderID {
+			errCh <- fmt.Errorf("unexpected builder ID (%s) in response from builder (%s)", res.GetBuilderID(), builderID)
+			return
 		}
+
+		result, err := protos.FromProtoTaskResult(&res.Result)
+		if err != nil {
+			errCh <- fmt.Errorf("error processing task result in builder (%s): %w", builderID, err)
+			return
+		}
+		if result.Error != nil {
+			errCh <- fmt.Errorf("error processing task in builder (%s): %w", builderID, result.Error)
+			return
+		}
+
 		errCh <- err // Error will be nil on successful completion
 	}()
 
