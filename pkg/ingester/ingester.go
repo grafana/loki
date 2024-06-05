@@ -23,7 +23,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/modules"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring"
@@ -1043,10 +1042,8 @@ func (i *Ingester) asyncStoreMaxLookBack() time.Duration {
 
 // GetChunkIDs is meant to be used only when using an async store like boltdb-shipper or tsdb.
 func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
-	var status int
 	gcr, err := i.getChunkIDs(ctx, req)
-	status, err = server_util.ClientHTTPStatusAndError(err)
-	err = httpgrpc.Errorf(status, "%s", err.Error())
+	err = server_util.ClientGrpcStatusAndError(err)
 	return gcr, err
 }
 
@@ -1179,10 +1176,8 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 // Series queries the ingester for log stream identifiers (label sets) matching a set of matchers
 func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	var status int
 	sr, err := i.series(ctx, req)
-	status, err = server_util.ClientHTTPStatusAndError(err)
-	err = httpgrpc.Errorf(status, "%s", err.Error())
+	err = server_util.ClientGrpcStatusAndError(err)
 	return sr, err
 }
 
@@ -1350,10 +1345,8 @@ func (i *Ingester) getInstances() []*instance {
 
 // Tail logs matching given query
 func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
-	var status int
 	err := i.tail(req, queryServer)
-	status, err = server_util.ClientHTTPStatusAndError(err)
-	err = httpgrpc.Errorf(status, "%s", err.Error())
+	err = server_util.ClientGrpcStatusAndError(err)
 	return err
 }
 func (i *Ingester) tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
@@ -1402,10 +1395,8 @@ func (i *Ingester) tail(req *logproto.TailRequest, queryServer logproto.Querier_
 
 // TailersCount returns count of active tail requests from a user
 func (i *Ingester) TailersCount(ctx context.Context, _ *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
-	var status int
 	tcr, err := i.tailersCount(ctx)
-	status, err = server_util.ClientHTTPStatusAndError(err)
-	err = httpgrpc.Errorf(status, "%s", err.Error())
+	err = server_util.ClientGrpcStatusAndError(err)
 	return tcr, err
 }
 
@@ -1465,10 +1456,8 @@ func (i *Ingester) GetDetectedFields(_ context.Context, r *logproto.DetectedFiel
 
 // GetDetectedLabels returns map of detected labels and unique values from this ingester
 func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
-	var status int
 	lvr, err := i.getDetectedLabels(ctx, req)
-	status, err = server_util.ClientHTTPStatusAndError(err)
-	err = httpgrpc.Errorf(status, "%s", err.Error())
+	err = server_util.ClientGrpcStatusAndError(err)
 	return lvr, err
 }
 

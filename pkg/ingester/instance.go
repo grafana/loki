@@ -442,10 +442,8 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 }
 
 func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
-	var status int
 	it, err := i.query(ctx, req)
-	status, err = server_util.ClientHTTPStatusAndError(err)
-	err = httpgrpc.Errorf(status, "%s", err.Error())
+	err = server_util.ClientGrpcStatusAndError(err)
 	return it, err
 }
 
@@ -504,10 +502,8 @@ func (i *instance) query(ctx context.Context, req logql.SelectLogParams) (iter.E
 }
 
 func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
-	var status int
 	it, err := i.querySample(ctx, req)
-	status, err = server_util.ClientHTTPStatusAndError(err)
-	err = httpgrpc.Errorf(status, "%s", err.Error())
+	err = server_util.ClientGrpcStatusAndError(err)
 	return it, err
 }
 
@@ -573,10 +569,8 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 // If label matchers are given only the matching streams are fetched from the index.
 // The label names or values are then retrieved from those matching streams.
 func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matchers ...*labels.Matcher) (*logproto.LabelResponse, error) {
-	var status int
 	lr, err := i.label(ctx, req)
-	status, err = server_util.ClientHTTPStatusAndError(err)
-	err = httpgrpc.Errorf(status, "%s", err.Error())
+	err = server_util.ClientGrpcStatusAndError(err)
 	return lr, err
 }
 
@@ -734,10 +728,8 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
-	var status int
 	isr, err := i.getStats(ctx, req)
-	status, err = server_util.ClientHTTPStatusAndError(err)
-	err = httpgrpc.Errorf(status, "%s", err.Error())
+	err = server_util.ClientGrpcStatusAndError(err)
 	return isr, err
 }
 
@@ -798,10 +790,8 @@ func (i *instance) getStats(ctx context.Context, req *logproto.IndexStatsRequest
 }
 
 func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
-	var status int
 	vr, err := i.getVolume(ctx, req)
-	status, err = server_util.ClientHTTPStatusAndError(err)
-	err = httpgrpc.Errorf(status, "%s", err.Error())
+	err = server_util.ClientGrpcStatusAndError(err)
 	return vr, err
 }
 
