@@ -25,7 +25,8 @@ type IngesterQuerier struct {
 
 	ringClient *RingClient
 
-	registerer prometheus.Registerer
+	registerer             prometheus.Registerer
+	ingesterQuerierMetrics *ingesterQuerierMetrics
 }
 
 func NewIngesterQuerier(
@@ -36,10 +37,11 @@ func NewIngesterQuerier(
 	logger log.Logger,
 ) (*IngesterQuerier, error) {
 	return &IngesterQuerier{
-		logger:     log.With(logger, "component", "pattern-ingester-querier"),
-		ringClient: ringClient,
-		cfg:        cfg,
-		registerer: prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer),
+		logger:                 log.With(logger, "component", "pattern-ingester-querier"),
+		ringClient:             ringClient,
+		cfg:                    cfg,
+		registerer:             prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer),
+		ingesterQuerierMetrics: newIngesterQuerierMetrics(registerer, metricsNamespace),
 	}, nil
 }
 
@@ -63,11 +65,15 @@ func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatte
 	if err != nil {
 		return nil, err
 	}
-	return prunePatterns(resp, minClusterSize), nil
+	return q.prunePatterns(resp, minClusterSize), nil
 }
 
-func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int) *logproto.QueryPatternsResponse {
-	d := drain.New(drain.DefaultConfig(), nil)
+func (q *IngesterQuerier) prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int) *logproto.QueryPatternsResponse {
+	pruneConfig := drain.DefaultConfig()
+	pruneConfig.SimTh = 1.0 // Merge & de-dup patterns but don't modify them
+
+	patternsBefore := len(resp.Series)
+	d := drain.New(pruneConfig, nil)
 	for _, p := range resp.Series {
 		d.TrainPattern(p.Pattern, p.Samples)
 	}
@@ -86,6 +92,8 @@ func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int) *lo
 			Samples: cluster.Samples(),
 		})
 	}
+	q.ingesterQuerierMetrics.patternsPrunedTotal.Add(float64(patternsBefore - len(resp.Series)))
+	q.ingesterQuerierMetrics.patternsRetainedTotal.Add(float64(len(resp.Series)))
 	return resp
 }
 
