@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -480,7 +481,6 @@ func TestDrain_TrainGeneratesMatchablePatterns(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) {
@@ -568,5 +568,60 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 			}
 		})
 	}
+}
 
+func TestDeduplicatePlaceholders(b *testing.T) {
+	type dedupCase struct {
+		line string
+		want string
+	}
+	cases := []dedupCase{
+		{
+			line: "abcd",
+			want: "abcd",
+		},
+		{
+			line: "<_><_>abcd",
+			want: "<_>abcd",
+		},
+		{
+			line: strings.Repeat("<_>", 100),
+			want: "<_>",
+		},
+		{
+			line: "<_> <_>",
+			want: "<_> <_>",
+		},
+		{
+			line: strings.Repeat("<_> ", 100),
+			want: strings.Repeat("<_> ", 100),
+		},
+		{
+			line: "<_><<_>",
+			want: "<_><<_>",
+		},
+		{
+			line: "<_><->",
+			want: "<_><->",
+		},
+		{
+			line: strings.Repeat(strings.Repeat("<_>", 100)+" ", 100),
+			want: strings.Repeat("<_> ", 100),
+		},
+		{
+			line: "<<<<<<<_><_>>>>>>>>",
+			want: "<<<<<<<_>>>>>>>>",
+		},
+		{
+			line: strings.Repeat("A", 100) + "<_><_>",
+			want: strings.Repeat("A", 100) + "<_>",
+		},
+	}
+
+	for i, tc := range cases {
+		b.Run(fmt.Sprintf("Dedup %d", i), func(t *testing.T) {
+			got := deduplicatePlaceholders(tc.line)
+			require.Equal(t, tc.want, got)
+		})
+	}
 }

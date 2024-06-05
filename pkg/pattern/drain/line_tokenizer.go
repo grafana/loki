@@ -3,7 +3,6 @@ package drain
 import (
 	"strings"
 	"unicode"
-	"unsafe"
 )
 
 type LineTokenizer interface {
@@ -13,11 +12,11 @@ type LineTokenizer interface {
 
 type spacesTokenizer struct{}
 
-func (spacesTokenizer) Tokenize(line string) ([]string, []int) {
+func (spacesTokenizer) Tokenize(line string) ([]string, interface{}) {
 	return strings.Split(line, " "), nil
 }
 
-func (spacesTokenizer) Join(tokens []string, state []int) string {
+func (spacesTokenizer) Join(tokens []string, _ interface{}) string {
 	return strings.Join(tokens, " ")
 }
 
@@ -72,31 +71,6 @@ func (p *punctuationTokenizer) Tokenize(line string) ([]string, interface{}) {
 	}
 
 	return tokens[:nextTokenIdx], spacesAfter[:nextSpaceIdx]
-}
-
-func deduplicatePlaceholders(line string) string {
-	first := strings.Index(line, "<_><_>")
-	if first == -1 {
-		return line
-	}
-	builder := make([]byte, 0, len(line))
-	low := 0
-	for i := first; i < len(line)-5; i++ {
-		if line[i:i+3] == "<_>" {
-			high := i + 3
-			for ; high < len(line)-2; high += 3 {
-				if line[high:high+3] != "<_>" {
-					break
-				}
-			}
-			builder = append(builder, line[low:i+3]...)
-			low = high
-			i = high
-		}
-	}
-	builder = append(builder, line[low:]...)
-
-	return unsafe.String(unsafe.SliceData(builder), len(builder))
 }
 
 func (p *punctuationTokenizer) Join(tokens []string, state interface{}) string {

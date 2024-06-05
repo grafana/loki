@@ -25,7 +25,9 @@ package drain
 import (
 	"math"
 	"strconv"
+	"strings"
 	"unicode"
+	"unsafe"
 
 	"github.com/hashicorp/golang-lru/v2/simplelru"
 	"github.com/prometheus/common/model"
@@ -247,6 +249,31 @@ func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) 
 	}
 	matchCluster.merge(samples)
 	return matchCluster
+}
+
+func deduplicatePlaceholders(line string) string {
+	first := strings.Index(line, "<_><_>")
+	if first == -1 {
+		return line
+	}
+	builder := make([]byte, 0, len(line))
+	low := 0
+	for i := first; i < len(line)-5; i++ {
+		if line[i:i+3] == "<_>" {
+			high := i + 3
+			for ; high < len(line)-2; high += 3 {
+				if line[high:high+3] != "<_>" {
+					break
+				}
+			}
+			builder = append(builder, line[low:i+3]...)
+			low = high
+			i = high
+		}
+	}
+	builder = append(builder, line[low:]...)
+
+	return unsafe.String(unsafe.SliceData(builder), len(builder))
 }
 
 func (d *Drain) PatternString(c *LogCluster) string {
