@@ -809,6 +809,7 @@ func Test_processTenantTaskResults(t *testing.T) {
 }
 
 type fakeBuilder struct {
+	mx          sync.Mutex
 	id          string
 	tasks       []*protos.Task
 	currTaskIdx int
@@ -833,6 +834,8 @@ func newMockBuilder(id string) *fakeBuilder {
 }
 
 func (f *fakeBuilder) ReceivedTasks() []*protos.Task {
+	f.mx.Lock()
+	defer f.mx.Unlock()
 	return f.tasks
 }
 
@@ -873,6 +876,8 @@ func (f *fakeBuilder) Send(req *protos.PlannerToBuilder) error {
 		return err
 	}
 
+	f.mx.Lock()
+	defer f.mx.Unlock()
 	f.tasks = append(f.tasks, task)
 	f.currTaskIdx++
 	return nil
