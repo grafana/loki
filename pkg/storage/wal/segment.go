@@ -1,12 +1,14 @@
 package wal
 
 import (
+	"context"
 	"io"
 	"sort"
 
 	"github.com/dolthub/swiss"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
@@ -101,6 +103,13 @@ func (b *WalSegmentWriter) WriteTo(w io.Writer) (int64, error) {
 		total += n
 		offset = append(offset, total)
 	}
+
+	// todo
+	idxw, err := index.NewWriterBufferWithVersion(context.TODO(), index.FormatV3)
+	if err != nil {
+		return total, err
+	}
+	idxw.Close()
 	// Write Symbols.
 	// Write Stream offsets, tenantID, labels ref.
 	// TOC
@@ -112,17 +121,7 @@ func (b *WalSegmentWriter) WriteTo(w io.Writer) (int64, error) {
 var magicNumber = uint32(0x12EE56A)
 
 func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
-	// todo how to encode stream segment ?
-	// blocks have a footer with min/max timestamp and offsets, and footer size.
-	// block has a timestamps delta varint encoded, and list of lengths of entries.
-	// todo: support structured metadata
-	// s2w := s2.NewWriter(w)
-	// written := 0
-	// buffer
-	// for _, e := range s.entries {
-	// 	// s2w.Write(p []byte)
-	// }
-	return 0, nil
+	return writeChunk(w, s.entries, EncodingSnappy)
 }
 
 // Reset clears the writer.

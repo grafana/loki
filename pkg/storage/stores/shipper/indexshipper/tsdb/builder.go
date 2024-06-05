@@ -113,7 +113,7 @@ func (b *Builder) Build(
 
 	var writer *index.Writer
 
-	writer, err = index.NewWriterWithVersion(ctx, b.version, tmpPath)
+	writer, err = index.NewWriterFileWithVersion(ctx, b.version, tmpPath)
 	if err != nil {
 		return id, err
 	}

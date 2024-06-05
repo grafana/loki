@@ -89,6 +89,7 @@ func writeChunk(w io.Writer, entries []*logproto.Entry, encoding EncodingType) (
 	crc.Write(buf[:n])
 	written += int64(n)
 
+	// todo: investigate delta+bitpacking from https://github.com/ronanh/intcomp or prometheus bitstream.
 	// Write timestamps and lengths
 	var prevT, prevDelta, t, delta uint64
 	for i, e := range entries {
