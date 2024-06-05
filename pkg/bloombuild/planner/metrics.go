@@ -24,6 +24,7 @@ type Metrics struct {
 	connectedBuilders prometheus.GaugeFunc
 	queueDuration     prometheus.Histogram
 	inflightRequests  prometheus.Summary
+	tasksRequeued     prometheus.Counter
 	taskLost          prometheus.Counter
 
 	buildStarted   prometheus.Counter
@@ -65,6 +66,12 @@ func NewMetrics(
 			Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.02, 0.8: 0.02, 0.9: 0.01, 0.95: 0.01, 0.99: 0.001},
 			MaxAge:     time.Minute,
 			AgeBuckets: 6,
+		}),
+		tasksRequeued: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "tasks_requeued_total",
+			Help:      "Total number of tasks requeued due to not being picked up by a builder.",
 		}),
 		taskLost: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,

@@ -3433,6 +3433,12 @@ shard_streams:
 # CLI flag: -bloom-build.max-builders
 [bloom_build_max_builders: <int> | default = 0]
 
+# Experimental. Timeout for a builder to finish a task. If a builder does not
+# respond within this time, it is considered failed and the task will be
+# requeued. 0 disables the timeout.
+# CLI flag: -bloom-build.builder-response-timeout
+[bloom_build_builder_response_timeout: <duration> | default = 0s]
+
 # Experimental. Length of the n-grams created when computing blooms from log
 # lines.
 # CLI flag: -bloom-compactor.ngram-length
