@@ -2,6 +2,7 @@ package protos
 
 import (
 	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
