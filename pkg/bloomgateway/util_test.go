@@ -201,7 +201,7 @@ func TestPartitionRequest(t *testing.T) {
 					{
 						Fingerprint: 0x00,
 						Refs: []*logproto.ShortRef{
-							{From: ts.Add(-13 * time.Hour), Through: ts.Add(-12 * time.Hour)},
+							{From: ts.Add(-14 * time.Hour), Through: ts.Add(-13 * time.Hour)},
 							{From: ts.Add(13 * time.Hour), Through: ts.Add(14 * time.Hour)},
 						},
 					},
@@ -306,35 +306,69 @@ func TestPartitionRequest(t *testing.T) {
 					{
 						Fingerprint: 0x00,
 						Refs: []*logproto.ShortRef{
-							{From: ts.Add(-14 * time.Hour), Through: ts.Add(-13 * time.Hour)},
-							{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)},
-							{From: ts.Add(-11 * time.Hour), Through: ts.Add(-10 * time.Hour)},
+							{From: ts.Add(-14 * time.Hour), Through: ts.Add(-13 * time.Hour)}, // previous day
+							{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)}, // previous & target day
+							{From: ts.Add(-11 * time.Hour), Through: ts.Add(-10 * time.Hour)}, // target day
+						},
+					},
+				},
+			},
+			exp: []seriesWithInterval{
+				// previous day
+				{
+					interval: bloomshipper.Interval{Start: ts.Add(-14 * time.Hour), End: ts.Add(-12 * time.Hour)},
+					day:      config.NewDayTime(mktime("2024-01-23 00:00")),
+					series: []*logproto.GroupedChunkRefs{
+						{
+							Fingerprint: 0x00,
+							Refs: []*logproto.ShortRef{
+								{From: ts.Add(-14 * time.Hour), Through: ts.Add(-13 * time.Hour)}, // previous day
+								{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)}, // previous & target day
+							},
+						},
+					},
+				},
+				// target day
+				{
+					interval: bloomshipper.Interval{Start: ts.Add(-12 * time.Hour), End: ts.Add(-10 * time.Hour)},
+					day:      config.NewDayTime(mktime("2024-01-24 00:00")),
+					series: []*logproto.GroupedChunkRefs{
+						{
+							Fingerprint: 0x00,
+							Refs: []*logproto.ShortRef{
+								{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)}, // previous & target day
+								{From: ts.Add(-11 * time.Hour), Through: ts.Add(-10 * time.Hour)}, // target day
+							},
+						},
+					},
+				},
+			},
+		},
+
+		"through target day inclusion": {
+			inp: &logproto.FilterChunkRefRequest{
+				// Only search for the target day, but ensure chunks whose through (but not from)
+				// is on the target day are included
+				From:    ts.Add(-1 * time.Hour),
+				Through: ts,
+				Refs: []*logproto.GroupedChunkRefs{
+					{
+						Fingerprint: 0x00,
+						Refs: []*logproto.ShortRef{
+							{From: ts.Add(-13 * time.Hour), Through: ts.Add(-1 * time.Hour)}, // previous & target day
 						},
 					},
 				},
 			},
 			exp: []seriesWithInterval{
 				{
-					interval: bloomshipper.Interval{Start: ts.Add(-14 * time.Hour), End: ts.Add(-11 * time.Hour)},
-					day:      config.NewDayTime(mktime("2024-01-23 00:00")),
-					series: []*logproto.GroupedChunkRefs{
-						{
-							Fingerprint: 0x00,
-							Refs: []*logproto.ShortRef{
-								{From: ts.Add(-14 * time.Hour), Through: ts.Add(-13 * time.Hour)},
-								{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)},
-							},
-						},
-					},
-				},
-				{
-					interval: bloomshipper.Interval{Start: ts.Add(-11 * time.Hour), End: ts.Add(-10 * time.Hour)},
+					interval: bloomshipper.Interval{Start: ts.Add(-12 * time.Hour), End: ts.Add(-1 * time.Hour)},
 					day:      config.NewDayTime(mktime("2024-01-24 00:00")),
 					series: []*logproto.GroupedChunkRefs{
 						{
 							Fingerprint: 0x00,
 							Refs: []*logproto.ShortRef{
-								{From: ts.Add(-11 * time.Hour), Through: ts.Add(-10 * time.Hour)},
+								{From: ts.Add(-13 * time.Hour), Through: ts.Add(-1 * time.Hour)}, // inherited from the chunk
 							},
 						},
 					},
@@ -448,4 +482,79 @@ func createBlockRefsFromBlockData(t *testing.T, tenant string, data []*bloomship
 		})
 	}
 	return res
+}
+
+func TestOverlappingChunks(t *testing.T) {
+	mkRef := func(from, through model.Time) *logproto.ShortRef {
+		return &logproto.ShortRef{From: from, Through: through}
+	}
+
+	for _, tc := range []struct {
+		desc           string
+		from, through  model.Time
+		input          []*logproto.ShortRef
+		exp            []*logproto.ShortRef
+		expMin, expMax model.Time
+	}{
+		{
+			desc: "simple ordered",
+			from: 0, through: 10,
+			input: []*logproto.ShortRef{
+				mkRef(0, 2),
+				mkRef(3, 5),
+				mkRef(6, 8),
+				mkRef(10, 12),
+				mkRef(14, 16),
+			},
+			exp: []*logproto.ShortRef{
+				mkRef(0, 2),
+				mkRef(3, 5),
+				mkRef(6, 8),
+				mkRef(10, 12),
+			},
+			expMin: 0, expMax: 10,
+		},
+		{
+			desc: "refs through timestamps aren't in monotonic order",
+			from: 0, through: 10,
+			input: []*logproto.ShortRef{
+				mkRef(0, 2),
+				mkRef(3, 5),
+				mkRef(6, 8),
+				mkRef(10, 12),
+				mkRef(14, 16),
+			},
+			exp: []*logproto.ShortRef{
+				mkRef(0, 2),
+				mkRef(3, 5),
+				mkRef(6, 8),
+				mkRef(10, 12),
+			},
+			expMin: 0, expMax: 10,
+		},
+		{
+			desc: "expMin & expMax are within from/through",
+			from: 10, through: 20,
+			input: []*logproto.ShortRef{
+				mkRef(0, 2),
+				mkRef(3, 5),
+				mkRef(6, 8),
+				mkRef(14, 16),
+				mkRef(17, 19),
+				mkRef(21, 30),
+			},
+			exp: []*logproto.ShortRef{
+				mkRef(14, 16),
+				mkRef(17, 19),
+			},
+			expMin: 14, expMax: 19,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			minTs, maxTs, got := overlappingChunks(tc.from, tc.through, model.Latest, model.Earliest, tc.input)
+			require.Equal(t, tc.expMin, minTs)
+			require.Equal(t, tc.expMax, maxTs)
+			require.Equal(t, tc.exp, got)
+		})
+	}
 }
