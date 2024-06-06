@@ -160,7 +160,7 @@ func (p *Planner) running(ctx context.Context) error {
 type tenantTableTaskResults struct {
 	totalTasks    int
 	originalMetas []bloomshipper.Meta
-	resultsCh     chan *TaskResult
+	resultsCh     chan *protos.TaskResult
 }
 
 type tableTenant struct {
@@ -237,7 +237,7 @@ func (p *Planner) runOne(ctx context.Context) error {
 			}
 
 			var enqueuedTasks int
-			resultsCh := make(chan *TaskResult, len(tasks))
+			resultsCh := make(chan *protos.TaskResult, len(tasks))
 
 			now := time.Now()
 			for _, task := range tasks {
@@ -297,7 +297,7 @@ func (p *Planner) processTenantTaskResults(
 	tenant string,
 	originalMetas []bloomshipper.Meta,
 	totalTasks int,
-	resultsCh <-chan *TaskResult,
+	resultsCh <-chan *protos.TaskResult,
 ) error {
 	logger := log.With(p.logger, table, table.Addr(), "tenant", tenant)
 	level.Debug(logger).Log("msg", "waiting for all tasks to be completed", "tasks", totalTasks)
@@ -306,16 +306,46 @@ func (p *Planner) processTenantTaskResults(
 	for i := 0; i < totalTasks; i++ {
 		select {
 		case <-ctx.Done():
-			level.Warn(logger).Log("msg", "context done while waiting for task results", "err", ctx.Err())
-			return ctx.Err()
+			if err := ctx.Err(); err != nil && !errors.Is(err, context.Canceled) {
+				level.Error(logger).Log("msg", "planner context done with error", "err", err)
+				return err
+			}
+
+			// No error or context canceled, just return
+			level.Debug(logger).Log("msg", "context done while waiting for task results")
+			return nil
 		case result := <-resultsCh:
-			newMetas = append(newMetas, result.metas...)
+			if result == nil {
+				level.Error(logger).Log("msg", "received nil task result")
+				continue
+			}
+			if result.Error != nil {
+				level.Error(logger).Log(
+					"msg", "task failed",
+					"err", result.Error,
+					"task", result.TaskID,
+				)
+				continue
+			}
+
+			newMetas = append(newMetas, result.CreatedMetas...)
 		}
 	}
 
-	level.Debug(logger).Log("msg", "all tasks completed", "tasks", totalTasks, "originalMetas", len(originalMetas))
-	combined := append(originalMetas, newMetas...)
+	level.Debug(logger).Log(
+		"msg", "all tasks completed",
+		"tasks", totalTasks,
+		"originalMetas", len(originalMetas),
+		"newMetas", len(newMetas),
+	)
 
+	if len(newMetas) == 0 {
+		// No new metas were created, nothing to delete
+		// Note: this would only happen if all tasks failed
+		return nil
+	}
+
+	combined := append(originalMetas, newMetas...)
 	outdated, err := outdatedMetas(combined)
 	if err != nil {
 		return fmt.Errorf("failed to find outdated metas: %w", err)
@@ -777,13 +807,12 @@ func (p *Planner) forwardTaskToBuilder(
 
 	select {
 	case result := <-resultsCh:
-		// TODO: Return metas forward via channel
-
 		// Send the result back to the task. The channel is buffered, so this should not block.
-		// TODO(salvacorts): Pass new and tombstoned metas
-		//task.resultsChannel <- NewTaskResult(nil)
-
-		return result.Error
+		// Note: Errors from the result are not returned here since we don't retry tasks
+		// that return with an error. I.e. we won't retry errors forwarded from the builder.
+		// TODO(salvacorts): Filter and return errors that can be retried.
+		task.resultsChannel <- result
+		return nil
 	case err := <-errCh:
 		return err
 	case <-timeout:
