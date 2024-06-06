@@ -18,7 +18,7 @@ type recalculateOwnedStreams struct {
 
 	logger log.Logger
 
-	instance         *instance
+	instances        map[string]*instance
 	ingesterID       string
 	previousRing     ring.ReplicationSet
 	ingestersRing    ring.ReadRing
@@ -26,12 +26,12 @@ type recalculateOwnedStreams struct {
 	ticker           *time.Ticker
 }
 
-func newRecalculateOwnedStreams(instance *instance, ring ring.ReadRing, ringPollInterval time.Duration, logger log.Logger) *recalculateOwnedStreams {
+func newRecalculateOwnedStreams(instances map[string]*instance, ingesterID string, ring ring.ReadRing, ringPollInterval time.Duration, logger log.Logger) *recalculateOwnedStreams {
 	svc := &recalculateOwnedStreams{
 		ingestersRing:    ring,
-		instance:         instance,
+		instances:        instances,
 		ringPollInterval: ringPollInterval,
-		ingesterID:       instance.ingesterID,
+		ingesterID:       ingesterID,
 		logger:           logger,
 	}
 	svc.Service = services.NewBasicService(svc.starting, svc.running, svc.stopping)
@@ -60,9 +60,12 @@ func (s *recalculateOwnedStreams) running(ctx context.Context) error {
 					level.Error(s.logger).Log("msg", "failed to get token ranges for ingester", "error", err)
 					continue
 				}
-				err = s.instance.updateOwnedStreams(ownedTokenRange)
-				if err != nil {
-					level.Error(s.logger).Log("msg", "failed to update owned streams", "error", err)
+
+				for _, instance := range s.instances {
+					err = instance.updateOwnedStreams(ownedTokenRange)
+					if err != nil {
+						level.Error(s.logger).Log("msg", "failed to update owned streams", "error", err)
+					}
 				}
 			}
 		}

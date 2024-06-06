@@ -9,6 +9,7 @@ import (
 
 type ownedStreamService struct {
 	services.Service
+
 	tenantID            string
 	limiter             *Limiter
 	fixedLimit          *atomic.Int32
@@ -47,6 +48,12 @@ func (s *ownedStreamService) incOwnedStreamCount() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.ownedStreamCount++
+}
+
+func (s *ownedStreamService) incNotOwnedStreamCount() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.notOwnedStreamCount++
 }
 
 func (s *ownedStreamService) decOwnedStreamCount() {

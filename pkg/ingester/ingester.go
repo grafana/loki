@@ -249,8 +249,9 @@ type Ingester struct {
 
 	customStreamsTracker push.UsageTracker
 
-	// readRing is the ring used by the ownedStreamsService to update the owned streams count for an ingester instance.
-	readRing ring.ReadRing
+	// recalculateOwnedStreams periodically checks the ring for changes and recalculates owned streams for each instance.
+	readRing                ring.ReadRing
+	recalculateOwnedStreams *recalculateOwnedStreams
 }
 
 // New makes a new Ingester.
@@ -332,6 +333,15 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	if i.cfg.SampleExtractorWrapper != nil {
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
+
+	recalculateOwnedStreams := newRecalculateOwnedStreams(i.instances, i.lifecycler.ID, i.readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
+	if err := recalculateOwnedStreams.StartAsync(context.Background()); err != nil {
+		return nil, err
+	}
+	if err := recalculateOwnedStreams.AwaitRunning(context.Background()); err != nil {
+		return nil, err
+	}
+	i.recalculateOwnedStreams = recalculateOwnedStreams
 
 	return i, nil
 }
