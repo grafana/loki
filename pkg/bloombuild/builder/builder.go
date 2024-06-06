@@ -368,7 +368,7 @@ func (b *Builder) loadWorkForGap(
 	tenant string,
 	id tsdb.Identifier,
 	gap protos.GapWithBlocks,
-) (v1.Iterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBloom], error) {
+) (v1.Iterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBlooms], error) {
 	// load a series iterator for the gap
 	seriesItr, err := b.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.Bounds)
 	if err != nil {

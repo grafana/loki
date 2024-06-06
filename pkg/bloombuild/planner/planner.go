@@ -252,7 +252,7 @@ func (p *Planner) loadWork(
 		if err != nil {
 			return nil, fmt.Errorf("error loading tenants: %w", err)
 		}
-		level.Debug(p.logger).Log("msg", "loaded tenants", "table", table, "tenants", tenants.Len())
+		level.Debug(p.logger).Log("msg", "loaded tenants", "table", table, "tenants", tenants.Remaining())
 
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
 			p.metrics.tenantsDiscovered.Inc()
