@@ -215,6 +215,50 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		}
 	})
 
+	t.Run("request cancellation does not result in channel locking", func(t *testing.T) {
+		now := mktime("2024-01-25 10:00")
+
+		// replace store implementation and re-initialize workers and sub-services
+		refs, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
+		mockStore := newMockBloomStore(queriers, metas)
+		mockStore.delay = 2000 * time.Millisecond
+
+		reg := prometheus.NewRegistry()
+		gw, err := New(cfg, mockStore, logger, reg)
+		require.NoError(t, err)
+
+		err = services.StartAndAwaitRunning(context.Background(), gw)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			err = services.StopAndAwaitTerminated(context.Background(), gw)
+			require.NoError(t, err)
+		})
+
+		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
+
+		// saturate workers
+		// then send additional request
+		for i := 0; i < gw.cfg.WorkerConcurrency+1; i++ {
+			expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+			require.NoError(t, err)
+
+			req := &logproto.FilterChunkRefRequest{
+				From:    now.Add(-24 * time.Hour),
+				Through: now,
+				Refs:    groupRefs(t, chunkRefs),
+				Plan:    plan.QueryPlan{AST: expr},
+				Blocks:  stringSlice(refs),
+			}
+
+			ctx, cancelFn := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			ctx = user.InjectOrgID(ctx, tenantID)
+			t.Cleanup(cancelFn)
+
+			res, err := gw.FilterChunkRefs(ctx, req)
+			require.ErrorContainsf(t, err, context.DeadlineExceeded.Error(), "%+v", res)
+		}
+	})
+
 	t.Run("returns unfiltered chunk refs if no filters provided", func(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
