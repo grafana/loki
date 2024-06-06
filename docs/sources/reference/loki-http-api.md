@@ -1429,7 +1429,7 @@ DELETE /loki/api/v1/delete
 Query parameters:
 
 - `request_id=<request_id>`: Identifies the delete request to cancel; IDs are found using the `delete` endpoint.
-- `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled.
+- `force=<boolean>`: When the `force` query parameter is true, partially completed and processed delete requests will be canceled.
   {{% admonition type="note" %}}
   some data from the request may still be deleted and the deleted request will be listed as 'processed'.
   {{% /admonition %}}

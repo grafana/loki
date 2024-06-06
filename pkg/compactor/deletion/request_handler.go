@@ -268,15 +268,22 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 		return
 	}
 
-	toDelete := filterProcessed(deleteRequests)
-	if len(toDelete) == 0 {
-		http.Error(w, "deletion of request which is in process or already processed is not allowed", http.StatusBadRequest)
-		return
-	}
+	force := params.Get("force") == "true"
+	var toDelete []DeleteRequest
 
-	if len(toDelete) != len(deleteRequests) && params.Get("force") != "true" {
-		http.Error(w, "Unable to cancel partially completed delete request. To force, use the ?force query parameter", http.StatusBadRequest)
-		return
+	if force {
+		toDelete = deleteRequests
+	} else {
+		toDelete = filterProcessed(deleteRequests)
+		if len(toDelete) == 0 {
+			http.Error(w, "deletion of request which is in process or already processed is not allowed", http.StatusBadRequest)
+			return
+		}
+
+		if len(toDelete) != len(deleteRequests) {
+			http.Error(w, "Unable to cancel partially completed delete request. To force, use the ?force query parameter", http.StatusBadRequest)
+			return
+		}
 	}
 
 	if err := dm.deleteRequestsStore.RemoveDeleteRequests(ctx, toDelete); err != nil {
