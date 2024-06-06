@@ -359,7 +359,7 @@ func createTasks(n int, resultsCh chan *protos.TaskResult) []*QueueTask {
 	tasks := make([]*QueueTask, 0, n)
 	// Enqueue tasks
 	for i := 0; i < n; i++ {
-		task := NewTask(
+		task := NewQueueTask(
 			context.Background(), time.Now(),
 			protos.NewTask(config.NewDayTable(testDay, "fake"), "fakeTenant", v1.NewBounds(0, 10), tsdbID(1), nil),
 			resultsCh,

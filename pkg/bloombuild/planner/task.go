@@ -18,7 +18,7 @@ type QueueTask struct {
 	ctx           context.Context
 }
 
-func NewTask(
+func NewQueueTask(
 	ctx context.Context,
 	queueTime time.Time,
 	task *protos.Task,
