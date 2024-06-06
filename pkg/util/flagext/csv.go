@@ -30,6 +30,7 @@ func (v *CSV[T]) Set(s string) error {
 	}
 	var zero T
 	values := strings.Split(s, ",")
+	*v = make(CSV[T], 0, len(values))
 	for _, val := range values {
 		el, err := zero.Parse(val)
 		if err != nil {
