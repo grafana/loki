@@ -325,7 +325,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				{
 					Fingerprint: uint64(1000 + 100*idx),
 					UserID:      tenantID,
-					From:        now.Add(-24 * time.Hour),
+					From:        now.Add(-4 * time.Hour),
 					Through:     now,
 					Checksum:    uint32(idx),
 				},
@@ -335,7 +335,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 					TenantID:       tenantID,
 					TableName:      "table_1",
 					Bounds:         v1.NewBounds(0, 10000),
-					StartTimestamp: now.Add(-24 * time.Hour),
+					StartTimestamp: now.Add(-4 * time.Hour),
 					EndTimestamp:   now,
 					Checksum:       uint32(idx),
 				},
@@ -343,7 +343,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			expr, err := syntax.ParseExpr(`{foo="bar"} |= "foo"`)
 			require.NoError(t, err)
 			req := &logproto.FilterChunkRefRequest{
-				From:    now.Add(-24 * time.Hour),
+				From:    now.Add(-4 * time.Hour),
 				Through: now,
 				Refs:    groupRefs(t, chunkRefs),
 				Plan:    plan.QueryPlan{AST: expr},
