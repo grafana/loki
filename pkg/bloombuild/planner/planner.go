@@ -728,6 +728,7 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 			return fmt.Errorf("dequeue() call resulted in nil response. builder: %s", builderID)
 		}
 		task := item.(*QueueTask)
+		logger := log.With(logger, "task", task.ID)
 
 		queueTime := time.Since(task.queueTime)
 		p.metrics.queueDuration.Observe(queueTime.Seconds())
@@ -739,7 +740,8 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 			continue
 		}
 
-		if err := p.forwardTaskToBuilder(builder, builderID, task); err != nil {
+		result, err := p.forwardTaskToBuilder(builder, builderID, task)
+		if err != nil {
 			maxRetries := p.limits.BloomTaskMaxRetries(task.Tenant)
 			if maxRetries > 0 && task.timesEnqueued >= maxRetries {
 				p.metrics.tasksFailed.Inc()
@@ -750,6 +752,10 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 					"maxRetries", maxRetries,
 					"err", err,
 				)
+				task.resultsChannel <- &protos.TaskResult{
+					TaskID: task.ID,
+					Error:  fmt.Errorf("task failed after max retries (%d): %w", maxRetries, err),
+				}
 				continue
 			}
 
@@ -758,12 +764,29 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 				p.metrics.taskLost.Inc()
 				p.removePendingTask(task)
 				level.Error(logger).Log("msg", "error re-enqueuing task. this task will be lost", "err", err)
+				task.resultsChannel <- &protos.TaskResult{
+					TaskID: task.ID,
+					Error:  fmt.Errorf("error re-enqueuing task: %w", err),
+				}
 				continue
 			}
 
 			p.metrics.tasksRequeued.Inc()
-			level.Error(logger).Log("msg", "error forwarding task to builder, Task requeued", "err", err)
+			level.Error(logger).Log(
+				"msg", "error forwarding task to builder, Task requeued",
+				"retries", task.timesEnqueued,
+				"err", err,
+			)
+			continue
 		}
+
+		level.Debug(logger).Log(
+			"msg", "task completed",
+			"duration", time.Since(task.queueTime).Seconds(),
+			"retries", task.timesEnqueued,
+		)
+		p.removePendingTask(task)
+		task.resultsChannel <- result
 	}
 
 	return errPlannerIsNotRunning
@@ -773,15 +796,13 @@ func (p *Planner) forwardTaskToBuilder(
 	builder protos.PlannerForBuilder_BuilderLoopServer,
 	builderID string,
 	task *QueueTask,
-) error {
-	defer p.removePendingTask(task)
-
+) (*protos.TaskResult, error) {
 	msg := &protos.PlannerToBuilder{
 		Task: task.ToProtoTask(),
 	}
 
 	if err := builder.Send(msg); err != nil {
-		return fmt.Errorf("error sending task to builder (%s): %w", builderID, err)
+		return nil, fmt.Errorf("error sending task to builder (%s): %w", builderID, err)
 	}
 
 	// Launch a goroutine to wait for the response from the builder so we can
@@ -811,12 +832,11 @@ func (p *Planner) forwardTaskToBuilder(
 		// Note: Errors from the result are not returned here since we don't retry tasks
 		// that return with an error. I.e. we won't retry errors forwarded from the builder.
 		// TODO(salvacorts): Filter and return errors that can be retried.
-		task.resultsChannel <- result
-		return nil
+		return result, nil
 	case err := <-errCh:
-		return err
+		return nil, err
 	case <-timeout:
-		return fmt.Errorf("timeout waiting for response from builder (%s)", builderID)
+		return nil, fmt.Errorf("timeout waiting for response from builder (%s)", builderID)
 	}
 }
 
