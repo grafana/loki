@@ -11,8 +11,9 @@ type Task struct {
 	*protos.Task
 
 	// Tracking
-	queueTime time.Time
-	ctx       context.Context
+	timesEnqueued int
+	queueTime     time.Time
+	ctx           context.Context
 }
 
 func NewTask(ctx context.Context, queueTime time.Time, task *protos.Task) *Task {

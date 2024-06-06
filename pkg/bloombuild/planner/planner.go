@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/queue"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -37,7 +38,7 @@ type Planner struct {
 	limits    Limits
 	schemaCfg config.SchemaConfig
 
-	tsdbStore  TSDBStore
+	tsdbStore  common.TSDBStore
 	bloomStore bloomshipper.Store
 
 	tasksQueue  *queue.RequestQueue
@@ -61,7 +62,7 @@ func New(
 ) (*Planner, error) {
 	utillog.WarnExperimentalUse("Bloom Planner", logger)
 
-	tsdbStore, err := NewTSDBStores(schemaCfg, storeCfg, storageMetrics, logger)
+	tsdbStore, err := common.NewTSDBStores(schemaCfg, storeCfg, storageMetrics, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error creating TSDB store: %w", err)
 	}
@@ -191,7 +192,7 @@ func (p *Planner) runOne(ctx context.Context) error {
 
 			task := NewTask(
 				ctx, now,
-				protos.NewTask(w.table.Addr(), w.tenant, w.ownershipRange, gap.tsdb, gap.gaps),
+				protos.NewTask(w.table, w.tenant, w.ownershipRange, gap.tsdb, gap.gaps),
 			)
 
 			if err := p.enqueueTask(task); err != nil {
@@ -525,6 +526,7 @@ func (p *Planner) totalPendingTasks() (total int) {
 func (p *Planner) enqueueTask(task *Task) error {
 	p.activeUsers.UpdateUserTimestamp(task.Tenant, time.Now())
 	return p.tasksQueue.Enqueue(task.Tenant, nil, task, func() {
+		task.timesEnqueued++
 		p.addPendingTask(task)
 	})
 }
@@ -556,6 +558,10 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 	for p.isRunningOrStopping() {
 		item, idx, err := p.tasksQueue.Dequeue(builder.Context(), lastIndex, builderID)
 		if err != nil {
+			if errors.Is(err, queue.ErrStopped) {
+				// Planner is stopping, break the loop and return
+				break
+			}
 			return fmt.Errorf("error dequeuing task: %w", err)
 		}
 		lastIndex = idx
@@ -577,13 +583,29 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 		}
 
 		if err := p.forwardTaskToBuilder(builder, builderID, task); err != nil {
+			maxRetries := p.limits.BloomTaskMaxRetries(task.Tenant)
+			if maxRetries > 0 && task.timesEnqueued >= maxRetries {
+				p.metrics.tasksFailed.Inc()
+				p.removePendingTask(task)
+				level.Error(logger).Log(
+					"msg", "task failed after max retries",
+					"retries", task.timesEnqueued,
+					"maxRetries", maxRetries,
+					"err", err,
+				)
+				continue
+			}
+
 			// Re-queue the task if the builder is failing to process the tasks
 			if err := p.enqueueTask(task); err != nil {
 				p.metrics.taskLost.Inc()
+				p.removePendingTask(task)
 				level.Error(logger).Log("msg", "error re-enqueuing task. this task will be lost", "err", err)
+				continue
 			}
 
-			return fmt.Errorf("error forwarding task to builder (%s). Task requeued: %w", builderID, err)
+			p.metrics.tasksRequeued.Inc()
+			level.Error(logger).Log("msg", "error forwarding task to builder, Task requeued", "err", err)
 		}
 
 	}
@@ -606,16 +628,64 @@ func (p *Planner) forwardTaskToBuilder(
 		return fmt.Errorf("error sending task to builder (%s): %w", builderID, err)
 	}
 
-	// TODO(salvacorts): Implement timeout and retry for builder response.
-	res, err := builder.Recv()
-	if err != nil {
-		return fmt.Errorf("error receiving response from builder (%s): %w", builderID, err)
-	}
-	if res.GetError() != "" {
-		return fmt.Errorf("error processing task in builder (%s): %s", builderID, res.GetError())
+	// Launch a goroutine to wait for the response from the builder so we can
+	// wait for a timeout, or a response from the builder
+	resultsCh := make(chan *protos.TaskResult)
+	errCh := make(chan error)
+	go func() {
+		result, err := p.receiveResultFromBuilder(builder, builderID, task)
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		resultsCh <- result
+	}()
+
+	timeout := make(<-chan time.Time)
+	taskTimeout := p.limits.BuilderResponseTimeout(task.Tenant)
+	if taskTimeout != 0 {
+		// If the timeout is not 0 (disabled), configure it
+		timeout = time.After(taskTimeout)
 	}
 
-	return nil
+	select {
+	case result := <-resultsCh:
+		// TODO: Return metas forward via channel
+		return result.Error
+	case err := <-errCh:
+		return err
+	case <-timeout:
+		return fmt.Errorf("timeout waiting for response from builder (%s)", builderID)
+	}
+}
+
+// receiveResultFromBuilder waits for a response from the builder and returns the result and an error if any
+// The error will be populated if there is an error receiving the response from the builder, in other words,
+// errors on the builder side will not be returned as an error here, but as an error in the TaskResult.
+func (p *Planner) receiveResultFromBuilder(
+	builder protos.PlannerForBuilder_BuilderLoopServer,
+	builderID string,
+	task *Task,
+) (*protos.TaskResult, error) {
+	// If connection is closed, Recv() will return an error
+	res, err := builder.Recv()
+	if err != nil {
+		return nil, fmt.Errorf("error receiving response from builder (%s): %w", builderID, err)
+	}
+	if res.GetBuilderID() != builderID {
+		return nil, fmt.Errorf("unexpected builder ID (%s) in response from builder (%s)", res.GetBuilderID(), builderID)
+	}
+
+	result, err := protos.FromProtoTaskResult(&res.Result)
+	if err != nil {
+		return nil, fmt.Errorf("error processing task result in builder (%s): %w", builderID, err)
+	}
+	if result.TaskID != task.ID {
+		return nil, fmt.Errorf("unexpected task ID (%s) in response from builder (%s). Expected task ID is %s", result.TaskID, builderID, task.ID)
+	}
+
+	return result, nil
 }
 
 func (p *Planner) isRunningOrStopping() bool {
