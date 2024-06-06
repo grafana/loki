@@ -412,6 +412,7 @@ func createPlanner(
 	metasCache := cache.NewNoopCache()
 	blocksCache := bloomshipper.NewFsBlocksCache(storageCfg.BloomShipperConfig.BlocksCache, reg, logger)
 	bloomStore, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, storage.ClientMetrics{}, metasCache, blocksCache, reg, logger)
+	require.NoError(t, err)
 
 	planner, err := New(cfg, limits, schemaCfg, storageCfg, storage.ClientMetrics{}, bloomStore, logger, reg)
 	require.NoError(t, err)
@@ -745,8 +746,8 @@ func Test_processTenantTaskResults(t *testing.T) {
 			resultsCh := make(chan *protos.TaskResult, len(tc.taskResults))
 
 			var wg sync.WaitGroup
+			wg.Add(1)
 			go func() {
-				wg.Add(1)
 				defer wg.Done()
 
 				err = planner.processTenantTaskResults(
@@ -935,11 +936,11 @@ func parseDayTime(s string) config.DayTime {
 
 type DummyReadSeekCloser struct{}
 
-func (d *DummyReadSeekCloser) Read(p []byte) (n int, err error) {
+func (d *DummyReadSeekCloser) Read(_ []byte) (n int, err error) {
 	return 0, io.EOF
 }
 
-func (d *DummyReadSeekCloser) Seek(offset int64, whence int) (int64, error) {
+func (d *DummyReadSeekCloser) Seek(_ int64, _ int) (int64, error) {
 	return 0, nil
 }
 
