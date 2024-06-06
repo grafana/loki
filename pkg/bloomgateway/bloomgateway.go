@@ -31,8 +31,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
-var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
-
 const (
 	metricsSubsystem        = "bloom_gateway"
 	querierMetricsSubsystem = "bloom_gateway_querier"
