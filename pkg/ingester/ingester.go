@@ -1120,28 +1120,21 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	pprof.Do(ctx, pprof.Labels("path", "read", "type", "labels", "tenant", userID), func(c context.Context) {
 		resp, err = instance.Label(ctx, req, matchers...)
 		if err != nil {
-			fmt.Println("error: ", err)
 			return
 		}
 		if req.Start == nil {
-			fmt.Println("asdf")
-
 			return
 		}
 
 		// Only continue if the active index type is one of async index store types or QueryStore flag is true.
 		asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
 		if asyncStoreMaxLookBack == 0 && !i.cfg.QueryStore {
-			fmt.Println("qwer")
-
 			return
 		}
 
 		var cs storage.Store
 		var ok bool
 		if cs, ok = i.store.(storage.Store); !ok {
-			fmt.Println("1234")
-
 			return
 		}
 
@@ -1153,8 +1146,6 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())
 		if start.After(*req.End) {
 			// The request is older than we are allowed to query the store, just return what we have.
-			fmt.Println("ttttt")
-
 			return
 		}
 		from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
@@ -1162,15 +1153,11 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		if req.Values {
 			storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
 			if err != nil {
-				fmt.Println("error2: ", err)
-
 				return
 			}
 		} else {
 			storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
 			if err != nil {
-				fmt.Println("error3: ", err)
-
 				return
 			}
 		}
@@ -1182,7 +1169,6 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("resp values: ", resp.Values)
 
 	return &logproto.LabelResponse{
 		Values: util.MergeStringLists(resp.Values, storeValues),
