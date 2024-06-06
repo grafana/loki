@@ -98,7 +98,6 @@ type instance struct {
 	mapper *FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
 
 	instanceID string
-	ingesterID string
 
 	streamsCreatedTotal prometheus.Counter
 	streamsRemovedTotal prometheus.Counter
@@ -106,10 +105,9 @@ type instance struct {
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
 
-	limiter                 *Limiter
-	streamCountLimiter      *streamCountLimiter
-	ownedStreamsSvc         *ownedStreamService
-	recalculateOwnedStreams *recalculateOwnedStreams
+	limiter            *Limiter
+	streamCountLimiter *streamCountLimiter
+	ownedStreamsSvc    *ownedStreamService
 
 	configs *runtime.TenantConfigs
 
@@ -137,7 +135,6 @@ func newInstance(
 	cfg *Config,
 	periodConfigs []config.PeriodConfig,
 	instanceID string,
-	ingesterID string,
 	limiter *Limiter,
 	configs *runtime.TenantConfigs,
 	wal WAL,
@@ -149,7 +146,6 @@ func newInstance(
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
 	customStreamsTracker push.UsageTracker,
-	readRing ring.ReadRing,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
@@ -164,7 +160,6 @@ func newInstance(
 		buf:        make([]byte, 0, 1024),
 		index:      invertedIndex,
 		instanceID: instanceID,
-		ingesterID: ingesterID,
 
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),

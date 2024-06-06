@@ -1526,11 +1526,6 @@ func (r *readRingMock) GetTokenRangesForInstance(_ string) (ring.TokenRanges, er
 	return tr, nil
 }
 
-func (r *readRingMock) setTokenRange(newRange []uint32) error {
-	r.replicationSet.Instances[0].Tokens = newRange
-	return nil
-}
-
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
