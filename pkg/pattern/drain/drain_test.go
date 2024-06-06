@@ -31,15 +31,15 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 				`ts=2024-04-16T15:10:42.<_> level=info msg="finished node evaluation" controller_id=module.http.cloudwatch_pipelines node_id=prometheus.scrape.<_> duration=<_>.<_>`,
 				`ts=2024-04-16T15:10:43.192290389Z caller=filetargetmanager.go:361 level=info component=logs logs_config=default msg="Adding target" key="/var/log/pods/*19a1cce8-5f04-46e0-a124-292b0dd9b343/testcoordinator/*.log:{batch_kubernetes_io_controller_uid=\"25ec5edf-f78e-468b-b6f3-3b9685f0cc8f\", batch_kubernetes_io_job_name=\"testcoordinator-job-2665838\", container=\"testcoordinator\", controller_uid=\"25ec5edf-f78e-468b-b6f3-3b9685f0cc8f\", job=\"k6-cloud/testcoordinator\", job_name=\"testcoordinator-job-2665838\", name=\"testcoordinator\", namespace=\"k6-cloud\", pod=\"testcoordinator-job-2665838-9g8ds\"}"`,
 				`ts=2024-04-16T15:10:43.551782223Z caller=tailer.go:245 level=info component=logs logs_config=default component=tailer msg="stopped tailing file" path=/var/log/pods/grafana-com_marketplaces-api-f67ff7567-gqrvb_35649bfd-52ff-4281-9294-5f65fd5a89fc/marketplaces-api/0.log`,
-				`ts=2024-04-16T15:10:43.<_> caller=filetargetmanager.go:<_> level=info component=logs logs_config=default msg="<_> target" key="/var/log/pods/*<_>/<_>/*.log:{<_>=\"<_>\", <_>=\"<_> <_>\", namespace=\"<_>\", pod=\"<_>\", <_>=\"<_>\"}"`,
-				`ts=2024-04-16T15:10:43.<_> caller=tailer.go:<_> level=info component=logs logs_config=default component=tailer msg="<_> <_> <_> <_> <_> <_> <_> <_> <_>`,
+				`ts=2024-04-16T15:10:43.<_> caller=filetargetmanager.go:<_> level=info component=logs logs_config=default msg="<_> target" key="/var/log/pods/*<_>/<_>/*.log:{<_>=\"<_>\", <_>=\"<_><_><_><_><_><_> <_><_><_><_><_>\", namespace=\"<_>\", pod=\"<_>\", <_>=\"<_>\"}"`,
+				`ts=2024-04-16T15:10:43.<_> caller=tailer.go:<_> level=info component=logs logs_config=default component=tailer msg="<_> <_><_> <_> <_> <_><_> <_> <_><_> <_><_><_><_><_><_><_><_><_><_><_><_><_><_><_><_> <_><_><_>`,
 				`ts=2024-04-16T15:10:<_>.<_> caller=filetarget.go:192 level=info component=logs logs_config=default msg="filetarget: watcher closed, tailer stopped, positions saved" path=/var/log/pods/*<_>/<_>/*.log`,
 				`ts=2024-04-16T15:10:<_>.<_> caller=filetarget.go:313 level=info component=logs logs_config=default msg="watching new directory" directory=/var/log/pods/<_>/<_>`,
 				`ts=2024-04-16T15:10:<_>.<_> caller=filetarget.go:313 level=info component=logs logs_config=default msg="watching new directory" directory=/var/log/pods/hosted-grafana_.<_>/<_>`,
 				`ts=2024-04-16T15:10:<_>.<_> caller=filetarget.go:326 level=info component=logs logs_config=default msg="removing directory from watcher" directory=/var/log/pods/hosted-grafana_.<_>/<_>`,
-				`ts=2024-04-16T15:10:<_>.<_> caller=filetargetmanager.go:181 level=info component=logs logs_config=default msg="received file watcher event" name=/var/log/pods/<_>/<_>.<_> op=CREATE`,
-				`ts=2024-04-16T15:10:<_>.<_> caller=filetargetmanager.go:181 level=info component=logs logs_config=default msg="received file watcher event" name=/var/log/pods/<_>/<_>.<_>.<_> op=CREATE`,
 				`ts=2024-04-16T15:10:<_>.<_> caller=filetargetmanager.go:181 level=info component=logs logs_config=default msg="received file watcher event" name=/var/log/pods/<_>/<_>/<_>.log op=CREATE`,
+				`ts=2024-04-16T15:10:<_>.<_> caller=filetargetmanager.go:181 level=info component=logs logs_config=default msg="received file watcher event" name=/var/log/pods/<_><_><_>/<_><_><_>.<_> op=CREATE`,
+				`ts=2024-04-16T15:10:<_>.<_> caller=filetargetmanager.go:181 level=info component=logs logs_config=default msg="received file watcher event" name=/var/log/pods/<_><_><_>/<_><_><_>.<_>.<_> op=CREATE`,
 				`ts=2024-04-16T15:10:<_>.<_> caller=filetargetmanager.go:181 level=info component=logs logs_config=default msg="received file watcher event" name=/var/log/pods/hosted-grafana_.<_>/<_>/0.log.<_>.<_> op=CREATE`,
 				`ts=2024-04-16T15:10:<_>.<_> caller=filetargetmanager.go:<_> level=info component=logs logs_config=default msg="<_> target" key="/var/log/pods/*<_>/<_>/*.log:{app=\"grafana\", conprof=\"true\", container=\"<_>\", instanceId=\"<_>\", job=\"hosted-grafana/grafana\", name=\"grafana\", namespace=\"hosted-grafana\", org=\"<_>\", plan=\"free\", pod=\"<_>\", pod_template_hash=\"<_>\", resource_version=\"<_>\", slug=\"<_>\", stackId=\"<_>\"}"`,
 				`ts=2024-04-16T15:10:<_>.<_> caller=log.go:168 component=logs logs_config=default level=info msg="Re-opening moved/deleted file /var/log/pods/<_>/<_>/<_>.log ..."`,
@@ -53,9 +53,9 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 				`ts=2024-04-16T15:10:<_>.<_> caller=logfmt.go:139 level=error component=logs logs_config=default component=file_pipeline component=stage type=logfmt msg="failed to decode logfmt" err="bufio.Scanner: token too long"`,
 				`ts=2024-04-16T15:10:<_>.<_> caller=logfmt.go:139 level=error component=logs logs_config=default component=file_pipeline component=stage type=logfmt msg="failed to decode logfmt" err="logfmt syntax error at pos <_> on line 1: unexpected '\"'"`,
 				`ts=2024-04-16T15:10:<_>.<_> caller=tailer.go:245 level=info component=logs logs_config=default component=tailer msg="stopped tailing file" path=/var/log/pods/hosted-grafana_.<_>/<_>/0.log`,
-				`ts=2024-04-16T15:10:<_>.<_> caller=tailer.go:<_> level=info component=logs logs_config=default component=tailer msg="<_> <_> <_> <_> <_> <_> <_> <_> <_>`,
 				`ts=2024-04-16T15:10:<_>.<_> caller=tailer.go:<_> level=info component=logs logs_config=default component=tailer msg="<_> <_>: <_>" path=/var/log/pods/<_>/<_>/0.log`,
 				`ts=2024-04-16T15:10:<_>.<_> caller=tailer.go:<_> level=info component=logs logs_config=default component=tailer msg="<_> <_>: <_>" path=/var/log/pods/hosted-grafana_.<_>/<_>/0.log`,
+				`ts=2024-04-16T15:10:<_>.<_> caller=tailer.go:<_> level=info component=logs logs_config=default component=tailer msg="<_> <_><_> <_> <_> <_><_> <_> <_><_> <_><_><_><_><_><_><_><_><_><_><_><_><_><_><_><_><_><_> <_><_><_>`,
 			},
 		},
 		{
@@ -228,7 +228,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 				`I0507 12:02:27.<_>       1 defaultevictor.go:202] "Pod fails the following checks" pod="loki-dev-ssd/<_>" checks="[pod is a DaemonSet pod, pod has higher priority than specified priority class threshold, pod has local storage and descheduler is not configured with evictLocalStoragePods]"`,
 				`I0507 12:02:27.<_>       1 defaultevictor.go:202] "Pod fails the following checks" pod="promtail-ops/<_>" checks="[pod is a DaemonSet pod, pod has local storage and descheduler is not configured with evictLocalStoragePods]"`,
 				`I0507 12:02:27.<_>       1 defaultevictor.go:202] "Pod fails the following checks" pod="pyroscope-ebpf/<_>" checks="pod is a DaemonSet pod"`,
-				`I0507 12:02:27.<_>       1 node.go:157] "Pod does not fit on any other node" pod:="<_>/<_>" node:="<_>" error:="[pod node selector does not match the node label, <_> <_> <_> <_> <_> <_>]"`,
+				`I0507 12:02:27.<_>       1 node.go:157] "Pod does not fit on any other node" pod:="<_>/<_>" node:="<_>" error:="[pod node selector does not match the node label, <_> <_><_> <_> <_><_> <_> <_>]"`,
 				`I0507 12:02:27.<_>       1 node.go:157] "Pod does not fit on any other node" pod:="<_>/<_>" node:="<_>" error:="[pod node selector does not match the node label, insufficient <_>, insufficient <_>]"`,
 				`I0507 12:02:27.<_>       1 node.go:157] "Pod does not fit on any other node" pod:="<_>/<_>" node:="<_>" error:="[pod node selector does not match the node label, insufficient <_>]"`,
 				`I0507 12:02:27.<_>       1 node.go:157] "Pod does not fit on any other node" pod:="<_>/<_>" node:="<_>" error:="[pod node selector does not match the node label, pod does not tolerate taints on the node, insufficient <_>, insufficient <_>]"`,
@@ -620,7 +620,7 @@ func TestDeduplicatePlaceholders(b *testing.T) {
 
 	for i, tc := range cases {
 		b.Run(fmt.Sprintf("Dedup %d", i), func(t *testing.T) {
-			got := deduplicatePlaceholders(tc.line)
+			got := deduplicatePlaceholders(tc.line, `<_>`)
 			require.Equal(t, tc.want, got)
 		})
 	}

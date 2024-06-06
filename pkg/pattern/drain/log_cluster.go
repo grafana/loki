@@ -22,9 +22,9 @@ type LogCluster struct {
 
 func (c *LogCluster) String() string {
 	if c.Stringer != nil {
-		return deduplicatePlaceholders(c.Stringer(c.Tokens, c.TokenState))
+		return c.Stringer(c.Tokens, c.TokenState)
 	}
-	return deduplicatePlaceholders(strings.Join(c.Tokens, " "))
+	return strings.Join(c.Tokens, " ")
 }
 
 func (c *LogCluster) append(ts model.Time) {
