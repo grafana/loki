@@ -63,7 +63,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
@@ -209,7 +208,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	stats, ctx := ContextWithEmptyStats(ctx)
 	logger := spanlogger.FromContextWithFallback(
 		ctx,
-		util_log.WithContext(ctx, g.logger),
+		utillog.WithContext(ctx, g.logger),
 	)
 
 	defer func() {
@@ -340,7 +339,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}
 	}
 
-	combinedRecorder.Report(util_log.WithContext(ctx, g.logger), g.bloomStore.BloomMetrics())
+	combinedRecorder.Report(utillog.WithContext(ctx, g.logger), g.bloomStore.BloomMetrics())
 	sp.LogKV("msg", "received all responses")
 
 	start := time.Now()
