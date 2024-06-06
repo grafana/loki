@@ -98,6 +98,7 @@ type instance struct {
 	mapper *FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
 
 	instanceID string
+	ingesterID string
 
 	streamsCreatedTotal prometheus.Counter
 	streamsRemovedTotal prometheus.Counter
@@ -105,9 +106,10 @@ type instance struct {
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
 
-	limiter            *Limiter
-	streamCountLimiter *streamCountLimiter
-	ownedStreamsSvc    *ownedStreamService
+	limiter                 *Limiter
+	streamCountLimiter      *streamCountLimiter
+	ownedStreamsSvc         *ownedStreamService
+	recalculateOwnedStreams *recalculateOwnedStreams
 
 	configs *runtime.TenantConfigs
 
@@ -135,6 +137,7 @@ func newInstance(
 	cfg *Config,
 	periodConfigs []config.PeriodConfig,
 	instanceID string,
+	ingesterID string,
 	limiter *Limiter,
 	configs *runtime.TenantConfigs,
 	wal WAL,
@@ -153,7 +156,7 @@ func newInstance(
 		return nil, err
 	}
 	streams := newStreamsMap()
-	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter, readRing, cfg.OwnedStreamsCheckInterval)
+	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter)
 	c := config.SchemaConfig{Configs: periodConfigs}
 	i := &instance{
 		cfg:        cfg,
@@ -161,6 +164,7 @@ func newInstance(
 		buf:        make([]byte, 0, 1024),
 		index:      invertedIndex,
 		instanceID: instanceID,
+		ingesterID: ingesterID,
 
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
@@ -188,13 +192,15 @@ func newInstance(
 	}
 	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
 
-	// Start the owned streams service which periodically checks the ring for changes and recalculates the owned stream count for an instance.
-	if ownedStreamsSvc.StartAsync(context.Background()); err != nil {
+	recalculateOwnedStreams := newRecalculateOwnedStreams(i, readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
+	if err := recalculateOwnedStreams.StartAsync(context.Background()); err != nil {
 		return nil, err
 	}
-	if err := ownedStreamsSvc.AwaitRunning(context.Background()); err != nil {
+	if err := recalculateOwnedStreams.AwaitRunning(context.Background()); err != nil {
 		return nil, err
 	}
+	i.recalculateOwnedStreams = recalculateOwnedStreams
+
 	return i, err
 }
 
@@ -1153,4 +1159,22 @@ func minTs(stream *logproto.Stream) model.Time {
 		}
 	}
 	return model.TimeFromUnixNano(streamMinTs)
+}
+
+// For each stream, we check if the stream is owned still owned by the ingester and increment/decrement the owned stream count accordingly
+func (i *instance) updateOwnedStreams(ownedTokenRange ring.TokenRanges) error {
+	i.ownedStreamsSvc.resetStreamCounts()
+	err := i.forAllStreams(context.Background(), func(s *stream) error {
+		if ownedTokenRange.IncludesKey(uint32(s.fp)) {
+			i.ownedStreamsSvc.incOwnedStreamCount()
+		} else {
+			i.ownedStreamsSvc.decOwnedStreamCount()
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -75,7 +75,7 @@ func TestLabelsCollisions(t *testing.T) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, readRingMock)
+	i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", defaultConfig().LifecyclerConfig.ID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, readRingMock)
 	require.Nil(t, err)
 
 	// avoid entries from the future.
@@ -104,7 +104,7 @@ func TestConcurrentPushes(t *testing.T) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, readRingMock)
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", defaultConfig().LifecyclerConfig.ID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, readRingMock)
 	require.Nil(t, err)
 
 	const (
@@ -157,7 +157,7 @@ func TestGetStreamRates(t *testing.T) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, readRingMock)
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", defaultConfig().LifecyclerConfig.ID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, readRingMock)
 	require.NoError(t, err)
 
 	const (
@@ -252,7 +252,7 @@ func TestSyncPeriod(t *testing.T) {
 		minUtil    = 0.20
 	)
 
-	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, readRingMock)
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", defaultConfig().LifecyclerConfig.ID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, readRingMock)
 	require.Nil(t, err)
 
 	lbls := makeRandomLabels()
@@ -298,7 +298,7 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	cfg.SyncMinUtilization = 0.20
 	cfg.IndexShards = indexShards
 
-	instance, err := newInstance(cfg, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, readRingMock)
+	instance, err := newInstance(cfg, defaultPeriodConfigs, "test", defaultConfig().LifecyclerConfig.ID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, readRingMock)
 	require.Nil(t, err)
 
 	currentTime := time.Now()
@@ -508,7 +508,7 @@ func Benchmark_PushInstance(b *testing.B) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, readRingMock)
+	i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, "test", defaultConfig().LifecyclerConfig.ID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, readRingMock)
 	ctx := context.Background()
 
 	for n := 0; n < b.N; n++ {
@@ -553,7 +553,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 
 	ctx := context.Background()
 
-	inst, _ := newInstance(&Config{}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, readRingMock)
+	inst, _ := newInstance(&Config{}, defaultPeriodConfigs, "test", defaultConfig().LifecyclerConfig.ID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, readRingMock)
 	expr, err := syntax.ParseLogSelector(`{namespace="foo",pod="bar",instance=~"10.*"}`, true)
 	require.NoError(b, err)
 	t, err := newTailer("foo", expr, nil, 10)
@@ -1105,7 +1105,7 @@ func TestStreamShardingUsage(t *testing.T) {
 	t.Run("invalid push returns error", func(t *testing.T) {
 		tracker := &mockUsageTracker{}
 		readRingMock := mockReadRingWithOneActiveIngester()
-		i, _ := newInstance(&Config{IndexShards: 1, OwnedStreamsCheckInterval: 1 * time.Second}, defaultPeriodConfigs, customTenant1, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, tracker, readRingMock)
+		i, _ := newInstance(&Config{IndexShards: 1, OwnedStreamsCheckInterval: 1 * time.Second}, defaultPeriodConfigs, customTenant1, defaultConfig().LifecyclerConfig.ID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, tracker, readRingMock)
 		ctx := context.Background()
 
 		err = i.Push(ctx, &logproto.PushRequest{
@@ -1125,7 +1125,7 @@ func TestStreamShardingUsage(t *testing.T) {
 	})
 
 	t.Run("valid push returns no error", func(t *testing.T) {
-		i, _ := newInstance(&Config{IndexShards: 1, OwnedStreamsCheckInterval: 1 * time.Second}, defaultPeriodConfigs, customTenant2, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, mockReadRingWithOneActiveIngester())
+		i, _ := newInstance(&Config{IndexShards: 1, OwnedStreamsCheckInterval: 1 * time.Second}, defaultPeriodConfigs, customTenant2, defaultConfig().LifecyclerConfig.ID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, mockReadRingWithOneActiveIngester())
 		ctx := context.Background()
 
 		err = i.Push(ctx, &logproto.PushRequest{
@@ -1450,6 +1450,7 @@ func defaultInstance(t *testing.T) *instance {
 		&ingesterConfig,
 		defaultPeriodConfigs,
 		"fake",
+		ingesterConfig.LifecyclerConfig.ID,
 		NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1),
 		loki_runtime.DefaultTenantConfigs(),
 		noopWAL{},

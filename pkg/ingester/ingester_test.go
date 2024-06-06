@@ -1526,8 +1526,45 @@ func (r *readRingMock) GetTokenRangesForInstance(_ string) (ring.TokenRanges, er
 	return tr, nil
 }
 
+func (r *readRingMock) setTokenRange(newRange []uint32) error {
+	r.replicationSet.Instances[0].Tokens = newRange
+	return nil
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
 	}, 0)
+}
+
+func TestUpdateOwnedStreams(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	require.NoError(t, err)
+
+	i.instances["test"] = defaultInstance(t)
+
+	tt := time.Now().Add(-5 * time.Minute)
+	err = i.instances["test"].Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
+		// both label sets have FastFingerprint=e002a3a451262627
+		{Labels: "{app=\"l\",uniq0=\"0\",uniq1=\"1\"}", Entries: entries(5, tt.Add(time.Minute))},
+		{Labels: "{uniq0=\"1\",app=\"m\",uniq1=\"1\"}", Entries: entries(5, tt)},
+
+		// e002a3a451262247
+		{Labels: "{app=\"l\",uniq0=\"1\",uniq1=\"0\"}", Entries: entries(5, tt.Add(time.Minute))},
+		{Labels: "{uniq1=\"0\",app=\"m\",uniq0=\"0\"}", Entries: entries(5, tt)},
+
+		// e002a2a4512624f4
+		{Labels: "{app=\"l\",uniq0=\"0\",uniq1=\"0\"}", Entries: entries(5, tt.Add(time.Minute))},
+		{Labels: "{uniq0=\"1\",uniq1=\"0\",app=\"m\"}", Entries: entries(5, tt)},
+	}})
+	require.NoError(t, err)
+
+	// streams are pushed, let's check owned stream counts
+	ownedStreams := i.instances["test"].ownedStreamsSvc.getOwnedStreamCount()
+	require.Equal(t, 8, ownedStreams)
 }
