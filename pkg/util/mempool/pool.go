@@ -5,22 +5,35 @@ import (
 	"fmt"
 	"sync"
 	"unsafe"
+
+	"github.com/dustin/go-humanize"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
 	errSlabExhausted = errors.New("slab exhausted")
+
+	reasonSizeExceeded  = "size-exceeded"
+	reasonSlabExhausted = "slab-exhausted"
 )
 
 type slab struct {
 	buffer      chan unsafe.Pointer
 	size, count int
 	mtx         sync.Mutex
+	metrics     *metrics
+	name        string
 }
 
-func newSlab(bufferSize, bufferCount int) *slab {
+func newSlab(bufferSize, bufferCount int, m *metrics) *slab {
+	name := humanize.Bytes(uint64(bufferSize))
+	m.availableBuffersPerSlab.WithLabelValues(name).Add(0) // initialize metric with value 0
+
 	return &slab{
-		size:  bufferSize,
-		count: bufferCount,
+		size:    bufferSize,
+		count:   bufferCount,
+		metrics: m,
+		name:    name,
 	}
 }
 
@@ -31,6 +44,7 @@ func (s *slab) init() {
 		ptr := unsafe.Pointer(unsafe.SliceData(buf))
 		s.buffer <- ptr
 	}
+	s.metrics.availableBuffersPerSlab.WithLabelValues(s.name).Add(float64(s.count))
 }
 
 func (s *slab) get(size int) ([]byte, error) {
@@ -46,6 +60,7 @@ func (s *slab) get(size int) ([]byte, error) {
 	case ptr := <-s.buffer:
 		buf = unsafe.Slice((*byte)(ptr), s.size)
 	default:
+		s.metrics.errorsCounter.WithLabelValues(s.name, reasonSlabExhausted).Inc()
 		return nil, errSlabExhausted
 	}
 
@@ -75,15 +90,17 @@ func (s *slab) put(buf []byte) {
 // Buffers are re-cycled and need to be returned back to the pool, otherwise
 // the pool runs out of available buffers.
 type MemPool struct {
-	slabs []*slab
+	slabs   []*slab
+	metrics *metrics
 }
 
-func New(buckets []Bucket) *MemPool {
+func New(name string, buckets []Bucket, r prometheus.Registerer) *MemPool {
 	a := &MemPool{
-		slabs: make([]*slab, 0, len(buckets)),
+		slabs:   make([]*slab, 0, len(buckets)),
+		metrics: newMetrics(r, name),
 	}
 	for _, b := range buckets {
-		a.slabs = append(a.slabs, newSlab(int(b.Capacity), b.Size))
+		a.slabs = append(a.slabs, newSlab(int(b.Capacity), b.Size, a.metrics))
 	}
 	return a
 }
@@ -98,6 +115,7 @@ func (a *MemPool) Get(size int) ([]byte, error) {
 		}
 		return a.slabs[i].get(size)
 	}
+	a.metrics.errorsCounter.WithLabelValues("pool", reasonSizeExceeded).Inc()
 	return nil, fmt.Errorf("no slab found for size: %d", size)
 }
 

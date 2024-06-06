@@ -13,25 +13,25 @@ import (
 func TestMemPool(t *testing.T) {
 
 	t.Run("empty pool", func(t *testing.T) {
-		pool := New([]Bucket{})
+		pool := New("test", []Bucket{}, nil)
 		_, err := pool.Get(256)
 		require.Error(t, err)
 	})
 
 	t.Run("requested size too big", func(t *testing.T) {
-		pool := New([]Bucket{
+		pool := New("test", []Bucket{
 			{Size: 1, Capacity: 128},
-		})
+		}, nil)
 		_, err := pool.Get(256)
 		require.Error(t, err)
 	})
 
 	t.Run("requested size within bucket", func(t *testing.T) {
-		pool := New([]Bucket{
+		pool := New("test", []Bucket{
 			{Size: 1, Capacity: 128},
 			{Size: 1, Capacity: 256},
 			{Size: 1, Capacity: 512},
-		})
+		}, nil)
 		res, err := pool.Get(200)
 		require.NoError(t, err)
 		require.Equal(t, 200, len(res))
@@ -44,9 +44,9 @@ func TestMemPool(t *testing.T) {
 	})
 
 	t.Run("buffer is cleared when returned", func(t *testing.T) {
-		pool := New([]Bucket{
+		pool := New("test", []Bucket{
 			{Size: 1, Capacity: 64},
-		})
+		}, nil)
 		res, err := pool.Get(8)
 		require.NoError(t, err)
 		require.Equal(t, 8, len(res))
@@ -62,9 +62,9 @@ func TestMemPool(t *testing.T) {
 	})
 
 	t.Run("pool returns error when no buffer is available", func(t *testing.T) {
-		pool := New([]Bucket{
+		pool := New("test", []Bucket{
 			{Size: 1, Capacity: 64},
-		})
+		}, nil)
 		buf1, _ := pool.Get(32)
 		require.Equal(t, 32, len(buf1))
 
@@ -73,9 +73,9 @@ func TestMemPool(t *testing.T) {
 	})
 
 	t.Run("test ring buffer returns same backing array", func(t *testing.T) {
-		pool := New([]Bucket{
+		pool := New("test", []Bucket{
 			{Size: 2, Capacity: 128},
-		})
+		}, nil)
 		res1, _ := pool.Get(32)
 		ptr1 := unsafe.Pointer(unsafe.SliceData(res1))
 
@@ -96,13 +96,13 @@ func TestMemPool(t *testing.T) {
 	})
 
 	t.Run("concurrent access", func(t *testing.T) {
-		pool := New([]Bucket{
+		pool := New("test", []Bucket{
 			{Size: 32, Capacity: 2 << 10},
 			{Size: 16, Capacity: 4 << 10},
 			{Size: 8, Capacity: 8 << 10},
 			{Size: 4, Capacity: 16 << 10},
 			{Size: 2, Capacity: 32 << 10},
-		})
+		}, nil)
 
 		var wg sync.WaitGroup
 		numWorkers := 256

@@ -739,7 +739,7 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 	case "dynamic":
 		bloomshipper.BloomPageAllocator = v1.BloomPagePool
 	case "fixed":
-		bloomshipper.BloomPageAllocator = mempool.New(bsCfg.MemoryManagement.BloomPageMemPoolBuckets)
+		bloomshipper.BloomPageAllocator = mempool.New("bloom-page-pool", bsCfg.MemoryManagement.BloomPageMemPoolBuckets, reg)
 	default:
 		// do nothing
 		bloomshipper.BloomPageAllocator = nil
