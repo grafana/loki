@@ -28,12 +28,7 @@ func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
 	}
 
 	maxItem := slices.MaxFunc(refs, func(a, b *logproto.ShortRef) int {
-		if a.Through > b.Through {
-			return 1
-		} else if a.Through < b.Through {
-			return -1
-		}
-		return 0
+		return int(a.Through) - int(b.Through)
 	})
 
 	return refs[0].From, maxItem.Through
