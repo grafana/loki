@@ -788,6 +788,19 @@ func Test_processTenantTaskResults(t *testing.T) {
 			)
 			require.NoError(t, err)
 
+			// TODO(salvacorts): Fix this
+			// For some reason, when the tests are run in the CI, we do not encode the `loc` of model.Time for each TSDB.
+			// As a result, when we fetch them, the loc is empty whereas in the original metas, it is not. Therefore the
+			// comparison fails. As a workaround to fix the issue, we will manually reset the TS of the sources to the
+			// fetched metas
+			for i := range metas {
+				for j := range metas[i].Sources {
+					sec := metas[i].Sources[j].TS.Unix()
+					nsec := metas[i].Sources[j].TS.Nanosecond()
+					metas[i].Sources[j].TS = time.Unix(sec, int64(nsec))
+				}
+			}
+
 			// Compare metas
 			require.Equal(t, len(tc.expectedMetas), len(metas))
 			require.ElementsMatch(t, tc.expectedMetas, metas)
