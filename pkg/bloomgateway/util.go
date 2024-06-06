@@ -35,11 +35,10 @@ func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
 }
 
 // convertToChunkRefs converts a []*logproto.ShortRef into v1.ChunkRefs
-// TODO(chaudum): Avoid conversion by transferring v1.ChunkRefs in gRPC request.
 func convertToChunkRefs(refs []*logproto.ShortRef) v1.ChunkRefs {
 	result := make(v1.ChunkRefs, 0, len(refs))
-	for _, ref := range refs {
-		result = append(result, v1.ChunkRef{From: ref.From, Through: ref.Through, Checksum: ref.Checksum})
+	for i := range refs {
+		result = append(result, v1.ChunkRef(*refs[i]))
 	}
 	return result
 }
