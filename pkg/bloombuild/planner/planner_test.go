@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -461,9 +460,8 @@ func Test_BuilderLoop(t *testing.T) {
 			modifyBuilder: func(builder *fakeBuilder) {
 				builder.SetReturnErrorMsg(true)
 			},
-			resetBuilder: func(builder *fakeBuilder) {
-				builder.SetReturnErrorMsg(false)
-			},
+			// We don't retry on error messages from the builder
+			shouldConsumeAfterModify: true,
 		},
 		{
 			name:                     "exceed max retries",
@@ -498,8 +496,8 @@ func Test_BuilderLoop(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			//logger := log.NewNopLogger()
-			logger := log.NewLogfmtLogger(os.Stdout)
+			logger := log.NewNopLogger()
+			//logger := log.NewLogfmtLogger(os.Stdout)
 
 			cfg := Config{
 				PlanningInterval:        1 * time.Hour,
@@ -546,6 +544,11 @@ func Test_BuilderLoop(t *testing.T) {
 
 			// Finally, the queue should be empty
 			require.Equal(t, 0, planner.totalPendingTasks())
+
+			// consume all tasks result to free up the channel for the next round of tasks
+			for i := 0; i < nTasks; i++ {
+				<-resultsCh
+			}
 
 			if tc.modifyBuilder != nil {
 				// Configure builders to return errors
@@ -725,8 +728,8 @@ func Test_processTenantTaskResults(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			//logger := log.NewNopLogger()
-			logger := log.NewLogfmtLogger(os.Stdout)
+			logger := log.NewNopLogger()
+			//logger := log.NewLogfmtLogger(os.Stdout)
 
 			cfg := Config{
 				PlanningInterval:        1 * time.Hour,

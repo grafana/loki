@@ -786,6 +786,8 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 			"retries", task.timesEnqueued,
 		)
 		p.removePendingTask(task)
+
+		// Send the result back to the task. The channel is buffered, so this should not block.
 		task.resultsChannel <- result
 	}
 
@@ -828,7 +830,6 @@ func (p *Planner) forwardTaskToBuilder(
 
 	select {
 	case result := <-resultsCh:
-		// Send the result back to the task. The channel is buffered, so this should not block.
 		// Note: Errors from the result are not returned here since we don't retry tasks
 		// that return with an error. I.e. we won't retry errors forwarded from the builder.
 		// TODO(salvacorts): Filter and return errors that can be retried.
