@@ -18,7 +18,7 @@ func main() {
 
 	r := v1.NewDirectoryBlockReader(path)
 	b := v1.NewBlock(r, v1.NewMetrics(nil))
-	q := v1.NewBlockQuerier(b, true, v1.DefaultMaxPageSize)
+	q := v1.NewBlockQuerier(b, &v1.SimpleHeapAllocator{}, v1.DefaultMaxPageSize)
 
 	md, err := q.Metadata()
 	if err != nil {

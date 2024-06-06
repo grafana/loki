@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.6.3
 
 - [BUGFIX] Fix HPA ingester typo
+- [BUGFIX] Fix indentation of `query_range` Helm chart values
 
 ## 6.6.2
 
