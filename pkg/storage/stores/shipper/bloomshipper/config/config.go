@@ -125,6 +125,9 @@ func (cfg *MemoryManagementConfig) Validate() error {
 		msg := fmt.Sprintf("bloom_page_alloc_type must be one of: %s", strings.Join(types.descriptions(), ", "))
 		return errors.New(msg)
 	}
+	if cfg.BloomPageAllocationType == "fixed" && len(cfg.BloomPageMemPoolBuckets) == 0 {
+		return errors.New("fixed memory pool requires at least one bucket")
+	}
 	return nil
 }
 
