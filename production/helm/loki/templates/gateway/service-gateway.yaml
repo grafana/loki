@@ -12,6 +12,7 @@ metadata:
     {{- with .Values.gateway.service.labels }}
     {{- toYaml . | nindent 4}}
     {{- end }}
+    prometheus.io/service-monitor: "false"
   annotations:
     {{- with .Values.loki.serviceAnnotations }}
     {{- toYaml . | nindent 4}}
