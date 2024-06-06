@@ -1,43 +1,7 @@
 /*
-Bloom Gateway package
-
 The bloom gateway is a component that can be run as a standalone microserivce
 target and provides capabilities for filtering ChunkRefs based on a given list
 of line filter expressions.
-
-			     Querier   Query Frontend
-			        |           |
-			................................... service boundary
-			        |           |
-			        +----+------+
-			             |
-			     indexgateway.Gateway
-			             |
-			   bloomgateway.BloomQuerier
-			             |
-			   bloomgateway.GatewayClient
-			             |
-			  logproto.BloomGatewayClient
-			             |
-			................................... service boundary
-			             |
-			      bloomgateway.Gateway
-			             |
-		       queue.RequestQueue
-			             |
-		       bloomgateway.Worker
-			             |
-		     bloomgateway.Processor
-			             |
-	         bloomshipper.Store
-			             |
-	         bloomshipper.Client
-			             |
-			        ObjectClient
-			             |
-			................................... service boundary
-			             |
-		         object storage
 */
 package bloomgateway
 
