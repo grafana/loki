@@ -545,11 +545,18 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", false}, {"bar", true}, {"127.0.0.2", true}, {"127.0.0.1", false}},
 		},
 		{
-			`{app="foo"} |> "foo" or "bar"`,
+			`{app="foo"} |> "<_>foo<_>" or "<_>bar<_>"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
-			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
+			[]linecheck{{"test foo test", true}, {"test bar test", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} |> "<_>foo<_>" or "<_>bar<_>" or "<_>baz<_>"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test foo test", true}, {"test bar test", true}, {"test baz test", true}, {"none", false}},
 		},
 		{
 			`{app="foo"} !> "foo" or "bar"`,
