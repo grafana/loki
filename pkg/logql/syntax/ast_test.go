@@ -543,7 +543,7 @@ func Test_FilterMatcher(t *testing.T) {
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
 			[]linecheck{{"foo", false}, {"bar", true}, {"127.0.0.2", true}, {"127.0.0.1", false}},
-		}, 
+		},
 		{
 			`{app="foo"} |> "<_>foo<_>" or "<_>bar<_>"`,
 			[]*labels.Matcher{
