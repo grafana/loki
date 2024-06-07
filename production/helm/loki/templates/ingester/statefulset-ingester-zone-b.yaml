@@ -9,7 +9,7 @@ metadata:
   labels:
     {{- include "loki.ingesterLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
-    rollout-group: ingester
+    rollout-group: {{ include "loki.ingesterFullname" . }}
     name: ingester-zone-b
   annotations:
     rollout-max-unavailable: "{{ include "loki.ingester.maxUnavailable" (dict "ctx" . "replicas" $replicas)}}"
@@ -39,7 +39,7 @@ spec:
     matchLabels:
       {{- include "loki.ingesterSelectorLabels" . | nindent 6 }}
       name: ingester-zone-b
-      rollout-group: ingester
+      rollout-group: {{ include "loki.ingesterFullname" . }}
   updateStrategy:
     type: OnDelete
   template:
@@ -59,7 +59,7 @@ spec:
         {{- include "loki.ingesterSelectorLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
         name: ingester-zone-b
-        rollout-group: ingester
+        rollout-group: {{ include "loki.ingesterFullname" . }}
         {{- with .Values.loki.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
