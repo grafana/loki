@@ -34,6 +34,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	server_util "github.com/grafana/loki/v3/pkg/util/server"
+
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
@@ -1041,6 +1043,13 @@ func (i *Ingester) asyncStoreMaxLookBack() time.Duration {
 
 // GetChunkIDs is meant to be used only when using an async store like boltdb-shipper or tsdb.
 func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
+	gcr, err := i.getChunkIDs(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return gcr, err
+}
+
+// GetChunkIDs is meant to be used only when using an async store like boltdb-shipper or tsdb.
+func (i *Ingester) getChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
 	orgID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1168,6 +1177,12 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 // Series queries the ingester for log stream identifiers (label sets) matching a set of matchers
 func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	sr, err := i.series(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return sr, err
+}
+
+func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1331,6 +1346,11 @@ func (i *Ingester) getInstances() []*instance {
 
 // Tail logs matching given query
 func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
+	err := i.tail(req, queryServer)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return err
+}
+func (i *Ingester) tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
 	select {
 	case <-i.tailersQuit:
 		return errors.New("Ingester is stopping")
@@ -1376,6 +1396,12 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 
 // TailersCount returns count of active tail requests from a user
 func (i *Ingester) TailersCount(ctx context.Context, _ *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
+	tcr, err := i.tailersCount(ctx)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return tcr, err
+}
+
+func (i *Ingester) tailersCount(ctx context.Context) (*logproto.TailersCountResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1431,6 +1457,12 @@ func (i *Ingester) GetDetectedFields(_ context.Context, r *logproto.DetectedFiel
 
 // GetDetectedLabels returns map of detected labels and unique values from this ingester
 func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
+	lvr, err := i.getDetectedLabels(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return lvr, err
+}
+
+func (i *Ingester) getDetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
