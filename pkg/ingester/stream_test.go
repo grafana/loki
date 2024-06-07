@@ -285,10 +285,11 @@ func TestStreamIterator(t *testing.T) {
 				chunk := chk.new()
 				for j := int64(0); j < entries; j++ {
 					k := i*entries + j
-					err := chunk.Append(&logproto.Entry{
+					dup, err := chunk.Append(&logproto.Entry{
 						Timestamp: time.Unix(k, 0),
 						Line:      fmt.Sprintf("line %d", k),
 					})
+					require.False(t, dup)
 					require.NoError(t, err)
 				}
 				s.chunks = append(s.chunks, chunkDesc{chunk: chunk})

@@ -101,7 +101,7 @@ func TestTokenizerPopulate(t *testing.T) {
 	lbsList = append(lbsList, labels.FromStrings("foo", "bar"))
 
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
-	_ = memChunk.Append(&push.Entry{
+	_, _ = memChunk.Append(&push.Entry{
 		Timestamp: time.Unix(0, 1),
 		Line:      testLine,
 	})
@@ -145,7 +145,7 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 		lbsList = append(lbsList, labels.FromStrings("foo", "bar"))
 
 		memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
-		_ = memChunk.Append(&push.Entry{
+		_, _ = memChunk.Append(&push.Entry{
 			Timestamp: time.Unix(0, 1),
 			Line:      testLine,
 		})

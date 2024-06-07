@@ -10,14 +10,11 @@ import (
 	"math"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/Workiva/go-datastructures/rangetree"
 	"github.com/cespare/xxhash/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -38,7 +35,7 @@ type HeadBlock interface {
 	Entries() int
 	UncompressedSize() int
 	Convert(HeadBlockFmt, *symbolizer) (HeadBlock, error)
-	Append(int64, string, labels.Labels) error
+	Append(int64, string, labels.Labels) (bool, error)
 	Iterator(
 		ctx context.Context,
 		direction logproto.Direction,
@@ -66,13 +63,6 @@ type unorderedHeadBlock struct {
 	lines      int   // number of entries
 	size       int   // size of uncompressed bytes.
 	mint, maxt int64 // upper and lower bounds
-
-	// Runtime-config overrides for a tenant may allow these to be non-nil, in which case
-	// they will be used to output information related to duplicate log lines and bytes discarded
-	writeFailures     *writefailures.Manager
-	duplicateLogBytes *prometheus.CounterVec
-	tenant            string
-	labelsString      string
 }
 
 func newUnorderedHeadBlock(headBlockFmt HeadBlockFmt, symbolizer *symbolizer) *unorderedHeadBlock {
@@ -121,7 +111,7 @@ func (e *nsEntries) ValueAtDimension(_ uint64) int64 {
 	return e.ts
 }
 
-func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata labels.Labels) error {
+func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata labels.Labels) (bool, error) {
 	if hb.format < UnorderedWithStructuredMetadataHeadBlockFmt {
 		// structuredMetadata must be ignored for the previous head block formats
 		structuredMetadata = nil
@@ -146,17 +136,7 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 		for _, et := range displaced[0].(*nsEntries).entries {
 			if et.line == line {
 				e.entries = displaced[0].(*nsEntries).entries
-
-				if hb.writeFailures != nil {
-					errMsg := fmt.Sprintf("duplicate log entry at timestamp %d for stream %s", ts, hb.labelsString)
-					err := errors.New(errMsg)
-					hb.writeFailures.Log(hb.tenant, err)
-				}
-				if hb.duplicateLogBytes != nil {
-					hb.duplicateLogBytes.WithLabelValues(hb.tenant).Add(float64(len(line)))
-				}
-
-				return nil
+				return true, nil
 			}
 		}
 		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, hb.symbolizer.Add(structuredMetadata)})
@@ -177,7 +157,7 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 	hb.size += len(structuredMetadata) * 2 * 4 // 4 bytes per label and value pair as structuredMetadataSymbols
 	hb.lines++
 
-	return nil
+	return false, nil
 }
 
 func metaLabelsLen(metaLabels labels.Labels) int {
@@ -464,7 +444,8 @@ func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt, symbolizer *symboliz
 		0,
 		math.MaxInt64,
 		func(_ *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			return out.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols))
+			_, err := out.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols))
+			return err
 		},
 	)
 	return out, err
@@ -604,7 +585,7 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 			}
 		}
 
-		if err := hb.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols)); err != nil {
+		if _, err := hb.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols)); err != nil {
 			return err
 		}
 	}

@@ -310,7 +310,8 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 		require.NoError(t, err)
 		chunk := newStream(chunkfmt, headfmt, cfg, limiter, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil, nil).NewChunk()
 		for _, entry := range testStream.Entries {
-			err = chunk.Append(&entry)
+			dup, err := chunk.Append(&entry)
+			require.False(t, dup)
 			require.NoError(t, err)
 		}
 		stream.chunks = append(stream.chunks, chunkDesc{chunk: chunk})

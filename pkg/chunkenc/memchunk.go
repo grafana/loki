@@ -12,14 +12,11 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -140,14 +137,6 @@ type MemChunk struct {
 
 	// compressed size of chunk. Set when chunk is cut or while decoding chunk from storage.
 	compressedSize int
-
-	// Runtime-config overrides for a tenant may allow these to be non-nil, in which case
-	// they will be passed to the unordered head block, subsequently used
-	// to output information related to duplicate log lines and bytes discarded
-	writeFailures     *writefailures.Manager
-	duplicateLogBytes *prometheus.CounterVec
-	tenant            string
-	labelsString      string
 }
 
 type block struct {
@@ -192,9 +181,9 @@ func (hb *headBlock) Reset() {
 
 func (hb *headBlock) Bounds() (int64, int64) { return hb.mint, hb.maxt }
 
-func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) error {
+func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) (bool, error) {
 	if !hb.IsEmpty() && hb.maxt > ts {
-		return ErrOutOfOrder
+		return false, ErrOutOfOrder
 	}
 
 	hb.entries = append(hb.entries, entry{t: ts, s: line})
@@ -204,7 +193,7 @@ func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) error {
 	hb.maxt = ts
 	hb.size += len(line)
 
-	return nil
+	return false, nil
 }
 
 func (hb *headBlock) Serialise(pool WriterPool) ([]byte, error) {
@@ -351,7 +340,7 @@ func (hb *headBlock) Convert(version HeadBlockFmt, symbolizer *symbolizer) (Head
 	out := version.NewBlock(symbolizer)
 
 	for _, e := range hb.entries {
-		if err := out.Append(e.t, e.s, e.structuredMetadata); err != nil {
+		if _, err := out.Append(e.t, e.s, e.structuredMetadata); err != nil {
 			return nil, err
 		}
 	}
@@ -845,27 +834,28 @@ func (c *MemChunk) Utilization() float64 {
 }
 
 // Append implements Chunk.
-func (c *MemChunk) Append(entry *logproto.Entry) error {
+func (c *MemChunk) Append(entry *logproto.Entry) (bool, error) {
 	entryTimestamp := entry.Timestamp.UnixNano()
 
 	// If the head block is empty but there are cut blocks, we have to make
 	// sure the new entry is not out of order compared to the previous block
 	if c.headFmt < UnorderedHeadBlockFmt && c.head.IsEmpty() && len(c.blocks) > 0 && c.blocks[len(c.blocks)-1].maxt > entryTimestamp {
-		return ErrOutOfOrder
+		return false, ErrOutOfOrder
 	}
 
 	if c.format < ChunkFormatV4 {
 		entry.StructuredMetadata = nil
 	}
-	if err := c.head.Append(entryTimestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)); err != nil {
-		return err
+	dup, err := c.head.Append(entryTimestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata))
+	if err != nil {
+		return dup, err
 	}
 
 	if c.head.UncompressedSize() >= c.blockSize {
-		return c.cut()
+		return false, c.cut()
 	}
 
-	return nil
+	return dup, nil
 }
 
 // Close implements Chunk.
@@ -1133,7 +1123,7 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)...) {
 			continue
 		}
-		if err := newChunk.Append(&entry); err != nil {
+		if _, err := newChunk.Append(&entry); err != nil {
 			return nil, err
 		}
 	}
@@ -1147,21 +1137,6 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 	}
 
 	return newChunk, nil
-}
-
-func (c *MemChunk) SetDuplicateLogLinesCapture(writeFailures *writefailures.Manager, duplicateLogBytes *prometheus.CounterVec, tenant, labelsString string) {
-	c.writeFailures = writeFailures
-	c.duplicateLogBytes = duplicateLogBytes
-	c.tenant = tenant
-	c.labelsString = labelsString
-
-	unorderedHead, ok := c.head.(*unorderedHeadBlock)
-	if ok {
-		unorderedHead.writeFailures = c.writeFailures
-		unorderedHead.duplicateLogBytes = c.duplicateLogBytes
-		unorderedHead.tenant = c.tenant
-		unorderedHead.labelsString = c.labelsString
-	}
 }
 
 // encBlock is an internal wrapper for a block, mainly to avoid binding an encoding in a block itself.

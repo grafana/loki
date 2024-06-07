@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/grafana/loki/v3/pkg/runtime"
 
 	"github.com/go-kit/log/level"
@@ -172,21 +170,7 @@ func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err er
 }
 
 func (s *stream) NewChunk() *chunkenc.MemChunk {
-	chunk := chunkenc.NewMemChunk(s.chunkFormat, s.cfg.parsedEncoding, s.chunkHeadBlockFormat, s.cfg.BlockSize, s.cfg.TargetChunkSize)
-
-	if s.configs != nil {
-		var manager *writefailures.Manager
-		var metrics *prometheus.CounterVec
-		if s.configs.LogDuplicateMetrics(s.tenant) {
-			metrics = s.metrics.duplicateLogBytesTotal
-		}
-		if s.configs.LogDuplicateStreamInfo(s.tenant) {
-			manager = s.writeFailures
-		}
-		chunk.SetDuplicateLogLinesCapture(manager, metrics, s.tenant, s.labelsString)
-	}
-
-	return chunk
+	return chunkenc.NewMemChunk(s.chunkFormat, s.cfg.parsedEncoding, s.chunkHeadBlockFormat, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }
 
 func (s *stream) Push(
@@ -356,7 +340,8 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		}
 
 		chunk.lastUpdated = time.Now()
-		if err := chunk.chunk.Append(&entries[i]); err != nil {
+		dup, err := chunk.chunk.Append(&entries[i])
+		if err != nil {
 			invalid = append(invalid, entryWithError{&entries[i], err})
 			if chunkenc.IsOutOfOrderErr(err) {
 				s.writeFailures.Log(s.tenant, err)
@@ -364,6 +349,18 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 				outOfOrderBytes += len(entries[i].Line)
 			}
 			continue
+		}
+		if dup {
+			if s.configs != nil {
+				if s.configs.LogDuplicateMetrics(s.tenant) {
+					s.metrics.duplicateLogBytesTotal.WithLabelValues(s.tenant).Add(float64(len(entries[i].Line)))
+				}
+				if s.configs.LogDuplicateStreamInfo(s.tenant) {
+					errMsg := fmt.Sprintf("duplicate log entry at timestamp %s for stream %s", entries[i].Timestamp.Format(time.RFC3339), s.labelsString)
+					dupErr := errors.New(errMsg)
+					s.writeFailures.Log(s.tenant, dupErr)
+				}
+			}
 		}
 
 		s.entryCt++
