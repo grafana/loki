@@ -39,10 +39,10 @@ func newOtelErrorHeaderInterceptor(w http.ResponseWriter) *otelErrorHeaderInterc
 
 func (i *otelErrorHeaderInterceptor) WriteHeader(statusCode int) {
 	if statusCode == http.StatusInternalServerError {
-		i.ResponseWriter.WriteHeader(http.StatusServiceUnavailable)
-	} else {
-		i.ResponseWriter.WriteHeader(statusCode)
+		statusCode = http.StatusServiceUnavailable
 	}
+
+	i.ResponseWriter.WriteHeader(statusCode)
 }
 
 func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser) {
