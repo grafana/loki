@@ -517,7 +517,7 @@ func Test_BuilderLoop(t *testing.T) {
 			resultsCh := make(chan *protos.TaskResult, nTasks)
 			tasks := createTasks(nTasks, resultsCh)
 			for _, task := range tasks {
-				err = planner.enqueueTask(task)
+				err := planner.enqueueTask(task)
 				require.NoError(t, err)
 			}
 
@@ -527,10 +527,10 @@ func Test_BuilderLoop(t *testing.T) {
 				builder := newMockBuilder(fmt.Sprintf("builder-%d", i))
 				builders = append(builders, builder)
 
-				go func() {
-					err = planner.BuilderLoop(builder)
-					require.ErrorIs(t, err, tc.expectedBuilderLoopError)
-				}()
+				go func(expectedBuilderLoopError error) {
+					err := planner.BuilderLoop(builder)
+					require.ErrorIs(t, err, expectedBuilderLoopError)
+				}(tc.expectedBuilderLoopError)
 			}
 
 			// Eventually, all tasks should be sent to builders
@@ -558,7 +558,7 @@ func Test_BuilderLoop(t *testing.T) {
 
 				// Enqueue tasks again
 				for _, task := range tasks {
-					err = planner.enqueueTask(task)
+					err := planner.enqueueTask(task)
 					require.NoError(t, err)
 				}
 
