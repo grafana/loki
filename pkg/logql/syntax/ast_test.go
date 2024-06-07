@@ -543,7 +543,7 @@ func Test_FilterMatcher(t *testing.T) {
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
 			[]linecheck{{"foo", false}, {"bar", true}, {"127.0.0.2", true}, {"127.0.0.1", false}},
-		},
+		}, 
 		{
 			`{app="foo"} |> "<_>foo<_>" or "<_>bar<_>"`,
 			[]*labels.Matcher{
@@ -625,6 +625,18 @@ func TestOrLineFilterTypes(t *testing.T) {
 
 			_ = newOrLineFilter(left, right)
 			require.Equal(t, tt.ty, right.Ty)
+			require.Equal(t, tt.ty, left.Ty)
+		})
+
+		t.Run("right inherits left's type with multiple or filters", func(t *testing.T) {
+			f1 := &LineFilterExpr{LineFilter: LineFilter{Ty: tt.ty, Match: "something"}}
+			f2 := &LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "something"}}
+			f3 := &LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "something"}}
+
+			_ = newOrLineFilter(f1, newOrLineFilter(f2, f3))
+			require.Equal(t, tt.ty, f1.Ty)
+			require.Equal(t, tt.ty, f2.Ty)
+			require.Equal(t, tt.ty, f3.Ty)
 		})
 	}
 }
