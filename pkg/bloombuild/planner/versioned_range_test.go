@@ -315,8 +315,7 @@ func Test_OutdatedMetas(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			outdated, err := outdatedMetas(tc.metas)
-			require.NoError(t, err)
+			outdated := outdatedMetas(tc.metas)
 			require.Equal(t, tc.exp, outdated)
 		})
 	}
