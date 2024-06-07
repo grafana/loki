@@ -131,7 +131,8 @@ func SupportedEncoding() string {
 // Chunk is the interface for the compressed logs chunk format.
 type Chunk interface {
 	Bounds() (time.Time, time.Time)
-	SpaceFor(*logproto.Entry) bool
+	SpaceFor(*logproto.Entry)
+	// Append returns true if the entry appended was a duplicate
 	Append(*logproto.Entry) (bool, error)
 	Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error)
 	SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator
