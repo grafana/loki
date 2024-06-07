@@ -64,7 +64,7 @@ func TestFusedQuerier(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, itr.Next())
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, true, DefaultMaxPageSize)
+	querier := NewBlockQuerier(block, BloomPagePool, DefaultMaxPageSize)
 
 	n := 500 // series per request
 	nReqs := numSeries / n
@@ -194,7 +194,7 @@ func TestFuseMultiPage(t *testing.T) {
 
 	block := NewBlock(reader, NewMetrics(nil))
 
-	querier := NewBlockQuerier(block, true, 100<<20) // 100MB too large to interfere
+	querier := NewBlockQuerier(block, BloomPagePool, 100<<20) // 100MB too large to interfere
 
 	keys := [][]byte{
 		key1,          // found in the first bloom
@@ -315,8 +315,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	require.False(t, itr.Next())
 	block := NewBlock(reader, NewMetrics(nil))
 
-	smallMaxPageSize := 1000 // deliberately trigger page skipping for tests
-	querier := NewBlockQuerier(block, true, smallMaxPageSize)
+	querier := NewBlockQuerier(block, BloomPagePool, 1000)
 
 	for fp := model.Fingerprint(0); fp < model.Fingerprint(numSeries); fp++ {
 		err := querier.Seek(fp)
@@ -373,7 +372,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 	_, err = builder.BuildFrom(itr)
 	require.Nil(b, err)
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, true, DefaultMaxPageSize)
+	querier := NewBlockQuerier(block, BloomPagePool, DefaultMaxPageSize)
 
 	numRequestChains := 100
 	seriesPerRequest := 100

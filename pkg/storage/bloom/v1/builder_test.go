@@ -121,7 +121,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 				}
 
 				block := NewBlock(tc.reader, NewMetrics(nil))
-				querier := NewBlockQuerier(block, false, DefaultMaxPageSize).Iter()
+				querier := NewBlockQuerier(block, &SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
 
 				err = block.LoadHeaders()
 				require.Nil(t, err)
@@ -239,7 +239,7 @@ func TestMergeBuilder(t *testing.T) {
 		itr := NewSliceIter[SeriesWithBlooms](data[min:max])
 		_, err = builder.BuildFrom(itr)
 		require.Nil(t, err)
-		blocks = append(blocks, NewPeekingIter[*SeriesWithBlooms](NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), false, DefaultMaxPageSize).Iter()))
+		blocks = append(blocks, NewPeekingIter[*SeriesWithBlooms](NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), &SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()))
 	}
 
 	// We're not testing the ability to extend a bloom in this test
@@ -280,7 +280,7 @@ func TestMergeBuilder(t *testing.T) {
 	require.Nil(t, err)
 
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, false, DefaultMaxPageSize)
+	querier := NewBlockQuerier(block, &SimpleHeapAllocator{}, DefaultMaxPageSize)
 
 	EqualIterators[*SeriesWithBlooms](
 		t,
@@ -372,7 +372,7 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 	require.Nil(t, err)
 
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, false, DefaultMaxPageSize)
+	querier := NewBlockQuerier(block, &SimpleHeapAllocator{}, DefaultMaxPageSize)
 
 	require.True(t, querier.Next())
 	require.Equal(t,
@@ -417,7 +417,7 @@ func TestBlockReset(t *testing.T) {
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, false, DefaultMaxPageSize)
+	querier := NewBlockQuerier(block, &SimpleHeapAllocator{}, DefaultMaxPageSize)
 
 	rounds := make([][]model.Fingerprint, 2)
 
@@ -482,7 +482,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 			_, err = builder.BuildFrom(itr)
 			require.Nil(t, err)
 			block := NewBlock(reader, NewMetrics(nil))
-			querier := NewBlockQuerier(block, false, DefaultMaxPageSize).Iter()
+			querier := NewBlockQuerier(block, &SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
 
 			// rather than use the block querier directly, collect it's data
 			// so we can use it in a few places later
@@ -552,7 +552,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 	// ensure the new block contains one copy of all the data
 	// by comparing it against an iterator over the source data
-	mergedBlockQuerier := NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), false, DefaultMaxPageSize)
+	mergedBlockQuerier := NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), &SimpleHeapAllocator{}, DefaultMaxPageSize)
 	sourceItr := NewSliceIter[*SeriesWithBlooms](PointerSlice[SeriesWithBlooms](xs))
 
 	EqualIterators[*SeriesWithBlooms](

@@ -54,7 +54,7 @@ var (
 
 	// buffer pool for bloom pages
 	// 128KB 256KB 512KB 1MB 2MB 4MB 8MB 16MB 32MB 64MB 128MB
-	BloomPagePool = BytePool{
+	BloomPagePool = &BytePool{
 		pool: pool.New(
 			128<<10, 128<<20, 2,
 			func(size int) interface{} {
@@ -63,15 +63,38 @@ var (
 	}
 )
 
+// Allocator handles byte slices for bloom queriers.
+// It exists to reduce the cost of allocations and allows to re-use already allocated memory.
+type Allocator interface {
+	Get(size int) ([]byte, error)
+	Put([]byte) bool
+}
+
+// SimpleHeapAllocator allocates a new byte slice every time and does not re-cycle buffers.
+type SimpleHeapAllocator struct{}
+
+func (a *SimpleHeapAllocator) Get(size int) ([]byte, error) {
+	return make([]byte, size), nil
+}
+
+func (a *SimpleHeapAllocator) Put([]byte) bool {
+	return true
+}
+
+// BytePool uses a sync.Pool to re-cycle already allocated buffers.
 type BytePool struct {
 	pool *pool.Pool
 }
 
-func (p *BytePool) Get(size int) []byte {
-	return p.pool.Get(size).([]byte)[:0]
+// Get implements Allocator
+func (p *BytePool) Get(size int) ([]byte, error) {
+	return p.pool.Get(size).([]byte)[:size], nil
 }
-func (p *BytePool) Put(b []byte) {
+
+// Put implements Allocator
+func (p *BytePool) Put(b []byte) bool {
 	p.pool.Put(b)
+	return true
 }
 
 func newCRC32() hash.Hash32 {

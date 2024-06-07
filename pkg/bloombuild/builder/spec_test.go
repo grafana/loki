@@ -74,7 +74,7 @@ func dummyBloomGen(t *testing.T, opts v1.BlockOptions, store v1.Iterator[*v1.Ser
 	for i, b := range blocks {
 		bqs = append(bqs, &bloomshipper.CloseableBlockQuerier{
 			BlockRef:     refs[i],
-			BlockQuerier: v1.NewBlockQuerier(b, false, v1.DefaultMaxPageSize),
+			BlockQuerier: v1.NewBlockQuerier(b, &v1.SimpleHeapAllocator{}, v1.DefaultMaxPageSize),
 		})
 	}
 
@@ -152,7 +152,7 @@ func TestSimpleBloomGenerator(t *testing.T) {
 				expectedRefs := v1.PointerSlice(data)
 				outputRefs := make([]*v1.SeriesWithBlooms, 0, len(data))
 				for _, block := range outputBlocks {
-					bq := v1.NewBlockQuerier(block, false, v1.DefaultMaxPageSize).Iter()
+					bq := v1.NewBlockQuerier(block, &v1.SimpleHeapAllocator{}, v1.DefaultMaxPageSize).Iter()
 					for bq.Next() {
 						outputRefs = append(outputRefs, bq.At())
 					}

@@ -61,7 +61,7 @@ func TestV1RoundTrip(t *testing.T) {
 
 	// Ensure Equality
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, false, DefaultMaxPageSize).Iter()
+	querier := NewBlockQuerier(block, &SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
 
 	CompareIterators[SeriesWithLiteralBlooms, *SeriesWithBlooms](
 		t,
@@ -118,7 +118,7 @@ func TestV2Roundtrip(t *testing.T) {
 
 	// Ensure Equality
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, false, DefaultMaxPageSize).Iter()
+	querier := NewBlockQuerier(block, &SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
 
 	CompareIterators[SeriesWithLiteralBlooms, *SeriesWithBlooms](
 		t,
