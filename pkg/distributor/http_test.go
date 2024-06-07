@@ -106,9 +106,7 @@ func Test_OtelErrorHeaderInterceptor(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := httptest.NewRecorder()
-			i := &OtelErrorHeaderInterceptor{
-				r,
-			}
+			i := newOtelErrorHeaderInterceptor(r)
 
 			http.Error(i, "error", tc.inputCode)
 			require.Equal(t, tc.expectedCode, r.Code)

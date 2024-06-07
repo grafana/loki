@@ -23,16 +23,21 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
-	interceptor := &OtelErrorHeaderInterceptor{ResponseWriter: w}
-
+	interceptor := newOtelErrorHeaderInterceptor(w)
 	d.pushHandler(interceptor, r, push.ParseOTLPRequest)
 }
 
-type OtelErrorHeaderInterceptor struct {
+// otelErrorHeaderInterceptor maps 500 errors to 503.
+// According to the OTLP specification, 500 errors are never retried on the client side, but 503 are.
+type otelErrorHeaderInterceptor struct {
 	http.ResponseWriter
 }
 
-func (i *OtelErrorHeaderInterceptor) WriteHeader(statusCode int) {
+func newOtelErrorHeaderInterceptor(w http.ResponseWriter) *otelErrorHeaderInterceptor {
+	return &otelErrorHeaderInterceptor{ResponseWriter: w}
+}
+
+func (i *otelErrorHeaderInterceptor) WriteHeader(statusCode int) {
 	if statusCode == http.StatusInternalServerError {
 		i.ResponseWriter.WriteHeader(http.StatusServiceUnavailable)
 	} else {
