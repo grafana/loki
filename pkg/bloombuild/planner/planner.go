@@ -365,10 +365,7 @@ func (p *Planner) processTenantTaskResults(
 	}
 
 	combined := append(originalMetas, newMetas...)
-	outdated, err := outdatedMetas(combined)
-	if err != nil {
-		return fmt.Errorf("failed to find outdated metas: %w", err)
-	}
+	outdated := outdatedMetas(combined)
 	level.Debug(logger).Log("msg", "found outdated metas", "outdated", len(outdated))
 
 	if err := p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, outdated); err != nil {
@@ -476,7 +473,7 @@ func (p *Planner) loadTenantWork(
 
 		// If this is the first this we see this table, initialize the map
 		if tenantTableWork[table] == nil {
-			tenantTableWork[table] = make(map[string][]v1.FingerprintBounds, tenants.Len())
+			tenantTableWork[table] = make(map[string][]v1.FingerprintBounds, tenants.Remaining())
 		}
 
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
