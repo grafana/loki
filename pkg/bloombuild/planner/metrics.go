@@ -32,9 +32,6 @@ type Metrics struct {
 	buildCompleted *prometheus.CounterVec
 	buildTime      *prometheus.HistogramVec
 
-	blocksDeleted prometheus.Counter
-	metasDeleted  prometheus.Counter
-
 	tenantsDiscovered prometheus.Counter
 }
 
@@ -109,19 +106,6 @@ func NewMetrics(
 			Help:      "Time spent during a builds cycle.",
 			Buckets:   prometheus.DefBuckets,
 		}, []string{"status"}),
-
-		blocksDeleted: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
-			Subsystem: metricsSubsystem,
-			Name:      "blocks_deleted_total",
-			Help:      "Number of blocks deleted",
-		}),
-		metasDeleted: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
-			Subsystem: metricsSubsystem,
-			Name:      "metas_deleted_total",
-			Help:      "Number of metas deleted",
-		}),
 
 		tenantsDiscovered: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
