@@ -210,17 +210,30 @@ func (t tsdbTokenRange) reassemble(from int) tsdbTokenRange {
 	return t[:len(t)-(reassembleTo-from)]
 }
 
-func outdatedMetas(metas []bloomshipper.Meta) (outdated []bloomshipper.Meta, err error) {
+func outdatedMetas(metas []bloomshipper.Meta) []bloomshipper.Meta {
+	var outdated []bloomshipper.Meta
+
 	// Sort metas descending by most recent source when checking
 	// for outdated metas (older metas are discarded if they don't change the range).
 	sort.Slice(metas, func(i, j int) bool {
-		a, err := metas[i].MostRecentSource()
-		if err != nil {
-			panic(err.Error())
+		a, aExists := metas[i].MostRecentSource()
+		b, bExists := metas[j].MostRecentSource()
+
+		if !aExists && !bExists {
+			// stable sort two sourceless metas by their bounds (easier testing)
+			return metas[i].Bounds.Less(metas[j].Bounds)
 		}
-		b, err := metas[j].MostRecentSource()
-		if err != nil {
-			panic(err.Error())
+
+		if !aExists {
+			// If a meta has no sources, it's out of date by definition.
+			// By convention we sort it to the beginning of the list and will mark it for removal later
+			return true
+		}
+
+		if !bExists {
+			// if a exists but b does not, mark b as lesser, sorting b to the
+			// front
+			return false
 		}
 		return !a.TS.Before(b.TS)
 	})
@@ -231,9 +244,11 @@ func outdatedMetas(metas []bloomshipper.Meta) (outdated []bloomshipper.Meta, err
 	)
 
 	for _, meta := range metas {
-		mostRecent, err := meta.MostRecentSource()
-		if err != nil {
-			return nil, err
+		mostRecent, exists := meta.MostRecentSource()
+		if !exists {
+			// if the meta exists but does not reference a TSDB, it's out of date
+			// TODO(owen-d): this shouldn't happen, figure out why
+			outdated = append(outdated, meta)
 		}
 		version := int(model.TimeFromUnixNano(mostRecent.TS.UnixNano()))
 		tokenRange, added = tokenRange.Add(version, meta.Bounds)
@@ -242,6 +257,5 @@ func outdatedMetas(metas []bloomshipper.Meta) (outdated []bloomshipper.Meta, err
 		}
 	}
 
-	return outdated, nil
-
+	return outdated
 }
