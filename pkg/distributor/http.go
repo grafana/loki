@@ -23,7 +23,21 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, push.ParseOTLPRequest)
+	interceptor := &OtelErrorHeaderInterceptor{ResponseWriter: w}
+
+	d.pushHandler(interceptor, r, push.ParseOTLPRequest)
+}
+
+type OtelErrorHeaderInterceptor struct {
+	http.ResponseWriter
+}
+
+func (i *OtelErrorHeaderInterceptor) WriteHeader(statusCode int) {
+	if statusCode == http.StatusInternalServerError {
+		i.ResponseWriter.WriteHeader(http.StatusServiceUnavailable)
+	} else {
+		i.ResponseWriter.WriteHeader(statusCode)
+	}
 }
 
 func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser) {
