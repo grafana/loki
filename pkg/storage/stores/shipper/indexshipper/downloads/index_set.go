@@ -42,6 +42,7 @@ type IndexSet interface {
 	UpdateLastUsedAt()
 	Sync(ctx context.Context) (err error)
 	AwaitReady(ctx context.Context) error
+	IsReady() bool
 }
 
 // indexSet is a collection of multiple files created for a same table by various ingesters.
@@ -408,6 +409,10 @@ func (t *indexSet) checkStorageForUpdates(ctx context.Context, lock, bypassListC
 
 func (t *indexSet) AwaitReady(ctx context.Context) error {
 	return t.indexMtx.awaitReady(ctx)
+}
+
+func (t *indexSet) IsReady(ctx context.Context) bool {
+	return t.indexMtx.isReady()
 }
 
 func (t *indexSet) downloadFileFromStorage(ctx context.Context, fileName, folderPathForTable string) (string, error) {

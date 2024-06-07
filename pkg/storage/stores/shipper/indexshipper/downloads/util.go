@@ -21,6 +21,11 @@ func (m *mtxWithReadiness) markReady() {
 	close(m.ready)
 }
 
+func (m *mtxWithReadiness) isReady() bool {
+	_, open := <-m.ready
+	return !open
+}
+
 func (m *mtxWithReadiness) awaitReady(ctx context.Context) error {
 	select {
 	case <-ctx.Done():

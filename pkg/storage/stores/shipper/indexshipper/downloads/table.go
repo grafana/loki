@@ -282,6 +282,11 @@ func (t *table) Sync(ctx context.Context) error {
 	defer t.indexSetsMtx.RUnlock()
 
 	for userID, indexSet := range t.indexSets {
+		if !indexSet.IsReady() {
+			level.Debug(t.logger).Log("msg", "skip sync for index sets that are not ready", "table", t.name)
+			continue
+		}
+
 		if err := indexSet.Sync(ctx); err != nil {
 			return errors.Wrap(err, fmt.Sprintf("failed to sync index set %s for table %s", userID, t.name))
 		}
