@@ -140,7 +140,7 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
 
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
-	_ = memChunk.Append(&push.Entry{
+	_, _ = memChunk.Append(&push.Entry{
 		Timestamp: time.Unix(0, 1),
 		Line:      testLine,
 	})
@@ -174,7 +174,7 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 func chunkRefItrFromLines(lines ...string) (iter.EntryIterator, error) {
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	for i, line := range lines {
-		if err := memChunk.Append(&push.Entry{
+		if _, err := memChunk.Append(&push.Entry{
 			Timestamp: time.Unix(0, int64(i)),
 			Line:      line,
 		}); err != nil {

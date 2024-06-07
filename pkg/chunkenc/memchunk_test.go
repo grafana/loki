@@ -625,6 +625,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 			if chk.headFmt == OrderedHeadBlockFmt {
 				dup, err = chk.Append(logprotoEntry(1, "test"))
 				assert.EqualError(t, err, ErrOutOfOrder.Error())
+				assert.False(t, dup)
 			} else {
 				dup, err = chk.Append(logprotoEntry(1, "test"))
 				assert.False(t, dup)
@@ -642,6 +643,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 
 			if chk.headFmt == OrderedHeadBlockFmt {
 				dup, err = chk.Append(logprotoEntry(1, "test"))
+				assert.False(t, dup)
 				assert.EqualError(t, err, ErrOutOfOrder.Error())
 			} else {
 				dup, err = chk.Append(logprotoEntry(1, "test"))
@@ -662,6 +664,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 
 			if chk.headFmt == OrderedHeadBlockFmt {
 				dup, err = chk.Append(logprotoEntry(1, "test"))
+				assert.False(t, dup)
 				assert.EqualError(t, err, ErrOutOfOrder.Error())
 			} else {
 				dup, err = chk.Append(logprotoEntry(1, "test"))
