@@ -9,8 +9,13 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/storage"
 )
+
+// LOKW is the magic number for the Loki WAL format.
+var magicNumber = uint32(0x4C4F4B57)
 
 type streamID struct {
 	labels, tenant string
@@ -88,21 +93,12 @@ func (b *WalSegmentWriter) WriteTo(w io.Writer) (int64, error) {
 		return true
 	})
 	sort.Slice(streams, func(i, j int) bool {
+		// add __loki_tenant__ labels instead for sorting.
 		if streams[i].tenantID != streams[j].tenantID {
 			return streams[i].tenantID < streams[j].tenantID
 		}
 		return labels.Compare(streams[i].lbls, streams[j].lbls) < 0
 	})
-
-	// Write all streams to the writer.
-	for _, s := range streams {
-		n, err := s.WriteTo(w)
-		if err != nil {
-			return total, err
-		}
-		total += n
-		offset = append(offset, total)
-	}
 
 	// todo
 	idxw, err := index.NewWriterBufferWithVersion(context.TODO(), index.FormatV3)
@@ -115,10 +111,43 @@ func (b *WalSegmentWriter) WriteTo(w io.Writer) (int64, error) {
 	// TOC
 	// len(TOC)
 
+	// Build symbols
+	symbolsMap := make(map[string]struct{})
+	for _, s := range streams {
+		for _, l := range s.lbls {
+			symbolsMap[l.Name] = struct{}{}
+			symbolsMap[l.Value] = struct{}{}
+		}
+	}
+
+	// Sort symbols
+	symbols := make([]string, 0, len(symbolsMap))
+	for s := range symbolsMap {
+		symbols = append(symbols, s)
+	}
+	sort.Strings(symbols)
+
+	// Add symbols
+	for _, symbol := range symbols {
+		if err := idxw.AddSymbol(symbol); err != nil {
+			return total, err
+		}
+	}
+
+	// Write all streams to the writer.
+	for i, s := range streams {
+		n, err := s.WriteTo(w)
+		if err != nil {
+			return total, err
+		}
+		total += n
+		// todo
+		idxw.AddSeries(storage.SeriesRef(i), s.lbls, model.Fingerprint(s.lbls.Hash()), index.ChunkMeta{})
+		offset = append(offset, total)
+	}
+
 	return total, nil
 }
-
-var magicNumber = uint32(0x12EE56A)
 
 func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
 	return writeChunk(w, s.entries, EncodingSnappy)
