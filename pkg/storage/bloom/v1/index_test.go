@@ -9,20 +9,26 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
+var SupportedVersions = []Version{V1, V2}
+
 func TestBloomOffsetEncoding(t *testing.T) {
-	t.Parallel()
-	src := BloomOffset{Page: 1, ByteOffset: 2}
-	enc := &encoding.Encbuf{}
-	src.Encode(enc, BloomOffset{})
+	for _, v := range SupportedVersions {
+		t.Run(v.String(), func(t *testing.T) {
+			src := BloomOffset{Page: 1, ByteOffset: 2}
+			enc := &encoding.Encbuf{}
+			src.Encode(enc, v, BloomOffset{})
 
-	var dst BloomOffset
-	dec := encoding.DecWith(enc.Get())
-	require.Nil(t, dst.Decode(&dec, BloomOffset{}))
+			var dst BloomOffset
+			dec := encoding.DecWith(enc.Get())
+			require.Nil(t, dst.Decode(&dec, v, BloomOffset{}))
 
-	require.Equal(t, src, dst)
+			require.Equal(t, src, dst)
+		})
+	}
+
 }
 
-func TestSeriesEncoding(t *testing.T) {
+func TestSeriesEncoding_V1(t *testing.T) {
 	t.Parallel()
 	src := SeriesWithOffset{
 		Series: Series{
@@ -53,6 +59,78 @@ func TestSeriesEncoding(t *testing.T) {
 	require.Equal(t, src.Fingerprint, fp)
 	require.Equal(t, src.Offset, offset)
 	require.Equal(t, src, dst)
+}
+
+func TestSeriesEncoding_V2(t *testing.T) {
+	t.Parallel()
+	src := SeriesWithOffsets{
+		Series: Series{
+			Fingerprint: model.Fingerprint(1),
+			Chunks: []ChunkRef{
+				{
+					From:     1,
+					Through:  2,
+					Checksum: 3,
+				},
+				{
+					From:     4,
+					Through:  5,
+					Checksum: 6,
+				},
+			},
+		},
+		Offsets: []BloomOffset{
+			{Page: 0, ByteOffset: 0},
+			{Page: 0, ByteOffset: 100},
+			{Page: 1, ByteOffset: 2},
+			{Page: 2, ByteOffset: 1},
+		},
+	}
+
+	enc := &encoding.Encbuf{}
+	src.Encode(enc, 0, BloomOffset{})
+
+	dec := encoding.DecWith(enc.Get())
+	var dst SeriesWithOffsets
+	fp, offset, err := dst.Decode(V2, &dec, 0, BloomOffset{})
+	require.Nil(t, err)
+	require.Equal(t, src.Fingerprint, fp)
+	require.Equal(t, src.Offsets[len(src.Offsets)-1], offset)
+	require.Equal(t, src, dst)
+}
+
+func TestV2SeriesDecodesV1(t *testing.T) {
+	t.Parallel()
+	src := SeriesWithOffset{
+		Series: Series{
+			Fingerprint: model.Fingerprint(1),
+			Chunks: []ChunkRef{
+				{
+					From:     1,
+					Through:  2,
+					Checksum: 3,
+				},
+				{
+					From:     4,
+					Through:  5,
+					Checksum: 6,
+				},
+			},
+		},
+		Offset: BloomOffset{Page: 1, ByteOffset: 2},
+	}
+
+	enc := &encoding.Encbuf{}
+	src.Encode(enc, 0, BloomOffset{})
+
+	dec := encoding.DecWith(enc.Get())
+	var dst SeriesWithOffsets
+	fp, offset, err := dst.decodeV1(&dec, 0, BloomOffset{})
+	require.Nil(t, err)
+	require.Equal(t, src.Fingerprint, fp)
+	require.Equal(t, src.Offset, offset)
+	require.Equal(t, []BloomOffset{src.Offset}, dst.Offsets)
+	require.Equal(t, src.Series, dst.Series)
 }
 
 func TestChunkRefCmpLess(t *testing.T) {
@@ -190,6 +268,134 @@ func TestChunkRefsCompare(t *testing.T) {
 			exc, inc := tc.left.Compare(tc.right, true)
 			require.Equal(t, tc.exclusive, exc, "exclusive cmp")
 			require.Equal(t, tc.inclusive, inc, "inclusive cmp")
+		})
+	}
+}
+
+func TestChunkRefsUnion(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		desc               string
+		left, right, union ChunkRefs
+	}{
+		{
+			desc:  "empty",
+			left:  nil,
+			right: nil,
+			union: nil,
+		},
+		{
+			desc:  "left empty",
+			left:  nil,
+			right: ChunkRefs{{From: 1, Through: 2}},
+			union: ChunkRefs{{From: 1, Through: 2}},
+		},
+		{
+			desc:  "right empty",
+			left:  ChunkRefs{{From: 1, Through: 2}},
+			right: nil,
+			union: ChunkRefs{{From: 1, Through: 2}},
+		},
+		{
+			desc:  "left before right",
+			left:  ChunkRefs{{From: 1, Through: 2}},
+			right: ChunkRefs{{From: 3, Through: 4}},
+			union: ChunkRefs{{From: 1, Through: 2}, {From: 3, Through: 4}},
+		},
+		{
+			desc:  "left after right",
+			left:  ChunkRefs{{From: 3, Through: 4}},
+			right: ChunkRefs{{From: 1, Through: 2}},
+			union: ChunkRefs{{From: 1, Through: 2}, {From: 3, Through: 4}},
+		},
+		{
+			desc: "left overlaps right",
+			left: ChunkRefs{
+				{From: 1, Through: 3},
+				{From: 2, Through: 4},
+				{From: 3, Through: 5},
+				{From: 4, Through: 6},
+				{From: 5, Through: 7},
+			},
+			right: ChunkRefs{
+				{From: 2, Through: 4},
+				{From: 4, Through: 6},
+				{From: 5, Through: 6}, // not in left
+			},
+			union: ChunkRefs{
+				{From: 1, Through: 3},
+				{From: 2, Through: 4},
+				{From: 3, Through: 5},
+				{From: 4, Through: 6},
+				{From: 5, Through: 6},
+				{From: 5, Through: 7},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.union, tc.left.Union(tc.right))
+		})
+	}
+}
+
+func TestChunkRefsIntersect(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		desc                   string
+		left, right, intersect ChunkRefs
+	}{
+		{
+			desc:      "empty",
+			left:      nil,
+			right:     nil,
+			intersect: nil,
+		},
+		{
+			desc:      "left empty",
+			left:      nil,
+			right:     ChunkRefs{{From: 1, Through: 2}},
+			intersect: nil,
+		},
+		{
+			desc:      "right empty",
+			left:      ChunkRefs{{From: 1, Through: 2}},
+			right:     nil,
+			intersect: nil,
+		},
+		{
+			desc:      "left before right",
+			left:      ChunkRefs{{From: 1, Through: 2}},
+			right:     ChunkRefs{{From: 3, Through: 4}},
+			intersect: nil,
+		},
+		{
+			desc:      "left after right",
+			left:      ChunkRefs{{From: 3, Through: 4}},
+			right:     ChunkRefs{{From: 1, Through: 2}},
+			intersect: nil,
+		},
+		{
+			desc: "left overlaps right",
+			left: ChunkRefs{
+				{From: 1, Through: 3},
+				{From: 2, Through: 4},
+				{From: 3, Through: 5},
+				{From: 4, Through: 6},
+				{From: 5, Through: 7},
+			},
+			right: ChunkRefs{
+				{From: 2, Through: 4},
+				{From: 4, Through: 6},
+				{From: 5, Through: 6}, // not in left
+			},
+			intersect: ChunkRefs{
+				{From: 2, Through: 4},
+				{From: 4, Through: 6},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.intersect, tc.left.Intersect(tc.right))
 		})
 	}
 }

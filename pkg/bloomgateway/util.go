@@ -2,6 +2,7 @@ package bloomgateway
 
 import (
 	"sort"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
@@ -102,38 +103,30 @@ func partitionSeriesByDay(from, through model.Time, seriesWithChunks []*logproto
 
 	fromDay, throughDay := truncateDay(from), truncateDay(through)
 
-	for day := fromDay; day.Equal(throughDay) || day.Before(throughDay); day = day.Add(Day) {
+	// because through is exclusive, if it's equal to the truncated day, it means it's the start of the day
+	// and we should not include it in the range
+	if through.Equal(throughDay) {
+		throughDay = throughDay.Add(-24 * time.Hour)
+	}
+
+	for day := fromDay; !throughDay.Before(day); day = day.Add(Day) {
 		minTs, maxTs := model.Latest, model.Earliest
-		nextDay := day.Add(Day)
 		res := make([]*logproto.GroupedChunkRefs, 0, len(seriesWithChunks))
 
 		for _, series := range seriesWithChunks {
 			chunks := series.Refs
 
-			min := sort.Search(len(chunks), func(i int) bool {
-				return chunks[i].From >= day
-			})
+			var relevantChunks []*logproto.ShortRef
+			minTs, maxTs, relevantChunks = overlappingChunks(day, day.Add(Day), minTs, maxTs, chunks)
 
-			max := sort.Search(len(chunks), func(i int) bool {
-				return chunks[i].From >= nextDay
-			})
-
-			// All chunks fall outside of the range
-			if min == len(chunks) || max == 0 || min == max {
+			if len(relevantChunks) == 0 {
 				continue
-			}
-
-			if chunks[min].From < minTs {
-				minTs = chunks[min].From
-			}
-			if chunks[max-1].Through > maxTs {
-				maxTs = chunks[max-1].Through
 			}
 
 			res = append(res, &logproto.GroupedChunkRefs{
 				Fingerprint: series.Fingerprint,
 				Tenant:      series.Tenant,
-				Refs:        chunks[min:max],
+				Refs:        relevantChunks,
 			})
 
 		}
@@ -151,4 +144,29 @@ func partitionSeriesByDay(from, through model.Time, seriesWithChunks []*logproto
 	}
 
 	return result
+}
+
+func overlappingChunks(from, through, minTs, maxTs model.Time, chunks []*logproto.ShortRef) (model.Time, model.Time, []*logproto.ShortRef) {
+
+	// chunks are ordered first by `From`. Can disregard all chunks
+	// that start later than the search range ends
+	maxIdx := sort.Search(len(chunks), func(i int) bool {
+		return chunks[i].From > through
+	})
+
+	res := make([]*logproto.ShortRef, 0, len(chunks[:maxIdx]))
+
+	for _, chunk := range chunks[:maxIdx] {
+		// if chunk ends before the search range starts, skip
+		if from.After(chunk.Through) {
+			continue
+		}
+
+		// Bound min & max ranges to the search range
+		minTs = max(min(minTs, chunk.From), from)
+		maxTs = min(max(maxTs, chunk.Through), through)
+		res = append(res, chunk)
+	}
+
+	return minTs, maxTs, res
 }

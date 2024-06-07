@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -10,14 +11,23 @@ import (
 	"github.com/prometheus/prometheus/util/pool"
 )
 
+type Version byte
+
+func (v Version) String() string {
+	return fmt.Sprintf("v%d", v)
+}
+
 const (
 	magicNumber = uint32(0xCA7CAFE5)
 	// Add new versions below
-	V1 byte = iota
+	V1 Version = iota
+	// V2 supports single series blooms encoded over multiple pages
+	// to accommodate larger single series
+	V2
 )
 
 const (
-	DefaultSchemaVersion = V1
+	DefaultSchemaVersion = V2
 )
 
 var (
@@ -44,7 +54,7 @@ var (
 
 	// buffer pool for bloom pages
 	// 128KB 256KB 512KB 1MB 2MB 4MB 8MB 16MB 32MB 64MB 128MB
-	BloomPagePool = &BytePool{
+	BloomPagePool = BytePool{
 		pool: pool.New(
 			128<<10, 128<<20, 2,
 			func(size int) interface{} {
@@ -53,38 +63,15 @@ var (
 	}
 )
 
-// Allocator handles byte slices for bloom queriers.
-// It exists to reduce the cost of allocations and allows to re-use already allocated memory.
-type Allocator interface {
-	Get(size int) ([]byte, error)
-	Put([]byte) bool
-}
-
-// SimpleHeapAllocator allocates a new byte slice every time and does not re-cycle buffers.
-type SimpleHeapAllocator struct{}
-
-func (a *SimpleHeapAllocator) Get(size int) ([]byte, error) {
-	return make([]byte, size), nil
-}
-
-func (a *SimpleHeapAllocator) Put([]byte) bool {
-	return true
-}
-
-// BytePool uses a sync.Pool to re-cycle already allocated buffers.
 type BytePool struct {
 	pool *pool.Pool
 }
 
-// Get implement Allocator
-func (p *BytePool) Get(size int) ([]byte, error) {
-	return p.pool.Get(size).([]byte)[:size], nil
+func (p *BytePool) Get(size int) []byte {
+	return p.pool.Get(size).([]byte)[:0]
 }
-
-// Put implement Allocator
-func (p *BytePool) Put(b []byte) bool {
+func (p *BytePool) Put(b []byte) {
 	p.pool.Put(b)
-	return true
 }
 
 func newCRC32() hash.Hash32 {
@@ -109,6 +96,11 @@ type Iterator[T any] interface {
 	Next() bool
 	Err() error
 	At() T
+}
+
+type SizedIterator[T any] interface {
+	Iterator[T]
+	Remaining() int // remaining
 }
 
 type PeekingIterator[T any] interface {
@@ -189,8 +181,8 @@ func NewSliceIter[T any](xs []T) *SliceIter[T] {
 	return &SliceIter[T]{xs: xs, cur: -1}
 }
 
-func (it *SliceIter[T]) Len() int {
-	return len(it.xs) - (max(0, it.cur))
+func (it *SliceIter[T]) Remaining() int {
+	return max(0, len(it.xs)-(it.cur+1))
 }
 
 func (it *SliceIter[T]) Next() bool {
@@ -233,6 +225,14 @@ func (it *EmptyIter[T]) Err() error {
 
 func (it *EmptyIter[T]) At() T {
 	return it.zero
+}
+
+func (it *EmptyIter[T]) Peek() (T, bool) {
+	return it.zero, false
+}
+
+func (it *EmptyIter[T]) Remaining() int {
+	return 0
 }
 
 // noop
