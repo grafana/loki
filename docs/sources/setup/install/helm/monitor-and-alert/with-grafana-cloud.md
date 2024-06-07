@@ -1,7 +1,7 @@
 ---
-title: Configure monitoring and alerting of Loki using Grafana Cloud
+title: Monitor Loki with Grafana Cloud
 menuTitle: Monitor Loki with Grafana Cloud
-description: Configuring monitoring and alerts for Loki using Grafana Cloud.
+description: Configuring monitoring for Loki using Grafana Cloud.
 aliases:
   - ../../../../installation/helm/monitor-and-alert/with-grafana-cloud
 weight: 200
@@ -12,34 +12,242 @@ keywords:
   - grafana cloud
 ---
 
-# Configure monitoring and alerting of Loki using Grafana Cloud
+# Monitor Loki with Grafana Cloud
 
 This topic will walk you through using Grafana Cloud to monitor a Loki installation that is installed with the Helm chart. This approach leverages many of the chart's _self monitoring_ features, but instead of sending logs back to Loki itself, it sends them to a Grafana Cloud Logs instance. This approach also does not require the installation of the Prometheus Operator and instead sends metrics to a Grafana Cloud Metrics instance. Using Grafana Cloud to monitor Loki has the added benefit of being able to troubleshoot problems with Loki when the Helm installed Loki is down, as the logs will still be available in the Grafana Cloud Logs instance.
 
-**Before you begin:**
+## Before you begig
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
 - A Grafana Cloud account and stack (including Cloud Grafana, Cloud Metrics, and Cloud Logs).
 - A running Loki deployment installed in that Kubernetes cluster via the Helm chart.
 
+## Configure the meta namespace
 
-** Grafana Cloud Connection Credentials:**
+The meta-monitoring stack will be installed in a separate namespace called `meta`. To create this namespace, run the following command:
+
+  ```bash
+    kubectl create namespace meta
+  ```
+  
+## Grafana Cloud Connection Credentials
 
 The meta-monitoring stack sends metrics, logs and traces to Grafana Cloud. To do this, connection Credentials need to be collected from Grafana Cloud. To do this, follow the steps below:
 
 1. Create a new Cloud Access Policy in Grafana Cloud. This policy should have the following permissions:
-   - Logs: Write
-   - Metrics: Write
-   - Traces: Write
-  To do this sign into [Grafana Cloud](https://grafana.com/auth/sign-in/) and select  `Access Policies` located under `security` in the left-hand menu. Click on `Create access policy`; name it and select the permissions as described above. Then click `Create`.
+      - Logs: Write
+      - Metrics: Write
+      - Traces: Write
+  
+    To do this sign into [Grafana Cloud](https://grafana.com/auth/sign-in/) and select  `Access Policies` located under `security` in the left-hand menu. Click on `Create access policy`; name it and select the permissions as described above. Then click `Create`.
 
 1. Once the policy is created, click on the policy and then click on `Add token`. Name the token, select an expiration date and click `Create`. Copy the token to a secure location as it will not be displayed again.
 
-1. Finaly collect the `Username / Instance ID` and `URL` for the following components in the Grafana Cloud stack:
+2. Next, collect the `Username / Instance ID` and `URL` for the following components in the Grafana Cloud stack:
    - **Logs (Loki):** Select `Send Logs`, copy down: `User` and `URL`. From the *Using Grafana with Logs* section.
    - **Metrics (Prometheus):** Select `Send Metrics`, copy down: `User` and `URL`. From the *Using a self-hosted Grafana instance with Grafana Cloud Metrics* section.
-   - **Traces (OTLP):** Select `Configure`, copy down: `User` and `URL`. From the *Using Grafana with Traces* section.
+   - **Traces (OTLP):** Select `Configure`, copy down: `Instance ID` and `Endpoint`. From the *OTLP Endpoint* section.
+
+3. Finally, generate the secrets for each metric type within your K8's cluster:
+   ```bash
+      kubectl create secret generic logs -n meta \
+        --from-literal=username=<USERNAME LOGS> \
+        --from-literal= <ACCESS POLICY TOKEN> \
+        --from-literal=endpoint='https://<LOG URL>/loki/api/v1/push'
+
+        kubectl create secret generic metrics -n meta \
+        --from-literal=username=<USERNAME METRICS> \
+        --from-literal=password=<ACCESS POLICY TOKEN> \
+        --from-literal=endpoint='https://<METRICS URL>/api/prom/push'
+
+        kubectl create secret generic traces -n meta \
+        --from-literal=username=<OTLP INSTANCE ID> \
+        --from-literal=password=<ACCESS POLICY TOKEN> \
+        --from-literal=endpoint='https://<OTLP URL>/otlp'
+   ```
+
+## Configuration and Installation
+
+To install the meta-monitoring helm chart, a `values.yaml` file will need to be created. This file at a minimum should contain the following:
+  * The namespace to monitor
+  * Enablement of cloud monitoring
+
+This example `values.yaml` file provides the minimum configuration to monitor the `loki` namespace:
+
+```yaml
+  namespacesToMonitor:
+  - default
+
+  cloud:
+    logs:
+      enabled: true
+      secret: "logs"
+    metrics:
+      enabled: true
+      secret: "metrics"
+    traces:
+      enabled: true
+      secret: "traces"
+```
+For further configuration options, refer to the [reference file](https://github.com/grafana/meta-monitoring-chart/blob/main/charts/meta-monitoring/values.yaml).
+
+To install the meta-monitoring helm chart, run the following command:
+
+```bash
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+helm install meta-monitoring grafana/meta-monitoring -n meta -f values.yaml 
+```
+or when upgrading the configuration:
+```bash
+helm upgrade meta-monitoring grafana/meta-monitoring -n meta -f values.yaml 
+```
+
+To verify the installation, run the following command:
+
+```bash
+kubectl get pods -n meta
+```
+It should return the following pods:
+```bash
+NAME           READY   STATUS    RESTARTS   AGE
+meta-alloy-0   2/2     Running   0          23h
+meta-alloy-1   2/2     Running   0          23h
+meta-alloy-2   2/2     Running   0          23h
+```
 
 
+## Enable Loki Tracing
+
+By default, Loki does not have tracing enabled. To enable tracing, modify the Loki configuration by editing the `values.yaml` file and adding the following configuration:
+
+Set the `tracing.enabled` configuration to `true`:
+```yaml
+loki:
+  tracing:
+    enabled: true
+```
+
+Next, instrument each of the Loki components to send traces to the meta-monitoring stack. Add the following configuration to each of the Loki components:
+
+```yaml
+ingester:
+  replicas: 3
+  extraEnv:
+    - name: JAEGER_ENDPOINT
+      value: "http://mmc-alloy-external.default.svc.cluster.local:14268/api/traces"
+      # This sets the Jaeger endpoint where traces will be sent.
+      # The endpoint points to the mmc-alloy service in the default namespace at port 14268.
+      
+    - name: JAEGER_AGENT_TAGS
+      value: 'cluster="prod",namespace="default"'
+      # This specifies additional tags to attach to each span.
+      # Here, the cluster is labeled as "prod" and the namespace as "default".
+      
+    - name: JAEGER_SAMPLER_TYPE
+      value: "ratelimiting"
+      # This sets the sampling strategy for traces.
+      # "ratelimiting" means that traces will be sampled at a fixed rate.
+      
+    - name: JAEGER_SAMPLER_PARAM
+      value: "1.0"
+      # This sets the parameter for the sampler.
+      # For ratelimiting, "1.0" typically means one trace per second.
+```
+
+Since the meta-monitoring stack is installed in the `meta` namespace, the Loki components will need to be able to communicate with the meta-monitoring stack. To do this, create a new `externalname` service in the `default` namespace that points to the `meta` namespace by running the following command:
+
+```bash
+kubectl create service externalname mmc-alloy-external --external-name meta-alloy.meta.svc.cluster.local -n default
+```
+
+Finally, upgrade the Loki installation with the new configuration:
+
+```bash
+helm upgrade --values values.yaml loki grafana/loki
+```
+
+## Import the Loki Dashboards to Grafana Cloud
+
+The meta-monitoring stack includes a set of dashboards that can be imported into Grafana Cloud. These can be located within the [meta-monitoring repository](https://github.com/grafana/meta-monitoring-chart/tree/main/charts/meta-monitoring/src/dashboards).
+
+
+## Installing Rules
+
+The meta-monitoring stack includes a set of rules that can be installed to monitor the Loki installation. These rules can be located within the [meta-monitoring repository](https://github.com/grafana/meta-monitoring-chart/). To install the rules:
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/grafana/meta-monitoring-chart/
+   ```
+1. Install `mimirtool` based on the instructions located [here](https://grafana.com/docs/mimir/latest/manage/tools/mimirtool/)
+1. Create a new access policy token in Grafana Cloud with the following permissions:
+   - Rules: Write
+   - Rules: Read
+1. Create a token for the access policy and copy it to a secure location.
+1. Install the rules:
+   ```bash
+   mimirtool rules load --address=<your_cloud_prometheus_endpoint> --id=<your_instance_id> --key=<your_cloud_access_policy_token> *.yaml
+   ```
+1. Verify that the rules have been installed:
+   ```bash
+    mimirtool rules list --address=<your_cloud_prometheus_endpoint> --id=<your_instance_id> --key=<your_cloud_access_policy_token>
+    ```
+   It should return a list of rules that have been installed.
+   ```bash
+
+   loki-rules:
+    - name: loki_rules
+      rules:
+        - record: cluster_job:loki_request_duration_seconds:99quantile
+          expr: histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket[5m])) by (le, cluster, job))
+        - record: cluster_job:loki_request_duration_seconds:50quantile
+          expr: histogram_quantile(0.50, sum(rate(loki_request_duration_seconds_bucket[5m])) by (le, cluster, job))
+        - record: cluster_job:loki_request_duration_seconds:avg
+          expr: sum(rate(loki_request_duration_seconds_sum[5m])) by (cluster, job) / sum(rate(loki_request_duration_seconds_count[5m])) by (cluster, job)
+        - record: cluster_job:loki_request_duration_seconds_bucket:sum_rate
+          expr: sum(rate(loki_request_duration_seconds_bucket[5m])) by (le, cluster, job)
+        - record: cluster_job:loki_request_duration_seconds_sum:sum_rate
+          expr: sum(rate(loki_request_duration_seconds_sum[5m])) by (cluster, job)
+        - record: cluster_job:loki_request_duration_seconds_count:sum_rate
+          expr: sum(rate(loki_request_duration_seconds_count[5m])) by (cluster, job)
+        - record: cluster_job_route:loki_request_duration_seconds:99quantile
+          expr: histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket[5m])) by (le, cluster, job, route))
+        - record: cluster_job_route:loki_request_duration_seconds:50quantile
+          expr: histogram_quantile(0.50, sum(rate(loki_request_duration_seconds_bucket[5m])) by (le, cluster, job, route))
+        - record: cluster_job_route:loki_request_duration_seconds:avg
+          expr: sum(rate(loki_request_duration_seconds_sum[5m])) by (cluster, job, route) / sum(rate(loki_request_duration_seconds_count[5m])) by (cluster, job, route)
+        - record: cluster_job_route:loki_request_duration_seconds_bucket:sum_rate
+          expr: sum(rate(loki_request_duration_seconds_bucket[5m])) by (le, cluster, job, route)
+        - record: cluster_job_route:loki_request_duration_seconds_sum:sum_rate
+          expr: sum(rate(loki_request_duration_seconds_sum[5m])) by (cluster, job, route)
+        - record: cluster_job_route:loki_request_duration_seconds_count:sum_rate
+          expr: sum(rate(loki_request_duration_seconds_count[5m])) by (cluster, job, route)
+        - record: cluster_namespace_job_route:loki_request_duration_seconds:99quantile
+          expr: histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket[5m])) by (le, cluster, namespace, job, route))
+        - record: cluster_namespace_job_route:loki_request_duration_seconds:50quantile
+          expr: histogram_quantile(0.50, sum(rate(loki_request_duration_seconds_bucket[5m])) by (le, cluster, namespace, job, route))
+        - record: cluster_namespace_job_route:loki_request_duration_seconds:avg
+          expr: sum(rate(loki_request_duration_seconds_sum[5m])) by (cluster, namespace, job, route) / sum(rate(loki_request_duration_seconds_count[5m])) by (cluster, namespace, job, route)
+        - record: cluster_namespace_job_route:loki_request_duration_seconds_bucket:sum_rate
+          expr: sum(rate(loki_request_duration_seconds_bucket[5m])) by (le, cluster, namespace, job, route)
+        - record: cluster_namespace_job_route:loki_request_duration_seconds_sum:sum_rate
+          expr: sum(rate(loki_request_duration_seconds_sum[5m])) by (cluster, namespace, job, route)
+        - record: cluster_namespace_job_route:loki_request_duration_seconds_count:sum_rate
+          expr: sum(rate(loki_request_duration_seconds_count[5m])) by (cluster, namespace, job, route)
+   ```
+## Kube-state-metrics
+
+Metrics about Kubernetes objects are scraped from [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics). This needs to be installed in the cluster. The `kubeStateMetrics.endpoint` entry in meta-monitoring `values.yaml` should be set to it's address (without the `/metrics` part in the URL):
+
+```yaml
+kubeStateMetrics:
+  # Scrape https://github.com/kubernetes/kube-state-metrics by default
+  enabled: true
+  # This endpoint is created when the helm chart from
+  # https://artifacthub.io/packages/helm/prometheus-community/kube-state-metrics/
+  # is used. Change this if kube-state-metrics is installed somewhere else.
+  endpoint: kube-state-metrics.kube-state-metrics.svc.cluster.local:8080
+```
 
 
