@@ -308,6 +308,26 @@ func (q *MultiTenantQuerier) DetectedFields(ctx context.Context, req *logproto.D
 	}, nil
 }
 
+func (q *MultiTenantQuerier) StructuredMetadata(ctx context.Context, req *logproto.StructuredMetadataRequest) (*logproto.StructuredMetadataResponse, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tenantIDs) == 1 {
+		return q.Querier.StructuredMetadata(ctx, req)
+	}
+
+	level.Debug(q.logger).Log(
+		"msg", "detected fields requested for multiple tenants, but not yet supported",
+		"tenantIDs", strings.Join(tenantIDs, ","),
+	)
+
+	return &logproto.StructuredMetadataResponse{
+		Fields:     []*logproto.StructuredMetadata{},
+	}, nil
+}
+
 func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {

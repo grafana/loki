@@ -139,6 +139,14 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		return &queryrange.QuerySamplesResponse{
 			Response: result,
 		}, nil
+		
+	case *queryrange.StructuredMetadataRequest:
+		result, err := h.api.StructuredMetadataHandler(ctx, &concrete.StructuredMetadataRequest)
+		if err != nil {
+			return nil, err
+		}
+
+		return &queryrange.StructuredMetadataResponse{Response: result}, nil
 	default:
 		return nil, fmt.Errorf("unsupported query type %T", req)
 	}

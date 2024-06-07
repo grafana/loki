@@ -506,18 +506,19 @@ func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax
 }
 
 const (
-	InstantQueryOp   = "instant_query"
-	QueryRangeOp     = "query_range"
-	SeriesOp         = "series"
-	LabelNamesOp     = "labels"
-	IndexStatsOp     = "index_stats"
-	VolumeOp         = "volume"
-	VolumeRangeOp    = "volume_range"
-	IndexShardsOp    = "index_shards"
-	DetectedFieldsOp = "detected_fields"
-	PatternsQueryOp  = "patterns"
-	DetectedLabelsOp = "detected_labels"
-	SamplesQueryOp   = "samples"
+	InstantQueryOp       = "instant_query"
+	QueryRangeOp         = "query_range"
+	SeriesOp             = "series"
+	LabelNamesOp         = "labels"
+	IndexStatsOp         = "index_stats"
+	VolumeOp             = "volume"
+	VolumeRangeOp        = "volume_range"
+	IndexShardsOp        = "index_shards"
+	DetectedFieldsOp     = "detected_fields"
+	PatternsQueryOp      = "patterns"
+	DetectedLabelsOp     = "detected_labels"
+	SamplesQueryOp       = "samples"
+	StructuredMetadataOp = "structured_metadata"
 )
 
 func getOperation(path string) string {
@@ -546,6 +547,8 @@ func getOperation(path string) string {
 		return PatternsQueryOp
 	case path == "/loki/api/v1/detected_labels":
 		return DetectedLabelsOp
+	case path == "/loki/api/v1/structured_metadata":
+		return StructuredMetadataOp
 	default:
 		return ""
 	}

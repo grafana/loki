@@ -497,3 +497,23 @@ message DetectedLabel {
   uint64 cardinality = 2;
   bytes sketch = 3 [(gogoproto.jsontag) = "sketch,omitempty"];
 }
+
+message StructuredMetadataRequest {
+  google.protobuf.Timestamp start = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  string query = 3;
+}
+
+message StructuredMetadataResponse {
+  repeated StructuredMetadata fields = 1;
+}
+
+message StructuredMetadata {
+  string label = 1;
+}

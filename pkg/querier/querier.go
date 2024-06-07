@@ -106,6 +106,7 @@ type Querier interface {
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
 	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
 	SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
+	StructuredMetadata(ctx context.Context, req *logproto.StructuredMetadataRequest) (*logproto.StructuredMetadataResponse, error)
 }
 
 type Limits querier_limits.Limits
@@ -1146,6 +1147,66 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		Fields:     fields,
 		FieldLimit: req.GetFieldLimit(),
 	}, nil
+}
+
+func (q *SingleTenantQuerier) StructuredMetadata(ctx context.Context, req *logproto.StructuredMetadataRequest) (*logproto.StructuredMetadataResponse, error) {
+	expr, err := syntax.ParseLogSelector(req.Query, true)
+	if err != nil {
+		return nil, err
+	}
+	params := logql.SelectLogParams{
+		QueryRequest: &logproto.QueryRequest{
+			Start:     req.Start,
+			End:       req.End,
+			Limit:     1000,
+			Direction: logproto.BACKWARD,
+			Selector:  expr.String(),
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
+		},
+	}
+
+	iters, err := q.SelectLogs(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	streams, err := streamsForFieldDetection(iters, 1000)
+	if err != nil {
+		return nil, err
+	}
+
+	structuredMetadata := parseStructuredMetadata(ctx, streams)
+
+	fields := make([]*logproto.StructuredMetadata, len(structuredMetadata))
+	for k, v := range structuredMetadata {
+		fields[k] = &logproto.StructuredMetadata{Label: v}
+	}
+
+	return &logproto.StructuredMetadataResponse{
+		Fields: fields,
+	}, nil
+}
+
+func parseStructuredMetadata(ctx context.Context, streams logqlmodel.Streams) []string {
+	lbls := []string{}
+
+	for _, stream := range streams {
+		level.Debug(spanlogger.FromContext(ctx)).Log(
+			"structured_metadata", "true",
+			"msg", fmt.Sprintf("looking for structured metadata in stream %d with %d lines", stream.Hash, len(stream.Entries)))
+
+		for _, entry := range stream.Entries {
+			for _, l := range entry.StructuredMetadata {
+				if !slices.Contains(lbls, l.Name) {
+					lbls = append(lbls, l.Name)
+				}
+			}
+		}
+	}
+
+	return lbls
 }
 
 type parsedFields struct {

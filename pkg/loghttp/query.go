@@ -687,6 +687,23 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 	return result, nil
 }
 
+func ParseStructuredMetadataQuery(r *http.Request) (*logproto.StructuredMetadataRequest, error) {
+	var err error
+	result := &logproto.StructuredMetadataRequest{}
+
+	result.Query = query(r)
+	result.Start, result.End, err = bounds(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if result.End.Before(result.Start) {
+		return nil, errEndBeforeStart
+	}
+
+	return result, nil
+}
+
 func targetLabels(r *http.Request) []string {
 	lbls := strings.Split(r.Form.Get("targetLabels"), ",")
 	if (len(lbls) == 1 && lbls[0] == "") || len(lbls) == 0 {

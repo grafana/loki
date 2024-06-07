@@ -191,6 +191,16 @@ func WriteDetectedFieldsResponseJSON(r *logproto.DetectedFieldsResponse, w io.Wr
 	return s.Flush()
 }
 
+// WriteStructuredMetadataResponseJSON marshals a logproto.DetectedFieldsResponse to JSON and then
+// writes it to the provided io.Writer.
+func WriteStructuredMetadataResponseJSON(r *logproto.StructuredMetadataResponse, w io.Writer) error {
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	s.WriteVal(r)
+	s.WriteRaw("\n")
+	return s.Flush()
+}
+
 // WriteQueryPatternsResponseJSON marshals a logproto.QueryPatternsResponse to JSON and then
 // writes it to the provided io.Writer.
 func WriteQueryPatternsResponseJSON(r *logproto.QueryPatternsResponse, w io.Writer) error {
