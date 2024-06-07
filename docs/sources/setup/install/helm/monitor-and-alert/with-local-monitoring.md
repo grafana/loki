@@ -15,6 +15,8 @@ keywords:
 
 This topic will walk you through deploying the local meta-monitoring helm to monitor a Loki installation that is installed with the Helm chart. This approach leverages many of the chart's _self monitoring_ features, but instead of sending logs back to Loki itself, it sends them to a small LGTM stack running within the meta namespace. 
 
+These instructions are based off the [meta-monitoring-chart repository](https://github.com/grafana/meta-monitoring-chart/tree/main).
+
 ## Before you begin
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
