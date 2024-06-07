@@ -48,73 +48,73 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
 3. Create the configuration file `values.yaml`. The example below illustrates how to deploy Loki in test mode using MinIO as storage:
 
      ```yaml
-        loki:
-          schemaConfig:
-            configs:
-              - from: 2024-04-01
-                store: tsdb
-                object_store: s3
-                schema: v13
-                index:
-                  prefix: loki_index_
-                  period: 24h
-          ingester:
-            chunk_encoding: snappy
-          tracing:
-            enabled: true
-          querier:
-            # Default is 4, if you have enough memory and CPU you can increase, reduce if OOMing
-            max_concurrent: 4
+     loki:
+       schemaConfig:
+         configs:
+           - from: 2024-04-01
+             store: tsdb
+             object_store: s3
+             schema: v13
+             index:
+               prefix: loki_index_
+               period: 24h
+       ingester:
+         chunk_encoding: snappy
+       tracing:
+         enabled: true
+       querier:
+         # Default is 4, if you have enough memory and CPU you can increase, reduce if OOMing
+         max_concurrent: 4
 
-        #gateway:
-        #  ingress:
-        #    enabled: true
-        #    hosts:
-        #      - host: FIXME
-        #        paths:
-        #          - path: /
-        #            pathType: Prefix
+     #gateway:
+     #  ingress:
+     #    enabled: true
+     #    hosts:
+     #      - host: FIXME
+     #        paths:
+     #          - path: /
+     #            pathType: Prefix
 
-        deploymentMode: Distributed
+     deploymentMode: Distributed
 
-        ingester:
-          replicas: 3
-        querier:
-          replicas: 3
-          maxUnavailable: 2
-        queryFrontend:
-          replicas: 2
-          maxUnavailable: 1
-        queryScheduler:
-          replicas: 2
-        distributor:
-          replicas: 3
-          maxUnavailable: 2
-        compactor:
-          replicas: 1
-        indexGateway:
-          replicas: 2
-          maxUnavailable: 1
+     ingester:
+       replicas: 3
+     querier:
+       replicas: 3
+       maxUnavailable: 2
+     queryFrontend:
+       replicas: 2
+       maxUnavailable: 1
+     queryScheduler:
+       replicas: 2
+     distributor:
+       replicas: 3
+       maxUnavailable: 2
+     compactor:
+       replicas: 1
+     indexGateway:
+       replicas: 2
+       maxUnavailable: 1
 
-        bloomCompactor:
-          replicas: 0
-        bloomGateway:
-          replicas: 0
+     bloomCompactor:
+       replicas: 0
+     bloomGateway:
+       replicas: 0
 
-        # Enable minio for storage
-        minio:
-          enabled: true
+     # Enable minio for storage
+     minio:
+       enabled: true
 
-        # Zero out replica counts of other deployment modes
-        backend:
-          replicas: 0
-        read:
-          replicas: 0
-        write:
-          replicas: 0
+     # Zero out replica counts of other deployment modes
+     backend:
+       replicas: 0
+     read:
+       replicas: 0
+     write:
+       replicas: 0
 
-        singleBinary:
-          replicas: 0 
+     singleBinary:
+       replicas: 0 
      ```
 
 4. Install or upgrade the Loki deployment.
