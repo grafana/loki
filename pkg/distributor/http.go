@@ -19,14 +19,14 @@ import (
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, push.ParseLokiRequest, false)
+	d.pushHandler(w, r, push.ParseLokiRequest)
 }
 
 func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, push.ParseOTLPRequest, true)
+	d.pushHandler(w, r, push.ParseOTLPRequest)
 }
 
-func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser, isOtel bool) {
+func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
@@ -76,30 +76,27 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		return
 	}
 
-	var body string
-	var statusCode int
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {
-		statusCode = int(resp.Code)
-		body = string(resp.Body)
+		body := string(resp.Body)
+		if d.tenantConfigs.LogPushRequest(tenantID) {
+			level.Debug(logger).Log(
+				"msg", "push request failed",
+				"code", resp.Code,
+				"err", body,
+			)
+		}
+		http.Error(w, body, int(resp.Code))
 	} else {
-		statusCode = http.StatusInternalServerError
-		body = err.Error()
+		if d.tenantConfigs.LogPushRequest(tenantID) {
+			level.Debug(logger).Log(
+				"msg", "push request failed",
+				"code", http.StatusInternalServerError,
+				"err", err.Error(),
+			)
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-
-	// OTel spec won't retry 500 errors. So we map them to 503 which will be retried.
-	if isOtel && statusCode == http.StatusInternalServerError {
-		statusCode = http.StatusServiceUnavailable
-	}
-
-	if d.tenantConfigs.LogPushRequest(tenantID) {
-		level.Debug(logger).Log(
-			"msg", "push request failed",
-			"code", http.StatusInternalServerError,
-			"err", err.Error(),
-		)
-	}
-	http.Error(w, body, statusCode)
 }
 
 // ServeHTTP implements the distributor ring status page.
