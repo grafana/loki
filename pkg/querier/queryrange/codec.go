@@ -919,7 +919,10 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			"end":         []string{fmt.Sprintf("%d", request.End.UnixNano())},
 			"line_limit":  []string{fmt.Sprintf("%d", request.GetLineLimit())},
 			"field_limit": []string{fmt.Sprintf("%d", request.GetFieldLimit())},
-			"step":        []string{fmt.Sprintf("%d", request.GetStep())},
+		}
+
+		if request.Step != 0 {
+			params["step"] = []string{fmt.Sprintf("%f", float64(request.Step)/float64(1e3))}
 		}
 
 		u := &url.URL{
@@ -940,7 +943,10 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			"query": []string{request.GetQuery()},
 			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
 			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
-			"step":  []string{fmt.Sprintf("%d", request.GetStep())},
+		}
+
+		if request.Step != 0 {
+			params["step"] = []string{fmt.Sprintf("%f", float64(request.Step)/float64(1e3))}
 		}
 
 		u := &url.URL{

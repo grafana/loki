@@ -39,8 +39,8 @@ func BenchmarkDrain_TrainExtractsPatterns(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
+				drain := New(DefaultConfig(), nil)
 				for _, line := range lines {
-					drain := New(DefaultConfig(), nil)
 					drain.Train(line, 0)
 				}
 			}
