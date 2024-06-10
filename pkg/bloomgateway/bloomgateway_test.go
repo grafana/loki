@@ -140,8 +140,8 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	t.Run("request fails when providing invalid block", func(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
-		_, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
-		mockStore := newMockBloomStore(queriers, metas)
+		refs, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
+		mockStore := newMockBloomStore(refs, queriers, metas)
 
 		reg := prometheus.NewRegistry()
 		gw, err := New(cfg, mockStore, logger, reg)
@@ -176,7 +176,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		refs, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
-		mockStore := newMockBloomStore(queriers, metas)
+		mockStore := newMockBloomStore(refs, queriers, metas)
 		mockStore.err = errors.New("request failed")
 
 		reg := prometheus.NewRegistry()
@@ -220,7 +220,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 		// replace store implementation and re-initialize workers and sub-services
 		refs, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
-		mockStore := newMockBloomStore(queriers, metas)
+		mockStore := newMockBloomStore(refs, queriers, metas)
 		mockStore.delay = 2000 * time.Millisecond
 
 		reg := prometheus.NewRegistry()
@@ -263,7 +263,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, newMockBloomStore(nil, nil), logger, reg)
+		gw, err := New(cfg, newMockBloomStore(nil, nil, nil), logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -309,7 +309,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, newMockBloomStore(nil, nil), logger, reg)
+		gw, err := New(cfg, newMockBloomStore(nil, nil, nil), logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -363,7 +363,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		refs, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 
 		reg := prometheus.NewRegistry()
-		store := newMockBloomStore(queriers, metas)
+		store := newMockBloomStore(refs, queriers, metas)
 
 		gw, err := New(cfg, store, logger, reg)
 		require.NoError(t, err)
