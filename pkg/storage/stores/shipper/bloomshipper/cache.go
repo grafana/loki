@@ -13,9 +13,8 @@ import (
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
-
-var BloomPageAllocator v1.Allocator
 
 type CloseableBlockQuerier struct {
 	BlockRef
@@ -161,23 +160,13 @@ func (b *BlockDirectory) resolveSize() error {
 // BlockQuerier returns a new block querier from the directory.
 // The passed function `close` is called when the the returned querier is closed.
 func (b BlockDirectory) BlockQuerier(
-	usePool bool,
+	alloc mempool.Allocator,
 	close func() error,
 	maxPageSize int,
 	metrics *v1.Metrics,
 ) *CloseableBlockQuerier {
-
-	var alloc v1.Allocator
-	if usePool && BloomPageAllocator != nil {
-		alloc = BloomPageAllocator
-	} else {
-		alloc = &v1.SimpleHeapAllocator{}
-	}
-
-	bq := v1.NewBlockQuerier(b.Block(metrics), alloc, maxPageSize)
-
 	return &CloseableBlockQuerier{
-		BlockQuerier: bq,
+		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), alloc, maxPageSize),
 		BlockRef:     b.BlockRef,
 		close:        close,
 	}

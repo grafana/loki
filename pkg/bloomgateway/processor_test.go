@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 var _ bloomshipper.Store = &dummyStore{}
@@ -74,6 +75,10 @@ func (s *dummyStore) Fetcher(_ model.Time) (*bloomshipper.Fetcher, error) {
 
 func (s *dummyStore) Client(_ model.Time) (bloomshipper.Client, error) {
 	return nil, nil
+}
+
+func (s *dummyStore) Allocator() mempool.Allocator {
+	return nil
 }
 
 func (s *dummyStore) Stop() {

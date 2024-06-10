@@ -14,7 +14,14 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
+
+var BloomPagePool = mempool.New("test", []mempool.Bucket{
+	{Size: 16, Capacity: 128 << 10},
+	{Size: 16, Capacity: 256 << 10},
+	{Size: 16, Capacity: 512 << 10},
+}, nil)
 
 // TODO(owen-d): this is unhinged from the data it represents. I'm leaving this solely so I don't
 // have to refactor tests here in order to fix this elsewhere, but it can/should be fixed --

@@ -1,6 +1,10 @@
 package v1
 
-import "github.com/pkg/errors"
+import (
+	"github.com/pkg/errors"
+
+	"github.com/grafana/loki/v3/pkg/util/mempool"
+)
 
 type BloomQuerier interface {
 	Seek(BloomOffset) (*Bloom, error)
@@ -10,7 +14,7 @@ type LazyBloomIter struct {
 	b *Block
 	m int // max page size in bytes
 
-	alloc Allocator
+	alloc mempool.Allocator
 
 	// state
 	initialized  bool
@@ -24,7 +28,7 @@ type LazyBloomIter struct {
 // will be returned to the pool for efficiency.
 // This can only safely be used when the underlying bloom
 // bytes don't escape the decoder.
-func NewLazyBloomIter(b *Block, alloc Allocator, maxSize int) *LazyBloomIter {
+func NewLazyBloomIter(b *Block, alloc mempool.Allocator, maxSize int) *LazyBloomIter {
 	return &LazyBloomIter{
 		b:     b,
 		m:     maxSize,

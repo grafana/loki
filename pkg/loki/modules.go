@@ -35,7 +35,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/bloomcompactor"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -732,19 +731,6 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 	reg := prometheus.DefaultRegisterer
 	bsCfg := t.Cfg.StorageConfig.BloomShipperConfig
 
-	// Set global BloomPageAllocator variable
-	switch bsCfg.MemoryManagement.BloomPageAllocationType {
-	case "simple":
-		bloomshipper.BloomPageAllocator = &v1.SimpleHeapAllocator{}
-	case "dynamic":
-		bloomshipper.BloomPageAllocator = v1.BloomPagePool
-	case "fixed":
-		bloomshipper.BloomPageAllocator = mempool.New("bloom-page-pool", bsCfg.MemoryManagement.BloomPageMemPoolBuckets, reg)
-	default:
-		// do nothing
-		bloomshipper.BloomPageAllocator = nil
-	}
-
 	var metasCache cache.Cache
 	if t.Cfg.isTarget(IndexGateway) && cache.IsCacheConfigured(bsCfg.MetasCache) {
 		metasCache, err = cache.New(bsCfg.MetasCache, reg, logger, stats.BloomMetasCache, constants.Loki)
@@ -768,7 +754,28 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 		level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
 	}
 
-	t.BloomStore, err = bloomshipper.NewBloomStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, metasCache, blocksCache, reg, logger)
+	var pageAllocator mempool.Allocator
+
+	// Set global BloomPageAllocator variable
+	switch bsCfg.MemoryManagement.BloomPageAllocationType {
+	case "simple":
+		pageAllocator = &mempool.SimpleHeapAllocator{}
+	case "dynamic":
+		// sync buffer pool for bloom pages
+		// 128KB 256KB 512KB 1MB 2MB 4MB 8MB 16MB 32MB 64MB 128MB
+		pageAllocator = mempool.NewBytePoolAllocator(
+			128<<10, 128<<20, 2,
+			func(size int) interface{} {
+				return make([]byte, size)
+			})
+	case "fixed":
+		pageAllocator = mempool.New("bloom-page-pool", bsCfg.MemoryManagement.BloomPageMemPoolBuckets, reg)
+	default:
+		// should not happen as the type is validated upfront
+		return nil, fmt.Errorf("failed to create bloom store: invalid allocator type")
+	}
+
+	t.BloomStore, err = bloomshipper.NewBloomStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, metasCache, blocksCache, pageAllocator, reg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bloom store: %w", err)
 	}

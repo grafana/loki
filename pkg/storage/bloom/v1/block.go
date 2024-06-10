@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 type BlockMetadata struct {
@@ -117,7 +119,7 @@ type BlockQuerier struct {
 // blooms for querying (bloom-gateway), but not for writing (bloom-compactor).
 // Therefore, when calling NewBlockQuerier on the write path, you should always
 // pass the SimpleHeapAllocator implementation of the Allocator interface.
-func NewBlockQuerier(b *Block, alloc Allocator, maxPageSize int) *BlockQuerier {
+func NewBlockQuerier(b *Block, alloc mempool.Allocator, maxPageSize int) *BlockQuerier {
 	return &BlockQuerier{
 		block:          b,
 		LazySeriesIter: NewLazySeriesIter(b),

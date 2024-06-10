@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -38,6 +39,7 @@ type Store interface {
 	) (map[string][]client.StorageObject, error)
 	Fetcher(ts model.Time) (*Fetcher, error)
 	Client(ts model.Time) (Client, error)
+	Allocator() mempool.Allocator
 	Stop()
 }
 
@@ -265,6 +267,13 @@ func (b *bloomStoreEntry) Client(_ model.Time) (Client, error) {
 	return b.bloomClient, nil
 }
 
+// Allocator implements Store.
+// While bloomStoreEntry implements the Store interface, this method must never
+// be used directly and therefore can safely return nil.
+func (b *bloomStoreEntry) Allocator() mempool.Allocator {
+	return nil
+}
+
 // Stop implements Store.
 func (b bloomStoreEntry) Stop() {
 	b.bloomClient.Stop()
@@ -275,12 +284,12 @@ func (b bloomStoreEntry) Stop() {
 var _ StoreWithMetrics = &BloomStore{}
 
 type BloomStore struct {
-	stores        []*bloomStoreEntry
-	storageConfig storage.Config
-	metrics       *storeMetrics
-	bloomMetrics  *v1.Metrics
-
+	stores             []*bloomStoreEntry
+	storageConfig      storage.Config
+	metrics            *storeMetrics
+	bloomMetrics       *v1.Metrics
 	logger             log.Logger
+	allocator          mempool.Allocator
 	defaultKeyResolver // TODO(owen-d): impl schema aware resolvers
 }
 
@@ -290,6 +299,7 @@ func NewBloomStore(
 	clientMetrics storage.ClientMetrics,
 	metasCache cache.Cache,
 	blocksCache Cache,
+	allocator mempool.Allocator,
 	reg prometheus.Registerer,
 	logger log.Logger,
 ) (*BloomStore, error) {
@@ -297,6 +307,7 @@ func NewBloomStore(
 		storageConfig: storageConfig,
 		metrics:       newStoreMetrics(reg, constants.Loki, "bloom_store"),
 		bloomMetrics:  v1.NewMetrics(reg),
+		allocator:     allocator,
 		logger:        logger,
 	}
 
@@ -439,6 +450,11 @@ func (b *BloomStore) Client(ts model.Time) (Client, error) {
 		return store.Client(ts)
 	}
 	return nil, errNoStore
+}
+
+// Allocator implements Store.
+func (b *BloomStore) Allocator() mempool.Allocator {
+	return b.allocator
 }
 
 // ResolveMetas implements Store.

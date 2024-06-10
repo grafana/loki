@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 // smallBlockOpts returns a set of block options that are suitable for testing
@@ -61,7 +62,7 @@ func TestV1RoundTrip(t *testing.T) {
 
 	// Ensure Equality
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, &SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
+	querier := NewBlockQuerier(block, &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
 
 	CompareIterators[SeriesWithLiteralBlooms, *SeriesWithBlooms](
 		t,
@@ -118,7 +119,7 @@ func TestV2Roundtrip(t *testing.T) {
 
 	// Ensure Equality
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, &SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
+	querier := NewBlockQuerier(block, &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
 
 	CompareIterators[SeriesWithLiteralBlooms, *SeriesWithBlooms](
 		t,

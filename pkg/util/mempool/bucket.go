@@ -10,8 +10,8 @@ import (
 )
 
 type Bucket struct {
-	Size     int
-	Capacity uint64
+	Size     int    // Number of buffers
+	Capacity uint64 // Size of a buffer
 }
 
 func (b Bucket) Parse(s string) (any, error) {
