@@ -1149,19 +1149,20 @@ func minTs(stream *logproto.Stream) model.Time {
 
 // For each stream, we check if the stream is owned by the ingester or not and increment/decrement the owned stream count.
 func (i *instance) updateOwnedStreams(ownedTokenRange ring.TokenRanges) error {
-	i.ownedStreamsSvc.resetStreamCounts()
-
-	err := i.forAllStreams(context.Background(), func(s *stream) error {
-		if ownedTokenRange.IncludesKey(uint32(s.fp)) {
-			i.ownedStreamsSvc.incOwnedStreamCount()
-		} else {
-			i.ownedStreamsSvc.incNotOwnedStreamCount()
-		}
-		return nil
+	var err error
+	i.streams.WithLock(func() {
+		i.ownedStreamsSvc.resetStreamCounts()
+		err = i.streams.ForEach(func(s *stream) (bool, error) {
+			if ownedTokenRange.IncludesKey(uint32(s.fp)) {
+				i.ownedStreamsSvc.incOwnedStreamCount()
+			} else {
+				i.ownedStreamsSvc.incNotOwnedStreamCount()
+			}
+			return true, nil
+		})
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("error checking streams ownership: %w", err)
 	}
-
 	return nil
 }

@@ -334,14 +334,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
 
-	recalculateOwnedStreams := newRecalculateOwnedStreams(i.instances, i.lifecycler.ID, i.readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
-	if err := recalculateOwnedStreams.StartAsync(context.Background()); err != nil {
-		return nil, err
-	}
-	if err := recalculateOwnedStreams.AwaitRunning(context.Background()); err != nil {
-		return nil, err
-	}
-	i.recalculateOwnedStreams = recalculateOwnedStreams
+	i.recalculateOwnedStreams = newRecalculateOwnedStreams(i.getInstances, i.lifecycler.ID, i.readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
 }
@@ -534,6 +527,16 @@ func (i *Ingester) starting(ctx context.Context) error {
 	if shutdownMarker {
 		level.Info(i.logger).Log("msg", "detected existing shutdown marker, setting unregister and flush on shutdown", "path", shutdownMarkerPath)
 		i.setPrepareShutdown()
+	}
+
+	err = i.recalculateOwnedStreams.StartAsync(ctx)
+	if err != nil {
+		return fmt.Errorf("can not start recalculate owned streams service: %w", err)
+	}
+
+	err = i.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
 	}
 
 	// start our loop
