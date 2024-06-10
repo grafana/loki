@@ -1,4 +1,4 @@
-package wal
+package chunks
 
 import (
 	"bytes"
@@ -59,8 +59,8 @@ var s2ReaderPool = sync.Pool{
 	},
 }
 
-// writeChunk writes the log entries to the writer w with the specified encoding type.
-func writeChunk(w io.Writer, entries []*logproto.Entry, encoding EncodingType) (int64, error) {
+// WriteChunk writes the log entries to the writer w with the specified encoding type.
+func WriteChunk(w io.Writer, entries []*logproto.Entry, encoding EncodingType) (int64, error) {
 	// Validate encoding type
 	if encoding != EncodingSnappy {
 		return 0, errors.New("unsupported encoding type")

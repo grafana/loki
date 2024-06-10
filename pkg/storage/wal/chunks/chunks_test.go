@@ -1,4 +1,4 @@
-package wal
+package chunks
 
 import (
 	"bufio"
@@ -95,7 +95,7 @@ func TestChunkReaderWriter(t *testing.T) {
 			var buf bytes.Buffer
 
 			// Write the chunk
-			_, err := writeChunk(&buf, tt.entries, EncodingSnappy)
+			_, err := WriteChunk(&buf, tt.entries, EncodingSnappy)
 			require.NoError(t, err, "writeChunk failed")
 
 			// Read the chunk
@@ -143,7 +143,7 @@ func TestChunkReaderWriterWithLogGenerator(t *testing.T) {
 			var buf bytes.Buffer
 
 			// Write the chunk
-			_, err := writeChunk(&buf, entries, EncodingSnappy)
+			_, err := WriteChunk(&buf, entries, EncodingSnappy)
 			require.NoError(t, err, "writeChunk failed")
 
 			// Read the chunk
@@ -183,7 +183,7 @@ func BenchmarkWriteChunk(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		buf.Reset()
 		// Call the writeChunk function
-		_, err := writeChunk(buf, entries, EncodingSnappy)
+		_, err := WriteChunk(buf, entries, EncodingSnappy)
 		if err != nil {
 			b.Fatalf("writeChunk failed: %v", err)
 		}
@@ -216,7 +216,7 @@ func BenchmarkReadChunkWithLogGenerator(b *testing.B) {
 
 			// Reset the buffer for each iteration
 			buf := bytes.NewBuffer(make([]byte, 0, 5<<20))
-			_, err := writeChunk(buf, entries, EncodingSnappy)
+			_, err := WriteChunk(buf, entries, EncodingSnappy)
 			if err != nil {
 				b.Fatalf("writeChunk failed: %v", err)
 			}
@@ -269,7 +269,7 @@ func BenchmarkWriteChunkWithLogGenerator(b *testing.B) {
 				for n := 0; n < b.N; n++ {
 					buf.Reset()
 					// Call the writeChunk function
-					_, err := writeChunk(buf, entries, EncodingSnappy)
+					_, err := WriteChunk(buf, entries, EncodingSnappy)
 					if err != nil {
 						b.Fatalf("writeChunk failed: %v", err)
 					}

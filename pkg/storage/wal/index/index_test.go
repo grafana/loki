@@ -25,15 +25,14 @@ import (
 	"testing"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/goleak"
+	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/prometheus/prometheus/util/testutil"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
 func TestMain(m *testing.M) {
@@ -84,7 +83,6 @@ func (m mockIndex) AddSeries(ref storage.SeriesRef, l labels.Labels, chunks ...c
 	s := series{l: l}
 	// Actual chunk data is not stored in the index.
 	for _, c := range chunks {
-		c.Chunk = nil
 		s.chunks = append(s.chunks, c)
 	}
 	m.series[ref] = s
@@ -147,13 +145,13 @@ func TestIndexRW_Create_Open(t *testing.T) {
 	buf, closer, err := iw.Buffer()
 	require.NoError(t, err)
 	defer closer.Close()
-	ir, err := NewReader(realByteSlice(buf))
+	ir, err := NewReader(RealByteSlice(buf))
 	require.NoError(t, err)
 	require.NoError(t, ir.Close())
 
 	buf[0], buf[1] = 0, 0
 
-	_, err = NewReader(realByteSlice(buf))
+	_, err = NewReader(RealByteSlice(buf))
 	require.Error(t, err)
 }
 
@@ -214,7 +212,7 @@ func TestIndexRW_Postings(t *testing.T) {
 	}, labelIndices)
 
 	t.Run("ShardedPostings()", func(t *testing.T) {
-		ir, err := NewReader(realByteSlice(buf))
+		ir, err := NewReader(RealByteSlice(buf))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, ir.Close())
@@ -350,7 +348,6 @@ func TestPersistence_index_e2e(t *testing.T) {
 				MinTime: int64(j * 10000),
 				MaxTime: int64((j+1)*10000) - 1,
 				Ref:     chunks.ChunkRef(ref),
-				Chunk:   chunkenc.NewXORChunk(),
 			})
 		}
 		input = append(input, &indexWriterSeries{
@@ -456,14 +453,14 @@ func TestWriter_ShouldReturnErrorOnSeriesWithDuplicatedLabelNames(t *testing.T) 
 }
 
 func TestDecbufUvarintWithInvalidBuffer(t *testing.T) {
-	b := realByteSlice([]byte{0x81, 0x81, 0x81, 0x81, 0x81, 0x81})
+	b := RealByteSlice([]byte{0x81, 0x81, 0x81, 0x81, 0x81, 0x81})
 
 	db := encoding.NewDecbufUvarintAt(b, 0, castagnoliTable)
 	require.Error(t, db.Err())
 }
 
 func TestReaderWithInvalidBuffer(t *testing.T) {
-	b := realByteSlice([]byte{0x81, 0x81, 0x81, 0x81, 0x81, 0x81})
+	b := RealByteSlice([]byte{0x81, 0x81, 0x81, 0x81, 0x81, 0x81})
 
 	_, err := NewReader(b)
 	require.Error(t, err)
@@ -485,7 +482,7 @@ func TestSymbols(t *testing.T) {
 	checksum := crc32.Checksum(buf.Get()[symbolsStart+4:], castagnoliTable)
 	buf.PutBE32(checksum) // Check sum at the end.
 
-	s, err := NewSymbols(realByteSlice(buf.Get()), FormatV2, symbolsStart)
+	s, err := NewSymbols(RealByteSlice(buf.Get()), FormatV2, symbolsStart)
 	require.NoError(t, err)
 
 	// We store only 4 offsets to symbols.
@@ -620,7 +617,7 @@ func createReader(ctx context.Context, tb testing.TB, input indexWriterSeriesSli
 
 	buf, closer, err := iw.Buffer()
 
-	ir, err := NewReader(realByteSlice(buf))
+	ir, err := NewReader(RealByteSlice(buf))
 	require.NoError(tb, err)
 	tb.Cleanup(func() {
 		require.NoError(tb, ir.Close())

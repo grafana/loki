@@ -14,7 +14,6 @@
 package index
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -23,15 +22,14 @@ import (
 	"hash/crc32"
 	"io"
 	"math"
-	"os"
 	"slices"
 	"sort"
 	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/encoding"
 )
 
@@ -237,90 +235,8 @@ func (w *Writer) addPadding(size int) error {
 	return w.f.AddPadding(size)
 }
 
-type FileWriter struct {
-	f    *os.File
-	fbuf *bufio.Writer
-	pos  uint64
-	name string
-}
-
-func NewFileWriter(name string) (*FileWriter, error) {
-	f, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0o666)
-	if err != nil {
-		return nil, err
-	}
-	return &FileWriter{
-		f:    f,
-		fbuf: bufio.NewWriterSize(f, 1<<22),
-		pos:  0,
-		name: name,
-	}, nil
-}
-
-func (fw *FileWriter) Pos() uint64 {
-	return fw.pos
-}
-
-func (fw *FileWriter) Write(bufs ...[]byte) error {
-	for _, b := range bufs {
-		n, err := fw.fbuf.Write(b)
-		fw.pos += uint64(n)
-		if err != nil {
-			return err
-		}
-		// For now the index file must not grow beyond 64GiB. Some of the fixed-sized
-		// offset references in v1 are only 4 bytes large.
-		// Once we move to compressed/varint representations in those areas, this limitation
-		// can be lifted.
-		if fw.pos > 16*math.MaxUint32 {
-			return fmt.Errorf("%q exceeding max size of 64GiB", fw.name)
-		}
-	}
-	return nil
-}
-
-func (fw *FileWriter) Flush() error {
-	return fw.fbuf.Flush()
-}
-
 func (w *Writer) Buffer() ([]byte, io.Closer, error) {
 	return w.f.Buffer()
-}
-
-func (fw *FileWriter) WriteAt(buf []byte, pos uint64) error {
-	if err := fw.Flush(); err != nil {
-		return err
-	}
-	_, err := fw.f.WriteAt(buf, int64(pos))
-	return err
-}
-
-// AddPadding adds zero byte padding until the file size is a multiple size.
-func (fw *FileWriter) AddPadding(size int) error {
-	p := fw.pos % uint64(size)
-	if p == 0 {
-		return nil
-	}
-	p = uint64(size) - p
-
-	if err := fw.Write(make([]byte, p)); err != nil {
-		return fmt.Errorf("add padding: %w", err)
-	}
-	return nil
-}
-
-func (fw *FileWriter) Close() error {
-	if err := fw.Flush(); err != nil {
-		return err
-	}
-	if err := fw.f.Sync(); err != nil {
-		return err
-	}
-	return fw.f.Close()
-}
-
-func (fw *FileWriter) Remove() error {
-	return os.Remove(fw.name)
 }
 
 // ensureStage handles transitions between write stages and ensures that IndexWriter
@@ -404,9 +320,6 @@ func (w *Writer) writeMeta() error {
 func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...chunks.Meta) error {
 	if err := w.ensureStage(idxStageSeries); err != nil {
 		return err
-	}
-	if labels.Compare(lset, w.lastSeries) <= 0 {
-		return fmt.Errorf("out-of-order series added with label set %q", lset)
 	}
 
 	if ref < w.lastSeriesRef && !w.lastSeries.IsEmpty() {
@@ -569,7 +482,7 @@ func (w *Writer) finishSymbols() error {
 	}
 
 	// Load in the symbol table efficiently for the rest of the index writing.
-	w.symbols, err = NewSymbols(realByteSlice(buf), FormatV2, int(w.toc.Symbols))
+	w.symbols, err = NewSymbols(RealByteSlice(buf), FormatV2, int(w.toc.Symbols))
 	if err != nil {
 		return fmt.Errorf("read symbols: %w", err)
 	}
@@ -588,7 +501,7 @@ func (w *Writer) writeLabelIndices() error {
 	}
 	defer closer.Close()
 
-	d := encoding.NewDecbufRaw(realByteSlice(buf), int(w.fPO.Pos()))
+	d := encoding.NewDecbufRaw(RealByteSlice(buf), int(w.fPO.Pos()))
 	cnt := w.cntPO
 	current := []byte{}
 	values := []uint32{}
@@ -751,7 +664,7 @@ func (w *Writer) writePostingsOffsetTable() error {
 			closer.Close()
 		}
 	}()
-	d := encoding.NewDecbufRaw(realByteSlice(buf), int(w.fPO.Pos()))
+	d := encoding.NewDecbufRaw(RealByteSlice(buf), int(w.fPO.Pos()))
 	cnt := w.cntPO
 	for d.Err() == nil && cnt > 0 {
 		w.buf1.Reset()
@@ -839,7 +752,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 
 	// Write out the special all posting.
 	offsets := []uint32{}
-	d := encoding.NewDecbufRaw(realByteSlice(buf), int(w.toc.LabelIndices))
+	d := encoding.NewDecbufRaw(RealByteSlice(buf), int(w.toc.LabelIndices))
 	d.Skip(int(w.toc.Series))
 	for d.Len() > 0 {
 		d.ConsumePadding()
@@ -888,7 +801,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 		// Label name -> label value -> positions.
 		postings := map[uint32]map[uint32][]uint32{}
 
-		d := encoding.NewDecbufRaw(realByteSlice(buf), int(w.toc.LabelIndices))
+		d := encoding.NewDecbufRaw(RealByteSlice(buf), int(w.toc.LabelIndices))
 		d.Skip(int(w.toc.Series))
 		for d.Len() > 0 {
 			d.ConsumePadding()
@@ -1100,17 +1013,17 @@ type ByteSlice interface {
 	Range(start, end int) []byte
 }
 
-type realByteSlice []byte
+type RealByteSlice []byte
 
-func (b realByteSlice) Len() int {
+func (b RealByteSlice) Len() int {
 	return len(b)
 }
 
-func (b realByteSlice) Range(start, end int) []byte {
+func (b RealByteSlice) Range(start, end int) []byte {
 	return b[start:end]
 }
 
-func (b realByteSlice) Sub(start, end int) ByteSlice {
+func (b RealByteSlice) Sub(start, end int) ByteSlice {
 	return b[start:end]
 }
 
