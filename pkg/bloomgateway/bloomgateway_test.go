@@ -517,18 +517,15 @@ func TestFilterChunkRefs(t *testing.T) {
 		fp        uint64
 		checksums []uint32
 	}
-	mkRemovals := func(xs [][]instruction) [][]v1.Output {
-		out := make([][]v1.Output, len(xs))
+	mkRemovals := func(xs []instruction) []v1.Output {
+		out := make([]v1.Output, len(xs))
 		for i, x := range xs {
-			out[i] = make([]v1.Output, len(x))
-			for j, c := range x {
-				out[i][j] = v1.Output{
-					Fp:       model.Fingerprint(c.fp),
-					Removals: make(v1.ChunkRefs, len(c.checksums)),
-				}
-				for k, chk := range c.checksums {
-					out[i][j].Removals[k] = v1.ChunkRef{Checksum: chk}
-				}
+			out[i] = v1.Output{
+				Fp:       model.Fingerprint(x.fp),
+				Removals: make(v1.ChunkRefs, len(x.checksums)),
+			}
+			for k, chk := range x.checksums {
+				out[i].Removals[k] = v1.ChunkRef{Checksum: chk}
 			}
 		}
 		return out
@@ -551,7 +548,7 @@ func TestFilterChunkRefs(t *testing.T) {
 	for _, tc := range []struct {
 		desc     string
 		input    *logproto.FilterChunkRefRequest
-		removals [][]instruction
+		removals []instruction
 		expected *logproto.FilterChunkRefRequest
 	}{
 		{
@@ -562,22 +559,18 @@ func TestFilterChunkRefs(t *testing.T) {
 		{
 			desc:  "remove all",
 			input: mkInput(2, 2),
-			removals: [][]instruction{
-				{
-					{fp: 0, checksums: []uint32{0, 1}},
-					{fp: 1, checksums: []uint32{0, 1}},
-				},
+			removals: []instruction{
+				{fp: 0, checksums: []uint32{0, 1}},
+				{fp: 1, checksums: []uint32{0, 1}},
 			},
 			expected: mkInput(0, 0),
 		},
 		{
 			desc:  "remove every other series",
 			input: mkInput(4, 2),
-			removals: [][]instruction{
-				{
-					{fp: 0, checksums: []uint32{0, 1}},
-					{fp: 2, checksums: []uint32{0, 1}},
-				},
+			removals: []instruction{
+				{fp: 0, checksums: []uint32{0, 1}},
+				{fp: 2, checksums: []uint32{0, 1}},
 			},
 			expected: mkResult([]instruction{
 				{fp: 1, checksums: []uint32{0, 1}},
@@ -587,13 +580,11 @@ func TestFilterChunkRefs(t *testing.T) {
 		{
 			desc:  "remove the last chunk for each series",
 			input: mkInput(4, 2),
-			removals: [][]instruction{
-				{
-					{fp: 0, checksums: []uint32{1}},
-					{fp: 1, checksums: []uint32{1}},
-					{fp: 2, checksums: []uint32{1}},
-					{fp: 3, checksums: []uint32{1}},
-				},
+			removals: []instruction{
+				{fp: 0, checksums: []uint32{1}},
+				{fp: 1, checksums: []uint32{1}},
+				{fp: 2, checksums: []uint32{1}},
+				{fp: 3, checksums: []uint32{1}},
 			},
 			expected: mkResult([]instruction{
 				{fp: 0, checksums: []uint32{0}},
@@ -605,11 +596,9 @@ func TestFilterChunkRefs(t *testing.T) {
 		{
 			desc:  "remove the middle chunk for every other series",
 			input: mkInput(4, 3),
-			removals: [][]instruction{
-				{
-					{fp: 0, checksums: []uint32{1}},
-					{fp: 2, checksums: []uint32{1}},
-				},
+			removals: []instruction{
+				{fp: 0, checksums: []uint32{1}},
+				{fp: 2, checksums: []uint32{1}},
 			},
 			expected: mkResult([]instruction{
 				{fp: 0, checksums: []uint32{0, 2}},
@@ -621,10 +610,8 @@ func TestFilterChunkRefs(t *testing.T) {
 		{
 			desc:  "remove the first chunk of the last series",
 			input: mkInput(4, 3),
-			removals: [][]instruction{
-				{
-					{fp: 3, checksums: []uint32{0}},
-				},
+			removals: []instruction{
+				{fp: 3, checksums: []uint32{0}},
 			},
 			expected: mkResult([]instruction{
 				{fp: 0, checksums: []uint32{0, 1, 2}},
@@ -636,13 +623,11 @@ func TestFilterChunkRefs(t *testing.T) {
 		{
 			desc:  "duplicate removals",
 			input: mkInput(4, 3),
-			removals: [][]instruction{
-				{
-					{fp: 0, checksums: []uint32{0, 1}},
-					{fp: 0, checksums: []uint32{0, 1, 2}},
-					{fp: 1, checksums: []uint32{0, 2}},
-					{fp: 2, checksums: []uint32{1}},
-				},
+			removals: []instruction{
+				{fp: 0, checksums: []uint32{0, 1}},
+				{fp: 0, checksums: []uint32{0, 1, 2}},
+				{fp: 1, checksums: []uint32{0, 2}},
+				{fp: 2, checksums: []uint32{1}},
 			},
 			expected: mkResult([]instruction{
 				{fp: 1, checksums: []uint32{1}},
@@ -651,44 +636,18 @@ func TestFilterChunkRefs(t *testing.T) {
 			}),
 		},
 		{
-			desc:  "middle duplicates across 2 days",
-			input: mkInput(4, 3),
-			removals: [][]instruction{
-				{
-					{fp: 0, checksums: []uint32{1}},
-					{fp: 2, checksums: []uint32{1}},
-				},
-				{
-					{fp: 0, checksums: []uint32{1}},
-					{fp: 2, checksums: []uint32{1}},
-				},
-			},
-			expected: mkResult([]instruction{
-				{fp: 0, checksums: []uint32{0, 2}},
-				{fp: 1, checksums: []uint32{0, 1, 2}},
-				{fp: 2, checksums: []uint32{0, 2}},
-				{fp: 3, checksums: []uint32{0, 1, 2}},
-			}),
-		},
-		{
 			desc:  "unordered fingerprints",
 			input: mkInput(4, 3),
-			removals: [][]instruction{
-				{
-					{fp: 3, checksums: []uint32{2}},
-					{fp: 0, checksums: []uint32{1, 2}},
-					{fp: 2, checksums: []uint32{1, 2}},
-				},
-				{
-					{fp: 1, checksums: []uint32{1}},
-					{fp: 2, checksums: []uint32{0, 1}},
-					{fp: 3, checksums: []uint32{0}},
-				},
+			removals: []instruction{
+				{fp: 3, checksums: []uint32{2}},
+				{fp: 0, checksums: []uint32{1, 2}},
+				{fp: 2, checksums: []uint32{1, 2}},
 			},
 			expected: mkResult([]instruction{
 				{fp: 0, checksums: []uint32{0}},
-				{fp: 1, checksums: []uint32{0, 2}},
-				{fp: 3, checksums: []uint32{1}},
+				{fp: 1, checksums: []uint32{0, 1, 2}},
+				{fp: 2, checksums: []uint32{0}},
+				{fp: 3, checksums: []uint32{0, 1}},
 			}),
 		},
 	} {
@@ -752,7 +711,7 @@ func BenchmarkFilterChunkRefs(b *testing.B) {
 		{
 			desc: "filterChunkRefs",
 			f: func(req *logproto.FilterChunkRefRequest, responses []v1.Output) {
-				filterChunkRefs(req, [][]v1.Output{responses})
+				filterChunkRefs(req, responses)
 			},
 		},
 	} {
