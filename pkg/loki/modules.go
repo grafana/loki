@@ -763,11 +763,7 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 	case "dynamic":
 		// sync buffer pool for bloom pages
 		// 128KB 256KB 512KB 1MB 2MB 4MB 8MB 16MB 32MB 64MB 128MB
-		pageAllocator = mempool.NewBytePoolAllocator(
-			128<<10, 128<<20, 2,
-			func(size int) interface{} {
-				return make([]byte, size)
-			})
+		pageAllocator = mempool.NewBytePoolAllocator(128<<10, 128<<20, 2)
 	case "fixed":
 		pageAllocator = mempool.New("bloom-page-pool", bsCfg.MemoryManagement.BloomPageMemPoolBuckets, reg)
 	default:

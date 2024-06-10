@@ -44,11 +44,7 @@ var (
 
 	// buffer pool for series pages
 	// 1KB 2KB 4KB 8KB 16KB 32KB 64KB 128KB
-	SeriesPagePool = mempool.NewBytePoolAllocator(
-		1<<10, 128<<10, 2,
-		func(size int) interface{} {
-			return make([]byte, size)
-		})
+	SeriesPagePool = mempool.NewBytePoolAllocator(1<<10, 128<<10, 2)
 )
 
 func newCRC32() hash.Hash32 {

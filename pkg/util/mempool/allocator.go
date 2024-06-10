@@ -27,10 +27,10 @@ type BytePool struct {
 	pool *pool.Pool
 }
 
-func NewBytePoolAllocator(minSize, maxSize int, factor float64, makeFunc func(int) interface{}) *BytePool {
+func NewBytePoolAllocator(minSize, maxSize int, factor float64) *BytePool {
 	return &BytePool{
 		pool: pool.New(
-			128<<10, 128<<20, 2,
+			minSize, maxSize, factor,
 			func(size int) interface{} {
 				return make([]byte, size)
 			}),

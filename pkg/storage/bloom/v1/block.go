@@ -112,7 +112,7 @@ type BlockQuerier struct {
 }
 
 // NewBlockQuerier returns a new BlockQuerier for the given block.
-// WARNING: You can pass an implementation of Allocator that is responsibe for
+// WARNING: You can pass an implementation of Allocator that is responsible for
 // whether the underlying byte slice of the bloom page will be returned to the
 // pool for efficiency or not. Returning to the pool can only safely be used
 // when the underlying bloom bytes don't escape the decoder, i.e. when loading
