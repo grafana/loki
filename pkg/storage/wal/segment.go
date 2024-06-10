@@ -149,7 +149,6 @@ func (b *WalSegmentWriter) WriteTo(w io.Writer) (int64, error) {
 	}
 	total += int64(n)
 
-	ref0 := uint64(total)
 	// Write all streams to the writer.
 	for i, s := range streams {
 		if len(s.entries) == 0 {
@@ -159,13 +158,13 @@ func (b *WalSegmentWriter) WriteTo(w io.Writer) (int64, error) {
 		if err != nil {
 			return total, err
 		}
-		total += n
 		idxw.AddSeries(storage.SeriesRef(i), s.lbls, chunks.Meta{
 			MinTime: s.entries[0].Timestamp.UnixNano(),
 			MaxTime: s.entries[len(s.entries)-1].Timestamp.UnixNano(),
-			Ref:     chunks.ChunkRef(ref0),
+			Ref:     chunks.NewChunkRef(uint64(total), uint64(n)),
 		})
-		ref0 = uint64(n)
+		total += n
+
 	}
 
 	if err := idxw.Close(); err != nil {
