@@ -247,7 +247,7 @@ func NewWriterFileWithVersion(ctx context.Context, version int, fn string) (*Wri
 	return newWriter(ctx, version, f, fP, fPO)
 }
 
-// todo tests
+// NewWriterBufferWithVersion returns a new Index Writer that writes into buffers.
 func NewWriterBufferWithVersion(ctx context.Context, version int) (*Writer, error) {
 	return newWriter(ctx, version, NewBufferWriter(), NewBufferWriter(), NewBufferWriter())
 }
@@ -2203,7 +2203,7 @@ func (dec *Decoder) Postings(b []byte) (int, Postings, error) {
 	if len(l) != 4*n {
 		return 0, nil, fmt.Errorf("unexpected postings length, should be %d bytes for %d postings, got %d bytes", 4*n, n, len(l))
 	}
-	return n, newBigEndianPostings(l), nil
+	return n, NewBigEndianPostings(l), nil
 }
 
 // LabelNamesOffsetsFor decodes the offsets of the name symbols for a given series.

@@ -784,7 +784,7 @@ type bigEndianPostings struct {
 	cur  uint32
 }
 
-func newBigEndianPostings(list []byte) *bigEndianPostings {
+func NewBigEndianPostings(list []byte) *bigEndianPostings {
 	return &bigEndianPostings{list: list}
 }
 
