@@ -376,10 +376,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*st
 
 	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
-	i.streamsCreatedTotal.Inc()
-	memoryStreams.WithLabelValues(i.instanceID).Inc()
-	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
-	i.addTailersToNewStream(s)
+	i.onStreamCreated(s)
 
 	return s, nil
 }

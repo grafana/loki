@@ -22,7 +22,6 @@ type recalculateOwnedStreams struct {
 	ingesterID        string
 	previousRing      ring.ReplicationSet
 	ingestersRing     ring.ReadRing
-	ringPollInterval  time.Duration
 	ticker            *time.Ticker
 }
 
@@ -30,7 +29,6 @@ func newRecalculateOwnedStreams(instancesSupplier func() []*instance, ingesterID
 	svc := &recalculateOwnedStreams{
 		ingestersRing:     ring,
 		instancesSupplier: instancesSupplier,
-		ringPollInterval:  ringPollInterval,
 		ingesterID:        ingesterID,
 		logger:            logger,
 	}

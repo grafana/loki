@@ -1432,7 +1432,13 @@ func jsonLine(ts int64, i int) string {
 }
 
 type readRingMock struct {
-	replicationSet ring.ReplicationSet
+	replicationSet          ring.ReplicationSet
+	getAllHealthyCallsCount int
+	tokenRangesByIngester   map[string]ring.TokenRanges
+}
+
+func (r *readRingMock) HealthyInstancesCount() int {
+	return len(r.replicationSet.Instances)
 }
 
 func newReadRingMock(ingesters []ring.InstanceDesc, maxErrors int) *readRingMock {
@@ -1467,6 +1473,7 @@ func (r *readRingMock) BatchGet(_ []uint32, _ ring.Operation) ([]ring.Replicatio
 }
 
 func (r *readRingMock) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, error) {
+	r.getAllHealthyCallsCount++
 	return r.replicationSet, nil
 }
 
@@ -1521,7 +1528,14 @@ func (r *readRingMock) GetInstanceState(_ string) (ring.InstanceState, error) {
 	return 0, nil
 }
 
-func (r *readRingMock) GetTokenRangesForInstance(_ string) (ring.TokenRanges, error) {
+func (r *readRingMock) GetTokenRangesForInstance(instance string) (ring.TokenRanges, error) {
+	if r.tokenRangesByIngester != nil {
+		ranges, exists := r.tokenRangesByIngester[instance]
+		if !exists {
+			return nil, ring.ErrInstanceNotFound
+		}
+		return ranges, nil
+	}
 	tr := ring.TokenRanges{0, math.MaxUint32}
 	return tr, nil
 }
