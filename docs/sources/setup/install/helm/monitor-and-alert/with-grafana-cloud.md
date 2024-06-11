@@ -47,7 +47,9 @@ The meta-monitoring stack sends metrics, logs, and traces to Grafana Cloud. This
   1. Click **Create**.
 
 
-1. Once the policy is created, click on the policy and then click on `Add token`. Name the token, select an expiration date and click `Create`. Copy the token to a secure location as it will not be displayed again.
+1. Once the policy is created, select the policy and click  **Add token**. 
+1. Name the token, select an expiration date, then click **Create**. 
+1. Copy the token to a secure location as it will not be displayed again.
 
 2. Next, collect the `Username / Instance ID` and `URL` for the following components in the Grafana Cloud stack:
    - **Logs (Loki):** Select `Send Logs`, copy down: `User` and `URL`. From the *Using Grafana with Logs* section.
