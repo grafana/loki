@@ -3,6 +3,8 @@ package builder
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 )
 
 const (
@@ -14,15 +16,26 @@ const (
 )
 
 type Metrics struct {
-	running prometheus.Gauge
+	bloomMetrics *v1.Metrics
+	running      prometheus.Gauge
 
 	taskStarted   prometheus.Counter
 	taskCompleted *prometheus.CounterVec
 	taskDuration  *prometheus.HistogramVec
+
+	blocksReused  prometheus.Counter
+	blocksCreated prometheus.Counter
+	metasCreated  prometheus.Counter
+
+	seriesPerTask prometheus.Histogram
+	bytesPerTask  prometheus.Histogram
+
+	chunkSize prometheus.Histogram
 }
 
-func NewMetrics(r prometheus.Registerer) *Metrics {
+func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 	return &Metrics{
+		bloomMetrics: bloomMetrics,
 		running: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
@@ -55,5 +68,50 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 				prometheus.LinearBuckets(3600, 3600, 24)...,
 			),
 		}, []string{"status"}),
+
+		blocksReused: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "blocks_reused_total",
+			Help:      "Number of overlapping bloom blocks reused when creating new blocks",
+		}),
+		blocksCreated: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "blocks_created_total",
+			Help:      "Number of blocks created",
+		}),
+		metasCreated: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "metas_created_total",
+			Help:      "Number of metas created",
+		}),
+
+		seriesPerTask: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "series_per_task",
+			Help:      "Number of series during task processing. Includes series which copied from other blocks and don't need to be indexed",
+			// Up to 10M series per tenant, way more than what we expect given our max_global_streams_per_user limits
+			Buckets: prometheus.ExponentialBucketsRange(1, 10e6, 10),
+		}),
+		bytesPerTask: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "bytes_per_task",
+			Help:      "Number of source bytes from chunks added during a task processing.",
+			// 1KB -> 100GB, 10 buckets
+			Buckets: prometheus.ExponentialBucketsRange(1<<10, 100<<30, 10),
+		}),
+
+		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "chunk_series_size",
+			Help:      "Uncompressed size of chunks in a series",
+			// 256B -> 100GB, 10 buckets
+			Buckets: prometheus.ExponentialBucketsRange(256, 100<<30, 10),
+		}),
 	}
 }

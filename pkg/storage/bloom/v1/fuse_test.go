@@ -45,19 +45,7 @@ func TestFusedQuerier(t *testing.T) {
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
 	numSeries := 1000
-	data, keys := MkBasicSeriesWithBlooms(numSeries, 0, 0x0000, 0xffff, 0, 10000)
-
-	// Make the first and third series blooms too big to fit into a single page so we skip them while reading
-	for i := 0; i < 10000; i++ {
-		tokenizer := NewNGramTokenizer(4, 0)
-		line := fmt.Sprintf("%04x:%04x", i, i+1)
-		it := tokenizer.Tokens(line)
-		for it.Next() {
-			key := it.At()
-			data[0].Bloom.Add(key)
-			data[2].Bloom.Add(key)
-		}
-	}
+	data, keys := MkBasicSeriesWithBlooms(numSeries, 0x0000, 0xffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -71,14 +59,14 @@ func TestFusedQuerier(t *testing.T) {
 		writer,
 	)
 	require.Nil(t, err)
-	itr := NewSliceIter[SeriesWithBloom](data)
+	itr := NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.NoError(t, err)
 	require.False(t, itr.Next())
 	block := NewBlock(reader, NewMetrics(nil))
 	querier := NewBlockQuerier(block, true, DefaultMaxPageSize)
 
-	n := 2
+	n := 500 // series per request
 	nReqs := numSeries / n
 	var inputs [][]Request
 	var resChans []chan Output
@@ -146,6 +134,118 @@ func TestFusedQuerier(t *testing.T) {
 	}
 }
 
+// Successfully query series across multiple pages as well as series that only occupy 1 bloom
+func TestFuseMultiPage(t *testing.T) {
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+	reader := NewByteReader(indexBuf, bloomsBuf)
+
+	builder, err := NewBlockBuilder(
+		BlockOptions{
+			Schema: Schema{
+				version:     DefaultSchemaVersion,
+				encoding:    chunkenc.EncSnappy,
+				nGramLength: 3, // we test trigrams
+				nGramSkip:   0,
+			},
+			SeriesPageSize: 100,
+			BloomPageSize:  10, // So we force one bloom per page
+		},
+		writer,
+	)
+	require.Nil(t, err)
+
+	fp := model.Fingerprint(1)
+	chk := ChunkRef{
+		From:     0,
+		Through:  10,
+		Checksum: 0,
+	}
+	series := &Series{
+		Fingerprint: fp,
+		Chunks:      []ChunkRef{chk},
+	}
+
+	buf, prefixLn := prefixedToken(3, chk, nil)
+
+	b1 := &Bloom{
+		*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+	}
+	key1, key2 := []byte("foo"), []byte("bar")
+	b1.Add(key1)
+	b1.Add(append(buf[:prefixLn], key1...))
+
+	b2 := &Bloom{
+		*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+	}
+	b2.Add(key2)
+	b2.Add(append(buf[:prefixLn], key2...))
+
+	_, err = builder.BuildFrom(NewSliceIter([]SeriesWithBlooms{
+		{
+			series,
+			NewSliceIter([]*Bloom{
+				b1, b2,
+			}),
+		},
+	}))
+	require.NoError(t, err)
+
+	block := NewBlock(reader, NewMetrics(nil))
+
+	querier := NewBlockQuerier(block, true, 100<<20) // 100MB too large to interfere
+
+	keys := [][]byte{
+		key1,          // found in the first bloom
+		key2,          // found in the second bloom
+		[]byte("not"), // not found in any bloom
+	}
+
+	chans := make([]chan Output, len(keys))
+	for i := range chans {
+		chans[i] = make(chan Output, 1) // buffered once to not block in test
+	}
+
+	req := func(ngram []byte, ch chan Output) Request {
+		return Request{
+			Fp:   fp,
+			Chks: []ChunkRef{chk},
+			Search: stringTest{
+				ngrams: [][]byte{ngram},
+			},
+			Response: ch,
+			Recorder: NewBloomRecorder(context.Background(), "unknown"),
+		}
+	}
+	var reqs []Request
+	for i, key := range keys {
+		reqs = append(reqs, req(key, chans[i]))
+	}
+
+	fused := querier.Fuse(
+		[]PeekingIterator[Request]{
+			NewPeekingIter(NewSliceIter(reqs)),
+		},
+		log.NewNopLogger(),
+	)
+
+	require.NoError(t, fused.Run())
+
+	// assume they're returned in order
+	for i := range reqs {
+		out := <-chans[i]
+
+		// the last check doesn't match
+		if i == len(keys)-1 {
+			require.Equal(t, ChunkRefs{chk}, out.Removals)
+			continue
+		}
+		require.Equal(t, ChunkRefs(nil), out.Removals, "on index %d and key %s", i, string(keys[i]))
+	}
+
+}
+
 func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
@@ -158,7 +258,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	}
 
 	numSeries := 4
-	data := make([]SeriesWithBloom, 0, numSeries)
+	data := make([]SeriesWithBlooms, 0, numSeries)
 	tokenizer := NewNGramTokenizer(4, 0)
 	for i := 0; i < numSeries; i++ {
 		var series Series
@@ -191,9 +291,9 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 			}
 		}
 
-		data = append(data, SeriesWithBloom{
+		data = append(data, SeriesWithBlooms{
 			Series: &series,
-			Bloom:  &bloom,
+			Blooms: NewSliceIter([]*Bloom{&bloom}),
 		})
 	}
 
@@ -209,33 +309,43 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 		writer,
 	)
 	require.Nil(t, err)
-	itr := NewSliceIter[SeriesWithBloom](data)
+	itr := NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.NoError(t, err)
 	require.False(t, itr.Next())
 	block := NewBlock(reader, NewMetrics(nil))
 
-	querier := NewBlockQuerier(block, true, 1000)
+	smallMaxPageSize := 1000 // deliberately trigger page skipping for tests
+	querier := NewBlockQuerier(block, true, smallMaxPageSize)
 
 	for fp := model.Fingerprint(0); fp < model.Fingerprint(numSeries); fp++ {
 		err := querier.Seek(fp)
 		require.NoError(t, err)
 
-		require.True(t, querier.series.Next())
-		series := querier.series.At()
+		require.True(t, querier.Next())
+		series := querier.At()
+
+		// earlier test only has 1 bloom offset per series
+		require.Equal(t, 1, len(series.Offsets))
 		require.Equal(t, fp, series.Fingerprint)
 
+		//
 		seekable := true
-		if largeSeries(int(fp)) {
+		if large := largeSeries(int(fp)); large {
 			seekable = false
 		}
+
 		if !seekable {
-			require.True(t, querier.blooms.LoadOffset(series.Offset))
+			require.True(t, querier.blooms.LoadOffset(series.Offsets[0]))
 			continue
 		}
-		require.False(t, querier.blooms.LoadOffset(series.Offset))
-		require.True(t, querier.blooms.Next())
-		require.NoError(t, querier.blooms.Err())
+
+		for _, offset := range series.Offsets {
+			require.False(t, querier.blooms.LoadOffset(offset))
+			require.True(t, querier.blooms.Next())
+			require.NoError(t, querier.blooms.Err())
+		}
+
 	}
 }
 
@@ -245,8 +355,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
 	numSeries := 10000
-	numKeysPerSeries := 100
-	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, 0, 0xffffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -260,7 +369,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 		writer,
 	)
 	require.Nil(b, err)
-	itr := NewSliceIter[SeriesWithBloom](data)
+	itr := NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(b, err)
 	block := NewBlock(reader, NewMetrics(nil))
