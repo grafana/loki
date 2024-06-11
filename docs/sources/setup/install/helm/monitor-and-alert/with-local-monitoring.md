@@ -147,7 +147,7 @@ ingester:
 
 ## Kube-state-metrics
 
-Metrics about Kubernetes objects are scraped from [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics). This needs to be installed in the cluster. The `kubeStateMetrics.endpoint` entry in meta-monitoring `values.yaml` should be set to it's address (without the `/metrics` part in the URL):
+Metrics about Kubernetes objects are scraped from [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics). This needs to be installed in the cluster. The `kubeStateMetrics.endpoint` entry in the meta-monitoring `values.yaml` should be set to its address (without the `/metrics` part in the URL):
 
 ```yaml
 kubeStateMetrics:
