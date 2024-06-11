@@ -162,7 +162,7 @@ spec:
                   - key: rollout-group
                     operator: In
                     values:
-                      - ingester
+                      - {{ include "loki.ingesterFullname" . }}
                   - key: name
                     operator: NotIn
                     values:
