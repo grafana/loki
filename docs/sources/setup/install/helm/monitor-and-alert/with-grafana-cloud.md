@@ -36,12 +36,16 @@ The meta-monitoring stack will be installed in a separate namespace called `meta
 
 The meta-monitoring stack sends metrics, logs, and traces to Grafana Cloud. This requires that you know your connection credentials to Grafana Cloud. To obtain connection credentials, follow the steps below:
 
-1. Create a new Cloud Access Policy in Grafana Cloud. This policy should have the following permissions:
+1. Create a new Cloud Access Policy in Grafana Cloud.     
+    1. Sign into [Grafana Cloud](https://grafana.com/auth/sign-in/).
+    1.  In the main menu, select **Administration > Users and Access > Cloud Access Policies**.
+    1. Click **Create access policy**.
+    1. Give the policy a **Name** and select the following permissions:
       - Logs: Write
       - Metrics: Write
       - Traces: Write
-  
-    To do this sign into [Grafana Cloud](https://grafana.com/auth/sign-in/) and select  `Access Policies` located under `security` in the left-hand menu. Click on `Create access policy`; name it and select the permissions as described above. Then click `Create`.
+  1. Click **Create**.
+
 
 1. Once the policy is created, click on the policy and then click on `Add token`. Name the token, select an expiration date and click `Create`. Copy the token to a secure location as it will not be displayed again.
 
