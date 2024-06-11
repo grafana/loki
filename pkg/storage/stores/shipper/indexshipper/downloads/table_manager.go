@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
@@ -131,7 +132,7 @@ func (tm *tableManager) loop() {
 		case <-syncTicker.C:
 			err := tm.syncTables(tm.ctx)
 			if err != nil {
-				level.Error(tm.logger).Log("msg", "error syncing local boltdb files with storage", "err", err)
+				level.Error(tm.logger).Log("msg", "error syncing local index files with storage", "err", err)
 			}
 
 			// we need to keep ensuring query readiness to download every days new table which would otherwise be downloaded only during queries.
@@ -192,7 +193,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 		table, ok = tm.tables[tableName]
 		if !ok {
 			// table not found, creating one.
-			level.Info(tm.logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
+			level.Info(tm.logger).Log("msg", "creating table", "table", tableName)
 
 			tablePath := filepath.Join(tm.cfg.CacheDir, tableName)
 			err := util.EnsureDirectory(tablePath)
@@ -227,11 +228,16 @@ func (tm *tableManager) syncTables(ctx context.Context) error {
 
 	level.Info(tm.logger).Log("msg", "syncing tables")
 
-	for _, table := range tm.tables {
+	for name, table := range tm.tables {
+		level.Debug(tm.logger).Log("msg", "syncing table", "table", name)
+		start := time.Now()
 		err := table.Sync(ctx)
+		duration := float64(time.Since(start))
 		if err != nil {
-			return err
+			tm.metrics.tableSyncLatency.WithLabelValues(name, statusFailure).Observe(duration)
+			return errors.Wrapf(err, "failed to sync table '%s'", name)
 		}
+		tm.metrics.tableSyncLatency.WithLabelValues(name, statusSuccess).Observe(duration)
 	}
 
 	return nil
@@ -244,10 +250,10 @@ func (tm *tableManager) cleanupCache() error {
 	level.Info(tm.logger).Log("msg", "cleaning tables cache")
 
 	for name, table := range tm.tables {
-		level.Info(tm.logger).Log("msg", fmt.Sprintf("cleaning up expired table %s", name))
+		level.Debug(tm.logger).Log("msg", "cleaning up expired table", "table", name)
 		isEmpty, err := table.DropUnusedIndex(tm.cfg.CacheTTL, time.Now())
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "failed to clean up expired table '%s'", name)
 		}
 
 		if isEmpty {
