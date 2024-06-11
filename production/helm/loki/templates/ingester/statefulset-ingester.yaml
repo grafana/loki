@@ -18,8 +18,7 @@ spec:
 {{- end }}
   podManagementPolicy: Parallel
   updateStrategy:
-    rollingUpdate:
-      partition: 0
+    {{- toYaml .Values.ingester.updateStrategy | nindent 4 }}
   serviceName: {{ include "loki.ingesterFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.ingester.persistence.enableStatefulSetAutoDeletePVC)  }}

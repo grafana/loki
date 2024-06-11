@@ -1756,6 +1756,11 @@ ingester:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- Governs how statefulsets will be rolled out. Ignored if zoneAwareReplication is enabled
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0
   persistence:
     # -- Enable creating PVCs which is required when using boltdb-shipper
     enabled: false
@@ -1822,6 +1827,9 @@ ingester:
       annotations: {}
       # -- Specific annotations to add to zone C pods
       podAnnotations: {}
+    # -- Governs how the zone-aware statefulsets will be rolled out
+    updateStrategy:
+      type: OnDelete
     # -- The migration block allows migrating non zone aware ingesters to zone aware ingesters.
     migration:
       enabled: false

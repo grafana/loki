@@ -41,7 +41,7 @@ spec:
       name: ingester-zone-c
       rollout-group: ingester
   updateStrategy:
-    type: OnDelete
+    {{- toYaml .Values.ingester.zoneAwareReplication.updateStrategy | nindent 4 }}
   template:
     metadata:
       annotations:

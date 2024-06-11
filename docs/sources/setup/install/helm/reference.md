@@ -4489,6 +4489,12 @@ null
       "whenUnsatisfiable": "ScheduleAnyway"
     }
   ],
+  "updateStrategy": {
+    "rollingUpdate": {
+      "partition": 0
+    },
+    "type": "RollingUpdate"
+  },
   "zoneAwareReplication": {
     "enabled": true,
     "maxUnavailablePct": 33,
@@ -4497,6 +4503,9 @@ null
       "excludeDefaultZone": false,
       "readPath": false,
       "writePath": false
+    },
+    "updateStrategy": {
+      "type": "OnDelete"
     },
     "zoneA": {
       "annotations": {},
@@ -4893,6 +4902,20 @@ Defaults to allow skew no more than 1 node
 </td>
 		</tr>
 		<tr>
+			<td>ingester.updateStrategy</td>
+			<td>object</td>
+			<td>Governs how statefulsets will be rolled out. Ignored if zoneAwareReplication is enabled</td>
+			<td><pre lang="json">
+{
+  "rollingUpdate": {
+    "partition": 0
+  },
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingester.zoneAwareReplication</td>
 			<td>object</td>
 			<td>Enabling zone awareness on ingesters will create 3 statefulests where all writes will send a replica to each zone. This is primarily intended to accelerate rollout operations by allowing for multiple ingesters within a single zone to be shutdown and restart simultaneously (the remaining 2 zones will be guaranteed to have at least one copy of the data). Note: This can be used to run Loki over multiple cloud provider availability zones however this is not currently recommended as Loki is not optimized for this and cross zone network traffic costs can become extremely high extremely quickly. Even with zone awareness enabled, it is recommended to run Loki in a single availability zone.</td>
@@ -4905,6 +4928,9 @@ Defaults to allow skew no more than 1 node
     "excludeDefaultZone": false,
     "readPath": false,
     "writePath": false
+  },
+  "updateStrategy": {
+    "type": "OnDelete"
   },
   "zoneA": {
     "annotations": {},
@@ -4956,6 +4982,17 @@ true
   "excludeDefaultZone": false,
   "readPath": false,
   "writePath": false
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.updateStrategy</td>
+			<td>object</td>
+			<td>Governs how the zone-aware statefulsets will be rolled out</td>
+			<td><pre lang="json">
+{
+  "type": "OnDelete"
 }
 </pre>
 </td>
