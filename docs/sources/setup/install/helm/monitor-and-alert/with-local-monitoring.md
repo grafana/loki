@@ -73,7 +73,7 @@ kubectl create secret generic minio -n meta \
 Username and password must have a minimum of 8 characters.
 {{< /admonition >}}
 
-To install the meta-monitoring stack, run the following command:
+To install the meta-monitoring stack, run the following commands:
 
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
