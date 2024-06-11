@@ -18,7 +18,7 @@ This topic will walk you through using Grafana Cloud to monitor a Loki installat
 
 These instructions are based off the [meta-monitoring-chart repository](https://github.com/grafana/meta-monitoring-chart/tree/main).
 
-## Before you begig
+## Before you begin
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
 - A Grafana Cloud account and stack (including Cloud Grafana, Cloud Metrics, and Cloud Logs).
