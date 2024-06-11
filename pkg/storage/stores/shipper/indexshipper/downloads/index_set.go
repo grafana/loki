@@ -41,7 +41,7 @@ type IndexSet interface {
 	LastUsedAt() time.Time
 	UpdateLastUsedAt()
 	Sync(ctx context.Context) (err error)
-	AwaitReady(ctx context.Context) error
+	AwaitReady(ctx context.Context, reason string) error
 }
 
 // indexSet is a collection of multiple files created for a same table by various ingesters.
@@ -62,8 +62,7 @@ type indexSet struct {
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
-func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc,
-	logger log.Logger) (IndexSet, error) {
+func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger) (IndexSet, error) {
 	if baseIndexSet.IsUserBasedIndexSet() && userID == "" {
 		return nil, fmt.Errorf("userID must not be empty")
 	} else if !baseIndexSet.IsUserBasedIndexSet() && userID != "" {
@@ -75,10 +74,7 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 		return nil, err
 	}
 
-	maxConcurrent := runtime.GOMAXPROCS(0) / 2
-	if maxConcurrent == 0 {
-		maxConcurrent = 1
-	}
+	maxConcurrent := max(runtime.GOMAXPROCS(0)/2, 1)
 
 	is := indexSet{
 		openIndexFileFunc: openIndexFileFunc,
@@ -101,25 +97,25 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 func (t *indexSet) Init(forQuerying bool) (err error) {
 	// Using background context to avoid cancellation of download when request times out.
 	// We would anyways need the files for serving next requests.
-	ctx, cancelFunc := context.WithTimeout(context.Background(), downloadTimeout)
-	t.cancelFunc = cancelFunc
+	ctx := context.Background()
+	ctx, t.cancelFunc = context.WithTimeout(ctx, downloadTimeout)
 
-	logger := spanlogger.FromContextWithFallback(ctx, t.logger)
+	logger, ctx := spanlogger.NewWithLogger(ctx, t.logger, "indexSet.Init")
 
 	defer func() {
 		if err != nil {
-			level.Error(t.logger).Log("msg", fmt.Sprintf("failed to initialize table %s, cleaning it up", t.tableName), "err", err)
+			level.Error(logger).Log("msg", "failed to initialize table, cleaning it up", "table", t.tableName, "err", err)
 			t.err = err
 
 			// cleaning up files due to error to avoid returning invalid results.
 			for fileName := range t.index {
 				if err := t.cleanupDB(fileName); err != nil {
-					level.Error(t.logger).Log("msg", "failed to cleanup partially downloaded file", "filename", fileName, "err", err)
+					level.Error(logger).Log("msg", "failed to cleanup partially downloaded file", "filename", fileName, "err", err)
 				}
 			}
 		}
-		t.cancelFunc()
 		t.indexMtx.markReady()
+		t.cancelFunc()
 	}()
 
 	dirEntries, err := os.ReadDir(t.cacheLocation)
@@ -137,12 +133,12 @@ func (t *indexSet) Init(forQuerying bool) (err error) {
 		// if we fail to open an index file, lets skip it and let sync operation re-download the file from storage.
 		idx, err := t.openIndexFileFunc(fullPath)
 		if err != nil {
-			level.Error(t.logger).Log("msg", fmt.Sprintf("failed to open existing index file %s, removing the file and continuing without it to let the sync operation catch up", fullPath), "err", err)
+			level.Error(logger).Log("msg", fmt.Sprintf("failed to open existing index file %s, removing the file and continuing without it to let the sync operation catch up", fullPath), "err", err)
 			// Sometimes files get corrupted when the process gets killed in the middle of a download operation which can cause problems in reading the file.
 			// Implementation of openIndexFileFunc should take care of gracefully handling corrupted files.
 			// Let us just remove the file and let the sync operation re-download it.
 			if err := os.Remove(fullPath); err != nil {
-				level.Error(t.logger).Log("msg", fmt.Sprintf("failed to remove index file %s which failed to open", fullPath))
+				level.Error(logger).Log("msg", fmt.Sprintf("failed to remove index file %s which failed to open", fullPath))
 			}
 			continue
 		}
@@ -406,8 +402,18 @@ func (t *indexSet) checkStorageForUpdates(ctx context.Context, lock, bypassListC
 	return
 }
 
-func (t *indexSet) AwaitReady(ctx context.Context) error {
-	return t.indexMtx.awaitReady(ctx)
+func (t *indexSet) AwaitReady(ctx context.Context, reason string) error {
+	start := time.Now()
+	err := t.indexMtx.awaitReady(ctx)
+	level.Info(t.logger).Log(
+		"msg", "waited for index set to become ready",
+		"reason", reason,
+		"table", t.tableName,
+		"user", t.userID,
+		"wait_time", time.Since(start),
+		"err", err,
+	)
+	return err
 }
 
 func (t *indexSet) downloadFileFromStorage(ctx context.Context, fileName, folderPathForTable string) (string, error) {
