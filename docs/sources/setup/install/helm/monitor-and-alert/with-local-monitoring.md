@@ -62,7 +62,7 @@ local:
 
 For further configuration options, refer to the [reference file](https://github.com/grafana/meta-monitoring-chart/blob/main/charts/meta-monitoring/values.yaml).
 
-Local mode by default will also enable Minio, which will act as the object storage for the LGTM stack. To provide access to Minio a generic needs to be created. To create the generic secret, run the following command:
+Local mode by default will also enable Minio, which will act as the object storage for the LGTM stack. To provide access to Minio a generic secret needs to be created. To create the generic secret, run the following command:
 
 ```bash
 kubectl create secret generic minio -n meta \

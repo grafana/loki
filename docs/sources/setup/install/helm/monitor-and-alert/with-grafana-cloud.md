@@ -14,7 +14,7 @@ keywords:
 
 # Monitor Loki with Grafana Cloud
 
-This topic will walk you through using Grafana Cloud to monitor a Loki installation that is installed with the Helm chart. This approach leverages many of the chart's _self monitoring_ features, but instead of sending logs back to Loki itself, it sends them to a Grafana Cloud Logs instance. This approach also does not require the installation of the Prometheus Operator and instead sends metrics to a Grafana Cloud Metrics instance. Using Grafana Cloud to monitor Loki has the added benefit of being able to troubleshoot problems with Loki when the Helm installed Loki is down, as the logs will still be available in the Grafana Cloud Logs instance.
+This guide will walk you through using Grafana Cloud to monitor a Loki installation set up with the Helm chart. This method takes advantage of many of the chart's self-monitoring features, sending metrics, logs, and traces from the Loki deployment to Grafana Cloud. Monitoring Loki with Grafana Cloud offers the added benefit of troubleshooting Loki issues even when the Helm-installed Loki is down, as the telemetry data will remain available in the Grafana Cloud instance.
 
 These instructions are based off the [meta-monitoring-chart repository](https://github.com/grafana/meta-monitoring-chart/tree/main).
 
