@@ -34,7 +34,7 @@ The meta-monitoring stack will be installed in a separate namespace called `meta
   
 ## Grafana Cloud Connection Credentials
 
-The meta-monitoring stack sends metrics, logs and traces to Grafana Cloud. To do this, connection Credentials need to be collected from Grafana Cloud. To do this, follow the steps below:
+The meta-monitoring stack sends metrics, logs, and traces to Grafana Cloud. This requires that you know your connection credentials to Grafana Cloud. To obtain connection credentials, follow the steps below:
 
 1. Create a new Cloud Access Policy in Grafana Cloud. This policy should have the following permissions:
       - Logs: Write
