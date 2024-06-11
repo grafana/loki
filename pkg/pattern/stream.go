@@ -2,6 +2,7 @@ package pattern
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -152,7 +153,7 @@ func (s *stream) SampleIterator(
 	// this is only 1 series since we're already on a stream
 	// this this limit needs to also be enforced higher up
 	maxSeries := 1000
-	matrix, err := s.JoinSampleVectors(
+	matrix, err := s.joinSampleVectors(
 		next,
 		ts,
 		r,
@@ -166,7 +167,7 @@ func (s *stream) SampleIterator(
 	return loki_iter.NewMultiSeriesIterator(matrix), nil
 }
 
-func (s *stream) JoinSampleVectors(
+func (s *stream) joinSampleVectors(
 	next bool,
 	ts int64,
 	r logql.StepResult,
@@ -227,6 +228,15 @@ func (s *stream) JoinSampleVectors(
 	for _, s := range series {
 		matrix = append(matrix, *s)
 	}
+
+	level.Debug(s.logger).Log(
+		"msg", "joined sample vectors",
+		"num_series", len(matrix),
+		"matrix", fmt.Sprintf("%v", matrix),
+		"from", from,
+		"through", through,
+		"step", step,
+	)
 
 	return matrix, stepEvaluator.Error()
 }

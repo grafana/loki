@@ -26,8 +26,8 @@ func Test_SampleEvaluator(t *testing.T) {
 		},
 	}
 
-	setup := func(chunks Chunks, from, through, step int64, query string) logql.StepEvaluator {
-		factory := NewDefaultEvaluatorFactory(&chunks)
+	setup := func(chunks *Chunks, from, through, step int64, query string) logql.StepEvaluator {
+		factory := NewDefaultEvaluatorFactory(chunks)
 
 		expr, err := syntax.ParseSampleExpr(query)
 		require.NoError(t, err)
@@ -49,7 +49,7 @@ func Test_SampleEvaluator(t *testing.T) {
 		thenTime := model.Time(then)
 		beforeThenTime := model.Time(beforeThen)
 		return Chunks{
-			chunks: []Chunk{
+			chunks: []*Chunk{
 				{
 					Samples: []Sample{
 						{

@@ -105,7 +105,7 @@ func (q *IngesterQuerier) Samples(
 	}
 
 	// TODO(twhitney): what should batch size be here?
-	resp, err := pattern_iter.ReadMetricsBatch(loki_iter.NewSortSampleIterator(iterators), math.MaxInt32)
+	resp, err := pattern_iter.ReadMetricsBatch(loki_iter.NewSortSampleIterator(iterators), math.MaxInt32, q.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func (q *IngesterQuerier) querySample(ctx context.Context, req *logproto.QuerySa
 
 	iterators := make([]loki_iter.SampleIterator, len(resps))
 	for i := range resps {
-		iterators[i] = pattern_iter.NewQuerySamplesClientIterator(resps[i].response.(logproto.Pattern_QuerySampleClient))
+		iterators[i] = pattern_iter.NewQuerySamplesClientIterator(resps[i].response.(logproto.Pattern_QuerySampleClient), q.logger)
 	}
 	return iterators, nil
 }

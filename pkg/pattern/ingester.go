@@ -300,7 +300,7 @@ func (i *Ingester) QuerySample(
 	// }
 
 	defer util.LogErrorWithContext(ctx, "closing iterator", iterator.Close)
-	return sendMetricSamples(ctx, iterator, stream)
+	return sendMetricSamples(ctx, iterator, stream, i.logger)
 }
 
 func sendPatternSample(ctx context.Context, it pattern_iter.Iterator, stream logproto.Pattern_QueryServer) error {
@@ -323,9 +323,10 @@ func sendMetricSamples(
 	ctx context.Context,
 	it loki_iter.SampleIterator,
 	stream logproto.Pattern_QuerySampleServer,
+  logger log.Logger,
 ) error {
 	for ctx.Err() == nil {
-		batch, err := pattern_iter.ReadMetricsBatch(it, readBatchSize)
+		batch, err := pattern_iter.ReadMetricsBatch(it, readBatchSize, logger)
 		if err != nil {
 			return err
 		}

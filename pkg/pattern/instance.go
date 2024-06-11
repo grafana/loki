@@ -149,7 +149,7 @@ func (i *instance) QuerySample(
 		return nil, err
 	}
 
-	return loki_iter.NewSortSampleIterator(iters), nil
+	return pattern_iter.NewSumMergeSampleIterator(iters), nil
 }
 
 // forMatchingStreams will execute a function for each stream that matches the given matchers.

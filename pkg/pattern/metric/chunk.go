@@ -48,6 +48,12 @@ func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics, logger log.Logg
 		service = "unknown_service"
 	}
 
+	level.Debug(logger).Log(
+		"msg", "creating new chunks",
+		"labels", labels.String(),
+		"service", service,
+	)
+
 	return &Chunks{
 		chunks:  []*Chunk{},
 		labels:  labels,
@@ -157,7 +163,7 @@ func (c *Chunks) Iterator(
 	level.Debug(c.logger).Log(
 		"msg", "found matching samples",
 		"samples", fmt.Sprintf("%v", samples),
-		"num_samples", len(samples),
+		"found_samples", len(samples),
 		"labels", lbls.String(),
 		"from", from,
 		"through", through,
@@ -176,15 +182,15 @@ type Sample struct {
 	Count     float64
 }
 
-func newSample(bytes, count float64, ts model.Time) *Sample {
-	return &Sample{
+func newSample(bytes, count float64, ts model.Time) Sample {
+	return Sample{
 		Timestamp: ts,
 		Bytes:     bytes,
 		Count:     count,
 	}
 }
 
-type Samples []*Sample
+type Samples []Sample
 
 type Chunk struct {
 	Samples    Samples
@@ -195,7 +201,7 @@ func (c *Chunk) Bounds() (fromT, toT time.Time) {
 	return time.Unix(0, c.mint), time.Unix(0, c.maxt)
 }
 
-func (c *Chunk) AddSample(s *Sample) {
+func (c *Chunk) AddSample(s Sample) {
 	c.Samples = append(c.Samples, s)
 	ts := int64(s.Timestamp)
 
@@ -211,7 +217,7 @@ func (c *Chunk) AddSample(s *Sample) {
 func newChunk(bytes, count float64, ts model.Time) *Chunk {
 	// TODO(twhitney): maybe bring this back when we introduce downsampling
 	// maxSize := int(chunk.MaxChunkTime.Nanoseconds()/chunk.TimeResolution.UnixNano()) + 1
-	v := &Chunk{Samples: Samples{}}
+	v := &Chunk{Samples: []Sample{}}
 	v.Samples = append(v.Samples, newSample(bytes, count, ts))
 	return v
 }

@@ -1,8 +1,11 @@
 package iter
 
 import (
+	"fmt"
 	"io"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -66,20 +69,23 @@ func NewQueryResponseIterator(resp *logproto.QueryPatternsResponse) Iterator {
 
 type querySamplesClientIterator struct {
 	client logproto.Pattern_QuerySampleClient
+	logger log.Logger
 	err    error
 	curr   iter.SampleIterator
 }
 
 // NewQueryClientIterator returns an iterator over a QueryClient.
-func NewQuerySamplesClientIterator(client logproto.Pattern_QuerySampleClient) iter.SampleIterator {
+func NewQuerySamplesClientIterator(client logproto.Pattern_QuerySampleClient, logger log.Logger) iter.SampleIterator {
 	return &querySamplesClientIterator{
 		client: client,
+		logger: logger,
 	}
 }
 
 func (i *querySamplesClientIterator) Next() bool {
 	for i.curr == nil || !i.curr.Next() {
 		batch, err := i.client.Recv()
+		level.Debug(i.logger).Log("msg", "received batch", "batch", fmt.Sprintf("%v", batch))
 		if err == io.EOF {
 			return false
 		} else if err != nil {

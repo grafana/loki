@@ -21,9 +21,15 @@ import (
 var lbls = labels.New(labels.Label{Name: "test", Value: "test"})
 
 func setup(t *testing.T) *instance {
-	inst, err := newInstance("foo", log.NewNopLogger(), newIngesterMetrics(nil, "test"), metric.AggregationConfig{
-		Enabled: true,
-	})
+	inst, err := newInstance(
+		"foo",
+		log.NewNopLogger(),
+		newIngesterMetrics(nil, "test"),
+		metric.NewChunkMetrics(nil, "test"),
+		metric.AggregationConfig{
+			Enabled: true,
+		},
+	)
 	require.NoError(t, err)
 
 	return inst

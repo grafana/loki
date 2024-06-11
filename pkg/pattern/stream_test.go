@@ -5,18 +5,29 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
+	"github.com/grafana/loki/v3/pkg/pattern/metric"
 
 	"github.com/grafana/loki/pkg/push"
 )
 
 func TestAddStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-	stream, err := newStream(model.Fingerprint(lbs.Hash()), lbs, newIngesterMetrics(nil, "test"), false)
+	stream, err := newStream(
+		model.Fingerprint(lbs.Hash()),
+		lbs,
+		newIngesterMetrics(nil, "test"),
+		metric.NewChunkMetrics(nil, "test"),
+		metric.AggregationConfig{
+			Enabled: false,
+		},
+		log.NewNopLogger(),
+	)
 	require.NoError(t, err)
 
 	err = stream.Push(context.Background(), []push.Entry{
@@ -48,7 +59,11 @@ func TestPruneStream(t *testing.T) {
 		model.Fingerprint(lbs.Hash()),
 		lbs,
 		newIngesterMetrics(nil, "test"),
-		false,
+		metric.NewChunkMetrics(nil, "test"),
+		metric.AggregationConfig{
+			Enabled: false,
+		},
+		log.NewNopLogger(),
 	)
 	require.NoError(t, err)
 
@@ -80,3 +95,4 @@ func TestPruneStream(t *testing.T) {
 	require.Equal(t, 1, len(res.Series))
 	require.Equal(t, int64(1), res.Series[0].Samples[0].Value)
 }
+
