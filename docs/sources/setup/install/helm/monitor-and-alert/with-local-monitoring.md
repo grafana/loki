@@ -118,7 +118,7 @@ loki:
     enabled: true
 ```
 
-Next, instrument each of the Loki components to send traces to the meta-monitoring stack. Add the following configuration to each of the Loki components:
+Next, instrument each of the Loki components to send traces to the meta-monitoring stack. Add the `extraEnv` configuration to each of the Loki components:
 
 ```yaml
 ingester:
