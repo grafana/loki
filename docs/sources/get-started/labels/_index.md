@@ -36,7 +36,7 @@ Loki places the same restrictions on label naming as [Prometheus](https://promet
 
 This series of examples will illustrate basic use cases and concepts for labeling in Loki.
 
-Let's take an example:
+Let's take an example Promtail/Alloy config file:
 
 ```yaml
 scrape_configs:
