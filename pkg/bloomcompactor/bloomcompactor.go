@@ -303,7 +303,7 @@ func (c *Compactor) loadWork(
 		if err != nil {
 			return errors.Wrap(err, "getting tenants")
 		}
-		nTenants := tenants.Len()
+		nTenants := tenants.Remaining()
 
 		type ownedTenant struct {
 			tenant          string

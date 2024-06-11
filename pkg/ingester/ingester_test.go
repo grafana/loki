@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
@@ -676,57 +677,119 @@ func TestIngester_asyncStoreMaxLookBack(t *testing.T) {
 
 func TestValidate(t *testing.T) {
 	for i, tc := range []struct {
-		in       Config
-		err      bool
-		expected Config
+		in          Config
+		expected    Config
+		expectedErr string
 	}{
 		{
 			in: Config{
-				MaxChunkAge:   time.Minute,
 				ChunkEncoding: chunkenc.EncGZIP.String(),
-				IndexShards:   index.DefaultIndexShards,
+				FlushOpBackoff: backoff.Config{
+					MinBackoff: 100 * time.Millisecond,
+					MaxBackoff: 10 * time.Second,
+					MaxRetries: 1,
+				},
+				FlushOpTimeout: 15 * time.Second,
+				IndexShards:    index.DefaultIndexShards,
+				MaxChunkAge:    time.Minute,
 			},
 			expected: Config{
-				MaxChunkAge:    time.Minute,
-				ChunkEncoding:  chunkenc.EncGZIP.String(),
-				parsedEncoding: chunkenc.EncGZIP,
+				ChunkEncoding: chunkenc.EncGZIP.String(),
+				FlushOpBackoff: backoff.Config{
+					MinBackoff: 100 * time.Millisecond,
+					MaxBackoff: 10 * time.Second,
+					MaxRetries: 1,
+				},
+				FlushOpTimeout: 15 * time.Second,
 				IndexShards:    index.DefaultIndexShards,
+				MaxChunkAge:    time.Minute,
+				parsedEncoding: chunkenc.EncGZIP,
 			},
 		},
 		{
 			in: Config{
 				ChunkEncoding: chunkenc.EncSnappy.String(),
-				IndexShards:   index.DefaultIndexShards,
-			},
-			expected: Config{
-				ChunkEncoding:  chunkenc.EncSnappy.String(),
-				parsedEncoding: chunkenc.EncSnappy,
+				FlushOpBackoff: backoff.Config{
+					MinBackoff: 100 * time.Millisecond,
+					MaxBackoff: 10 * time.Second,
+					MaxRetries: 1,
+				},
+				FlushOpTimeout: 15 * time.Second,
 				IndexShards:    index.DefaultIndexShards,
 			},
+			expected: Config{
+				ChunkEncoding: chunkenc.EncSnappy.String(),
+				FlushOpBackoff: backoff.Config{
+					MinBackoff: 100 * time.Millisecond,
+					MaxBackoff: 10 * time.Second,
+					MaxRetries: 1,
+				},
+				FlushOpTimeout: 15 * time.Second,
+				IndexShards:    index.DefaultIndexShards,
+				parsedEncoding: chunkenc.EncSnappy,
+			},
 		},
 		{
 			in: Config{
-				IndexShards:   index.DefaultIndexShards,
 				ChunkEncoding: "bad-enc",
+				FlushOpBackoff: backoff.Config{
+					MinBackoff: 100 * time.Millisecond,
+					MaxBackoff: 10 * time.Second,
+					MaxRetries: 1,
+				},
+				FlushOpTimeout: 15 * time.Second,
+				IndexShards:    index.DefaultIndexShards,
 			},
-			err: true,
+			expectedErr: "invalid encoding: bad-enc, supported: none, gzip, lz4-64k, snappy, lz4-256k, lz4-1M, lz4, flate, zstd",
 		},
 		{
 			in: Config{
-				MaxChunkAge:   time.Minute,
 				ChunkEncoding: chunkenc.EncGZIP.String(),
+				FlushOpBackoff: backoff.Config{
+					MinBackoff: 100 * time.Millisecond,
+					MaxBackoff: 10 * time.Second,
+				},
+				FlushOpTimeout: 15 * time.Second,
+				IndexShards:    index.DefaultIndexShards,
+				MaxChunkAge:    time.Minute,
 			},
-			err: true,
+			expectedErr: "invalid flush op max retries: 0",
+		},
+		{
+			in: Config{
+				ChunkEncoding: chunkenc.EncGZIP.String(),
+				FlushOpBackoff: backoff.Config{
+					MinBackoff: 100 * time.Millisecond,
+					MaxBackoff: 10 * time.Second,
+					MaxRetries: 1,
+				},
+				IndexShards: index.DefaultIndexShards,
+				MaxChunkAge: time.Minute,
+			},
+			expectedErr: "invalid flush op timeout: 0s",
+		},
+		{
+			in: Config{
+				ChunkEncoding: chunkenc.EncGZIP.String(),
+				FlushOpBackoff: backoff.Config{
+					MinBackoff: 100 * time.Millisecond,
+					MaxBackoff: 10 * time.Second,
+					MaxRetries: 1,
+				},
+				FlushOpTimeout: 15 * time.Second,
+				MaxChunkAge:    time.Minute,
+			},
+			expectedErr: "invalid ingester index shard factor: 0",
 		},
 	} {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
 			err := tc.in.Validate()
-			if tc.err {
-				require.NotNil(t, err)
-				return
+			if tc.expectedErr != "" {
+				require.EqualError(t, err, tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expected, tc.in)
 			}
-			require.Nil(t, err)
-			require.Equal(t, tc.expected, tc.in)
 		})
 	}
 }

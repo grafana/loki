@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/modules"
 	"github.com/grafana/dskit/multierror"
@@ -33,6 +34,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	server_util "github.com/grafana/loki/v3/pkg/util/server"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
@@ -82,6 +85,7 @@ type Config struct {
 
 	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
 	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
+	FlushOpBackoff      backoff.Config    `yaml:"flush_op_backoff"`
 	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
 	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
 	MaxChunkIdle        time.Duration     `yaml:"chunk_idle_period"`
@@ -127,7 +131,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
-	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "The timeout before a flush is cancelled.")
+	f.DurationVar(&cfg.FlushOpBackoff.MinBackoff, "ingester.flush-op-backoff-min-period", 10*time.Second, "Minimum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
+	f.DurationVar(&cfg.FlushOpBackoff.MaxBackoff, "ingester.flush-op-backoff-max-period", time.Minute, "Maximum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
+	f.IntVar(&cfg.FlushOpBackoff.MaxRetries, "ingester.flush-op-backoff-retries", 10, "Maximum retries for failed flushes.")
+	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "The timeout for an individual flush. Will be retried up to `flush-op-backoff-retries` times.")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 0, "How long chunks should be retained in-memory after they've been flushed.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
@@ -155,6 +162,15 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 
+	if cfg.FlushOpBackoff.MinBackoff > cfg.FlushOpBackoff.MaxBackoff {
+		return errors.New("invalid flush op min backoff: cannot be larger than max backoff")
+	}
+	if cfg.FlushOpBackoff.MaxRetries <= 0 {
+		return fmt.Errorf("invalid flush op max retries: %d", cfg.FlushOpBackoff.MaxRetries)
+	}
+	if cfg.FlushOpTimeout <= 0 {
+		return fmt.Errorf("invalid flush op timeout: %s", cfg.FlushOpTimeout)
+	}
 	if cfg.IndexShards <= 0 {
 		return fmt.Errorf("invalid ingester index shard factor: %d", cfg.IndexShards)
 	}
@@ -1041,6 +1057,13 @@ func (i *Ingester) asyncStoreMaxLookBack() time.Duration {
 
 // GetChunkIDs is meant to be used only when using an async store like boltdb-shipper or tsdb.
 func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
+	gcr, err := i.getChunkIDs(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return gcr, err
+}
+
+// GetChunkIDs is meant to be used only when using an async store like boltdb-shipper or tsdb.
+func (i *Ingester) getChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
 	orgID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1168,6 +1191,12 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 // Series queries the ingester for log stream identifiers (label sets) matching a set of matchers
 func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	sr, err := i.series(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return sr, err
+}
+
+func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1331,6 +1360,11 @@ func (i *Ingester) getInstances() []*instance {
 
 // Tail logs matching given query
 func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
+	err := i.tail(req, queryServer)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return err
+}
+func (i *Ingester) tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
 	select {
 	case <-i.tailersQuit:
 		return errors.New("Ingester is stopping")
@@ -1376,6 +1410,12 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 
 // TailersCount returns count of active tail requests from a user
 func (i *Ingester) TailersCount(ctx context.Context, _ *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
+	tcr, err := i.tailersCount(ctx)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return tcr, err
+}
+
+func (i *Ingester) tailersCount(ctx context.Context) (*logproto.TailersCountResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1431,6 +1471,12 @@ func (i *Ingester) GetDetectedFields(_ context.Context, r *logproto.DetectedFiel
 
 // GetDetectedLabels returns map of detected labels and unique values from this ingester
 func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
+	lvr, err := i.getDetectedLabels(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return lvr, err
+}
+
+func (i *Ingester) getDetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err

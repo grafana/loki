@@ -23,6 +23,7 @@ import (
 type querierMetrics struct {
 	chunksTotal    prometheus.Counter
 	chunksFiltered prometheus.Counter
+	chunksSkipped  prometheus.Counter
 	seriesTotal    prometheus.Counter
 	seriesFiltered prometheus.Counter
 	seriesSkipped  prometheus.Counter
@@ -41,6 +42,12 @@ func newQuerierMetrics(registerer prometheus.Registerer, namespace, subsystem st
 			Subsystem: subsystem,
 			Name:      "chunks_filtered_total",
 			Help:      "Total amount of chunks that have been filtered out. Does not count chunks in failed requests.",
+		}),
+		chunksSkipped: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "chunks_skipped_total",
+			Help:      "Total amount of chunks that have been skipped and returned unfiltered, because no block matched the series.",
 		}),
 		seriesTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
@@ -137,6 +144,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		}
 	}
 
+	var skippedGrps [][]*logproto.GroupedChunkRefs
 	responses := make([][]*logproto.GroupedChunkRefs, 0, 2)
 	// We can perform requests sequentially, because most of the time the request
 	// only covers a single day, and if not, it's at most two days.
@@ -152,9 +160,19 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 			return nil, err
 		}
 
-		// add chunk refs from series that were not mapped to any blocks
+		skippedGrps = append(skippedGrps, skipped)
 		responses = append(responses, refs, skipped)
-		bq.metrics.seriesSkipped.Add(float64(len(skipped)))
+	}
+
+	// add chunk refs from series that were not mapped to any blocks
+	skippedDeduped, err := mergeSeries(skippedGrps, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to dedupe skipped series")
+	}
+
+	var chunksSkipped int
+	for _, skippedSeries := range skippedDeduped {
+		chunksSkipped += len(skippedSeries.Refs)
 	}
 
 	deduped, err := mergeSeries(responses, nil)
@@ -185,15 +203,19 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		"responses", len(responses),
 		"preFilterChunks", preFilterChunks,
 		"postFilterChunks", postFilterChunks,
+		"skippedChunks", chunksSkipped,
 		"filteredChunks", preFilterChunks-postFilterChunks,
 		"preFilterSeries", preFilterSeries,
 		"postFilterSeries", postFilterSeries,
+		"skippedSeries", len(skippedDeduped),
 		"filteredSeries", preFilterSeries-postFilterSeries,
 	)
 
 	bq.metrics.chunksTotal.Add(float64(preFilterChunks))
+	bq.metrics.chunksSkipped.Add(float64(chunksSkipped))
 	bq.metrics.chunksFiltered.Add(float64(preFilterChunks - postFilterChunks))
 	bq.metrics.seriesTotal.Add(float64(preFilterSeries))
+	bq.metrics.seriesSkipped.Add(float64(len(skippedDeduped)))
 	bq.metrics.seriesFiltered.Add(float64(preFilterSeries - postFilterSeries))
 
 	return result, nil
