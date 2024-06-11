@@ -147,8 +147,7 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 		start := time.Now()
 		status := statusSuccess
 
-		// TODO: Use the returned created meta refs to delete old metas and blocks
-		_, err = b.processTask(c.Context(), protoTask.Task)
+		newMetas, err := b.processTask(c.Context(), protoTask.Task)
 		if err != nil {
 			status = statusFailure
 			level.Error(b.logger).Log("msg", "failed to process task", "err", err)
@@ -158,7 +157,7 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 		b.metrics.taskDuration.WithLabelValues(status).Observe(time.Since(start).Seconds())
 
 		// Acknowledge task completion to planner
-		if err = b.notifyTaskCompletedToPlanner(c, err); err != nil {
+		if err = b.notifyTaskCompletedToPlanner(c, protoTask.Task.Id, newMetas, err); err != nil {
 			return fmt.Errorf("failed to notify task completion to planner: %w", err)
 		}
 	}
@@ -167,16 +166,22 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 	return nil
 }
 
-func (b *Builder) notifyTaskCompletedToPlanner(c protos.PlannerForBuilder_BuilderLoopClient, err error) error {
-	var errMsg string
-	if err != nil {
-		errMsg = err.Error()
+func (b *Builder) notifyTaskCompletedToPlanner(
+	c protos.PlannerForBuilder_BuilderLoopClient,
+	taskID string,
+	metas []bloomshipper.Meta,
+	err error,
+) error {
+	result := &protos.TaskResult{
+		TaskID:       taskID,
+		Error:        err,
+		CreatedMetas: metas,
 	}
 
 	// TODO: Implement retry
 	if err := c.Send(&protos.BuilderToPlanner{
 		BuilderID: b.ID,
-		Error:     errMsg,
+		Result:    *result.ToProtoTaskResult(),
 	}); err != nil {
 		return fmt.Errorf("failed to acknowledge task completion to planner: %w", err)
 	}
@@ -363,7 +368,7 @@ func (b *Builder) loadWorkForGap(
 	tenant string,
 	id tsdb.Identifier,
 	gap protos.GapWithBlocks,
-) (v1.Iterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBloom], error) {
+) (v1.Iterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBlooms], error) {
 	// load a series iterator for the gap
 	seriesItr, err := b.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.Bounds)
 	if err != nil {

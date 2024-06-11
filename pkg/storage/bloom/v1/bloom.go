@@ -225,12 +225,6 @@ type BloomBlock struct {
 	pageHeaders []BloomPageHeader
 }
 
-func NewBloomBlock(encoding chunkenc.Encoding) BloomBlock {
-	return BloomBlock{
-		schema: Schema{version: DefaultSchemaVersion, encoding: encoding},
-	}
-}
-
 func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) (uint32, error) {
 	if err := b.schema.DecodeFrom(r); err != nil {
 		return 0, errors.Wrap(err, "decoding schema")

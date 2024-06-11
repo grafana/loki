@@ -33,3 +33,25 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 		}),
 	}
 }
+
+type ingesterQuerierMetrics struct {
+	patternsPrunedTotal   prometheus.Counter
+	patternsRetainedTotal prometheus.Counter
+}
+
+func newIngesterQuerierMetrics(r prometheus.Registerer, metricsNamespace string) *ingesterQuerierMetrics {
+	return &ingesterQuerierMetrics{
+		patternsPrunedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "pattern_ingester",
+			Name:      "query_pruned_total",
+			Help:      "The total number of patterns removed at query time by the pruning Drain instance",
+		}),
+		patternsRetainedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "pattern_ingester",
+			Name:      "query_retained_total",
+			Help:      "The total number of patterns retained at query time by the pruning Drain instance",
+		}),
+	}
+}

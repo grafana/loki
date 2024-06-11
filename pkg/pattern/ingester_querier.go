@@ -31,7 +31,8 @@ type IngesterQuerier struct {
 
 	ringClient RingClient
 
-	registerer prometheus.Registerer
+	registerer             prometheus.Registerer
+	ingesterQuerierMetrics *ingesterQuerierMetrics
 }
 
 func NewIngesterQuerier(
@@ -42,10 +43,11 @@ func NewIngesterQuerier(
 	logger log.Logger,
 ) (*IngesterQuerier, error) {
 	return &IngesterQuerier{
-		logger:     log.With(logger, "component", "pattern-ingester-querier"),
-		ringClient: ringClient,
-		cfg:        cfg,
-		registerer: prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer),
+		logger:                 log.With(logger, "component", "pattern-ingester-querier"),
+		ringClient:             ringClient,
+		cfg:                    cfg,
+		registerer:             prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer),
+		ingesterQuerierMetrics: newIngesterQuerierMetrics(registerer, metricsNamespace),
 	}, nil
 }
 
@@ -69,7 +71,7 @@ func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatte
 	if err != nil {
 		return nil, err
 	}
-	return prunePatterns(resp, minClusterSize), nil
+	return prunePatterns(resp, minClusterSize, q.ingesterQuerierMetrics), nil
 }
 
 func (q *IngesterQuerier) Samples(
@@ -130,11 +132,12 @@ func (q *IngesterQuerier) querySample(ctx context.Context, req *logproto.QuerySa
 	return iterators, nil
 }
 
-func prunePatterns(
-	resp *logproto.QueryPatternsResponse,
-	minClusterSize int,
-) *logproto.QueryPatternsResponse {
-	d := drain.New(drain.DefaultConfig(), nil)
+func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int, metrics *ingesterQuerierMetrics) *logproto.QueryPatternsResponse {
+	pruneConfig := drain.DefaultConfig()
+	pruneConfig.SimTh = 1.0 // Merge & de-dup patterns but don't modify them
+
+	patternsBefore := len(resp.Series)
+	d := drain.New(pruneConfig, nil)
 	for _, p := range resp.Series {
 		d.TrainPattern(p.GetPattern(), p.Samples)
 	}
@@ -151,6 +154,8 @@ func prunePatterns(
 		resp.Series = append(resp.Series,
 			logproto.NewPatternSeries(pattern, cluster.Samples()))
 	}
+	metrics.patternsPrunedTotal.Add(float64(patternsBefore - len(resp.Series)))
+	metrics.patternsRetainedTotal.Add(float64(len(resp.Series)))
 	return resp
 }
 

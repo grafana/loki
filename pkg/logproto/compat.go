@@ -510,6 +510,33 @@ func (m *ShardsRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(fields...)
 }
 
+func (m *DetectedFieldsRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
+
+func (m *DetectedFieldsRequest) WithStartEnd(start, end time.Time) definitions.Request {
+	clone := *m
+	clone.Start = start
+	clone.End = end
+	return &clone
+}
+
+func (m *DetectedFieldsRequest) WithQuery(query string) definitions.Request {
+	clone := *m
+	clone.Query = query
+	return &clone
+}
+
+func (m *DetectedFieldsRequest) LogToSpan(sp opentracing.Span) {
+	fields := []otlog.Field{
+		otlog.String("query", m.GetQuery()),
+		otlog.String("start", m.Start.String()),
+		otlog.String("end", m.End.String()),
+		otlog.String("step", time.Duration(m.Step).String()),
+		otlog.String("field_limit", fmt.Sprintf("%d", m.FieldLimit)),
+		otlog.String("line_limit", fmt.Sprintf("%d", m.LineLimit)),
+	}
+	sp.LogFields(fields...)
+}
+
 func (m *QueryPatternsRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
 
 func (m *QueryPatternsRequest) WithStartEnd(start, end time.Time) definitions.Request {
@@ -539,24 +566,50 @@ func (m *QueryPatternsRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(fields...)
 }
 
-func (m *QuerySamplesRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
+func (m *DetectedLabelsRequest) GetStep() int64 { return 0 }
 
-func (m *QuerySamplesRequest) WithStartEnd(start, end time.Time) definitions.Request {
+func (m *DetectedLabelsRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
+
+func (m *DetectedLabelsRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	clone := *m
 	clone.Start = start
 	clone.End = end
 	return &clone
 }
 
-func (m *QuerySamplesRequest) WithQuery(query string) definitions.Request {
+func (m *DetectedLabelsRequest) WithQuery(query string) definitions.Request {
 	clone := *m
 	clone.Query = query
 	return &clone
 }
 
+func (m *DetectedLabelsRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	return m.WithStartEnd(start, end).(resultscache.Request)
+}
+
+func (m *DetectedLabelsRequest) LogToSpan(sp opentracing.Span) {
+  fields := []otlog.Field{
+		otlog.String("query", m.GetQuery()),
+		otlog.String("start", m.Start.String()),
+		otlog.String("end", m.End.String()),
+		otlog.String("step", time.Duration(m.Step).String()),
+	}
+	sp.LogFields(fields...)
+}
+
+func (m *QuerySamplesRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
+
+func (m *QuerySamplesRequest) WithStartEnd(start, end time.Time) definitions.Request {
+
 func (m *QuerySamplesRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
 	return m.WithStartEnd(start, end).(resultscache.Request)
 }
+  
+func (m *QuerySamplesRequest) WithQuery(query string) definitions.Request {
+  clone := *m
+	clone.Query = query
+	return &clone
+} 
 
 func (m *QuerySamplesRequest) LogToSpan(sp opentracing.Span) {
 	fields := []otlog.Field{
