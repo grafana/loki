@@ -14,7 +14,7 @@ keywords:
 
 # Monitor Loki with Grafana Cloud
 
-This guide will walk you through using Grafana Cloud to monitor a Loki installation set up with the Helm chart. This method takes advantage of many of the chart's self-monitoring features, sending metrics, logs, and traces from the Loki deployment to Grafana Cloud. Monitoring Loki with Grafana Cloud offers the added benefit of troubleshooting Loki issues even when the Helm-installed Loki is down, as the telemetry data will remain available in the Grafana Cloud instance.
+This guide will walk you through using Grafana Cloud to monitor a Loki installation set up with the `meta-monitoring` Helm chart. This method takes advantage of many of the chart's self-monitoring features, sending metrics, logs, and traces from the Loki deployment to Grafana Cloud. Monitoring Loki with Grafana Cloud offers the added benefit of troubleshooting Loki issues even when the Helm-installed Loki is down, as the telemetry data will remain available in the Grafana Cloud instance.
 
 These instructions are based off the [meta-monitoring-chart repository](https://github.com/grafana/meta-monitoring-chart/tree/main).
 
@@ -104,7 +104,7 @@ This example `values.yaml` file provides the minimum configuration to monitor th
 ```
 For further configuration options, refer to the [sample values.yaml file](https://github.com/grafana/meta-monitoring-chart/blob/main/charts/meta-monitoring/values.yaml).
 
-To install the meta-monitoring helm chart, run the following commands:
+To install the `meta-monitoring` Helm chart, run the following commands:
 
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
@@ -249,7 +249,7 @@ The meta-monitoring stack includes a set of rules that can be installed to monit
         - record: cluster_namespace_job_route:loki_request_duration_seconds_count:sum_rate
           expr: sum(rate(loki_request_duration_seconds_count[5m])) by (cluster, namespace, job, route)
    ```
-## Kube-state-metrics
+## Install kube-state-metrics
 
 Metrics about Kubernetes objects are scraped from [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics). This needs to be installed in the cluster. The `kubeStateMetrics.endpoint` entry in the meta-monitoring `values.yaml` should be set to its address (without the `/metrics` part in the URL):
 

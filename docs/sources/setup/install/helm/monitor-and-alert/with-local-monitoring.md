@@ -144,7 +144,7 @@ ingester:
       # For ratelimiting, "1.0" typically means one trace per second.
 ```
 
-## Kube-state-metrics
+## Install kube-state-metrics
 
 Metrics about Kubernetes objects are scraped from [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics). This needs to be installed in the cluster. The `kubeStateMetrics.endpoint` entry in the meta-monitoring `values.yaml` should be set to its address (without the `/metrics` part in the URL):
 
