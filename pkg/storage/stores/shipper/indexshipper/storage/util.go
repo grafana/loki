@@ -73,7 +73,9 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 		return err
 	}
 
-	level.Info(logger).Log("msg", "downloaded file", "total_time", time.Since(start))
+	dlTime := time.Since(start)
+	level.Info(logger).Log("msg", "downloaded file", "total_time", dlTime)
+	start = time.Now()
 
 	tmpReader, err := os.Open(tmpName)
 	if err != nil {
@@ -119,7 +121,7 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 	if err == nil {
 		logger = log.With(logger, "size", humanize.Bytes(uint64(fStat.Size())))
 	}
-	level.Info(logger).Log("msg", "extracted file", "total_time", time.Since(start))
+	level.Info(logger).Log("msg", "downloaded and extracted file", "download time", dlTime, "extract time", time.Since(start))
 
 	if sync {
 		return f.Sync()
