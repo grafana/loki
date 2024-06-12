@@ -55,10 +55,18 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 		}
 	}()
 
-	ftmp, err := os.Create(destination + "-tmp")
+	tmpName := destination + "-tmp"
+
+	ftmp, err := os.Create(tmpName)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		err := os.Remove(tmpName)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to delete temp file from index download", "err", err)
+		}
+	}()
 
 	_, err = io.Copy(ftmp, readCloser)
 	if err != nil {
@@ -67,7 +75,7 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 
 	level.Info(logger).Log("msg", "downloaded file", "total_time", time.Since(start))
 
-	tmpReader, err := os.Open(destination + "-tmp")
+	tmpReader, err := os.Open(tmpName)
 	if err != nil {
 		return err
 	}
@@ -89,7 +97,7 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 	}()
 	var objectReader io.Reader = tmpReader
 	if decompressFile {
-		decompressedReader, err := getGzipReader(readCloser)
+		decompressedReader, err := getGzipReader(tmpReader)
 		if err != nil {
 			return err
 		}
