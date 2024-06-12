@@ -11,7 +11,7 @@ keywords:
   - alerting
 ---
 
-# Monitor Loki using a local LGTM stack
+# Monitor Loki using a local LGTM (Loki, Grafana, Tempo and Mimir) stack
 
 This topic will walk you through using the meta-monitoring Helm chart to deploy a local stack to monitor your production Loki installation. This approach leverages many of the chart's _self monitoring_ features, but instead of sending logs back to Loki itself, it sends them to a small Loki, Grafana, Tempo, Mimir (LGTM) stack running within the `meta` namespace. 
 
