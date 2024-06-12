@@ -33,6 +33,10 @@ func exit(code int) {
 func main() {
 	startTime := time.Now()
 
+	// Temporarily enable mutex profiling
+	runtime.SetBlockProfileRate(1)
+	runtime.SetMutexProfileFraction(1)
+
 	var config loki.ConfigWrapper
 
 	if loki.PrintVersion(os.Args[1:]) {
