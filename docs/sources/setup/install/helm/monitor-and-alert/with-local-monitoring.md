@@ -1,7 +1,7 @@
 ---
-title: Monitor Loki using a local LGTM stack
+title: Monitor Loki using a local LGTM (Loki, Grafana, Tempo and Mimir) stack
 menuTitle: Monitor Loki using a local LGTM stack
-description: Monitor Loki using a local LGTM stack
+description: Monitor Loki using a local LGTM (Loki, Grafana, Tempo and Mimir) stack
 aliases:
   - ../../../../installation/helm/monitor-and-alert/with-local-monitoring/
 weight: 100
