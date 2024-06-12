@@ -323,7 +323,7 @@ func sendMetricSamples(
 	ctx context.Context,
 	it loki_iter.SampleIterator,
 	stream logproto.Pattern_QuerySampleServer,
-  logger log.Logger,
+	logger log.Logger,
 ) error {
 	for ctx.Err() == nil {
 		batch, err := pattern_iter.ReadMetricsBatch(it, readBatchSize, logger)

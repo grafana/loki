@@ -95,4 +95,3 @@ func TestPruneStream(t *testing.T) {
 	require.Equal(t, 1, len(res.Series))
 	require.Equal(t, int64(1), res.Series[0].Samples[0].Value)
 }
-

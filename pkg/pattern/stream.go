@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"

@@ -4,9 +4,10 @@ import (
 	"hash/fnv"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNewSumMergeSampleIterator(t *testing.T) {
