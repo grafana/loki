@@ -81,7 +81,7 @@ The meta-monitoring stack sends metrics, logs, and traces to Grafana Cloud. This
 
 ## Configuration and Installation
 
-To install the meta-monitoring helm chart, you must create a `values.yaml` file. At a minimum this file should contain the following:
+To install the `meta-monitoring` Helm chart, you must create a `values.yaml` file. At a minimum this file should contain the following:
   * The namespace to monitor
   * Enablement of cloud monitoring
 
