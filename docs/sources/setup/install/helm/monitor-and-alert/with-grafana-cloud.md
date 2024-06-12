@@ -38,12 +38,12 @@ The meta-monitoring stack sends metrics, logs, and traces to Grafana Cloud. This
 
 1. Create a new Cloud Access Policy in Grafana Cloud.     
     1. Sign into [Grafana Cloud](https://grafana.com/auth/sign-in/).
-    1.  In the main menu, select **Administration > Users and Access > Cloud Access Policies**.
+    1. In the main menu, select **Security > Access Policies**.
     1. Click **Create access policy**.
     1. Give the policy a **Name** and select the following permissions:
-      - Logs: Write
-      - Metrics: Write
-      - Traces: Write
+       - Metrics: Write
+       - Logs: Write
+       - Traces: Write
   1. Click **Create**.
 
 
@@ -51,12 +51,17 @@ The meta-monitoring stack sends metrics, logs, and traces to Grafana Cloud. This
 1. Name the token, select an expiration date, then click **Create**. 
 1. Copy the token to a secure location as it will not be displayed again.
 
-2. Next, collect the `Username / Instance ID` and `URL` for the following components in the Grafana Cloud stack:
-   - **Logs (Loki):** Select `Send Logs`, copy down: `User` and `URL`. From the *Using Grafana with Logs* section.
-   - **Metrics (Prometheus):** Select `Send Metrics`, copy down: `User` and `URL`. From the *Using a self-hosted Grafana instance with Grafana Cloud Metrics* section.
-   - **Traces (OTLP):** Select `Configure`, copy down: `Instance ID` and `Endpoint`. From the *OTLP Endpoint* section.
+1. Navigate to the Grafana Cloud Portal **Overview** page.
+1. Click the **Details** button for your Prometheus or Mimir instance.
+     1. From the **Using a self-hosted Grafana instance with Grafana Cloud Metrics** section, collect the instance **Name** and **URL**.
+     1. Navigate back to the **Overview** page.
+1. Click the **Details** button for your Loki instance.
+     1. From the **Using Grafana with Logs** section, collect the instance **Name** and **URL**.
+     1. Navigate back to the **Overview** page.
+1. Click the **Details** button for your Tempo instance.
+    1. From the **Using Grafana with Tempo** section, collect the instance **Name** and **URL**.
 
-3. Finally, generate the secrets for each metric type within your K8's cluster:
+3. Finally, generate the secrets to store your credentials for each metric type within your Kubernetes cluster:
    ```bash
       kubectl create secret generic logs -n meta \
         --from-literal=username=<USERNAME LOGS> \
@@ -76,7 +81,7 @@ The meta-monitoring stack sends metrics, logs, and traces to Grafana Cloud. This
 
 ## Configuration and Installation
 
-To install the meta-monitoring helm chart, a `values.yaml` file will need to be created. This file at a minimum should contain the following:
+To install the meta-monitoring helm chart, you must create a `values.yaml` file. At a minimum this file should contain the following:
   * The namespace to monitor
   * Enablement of cloud monitoring
 
@@ -97,9 +102,9 @@ This example `values.yaml` file provides the minimum configuration to monitor th
       enabled: true
       secret: "traces"
 ```
-For further configuration options, refer to the [reference file](https://github.com/grafana/meta-monitoring-chart/blob/main/charts/meta-monitoring/values.yaml).
+For further configuration options, refer to the [sample values.yaml file](https://github.com/grafana/meta-monitoring-chart/blob/main/charts/meta-monitoring/values.yaml).
 
-To install the meta-monitoring helm chart, run the following command:
+To install the meta-monitoring helm chart, run the following commands:
 
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
@@ -136,7 +141,7 @@ loki:
     enabled: true
 ```
 
-Next, instrument each of the Loki components to send traces to the meta-monitoring stack. Add the following configuration to each of the Loki components:
+Next, instrument each of the Loki components to send traces to the meta-monitoring stack. Add the `extraEnv` configuration to each of the Loki components:
 
 ```yaml
 ingester:
@@ -177,12 +182,12 @@ helm upgrade --values values.yaml loki grafana/loki
 
 ## Import the Loki Dashboards to Grafana Cloud
 
-The meta-monitoring stack includes a set of dashboards that can be imported into Grafana Cloud. These can be located within the [meta-monitoring repository](https://github.com/grafana/meta-monitoring-chart/tree/main/charts/meta-monitoring/src/dashboards).
+The meta-monitoring stack includes a set of dashboards that can be imported into Grafana Cloud. These can be found in the [meta-monitoring repository](https://github.com/grafana/meta-monitoring-chart/tree/main/charts/meta-monitoring/src/dashboards).
 
 
 ## Installing Rules
 
-The meta-monitoring stack includes a set of rules that can be installed to monitor the Loki installation. These rules can be located within the [meta-monitoring repository](https://github.com/grafana/meta-monitoring-chart/). To install the rules:
+The meta-monitoring stack includes a set of rules that can be installed to monitor the Loki installation. These rules can be found in the [meta-monitoring repository](https://github.com/grafana/meta-monitoring-chart/). To install the rules:
 
 1. Clone the repository:
    ```bash
@@ -246,7 +251,7 @@ The meta-monitoring stack includes a set of rules that can be installed to monit
    ```
 ## Kube-state-metrics
 
-Metrics about Kubernetes objects are scraped from [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics). This needs to be installed in the cluster. The `kubeStateMetrics.endpoint` entry in meta-monitoring `values.yaml` should be set to it's address (without the `/metrics` part in the URL):
+Metrics about Kubernetes objects are scraped from [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics). This needs to be installed in the cluster. The `kubeStateMetrics.endpoint` entry in the meta-monitoring `values.yaml` should be set to its address (without the `/metrics` part in the URL):
 
 ```yaml
 kubeStateMetrics:

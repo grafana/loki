@@ -13,9 +13,8 @@ keywords:
 
 # Monitor Loki using a local LGTM stack
 
-This topic will walk you through deploying the local meta-monitoring helm to monitor a Loki installation that is installed with the Helm chart. This approach leverages many of the chart's _self monitoring_ features, but instead of sending logs back to Loki itself, it sends them to a small LGTM stack running within the meta namespace. 
+This topic will walk you through using the meta-monitoring Helm chart to deploy a local stack to monitor your production Loki installation. This approach leverages many of the chart's _self monitoring_ features, but instead of sending logs back to Loki itself, it sends them to a small Loki, Grafana, Tempo, Mimir (LGTM) stack running within the `meta` namespace. 
 
-These instructions are based off the [meta-monitoring-chart repository](https://github.com/grafana/meta-monitoring-chart/tree/main).
 
 ## Before you begin
 
@@ -60,9 +59,9 @@ local:
     enabled: true
 ```
 
-For further configuration options, refer to the [reference file](https://github.com/grafana/meta-monitoring-chart/blob/main/charts/meta-monitoring/values.yaml).
+For further configuration options, refer to the [sample values.yaml file](https://github.com/grafana/meta-monitoring-chart/blob/main/charts/meta-monitoring/values.yaml).
 
-Local mode by default will also enable Minio, which will act as the object storage for the LGTM stack. To provide access to Minio a generic secret needs to be created. To create the generic secret, run the following command:
+Local mode by default will also enable Minio, which will act as the object storage for the LGTM stack. To provide access to Minio, you need to create a generic secret. To create the generic secret, run the following command:
 
 ```bash
 kubectl create secret generic minio -n meta \
