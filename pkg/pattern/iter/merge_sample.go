@@ -167,7 +167,6 @@ func (i *sumMergeSampleIterator) nextFromBuffer() {
 
 	i.curr = mergedSample
 	i.buffer = i.buffer[numSamples:]
-	return
 }
 
 func (i *sumMergeSampleIterator) Sample() logproto.Sample {

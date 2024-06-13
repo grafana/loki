@@ -44,11 +44,11 @@ func Test_SampleEvaluator(t *testing.T) {
 		return evaluator
 	}
 
-	chunks := func(now, then, beforeThen int64) Chunks {
+	chunks := func(now, then, beforeThen int64) *Chunks {
 		nowTime := model.Time(now)
 		thenTime := model.Time(then)
 		beforeThenTime := model.Time(beforeThen)
-		return Chunks{
+		return &Chunks{
 			chunks: []*Chunk{
 				{
 					Samples: []Sample{

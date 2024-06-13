@@ -303,7 +303,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 		labels.Label{Name: "container", Value: "jar"},
 	}
 	chunks := Chunks{
-		chunks: []Chunk{
+		chunks: []*Chunk{
 			{
 				Samples: []Sample{
 					{Timestamp: 2, Bytes: 2, Count: 1},
@@ -403,7 +403,7 @@ func Test_Chunks_Iterator(t *testing.T) {
 
 	t.Run("handle slice capacity out of range", func(t *testing.T) {
 		chunks := Chunks{
-			chunks: []Chunk{
+			chunks: []*Chunk{
 				{
 					Samples: []Sample{},
 				},

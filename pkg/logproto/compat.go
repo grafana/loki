@@ -588,11 +588,10 @@ func (m *DetectedLabelsRequest) WithStartEndForCache(start, end time.Time) resul
 }
 
 func (m *DetectedLabelsRequest) LogToSpan(sp opentracing.Span) {
-  fields := []otlog.Field{
+	fields := []otlog.Field{
 		otlog.String("query", m.GetQuery()),
 		otlog.String("start", m.Start.String()),
 		otlog.String("end", m.End.String()),
-		otlog.String("step", time.Duration(m.Step).String()),
 	}
 	sp.LogFields(fields...)
 }
@@ -600,16 +599,21 @@ func (m *DetectedLabelsRequest) LogToSpan(sp opentracing.Span) {
 func (m *QuerySamplesRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
 
 func (m *QuerySamplesRequest) WithStartEnd(start, end time.Time) definitions.Request {
+	clone := *m
+	clone.Start = start
+	clone.End = end
+	return &clone
+}
 
 func (m *QuerySamplesRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
 	return m.WithStartEnd(start, end).(resultscache.Request)
 }
-  
+
 func (m *QuerySamplesRequest) WithQuery(query string) definitions.Request {
-  clone := *m
+	clone := *m
 	clone.Query = query
 	return &clone
-} 
+}
 
 func (m *QuerySamplesRequest) LogToSpan(sp opentracing.Span) {
 	fields := []otlog.Field{

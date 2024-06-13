@@ -4,7 +4,7 @@ import "flag"
 
 type AggregationConfig struct {
 	Enabled             bool `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester metric aggregation is enabled."`
-	LogPushObservations bool `yaml:"log_push_observations,omitempty" doc:"description=Wheter to log push observations."`
+	LogPushObservations bool `yaml:"log_push_observations,omitempty" doc:"description=Whether to log push observations."`
 }
 
 // RegisterFlags registers pattern ingester related flags.
