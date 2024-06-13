@@ -253,3 +253,11 @@ func NewReader(b []byte) (*WalSegmentReader, error) {
 		b:   b[:len(b)-n-int(indexLen)],
 	}, nil
 }
+
+// func (r *WalSegmentReader) Series() {
+// 	tsdbindex.AllPostingsKey()
+// 	tsdbindex.M
+// 	// r.idr.Series(id storage.SeriesRef, builder *labels.ScratchBuilder, chks *[]chunks.Meta)
+// }
+
+// type SeriesIter struct{}
