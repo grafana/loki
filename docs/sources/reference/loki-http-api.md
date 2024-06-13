@@ -627,7 +627,7 @@ It accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now. Any value specified for `start` supersedes this parameter.
-- `query`: A set of log stream selector that selects the streams to match and return label names. Example: `{"app": "myapp", "environment": "dev"}`
+- `query`: Log stream selector that selects the streams to match and return label names. Example: `{app="myapp", environment="dev"}`
 
 In microservices mode, `/loki/api/v1/labels` is exposed by the querier.
 
@@ -677,7 +677,7 @@ It accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now. Any value specified for `start` supersedes this parameter.
-- `query`: A set of log stream selector that selects the streams to match and return label values for `<name>`. Example: `{"app": "myapp", "environment": "dev"}`
+- `query`: Log stream selector that selects the streams to match and return label values for `<name>`. Example: `{app="myapp", environment="dev"}`
 
 In microservices mode, `/loki/api/v1/label/<name>/values` is exposed by the querier.
 
@@ -798,7 +798,7 @@ gave this response:
 ## Query log statistics
 
 ```bash
-GET `/loki/api/v1/index/stats`
+GET /loki/api/v1/index/stats
 ```
 
 The `/loki/api/v1/index/stats` endpoint can be used to query the index for the number of `streams`, `chunks`, `entries`, and `bytes` that a query resolves to.
