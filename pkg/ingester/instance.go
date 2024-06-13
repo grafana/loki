@@ -1018,7 +1018,9 @@ type QuerierQueryServer interface {
 	Send(res *logproto.QueryResponse) error
 }
 
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) error {
+func sendBatches(ctx context.Context, it iter.EntryIterator, queryServer QuerierQueryServer, limit int32) error {
+	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+
 	stats := stats.FromContext(ctx)
 	metadata := metadata.FromContext(ctx)
 
@@ -1028,7 +1030,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		if limit > 0 {
 			fetchSize = mathutil.MinUint32(queryBatchSize, uint32(limit))
 		}
-		batch, batchSize, err := iter.ReadBatch(i, fetchSize)
+		batch, batchSize, err := iter.ReadBatch(it, fetchSize)
 		if err != nil {
 			return err
 		}
@@ -1060,6 +1062,8 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 }
 
 func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
+	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+
 	sp := opentracing.SpanFromContext(ctx)
 
 	stats := stats.FromContext(ctx)

@@ -926,8 +926,6 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		it = iter.NewMergeEntryIterator(ctx, []iter.EntryIterator{it, storeItr}, req.Direction)
 	}
 
-	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
-
 	// sendBatches uses -1 to specify no limit.
 	batchLimit := int32(req.Limit)
 	if batchLimit == 0 {
@@ -990,8 +988,6 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 
 		it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
 	}
-
-	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
 	return sendSampleBatches(ctx, it, queryServer)
 }
