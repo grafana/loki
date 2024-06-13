@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -302,19 +303,17 @@ func Test_Chunks_Iterator(t *testing.T) {
 		labels.Label{Name: "foo", Value: "bar"},
 		labels.Label{Name: "container", Value: "jar"},
 	}
-	chunks := Chunks{
-		chunks: []*Chunk{
-			{
-				Samples: []Sample{
-					{Timestamp: 2, Bytes: 2, Count: 1},
-					{Timestamp: 4, Bytes: 4, Count: 3},
-					{Timestamp: 6, Bytes: 6, Count: 5},
-				},
-				mint: 2,
-				maxt: 6,
+	chunks := NewChunks(lbls, NewChunkMetrics(nil, "test"), log.NewNopLogger())
+	chunks.chunks = []*Chunk{
+		{
+			Samples: []Sample{
+				{Timestamp: 2, Bytes: 2, Count: 1},
+				{Timestamp: 4, Bytes: 4, Count: 3},
+				{Timestamp: 6, Bytes: 6, Count: 5},
 			},
+			mint: 2,
+			maxt: 6,
 		},
-		labels: lbls,
 	}
 
 	t.Run("without grouping", func(t *testing.T) {
@@ -402,14 +401,13 @@ func Test_Chunks_Iterator(t *testing.T) {
 	})
 
 	t.Run("handle slice capacity out of range", func(t *testing.T) {
-		chunks := Chunks{
-			chunks: []*Chunk{
-				{
-					Samples: []Sample{},
-				},
+		chunks := NewChunks(lbls, NewChunkMetrics(nil, "test"), log.NewNopLogger())
+		chunks.chunks = []*Chunk{
+			{
+				Samples: []Sample{},
 			},
-			labels: lbls,
 		}
+
 		it, err := chunks.Iterator(Bytes, nil, 5e4, 0, 1e4)
 		require.NoError(t, err)
 
