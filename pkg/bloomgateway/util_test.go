@@ -392,12 +392,12 @@ func TestPartitionRequest(t *testing.T) {
 	}
 }
 
-func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, minFp, maxFp model.Fingerprint) ([]bloomshipper.BlockRef, []bloomshipper.Meta, []*bloomshipper.CloseableBlockQuerier, [][]v1.SeriesWithBlooms) {
+func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, minFp, maxFp model.Fingerprint) ([]bloomshipper.BlockRef, []bloomshipper.Meta, []*v1.Block, [][]v1.SeriesWithBlooms) {
 	t.Helper()
 
 	blockRefs := make([]bloomshipper.BlockRef, 0, n)
 	metas := make([]bloomshipper.Meta, 0, n)
-	queriers := make([]*bloomshipper.CloseableBlockQuerier, 0, n)
+	blocks := make([]*v1.Block, 0, n)
 	series := make([][]v1.SeriesWithBlooms, 0, n)
 
 	step := (maxFp - minFp) / model.Fingerprint(n)
@@ -432,16 +432,12 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		// 		t.Log(i, j, string(keys[i][j]))
 		// 	}
 		// }
-		querier := &bloomshipper.CloseableBlockQuerier{
-			BlockQuerier: v1.NewBlockQuerier(block, false, v1.DefaultMaxPageSize),
-			BlockRef:     blockRef,
-		}
-		queriers = append(queriers, querier)
+		blocks = append(blocks, block)
 		metas = append(metas, meta)
 		blockRefs = append(blockRefs, blockRef)
 		series = append(series, data)
 	}
-	return blockRefs, metas, queriers, series
+	return blockRefs, metas, blocks, series
 }
 
 func createQueryInputFromBlockData(t *testing.T, tenant string, data [][]v1.SeriesWithBlooms, nthSeries int) []*logproto.ChunkRef {

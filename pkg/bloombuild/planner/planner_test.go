@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -517,7 +518,7 @@ func Test_BuilderLoop(t *testing.T) {
 			resultsCh := make(chan *protos.TaskResult, nTasks)
 			tasks := createTasks(nTasks, resultsCh)
 			for _, task := range tasks {
-				err = planner.enqueueTask(task)
+				err := planner.enqueueTask(task)
 				require.NoError(t, err)
 			}
 
@@ -527,10 +528,10 @@ func Test_BuilderLoop(t *testing.T) {
 				builder := newMockBuilder(fmt.Sprintf("builder-%d", i))
 				builders = append(builders, builder)
 
-				go func() {
-					err = planner.BuilderLoop(builder)
-					require.ErrorIs(t, err, tc.expectedBuilderLoopError)
-				}()
+				go func(expectedBuilderLoopError error) {
+					err := planner.BuilderLoop(builder)
+					require.ErrorIs(t, err, expectedBuilderLoopError)
+				}(tc.expectedBuilderLoopError)
 			}
 
 			// Eventually, all tasks should be sent to builders
@@ -558,7 +559,7 @@ func Test_BuilderLoop(t *testing.T) {
 
 				// Enqueue tasks again
 				for _, task := range tasks {
-					err = planner.enqueueTask(task)
+					err := planner.enqueueTask(task)
 					require.NoError(t, err)
 				}
 
@@ -809,14 +810,15 @@ func Test_processTenantTaskResults(t *testing.T) {
 }
 
 type fakeBuilder struct {
+	mx          sync.Mutex // Protects tasks and currTaskIdx.
 	id          string
 	tasks       []*protos.Task
 	currTaskIdx int
 	grpc.ServerStream
 
-	returnError    bool
-	returnErrorMsg bool
-	wait           bool
+	returnError    atomic.Bool
+	returnErrorMsg atomic.Bool
+	wait           atomic.Bool
 	ctx            context.Context
 	ctxCancel      context.CancelFunc
 }
@@ -833,19 +835,21 @@ func newMockBuilder(id string) *fakeBuilder {
 }
 
 func (f *fakeBuilder) ReceivedTasks() []*protos.Task {
+	f.mx.Lock()
+	defer f.mx.Unlock()
 	return f.tasks
 }
 
 func (f *fakeBuilder) SetReturnError(b bool) {
-	f.returnError = b
+	f.returnError.Store(b)
 }
 
 func (f *fakeBuilder) SetReturnErrorMsg(b bool) {
-	f.returnErrorMsg = b
+	f.returnErrorMsg.Store(b)
 }
 
 func (f *fakeBuilder) SetWait(b bool) {
-	f.wait = b
+	f.wait.Store(b)
 }
 
 func (f *fakeBuilder) CancelContext(b bool) {
@@ -873,6 +877,8 @@ func (f *fakeBuilder) Send(req *protos.PlannerToBuilder) error {
 		return err
 	}
 
+	f.mx.Lock()
+	defer f.mx.Unlock()
 	f.tasks = append(f.tasks, task)
 	f.currTaskIdx++
 	return nil
@@ -886,12 +892,12 @@ func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
 		}, nil
 	}
 
-	if f.returnError {
+	if f.returnError.Load() {
 		return nil, fmt.Errorf("fake error from %s", f.id)
 	}
 
 	// Wait until `wait` is false
-	for f.wait {
+	for f.wait.Load() {
 		time.Sleep(time.Second)
 	}
 
@@ -901,10 +907,12 @@ func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
 	}
 
 	var errMsg string
-	if f.returnErrorMsg {
+	if f.returnErrorMsg.Load() {
 		errMsg = fmt.Sprintf("fake error from %s", f.id)
 	}
 
+	f.mx.Lock()
+	defer f.mx.Unlock()
 	return &protos.BuilderToPlanner{
 		BuilderID: f.id,
 		Result: protos.ProtoTaskResult{
