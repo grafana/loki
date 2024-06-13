@@ -798,7 +798,7 @@ gave this response:
 ## Query log statistics
 
 ```bash
-GET `/loki/api/v1/index/stats`
+GET /loki/api/v1/index/stats
 ```
 
 The `/loki/api/v1/index/stats` endpoint can be used to query the index for the number of `streams`, `chunks`, `entries`, and `bytes` that a query resolves to.
