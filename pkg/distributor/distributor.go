@@ -991,7 +991,7 @@ func isJSON(line string) bool {
 }
 
 func detectLevelFromLogLine(log string) string {
-    if strings.Contains(log, "info:") || strings.Contains(log, "INFO:") ||
+	if strings.Contains(log, "info:") || strings.Contains(log, "INFO:") ||
 		strings.Contains(log, "info") || strings.Contains(log, "INFO") {
 		return logLevelInfo
 	}
