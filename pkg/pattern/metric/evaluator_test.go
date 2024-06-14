@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -73,6 +74,7 @@ func Test_SampleEvaluator(t *testing.T) {
 				},
 			},
 			labels: stream,
+			logger: log.NewNopLogger(),
 		}
 	}
 
