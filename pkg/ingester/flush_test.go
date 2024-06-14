@@ -337,10 +337,12 @@ func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, 
 		chunks: map[string][]chunk.Chunk{},
 	}
 
+	readRingMock := mockReadRingWithOneActiveIngester()
+
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokitlog.NewNopLogger(), nil)
+	ing, err := New(cfg, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokitlog.NewNopLogger(), nil, readRingMock)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
@@ -376,6 +378,7 @@ func defaultIngesterTestConfig(t testing.TB) Config {
 	cfg.BlockSize = 256 * 1024
 	cfg.TargetChunkSize = 1500 * 1024
 	cfg.WAL.Enabled = false
+	cfg.OwnedStreamsCheckInterval = 1 * time.Second
 	return cfg
 }
 
