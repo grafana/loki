@@ -545,7 +545,7 @@ func (q *SingleTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRe
 
 	// Enforce the query timeout while querying backends
 	queryTimeout := q.limits.QueryTimeout(ctx, userID)
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+	ctx, cancel := context.WithDeadlineCause(ctx, time.Now().Add(queryTimeout), errors.New("query timeout reached"))
 	defer cancel()
 
 	return q.awaitSeries(ctx, req)
