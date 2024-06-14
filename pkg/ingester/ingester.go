@@ -122,6 +122,8 @@ type Config struct {
 	MaxDroppedStreams int `yaml:"max_dropped_streams"`
 
 	ShutdownMarkerPath string `yaml:"shutdown_marker_path"`
+
+	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
 }
 
 // RegisterFlags registers the flags.
@@ -149,6 +151,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.IndexShards, "ingester.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
+	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
 }
 
 func (cfg *Config) Validate() error {
@@ -262,10 +265,14 @@ type Ingester struct {
 	writeLogManager *writefailures.Manager
 
 	customStreamsTracker push.UsageTracker
+
+	// recalculateOwnedStreams periodically checks the ring for changes and recalculates owned streams for each instance.
+	readRing                ring.ReadRing
+	recalculateOwnedStreams *recalculateOwnedStreams
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker, readRing ring.ReadRing) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -294,6 +301,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		streamRateCalculator:  NewStreamRateCalculator(),
 		writeLogManager:       writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester"),
 		customStreamsTracker:  customStreamsTracker,
+		readRing:              readRing,
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -342,6 +350,8 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	if i.cfg.SampleExtractorWrapper != nil {
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
+
+	i.recalculateOwnedStreams = newRecalculateOwnedStreams(i.getInstances, i.lifecycler.ID, i.readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
 }
@@ -534,6 +544,16 @@ func (i *Ingester) starting(ctx context.Context) error {
 	if shutdownMarker {
 		level.Info(i.logger).Log("msg", "detected existing shutdown marker, setting unregister and flush on shutdown", "path", shutdownMarkerPath)
 		i.setPrepareShutdown()
+	}
+
+	err = i.recalculateOwnedStreams.StartAsync(ctx)
+	if err != nil {
+		return fmt.Errorf("can not start recalculate owned streams service: %w", err)
+	}
+
+	err = i.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
 	}
 
 	// start our loop

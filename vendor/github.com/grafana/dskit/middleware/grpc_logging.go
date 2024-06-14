@@ -6,11 +6,12 @@ package middleware
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 
 	dskit_log "github.com/grafana/dskit/log"
 
@@ -24,16 +25,20 @@ const (
 	gRPC = "gRPC"
 )
 
-// An error can implement ShouldLog() to control whether GRPCServerLog will log.
+// OptionalLogging is the interface that needs be implemented by an error that wants to control whether the log
+// should be logged by GRPCServerLog.
 type OptionalLogging interface {
-	ShouldLog(ctx context.Context, duration time.Duration) bool
+	// ShouldLog returns whether the error should be logged and the reason. For example, if the error should be sampled
+	// return returned reason could be something like "sampled 1/10". The reason, if any, is used to decorate the error
+	// both in case the error should be logged or skipped.
+	ShouldLog(ctx context.Context) (bool, string)
 }
 
 type DoNotLogError struct{ Err error }
 
-func (i DoNotLogError) Error() string                                     { return i.Err.Error() }
-func (i DoNotLogError) Unwrap() error                                     { return i.Err }
-func (i DoNotLogError) ShouldLog(_ context.Context, _ time.Duration) bool { return false }
+func (i DoNotLogError) Error() string                              { return i.Err.Error() }
+func (i DoNotLogError) Unwrap() error                              { return i.Err }
+func (i DoNotLogError) ShouldLog(_ context.Context) (bool, string) { return false, "" }
 
 // GRPCServerLog logs grpc requests, errors, and latency.
 type GRPCServerLog struct {
@@ -50,8 +55,13 @@ func (s GRPCServerLog) UnaryServerInterceptor(ctx context.Context, req interface
 	if err == nil && s.DisableRequestSuccessLog {
 		return resp, nil
 	}
-	var optional OptionalLogging
-	if errors.As(err, &optional) && !optional.ShouldLog(ctx, time.Since(begin)) {
+
+	// Honor sampled error logging.
+	keep, reason := shouldLog(ctx, err)
+	if reason != "" {
+		err = fmt.Errorf("%w (%s)", err, reason)
+	}
+	if !keep {
 		return resp, err
 	}
 
@@ -90,4 +100,13 @@ func (s GRPCServerLog) StreamServerInterceptor(srv interface{}, ss grpc.ServerSt
 		level.Debug(entry).Log("msg", dskit_log.LazySprintf("%s (success)", gRPC))
 	}
 	return err
+}
+
+func shouldLog(ctx context.Context, err error) (bool, string) {
+	var optional OptionalLogging
+	if !errors.As(err, &optional) {
+		return true, ""
+	}
+
+	return optional.ShouldLog(ctx)
 }

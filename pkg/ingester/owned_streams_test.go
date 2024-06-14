@@ -33,9 +33,12 @@ func Test_OwnedStreamService(t *testing.T) {
 	service.incOwnedStreamCount()
 	require.Equal(t, 3, service.getOwnedStreamCount())
 
-	// simulate the effect from the recalculation job
+	service.incOwnedStreamCount()
+	service.decOwnedStreamCount()
 	service.notOwnedStreamCount = 1
 	service.ownedStreamCount = 2
+	require.Equal(t, 2, service.getOwnedStreamCount())
+	require.Equal(t, 1, service.notOwnedStreamCount)
 
 	service.decOwnedStreamCount()
 	require.Equal(t, 2, service.getOwnedStreamCount(), "owned stream count must be decremented only when notOwnedStreamCount is set to 0")
@@ -63,4 +66,13 @@ func Test_OwnedStreamService(t *testing.T) {
 	group.Wait()
 
 	require.Equal(t, 1, service.getOwnedStreamCount(), "owned stream count must not be changed")
+
+	// simulate the effect from the recalculation job
+	service.notOwnedStreamCount = 1
+	service.ownedStreamCount = 2
+
+	service.resetStreamCounts()
+
+	require.Equal(t, 0, service.getOwnedStreamCount())
+	require.Equal(t, 0, service.notOwnedStreamCount)
 }
