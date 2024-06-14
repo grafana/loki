@@ -3,15 +3,16 @@ package ingester
 import (
 	"sync"
 
+	"github.com/grafana/dskit/services"
 	"go.uber.org/atomic"
 )
 
 type ownedStreamService struct {
-	tenantID   string
-	limiter    *Limiter
-	fixedLimit *atomic.Int32
+	services.Service
 
-	//todo: implement job to recalculate it
+	tenantID            string
+	limiter             *Limiter
+	fixedLimit          *atomic.Int32
 	ownedStreamCount    int
 	notOwnedStreamCount int
 	lock                sync.RWMutex
@@ -23,6 +24,7 @@ func newOwnedStreamService(tenantID string, limiter *Limiter) *ownedStreamServic
 		limiter:    limiter,
 		fixedLimit: atomic.NewInt32(0),
 	}
+
 	svc.updateFixedLimit()
 	return svc
 }
@@ -48,6 +50,12 @@ func (s *ownedStreamService) incOwnedStreamCount() {
 	s.ownedStreamCount++
 }
 
+func (s *ownedStreamService) incNotOwnedStreamCount() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.notOwnedStreamCount++
+}
+
 func (s *ownedStreamService) decOwnedStreamCount() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -56,4 +64,11 @@ func (s *ownedStreamService) decOwnedStreamCount() {
 		return
 	}
 	s.ownedStreamCount--
+}
+
+func (s *ownedStreamService) resetStreamCounts() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.ownedStreamCount = 0
+	s.notOwnedStreamCount = 0
 }
