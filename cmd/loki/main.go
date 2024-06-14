@@ -60,6 +60,10 @@ func main() {
 	serverCfg := &config.Server
 	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, false)
 
+	if config.InternalServer.Enable {
+		config.InternalServer.Log = serverCfg.Log
+	}
+
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
 	if err := config.Validate(); err != nil {
