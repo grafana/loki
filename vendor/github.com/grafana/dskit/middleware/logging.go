@@ -58,7 +58,7 @@ func (l Log) logWithRequest(r *http.Request) log.Logger {
 	localLog := l.Log
 	traceID, ok := tracing.ExtractTraceID(r.Context())
 	if ok {
-		localLog = log.With(localLog, "traceID", traceID)
+		localLog = log.With(localLog, "trace_id", traceID)
 	}
 
 	if l.SourceIPs != nil {
