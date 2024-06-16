@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -280,8 +279,8 @@ func BenchmarkWriteChunkWithLogGenerator(b *testing.B) {
 }
 
 func testDataFile() []string {
-	testdataDir := "testdata"
-	files, err := ioutil.ReadDir(testdataDir)
+	testdataDir := "../testdata"
+	files, err := os.ReadDir(testdataDir)
 	if err != nil {
 		panic(err)
 	}

@@ -8,7 +8,6 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"reflect"
 	"sync"
 	"unsafe"
 
@@ -324,9 +323,5 @@ func (r *ChunkReader) readChunkHeader() error {
 }
 
 func unsafeGetBytes(s string) []byte {
-	var buf []byte
-	p := unsafe.Pointer(&buf)
-	*(*string)(p) = s
-	(*reflect.SliceHeader)(p).Cap = len(s)
-	return buf
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }

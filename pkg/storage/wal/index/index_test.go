@@ -51,13 +51,12 @@ type mockIndex struct {
 }
 
 func newMockIndex() mockIndex {
-	name, value := index.AllPostingsKey()
 	ix := mockIndex{
 		series:   make(map[storage.SeriesRef]series),
 		postings: make(map[labels.Label][]storage.SeriesRef),
 		symbols:  make(map[string]struct{}),
 	}
-	ix.postings[labels.Label{Name: name, Value: value}] = []storage.SeriesRef{}
+	ix.postings[labels.Label{Name: AllPostingsKey.Name, Value: AllPostingsKey.Value}] = []storage.SeriesRef{}
 	return ix
 }
 

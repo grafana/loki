@@ -3,12 +3,14 @@ package wal
 import (
 	"bytes"
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 )
@@ -111,9 +113,11 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 			for _, expected := range tt.expected {
 				stream, ok := w.streams.Get(streamID{labels: expected.labels, tenant: expected.tenant})
 				require.True(t, ok)
-				labels, err := syntax.ParseLabels(expected.labels)
+				lbs, err := syntax.ParseLabels(expected.labels)
 				require.NoError(t, err)
-				require.Equal(t, labels, stream.lbls)
+				lbs = append(lbs, labels.Label{Name: string(tsdb.TenantLabel), Value: expected.tenant})
+				sort.Sort(lbs)
+				require.Equal(t, lbs, stream.lbls)
 				require.Equal(t, expected.entries, stream.entries)
 			}
 		})
@@ -148,4 +152,5 @@ func TestMultiTenantWrite(t *testing.T) {
 
 	_, err = NewReader(dst.Bytes())
 	require.NoError(t, err)
+	// finish testing reader.
 }

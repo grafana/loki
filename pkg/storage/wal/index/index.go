@@ -52,6 +52,8 @@ const (
 	checkContextEveryNIterations = 128
 )
 
+var AllPostingsKey = labels.Label{}
+
 type indexWriterSeries struct {
 	labels labels.Labels
 	chunks []chunks.Meta // series file offset of chunks
@@ -1725,10 +1727,9 @@ func (r *Reader) LabelNames(_ context.Context, matchers ...*labels.Matcher) ([]s
 	if len(matchers) > 0 {
 		return nil, fmt.Errorf("matchers parameter is not implemented: %+v", matchers)
 	}
-	allName, _ := index.AllPostingsKey()
 	labelNames := make([]string, 0, len(r.postings))
 	for name := range r.postings {
-		if name == allName {
+		if name == AllPostingsKey.Name {
 			// This is not from any metric.
 			continue
 		}

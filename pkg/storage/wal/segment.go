@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
 	"github.com/grafana/loki/v3/pkg/storage/wal/index"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
@@ -254,10 +255,75 @@ func NewReader(b []byte) (*WalSegmentReader, error) {
 	}, nil
 }
 
-// func (r *WalSegmentReader) Series() {
-// 	tsdbindex.AllPostingsKey()
-// 	tsdbindex.M
-// 	// r.idr.Series(id storage.SeriesRef, builder *labels.ScratchBuilder, chks *[]chunks.Meta)
-// }
+// todo: Evaluate/benchmark wal segment using apache arrow as format ?
 
-// type SeriesIter struct{}
+type SeriesIter struct {
+	ir  *index.Reader
+	ps  tsdbindex.Postings
+	err error
+
+	curSeriesRef  storage.SeriesRef
+	curLabels     labels.Labels
+	labelsBuilder *labels.ScratchBuilder
+	chunksMeta    []chunks.Meta
+	blocks        []byte
+}
+
+func NewSeriesIter(ir *index.Reader, ps tsdbindex.Postings, blocks []byte) *SeriesIter {
+	return &SeriesIter{
+		ir:            ir,
+		ps:            ps,
+		labelsBuilder: &labels.ScratchBuilder{},
+	}
+}
+
+func (iter *SeriesIter) Next() bool {
+	if !iter.ps.Next() {
+		return false
+	}
+	if iter.ps.At() != iter.curSeriesRef {
+		iter.curSeriesRef = iter.ps.At()
+		err := iter.ir.Series(iter.curSeriesRef, iter.labelsBuilder, &iter.chunksMeta)
+		if err != nil {
+			iter.err = err
+			return false
+		}
+		iter.curLabels = iter.labelsBuilder.Labels()
+	}
+	return true
+}
+
+func (iter *SeriesIter) At() labels.Labels {
+	return iter.curLabels
+}
+
+func (iter *SeriesIter) Err() error {
+	return iter.err
+}
+
+func (iter *SeriesIter) ChunkReader(_ *chunks.ChunkReader) (*chunks.ChunkReader, error) {
+	if len(iter.chunksMeta) == 0 {
+		return nil, fmt.Errorf("no chunks found for series %d", iter.curSeriesRef)
+	}
+	if len(iter.chunksMeta) > 1 {
+		return nil, fmt.Errorf("multiple chunks found for series %d", iter.curSeriesRef)
+	}
+	offset, size := iter.chunksMeta[0].Ref.Unpack()
+	if offset < 0 || offset >= len(iter.blocks) || size < 0 || offset+size > len(iter.blocks) {
+		return nil, fmt.Errorf("invalid offset or size for series %d", iter.curSeriesRef)
+	}
+
+	return chunks.NewChunkReader(iter.blocks[offset : offset+size])
+}
+
+func (r *WalSegmentReader) Series(ctx context.Context) (*SeriesIter, error) {
+	ps, err := r.idr.Postings(ctx, index.AllPostingsKey.Name, index.AllPostingsKey.Value)
+	if err != nil {
+		return nil, err
+	}
+	if ps.Err() != nil {
+		return nil, ps.Err()
+	}
+
+	return NewSeriesIter(r.idr, ps, r.b), nil
+}
