@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime/pprof"
 	"sync"
 	"time"
 
@@ -869,6 +870,11 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return nil, ErrReadOnly
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write", "tenant", instanceID))
+	pprof.SetGoroutineLabels(ctx)
+
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
 		return &logproto.PushResponse{}, err
@@ -883,6 +889,11 @@ func (i *Ingester) GetStreamRates(ctx context.Context, _ *logproto.StreamRatesRe
 		sp.LogKV("event", "ingester started to handle GetStreamRates")
 		defer sp.LogKV("event", "ingester finished handling GetStreamRates")
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write"))
+	pprof.SetGoroutineLabels(ctx)
 
 	allRates := i.streamRateCalculator.Rates()
 	rates := make([]*logproto.StreamRate, len(allRates))
@@ -933,6 +944,11 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	if err != nil {
 		return err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "log", "tenant", instanceID))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
@@ -995,6 +1011,11 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	if err != nil {
 		return err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "metric", "tenant", instanceID))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
@@ -1067,6 +1088,11 @@ func (i *Ingester) getChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 		return nil, err
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "chunkIDs", "tenant", orgID))
+	pprof.SetGoroutineLabels(ctx)
+
 	asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
 	if asyncStoreMaxLookBack == 0 {
 		return &logproto.GetChunkIDsResponse{}, nil
@@ -1110,6 +1136,11 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "labels", "tenant", userID))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(userID)
 	if err != nil {
@@ -1187,6 +1218,11 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		return nil, err
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "series", "tenant", instanceID))
+	pprof.SetGoroutineLabels(ctx)
+
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
 		return nil, err
@@ -1201,6 +1237,11 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "stats", "tenant", user))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(user)
 	if err != nil {
@@ -1258,6 +1299,11 @@ func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "volume", "tenant", user))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(user)
 	if err != nil {
@@ -1454,6 +1500,11 @@ func (i *Ingester) getDetectedLabels(ctx context.Context, req *logproto.Detected
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "detectedLabels", "tenant", userID))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(userID)
 	if err != nil {
