@@ -12,6 +12,8 @@ weight:  250
 Loki natively supports ingesting OpenTelemetry logs over HTTP.
 For ingesting logs to Loki using the OpenTelemetry Collector, you must use the [`otlphttp` exporter](https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlphttpexporter).
 
+{{< youtube id="snXhe1fDDa8" >}}
+
 ## Loki configuration
 
 When logs are ingested by Loki using an OpenTelemetry protocol (OTLP) ingestion endpoint, some of the data is stored as [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}).
