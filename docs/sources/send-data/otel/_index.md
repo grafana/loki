@@ -32,7 +32,7 @@ You need to make the following changes to the [OpenTelemetry Collector config](h
 ```yaml
 exporters:
   otlphttp:
-    endpoint: http://<loki-addr>:3100/otlp/v1/logs
+    endpoint: http://<loki-addr>:3100/otlp
 ```
 
 And enable it in `service.pipelines`:
@@ -59,7 +59,7 @@ exporters:
   otlphttp:
     auth:
       authenticator: basicauth/otlp
-    endpoint: http://<loki-addr>:3100/otlp/v1/logs
+    endpoint: http://<loki-addr>:3100/otlp
 
 service:
   extensions: [basicauth/otlp]
