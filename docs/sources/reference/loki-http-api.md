@@ -24,7 +24,7 @@ Authorization needs to be done separately, for example, using an open-source loa
 These endpoints are exposed by the `distributor`, `write`, and `all` components:
 
 - [`POST /loki/api/v1/push`](#ingest-logs)
-- [`POST /otlp/v1/logs`](#ingest-logs-using-otlp)
+- [`POST /otlp`](#ingest-logs-using-otlp)
 
 A [list of clients]({{< relref "../send-data" >}}) can be found in the clients documentation.
 
@@ -264,12 +264,16 @@ curl -H "Content-Type: application/json" \
 ## Ingest logs using OTLP
 
 ```bash
-POST /otlp/v1/logs
+POST /otlp
 ```
 
-`/otlp/v1/logs` lets the OpenTelemetry Collector send logs to Loki using `otlphttp` procotol.
+`/otlp` lets the OpenTelemetry Collector send logs to Loki using `otlphttp` protocol.
 
 For information on how to configure Loki, refer to the [OTel Collector topic](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/).
+
+{{< admonition type="note" >}}
+When using cURL, you should format the endpoint as `http://<loki-addr>:3100/otlp/v1/logs`.  When configuring Loki or the OpenTelemetry Collector, you must use `endpoint: http://<loki-addr>:3100/otlp`.
+{{< /admonition >}}
 
 ## Query logs at a single point in time
 
