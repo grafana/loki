@@ -475,7 +475,7 @@ func TestSerialization(t *testing.T) {
 					}
 					require.NoError(t, it.Error())
 
-					countExtractor = func() log.StreamSampleExtractor {
+					extractor := func() log.StreamSampleExtractor {
 						ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 						if err != nil {
 							panic(err)
@@ -483,7 +483,7 @@ func TestSerialization(t *testing.T) {
 						return ex.ForStream(labels.Labels{})
 					}()
 
-					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractor)
 					for i := 0; i < numSamples; i++ {
 						require.True(t, sampleIt.Next(), i)
 
