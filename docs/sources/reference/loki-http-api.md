@@ -268,9 +268,15 @@ curl -H "Content-Type: application/json" \
 POST /otlp/v1/logs
 ```
 
-`/otlp/v1/logs` lets the OpenTelemetry Collector send logs to Loki using `otlphttp` procotol.
+`/otlp/v1/logs` lets the OpenTelemetry Collector send logs to Loki using `otlphttp` protocol.
 
 For information on how to configure Loki, refer to the [OTel Collector topic](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/).
+
+<!-- vale Google.Will = NO -->
+{{< admonition type="note" >}}
+When configuring the OpenTelemetry Collector, you must use `endpoint: http://<loki-addr>:3100/otlp`, as the collector automatically completes the endpoint.  Entering the full endpoint will generate an error.
+{{< /admonition >}}
+<!-- vale Google.Will = YES -->
 
 ## Query logs at a single point in time
 
