@@ -51,15 +51,19 @@ github.com/Azure/azure-pipeline-go/pipeline
 github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-10-01/compute
 github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-10-01/network
 github.com/Azure/azure-sdk-for-go/version
-# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.2.0
+# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.11.1
 ## explicit; go 1.18
 github.com/Azure/azure-sdk-for-go/sdk/azcore
+github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/internal/resource
+github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/policy
+github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/runtime
 github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/log
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/async
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/body
+github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/fake
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/loc
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/op
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared
@@ -69,14 +73,17 @@ github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime
 github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming
 github.com/Azure/azure-sdk-for-go/sdk/azcore/to
 github.com/Azure/azure-sdk-for-go/sdk/azcore/tracing
-# github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.2.0
+# github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.6.0
 ## explicit; go 1.18
 github.com/Azure/azure-sdk-for-go/sdk/azidentity
-# github.com/Azure/azure-sdk-for-go/sdk/internal v1.1.1
+github.com/Azure/azure-sdk-for-go/sdk/azidentity/internal
+# github.com/Azure/azure-sdk-for-go/sdk/internal v1.8.0
 ## explicit; go 1.18
 github.com/Azure/azure-sdk-for-go/sdk/internal/diag
 github.com/Azure/azure-sdk-for-go/sdk/internal/errorinfo
+github.com/Azure/azure-sdk-for-go/sdk/internal/exported
 github.com/Azure/azure-sdk-for-go/sdk/internal/log
+github.com/Azure/azure-sdk-for-go/sdk/internal/poller
 github.com/Azure/azure-sdk-for-go/sdk/internal/temporal
 github.com/Azure/azure-sdk-for-go/sdk/internal/uuid
 # github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v0.5.1
@@ -132,8 +139,8 @@ github.com/Azure/go-autorest/logger
 # github.com/Azure/go-autorest/tracing v0.6.0
 ## explicit; go 1.12
 github.com/Azure/go-autorest/tracing
-# github.com/AzureAD/microsoft-authentication-library-for-go v0.7.0
-## explicit; go 1.17
+# github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2
+## explicit; go 1.18
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/cache
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/errors
@@ -151,6 +158,7 @@ github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/o
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/internal/grant
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/wstrust
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/wstrust/defs
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/options
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/shared
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/version
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
@@ -661,6 +669,9 @@ github.com/gogo/status
 # github.com/golang-jwt/jwt/v4 v4.4.3
 ## explicit; go 1.16
 github.com/golang-jwt/jwt/v4
+# github.com/golang-jwt/jwt/v5 v5.2.1
+## explicit; go 1.18
+github.com/golang-jwt/jwt/v5
 # github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 ## explicit
 github.com/golang/groupcache/lru
@@ -688,7 +699,7 @@ github.com/google/gnostic-models/extensions
 github.com/google/gnostic-models/jsonschema
 github.com/google/gnostic-models/openapiv2
 github.com/google/gnostic-models/openapiv3
-# github.com/google/go-cmp v0.5.9
+# github.com/google/go-cmp v0.6.0
 ## explicit; go 1.13
 github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/internal/diff
@@ -708,7 +719,7 @@ github.com/google/pprof/profile
 # github.com/google/renameio/v2 v2.0.0
 ## explicit; go 1.13
 github.com/google/renameio/v2
-# github.com/google/uuid v1.3.0
+# github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
 # github.com/googleapis/enterprise-certificate-proxy v0.2.3
@@ -1070,7 +1081,7 @@ github.com/pierrec/lz4/v4/internal/lz4block
 github.com/pierrec/lz4/v4/internal/lz4errors
 github.com/pierrec/lz4/v4/internal/lz4stream
 github.com/pierrec/lz4/v4/internal/xxh32
-# github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8
+# github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 ## explicit; go 1.14
 github.com/pkg/browser
 # github.com/pkg/errors v0.9.1
@@ -1230,11 +1241,11 @@ github.com/spf13/cast
 # github.com/spf13/pflag v1.0.5
 ## explicit; go 1.12
 github.com/spf13/pflag
-# github.com/stretchr/objx v0.5.0
-## explicit; go 1.12
-github.com/stretchr/objx
-# github.com/stretchr/testify v1.8.4
+# github.com/stretchr/objx v0.5.2
 ## explicit; go 1.20
+github.com/stretchr/objx
+# github.com/stretchr/testify v1.9.0
+## explicit; go 1.17
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
@@ -1417,7 +1428,7 @@ go.uber.org/zap/zapgrpc
 # go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 ## explicit; go 1.18
 go4.org/netipx
-# golang.org/x/crypto v0.21.0
+# golang.org/x/crypto v0.24.0
 ## explicit; go 1.18
 golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
@@ -1433,10 +1444,10 @@ golang.org/x/crypto/sha3
 ## explicit; go 1.18
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
-# golang.org/x/mod v0.10.0
-## explicit; go 1.17
+# golang.org/x/mod v0.17.0
+## explicit; go 1.18
 golang.org/x/mod/semver
-# golang.org/x/net v0.23.0
+# golang.org/x/net v0.26.0
 ## explicit; go 1.18
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -1466,23 +1477,22 @@ golang.org/x/oauth2/google/internal/externalaccount
 golang.org/x/oauth2/internal
 golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
-# golang.org/x/sync v0.1.0
-## explicit
+# golang.org/x/sync v0.7.0
+## explicit; go 1.18
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.18.0
+# golang.org/x/sys v0.21.0
 ## explicit; go 1.18
 golang.org/x/sys/cpu
-golang.org/x/sys/execabs
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
 golang.org/x/sys/windows/svc/eventlog
-# golang.org/x/term v0.18.0
+# golang.org/x/term v0.21.0
 ## explicit; go 1.18
 golang.org/x/term
-# golang.org/x/text v0.14.0
+# golang.org/x/text v0.16.0
 ## explicit; go 1.18
 golang.org/x/text/cases
 golang.org/x/text/encoding
@@ -1509,12 +1519,13 @@ golang.org/x/text/unicode/norm
 # golang.org/x/time v0.3.0
 ## explicit
 golang.org/x/time/rate
-# golang.org/x/tools v0.8.0
-## explicit; go 1.18
+# golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d
+## explicit; go 1.19
 golang.org/x/tools/go/gcexportdata
 golang.org/x/tools/go/internal/packagesdriver
 golang.org/x/tools/go/packages
 golang.org/x/tools/go/types/objectpath
+golang.org/x/tools/internal/aliases
 golang.org/x/tools/internal/event
 golang.org/x/tools/internal/event/core
 golang.org/x/tools/internal/event/keys
@@ -1523,9 +1534,10 @@ golang.org/x/tools/internal/gcimporter
 golang.org/x/tools/internal/gocommand
 golang.org/x/tools/internal/packagesinternal
 golang.org/x/tools/internal/pkgbits
+golang.org/x/tools/internal/stdlib
 golang.org/x/tools/internal/tokeninternal
-golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
+golang.org/x/tools/internal/versions
 # golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2
 ## explicit; go 1.17
 golang.org/x/xerrors
