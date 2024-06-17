@@ -2,6 +2,7 @@ package wal
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"sort"
 	"testing"
@@ -150,7 +151,36 @@ func TestMultiTenantWrite(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, n > 0)
 
-	_, err = NewReader(dst.Bytes())
+	r, err := NewReader(dst.Bytes())
 	require.NoError(t, err)
-	// finish testing reader.
+
+	iter, err := r.Series(context.Background())
+	require.NoError(t, err)
+
+	var expectedSeries, actualSeries []string
+
+	for _, tenant := range tenants {
+		for _, lbl := range lbls {
+			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(tsdb.TenantLabel, tenant).Labels().String())
+		}
+	}
+
+	for iter.Next() {
+		actualSeries = append(actualSeries, iter.At().String())
+		chk, err := iter.ChunkReader(nil)
+		require.NoError(t, err)
+		// verify all lines
+		var i int
+		for chk.Next() {
+			ts, line := chk.At()
+			require.Equal(t, int64(i), ts)
+			require.Equal(t, fmt.Sprintf("log line %d", i), string(line))
+			i++
+		}
+		require.NoError(t, chk.Err())
+		require.NoError(t, chk.Close())
+		require.Equal(t, 10, i)
+	}
+	require.NoError(t, iter.Err())
+	require.ElementsMatch(t, expectedSeries, actualSeries)
 }

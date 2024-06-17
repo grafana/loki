@@ -273,7 +273,9 @@ func NewSeriesIter(ir *index.Reader, ps tsdbindex.Postings, blocks []byte) *Seri
 	return &SeriesIter{
 		ir:            ir,
 		ps:            ps,
+		blocks:        blocks,
 		labelsBuilder: &labels.ScratchBuilder{},
+		chunksMeta:    make([]chunks.Meta, 0, 1),
 	}
 }
 
@@ -310,7 +312,7 @@ func (iter *SeriesIter) ChunkReader(_ *chunks.ChunkReader) (*chunks.ChunkReader,
 	}
 	offset, size := iter.chunksMeta[0].Ref.Unpack()
 	if offset < 0 || offset >= len(iter.blocks) || size < 0 || offset+size > len(iter.blocks) {
-		return nil, fmt.Errorf("invalid offset or size for series %d", iter.curSeriesRef)
+		return nil, fmt.Errorf("invalid offset or size for series %d: offset %d, size %d, blocks len %d", iter.curSeriesRef, offset, size, len(iter.blocks))
 	}
 
 	return chunks.NewChunkReader(iter.blocks[offset : offset+size])

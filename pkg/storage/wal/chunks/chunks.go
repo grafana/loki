@@ -58,14 +58,25 @@ var s2ReaderPool = sync.Pool{
 	},
 }
 
+type StatsWriter struct {
+	io.Writer
+	written int64
+}
+
+func (w *StatsWriter) Write(p []byte) (int, error) {
+	n, err := w.Writer.Write(p)
+	w.written += int64(n)
+	return n, err
+}
+
 // WriteChunk writes the log entries to the writer w with the specified encoding type.
-func WriteChunk(w io.Writer, entries []*logproto.Entry, encoding EncodingType) (int64, error) {
+func WriteChunk(writer io.Writer, entries []*logproto.Entry, encoding EncodingType) (int64, error) {
+	w := &StatsWriter{Writer: writer}
+
 	// Validate encoding type
 	if encoding != EncodingSnappy {
 		return 0, errors.New("unsupported encoding type")
 	}
-
-	var written int64
 
 	// Get a CRC32 hash instance from the pool
 	crc := crc32Pool.Get().(hash.Hash32)
@@ -74,19 +85,17 @@ func WriteChunk(w io.Writer, entries []*logproto.Entry, encoding EncodingType) (
 
 	// Write encoding byte
 	if _, err := w.Write([]byte{byte(encoding)}); err != nil {
-		return written, err
+		return w.written, err
 	}
 	crc.Write([]byte{byte(encoding)})
-	written++
 
 	// Write number of entries
 	buf := make([]byte, binary.MaxVarintLen64)
 	n := binary.PutUvarint(buf, uint64(len(entries)))
 	if _, err := w.Write(buf[:n]); err != nil {
-		return written, err
+		return w.written, err
 	}
 	crc.Write(buf[:n])
-	written += int64(n)
 
 	// todo: investigate delta+bitpacking from https://github.com/ronanh/intcomp or prometheus bitstream.
 	// Write timestamps and lengths
@@ -97,27 +106,24 @@ func WriteChunk(w io.Writer, entries []*logproto.Entry, encoding EncodingType) (
 		case 0:
 			n = binary.PutUvarint(buf, t)
 			if _, err := w.Write(buf[:n]); err != nil {
-				return written, err
+				return w.written, err
 			}
 			crc.Write(buf[:n])
-			written += int64(n)
 		case 1:
 			delta = t - prevT
 			n = binary.PutUvarint(buf, delta)
 			if _, err := w.Write(buf[:n]); err != nil {
-				return written, err
+				return w.written, err
 			}
 			crc.Write(buf[:n])
-			written += int64(n)
 		default:
 			delta = t - prevT
 			dod := int64(delta - prevDelta)
 			n = binary.PutVarint(buf, dod)
 			if _, err := w.Write(buf[:n]); err != nil {
-				return written, err
+				return w.written, err
 			}
 			crc.Write(buf[:n])
-			written += int64(n)
 		}
 		prevT = t
 		prevDelta = delta
@@ -126,14 +132,13 @@ func WriteChunk(w io.Writer, entries []*logproto.Entry, encoding EncodingType) (
 		lineLen := uint64(len(e.Line))
 		n = binary.PutUvarint(buf, lineLen)
 		if _, err := w.Write(buf[:n]); err != nil {
-			return written, err
+			return w.written, err
 		}
 		crc.Write(buf[:n])
-		written += int64(n)
 	}
 
 	// Get the offset for the start of the compressed content
-	offset := written
+	offset := w.written
 
 	// Get an S2 writer from the pool and reset it
 	s2w := s2WriterPool.Get().(*snappy.Writer)
@@ -144,12 +149,14 @@ func WriteChunk(w io.Writer, entries []*logproto.Entry, encoding EncodingType) (
 	for _, e := range entries {
 		n, err := s2w.Write(unsafeGetBytes(e.Line))
 		if err != nil {
-			return written, err
+			return w.written, err
 		}
-		written += int64(n)
+		if n != len(e.Line) {
+			return w.written, fmt.Errorf("failed to write all bytes: %d != %d", n, len(e.Line))
+		}
 	}
 	if err := s2w.Close(); err != nil {
-		return written, err
+		return w.written, err
 	}
 
 	// Reuse the buffer for offset and checksum
@@ -158,19 +165,17 @@ func WriteChunk(w io.Writer, entries []*logproto.Entry, encoding EncodingType) (
 	// Write the offset using BigEndian
 	binary.BigEndian.PutUint32(offsetChecksumBuf, uint32(offset))
 	if _, err := w.Write(offsetChecksumBuf); err != nil {
-		return written, err
+		return w.written, err
 	}
-	written += 4
 
 	// Calculate and write CRC32 checksum at the end using BigEndian
 	checksum := crc.Sum32()
 	binary.BigEndian.PutUint32(offsetChecksumBuf, checksum)
 	if _, err := w.Write(offsetChecksumBuf); err != nil {
-		return written, err
+		return w.written, err
 	}
-	written += 4
 
-	return written, nil
+	return w.written, nil
 }
 
 // ChunkReader reads chunks from a byte slice
@@ -236,6 +241,7 @@ func (r *ChunkReader) Close() error {
 }
 
 // Entry implements iter.EntryIterator.
+// Currrently the chunk reader returns the timestamp and the line, but it could returns all timestamps or/and all lines.
 func (r *ChunkReader) At() (int64, []byte) {
 	return r.ts, r.lineBuf
 }
