@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/metric"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 
 	loki_iter "github.com/grafana/loki/v3/pkg/iter"
 	pattern_iter "github.com/grafana/loki/v3/pkg/pattern/iter"
@@ -164,6 +165,14 @@ func (s *stream) SampleIterator(
 	if err != nil {
 		return nil, err
 	}
+
+	spanLogger := spanlogger.FromContext(ctx)
+	level.Debug(spanLogger).Log(
+		"msg", "sample iterator for stream",
+		"stream", s.labelsString,
+		"num_results", len(matrix),
+		"matrix", fmt.Sprintf("%v", matrix),
+	)
 
 	return loki_iter.NewMultiSeriesIterator(matrix), nil
 }

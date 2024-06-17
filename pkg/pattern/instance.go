@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/pattern/chunk"
 	"github.com/grafana/loki/v3/pkg/pattern/metric"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 
 	loki_iter "github.com/grafana/loki/v3/pkg/iter"
 	pattern_iter "github.com/grafana/loki/v3/pkg/pattern/iter"
@@ -150,7 +151,8 @@ func (i *instance) QuerySample(
 		return nil, err
 	}
 
-	level.Debug(i.logger).Log(
+  spanLogger := spanlogger.FromContext(ctx)
+	level.Debug(spanLogger).Log(
 		"msg", "summing results of querying streams",
 		"num_iters", len(iters),
 		"iters", fmt.Sprintf("%v", iters),
