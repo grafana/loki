@@ -160,7 +160,7 @@ func (i *instance) forMatchingStreams(
 ) error {
 	filters, matchers := util.SplitFiltersAndMatchers(matchers)
 	ids, err := i.index.Lookup(matchers, nil)
-	level.Debug(i.logger).Log("msg", "forMatchingStreams", "ids", ids)
+	level.Debug(i.logger).Log("msg", "forMatchingStreams", "ids", fmt.Sprintf("%v", ids))
 	if err != nil {
 		return err
 	}
