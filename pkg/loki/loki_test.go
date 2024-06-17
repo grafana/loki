@@ -275,3 +275,8 @@ func unregisterLokiMetrics(loki *Loki) {
 	prometheus.Unregister(loki.Metrics.SentMessageSize)
 	prometheus.Unregister(loki.Metrics.InflightRequests)
 }
+
+
+func TestFailure(t *testing.T) {
+  require.True(t, false)
+}
