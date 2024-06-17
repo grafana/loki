@@ -415,7 +415,7 @@ github.com/digitalocean/godo/metrics
 # github.com/dimchansky/utfbom v1.1.1
 ## explicit
 github.com/dimchansky/utfbom
-# github.com/docker/distribution v2.8.1+incompatible => github.com/docker/distribution v2.8.2-beta.1+incompatible
+# github.com/docker/distribution v2.8.2+incompatible => github.com/docker/distribution v2.8.2-beta.1+incompatible
 ## explicit
 github.com/docker/distribution/digestset
 github.com/docker/distribution/reference
