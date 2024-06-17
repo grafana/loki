@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/common/model"
@@ -159,6 +160,7 @@ func (i *instance) forMatchingStreams(
 ) error {
 	filters, matchers := util.SplitFiltersAndMatchers(matchers)
 	ids, err := i.index.Lookup(matchers, nil)
+	level.Debug(i.logger).Log("msg", "forMatchingStreams", "ids", ids)
 	if err != nil {
 		return err
 	}
