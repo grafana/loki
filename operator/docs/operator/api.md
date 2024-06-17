@@ -237,6 +237,18 @@ string
 <p>The client-side key file path for the TLS configuration.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>insecureSkipVerify</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Skip validating server certificate.</p>
+</td>
+</tr>
 </tbody>
 </table>
 

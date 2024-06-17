@@ -2752,7 +2752,23 @@ lifecycler:
 # CLI flag: -ingester.flush-check-period
 [flush_check_period: <duration> | default = 30s]
 
-# The timeout before a flush is cancelled.
+flush_op_backoff:
+  # Minimum backoff period when a flush fails. Each concurrent flush has its own
+  # backoff, see `ingester.concurrent-flushes`.
+  # CLI flag: -ingester.flush-op-backoff-min-period
+  [min_period: <duration> | default = 10s]
+
+  # Maximum backoff period when a flush fails. Each concurrent flush has its own
+  # backoff, see `ingester.concurrent-flushes`.
+  # CLI flag: -ingester.flush-op-backoff-max-period
+  [max_period: <duration> | default = 1m]
+
+  # Maximum retries for failed flushes.
+  # CLI flag: -ingester.flush-op-backoff-retries
+  [max_retries: <int> | default = 10]
+
+# The timeout for an individual flush. Will be retried up to
+# `flush-op-backoff-retries` times.
 # CLI flag: -ingester.flush-op-timeout
 [flush_op_timeout: <duration> | default = 10m]
 
@@ -2863,6 +2879,11 @@ wal:
 # common.path_prefix is set then common.path_prefix will be used.
 # CLI flag: -ingester.shutdown-marker-path
 [shutdown_marker_path: <string> | default = ""]
+
+# Interval at which the ingester ownedStreamService checks for changes in the
+# ring to recalculate owned streams.
+# CLI flag: -ingester.owned-streams-check-interval
+[owned_streams_check_interval: <duration> | default = 30s]
 ```
 
 ### ingester_client
@@ -3524,7 +3545,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # The timeout for establishing a connection with a remote node, and for
 # read/write operations.
 # CLI flag: -memberlist.stream-timeout
-[stream_timeout: <duration> | default = 10s]
+[stream_timeout: <duration> | default = 2s]
 
 # Multiplication factor used when sending out messages (factor * log(N+1)).
 # CLI flag: -memberlist.retransmit-factor
@@ -4739,6 +4760,10 @@ Configures the `server` of the launched module(s).
 # CLI flag: -server.grpc-conn-limit
 [grpc_listen_conn_limit: <int> | default = 0]
 
+# Enables PROXY protocol.
+# CLI flag: -server.proxy-protocol-enabled
+[proxy_protocol_enabled: <boolean> | default = false]
+
 # Comma-separated list of cipher suites to use. If blank, the default Go cipher
 # suites is used.
 # CLI flag: -server.tls-cipher-suites
@@ -4893,6 +4918,21 @@ grpc_tls_config:
 # CLI flag: -server.grpc.num-workers
 [grpc_server_num_workers: <int> | default = 0]
 
+# If true, the request_message_bytes, response_message_bytes, and
+# inflight_requests metrics will be tracked. Enabling this option prevents the
+# use of memory pools for parsing gRPC request bodies and may lead to more
+# memory allocations.
+# CLI flag: -server.grpc.stats-tracking-enabled
+[grpc_server_stats_tracking_enabled: <boolean> | default = true]
+
+# If true, gGPC's buffer pools will be used to handle incoming requests.
+# Enabling this feature can reduce memory allocation, but also requires
+# disabling GRPC server stats tracking by setting
+# `server.grpc.stats-tracking-enabled=false`. This is an experimental gRPC
+# feature, so it might be removed in a future version of the gRPC library.
+# CLI flag: -server.grpc.recv-buffer-pools-enabled
+[grpc_server_recv_buffer_pools_enabled: <boolean> | default = false]
+
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
 [log_format: <string> | default = "logfmt"]
@@ -4905,6 +4945,11 @@ grpc_tls_config:
 # Optionally log the source IPs.
 # CLI flag: -server.log-source-ips-enabled
 [log_source_ips_enabled: <boolean> | default = false]
+
+# Log all source IPs instead of only the originating one. Only used if
+# server.log-source-ips-enabled is true
+# CLI flag: -server.log-source-ips-full
+[log_source_ips_full: <boolean> | default = false]
 
 # Header field storing the source IPs. Only used if
 # server.log-source-ips-enabled is true. If not set the default Forwarded,

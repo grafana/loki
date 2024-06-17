@@ -24,14 +24,13 @@ var _ = nethttp.MWURLTagFunc
 
 // Tracer is a middleware which traces incoming requests.
 type Tracer struct {
-	RouteMatcher RouteMatcher
-	SourceIPs    *SourceIPExtractor
+	SourceIPs *SourceIPExtractor
 }
 
 // Wrap implements Interface
 func (t Tracer) Wrap(next http.Handler) http.Handler {
 	options := []nethttp.MWOption{
-		nethttp.OperationNameFunc(makeHTTPOperationNameFunc(t.RouteMatcher)),
+		nethttp.OperationNameFunc(httpOperationNameFunc),
 		nethttp.MWSpanObserver(func(sp opentracing.Span, r *http.Request) {
 			// add a tag with the client's user agent to the span
 			userAgent := r.Header.Get("User-Agent")
@@ -130,11 +129,9 @@ func HTTPGRPCTracingInterceptor(router *mux.Router) grpc.UnaryServerInterceptor 
 	}
 }
 
-func makeHTTPOperationNameFunc(routeMatcher RouteMatcher) func(r *http.Request) string {
-	return func(r *http.Request) string {
-		routeName := getRouteName(routeMatcher, r)
-		return getOperationName(routeName, r)
-	}
+func httpOperationNameFunc(r *http.Request) string {
+	routeName := ExtractRouteName(r.Context())
+	return getOperationName(routeName, r)
 }
 
 func getOperationName(routeName string, r *http.Request) string {

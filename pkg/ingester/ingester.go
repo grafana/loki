@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/modules"
 	"github.com/grafana/dskit/multierror"
@@ -84,6 +85,7 @@ type Config struct {
 
 	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
 	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
+	FlushOpBackoff      backoff.Config    `yaml:"flush_op_backoff"`
 	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
 	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
 	MaxChunkIdle        time.Duration     `yaml:"chunk_idle_period"`
@@ -120,6 +122,8 @@ type Config struct {
 	MaxDroppedStreams int `yaml:"max_dropped_streams"`
 
 	ShutdownMarkerPath string `yaml:"shutdown_marker_path"`
+
+	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
 }
 
 // RegisterFlags registers the flags.
@@ -129,7 +133,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
-	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "The timeout before a flush is cancelled.")
+	f.DurationVar(&cfg.FlushOpBackoff.MinBackoff, "ingester.flush-op-backoff-min-period", 10*time.Second, "Minimum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
+	f.DurationVar(&cfg.FlushOpBackoff.MaxBackoff, "ingester.flush-op-backoff-max-period", time.Minute, "Maximum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
+	f.IntVar(&cfg.FlushOpBackoff.MaxRetries, "ingester.flush-op-backoff-retries", 10, "Maximum retries for failed flushes.")
+	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "The timeout for an individual flush. Will be retried up to `flush-op-backoff-retries` times.")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 0, "How long chunks should be retained in-memory after they've been flushed.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
@@ -144,6 +151,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.IndexShards, "ingester.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
+	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
 }
 
 func (cfg *Config) Validate() error {
@@ -157,6 +165,15 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 
+	if cfg.FlushOpBackoff.MinBackoff > cfg.FlushOpBackoff.MaxBackoff {
+		return errors.New("invalid flush op min backoff: cannot be larger than max backoff")
+	}
+	if cfg.FlushOpBackoff.MaxRetries <= 0 {
+		return fmt.Errorf("invalid flush op max retries: %d", cfg.FlushOpBackoff.MaxRetries)
+	}
+	if cfg.FlushOpTimeout <= 0 {
+		return fmt.Errorf("invalid flush op timeout: %s", cfg.FlushOpTimeout)
+	}
 	if cfg.IndexShards <= 0 {
 		return fmt.Errorf("invalid ingester index shard factor: %d", cfg.IndexShards)
 	}
@@ -248,10 +265,14 @@ type Ingester struct {
 	writeLogManager *writefailures.Manager
 
 	customStreamsTracker push.UsageTracker
+
+	// recalculateOwnedStreams periodically checks the ring for changes and recalculates owned streams for each instance.
+	readRing                ring.ReadRing
+	recalculateOwnedStreams *recalculateOwnedStreams
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker, readRing ring.ReadRing) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -280,6 +301,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		streamRateCalculator:  NewStreamRateCalculator(),
 		writeLogManager:       writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester"),
 		customStreamsTracker:  customStreamsTracker,
+		readRing:              readRing,
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -328,6 +350,8 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	if i.cfg.SampleExtractorWrapper != nil {
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
+
+	i.recalculateOwnedStreams = newRecalculateOwnedStreams(i.getInstances, i.lifecycler.ID, i.readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
 }
@@ -520,6 +544,16 @@ func (i *Ingester) starting(ctx context.Context) error {
 	if shutdownMarker {
 		level.Info(i.logger).Log("msg", "detected existing shutdown marker, setting unregister and flush on shutdown", "path", shutdownMarkerPath)
 		i.setPrepareShutdown()
+	}
+
+	err = i.recalculateOwnedStreams.StartAsync(ctx)
+	if err != nil {
+		return fmt.Errorf("can not start recalculate owned streams service: %w", err)
+	}
+
+	err = i.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
 	}
 
 	// start our loop

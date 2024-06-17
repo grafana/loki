@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"go.uber.org/atomic"
+
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 )
 
@@ -13,7 +15,7 @@ type QueueTask struct {
 	resultsChannel chan *protos.TaskResult
 
 	// Tracking
-	timesEnqueued int
+	timesEnqueued atomic.Int64
 	queueTime     time.Time
 	ctx           context.Context
 }
