@@ -275,7 +275,7 @@ func (i *Ingester) QuerySample(
 		return err
 	}
 
-	level.Info(i.logger).Log("msg", "QuerySample", "instanceID", instanceID, "expr", expr)
+	level.Debug(i.logger).Log("msg", "QuerySample", "instanceID", instanceID, "expr", expr)
 	iterator, err := instance.QuerySample(ctx, expr, req) // this is returning a first value of 0,0
 	if err != nil {
 		return err

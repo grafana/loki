@@ -150,6 +150,12 @@ func (i *instance) QuerySample(
 		return nil, err
 	}
 
+	level.Debug(i.logger).Log(
+		"msg", "summing results of querying streams",
+		"num_iters", len(iters),
+		"iters", fmt.Sprintf("%v", iters),
+	)
+
 	return pattern_iter.NewSumMergeSampleIterator(iters), nil
 }
 
