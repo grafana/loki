@@ -363,8 +363,9 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
-	sp := opentracing.SpanFromContext(ctx)
-	statResult.LogWithSpan(sp)
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		statResult.LogWithSpan(sp)
+	}
 
 	status := 200
 	if err != nil {
