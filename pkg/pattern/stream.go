@@ -274,5 +274,5 @@ func (s *stream) prune(olderThan time.Duration) bool {
 		}
 	}
 
-	return len(s.patterns.Clusters()) == 0
+	return len(s.patterns.Clusters()) == 0 && s.chunks.Prune(olderThan)
 }

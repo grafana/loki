@@ -88,6 +88,28 @@ func (c *Chunks) Observe(bytes, count float64, ts model.Time) {
 	last.AddSample(newSample(bytes, count, ts))
 }
 
+func (c *Chunks) Prune(olderThan time.Duration) bool {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if len(c.chunks) == 0 {
+		return true
+	}
+
+	oldest := time.Now().Add(-olderThan).UnixNano()
+	// keep the last chunk
+	for i := 0; i < len(c.chunks)-1; {
+		if c.chunks[i].maxt < oldest {
+			c.chunks = append(c.chunks[:i], c.chunks[i+1:]...)
+			c.metrics.chunks.Set(float64(len(c.chunks)))
+			continue
+		}
+		i++
+	}
+
+	return len(c.chunks) == 0
+}
+
 func (c *Chunks) Iterator(
 	typ Type,
 	grouping *syntax.Grouping,
