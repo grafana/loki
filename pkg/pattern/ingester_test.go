@@ -701,9 +701,7 @@ func TestInstancePushQuerySamples(t *testing.T) {
 				require.NoError(t, err)
 
 				ss := make([]logproto.Series, 0, len(res.Series))
-				for _, s := range res.Series {
-					ss = append(ss, s)
-				}
+				ss = append(ss, res.Series...)
 
 				sort.Slice(ss, func(i, j int) bool {
 					return ss[i].Labels < ss[j].Labels
@@ -720,9 +718,7 @@ func TestInstancePushQuerySamples(t *testing.T) {
 				require.NoError(t, err)
 
 				ss = make([]logproto.Series, 0, len(res.Series))
-				for _, s := range res.Series {
-					ss = append(ss, s)
-				}
+				ss = append(ss, res.Series...)
 
 				sort.Slice(ss, func(i, j int) bool {
 					return ss[i].Labels < ss[j].Labels

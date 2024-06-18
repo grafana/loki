@@ -130,6 +130,8 @@ func TestSampleIterator(t *testing.T) {
 		require.NoError(t, err)
 
 		expr, err := syntax.ParseSampleExpr("count_over_time({foo=\"bar\"}[5s])")
+		require.NoError(t, err)
+
 		it, err := stream.SampleIterator(
 			context.Background(),
 			expr,
@@ -140,6 +142,7 @@ func TestSampleIterator(t *testing.T) {
 		require.NoError(t, err)
 
 		res, err := iter.ReadAllSamples(it)
+		require.NoError(t, err)
 		require.Equal(t, 1, len(res.Series))
 		require.Equal(t, 1, len(res.Series[0].Samples))
 		require.Equal(t, float64(2), res.Series[0].Samples[0].Value)
@@ -184,6 +187,8 @@ func TestSampleIterator(t *testing.T) {
 
 		t.Run("non-overlapping timestamps", func(t *testing.T) {
 			expr, err := syntax.ParseSampleExpr("count_over_time({foo=\"bar\"}[5s])")
+			require.NoError(t, err)
+
 			it, err := stream.SampleIterator(
 				context.Background(),
 				expr,
@@ -194,6 +199,8 @@ func TestSampleIterator(t *testing.T) {
 			require.NoError(t, err)
 
 			res, err := iter.ReadAllSamples(it)
+			require.NoError(t, err)
+
 			require.Equal(t, 1, len(res.Series))
 			require.Equal(t, 2, len(res.Series[0].Samples))
 			require.Equal(t, float64(2), res.Series[0].Samples[0].Value)
@@ -202,6 +209,8 @@ func TestSampleIterator(t *testing.T) {
 
 		t.Run("overlapping timestamps", func(t *testing.T) {
 			expr, err := syntax.ParseSampleExpr("count_over_time({foo=\"bar\"}[1m])")
+			require.NoError(t, err)
+
 			it, err := stream.SampleIterator(
 				context.Background(),
 				expr,
@@ -212,6 +221,8 @@ func TestSampleIterator(t *testing.T) {
 			require.NoError(t, err)
 
 			res, err := iter.ReadAllSamples(it)
+			require.NoError(t, err)
+
 			require.Equal(t, 1, len(res.Series))
 			require.Equal(
 				t,
@@ -250,6 +261,8 @@ func TestSampleIterator(t *testing.T) {
 		require.NoError(t, err)
 
 		expr, err := syntax.ParseSampleExpr("count_over_time({foo=\"bar\"}[1s])")
+		require.NoError(t, err)
+
 		it, err := stream.SampleIterator(
 			context.Background(),
 			expr,
@@ -260,11 +273,15 @@ func TestSampleIterator(t *testing.T) {
 		require.NoError(t, err)
 
 		res, err := iter.ReadAllSamples(it)
+		require.NoError(t, err)
+
 		require.Equal(t, 1, len(res.Series))
 		require.Equal(t, 1, len(res.Series[0].Samples))
 		require.Equal(t, int64(26000000000), res.Series[0].Samples[0].Timestamp)
 
 		expr, err = syntax.ParseSampleExpr("count_over_time({foo=\"bar\"}[5s])")
+		require.NoError(t, err)
+
 		it, err = stream.SampleIterator(
 			context.Background(),
 			expr,
@@ -275,6 +292,8 @@ func TestSampleIterator(t *testing.T) {
 		require.NoError(t, err)
 
 		res, err = iter.ReadAllSamples(it)
+		require.NoError(t, err)
+
 		require.Equal(t, 1, len(res.Series))
 		require.Equal(t, 1, len(res.Series[0].Samples))
 		require.Equal(t, int64(30000000000), res.Series[0].Samples[0].Timestamp)

@@ -256,12 +256,12 @@ func (f *fakeRing) InstancesWithTokensCount() int {
 }
 
 // InstancesInZoneCount returns the number of instances in the ring that are registered in given zone.
-func (f *fakeRing) InstancesInZoneCount(zone string) int {
+func (f *fakeRing) InstancesInZoneCount(_ string) int {
 	panic("not implemented") // TODO: Implement
 }
 
 // InstancesWithTokensInZoneCount returns the number of instances in the ring that are registered in given zone and have tokens.
-func (f *fakeRing) InstancesWithTokensInZoneCount(zone string) int {
+func (f *fakeRing) InstancesWithTokensInZoneCount(_ string) int {
 	panic("not implemented") // TODO: Implement
 }
 
