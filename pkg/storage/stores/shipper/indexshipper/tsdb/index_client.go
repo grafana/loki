@@ -281,7 +281,6 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 }
 
 func (c *IndexClient) GetShards(ctx context.Context, userID string, from, through model.Time, targetBytesPerShard uint64, predicate chunk.Predicate) (*logproto.ShardsResponse, error) {
-
 	// TODO(owen-d): perf, this is expensive :(
 	var mtx sync.Mutex
 

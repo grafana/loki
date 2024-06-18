@@ -123,13 +123,13 @@ func (m mockIndex) Series(ref storage.SeriesRef, lset *labels.Labels, chks *[]Ch
 	return nil
 }
 
-func TestIndexFileRW_Create_Open(t *testing.T) {
+func TestIndexRW_Create_Open(t *testing.T) {
 	dir := t.TempDir()
 
 	fn := filepath.Join(dir, IndexFilename)
 
 	// An empty index must still result in a readable file.
-	iw, err := NewWriterFileWithVersion(context.Background(), FormatV3, fn)
+	iw, err := NewWriter(context.Background(), FormatV3, fn)
 	require.NoError(t, err)
 	require.NoError(t, iw.Close())
 
@@ -148,65 +148,14 @@ func TestIndexFileRW_Create_Open(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestIndexBufferRW_Create_Open(t *testing.T) {
-	// An empty index must still result in a readable file.
-	iw, err := NewWriterBufferWithVersion(context.Background(), FormatV3)
-	require.NoError(t, err)
-
-	require.NoError(t, iw.Close())
-	buffer, closer, err := iw.Buffer()
-	require.NoError(t, err)
-	_, err = NewReader(RealByteSlice(buffer))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, closer.Close())
-	})
-
-	// Modify magic header must cause open to fail.
-	buffer[0], buffer[1] = 0, 0
-
-	_, err = NewReader(RealByteSlice(buffer))
-	require.Error(t, err)
-}
-
-var fixtures = map[string]struct {
-	w func(t *testing.T, fn string, version int) *Writer
-	r func(t *testing.T, iw *Writer, fn string) *Reader
-}{
-	"file": {
-		w: func(t *testing.T, fn string, version int) *Writer {
-			iw, err := NewWriterFileWithVersion(context.Background(), version, fn)
-			require.NoError(t, err)
-			return iw
-		},
-		r: func(t *testing.T, iw *Writer, fn string) *Reader {
-			ir, err := NewFileReader(fn)
-			require.NoError(t, err)
-			return ir
-		},
-	},
-	"memory": {
-		w: func(t *testing.T, _ string, version int) *Writer {
-			iw, err := NewWriterBufferWithVersion(context.Background(), version)
-			require.NoError(t, err)
-			return iw
-		},
-		r: func(t *testing.T, iw *Writer, _ string) *Reader {
-			buf, closer, err := iw.Buffer()
-			require.NoError(t, err)
-			t.Cleanup(func() {
-				require.NoError(t, closer.Close())
-			})
-			ir, err := NewReader(RealByteSlice(buf))
-			require.NoError(t, err)
-			return ir
-		},
-	},
-}
-
 func TestIndexRW_Postings(t *testing.T) {
 	dir := t.TempDir()
+
 	fn := filepath.Join(dir, IndexFilename)
+
+	iw, err := NewWriter(context.Background(), FormatV3, fn)
+	require.NoError(t, err)
+
 	series := []labels.Labels{
 		labels.FromStrings("a", "1", "b", "1"),
 		labels.FromStrings("a", "1", "b", "2"),
@@ -214,76 +163,78 @@ func TestIndexRW_Postings(t *testing.T) {
 		labels.FromStrings("a", "1", "b", "4"),
 	}
 
-	for name, tc := range fixtures {
-		t.Run(name, func(t *testing.T) {
-			iw := tc.w(t, fn, FormatV3)
-			require.NoError(t, iw.AddSymbol("1"))
-			require.NoError(t, iw.AddSymbol("2"))
-			require.NoError(t, iw.AddSymbol("3"))
-			require.NoError(t, iw.AddSymbol("4"))
-			require.NoError(t, iw.AddSymbol("a"))
-			require.NoError(t, iw.AddSymbol("b"))
+	require.NoError(t, iw.AddSymbol("1"))
+	require.NoError(t, iw.AddSymbol("2"))
+	require.NoError(t, iw.AddSymbol("3"))
+	require.NoError(t, iw.AddSymbol("4"))
+	require.NoError(t, iw.AddSymbol("a"))
+	require.NoError(t, iw.AddSymbol("b"))
 
-			// Postings lists are only written if a series with the respective
-			// reference was added before.
-			require.NoError(t, iw.AddSeries(1, series[0], model.Fingerprint(series[0].Hash())))
-			require.NoError(t, iw.AddSeries(2, series[1], model.Fingerprint(series[1].Hash())))
-			require.NoError(t, iw.AddSeries(3, series[2], model.Fingerprint(series[2].Hash())))
-			require.NoError(t, iw.AddSeries(4, series[3], model.Fingerprint(series[3].Hash())))
+	// Postings lists are only written if a series with the respective
+	// reference was added before.
+	require.NoError(t, iw.AddSeries(1, series[0], model.Fingerprint(series[0].Hash())))
+	require.NoError(t, iw.AddSeries(2, series[1], model.Fingerprint(series[1].Hash())))
+	require.NoError(t, iw.AddSeries(3, series[2], model.Fingerprint(series[2].Hash())))
+	require.NoError(t, iw.AddSeries(4, series[3], model.Fingerprint(series[3].Hash())))
 
-			require.NoError(t, iw.Close())
-			ir := tc.r(t, iw, fn)
-			p, err := ir.Postings("a", nil, "1")
-			require.NoError(t, err)
+	require.NoError(t, iw.Close())
 
-			var l labels.Labels
-			var c []ChunkMeta
+	ir, err := NewFileReader(fn)
+	require.NoError(t, err)
 
-			for i := 0; p.Next(); i++ {
-				_, err := ir.Series(p.At(), 0, math.MaxInt64, &l, &c)
+	p, err := ir.Postings("a", nil, "1")
+	require.NoError(t, err)
 
-				require.NoError(t, err)
-				require.Equal(t, 0, len(c))
-				require.Equal(t, series[i], l)
-			}
-			require.NoError(t, p.Err())
+	var l labels.Labels
+	var c []ChunkMeta
 
-			// The label indices are no longer used, so test them by hand here.
-			labelIndices := map[string][]string{}
-			require.NoError(t, ReadOffsetTable(ir.b, ir.toc.LabelIndicesTable, func(key []string, off uint64, _ int) error {
-				if len(key) != 1 {
-					return errors.Errorf("unexpected key length for label indices table %d", len(key))
-				}
+	for i := 0; p.Next(); i++ {
+		_, err := ir.Series(p.At(), 0, math.MaxInt64, &l, &c)
 
-				d := tsdb_enc.NewDecbufAt(ir.b, int(off), castagnoliTable)
-				vals := []string{}
-				nc := d.Be32int()
-				if nc != 1 {
-					return errors.Errorf("unexpected number of label indices table names %d", nc)
-				}
-				for i := d.Be32(); i > 0; i-- {
-					v, err := ir.lookupSymbol(d.Be32())
-					if err != nil {
-						return err
-					}
-					vals = append(vals, v)
-				}
-				labelIndices[key[0]] = vals
-				return d.Err()
-			}))
-			require.Equal(t, map[string][]string{
-				"a": {"1"},
-				"b": {"1", "2", "3", "4"},
-			}, labelIndices)
-
-			require.NoError(t, ir.Close())
-		})
+		require.NoError(t, err)
+		require.Equal(t, 0, len(c))
+		require.Equal(t, series[i], l)
 	}
+	require.NoError(t, p.Err())
+
+	// The label indices are no longer used, so test them by hand here.
+	labelIndices := map[string][]string{}
+	require.NoError(t, ReadOffsetTable(ir.b, ir.toc.LabelIndicesTable, func(key []string, off uint64, _ int) error {
+		if len(key) != 1 {
+			return errors.Errorf("unexpected key length for label indices table %d", len(key))
+		}
+
+		d := tsdb_enc.NewDecbufAt(ir.b, int(off), castagnoliTable)
+		vals := []string{}
+		nc := d.Be32int()
+		if nc != 1 {
+			return errors.Errorf("unexpected number of label indices table names %d", nc)
+		}
+		for i := d.Be32(); i > 0; i-- {
+			v, err := ir.lookupSymbol(d.Be32())
+			if err != nil {
+				return err
+			}
+			vals = append(vals, v)
+		}
+		labelIndices[key[0]] = vals
+		return d.Err()
+	}))
+	require.Equal(t, map[string][]string{
+		"a": {"1"},
+		"b": {"1", "2", "3", "4"},
+	}, labelIndices)
+
+	require.NoError(t, ir.Close())
 }
 
 func TestPostingsMany(t *testing.T) {
 	dir := t.TempDir()
+
 	fn := filepath.Join(dir, IndexFilename)
+
+	iw, err := NewWriter(context.Background(), FormatV3, fn)
+	require.NoError(t, err)
 
 	// Create a label in the index which has 999 values.
 	symbols := map[string]struct{}{}
@@ -301,81 +252,80 @@ func TestPostingsMany(t *testing.T) {
 		syms = append(syms, s)
 	}
 	sort.Strings(syms)
+	for _, s := range syms {
+		require.NoError(t, iw.AddSymbol(s))
+	}
+
 	sort.Slice(series, func(i, j int) bool {
 		return series[i].Hash() < series[j].Hash()
 	})
-	for name, tc := range fixtures {
-		t.Run(name, func(t *testing.T) {
-			iw := tc.w(t, fn, FormatV3)
-			for _, s := range syms {
-				require.NoError(t, iw.AddSymbol(s))
+
+	for i, s := range series {
+		require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s, model.Fingerprint(s.Hash())))
+	}
+	require.NoError(t, iw.Close())
+
+	ir, err := NewFileReader(fn)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, ir.Close()) }()
+
+	cases := []struct {
+		in []string
+	}{
+		// Simple cases, everything is present.
+		{in: []string{"002"}},
+		{in: []string{"031", "032", "033"}},
+		{in: []string{"032", "033"}},
+		{in: []string{"127", "128"}},
+		{in: []string{"127", "128", "129"}},
+		{in: []string{"127", "129"}},
+		{in: []string{"128", "129"}},
+		{in: []string{"998", "999"}},
+		{in: []string{"999"}},
+		// Before actual values.
+		{in: []string{"000"}},
+		{in: []string{"000", "001"}},
+		{in: []string{"000", "002"}},
+		// After actual values.
+		{in: []string{"999a"}},
+		{in: []string{"999", "999a"}},
+		{in: []string{"998", "999", "999a"}},
+		// In the middle of actual values.
+		{in: []string{"126a", "127", "128"}},
+		{in: []string{"127", "127a", "128"}},
+		{in: []string{"127", "127a", "128", "128a", "129"}},
+		{in: []string{"127", "128a", "129"}},
+		{in: []string{"128", "128a", "129"}},
+		{in: []string{"128", "129", "129a"}},
+		{in: []string{"126a", "126b", "127", "127a", "127b", "128", "128a", "128b", "129", "129a", "129b"}},
+	}
+
+	for _, c := range cases {
+		it, err := ir.Postings("i", nil, c.in...)
+		require.NoError(t, err)
+
+		got := []string{}
+		var lbls labels.Labels
+		var metas []ChunkMeta
+		for it.Next() {
+			_, err := ir.Series(it.At(), 0, math.MaxInt64, &lbls, &metas)
+			require.NoError(t, err)
+			got = append(got, lbls.Get("i"))
+		}
+		require.NoError(t, it.Err())
+		exp := []string{}
+		for _, e := range c.in {
+			if _, ok := symbols[e]; ok && e != "l" {
+				exp = append(exp, e)
 			}
-			for i, s := range series {
-				require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s, model.Fingerprint(s.Hash())))
-			}
-			require.NoError(t, iw.Close())
-			ir := tc.r(t, iw, fn)
-			defer func() { require.NoError(t, ir.Close()) }()
+		}
 
-			cases := []struct {
-				in []string
-			}{
-				// Simple cases, everything is present.
-				{in: []string{"002"}},
-				{in: []string{"031", "032", "033"}},
-				{in: []string{"032", "033"}},
-				{in: []string{"127", "128"}},
-				{in: []string{"127", "128", "129"}},
-				{in: []string{"127", "129"}},
-				{in: []string{"128", "129"}},
-				{in: []string{"998", "999"}},
-				{in: []string{"999"}},
-				// Before actual values.
-				{in: []string{"000"}},
-				{in: []string{"000", "001"}},
-				{in: []string{"000", "002"}},
-				// After actual values.
-				{in: []string{"999a"}},
-				{in: []string{"999", "999a"}},
-				{in: []string{"998", "999", "999a"}},
-				// In the middle of actual values.
-				{in: []string{"126a", "127", "128"}},
-				{in: []string{"127", "127a", "128"}},
-				{in: []string{"127", "127a", "128", "128a", "129"}},
-				{in: []string{"127", "128a", "129"}},
-				{in: []string{"128", "128a", "129"}},
-				{in: []string{"128", "129", "129a"}},
-				{in: []string{"126a", "126b", "127", "127a", "127b", "128", "128a", "128b", "129", "129a", "129b"}},
-			}
-
-			for _, c := range cases {
-				it, err := ir.Postings("i", nil, c.in...)
-				require.NoError(t, err)
-
-				got := []string{}
-				var lbls labels.Labels
-				var metas []ChunkMeta
-				for it.Next() {
-					_, err := ir.Series(it.At(), 0, math.MaxInt64, &lbls, &metas)
-					require.NoError(t, err)
-					got = append(got, lbls.Get("i"))
-				}
-				require.NoError(t, it.Err())
-				exp := []string{}
-				for _, e := range c.in {
-					if _, ok := symbols[e]; ok && e != "l" {
-						exp = append(exp, e)
-					}
-				}
-
-				// sort expected values by label hash instead of lexicographically by labelset
-				sort.Slice(exp, func(i, j int) bool {
-					return labels.FromStrings("i", exp[i], "foo", "bar").Hash() < labels.FromStrings("i", exp[j], "foo", "bar").Hash()
-				})
-
-				require.Equal(t, exp, got, fmt.Sprintf("input: %v", c.in))
-			}
+		// sort expected values by label hash instead of lexicographically by labelset
+		sort.Slice(exp, func(i, j int) bool {
+			return labels.FromStrings("i", exp[i], "foo", "bar").Hash() < labels.FromStrings("i", exp[j], "foo", "bar").Hash()
 		})
+
+		require.Equal(t, exp, got, fmt.Sprintf("input: %v", c.in))
 	}
 }
 
@@ -417,7 +367,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 		})
 	}
 
-	iw, err := NewWriterFileWithVersion(context.Background(), FormatV3, filepath.Join(dir, IndexFilename))
+	iw, err := NewWriter(context.Background(), FormatV3, filepath.Join(dir, IndexFilename))
 	require.NoError(t, err)
 
 	syms := []string{}
@@ -614,238 +564,235 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 			symbols[l.Value] = struct{}{}
 		}
 	}
-	syms := []string{}
-	for s := range symbols {
-		syms = append(syms, s)
-	}
-	sort.Strings(syms)
+
 	now := model.Now()
 
-	for name, f := range fixtures {
-		f := f
+	for name, tc := range map[string]struct {
+		chunkMetas           []ChunkMeta
+		expectedChunkSamples []chunkSample
+	}{
+		"no overlapping chunks": {
+			chunkMetas: []ChunkMeta{
+				{
+					MinTime: int64(now),
+					MaxTime: int64(now.Add(30 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(40 * time.Minute)),
+					MaxTime: int64(now.Add(80 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(90 * time.Minute)),
+					MaxTime: int64(now.Add(120 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(130 * time.Minute)),
+					MaxTime: int64(now.Add(150 * time.Minute)),
+				},
+			},
+			expectedChunkSamples: []chunkSample{
+				{
+					largestMaxt:   int64(now.Add(30 * time.Minute)),
+					idx:           0,
+					prevChunkMaxt: 0,
+				},
+				{
+					largestMaxt:   int64(now.Add(120 * time.Minute)),
+					idx:           2,
+					prevChunkMaxt: int64(now.Add(80 * time.Minute)),
+				},
+				{
+					largestMaxt:   int64(now.Add(150 * time.Minute)),
+					idx:           3,
+					prevChunkMaxt: int64(now.Add(120 * time.Minute)),
+				},
+			},
+		},
+		"overlapping chunks": {
+			chunkMetas: []ChunkMeta{
+				{
+					MinTime: int64(now),
+					MaxTime: int64(now.Add(30 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(20 * time.Minute)),
+					MaxTime: int64(now.Add(80 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(70 * time.Minute)),
+					MaxTime: int64(now.Add(120 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(100 * time.Minute)),
+					MaxTime: int64(now.Add(110 * time.Minute)),
+				},
+			},
+			expectedChunkSamples: []chunkSample{
+				{
+					largestMaxt:   int64(now.Add(30 * time.Minute)),
+					idx:           0,
+					prevChunkMaxt: 0,
+				},
+				{
+					largestMaxt:   int64(now.Add(120 * time.Minute)),
+					idx:           2,
+					prevChunkMaxt: int64(now.Add(80 * time.Minute)),
+				},
+				{
+					largestMaxt:   int64(now.Add(120 * time.Minute)),
+					idx:           3,
+					prevChunkMaxt: int64(now.Add(120 * time.Minute)),
+				},
+			},
+		},
+		"first chunk overlapping all chunks": {
+			chunkMetas: []ChunkMeta{
+				{
+					MinTime: int64(now),
+					MaxTime: int64(now.Add(180 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(20 * time.Minute)),
+					MaxTime: int64(now.Add(80 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(70 * time.Minute)),
+					MaxTime: int64(now.Add(120 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(110 * time.Minute)),
+					MaxTime: int64(now.Add(150 * time.Minute)),
+				},
+			},
+			expectedChunkSamples: []chunkSample{
+				{
+					largestMaxt:   int64(now.Add(180 * time.Minute)),
+					idx:           0,
+					prevChunkMaxt: 0,
+				},
+				{
+					largestMaxt:   int64(now.Add(180 * time.Minute)),
+					idx:           3,
+					prevChunkMaxt: int64(now.Add(120 * time.Minute)),
+				},
+			},
+		},
+		"large gaps between chunks": {
+			chunkMetas: []ChunkMeta{
+				{
+					MinTime: int64(now),
+					MaxTime: int64(now.Add(30 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(200 * time.Minute)),
+					MaxTime: int64(now.Add(280 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(500 * time.Minute)),
+					MaxTime: int64(now.Add(520 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(800 * time.Minute)),
+					MaxTime: int64(now.Add(835 * time.Minute)),
+				},
+			},
+			expectedChunkSamples: []chunkSample{
+				{
+					largestMaxt:   int64(now.Add(30 * time.Minute)),
+					idx:           0,
+					prevChunkMaxt: 0,
+				},
+				{
+					largestMaxt:   int64(now.Add(280 * time.Minute)),
+					idx:           1,
+					prevChunkMaxt: int64(now.Add(30 * time.Minute)),
+				},
+				{
+					largestMaxt:   int64(now.Add(520 * time.Minute)),
+					idx:           2,
+					prevChunkMaxt: int64(now.Add(280 * time.Minute)),
+				},
+				{
+					largestMaxt:   int64(now.Add(835 * time.Minute)),
+					idx:           3,
+					prevChunkMaxt: int64(now.Add(520 * time.Minute)),
+				},
+			},
+		},
+	} {
 		t.Run(name, func(t *testing.T) {
-			for name, tc := range map[string]struct {
-				chunkMetas           []ChunkMeta
-				expectedChunkSamples []chunkSample
-			}{
-				"no overlapping chunks": {
-					chunkMetas: []ChunkMeta{
-						{
-							MinTime: int64(now),
-							MaxTime: int64(now.Add(30 * time.Minute)),
-						},
-						{
-							MinTime: int64(now.Add(40 * time.Minute)),
-							MaxTime: int64(now.Add(80 * time.Minute)),
-						},
-						{
-							MinTime: int64(now.Add(90 * time.Minute)),
-							MaxTime: int64(now.Add(120 * time.Minute)),
-						},
-						{
-							MinTime: int64(now.Add(130 * time.Minute)),
-							MaxTime: int64(now.Add(150 * time.Minute)),
-						},
-					},
-					expectedChunkSamples: []chunkSample{
-						{
-							largestMaxt:   int64(now.Add(30 * time.Minute)),
-							idx:           0,
-							prevChunkMaxt: 0,
-						},
-						{
-							largestMaxt:   int64(now.Add(120 * time.Minute)),
-							idx:           2,
-							prevChunkMaxt: int64(now.Add(80 * time.Minute)),
-						},
-						{
-							largestMaxt:   int64(now.Add(150 * time.Minute)),
-							idx:           3,
-							prevChunkMaxt: int64(now.Add(120 * time.Minute)),
-						},
-					},
-				},
-				"overlapping chunks": {
-					chunkMetas: []ChunkMeta{
-						{
-							MinTime: int64(now),
-							MaxTime: int64(now.Add(30 * time.Minute)),
-						},
-						{
-							MinTime: int64(now.Add(20 * time.Minute)),
-							MaxTime: int64(now.Add(80 * time.Minute)),
-						},
-						{
-							MinTime: int64(now.Add(70 * time.Minute)),
-							MaxTime: int64(now.Add(120 * time.Minute)),
-						},
-						{
-							MinTime: int64(now.Add(100 * time.Minute)),
-							MaxTime: int64(now.Add(110 * time.Minute)),
-						},
-					},
-					expectedChunkSamples: []chunkSample{
-						{
-							largestMaxt:   int64(now.Add(30 * time.Minute)),
-							idx:           0,
-							prevChunkMaxt: 0,
-						},
-						{
-							largestMaxt:   int64(now.Add(120 * time.Minute)),
-							idx:           2,
-							prevChunkMaxt: int64(now.Add(80 * time.Minute)),
-						},
-						{
-							largestMaxt:   int64(now.Add(120 * time.Minute)),
-							idx:           3,
-							prevChunkMaxt: int64(now.Add(120 * time.Minute)),
-						},
-					},
-				},
-				"first chunk overlapping all chunks": {
-					chunkMetas: []ChunkMeta{
-						{
-							MinTime: int64(now),
-							MaxTime: int64(now.Add(180 * time.Minute)),
-						},
-						{
-							MinTime: int64(now.Add(20 * time.Minute)),
-							MaxTime: int64(now.Add(80 * time.Minute)),
-						},
-						{
-							MinTime: int64(now.Add(70 * time.Minute)),
-							MaxTime: int64(now.Add(120 * time.Minute)),
-						},
-						{
-							MinTime: int64(now.Add(110 * time.Minute)),
-							MaxTime: int64(now.Add(150 * time.Minute)),
-						},
-					},
-					expectedChunkSamples: []chunkSample{
-						{
-							largestMaxt:   int64(now.Add(180 * time.Minute)),
-							idx:           0,
-							prevChunkMaxt: 0,
-						},
-						{
-							largestMaxt:   int64(now.Add(180 * time.Minute)),
-							idx:           3,
-							prevChunkMaxt: int64(now.Add(120 * time.Minute)),
-						},
-					},
-				},
-				"large gaps between chunks": {
-					chunkMetas: []ChunkMeta{
-						{
-							MinTime: int64(now),
-							MaxTime: int64(now.Add(30 * time.Minute)),
-						},
-						{
-							MinTime: int64(now.Add(200 * time.Minute)),
-							MaxTime: int64(now.Add(280 * time.Minute)),
-						},
-						{
-							MinTime: int64(now.Add(500 * time.Minute)),
-							MaxTime: int64(now.Add(520 * time.Minute)),
-						},
-						{
-							MinTime: int64(now.Add(800 * time.Minute)),
-							MaxTime: int64(now.Add(835 * time.Minute)),
-						},
-					},
-					expectedChunkSamples: []chunkSample{
-						{
-							largestMaxt:   int64(now.Add(30 * time.Minute)),
-							idx:           0,
-							prevChunkMaxt: 0,
-						},
-						{
-							largestMaxt:   int64(now.Add(280 * time.Minute)),
-							idx:           1,
-							prevChunkMaxt: int64(now.Add(30 * time.Minute)),
-						},
-						{
-							largestMaxt:   int64(now.Add(520 * time.Minute)),
-							idx:           2,
-							prevChunkMaxt: int64(now.Add(280 * time.Minute)),
-						},
-						{
-							largestMaxt:   int64(now.Add(835 * time.Minute)),
-							idx:           3,
-							prevChunkMaxt: int64(now.Add(520 * time.Minute)),
-						},
-					},
-				},
-			} {
-				tc := tc
-				t.Run(name, func(t *testing.T) {
-					iw := f.w(t, filepath.Join(dir, name), FormatV2)
+			iw, err := NewWriterWithVersion(context.Background(), FormatV2, filepath.Join(dir, name))
+			require.NoError(t, err)
 
-					for _, s := range syms {
-						require.NoError(t, iw.AddSymbol(s))
-					}
-
-					for i, l := range lbls {
-						err := iw.AddSeries(storage.SeriesRef(i), l, model.Fingerprint(l.Hash()), tc.chunkMetas...)
-						require.NoError(t, err)
-					}
-
-					err := iw.Close()
-					require.NoError(t, err)
-
-					ir := f.r(t, iw, filepath.Join(dir, name))
-
-					postings, err := ir.Postings("fizz", nil, "buzz")
-					require.NoError(t, err)
-
-					require.True(t, postings.Next())
-					var lset labels.Labels
-					var chks []ChunkMeta
-
-					// there should be no chunk samples
-					require.Nil(t, ir.dec.chunksSample[postings.At()])
-
-					// read series so that chunk samples get built
-					_, err = ir.Series(postings.At(), 0, math.MaxInt64, &lset, &chks)
-					require.NoError(t, err)
-
-					require.Equal(t, tc.chunkMetas, chks)
-					require.Equal(t, lset, lbls[0])
-
-					// there should be chunk samples for only the series we read
-					require.Len(t, ir.dec.chunksSample, 1)
-					require.NotNil(t, ir.dec.chunksSample[postings.At()])
-					require.Len(t, ir.dec.chunksSample[postings.At()].chunks, len(tc.expectedChunkSamples))
-
-					// build decoder for the series we read to verify the samples
-					offset := postings.At() * 16
-					d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(ir.b, int(offset), castagnoliTable))
-					require.NoError(t, d.Err())
-
-					// read chunk metadata to positing the decoder at the beginning of first chunk
-					d.Be64()
-					k := d.Uvarint()
-
-					for i := 0; i < k; i++ {
-						d.Uvarint()
-						d.Uvarint()
-					}
-					require.Equal(t, len(tc.chunkMetas), d.Uvarint())
-					for i, cs := range ir.dec.chunksSample[postings.At()].chunks {
-						require.Equal(t, tc.expectedChunkSamples[i].idx, cs.idx)
-						require.Equal(t, tc.expectedChunkSamples[i].largestMaxt, cs.largestMaxt)
-						require.Equal(t, tc.expectedChunkSamples[i].prevChunkMaxt, cs.prevChunkMaxt)
-
-						dw := encoding.DecWrap(tsdb_enc.Decbuf{B: d.Get()})
-						dw.Skip(cs.offset)
-						chunkMeta := ChunkMeta{}
-						require.NoError(t, readChunkMeta(&dw, cs.prevChunkMaxt, &chunkMeta))
-						require.Equal(t, tc.chunkMetas[tc.expectedChunkSamples[i].idx], chunkMeta)
-					}
-
-					require.NoError(t, ir.Close())
-				})
+			syms := []string{}
+			for s := range symbols {
+				syms = append(syms, s)
 			}
+			sort.Strings(syms)
+			for _, s := range syms {
+				require.NoError(t, iw.AddSymbol(s))
+			}
+
+			for i, l := range lbls {
+				err = iw.AddSeries(storage.SeriesRef(i), l, model.Fingerprint(l.Hash()), tc.chunkMetas...)
+				require.NoError(t, err)
+			}
+
+			err = iw.Close()
+			require.NoError(t, err)
+
+			ir, err := NewFileReader(filepath.Join(dir, name))
+			require.NoError(t, err)
+
+			postings, err := ir.Postings("fizz", nil, "buzz")
+			require.NoError(t, err)
+
+			require.True(t, postings.Next())
+			var lset labels.Labels
+			var chks []ChunkMeta
+
+			// there should be no chunk samples
+			require.Nil(t, ir.dec.chunksSample[postings.At()])
+
+			// read series so that chunk samples get built
+			_, err = ir.Series(postings.At(), 0, math.MaxInt64, &lset, &chks)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.chunkMetas, chks)
+			require.Equal(t, lset, lbls[0])
+
+			// there should be chunk samples for only the series we read
+			require.Len(t, ir.dec.chunksSample, 1)
+			require.NotNil(t, ir.dec.chunksSample[postings.At()])
+			require.Len(t, ir.dec.chunksSample[postings.At()].chunks, len(tc.expectedChunkSamples))
+
+			// build decoder for the series we read to verify the samples
+			offset := postings.At() * 16
+			d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(ir.b, int(offset), castagnoliTable))
+			require.NoError(t, d.Err())
+
+			// read chunk metadata to positing the decoder at the beginning of first chunk
+			d.Be64()
+			k := d.Uvarint()
+
+			for i := 0; i < k; i++ {
+				d.Uvarint()
+				d.Uvarint()
+			}
+			require.Equal(t, len(tc.chunkMetas), d.Uvarint())
+			for i, cs := range ir.dec.chunksSample[postings.At()].chunks {
+				require.Equal(t, tc.expectedChunkSamples[i].idx, cs.idx)
+				require.Equal(t, tc.expectedChunkSamples[i].largestMaxt, cs.largestMaxt)
+				require.Equal(t, tc.expectedChunkSamples[i].prevChunkMaxt, cs.prevChunkMaxt)
+
+				dw := encoding.DecWrap(tsdb_enc.Decbuf{B: d.Get()})
+				dw.Skip(cs.offset)
+				chunkMeta := ChunkMeta{}
+				require.NoError(t, readChunkMeta(&dw, cs.prevChunkMaxt, &chunkMeta))
+				require.Equal(t, tc.chunkMetas[tc.expectedChunkSamples[i].idx], chunkMeta)
+			}
+
+			require.NoError(t, ir.Close())
 		})
 	}
 }

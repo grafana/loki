@@ -120,12 +120,12 @@ type Writer struct {
 	ctx context.Context
 
 	// For the main index file.
-	f *index.BufferWriter
+	f *BufferWriter
 
 	// Temporary file for postings.
-	fP *index.BufferWriter
+	fP *BufferWriter
 	// Temporary file for posting offsets table.
-	fPO   *index.BufferWriter
+	fPO   *BufferWriter
 	cntPO uint64
 
 	toc           TOC
@@ -199,9 +199,9 @@ func NewTOCFromByteSlice(bs ByteSlice) (*TOC, error) {
 func NewWriterWithEncoder(ctx context.Context, encoder PostingsEncoder) (*Writer, error) {
 	iw := &Writer{
 		ctx:   ctx,
-		f:     index.NewBufferWriter(),
-		fP:    index.NewBufferWriter(),
-		fPO:   index.NewBufferWriter(),
+		f:     NewBufferWriter(),
+		fP:    NewBufferWriter(),
+		fPO:   NewBufferWriter(),
 		stage: idxStageNone,
 
 		// Reusable memory.
