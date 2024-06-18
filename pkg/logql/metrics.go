@@ -244,7 +244,7 @@ func humanizeBytes(val uint64) string {
 
 func RecordLabelQueryMetrics(
 	ctx context.Context,
-	sp opentracing.Span,
+	log log.Logger,
 	start, end time.Time,
 	label, query, status string,
 	stats logql_stats.Result,
@@ -252,6 +252,7 @@ func RecordLabelQueryMetrics(
 	var (
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeLabels
+		logger      = fixLogger(ctx, log)
 	)
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -260,7 +261,7 @@ func RecordLabelQueryMetrics(
 		latencyType = latencyTypeSlow
 	}
 
-	sp.LogKV(
+	level.Info(logger).Log(
 		"latency", latencyType,
 		"query_type", queryType,
 		"splits", stats.Summary.Splits,
@@ -301,7 +302,7 @@ func PrintMatches(matches []string) string {
 	return strings.Join(matches, ":")
 }
 
-func RecordSeriesQueryMetrics(ctx context.Context, sp opentracing.Span, start, end time.Time, match []string, status string, shards []string, stats logql_stats.Result) {
+func RecordSeriesQueryMetrics(ctx context.Context, logger log.Logger, start, end time.Time, match []string, status string, shards []string, stats logql_stats.Result) {
 	var (
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeSeries
@@ -344,12 +345,12 @@ func RecordSeriesQueryMetrics(ctx context.Context, sp opentracing.Span, start, e
 		)
 	}
 
-	sp.LogKV(logValues...)
+	level.Info(logger).Log(logValues...)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
 
-func RecordStatsQueryMetrics(ctx context.Context, sp opentracing.Span, start, end time.Time, query string, status string, stats logql_stats.Result) {
+func RecordStatsQueryMetrics(ctx context.Context, logger log.Logger, start, end time.Time, query string, status string, stats logql_stats.Result) {
 	var (
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeStats
@@ -375,7 +376,7 @@ func RecordStatsQueryMetrics(ctx context.Context, sp opentracing.Span, start, en
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned)
-	sp.LogKV(logValues...)
+	level.Info(logger).Log(logValues...)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
@@ -431,7 +432,7 @@ func RecordShardsQueryMetrics(
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
 
-func RecordVolumeQueryMetrics(ctx context.Context, sp opentracing.Span, start, end time.Time, query string, limit uint32, step time.Duration, status string, stats logql_stats.Result) {
+func RecordVolumeQueryMetrics(ctx context.Context, logger log.Logger, start, end time.Time, query string, limit uint32, step time.Duration, status string, stats logql_stats.Result) {
 	var (
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeVolume
@@ -448,7 +449,7 @@ func RecordVolumeQueryMetrics(ctx context.Context, sp opentracing.Span, start, e
 		rangeType = "instant"
 	}
 
-	sp.LogKV(
+	level.Info(logger).Log(
 		"latency", latencyType,
 		"query_type", queryType,
 		"query", query,

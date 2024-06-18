@@ -98,7 +98,7 @@ func TestLogLabelsQuery(t *testing.T) {
 	sp := opentracing.StartSpan("")
 	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
 	now := time.Now()
-	RecordLabelQueryMetrics(ctx, sp, now.Add(-1*time.Hour), now, "foo", "", "200", stats.Result{
+	RecordLabelQueryMetrics(ctx, util_log.Logger, now.Add(-1*time.Hour), now, "foo", "", "200", stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 100000,
 			ExecTime:                25.25,
@@ -132,7 +132,7 @@ func TestLogSeriesQuery(t *testing.T) {
 	sp := opentracing.StartSpan("")
 	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
 	now := time.Now()
-	RecordSeriesQueryMetrics(ctx, sp, now.Add(-1*time.Hour), now, []string{`{container_name=~"prometheus.*", component="server"}`, `{app="loki"}`}, "200", []string{}, stats.Result{
+	RecordSeriesQueryMetrics(ctx, util_log.Logger, now.Add(-1*time.Hour), now, []string{`{container_name=~"prometheus.*", component="server"}`, `{app="loki"}`}, "200", []string{}, stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 100000,
 			ExecTime:                25.25,
