@@ -250,7 +250,6 @@ func TestInstance_QuerySample(t *testing.T) {
 		thirdStep := secondStep + oneMin // 120000
 		fourthStep := thirdStep + oneMin // 180000
 		fifthStep := fourthStep + oneMin // 240000
-		sixthStep := fifthStep + oneMin  // 300000
 
 		// our first push had a timestamp of 90000 (equal to the timestamp of it's last entry)
 		// therefore our first datapoint will be at 120000, since we have nothing for
@@ -339,16 +338,7 @@ func TestInstance_QuerySample(t *testing.T) {
 				require.Equal(t, float64(14), sample.Value)
 				require.Equal(t, expectedLabels.String(), iter.Labels())
 
-				// since our timr range through goes to 310000, we will have 1 more data point
-				next = iter.Next()
-				require.True(t, next)
-
-				sample = iter.Sample()
-				require.Equal(t, model.Time(sixthStep).UnixNano(), sample.Timestamp)
-				require.Equal(t, float64(14), sample.Value)
-				require.Equal(t, expectedLabels.String(), iter.Labels())
-
-				// there should be no more samples
+				// our time range through goes to 310000, but will be truncated, so this is the end
 				next = iter.Next()
 				require.False(t, next)
 			},

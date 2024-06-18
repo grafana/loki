@@ -66,11 +66,9 @@ func newStream(
 		logger: logger,
 	}
 
-	if cfg.Enabled {
-		chunks := metric.NewChunks(labels, chunkMetrics, logger)
-		stream.chunks = chunks
-		stream.evaluator = metric.NewDefaultEvaluatorFactory(chunks)
-	}
+	chunks := metric.NewChunks(labels, chunkMetrics, logger)
+	stream.chunks = chunks
+	stream.evaluator = metric.NewDefaultEvaluatorFactory(chunks)
 
 	return stream, nil
 }
@@ -278,5 +276,10 @@ func (s *stream) prune(olderThan time.Duration) bool {
 		}
 	}
 
-	return len(s.patterns.Clusters()) == 0 && s.chunks.Prune(olderThan)
+	chunksPruned := true
+	if s.chunks != nil {
+		chunksPruned = s.chunks.Prune(olderThan)
+	}
+
+	return len(s.patterns.Clusters()) == 0 && chunksPruned
 }
