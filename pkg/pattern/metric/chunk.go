@@ -264,46 +264,16 @@ func (c *Chunk) ForTypeAndRange(
 		return nil, fmt.Errorf("unsupported metric type")
 	}
 
-	if len(c.Samples) == 0 {
-		return nil, nil
-	}
-	level.Debug(util_log.Logger).Log("msg", "ForTypeAndRange", "start", start, "end", end, "samples", fmt.Sprintf("%v", c.Samples))
-	// first := c.Samples[0].Timestamp
-	// last := c.Samples[len(c.Samples)-1].Timestamp
-	// startBeforeEnd := start >= end
-	// samplesAreAfterRange := first >= end
-	// samplesAreBeforeRange := last < start
-	// if startBeforeEnd || samplesAreAfterRange || samplesAreBeforeRange {
-	// 	return nil, nil
-	// }
-
-	// lo := 0
-	// hi := len(c.Samples)
-
-	// for i, sample := range c.Samples {
-	// 	if first >= start {
-	// 		break
-	// 	}
-
-	// 	if first < start && sample.Timestamp >= start {
-	// 		lo = i
-	// 		first = sample.Timestamp
-	// 	}
-	// }
-
-	// for i := hi - 1; i >= 0; i-- {
-	// 	if last < end {
-	// 		break
-	// 	}
-
-	// 	sample := c.Samples[i]
-	// 	if last >= end && sample.Timestamp < end {
-	// 		hi = i + 1
-	// 		last = sample.Timestamp
-	// 	}
-	// }
-
 	aggregatedSamples := make([]logproto.Sample, 0, len(c.Samples))
+	if len(c.Samples) == 0 {
+		return aggregatedSamples, nil
+	}
+
+	level.Debug(util_log.Logger).Log("msg", "finding chunk samples for type and range",
+		"start", start,
+		"end", end,
+		"samples", fmt.Sprintf("%v", c.Samples))
+
 	for _, sample := range c.Samples {
 		if sample.Timestamp >= start && sample.Timestamp < end {
 			var v float64

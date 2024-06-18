@@ -29,7 +29,7 @@ func TestForTypeAndRange(t *testing.T) {
 			metricType: Count,
 			start:      1,
 			end:        10,
-			expected:   nil,
+			expected:   []logproto.Sample{},
 		},
 		{
 			name:       "Empty bytes",
@@ -37,7 +37,7 @@ func TestForTypeAndRange(t *testing.T) {
 			metricType: Bytes,
 			start:      1,
 			end:        10,
-			expected:   nil,
+			expected:   []logproto.Sample{},
 		},
 		{
 			name: "No Overlap -- count",
@@ -49,7 +49,7 @@ func TestForTypeAndRange(t *testing.T) {
 			metricType: Count,
 			start:      10,
 			end:        20,
-			expected:   nil,
+			expected:   []logproto.Sample{},
 		},
 		{
 			name: "No Overlap -- bytes",
@@ -61,7 +61,7 @@ func TestForTypeAndRange(t *testing.T) {
 			metricType: Bytes,
 			start:      10,
 			end:        20,
-			expected:   nil,
+			expected:   []logproto.Sample{},
 		},
 		{
 			name: "Complete Overlap -- count",
@@ -269,7 +269,7 @@ func TestForTypeAndRange(t *testing.T) {
 			metricType: Count,
 			start:      0,
 			end:        1,
-			expected:   nil,
+			expected:   []logproto.Sample{},
 		},
 		{
 			name: "Start and End before First Element -- bytes",
@@ -281,7 +281,7 @@ func TestForTypeAndRange(t *testing.T) {
 			metricType: Bytes,
 			start:      0,
 			end:        1,
-			expected:   nil,
+			expected:   []logproto.Sample{},
 		},
 	}
 
@@ -292,12 +292,10 @@ func TestForTypeAndRange(t *testing.T) {
 			if !reflect.DeepEqual(result, tc.expected) {
 				t.Errorf("Expected %v, got %v", tc.expected, result)
 			}
-			require.Equal(t, len(result), cap(result), "Returned slice wasn't created at the correct capacity")
 		})
 	}
 }
 
-// TODO(twhitney): test the maximum steps logic
 func Test_Chunks_Iterator(t *testing.T) {
 	lbls := labels.Labels{
 		labels.Label{Name: "foo", Value: "bar"},
@@ -423,5 +421,29 @@ func Test_Chunks_Iterator(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, 0, len(res.Series))
+	})
+
+	t.Run("correctly sets capacity for samples slice to range / step", func(t *testing.T) {
+		it, err := chunks.Iterator(Bytes, nil, 0, 10, 2)
+		require.NoError(t, err)
+
+		res, err := iter.ReadAllSamples(it)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, len(res.Series))
+		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
+		require.Equal(t, 3, len(res.Series[0].Samples))
+		require.Equal(t, 4, cap(res.Series[0].Samples))
+
+		it, err = chunks.Iterator(Count, nil, 0, 10, 2)
+		require.NoError(t, err)
+
+		res, err = iter.ReadAllSamples(it)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, len(res.Series))
+		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
+		require.Equal(t, 3, len(res.Series[0].Samples))
+		require.Equal(t, 4, cap(res.Series[0].Samples))
 	})
 }
