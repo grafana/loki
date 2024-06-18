@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/pattern/chunk"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/metric"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
@@ -133,6 +134,9 @@ func (s *stream) SampleIterator(
 ) (loki_iter.SampleIterator, error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
+	from = chunk.TruncateTimestamp(from, step)
+	through = chunk.TruncateTimestamp(through, step)
 
 	stepEvaluator, err := s.evaluator.NewStepEvaluator(
 		ctx,

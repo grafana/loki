@@ -250,6 +250,26 @@ func (f *fakeRingClient) Ring() ring.ReadRing {
 
 type fakeRing struct{}
 
+// InstancesWithTokensCount returns the number of instances in the ring that have tokens.
+func (f *fakeRing) InstancesWithTokensCount() int {
+	panic("not implemented") // TODO: Implement
+}
+
+// InstancesInZoneCount returns the number of instances in the ring that are registered in given zone.
+func (f *fakeRing) InstancesInZoneCount(zone string) int {
+	panic("not implemented") // TODO: Implement
+}
+
+// InstancesWithTokensInZoneCount returns the number of instances in the ring that are registered in given zone and have tokens.
+func (f *fakeRing) InstancesWithTokensInZoneCount(zone string) int {
+	panic("not implemented") // TODO: Implement
+}
+
+// ZonesCount returns the number of zones for which there's at least 1 instance registered in the ring.
+func (f *fakeRing) ZonesCount() int {
+	panic("not implemented") // TODO: Implement
+}
+
 func (f *fakeRing) Get(
 	_ uint32,
 	_ ring.Operation,

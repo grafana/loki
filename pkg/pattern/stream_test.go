@@ -222,4 +222,61 @@ func TestSampleIterator(t *testing.T) {
 			require.Equal(t, float64(4), res.Series[0].Samples[7].Value)
 		})
 	})
+
+	t.Run("truncates timestamps to nearest step", func(t *testing.T) {
+		stream, err := newStream(
+			model.Fingerprint(lbs.Hash()),
+			lbs,
+			newIngesterMetrics(nil, "test"),
+			metric.NewChunkMetrics(nil, "test"),
+			metric.AggregationConfig{
+				Enabled: true,
+			},
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+
+		err = stream.Push(context.Background(), []push.Entry{
+			{
+				Timestamp: time.Unix(26, 999),
+				Line:      "ts=1 msg=hello",
+			},
+			{
+				Timestamp: time.Unix(26, 999),
+				Line:      "ts=2 msg=hello",
+			},
+		})
+
+		require.NoError(t, err)
+
+		expr, err := syntax.ParseSampleExpr("count_over_time({foo=\"bar\"}[1s])")
+		it, err := stream.SampleIterator(
+			context.Background(),
+			expr,
+			789,
+			model.Time(1*time.Minute/1e6),
+			model.Time(time.Second/1e6),
+		)
+		require.NoError(t, err)
+
+		res, err := iter.ReadAllSamples(it)
+		require.Equal(t, 1, len(res.Series))
+		require.Equal(t, 1, len(res.Series[0].Samples))
+		require.Equal(t, int64(26000000000), res.Series[0].Samples[0].Timestamp)
+
+		expr, err = syntax.ParseSampleExpr("count_over_time({foo=\"bar\"}[5s])")
+		it, err = stream.SampleIterator(
+			context.Background(),
+			expr,
+			4789,
+			model.Time(1*time.Minute/1e6),
+			model.Time(5*time.Second/1e6),
+		)
+		require.NoError(t, err)
+
+		res, err = iter.ReadAllSamples(it)
+		require.Equal(t, 1, len(res.Series))
+		require.Equal(t, 1, len(res.Series[0].Samples))
+		require.Equal(t, int64(30000000000), res.Series[0].Samples[0].Timestamp)
+	})
 }
