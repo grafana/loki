@@ -64,6 +64,7 @@ func (s *recalculateOwnedStreams) recalculate() {
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to update owned streams", "err", err)
 		}
+		instance.ownedStreamsSvc.updateFixedLimit()
 	}
 }
 
