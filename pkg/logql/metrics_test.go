@@ -93,12 +93,13 @@ func TestLogSlowQuery(t *testing.T) {
 func TestLogLabelsQuery(t *testing.T) {
 	buf := bytes.NewBufferString("")
 	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
+	logger := log.NewLogfmtLogger(buf)
 	defer c.Close()
 	opentracing.SetGlobalTracer(tr)
 	sp := opentracing.StartSpan("")
 	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
 	now := time.Now()
-	RecordLabelQueryMetrics(ctx, util_log.Logger, now.Add(-1*time.Hour), now, "foo", "", "200", stats.Result{
+	RecordLabelQueryMetrics(ctx, logger, now.Add(-1*time.Hour), now, "foo", "", "200", stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 100000,
 			ExecTime:                25.25,
@@ -126,13 +127,14 @@ func TestLogLabelsQuery(t *testing.T) {
 
 func TestLogSeriesQuery(t *testing.T) {
 	buf := bytes.NewBufferString("")
+	logger := log.NewLogfmtLogger(buf)
 	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
 	defer c.Close()
 	opentracing.SetGlobalTracer(tr)
 	sp := opentracing.StartSpan("")
 	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
 	now := time.Now()
-	RecordSeriesQueryMetrics(ctx, util_log.Logger, now.Add(-1*time.Hour), now, []string{`{container_name=~"prometheus.*", component="server"}`, `{app="loki"}`}, "200", []string{}, stats.Result{
+	RecordSeriesQueryMetrics(ctx, logger, now.Add(-1*time.Hour), now, []string{`{container_name=~"prometheus.*", component="server"}`, `{app="loki"}`}, "200", []string{}, stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 100000,
 			ExecTime:                25.25,

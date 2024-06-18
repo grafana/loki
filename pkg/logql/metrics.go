@@ -11,7 +11,6 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
@@ -302,10 +301,11 @@ func PrintMatches(matches []string) string {
 	return strings.Join(matches, ":")
 }
 
-func RecordSeriesQueryMetrics(ctx context.Context, logger log.Logger, start, end time.Time, match []string, status string, shards []string, stats logql_stats.Result) {
+func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, match []string, status string, shards []string, stats logql_stats.Result) {
 	var (
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeSeries
+		logger      = fixLogger(ctx, log)
 	)
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -350,10 +350,11 @@ func RecordSeriesQueryMetrics(ctx context.Context, logger log.Logger, start, end
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
 
-func RecordStatsQueryMetrics(ctx context.Context, logger log.Logger, start, end time.Time, query string, status string, stats logql_stats.Result) {
+func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, status string, stats logql_stats.Result) {
 	var (
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeStats
+		logger      = fixLogger(ctx, log)
 	)
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -383,7 +384,7 @@ func RecordStatsQueryMetrics(ctx context.Context, logger log.Logger, start, end 
 
 func RecordShardsQueryMetrics(
 	ctx context.Context,
-	sp opentracing.Span,
+	log log.Logger,
 	start,
 	end time.Time,
 	query string,
@@ -395,6 +396,7 @@ func RecordShardsQueryMetrics(
 	var (
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeShards
+		logger      = fixLogger(ctx, log)
 	)
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -427,7 +429,7 @@ func RecordShardsQueryMetrics(
 		"index_bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
 	)
 
-	sp.LogKV(logValues...)
+	level.Info(logger).Log(logValues...)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
