@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 	"hash/fnv"
 	"math"
 	"net"
@@ -15,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
@@ -103,6 +104,7 @@ const (
 	CacheGenerationLoader    string = "cache-generation-loader"
 	Ingester                 string = "ingester"
 	IngesterRF1              string = "ingester-rf1"
+	IngesterRF1RingClient    string = "ingester-rf1-ring-client"
 	PatternIngester          string = "pattern-ingester"
 	PatternRingClient        string = "pattern-ring-client"
 	IngesterQuerier          string = "ingester-querier"
@@ -328,6 +330,13 @@ func (t *Loki) initDistributor() (services.Service, error) {
 			return nil, err
 		}
 		t.Tee = distributor.WrapTee(t.Tee, patternTee)
+	}
+	if t.Cfg.IngesterRF1.Enabled {
+		rf1Tee, err := ingester_rf1.NewTee(t.Cfg.IngesterRF1, t.IngesterRF1RingClient, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
+		if err != nil {
+			return nil, err
+		}
+		t.Tee = distributor.WrapTee(t.Tee, rf1Tee)
 	}
 
 	var err error
@@ -600,7 +609,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		t.Ingester = t.Cfg.Ingester.Wrapper.Wrap(t.Ingester)
 	}
 
-	//logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
+	logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterStreamDataServer(t.Server.GRPC, t.Ingester)
 
@@ -621,8 +630,6 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 
 func (t *Loki) initIngesterRF1() (_ services.Service, err error) {
 	logger := log.With(util_log.Logger, "component", "ingester-rf1")
-	t.Cfg.IngesterRF1.LifecyclerConfig.RingConfig.KVStore.Store = "inmemory"
-
 	t.Cfg.IngesterRF1.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	if t.Cfg.IngesterRF1.ShutdownMarkerPath == "" && t.Cfg.Common.PathPrefix != "" {
@@ -643,9 +650,13 @@ func (t *Loki) initIngesterRF1() (_ services.Service, err error) {
 	}
 
 	fmt.Println("registered GRPC")
-	logproto.RegisterPusherServer(t.Server.GRPC, t.IngesterRF1)
-	//logproto.RegisterQuerierServer(t.Server.GRPC, t.IngesterRF1)
-	//logproto.RegisterStreamDataServer(t.Server.GRPC, t.IngesterRF1)
+	logproto.RegisterPusherRF1Server(t.Server.GRPC, t.IngesterRF1)
+
+	t.Server.HTTP.Path("/ingester-rf1/ring").Methods("GET", "POST").Handler(t.IngesterRF1)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ingester-rf1/ring").Methods("GET", "POST").Handler(t.IngesterRF1)
+	}
 
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
@@ -660,6 +671,18 @@ func (t *Loki) initIngesterRF1() (_ services.Service, err error) {
 		httpMiddleware.Wrap(http.HandlerFunc(t.IngesterRF1.ShutdownHandler)),
 	)
 	return t.IngesterRF1, nil
+}
+
+func (t *Loki) initIngesterRF1RingClient() (_ services.Service, err error) {
+	if !t.Cfg.IngesterRF1.Enabled {
+		return nil, nil
+	}
+	ringClient, err := ingester_rf1.NewRingClient(t.Cfg.IngesterRF1, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
+	if err != nil {
+		return nil, err
+	}
+	t.IngesterRF1RingClient = ringClient
+	return ringClient, nil
 }
 
 func (t *Loki) initPatternIngester() (_ services.Service, err error) {

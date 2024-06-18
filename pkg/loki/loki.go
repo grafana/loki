@@ -6,11 +6,12 @@ import (
 	stdlib_errors "errors"
 	"flag"
 	"fmt"
-	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 	"net/http"
 	"os"
 	rt "runtime"
 	"time"
+
+	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 
 	"go.uber.org/atomic"
 
@@ -338,6 +339,7 @@ type Loki struct {
 	distributor               *distributor.Distributor
 	Ingester                  ingester.Interface
 	IngesterRF1               ingester_rf1.Interface
+	IngesterRF1RingClient     *ingester_rf1.RingClient
 	PatternIngester           *pattern.Ingester
 	PatternRingClient         pattern.RingClient
 	Querier                   querier.Querier
@@ -653,6 +655,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(IngesterRF1, t.initIngesterRF1)
+	mm.RegisterModule(IngesterRF1RingClient, t.initIngesterRF1RingClient, modules.UserInvisibleModule)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
 	mm.RegisterModule(IngesterGRPCInterceptors, t.initIngesterGRPCInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendMiddleware, modules.UserInvisibleModule)
@@ -690,7 +693,7 @@ func (t *Loki) setupModuleManager() error {
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, Analytics},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, IngesterRF1RingClient, Analytics},
 		Store:                    {Overrides, IndexGatewayRing},
 		IngesterRF1:              {Store, Server, MemberlistKV, TenantConfigs, Analytics},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},

@@ -12,10 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
-	"github.com/grafana/loki/v3/pkg/storage/types"
+	ring_client "github.com/grafana/dskit/ring/client"
 
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/clientpool"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -65,6 +68,8 @@ var (
 
 // Config for an ingester.
 type Config struct {
+	Enabled bool `yaml:"enabled" doc:"description=Whether the ingester is enabled."`
+
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
 
 	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
@@ -93,11 +98,16 @@ type Config struct {
 	ShutdownMarkerPath string `yaml:"shutdown_marker_path"`
 
 	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
+
+	// Tee configs
+	ClientConfig clientpool.Config       `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
+	factory      ring_client.PoolFactory `yaml:"-"`
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	//cfg.LifecyclerConfig.RegisterFlags(f, util_log.Logger)
+	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ingester-rf1.", f, util_log.Logger)
+	cfg.ClientConfig.RegisterFlags(f)
 
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester-rf1.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester-rf1.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
@@ -116,6 +126,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester-rf1.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester-rf1.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
 	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester-rf1.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
+	f.BoolVar(&cfg.Enabled, "ingester-rf1.enabled", false, "Flag to enable or disable the usage of the ingester-rf1 component.")
 }
 
 func (cfg *Config) Validate() error {
@@ -154,6 +165,7 @@ type Store interface {
 // Interface is an interface for the Ingester
 type Interface interface {
 	services.Service
+	http.Handler
 
 	logproto.PusherServer
 	//logproto.QuerierServer
@@ -258,7 +270,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 
 	var err error
 	// TODO: change flush on shutdown
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester-rf1", RingKey, true, logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer))
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester-rf1", "ingester-rf1-ring", true, logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer))
 	if err != nil {
 		return nil, err
 	}
@@ -372,6 +384,11 @@ func (i *Ingester) setupAutoForget() {
 			i.metrics.autoForgetUnhealthyIngestersTotal.Add(float64(len(forgetList)))
 		}
 	}()
+}
+
+// ServeHTTP implements the pattern ring status page.
+func (i *Ingester) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	i.lifecycler.ServeHTTP(w, r)
 }
 
 func (i *Ingester) starting(ctx context.Context) error {

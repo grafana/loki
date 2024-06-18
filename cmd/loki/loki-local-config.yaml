@@ -17,6 +17,9 @@ common:
     kvstore:
       store: inmemory
 
+ingester_rf1:
+  enabled: true
+
 query_range:
   results_cache:
     cache:
