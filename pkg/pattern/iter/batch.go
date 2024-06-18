@@ -40,7 +40,7 @@ func ReadAll(it Iterator) (*logproto.QueryPatternsResponse, error) {
 
 func ReadMetricsBatch(it iter.SampleIterator, batchSize int, logger log.Logger) (*logproto.QuerySamplesResponse, error) {
 	var (
-		series   = map[uint64]*logproto.Series{}
+		series   = map[uint64]logproto.Series{}
 		respSize int
 	)
 
@@ -48,7 +48,7 @@ func ReadMetricsBatch(it iter.SampleIterator, batchSize int, logger log.Logger) 
 		hash := it.StreamHash()
 		s, ok := series[hash]
 		if !ok {
-			s = &logproto.Series{
+			s = logproto.Series{
 				Labels:     it.Labels(),
 				Samples:    []logproto.Sample{},
 				StreamHash: hash,
@@ -57,6 +57,7 @@ func ReadMetricsBatch(it iter.SampleIterator, batchSize int, logger log.Logger) 
 		}
 
 		s.Samples = append(s.Samples, it.Sample())
+    series[hash] = s
 	}
 
 	result := logproto.QuerySamplesResponse{
@@ -64,7 +65,7 @@ func ReadMetricsBatch(it iter.SampleIterator, batchSize int, logger log.Logger) 
 	}
 	for _, s := range series {
 		level.Debug(logger).Log("msg", "appending series", "s", fmt.Sprintf("%v", s))
-		result.Series = append(result.Series, *s)
+		result.Series = append(result.Series, s)
 	}
 	return &result, it.Error()
 }

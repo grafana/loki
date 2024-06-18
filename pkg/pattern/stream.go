@@ -167,12 +167,21 @@ func (s *stream) SampleIterator(
 	}
 
 	spanLogger := spanlogger.FromContext(ctx)
-	level.Debug(spanLogger).Log(
-		"msg", "sample iterator for stream",
-		"stream", s.labelsString,
-		"num_results", len(matrix),
-		"matrix", fmt.Sprintf("%v", matrix),
-	)
+	if spanLogger != nil {
+		level.Debug(spanLogger).Log(
+			"msg", "sample iterator for stream",
+			"stream", s.labelsString,
+			"num_results", len(matrix),
+			"matrix", fmt.Sprintf("%v", matrix),
+		)
+	} else {
+		level.Debug(s.logger).Log(
+			"msg", "sample iterator for stream",
+			"stream", s.labelsString,
+			"num_results", len(matrix),
+			"matrix", fmt.Sprintf("%v", matrix),
+		)
+	}
 
 	return loki_iter.NewMultiSeriesIterator(matrix), nil
 }
@@ -200,7 +209,7 @@ func (s *stream) joinSampleVectors(
 		return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 	}
 
-	series := map[uint64]*logproto.Series{}
+	series := map[uint64]logproto.Series{}
 
 	// step evaluator logic is slightly different than the normal contract in Loki
 	// when evaluating a selection range, it's counts datapoints within (start, end]
@@ -214,7 +223,7 @@ func (s *stream) joinSampleVectors(
 			hash := p.Metric.Hash()
 			s, ok := series[hash]
 			if !ok {
-				s = &logproto.Series{
+				s = logproto.Series{
 					Labels:     p.Metric.String(),
 					Samples:    make([]logproto.Sample, 0, stepCount),
 					StreamHash: hash,
@@ -226,6 +235,7 @@ func (s *stream) joinSampleVectors(
 				Timestamp: ts * 1e6, // convert milliseconds to nanoseconds
 				Value:     p.F,
 			})
+			series[hash] = s
 		}
 
 		next, ts, r = stepEvaluator.Next()
@@ -235,8 +245,8 @@ func (s *stream) joinSampleVectors(
 	}
 
 	matrix := make([]logproto.Series, 0, len(series))
-	for _, s := range series {
-		matrix = append(matrix, *s)
+	for i, s := range series {
+		matrix[i] = s
 	}
 
 	level.Debug(s.logger).Log(
