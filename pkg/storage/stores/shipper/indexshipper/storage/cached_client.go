@@ -190,12 +190,13 @@ func (c *cachedObjectClient) buildTableNamesCache(ctx context.Context) (err erro
 		}
 	}()
 
-	sp := opentracing.SpanFromContext(ctx)
-	sp.LogKV("msg", "building table names cache")
-	now := time.Now()
-	defer func() {
-		sp.LogKV("msg", "table names cache built", "duration", time.Since(now))
-	}()
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("msg", "building table names cache")
+		now := time.Now()
+		defer func() {
+			sp.LogKV("msg", "table names cache built", "duration", time.Since(now))
+		}()
+	}
 
 	_, tableNames, err := c.ObjectClient.List(ctx, "", delimiter)
 	if err != nil {
