@@ -11,7 +11,7 @@ metadata:
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
-    kind: Statefulset
+    kind: StatefulSet
     name: {{ include "loki.ingesterFullname" . }}
   minReplicas: {{ .Values.ingester.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.ingester.autoscaling.maxReplicas }}
