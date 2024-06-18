@@ -5,6 +5,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -17,19 +18,20 @@ var notOwnedStreamsMetric = promauto.NewGaugeVec(prometheus.GaugeOpts{
 }, []string{"tenant"})
 
 type ownedStreamService struct {
-	tenantID            string
-	limiter             *Limiter
-	fixedLimit          *atomic.Int32
-	ownedStreamCount    int
-	notOwnedStreamCount int
-	lock                sync.RWMutex
+	tenantID         string
+	limiter          *Limiter
+	fixedLimit       *atomic.Int32
+	ownedStreamCount int
+	lock             sync.RWMutex
+	notOwnedStreams  map[model.Fingerprint]any
 }
 
 func newOwnedStreamService(tenantID string, limiter *Limiter) *ownedStreamService {
 	svc := &ownedStreamService{
-		tenantID:   tenantID,
-		limiter:    limiter,
-		fixedLimit: atomic.NewInt32(0),
+		tenantID:        tenantID,
+		limiter:         limiter,
+		fixedLimit:      atomic.NewInt32(0),
+		notOwnedStreams: make(map[model.Fingerprint]any),
 	}
 
 	svc.updateFixedLimit()
@@ -51,25 +53,24 @@ func (s *ownedStreamService) getFixedLimit() int {
 	return int(s.fixedLimit.Load())
 }
 
-func (s *ownedStreamService) incOwnedStreamCount() {
+func (s *ownedStreamService) trackStreamOwnership(fp model.Fingerprint, owned bool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.ownedStreamCount++
-}
-
-func (s *ownedStreamService) incNotOwnedStreamCount() {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	if owned {
+		s.ownedStreamCount++
+		return
+	}
 	notOwnedStreamsMetric.WithLabelValues(s.tenantID).Inc()
-	s.notOwnedStreamCount++
+	s.notOwnedStreams[fp] = nil
 }
 
-func (s *ownedStreamService) decOwnedStreamCount() {
+func (s *ownedStreamService) trackRemovedStream(fp model.Fingerprint) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	if s.notOwnedStreamCount > 0 {
+
+	if _, notOwned := s.notOwnedStreams[fp]; notOwned {
 		notOwnedStreamsMetric.WithLabelValues(s.tenantID).Dec()
-		s.notOwnedStreamCount--
+		delete(s.notOwnedStreams, fp)
 		return
 	}
 	s.ownedStreamCount--
@@ -79,6 +80,14 @@ func (s *ownedStreamService) resetStreamCounts() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.ownedStreamCount = 0
-	s.notOwnedStreamCount = 0
 	notOwnedStreamsMetric.WithLabelValues(s.tenantID).Set(0)
+	s.notOwnedStreams = make(map[model.Fingerprint]any)
+}
+
+func (s *ownedStreamService) isStreamNotOwned(fp model.Fingerprint) bool {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	_, notOwned := s.notOwnedStreams[fp]
+	return notOwned
 }
