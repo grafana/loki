@@ -277,12 +277,13 @@ func (t *table) buildCache(ctx context.Context, objectClient client.ObjectClient
 		}
 	}()
 
-	sp := opentracing.SpanFromContext(ctx)
-	sp.LogKV("msg", "building table cache")
-	now := time.Now()
-	defer func() {
-		sp.LogKV("msg", "table cache built", "duration", time.Since(now))
-	}()
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("msg", "building table cache")
+		now := time.Now()
+		defer func() {
+			sp.LogKV("msg", "table cache built", "duration", time.Since(now))
+		}()
+	}
 
 	objects, _, err := objectClient.List(ctx, t.name+delimiter, "")
 	if err != nil {
