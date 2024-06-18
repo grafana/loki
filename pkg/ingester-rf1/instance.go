@@ -20,7 +20,6 @@ type instance struct {
 }
 
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
-	//fmt.Println("pushing for instance", i.instanceID, "req", req)
 	return nil
 }
 
