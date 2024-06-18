@@ -451,6 +451,22 @@ func (r *readRingMock) InstancesCount() int {
 	return len(r.replicationSet.Instances)
 }
 
+func (r *readRingMock) InstancesInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) InstancesWithTokensCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) InstancesWithTokensInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) ZonesCount() int {
+	return 1
+}
+
 func (r *readRingMock) Subring(_ uint32, _ int) ring.ReadRing {
 	return r
 }
