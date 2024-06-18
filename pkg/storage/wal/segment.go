@@ -35,7 +35,7 @@ type streamID struct {
 	labels, tenant string
 }
 
-type WalSegmentWriter struct {
+type SegmentWriter struct {
 	streams *swiss.Map[streamID, *streamSegment]
 	buf1    encoding.Encbuf
 }
@@ -48,15 +48,15 @@ type streamSegment struct {
 }
 
 // NewWalSegmentWriter creates a new WalSegmentWriter.
-func NewWalSegmentWriter() *WalSegmentWriter {
-	return &WalSegmentWriter{
+func NewWalSegmentWriter() *SegmentWriter {
+	return &SegmentWriter{
 		streams: swiss.NewMap[streamID, *streamSegment](64),
 		buf1:    encoding.EncWith(make([]byte, 0, 4)),
 	}
 }
 
 // Labels are passed a string  `{foo="bar",baz="qux"}`  `{foo="foo",baz="foo"}`. labels.Labels => Symbols foo, baz , qux
-func (b *WalSegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels, entries []*logproto.Entry) {
+func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels, entries []*logproto.Entry) {
 	if len(entries) == 0 {
 		return
 	}
@@ -97,8 +97,7 @@ func (b *WalSegmentWriter) Append(tenantID, labelsString string, lbls labels.Lab
 	}
 }
 
-// todo document format.
-func (b *WalSegmentWriter) WriteTo(w io.Writer) (int64, error) {
+func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
 	var (
 		total   int64
 		streams = make([]*streamSegment, 0, b.streams.Count())
@@ -159,11 +158,14 @@ func (b *WalSegmentWriter) WriteTo(w io.Writer) (int64, error) {
 		if err != nil {
 			return total, err
 		}
-		idxw.AddSeries(storage.SeriesRef(i), s.lbls, chunks.Meta{
+		err = idxw.AddSeries(storage.SeriesRef(i), s.lbls, chunks.Meta{
 			MinTime: s.entries[0].Timestamp.UnixNano(),
 			MaxTime: s.entries[len(s.entries)-1].Timestamp.UnixNano(),
 			Ref:     chunks.NewChunkRef(uint64(total), uint64(n)),
 		})
+		if err != nil {
+			return total, err
+		}
 		total += n
 
 	}
@@ -218,17 +220,17 @@ func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
 
 // Reset clears the writer.
 // After calling Reset, the writer can be reused.
-func (b *WalSegmentWriter) Reset() {
+func (b *SegmentWriter) Reset() {
 	b.streams.Clear()
 	b.buf1.Reset()
 }
 
-type WalSegmentReader struct {
+type SegmentReader struct {
 	idr *index.Reader
 	b   []byte
 }
 
-func NewReader(b []byte) (*WalSegmentReader, error) {
+func NewReader(b []byte) (*SegmentReader, error) {
 	if len(b) < 13 {
 		return nil, errors.New("segment too small")
 	}
@@ -249,7 +251,7 @@ func NewReader(b []byte) (*WalSegmentReader, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &WalSegmentReader{
+	return &SegmentReader{
 		idr: idr,
 		b:   b[:len(b)-n-int(indexLen)],
 	}, nil
@@ -318,7 +320,7 @@ func (iter *SeriesIter) ChunkReader(_ *chunks.ChunkReader) (*chunks.ChunkReader,
 	return chunks.NewChunkReader(iter.blocks[offset : offset+size])
 }
 
-func (r *WalSegmentReader) Series(ctx context.Context) (*SeriesIter, error) {
+func (r *SegmentReader) Series(ctx context.Context) (*SeriesIter, error) {
 	ps, err := r.idr.Postings(ctx, index.AllPostingsKey.Name, index.AllPostingsKey.Value)
 	if err != nil {
 		return nil, err

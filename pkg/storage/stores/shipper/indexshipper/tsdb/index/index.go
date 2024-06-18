@@ -113,12 +113,12 @@ type Writer struct {
 	ctx context.Context
 
 	// For the main index file.
-	f IndexWriter
+	f DestinationWriter
 
 	// Temporary file for postings.
-	fP IndexWriter
+	fP DestinationWriter
 	// Temporary file for posting offsets table.
-	fPO   IndexWriter
+	fPO   DestinationWriter
 	cntPO uint64
 
 	toc           TOC
@@ -253,7 +253,7 @@ func NewWriterBufferWithVersion(ctx context.Context, version int) (*Writer, erro
 }
 
 // newWriter returns a new Writer to the index writer and buffers.
-func newWriter(ctx context.Context, version int, w IndexWriter, fP, fPO IndexWriter) (*Writer, error) {
+func newWriter(ctx context.Context, version int, w DestinationWriter, fP, fPO DestinationWriter) (*Writer, error) {
 	iw := &Writer{
 		Version: version,
 		ctx:     ctx,
@@ -292,7 +292,7 @@ func (w *Writer) Buffer() ([]byte, io.Closer, error) {
 	return w.f.Buffer()
 }
 
-type IndexWriter interface {
+type DestinationWriter interface {
 	Pos() uint64
 	Write(bufs ...[]byte) error
 	Flush() error
@@ -849,11 +849,11 @@ func (w *Writer) writeLabelIndices() error {
 	}
 
 	// Find all the label values in the tmp posting offset table.
-	buffer, close, err := w.fPO.Buffer()
+	buffer, closer, err := w.fPO.Buffer()
 	if err != nil {
 		return err
 	}
-	defer close.Close()
+	defer closer.Close()
 
 	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(buffer), int(w.fPO.Pos())))
 	cnt := w.cntPO

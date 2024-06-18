@@ -329,7 +329,7 @@ func (g *logGenerator) Close() {
 }
 
 func (g *logGenerator) reset() {
-	g.f.Seek(0, 0)
+	_, _ = g.f.Seek(0, 0)
 	g.s = bufio.NewScanner(g.f)
 }
 
