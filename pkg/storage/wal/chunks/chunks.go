@@ -12,9 +12,10 @@ import (
 	"unsafe"
 
 	"github.com/golang/snappy"
+	"github.com/klauspost/compress/s2"
+
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/klauspost/compress/s2"
 )
 
 // EncodingType defines the type for encoding enums
