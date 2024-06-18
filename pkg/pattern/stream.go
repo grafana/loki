@@ -64,7 +64,7 @@ func newStream(
 		cfg:    cfg,
 		logger: logger,
 	}
-
+	level.Debug(logger).Log("msg", "creating new stream", "labels", stream.labelsString)
 	if cfg.Enabled {
 		chunks := metric.NewChunks(labels, chunkMetrics, logger)
 		stream.chunks = chunks
@@ -245,8 +245,9 @@ func (s *stream) joinSampleVectors(
 	}
 
 	matrix := make([]logproto.Series, 0, len(series))
-	for i, s := range series {
-		matrix[i] = s
+	for _, s := range series {
+		s := s
+		matrix = append(matrix, s)
 	}
 
 	level.Debug(s.logger).Log(

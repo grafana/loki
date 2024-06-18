@@ -138,7 +138,6 @@ func (i *instance) QuerySample(
 			var iter loki_iter.SampleIterator
 			var err error
 			iter, err = stream.SampleIterator(ctx, expr, from, through, step)
-
 			if err != nil {
 				return err
 			}

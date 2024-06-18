@@ -13,11 +13,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/chunk"
-
-	"github.com/grafana/loki/v3/pkg/iter"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type Type int
@@ -245,44 +245,44 @@ func (c *Chunk) ForTypeAndRange(
 	if len(c.Samples) == 0 {
 		return nil, nil
 	}
+	level.Debug(util_log.Logger).Log("msg", "ForTypeAndRange", "start", start, "end", end, "samples", fmt.Sprintf("%v", c.Samples))
+	// first := c.Samples[0].Timestamp
+	// last := c.Samples[len(c.Samples)-1].Timestamp
+	// startBeforeEnd := start >= end
+	// samplesAreAfterRange := first >= end
+	// samplesAreBeforeRange := last < start
+	// if startBeforeEnd || samplesAreAfterRange || samplesAreBeforeRange {
+	// 	return nil, nil
+	// }
 
-	first := c.Samples[0].Timestamp
-	last := c.Samples[len(c.Samples)-1].Timestamp
-	startBeforeEnd := start >= end
-	samplesAreAfterRange := first >= end
-	samplesAreBeforeRange := last < start
-	if startBeforeEnd || samplesAreAfterRange || samplesAreBeforeRange {
-		return nil, nil
-	}
+	// lo := 0
+	// hi := len(c.Samples)
 
-	lo := 0
-	hi := len(c.Samples)
+	// for i, sample := range c.Samples {
+	// 	if first >= start {
+	// 		break
+	// 	}
 
-	for i, sample := range c.Samples {
-		if first >= start {
-			break
-		}
+	// 	if first < start && sample.Timestamp >= start {
+	// 		lo = i
+	// 		first = sample.Timestamp
+	// 	}
+	// }
 
-		if first < start && sample.Timestamp >= start {
-			lo = i
-			first = sample.Timestamp
-		}
-	}
+	// for i := hi - 1; i >= 0; i-- {
+	// 	if last < end {
+	// 		break
+	// 	}
 
-	for i := hi - 1; i >= 0; i-- {
-		if last < end {
-			break
-		}
+	// 	sample := c.Samples[i]
+	// 	if last >= end && sample.Timestamp < end {
+	// 		hi = i + 1
+	// 		last = sample.Timestamp
+	// 	}
+	// }
 
-		sample := c.Samples[i]
-		if last >= end && sample.Timestamp < end {
-			hi = i + 1
-			last = sample.Timestamp
-		}
-	}
-
-	aggregatedSamples := make([]logproto.Sample, len(c.Samples[lo:hi]))
-	for i, sample := range c.Samples[lo:hi] {
+	aggregatedSamples := make([]logproto.Sample, 0, len(c.Samples))
+	for _, sample := range c.Samples {
 		if sample.Timestamp >= start && sample.Timestamp < end {
 			var v float64
 			if typ == Bytes {
@@ -290,10 +290,10 @@ func (c *Chunk) ForTypeAndRange(
 			} else {
 				v = sample.Count
 			}
-			aggregatedSamples[i] = logproto.Sample{
+			aggregatedSamples = append(aggregatedSamples, logproto.Sample{
 				Timestamp: sample.Timestamp.UnixNano(),
 				Value:     v,
-			}
+			})
 		}
 	}
 

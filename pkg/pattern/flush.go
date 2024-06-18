@@ -66,6 +66,7 @@ func (i *Ingester) sweepInstance(instance *instance, _, mayRemoveStreams bool) {
 		if mayRemoveStreams {
 			instance.streams.WithLock(func() {
 				if s.prune(retainSampleFor) {
+					level.Debug(i.logger).Log("msg", "pruned stream", "stream", s.labelsString)
 					instance.removeStream(s)
 				}
 			})

@@ -57,13 +57,14 @@ func ReadMetricsBatch(it iter.SampleIterator, batchSize int, logger log.Logger) 
 		}
 
 		s.Samples = append(s.Samples, it.Sample())
-    series[hash] = s
+		series[hash] = s
 	}
 
 	result := logproto.QuerySamplesResponse{
 		Series: make([]logproto.Series, 0, len(series)),
 	}
 	for _, s := range series {
+		s := s
 		level.Debug(logger).Log("msg", "appending series", "s", fmt.Sprintf("%v", s))
 		result.Series = append(result.Series, s)
 	}
