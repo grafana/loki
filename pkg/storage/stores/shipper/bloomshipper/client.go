@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
@@ -23,7 +24,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -494,12 +494,12 @@ func newCachedListOpObjectClient(oc client.ObjectClient, ttl, interval time.Dura
 
 func (c *cachedListOpObjectClient) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var (
-		logger   = spanlogger.FromContext(ctx)
+		sp       = opentracing.SpanFromContext(ctx)
 		start    = time.Now()
 		cacheDur time.Duration
 	)
 	defer func() {
-		logger.LogKV(
+		sp.LogKV(
 			"cache_duration", cacheDur,
 			"total_duration", time.Since(start),
 		)

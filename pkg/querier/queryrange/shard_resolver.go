@@ -77,7 +77,7 @@ type dynamicShardResolver struct {
 // getStatsForMatchers returns the index stats for all the groups in matcherGroups.
 func getStatsForMatchers(
 	ctx context.Context,
-	logger log.Logger,
+	sp opentracing.Span,
 	statsHandler queryrangebase.Handler,
 	start, end model.Time,
 	matcherGroups []syntax.MatcherRange,
@@ -117,7 +117,7 @@ func getStatsForMatchers(
 
 		results[i] = casted.Response
 
-		level.Debug(logger).Log(
+		sp.LogKV(
 			append(
 				casted.Response.LoggingKeyValues(),
 				"msg", "queried index",
@@ -141,8 +141,6 @@ func getStatsForMatchers(
 func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.GetStats")
 	defer sp.Finish()
-	log := spanlogger.FromContext(r.ctx)
-	defer log.Finish()
 
 	start := time.Now()
 
@@ -159,14 +157,14 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 		grps = append(grps, syntax.MatcherRange{})
 	}
 
-	results, err := getStatsForMatchers(ctx, log, r.statsHandler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
+	results, err := getStatsForMatchers(ctx, sp, r.statsHandler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
 	if err != nil {
 		return stats.Stats{}, err
 	}
 
 	combined := stats.MergeStats(results...)
 
-	level.Debug(log).Log(
+	sp.LogKV(
 		append(
 			combined.LoggingKeyValues(),
 			"msg", "queried index",

@@ -277,8 +277,6 @@ func NewQuerySizeLimiterMiddleware(
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.Finish()
-	log := spanlogger.FromContextWithFallback(ctx, q.logger)
-	defer log.Finish()
 
 	expr, err := syntax.ParseExpr(r.GetQuery())
 	if err != nil {
@@ -293,14 +291,14 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	// TODO: Set concurrency dynamically as in shardResolverForConf?
 	start := time.Now()
 	const maxConcurrentIndexReq = 10
-	matcherStats, err := getStatsForMatchers(ctx, q.logger, q.statsHandler, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()), matcherGroups, maxConcurrentIndexReq, q.maxLookBackPeriod)
+	matcherStats, err := getStatsForMatchers(ctx, sp, q.statsHandler, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()), matcherGroups, maxConcurrentIndexReq, q.maxLookBackPeriod)
 	if err != nil {
 		return 0, err
 	}
 
 	combinedStats := stats.MergeStats(matcherStats...)
 
-	level.Debug(log).Log(
+	sp.LogKV(
 		append(
 			combinedStats.LoggingKeyValues(),
 			"msg", "queried index",

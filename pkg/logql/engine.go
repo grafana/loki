@@ -36,7 +36,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/server"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
@@ -231,7 +230,6 @@ func (q *query) resultLength(res promql_parser.Value) int {
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "query.Exec")
 	defer sp.Finish()
-	spLogger := spanlogger.FromContext(ctx)
 
 	sp.LogKV(
 		"type", GetRangeType(q.params),
@@ -265,7 +263,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
-	statResult.Log(level.Debug(spLogger))
+	statResult.LogWithSpan(sp)
 
 	status, _ := server.ClientHTTPStatusAndError(err)
 

@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/opentracing/opentracing-go"
+
 	"github.com/go-kit/log"
 )
 
@@ -518,9 +520,22 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 	return stats
 }
 
-// Log logs a query statistics result.
-func (r Result) Log(log log.Logger) {
-	_ = log.Log(
+func (r Result) LogWithSpan(sp opentracing.Span) {
+	sp.LogKV(r.KVList()...)
+
+	r.Caches.LogWithSpan(sp)
+	r.Summary.LogWithSpan(sp)
+}
+
+func (r Result) LogWithLogger(logger log.Logger) {
+	logger.Log(r.KVList()...)
+
+	r.Caches.LogWithLogger(logger)
+	r.Summary.LogWithLogger(logger)
+}
+
+func (r Result) KVList() []any {
+	return []any{
 		"Ingester.TotalReached", r.Ingester.TotalReached,
 		"Ingester.TotalChunksMatched", r.Ingester.TotalChunksMatched,
 		"Ingester.TotalBatches", r.Ingester.TotalBatches,
@@ -549,13 +564,15 @@ func (r Result) Log(log log.Logger) {
 		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 		"Querier.QueryReferencedStructuredMetadata", r.Querier.Store.QueryReferencedStructured,
-	)
-	r.Caches.Log(log)
-	r.Summary.Log(log)
+	}
 }
 
-func (s Summary) Log(log log.Logger) {
-	_ = log.Log(
+func (s Summary) LogWithLogger(logger log.Logger) {
+	logger.Log(s.KVList()...)
+}
+
+func (s Summary) KVList() []any {
+	return []any{
 		"Summary.BytesProcessedPerSecond", humanize.Bytes(uint64(s.BytesProcessedPerSecond)),
 		"Summary.LinesProcessedPerSecond", s.LinesProcessedPerSecond,
 		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(s.TotalBytesProcessed)),
@@ -563,11 +580,19 @@ func (s Summary) Log(log log.Logger) {
 		"Summary.PostFilterLines", s.TotalPostFilterLines,
 		"Summary.ExecTime", ConvertSecondsToNanoseconds(s.ExecTime),
 		"Summary.QueueTime", ConvertSecondsToNanoseconds(s.QueueTime),
-	)
+	}
 }
 
-func (c Caches) Log(log log.Logger) {
-	_ = log.Log(
+func (s Summary) LogWithSpan(sp opentracing.Span) {
+	sp.LogKV(s.KVList()...)
+}
+
+func (c Caches) LogWithLogger(logger log.Logger) {
+	logger.Log(c.KVList()...)
+}
+
+func (c Caches) KVList() []any {
+	return []any{
 		"Cache.Chunk.Requests", c.Chunk.Requests,
 		"Cache.Chunk.EntriesRequested", c.Chunk.EntriesRequested,
 		"Cache.Chunk.EntriesFound", c.Chunk.EntriesFound,
@@ -620,5 +645,9 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.InstantMetricResult.BytesSent", humanize.Bytes(uint64(c.InstantMetricResult.BytesSent)),
 		"Cache.InstantMetricResult.BytesReceived", humanize.Bytes(uint64(c.InstantMetricResult.BytesReceived)),
 		"Cache.InstantMetricResult.DownloadTime", c.InstantMetricResult.CacheDownloadTime(),
-	)
+	}
+}
+
+func (c Caches) LogWithSpan(sp opentracing.Span) {
+	sp.LogKV(c.KVList()...)
 }

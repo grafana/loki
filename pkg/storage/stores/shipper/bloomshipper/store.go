@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -21,7 +22,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 var (
@@ -137,7 +137,7 @@ func FilterMetasOverlappingBounds(metas []Meta, bounds v1.FingerprintBounds) []M
 
 // FetchMetas implements store.
 func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
-	logger := spanlogger.FromContext(ctx)
+	sp := opentracing.SpanFromContext(ctx)
 
 	resolverStart := time.Now()
 	metaRefs, fetchers, err := b.ResolveMetas(ctx, params)
@@ -153,7 +153,7 @@ func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParam
 	for i := range metaRefs {
 		metaCt += len(metaRefs[i])
 	}
-	logger.LogKV(
+	sp.LogKV(
 		"msg", "resolved metas",
 		"metas", metaCt,
 		"duration", resolverDuration,

@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/middleware"
+	"github.com/opentracing/opentracing-go"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -52,18 +53,19 @@ var (
 // recordQueryMetrics will be called from Query Frontend middleware chain for any type of query.
 func recordQueryMetrics(data *queryData) {
 	logger := log.With(util_log.Logger, "component", "frontend")
+	sp := opentracing.SpanFromContext(data.ctx)
 
 	switch data.queryType {
 	case queryTypeLog, queryTypeMetric:
 		logql.RecordRangeAndInstantQueryMetrics(data.ctx, logger, data.params, data.status, *data.statistics, data.result)
 	case queryTypeLabel:
-		logql.RecordLabelQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.label, data.params.QueryString(), data.status, *data.statistics)
+		logql.RecordLabelQueryMetrics(data.ctx, sp, data.params.Start(), data.params.End(), data.label, data.params.QueryString(), data.status, *data.statistics)
 	case queryTypeSeries:
-		logql.RecordSeriesQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.match, data.status, []string{}, *data.statistics)
+		logql.RecordSeriesQueryMetrics(data.ctx, sp, data.params.Start(), data.params.End(), data.match, data.status, []string{}, *data.statistics)
 	case queryTypeStats:
-		logql.RecordStatsQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.QueryString(), data.status, *data.statistics)
+		logql.RecordStatsQueryMetrics(data.ctx, sp, data.params.Start(), data.params.End(), data.params.QueryString(), data.status, *data.statistics)
 	case queryTypeVolume:
-		logql.RecordVolumeQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.QueryString(), data.params.Limit(), data.params.Step(), data.status, *data.statistics)
+		logql.RecordVolumeQueryMetrics(data.ctx, sp, data.params.Start(), data.params.End(), data.params.QueryString(), data.params.Limit(), data.params.Step(), data.status, *data.statistics)
 	case queryTypeDetectedFields:
 		logql.RecordDetectedFieldsQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.QueryString(), data.status, *data.statistics)
 	case queryTypeDetectedLabels:
@@ -195,7 +197,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				// Re-calculate the summary: the queueTime result is already merged so should not be updated
 				// Log and record metrics for the current query
 				responseStats.ComputeSummary(time.Since(start), 0, totalEntries)
-				responseStats.Log(level.Debug(logger))
+				responseStats.LogWithSpan(logger.Span)
 			}
 			ctxValue := ctx.Value(ctxKey)
 			if data, ok := ctxValue.(*queryData); ok {
