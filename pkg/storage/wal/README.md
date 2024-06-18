@@ -85,8 +85,6 @@ The index format is designed to enable efficient seeking to specific chunks requ
 │ │              │ <varint64>                                     │        │ │
 │ │              ├────────────────────────────────────────────────┤        │ │
 │ │              │ last_chunk.entries <uvarint32>                 │        │ │
-│ │              ├────────────────────────────────────────────────┤        │ │
-│ │              │ last_chunk.data_len <uvarint64>                │        │ │
 │ │              └────────────────────────────────────────────────┘        │ │
 │ └────────────────────────────────────────────────────────────────────────┘ │
 ├────────────────────────────────────────────────────────────────────────────┤
@@ -111,7 +109,6 @@ The index format is designed to enable efficient seeking to specific chunks requ
 - **c_i.maxt - c_i.mint <uvarint64>**: Time delta between the minimum and maximum timestamp of the current chunk.
 - **ref(c_i.data) - ref(c_i-1.data) <varint64>**: Delta between the current chunk reference and the previous chunk reference.
 - **c_i.entries <uvarint32>**: Number of entries in the chunk.
-- **last_chunk.data_len <uvarint64>**: Length of the last chunk data.
 - **CRC32 <4b>**: CRC32 checksum of the series entry.
 
 ## Chunks
