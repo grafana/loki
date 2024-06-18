@@ -324,6 +324,9 @@ func NewBloomStore(
 		if err := util.EnsureDirectory(wd); err != nil {
 			return nil, errors.Wrapf(err, "failed to create working directory for bloom store: '%s'", wd)
 		}
+		if err := util.RequirePermissions(wd, 0o700); err != nil {
+			return nil, errors.Wrapf(err, "insufficient permissions on working directory for bloom store: '%s'", wd)
+		}
 	}
 
 	for _, periodicConfig := range periodicConfigs {

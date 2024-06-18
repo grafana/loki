@@ -83,6 +83,7 @@ func Test_recalculateOwnedStreams_recalculate(t *testing.T) {
 				nil,
 			)
 			require.NoError(t, err)
+			require.Equal(t, 100, tenant.ownedStreamsSvc.getFixedLimit(), "MaxGlobalStreamsPerUser is 100 at this moment")
 			// not owned streams
 			createStream(t, tenant, 49)
 			createStream(t, tenant, 101)
@@ -100,9 +101,14 @@ func Test_recalculateOwnedStreams_recalculate(t *testing.T) {
 			mockTenantsSupplier := &mockTenantsSuplier{tenants: []*instance{tenant}}
 
 			service := newRecalculateOwnedStreams(mockTenantsSupplier.get, "ingester-0", mockRing, 50*time.Millisecond, log.NewNopLogger())
+			//change the limit to assert that fixed limit is updated after the recalculation
+			limits.DefaultLimits().MaxGlobalStreamsPerUser = 50
 
 			service.recalculate()
 
+			if testData.featureEnabled {
+				require.Equal(t, 50, tenant.ownedStreamsSvc.getFixedLimit(), "fixed limit must be updated after recalculation")
+			}
 			require.Equal(t, testData.expectedOwnedStreamCount, tenant.ownedStreamsSvc.ownedStreamCount)
 			require.Equal(t, testData.expectedNotOwnedStreamCount, tenant.ownedStreamsSvc.notOwnedStreamCount)
 		})
