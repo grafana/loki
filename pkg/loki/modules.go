@@ -609,7 +609,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		t.Ingester = t.Cfg.Ingester.Wrapper.Wrap(t.Ingester)
 	}
 
-	//logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
+	logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterStreamDataServer(t.Server.GRPC, t.Ingester)
 
