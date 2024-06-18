@@ -64,7 +64,7 @@ func newStream(
 		cfg:    cfg,
 		logger: logger,
 	}
-	level.Debug(logger).Log("msg", "creating new stream", "labels", stream.labelsString)
+
 	if cfg.Enabled {
 		chunks := metric.NewChunks(labels, chunkMetrics, logger)
 		stream.chunks = chunks
