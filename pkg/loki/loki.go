@@ -6,6 +6,7 @@ import (
 	stdlib_errors "errors"
 	"flag"
 	"fmt"
+	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 	"net/http"
 	"os"
 	rt "runtime"
@@ -87,7 +88,9 @@ type Config struct {
 	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
 	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
+	IngesterRF1Client   ingester_client.Config     `yaml:"ingester_rf1_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
+	IngesterRF1         ingester_rf1.Config        `yaml:"ingester_rf1,omitempty"`
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
 	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor,omitempty" category:"experimental"`
@@ -159,7 +162,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.CompactorHTTPClient.RegisterFlags(f)
 	c.CompactorGRPCClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
+	//c.IngesterRF1Client.RegisterFlags(f)
 	c.Ingester.RegisterFlags(f)
+	c.IngesterRF1.RegisterFlags(f)
 	c.StorageConfig.RegisterFlags(f)
 	c.IndexGateway.RegisterFlags(f)
 	c.BloomGateway.RegisterFlags(f)
@@ -332,6 +337,7 @@ type Loki struct {
 	TenantLimits              validation.TenantLimits
 	distributor               *distributor.Distributor
 	Ingester                  ingester.Interface
+	IngesterRF1               ingester_rf1.Interface
 	PatternIngester           *pattern.Ingester
 	PatternRingClient         pattern.RingClient
 	Querier                   querier.Querier
@@ -632,6 +638,10 @@ func (t *Loki) setupModuleManager() error {
 		mm.RegisterModule(InternalServer, t.initInternalServer, modules.UserInvisibleModule)
 	}
 
+	///                        >---- ./loki -target=ingester
+	/// Distributor -> gRPC --->
+	///                        >---- ./loki -target=sexy-ingester
+
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
@@ -642,6 +652,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(Ingester, t.initIngester)
+	mm.RegisterModule(IngesterRF1, t.initIngesterRF1)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
 	mm.RegisterModule(IngesterGRPCInterceptors, t.initIngesterGRPCInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendMiddleware, modules.UserInvisibleModule)
@@ -681,6 +692,7 @@ func (t *Loki) setupModuleManager() error {
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, Analytics},
 		Store:                    {Overrides, IndexGatewayRing},
+		IngesterRF1:              {Store, Server, MemberlistKV, TenantConfigs, Analytics},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
@@ -704,10 +716,10 @@ func (t *Loki) setupModuleManager() error {
 		MemberlistKV:             {Server},
 
 		Read:    {QueryFrontend, Querier},
-		Write:   {Ingester, Distributor, PatternIngester},
+		Write:   {Ingester, IngesterRF1, Distributor, PatternIngester},
 		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
 
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, IngesterRF1, PatternIngester, Distributor, Ruler, Compactor},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {

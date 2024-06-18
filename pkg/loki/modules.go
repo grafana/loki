@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 	"hash/fnv"
 	"math"
 	"net"
@@ -101,6 +102,7 @@ const (
 	Querier                  string = "querier"
 	CacheGenerationLoader    string = "cache-generation-loader"
 	Ingester                 string = "ingester"
+	IngesterRF1              string = "ingester-rf1"
 	PatternIngester          string = "pattern-ingester"
 	PatternRingClient        string = "pattern-ring-client"
 	IngesterQuerier          string = "ingester-querier"
@@ -598,7 +600,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		t.Ingester = t.Cfg.Ingester.Wrapper.Wrap(t.Ingester)
 	}
 
-	logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
+	//logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterStreamDataServer(t.Server.GRPC, t.Ingester)
 
@@ -615,6 +617,49 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.ShutdownHandler)),
 	)
 	return t.Ingester, nil
+}
+
+func (t *Loki) initIngesterRF1() (_ services.Service, err error) {
+	logger := log.With(util_log.Logger, "component", "ingester-rf1")
+	t.Cfg.IngesterRF1.LifecyclerConfig.RingConfig.KVStore.Store = "inmemory"
+
+	t.Cfg.IngesterRF1.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+
+	if t.Cfg.IngesterRF1.ShutdownMarkerPath == "" && t.Cfg.Common.PathPrefix != "" {
+		t.Cfg.IngesterRF1.ShutdownMarkerPath = t.Cfg.Common.PathPrefix
+	}
+	if t.Cfg.IngesterRF1.ShutdownMarkerPath == "" {
+		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
+	}
+
+	t.IngesterRF1, err = ingester_rf1.New(t.Cfg.IngesterRF1, t.Cfg.IngesterRF1Client, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker, t.ring)
+	if err != nil {
+		fmt.Println("Error initializing ingester rf1", err)
+		return
+	}
+
+	if t.Cfg.IngesterRF1.Wrapper != nil {
+		t.IngesterRF1 = t.Cfg.IngesterRF1.Wrapper.Wrap(t.IngesterRF1)
+	}
+
+	fmt.Println("registered GRPC")
+	logproto.RegisterPusherServer(t.Server.GRPC, t.IngesterRF1)
+	//logproto.RegisterQuerierServer(t.Server.GRPC, t.IngesterRF1)
+	//logproto.RegisterStreamDataServer(t.Server.GRPC, t.IngesterRF1)
+
+	httpMiddleware := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
+	)
+	t.Server.HTTP.Methods("GET", "POST").Path("/flush").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.IngesterRF1.FlushHandler)),
+	)
+	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester-rf1/prepare_shutdown").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.IngesterRF1.PrepareShutdown)),
+	)
+	t.Server.HTTP.Methods("POST", "GET").Path("/ingester-rf1/shutdown").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.IngesterRF1.ShutdownHandler)),
+	)
+	return t.IngesterRF1, nil
 }
 
 func (t *Loki) initPatternIngester() (_ services.Service, err error) {
