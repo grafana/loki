@@ -4,6 +4,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -28,51 +29,60 @@ func Test_OwnedStreamService(t *testing.T) {
 	service.updateFixedLimit()
 	require.Equal(t, 100, service.getFixedLimit())
 
-	service.incOwnedStreamCount()
-	service.incOwnedStreamCount()
-	service.incOwnedStreamCount()
+	service.trackStreamOwnership(model.Fingerprint(1), true)
+	service.trackStreamOwnership(model.Fingerprint(2), true)
+	service.trackStreamOwnership(model.Fingerprint(3), true)
 	require.Equal(t, 3, service.getOwnedStreamCount())
+	require.Len(t, service.notOwnedStreams, 0)
 
-	service.incOwnedStreamCount()
-	service.decOwnedStreamCount()
-	service.notOwnedStreamCount = 1
-	service.ownedStreamCount = 2
-	require.Equal(t, 2, service.getOwnedStreamCount())
-	require.Equal(t, 1, service.notOwnedStreamCount)
+	service.resetStreamCounts()
+	service.trackStreamOwnership(model.Fingerprint(3), true)
+	service.trackStreamOwnership(model.Fingerprint(3), false)
+	require.Equal(t, 1, service.getOwnedStreamCount(),
+		"owned streams count must not be changed because not owned stream can be reported only by recalculate_owned_streams job that resets the counters before checking all the streams")
+	require.Len(t, service.notOwnedStreams, 1)
+	require.True(t, service.isStreamNotOwned(model.Fingerprint(3)))
 
-	service.decOwnedStreamCount()
-	require.Equal(t, 2, service.getOwnedStreamCount(), "owned stream count must be decremented only when notOwnedStreamCount is set to 0")
-	require.Equal(t, 0, service.notOwnedStreamCount)
+	service.resetStreamCounts()
+	service.trackStreamOwnership(model.Fingerprint(1), true)
+	service.trackStreamOwnership(model.Fingerprint(2), true)
+	service.trackStreamOwnership(model.Fingerprint(3), false)
 
-	service.decOwnedStreamCount()
+	service.trackRemovedStream(model.Fingerprint(3))
+	require.Equal(t, 2, service.getOwnedStreamCount(), "owned stream count must be decremented only when notOwnedStream does not contain this fingerprint")
+	require.Len(t, service.notOwnedStreams, 0)
+
+	service.trackRemovedStream(model.Fingerprint(2))
 	require.Equal(t, 1, service.getOwnedStreamCount())
-	require.Equal(t, 0, service.notOwnedStreamCount, "notOwnedStreamCount must not be decremented lower than 0")
+	require.Len(t, service.notOwnedStreams, 0)
 
 	group := sync.WaitGroup{}
-	group.Add(200)
+	group.Add(100)
 	for i := 0; i < 100; i++ {
-		go func() {
+		go func(i int) {
 			defer group.Done()
-			service.incOwnedStreamCount()
-		}()
+			service.trackStreamOwnership(model.Fingerprint(i+1000), true)
+		}(i)
 	}
+	group.Wait()
 
+	group.Add(100)
 	for i := 0; i < 100; i++ {
-		go func() {
+		go func(i int) {
 			defer group.Done()
-			service.decOwnedStreamCount()
-		}()
+			service.trackRemovedStream(model.Fingerprint(i + 1000))
+		}(i)
 	}
 	group.Wait()
 
 	require.Equal(t, 1, service.getOwnedStreamCount(), "owned stream count must not be changed")
 
 	// simulate the effect from the recalculation job
-	service.notOwnedStreamCount = 1
-	service.ownedStreamCount = 2
+	service.trackStreamOwnership(model.Fingerprint(44), false)
+	service.trackStreamOwnership(model.Fingerprint(45), true)
 
 	service.resetStreamCounts()
 
 	require.Equal(t, 0, service.getOwnedStreamCount())
-	require.Equal(t, 0, service.notOwnedStreamCount)
+	require.Len(t, service.notOwnedStreams, 0)
 }
