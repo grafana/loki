@@ -502,6 +502,7 @@ func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R]
 func (q *downloadQueue[T, R]) enqueue(t downloadRequest[T, R]) {
 	if !t.async {
 		q.queue <- t
+		return
 	}
 	// for async task we attempt to dedupe task already in progress.
 	q.enqueuedMutex.Lock()

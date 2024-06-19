@@ -18,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -40,9 +41,16 @@ import (
 
 func defaultConfig() *Config {
 	cfg := Config{
-		BlockSize:     512,
-		ChunkEncoding: "gzip",
-		IndexShards:   32,
+		BlockSize:      512,
+		ChunkEncoding:  "gzip",
+		IndexShards:    32,
+		FlushOpTimeout: 15 * time.Second,
+		FlushOpBackoff: backoff.Config{
+			MinBackoff: 100 * time.Millisecond,
+			MaxBackoff: 10 * time.Second,
+			MaxRetries: 1,
+		},
+		OwnedStreamsCheckInterval: 1 * time.Second,
 	}
 	if err := cfg.Validate(); err != nil {
 		panic(errors.Wrap(err, "error building default test config"))
@@ -1096,7 +1104,8 @@ func TestStreamShardingUsage(t *testing.T) {
 
 	t.Run("invalid push returns error", func(t *testing.T) {
 		tracker := &mockUsageTracker{}
-		i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, customTenant1, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, tracker)
+
+		i, _ := newInstance(&Config{IndexShards: 1, OwnedStreamsCheckInterval: 1 * time.Second}, defaultPeriodConfigs, customTenant1, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, tracker)
 		ctx := context.Background()
 
 		err = i.Push(ctx, &logproto.PushRequest{
@@ -1116,7 +1125,7 @@ func TestStreamShardingUsage(t *testing.T) {
 	})
 
 	t.Run("valid push returns no error", func(t *testing.T) {
-		i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, customTenant2, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
+		i, _ := newInstance(&Config{IndexShards: 1, OwnedStreamsCheckInterval: 1 * time.Second}, defaultPeriodConfigs, customTenant2, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
 		ctx := context.Background()
 
 		err = i.Push(ctx, &logproto.PushRequest{

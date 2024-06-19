@@ -521,6 +521,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		router.Path("/loki/api/v1/index/volume").Methods("GET", "POST").Handler(volumeHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/volume_range").Methods("GET", "POST").Handler(volumeRangeHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/patterns").Methods("GET", "POST").Handler(httpHandler)
+		router.Path("/loki/api/v1/explore/query_range").Methods("GET", "POST").Handler(httpHandler)
 
 		router.Path("/api/prom/query").Methods("GET", "POST").Handler(
 			middleware.Merge(
@@ -587,7 +588,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
 	}
 
-	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker)
+	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker, t.ring)
 	if err != nil {
 		return
 	}
@@ -1105,6 +1106,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/loki/api/v1/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/patterns").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/explore/query_range").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/detected_labels").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/detected_fields").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(frontendHandler)
@@ -1585,6 +1587,12 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 
 	return builder.New(
 		t.Cfg.BloomBuild.Builder,
+		t.Overrides,
+		t.Cfg.SchemaConfig,
+		t.Cfg.StorageConfig,
+		t.ClientMetrics,
+		t.Store,
+		t.BloomStore,
 		logger,
 		prometheus.DefaultRegisterer,
 	)

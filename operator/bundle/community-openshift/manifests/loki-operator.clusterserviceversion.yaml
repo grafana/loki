@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.6.1
-    createdAt: "2024-06-03T10:01:23Z"
+    createdAt: "2024-06-12T17:07:27Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     features.operators.openshift.io/disconnected: "true"
@@ -995,6 +995,9 @@ spec:
       - description: The client-side certificate file path for the TLS configuration.
         displayName: Cert Path
         path: alertmanager.client.tls.certPath
+      - description: Skip validating server certificate.
+        displayName: Skip validating server certificate
+        path: alertmanager.client.tls.insecureSkipVerify
       - description: The client-side key file path for the TLS configuration.
         displayName: Key Path
         path: alertmanager.client.tls.keyPath
@@ -1144,6 +1147,9 @@ spec:
       - description: The client-side certificate file path for the TLS configuration.
         displayName: Cert Path
         path: overrides.alertmanager.client.tls.certPath
+      - description: Skip validating server certificate.
+        displayName: Skip validating server certificate
+        path: overrides.alertmanager.client.tls.insecureSkipVerify
       - description: The client-side key file path for the TLS configuration.
         displayName: Key Path
         path: overrides.alertmanager.client.tls.keyPath

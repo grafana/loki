@@ -50,9 +50,9 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20240104111617-ea101a3b86eb
+	github.com/grafana/dskit v0.0.0-20240528015923-27d7d41066d3
 	github.com/grafana/go-gelf/v2 v2.0.1
-	github.com/grafana/gomemcache v0.0.0-20231204155601-7de47a8c3cb0
+	github.com/grafana/gomemcache v0.0.0-20240229205252-cd6a66d6fb56
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
 	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
@@ -60,13 +60,13 @@ require (
 	github.com/hashicorp/consul/api v1.28.2
 	github.com/hashicorp/golang-lru v0.6.0
 	github.com/imdario/mergo v0.3.16
-	github.com/influxdata/go-syslog/v3 v3.0.1-0.20230911200830-875f5bc594a4
 	github.com/influxdata/telegraf v1.16.3
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/joncrlsn/dque v0.0.0-20211108142734-c2ef48c5192a
 	github.com/json-iterator/go v1.1.12
 	github.com/klauspost/compress v1.17.7
 	github.com/klauspost/pgzip v1.2.5
+	github.com/leodido/go-syslog/v4 v4.1.0
 	github.com/mattn/go-ieproxy v0.0.1
 	github.com/minio/minio-go/v7 v7.0.61
 	github.com/mitchellh/go-wordwrap v1.0.1
@@ -96,7 +96,7 @@ require (
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/xdg-go/scram v1.1.2
-	go.etcd.io/bbolt v1.3.6
+	go.etcd.io/bbolt v1.3.8
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.21.0
@@ -134,6 +134,7 @@ require (
 	github.com/prometheus/alertmanager v0.27.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0
+	github.com/schollz/progressbar/v3 v3.14.2
 	github.com/shirou/gopsutil/v4 v4.24.0-alpha.1
 	github.com/thanos-io/objstore v0.0.0-20230829152104-1b257a36f9a3
 	github.com/willf/bloom v2.0.3+incompatible
@@ -141,7 +142,7 @@ require (
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8
 	golang.org/x/oauth2 v0.18.0
-	golang.org/x/text v0.14.0
+	golang.org/x/text v0.15.0
 	google.golang.org/protobuf v1.33.0
 	gotest.tools v2.2.0+incompatible
 	k8s.io/apimachinery v0.29.2
@@ -150,9 +151,12 @@ require (
 
 require (
 	github.com/dlclark/regexp2 v1.4.0 // indirect
+	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
+	github.com/pires/go-proxyproto v0.7.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
+	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
@@ -227,7 +231,6 @@ require (
 	github.com/envoyproxy/go-control-plane v0.12.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.0.4 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/analysis v0.22.2 // indirect
@@ -283,10 +286,10 @@ require (
 	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
-	github.com/leodido/ragel-machinery v0.0.0-20181214104525-299bdde78165 // indirect
+	github.com/leodido/ragel-machinery v0.0.0-20190525184631-5f46317e436b // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.19 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/miekg/dns v1.1.58 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
@@ -310,7 +313,6 @@ require (
 	github.com/sercand/kuberesolver/v5 v5.1.1 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.9.3
-	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
@@ -376,3 +378,6 @@ replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-
 replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
 
 replace github.com/grafana/loki/pkg/push => ./pkg/push
+
+// leodido fork his project to continue support
+replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.1.0

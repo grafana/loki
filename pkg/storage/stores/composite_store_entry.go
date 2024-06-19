@@ -90,7 +90,10 @@ func (c *storeEntry) GetChunks(
 func filterForTimeRange(refs []*logproto.ChunkRef, from, through model.Time) []chunk.Chunk {
 	filtered := make([]chunk.Chunk, 0, len(refs))
 	for _, ref := range refs {
-		if through >= ref.From && from < ref.Through {
+		// Only include chunks where the query start time (from) is < the chunk end time (ref.Through)
+		// and the query end time (through) is >= the chunk start time (ref.From)
+		// A special case also exists where a chunk can contain a single log line which results in ref.From being equal to ref.Through, and that is equal to the from time.
+		if (through >= ref.From && from < ref.Through) || (ref.From == from && ref.Through == from) {
 			filtered = append(filtered, chunk.Chunk{
 				ChunkRef: *ref,
 			})
@@ -108,7 +111,7 @@ func (c *storeEntry) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelNamesForMetricName")
 	defer sp.Finish()
 	log := spanlogger.FromContext(ctx)
@@ -122,7 +125,7 @@ func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string,
 	}
 	level.Debug(log).Log("metric", metricName)
 
-	return c.indexReader.LabelNamesForMetricName(ctx, userID, from, through, metricName)
+	return c.indexReader.LabelNamesForMetricName(ctx, userID, from, through, metricName, matchers...)
 }
 
 func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {

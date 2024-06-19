@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/ring"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -49,6 +50,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/deletion"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	mathutil "github.com/grafana/loki/v3/pkg/util/math"
+	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -185,6 +187,7 @@ func newInstance(
 		customStreamsTracker: customStreamsTracker,
 	}
 	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
+
 	return i, err
 }
 
@@ -354,7 +357,8 @@ func (i *instance) onStreamCreated(s *stream) {
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
-	i.ownedStreamsSvc.incOwnedStreamCount()
+	// we count newly created stream as owned
+	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true)
 	if i.configs.LogStreamCreation(i.instanceID) {
 		level.Debug(util_log.Logger).Log(
 			"msg", "successfully created stream",
@@ -374,10 +378,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*st
 
 	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
-	i.streamsCreatedTotal.Inc()
-	memoryStreams.WithLabelValues(i.instanceID).Inc()
-	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
-	i.addTailersToNewStream(s)
+	i.onStreamCreated(s)
 
 	return s, nil
 }
@@ -421,7 +422,7 @@ func (i *instance) removeStream(s *stream) {
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
 		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		streamsCountStats.Add(-1)
-		i.ownedStreamsSvc.decOwnedStreamCount()
+		i.ownedStreamsSvc.trackRemovedStream(s.fp)
 	}
 }
 
@@ -441,6 +442,12 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 }
 
 func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	it, err := i.query(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return it, err
+}
+
+func (i *instance) query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -495,6 +502,12 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 }
 
 func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	it, err := i.querySample(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return it, err
+}
+
+func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	expr, err := req.Expr()
 	if err != nil {
 		return nil, err
@@ -556,6 +569,12 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 // If label matchers are given only the matching streams are fetched from the index.
 // The label names or values are then retrieved from those matching streams.
 func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matchers ...*labels.Matcher) (*logproto.LabelResponse, error) {
+	lr, err := i.label(ctx, req, matchers...)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return lr, err
+}
+
+func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matchers ...*labels.Matcher) (*logproto.LabelResponse, error) {
 	if len(matchers) == 0 {
 		var labels []string
 		if req.Values {
@@ -709,6 +728,12 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
+	isr, err := i.getStats(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return isr, err
+}
+
+func (i *instance) getStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
 	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil {
 		return nil, err
@@ -765,6 +790,12 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 }
 
 func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	vr, err := i.getVolume(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return vr, err
+}
+
+func (i *instance) getVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
@@ -1143,4 +1174,20 @@ func minTs(stream *logproto.Stream) model.Time {
 		}
 	}
 	return model.TimeFromUnixNano(streamMinTs)
+}
+
+// For each stream, we check if the stream is owned by the ingester or not and increment/decrement the owned stream count.
+func (i *instance) updateOwnedStreams(ownedTokenRange ring.TokenRanges) error {
+	var err error
+	i.streams.WithLock(func() {
+		i.ownedStreamsSvc.resetStreamCounts()
+		err = i.streams.ForEach(func(s *stream) (bool, error) {
+			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedTokenRange.IncludesKey(uint32(s.fp)))
+			return true, nil
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("error checking streams ownership: %w", err)
+	}
+	return nil
 }
