@@ -100,13 +100,19 @@ This quickstart assumes you are running Linux.
 
    With `evaluate-loki` as the current working directory, start the demo environment using `docker compose`:
 
-   <!-- Killercoda exec START -->
+   <!-- Killercoda ignore START -->
 
    ```bash
    docker compose up -d
    ```
 
-   <!-- Killercoda exec END -->
+   <!-- Killercoda ignore END -->
+
+   <!-- Killercoda include START -->
+   <!-- ```bash -->
+   <!-- docker-compose up -d -->
+   <!-- ``` -->
+   <!-- Killercoda include END -->
 
    You should see something similar to the following:
 
