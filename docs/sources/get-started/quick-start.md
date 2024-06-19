@@ -111,7 +111,7 @@ This quickstart assumes you are running Linux.
    <!-- Killercoda include START -->
    <!-- ```bash -->
    <!-- docker-compose up -d -->
-   <!-- ``` -->
+   <!-- ```{{exec}} -->
    <!-- Killercoda include END -->
 
    You should see something similar to the following:
