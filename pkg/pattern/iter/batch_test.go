@@ -3,8 +3,11 @@ package iter
 import (
 	"testing"
 
+	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	loki_iter "github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -32,31 +35,35 @@ func TestReadBatch(t *testing.T) {
 			batchSize: 2,
 			expected: &logproto.QueryPatternsResponse{
 				Series: []*logproto.PatternSeries{
-					{
-						Pattern: "foo",
-						Samples: []*logproto.PatternSample{
+					logproto.NewPatternSeries(
+						"foo",
+						[]*logproto.PatternSample{
 							{Timestamp: 10, Value: 2},
 							{Timestamp: 20, Value: 4},
 						},
-					},
+					),
 				},
 			},
 		},
 		{
-			name:      "ReadBatch more than batchSize",
-			pattern:   "foo",
-			samples:   []logproto.PatternSample{{Timestamp: 10, Value: 2}, {Timestamp: 20, Value: 4}, {Timestamp: 30, Value: 6}},
+			name:    "ReadBatch more than batchSize",
+			pattern: "foo",
+			samples: []logproto.PatternSample{
+				{Timestamp: 10, Value: 2},
+				{Timestamp: 20, Value: 4},
+				{Timestamp: 30, Value: 6},
+			},
 			batchSize: 4,
 			expected: &logproto.QueryPatternsResponse{
 				Series: []*logproto.PatternSeries{
-					{
-						Pattern: "foo",
-						Samples: []*logproto.PatternSample{
+					logproto.NewPatternSeries(
+						"foo",
+						[]*logproto.PatternSample{
 							{Timestamp: 10, Value: 2},
 							{Timestamp: 20, Value: 4},
 							{Timestamp: 30, Value: 6},
 						},
-					},
+					),
 				},
 			},
 		},
@@ -68,6 +75,143 @@ func TestReadBatch(t *testing.T) {
 			got, err := ReadBatch(it, tt.batchSize)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func singleSeriesIterator(series logproto.Series) []loki_iter.SampleIterator {
+	return []loki_iter.SampleIterator{
+		loki_iter.NewSeriesIterator(series),
+	}
+}
+
+func TestReadMetricsBatch(t *testing.T) {
+	tests := []struct {
+		name       string
+		pattern    string
+		seriesIter []loki_iter.SampleIterator
+		batchSize  int
+		expected   *logproto.QuerySamplesResponse
+	}{
+		{
+			name: "ReadBatch empty iterator",
+			seriesIter: singleSeriesIterator(logproto.Series{
+				Labels:  "",
+				Samples: []logproto.Sample{},
+			}),
+			batchSize: 2,
+			expected: &logproto.QuerySamplesResponse{
+				Series: []logproto.Series{},
+			},
+		},
+		{
+			name: "ReadBatch less than batchSize",
+			seriesIter: singleSeriesIterator(logproto.Series{
+				Labels: `{foo="bar"}`,
+				Samples: []logproto.Sample{
+					{Timestamp: 10, Value: 2},
+					{Timestamp: 20, Value: 4},
+					{Timestamp: 30, Value: 6},
+				},
+			}),
+			batchSize: 2,
+			expected: &logproto.QuerySamplesResponse{
+				Series: []logproto.Series{
+					{
+						Labels: `{foo="bar"}`,
+						Samples: []logproto.Sample{
+							{Timestamp: 10, Value: 2},
+							{Timestamp: 20, Value: 4},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "ReadBatch more than batchSize",
+			seriesIter: singleSeriesIterator(logproto.Series{
+				Labels: `{foo="bar"}`,
+				Samples: []logproto.Sample{
+					{Timestamp: 10, Value: 2},
+					{Timestamp: 20, Value: 4},
+					{Timestamp: 30, Value: 6},
+				},
+			}),
+			batchSize: 4,
+			expected: &logproto.QuerySamplesResponse{
+				Series: []logproto.Series{
+					{
+						Labels: `{foo="bar"}`,
+						Samples: []logproto.Sample{
+							{Timestamp: 10, Value: 2},
+							{Timestamp: 20, Value: 4},
+							{Timestamp: 30, Value: 6},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "ReadBatch multiple series",
+			seriesIter: []loki_iter.SampleIterator{
+				loki_iter.NewSeriesIterator(logproto.Series{
+					Labels: `{foo="bar"}`,
+					Samples: []logproto.Sample{
+						{Timestamp: 10, Value: 2},
+						{Timestamp: 20, Value: 4},
+						{Timestamp: 30, Value: 6},
+					},
+					StreamHash: labels.StableHash([]labels.Label{{Name: "foo", Value: "bar"}}),
+				}),
+				loki_iter.NewSeriesIterator(logproto.Series{
+					Labels: `{fizz="buzz"}`,
+					Samples: []logproto.Sample{
+						{Timestamp: 10, Value: 3},
+						{Timestamp: 20, Value: 5},
+						{Timestamp: 30, Value: 7},
+					},
+					StreamHash: labels.StableHash([]labels.Label{{Name: "fizz", Value: "buzz"}}),
+				}),
+				loki_iter.NewSeriesIterator(logproto.Series{
+					Labels: `{foo="bar"}`,
+					Samples: []logproto.Sample{
+						{Timestamp: 20, Value: 2},
+					},
+					StreamHash: labels.StableHash([]labels.Label{{Name: "foo", Value: "bar"}}),
+				}),
+			},
+			batchSize: 8,
+			expected: &logproto.QuerySamplesResponse{
+				Series: []logproto.Series{
+					{
+						Labels: `{foo="bar"}`,
+						Samples: []logproto.Sample{
+							{Timestamp: 10, Value: 2},
+							{Timestamp: 20, Value: 6}, // from the second series
+							{Timestamp: 30, Value: 6},
+						},
+						StreamHash: labels.StableHash([]labels.Label{{Name: "foo", Value: "bar"}}),
+					},
+					{
+						Labels: `{fizz="buzz"}`,
+						Samples: []logproto.Sample{
+							{Timestamp: 10, Value: 3},
+							{Timestamp: 20, Value: 5}, // from the second series
+							{Timestamp: 30, Value: 7},
+						},
+						StreamHash: labels.StableHash([]labels.Label{{Name: "fizz", Value: "buzz"}}),
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			it := NewSumMergeSampleIterator(tt.seriesIter)
+			got, err := ReadMetricsBatch(it, tt.batchSize, log.NewNopLogger())
+			require.NoError(t, err)
+			require.Equal(t, tt.expected.Series, got.Series)
 		})
 	}
 }

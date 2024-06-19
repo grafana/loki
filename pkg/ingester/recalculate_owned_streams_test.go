@@ -96,7 +96,7 @@ func Test_recalculateOwnedStreams_recalculate(t *testing.T) {
 			createStream(t, tenant, 250)
 
 			require.Equal(t, 7, tenant.ownedStreamsSvc.ownedStreamCount)
-			require.Equal(t, 0, tenant.ownedStreamsSvc.notOwnedStreamCount)
+			require.Len(t, tenant.ownedStreamsSvc.notOwnedStreams, 0)
 
 			mockTenantsSupplier := &mockTenantsSuplier{tenants: []*instance{tenant}}
 
@@ -110,7 +110,7 @@ func Test_recalculateOwnedStreams_recalculate(t *testing.T) {
 				require.Equal(t, 50, tenant.ownedStreamsSvc.getFixedLimit(), "fixed limit must be updated after recalculation")
 			}
 			require.Equal(t, testData.expectedOwnedStreamCount, tenant.ownedStreamsSvc.ownedStreamCount)
-			require.Equal(t, testData.expectedNotOwnedStreamCount, tenant.ownedStreamsSvc.notOwnedStreamCount)
+			require.Len(t, tenant.ownedStreamsSvc.notOwnedStreams, testData.expectedNotOwnedStreamCount)
 		})
 	}
 
