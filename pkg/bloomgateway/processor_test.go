@@ -27,10 +27,14 @@ var _ bloomshipper.Store = &dummyStore{}
 
 // refs and blocks must be in 1-1 correspondence.
 func newMockBloomStore(refs []bloomshipper.BlockRef, blocks []*v1.Block, metas []bloomshipper.Meta) *dummyStore {
+	allocator := mempool.New("bloompages", mempool.Buckets{
+		{Size: 32, Capacity: 512 << 10},
+	}, nil)
 	return &dummyStore{
-		refs:   refs,
-		blocks: blocks,
-		metas:  metas,
+		refs:      refs,
+		blocks:    blocks,
+		metas:     metas,
+		allocator: allocator,
 	}
 }
 
@@ -38,6 +42,8 @@ type dummyStore struct {
 	metas  []bloomshipper.Meta
 	refs   []bloomshipper.BlockRef
 	blocks []*v1.Block
+
+	allocator mempool.Allocator
 
 	// mock how long it takes to serve block queriers
 	delay time.Duration
@@ -78,7 +84,7 @@ func (s *dummyStore) Client(_ model.Time) (bloomshipper.Client, error) {
 }
 
 func (s *dummyStore) Allocator() mempool.Allocator {
-	return nil
+	return s.allocator
 }
 
 func (s *dummyStore) Stop() {
@@ -97,7 +103,7 @@ func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef
 			if ref.Bounds.Equal(s.refs[i].Bounds) {
 				blockCopy := *block
 				bq := &bloomshipper.CloseableBlockQuerier{
-					BlockQuerier: v1.NewBlockQuerier(&blockCopy, false, v1.DefaultMaxPageSize),
+					BlockQuerier: v1.NewBlockQuerier(&blockCopy, s.Allocator(), v1.DefaultMaxPageSize),
 					BlockRef:     s.refs[i],
 				}
 				result = append(result, bq)
