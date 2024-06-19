@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -334,7 +335,7 @@ func (b *Builder) processTask(
 		// Blocks are built consuming the series iterator. For observability, we wrap the series iterator
 		// with a counter iterator to count the number of times Next() is called on it.
 		// This is used to observe the number of series that are being processed.
-		seriesItrWithCounter := v1.NewCounterIter[*v1.Series](seriesItr)
+		seriesItrWithCounter := iter.NewCounterIter[*v1.Series](seriesItr)
 
 		gen := NewSimpleBloomGenerator(
 			tenant,
@@ -429,7 +430,7 @@ func (b *Builder) loadWorkForGap(
 	tenant string,
 	id tsdb.Identifier,
 	gap protos.GapWithBlocks,
-) (v1.Iterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBlooms], error) {
+) (iter.Iterator[*v1.Series], iter.CloseableResettableIterator[*v1.SeriesWithBlooms], error) {
 	// load a series iterator for the gap
 	seriesItr, err := b.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.Bounds)
 	if err != nil {

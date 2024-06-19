@@ -18,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/queue"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -575,13 +576,13 @@ func (p *Planner) loadTenantWork(
 	return tenantTableWork, ctx.Err()
 }
 
-func (p *Planner) tenants(ctx context.Context, table config.DayTable) (*v1.SliceIter[string], error) {
+func (p *Planner) tenants(ctx context.Context, table config.DayTable) (*iter.SliceIter[string], error) {
 	tenants, err := p.tsdbStore.UsersForPeriod(ctx, table)
 	if err != nil {
 		return nil, fmt.Errorf("error loading tenants for table (%s): %w", table, err)
 	}
 
-	return v1.NewSliceIter(tenants), nil
+	return iter.NewSliceIter(tenants), nil
 }
 
 // blockPlan is a plan for all the work needed to build a meta.json
@@ -720,24 +721,24 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan
 				return planGap.Blocks[i].Bounds.Less(planGap.Blocks[j].Bounds)
 			})
 
-			peekingBlocks := v1.NewPeekingIter[bloomshipper.BlockRef](
-				v1.NewSliceIter[bloomshipper.BlockRef](
+			peekingBlocks := iter.NewPeekingIter[bloomshipper.BlockRef](
+				iter.NewSliceIter[bloomshipper.BlockRef](
 					planGap.Blocks,
 				),
 			)
 			// dedupe blocks which could be in multiple metas
-			itr := v1.NewDedupingIter[bloomshipper.BlockRef, bloomshipper.BlockRef](
+			itr := iter.NewDedupingIter[bloomshipper.BlockRef, bloomshipper.BlockRef](
 				func(a, b bloomshipper.BlockRef) bool {
 					return a == b
 				},
-				v1.Identity[bloomshipper.BlockRef],
+				iter.Identity[bloomshipper.BlockRef],
 				func(a, _ bloomshipper.BlockRef) bloomshipper.BlockRef {
 					return a
 				},
 				peekingBlocks,
 			)
 
-			deduped, err := v1.Collect[bloomshipper.BlockRef](itr)
+			deduped, err := iter.Collect[bloomshipper.BlockRef](itr)
 			if err != nil {
 				return nil, fmt.Errorf("failed to dedupe blocks: %w", err)
 			}

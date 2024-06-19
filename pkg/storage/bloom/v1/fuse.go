@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -125,17 +126,17 @@ type Output struct {
 // Fuse combines multiple requests into a single loop iteration
 // over the data set and returns the corresponding outputs
 // TODO(owen-d): better async control
-func (bq *BlockQuerier) Fuse(inputs []PeekingIterator[Request], logger log.Logger) *FusedQuerier {
+func (bq *BlockQuerier) Fuse(inputs []iter.PeekingIterator[Request], logger log.Logger) *FusedQuerier {
 	return NewFusedQuerier(bq, inputs, logger)
 }
 
 type FusedQuerier struct {
 	bq     *BlockQuerier
-	inputs Iterator[[]Request]
+	inputs iter.Iterator[[]Request]
 	logger log.Logger
 }
 
-func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[Request], logger log.Logger) *FusedQuerier {
+func NewFusedQuerier(bq *BlockQuerier, inputs []iter.PeekingIterator[Request], logger log.Logger) *FusedQuerier {
 	heap := NewHeapIterator[Request](
 		func(a, b Request) bool {
 			return a.Fp < b.Fp
@@ -143,7 +144,7 @@ func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[Request], logger
 		inputs...,
 	)
 
-	merging := NewDedupingIter[Request, []Request](
+	merging := iter.NewDedupingIter[Request, []Request](
 		func(a Request, b []Request) bool {
 			return a.Fp == b[0].Fp
 		},
@@ -151,7 +152,7 @@ func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[Request], logger
 		func(a Request, b []Request) []Request {
 			return append(b, a)
 		},
-		NewPeekingIter[Request](heap),
+		iter.NewPeekingIter[Request](heap),
 	)
 	return &FusedQuerier{
 		bq:     bq,

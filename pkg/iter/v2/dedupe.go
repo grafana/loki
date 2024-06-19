@@ -1,4 +1,4 @@
-package v1
+package v2
 
 // DedupeIter is a deduplicating iterator which creates an Iterator[B]
 // from a sequence of Iterator[A].

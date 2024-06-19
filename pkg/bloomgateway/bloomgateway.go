@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/queue"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -351,13 +352,13 @@ func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses []v1.Output)
 
 	// dedupe outputs, merging the same series.
 	// This returns an Iterator[v1.Output]
-	dedupedResps := v1.NewDedupingIter[v1.Output, v1.Output](
+	dedupedResps := iter.NewDedupingIter[v1.Output, v1.Output](
 		// eq
 		func(o1, o2 v1.Output) bool {
 			return o1.Fp == o2.Fp
 		},
 		// from
-		v1.Identity[v1.Output],
+		iter.Identity[v1.Output],
 		// merge two removal sets for the same series, deduping
 		// requires that the removals of the outputs are sorted
 		func(o1, o2 v1.Output) v1.Output {
@@ -395,7 +396,7 @@ func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses []v1.Output)
 			res.Removals = chks
 			return res
 		},
-		v1.NewPeekingIter(v1.NewSliceIter(responses)),
+		iter.NewPeekingIter(iter.NewSliceIter(responses)),
 	)
 
 	// Iterate through the requested and filtered series/chunks,

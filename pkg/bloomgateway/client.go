@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
@@ -284,10 +285,10 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 	// clear provided buffer
 	buf = buf[:0]
 
-	iters := make([]v1.PeekingIterator[*logproto.GroupedChunkRefs], 0, len(input))
+	iters := make([]iter.PeekingIterator[*logproto.GroupedChunkRefs], 0, len(input))
 	for _, inp := range input {
 		sort.Slice(inp, func(i, j int) bool { return inp[i].Fingerprint < inp[j].Fingerprint })
-		iters = append(iters, v1.NewPeekingIter(v1.NewSliceIter(inp)))
+		iters = append(iters, iter.NewPeekingIter(iter.NewSliceIter(inp)))
 	}
 
 	heapIter := v1.NewHeapIterator[*logproto.GroupedChunkRefs](
@@ -295,11 +296,11 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 		iters...,
 	)
 
-	dedupeIter := v1.NewDedupingIter[*logproto.GroupedChunkRefs, *logproto.GroupedChunkRefs](
+	dedupeIter := iter.NewDedupingIter[*logproto.GroupedChunkRefs, *logproto.GroupedChunkRefs](
 		// eq
 		func(a, b *logproto.GroupedChunkRefs) bool { return a.Fingerprint == b.Fingerprint },
 		// from
-		v1.Identity[*logproto.GroupedChunkRefs],
+		iter.Identity[*logproto.GroupedChunkRefs],
 		// merge
 		func(a, b *logproto.GroupedChunkRefs) *logproto.GroupedChunkRefs {
 			// TODO(chaudum): Check if we can assume sorted shortrefs here
@@ -316,10 +317,10 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 			}
 		},
 		// iterator
-		v1.NewPeekingIter(heapIter),
+		iter.NewPeekingIter(heapIter),
 	)
 
-	return v1.CollectInto(dedupeIter, buf)
+	return iter.CollectInto(dedupeIter, buf)
 }
 
 // mergeChunkSets merges and deduplicates two sorted slices of shortRefs

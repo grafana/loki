@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -36,15 +37,15 @@ func (k Keyspace) Cmp(other Keyspace) v1.BoundsCheck {
 // Store is likely bound within. This allows specifying impls like ShardedStore<Store>
 // to only request the shard-range needed from the existing store.
 type BloomGenerator interface {
-	Generate(ctx context.Context) (skippedBlocks []v1.BlockMetadata, toClose []io.Closer, results v1.Iterator[*v1.Block], err error)
+	Generate(ctx context.Context) (skippedBlocks []v1.BlockMetadata, toClose []io.Closer, results iter.Iterator[*v1.Block], err error)
 }
 
 // Simple implementation of a BloomGenerator.
 type SimpleBloomGenerator struct {
 	userID      string
-	store       v1.Iterator[*v1.Series]
+	store       iter.Iterator[*v1.Series]
 	chunkLoader ChunkLoader
-	blocksIter  v1.ResettableIterator[*v1.SeriesWithBlooms]
+	blocksIter  iter.ResettableIterator[*v1.SeriesWithBlooms]
 
 	// options to build blocks with
 	opts v1.BlockOptions
@@ -65,9 +66,9 @@ type SimpleBloomGenerator struct {
 func NewSimpleBloomGenerator(
 	userID string,
 	opts v1.BlockOptions,
-	store v1.Iterator[*v1.Series],
+	store iter.Iterator[*v1.Series],
 	chunkLoader ChunkLoader,
-	blocksIter v1.ResettableIterator[*v1.SeriesWithBlooms],
+	blocksIter iter.ResettableIterator[*v1.SeriesWithBlooms],
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	reporter func(model.Fingerprint),
 	metrics *Metrics,
@@ -100,7 +101,7 @@ func NewSimpleBloomGenerator(
 func (s *SimpleBloomGenerator) populator(ctx context.Context) v1.BloomPopulatorFunc {
 	return func(
 		series *v1.Series,
-		srcBlooms v1.SizedIterator[*v1.Bloom],
+		srcBlooms iter.SizedIterator[*v1.Bloom],
 		toAdd v1.ChunkRefs,
 		ch chan *v1.BloomCreation,
 	) {
@@ -126,7 +127,7 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) v1.BloomPopulatorF
 func (s *SimpleBloomGenerator) Generate(ctx context.Context) *LazyBlockBuilderIterator {
 	level.Debug(s.logger).Log("msg", "generating bloom filters for blocks", "schema", fmt.Sprintf("%+v", s.opts.Schema))
 
-	series := v1.NewPeekingIter(s.store)
+	series := iter.NewPeekingIter(s.store)
 
 	// TODO: Use interface
 	impl, ok := s.blocksIter.(*blockLoadingIter)
@@ -166,8 +167,8 @@ type LazyBlockBuilderIterator struct {
 	metrics      *Metrics
 	populate     v1.BloomPopulatorFunc
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
-	series       v1.PeekingIterator[*v1.Series]
-	blocks       v1.ResettableIterator[*v1.SeriesWithBlooms]
+	series       iter.PeekingIterator[*v1.Series]
+	blocks       iter.ResettableIterator[*v1.SeriesWithBlooms]
 
 	bytesAdded int
 	curr       *v1.Block
@@ -180,8 +181,8 @@ func NewLazyBlockBuilderIterator(
 	metrics *Metrics,
 	populate v1.BloomPopulatorFunc,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
-	series v1.PeekingIterator[*v1.Series],
-	blocks v1.ResettableIterator[*v1.SeriesWithBlooms],
+	series iter.PeekingIterator[*v1.Series],
+	blocks iter.ResettableIterator[*v1.SeriesWithBlooms],
 ) *LazyBlockBuilderIterator {
 	return &LazyBlockBuilderIterator{
 		ctx:          ctx,
@@ -250,7 +251,7 @@ type indexLoader interface {
 // ChunkItersByFingerprint models the chunks belonging to a fingerprint
 type ChunkItersByFingerprint struct {
 	fp  model.Fingerprint
-	itr v1.Iterator[v1.ChunkRefWithIter]
+	itr iter.Iterator[v1.ChunkRefWithIter]
 }
 
 // ChunkLoader loads chunks from a store
