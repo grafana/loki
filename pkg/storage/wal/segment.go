@@ -37,8 +37,9 @@ type streamID struct {
 }
 
 type SegmentWriter struct {
-	streams *swiss.Map[streamID, *streamSegment]
-	buf1    encoding.Encbuf
+	streams   *swiss.Map[streamID, *streamSegment]
+	buf1      encoding.Encbuf
+	inputSize int64
 }
 
 type streamSegment struct {
@@ -60,6 +61,9 @@ func NewWalSegmentWriter() *SegmentWriter {
 func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels, entries []*logproto.Entry) {
 	if len(entries) == 0 {
 		return
+	}
+	for _, e := range entries {
+		b.inputSize += int64(len(e.Line))
 	}
 	id := streamID{labels: labelsString, tenant: tenantID}
 	s, ok := b.streams.Get(id)
@@ -224,6 +228,13 @@ func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
 func (b *SegmentWriter) Reset() {
 	b.streams.Clear()
 	b.buf1.Reset()
+	b.inputSize = 0
+}
+
+// InputSize returns the total size of the input data written to the writer.
+// It doesn't account for timestamps and labels.
+func (b *SegmentWriter) InputSize() int64 {
+	return b.inputSize
 }
 
 type SegmentReader struct {
@@ -331,4 +342,24 @@ func (r *SegmentReader) Series(ctx context.Context) (*SeriesIter, error) {
 	}
 
 	return NewSeriesIter(r.idr, ps, r.b), nil
+}
+
+type Sizes struct {
+	Index  int64
+	Series []int64
+}
+
+func (r *SegmentReader) Sizes() (Sizes, error) {
+	var sizes Sizes
+	sizes.Index = int64(r.idr.Size())
+	it, err := r.Series(context.Background())
+	if err != nil {
+		return sizes, err
+	}
+	sizes.Series = []int64{}
+	for it.Next() {
+		_, size := it.chunksMeta[0].Ref.Unpack()
+		sizes.Series = append(sizes.Series, int64(size))
+	}
+	return sizes, err
 }

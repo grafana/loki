@@ -8,12 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/wal/testdata"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -185,4 +187,69 @@ func TestMultiTenantWrite(t *testing.T) {
 	}
 	require.NoError(t, iter.Err())
 	require.ElementsMatch(t, expectedSeries, actualSeries)
+}
+
+func TestCompression(t *testing.T) {
+	size := []int64{250 * 1024, 500 * 1024, 750 * 1024, 1 << 20, 2 << 20, 5 << 20, 10 << 20, 20 << 20, 50 << 20, 100 << 20}
+	for _, s := range size {
+		t.Run(fmt.Sprintf("size %.2f", float64(s)/(1024*1024)), func(t *testing.T) {
+			testCompression(t, s)
+		})
+	}
+}
+
+func testCompression(t *testing.T, maxInputSize int64) {
+	w := NewWalSegmentWriter()
+	dst := bytes.NewBuffer(nil)
+	files := testdata.Files()
+	lbls := []labels.Labels{}
+	generators := []*testdata.LogGenerator{}
+
+	for _, file := range files {
+		lbls = append(lbls, labels.FromStrings("filename", file, "namespace", "dev"))
+		lbls = append(lbls, labels.FromStrings("filename", file, "namespace", "prod"))
+		g := testdata.NewLogGenerator(t, file)
+		generators = append(generators, g, g)
+	}
+	inputSize := int64(0)
+	for inputSize < maxInputSize {
+		for i, lbl := range lbls {
+			more, line := generators[i].Next()
+			if !more {
+				continue
+			}
+			inputSize += int64(len(line))
+			w.Append("tenant", lbl.String(), lbl, []*push.Entry{
+				{Timestamp: time.Unix(0, int64(i*1e9)), Line: string(line)},
+			})
+		}
+	}
+
+	require.Equal(t, inputSize, w.InputSize())
+
+	now := time.Now()
+	n, err := w.WriteTo(dst)
+	require.NoError(t, err)
+	require.True(t, n > 0)
+	compressionTime := time.Since(now)
+
+	r, err := NewReader(dst.Bytes())
+	require.NoError(t, err)
+	inputSizeMB := float64(w.InputSize()) / (1024 * 1024)
+	outputSizeMB := float64(dst.Len()) / (1024 * 1024)
+	compressionRatio := (1 - (outputSizeMB / inputSizeMB)) * 100
+
+	t.Logf("Input Size: %s\n", humanize.Bytes(uint64(w.InputSize())))
+	t.Logf("Output Size: %s\n", humanize.Bytes(uint64(dst.Len())))
+	t.Logf("Compression Ratio: %.2f%%\n", compressionRatio)
+	t.Logf("Write time: %s\n", compressionTime)
+	sizes, err := r.Sizes()
+	require.NoError(t, err)
+	t.Logf("Total chunks %d\n", len(sizes.Series))
+	t.Logf("Index size  %s\n", humanize.Bytes(uint64(sizes.Index)))
+	sizesString := ""
+	for _, size := range sizes.Series {
+		sizesString += humanize.Bytes(uint64(size)) + ", "
+	}
+	t.Logf("Series sizes: [%s]\n", sizesString)
 }
