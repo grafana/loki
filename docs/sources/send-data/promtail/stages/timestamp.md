@@ -89,6 +89,11 @@ should be used in the custom format.
 | Timezone offset     | `-0700`, `-070000` (with seconds), `-07`, `07:00`, `-07:00:00` (with seconds)                                                        |
 | Timezone ISO-8601   | `Z0700` (Z for UTC or time offset), `Z070000`, `Z07`, `Z07:00`, `Z07:00:00`                                                          |
 
+In order to correctly format the time, for the timestamp `2006/01/02 03:04:05.000`:
+
+- If you want a 24-hour format you should be using `15:04:0.000`.
+- If you want a 12-hour format you should be using either `3:04:05.000 PM` or `03:04:05.000 PM`.
+
 ### Action on Failure
 
 The `action_on_failure` setting defines which action should be taken by the

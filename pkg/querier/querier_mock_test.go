@@ -352,7 +352,7 @@ func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string,
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, _ ...*labels.Matcher) ([]string, error) {
 	args := s.Called(ctx, userID, from, through, metricName)
 	return args.Get(0).([]string), args.Error(1)
 }
@@ -449,6 +449,22 @@ func (r *readRingMock) ReplicationFactor() int {
 
 func (r *readRingMock) InstancesCount() int {
 	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) InstancesInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) InstancesWithTokensCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) InstancesWithTokensInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) ZonesCount() int {
+	return 1
 }
 
 func (r *readRingMock) Subring(_ uint32, _ int) ring.ReadRing {

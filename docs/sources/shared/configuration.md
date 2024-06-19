@@ -326,6 +326,46 @@ pattern_ingester:
 # merging them as bloom blocks.
 [bloom_compactor: <bloom_compactor>]
 
+bloom_build:
+  # Flag to enable or disable the usage of the bloom-planner and bloom-builder
+  # components.
+  # CLI flag: -bloom-build.enabled
+  [enabled: <boolean> | default = false]
+
+  planner:
+    # Interval at which to re-run the bloom creation planning.
+    # CLI flag: -bloom-build.planner.interval
+    [planning_interval: <duration> | default = 8h]
+
+    # Newest day-table offset (from today, inclusive) to build blooms for.
+    # Increase to lower cost by not re-writing data to object storage too
+    # frequently since recent data changes more often at the cost of not having
+    # blooms available as quickly.
+    # CLI flag: -bloom-build.planner.min-table-offset
+    [min_table_offset: <int> | default = 1]
+
+    # Oldest day-table offset (from today, inclusive) to compact. This can be
+    # used to lower cost by not trying to compact older data which doesn't
+    # change. This can be optimized by aligning it with the maximum
+    # `reject_old_samples_max_age` setting of any tenant.
+    # CLI flag: -bloom-build.planner.max-table-offset
+    [max_table_offset: <int> | default = 2]
+
+    # Maximum number of tasks to queue per tenant.
+    # CLI flag: -bloom-build.planner.max-tasks-per-tenant
+    [max_queued_tasks_per_tenant: <int> | default = 30000]
+
+  builder:
+    # The grpc_client block configures the gRPC client used to communicate
+    # between a client and server component in Loki.
+    # The CLI flags prefix for this block configuration is:
+    # bloom-build.builder.grpc
+    [grpc_config: <grpc_client>]
+
+    # Hostname (and port) of the bloom planner
+    # CLI flag: -bloom-build.builder.planner-address
+    [planner_address: <string> | default = ""]
+
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
 # server, responsible for serving queries for filtering chunks based on filter
 # expressions.
@@ -2304,6 +2344,7 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 The `grpc_client` block configures the gRPC client used to communicate between a client and server component in Loki. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
+- `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`
@@ -2711,7 +2752,23 @@ lifecycler:
 # CLI flag: -ingester.flush-check-period
 [flush_check_period: <duration> | default = 30s]
 
-# The timeout before a flush is cancelled.
+flush_op_backoff:
+  # Minimum backoff period when a flush fails. Each concurrent flush has its own
+  # backoff, see `ingester.concurrent-flushes`.
+  # CLI flag: -ingester.flush-op-backoff-min-period
+  [min_period: <duration> | default = 10s]
+
+  # Maximum backoff period when a flush fails. Each concurrent flush has its own
+  # backoff, see `ingester.concurrent-flushes`.
+  # CLI flag: -ingester.flush-op-backoff-max-period
+  [max_period: <duration> | default = 1m]
+
+  # Maximum retries for failed flushes.
+  # CLI flag: -ingester.flush-op-backoff-retries
+  [max_retries: <int> | default = 10]
+
+# The timeout for an individual flush. Will be retried up to
+# `flush-op-backoff-retries` times.
 # CLI flag: -ingester.flush-op-timeout
 [flush_op_timeout: <duration> | default = 10m]
 
@@ -2822,6 +2879,11 @@ wal:
 # common.path_prefix is set then common.path_prefix will be used.
 # CLI flag: -ingester.shutdown-marker-path
 [shutdown_marker_path: <string> | default = ""]
+
+# Interval at which the ingester ownedStreamService checks for changes in the
+# ring to recalculate owned streams.
+# CLI flag: -ingester.owned-streams-check-interval
+[owned_streams_check_interval: <duration> | default = 30s]
 ```
 
 ### ingester_client
@@ -2946,6 +3008,11 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # 'fatal' (case insensitive).
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
+
+# When true an ingester takes into account only the streams that it owns
+# according to the ring while applying the stream limit.
+# CLI flag: -ingester.use-owned-stream-count
+[use_owned_stream_count: <boolean> | default = false]
 
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
@@ -3372,6 +3439,33 @@ shard_streams:
 # CLI flag: -bloom-compactor.max-bloom-size
 [bloom_compactor_max_bloom_size: <int> | default = 128MB]
 
+# Experimental. Whether to create blooms for the tenant.
+# CLI flag: -bloom-build.enable
+[bloom_creation_enabled: <boolean> | default = false]
+
+# Experimental. Number of splits to create for the series keyspace when building
+# blooms. The series keyspace is split into this many parts to parallelize bloom
+# creation.
+# CLI flag: -bloom-build.split-keyspace-by
+[bloom_split_series_keyspace_by: <int> | default = 256]
+
+# Experimental. Maximum number of builders to use when building blooms. 0 allows
+# unlimited builders.
+# CLI flag: -bloom-build.max-builders
+[bloom_build_max_builders: <int> | default = 0]
+
+# Experimental. Timeout for a builder to finish a task. If a builder does not
+# respond within this time, it is considered failed and the task will be
+# requeued. 0 disables the timeout.
+# CLI flag: -bloom-build.builder-response-timeout
+[bloom_build_builder_response_timeout: <duration> | default = 0s]
+
+# Experimental. Maximum number of retries for a failed task. If a task fails
+# more than this number of times, it is considered failed and will not be
+# retried. A value of 0 disables this limit.
+# CLI flag: -bloom-build.task-max-retries
+[bloom_build_task_max_retries: <int> | default = 3]
+
 # Experimental. Length of the n-grams created when computing blooms from log
 # lines.
 # CLI flag: -bloom-compactor.ngram-length
@@ -3451,7 +3545,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # The timeout for establishing a connection with a remote node, and for
 # read/write operations.
 # CLI flag: -memberlist.stream-timeout
-[stream_timeout: <duration> | default = 10s]
+[stream_timeout: <duration> | default = 2s]
 
 # Multiplication factor used when sending out messages (factor * log(N+1)).
 # CLI flag: -memberlist.retransmit-factor
@@ -3828,7 +3922,8 @@ results_cache:
 [parallelise_shardable_queries: <boolean> | default = true]
 
 # A comma-separated list of LogQL vector and range aggregations that should be
-# sharded
+# sharded. Possible values 'quantile_over_time', 'last_over_time',
+# 'first_over_time'.
 # CLI flag: -querier.shard-aggregations
 [shard_aggregations: <string> | default = ""]
 
@@ -4665,6 +4760,10 @@ Configures the `server` of the launched module(s).
 # CLI flag: -server.grpc-conn-limit
 [grpc_listen_conn_limit: <int> | default = 0]
 
+# Enables PROXY protocol.
+# CLI flag: -server.proxy-protocol-enabled
+[proxy_protocol_enabled: <boolean> | default = false]
+
 # Comma-separated list of cipher suites to use. If blank, the default Go cipher
 # suites is used.
 # CLI flag: -server.tls-cipher-suites
@@ -4819,6 +4918,21 @@ grpc_tls_config:
 # CLI flag: -server.grpc.num-workers
 [grpc_server_num_workers: <int> | default = 0]
 
+# If true, the request_message_bytes, response_message_bytes, and
+# inflight_requests metrics will be tracked. Enabling this option prevents the
+# use of memory pools for parsing gRPC request bodies and may lead to more
+# memory allocations.
+# CLI flag: -server.grpc.stats-tracking-enabled
+[grpc_server_stats_tracking_enabled: <boolean> | default = true]
+
+# If true, gGPC's buffer pools will be used to handle incoming requests.
+# Enabling this feature can reduce memory allocation, but also requires
+# disabling GRPC server stats tracking by setting
+# `server.grpc.stats-tracking-enabled=false`. This is an experimental gRPC
+# feature, so it might be removed in a future version of the gRPC library.
+# CLI flag: -server.grpc.recv-buffer-pools-enabled
+[grpc_server_recv_buffer_pools_enabled: <boolean> | default = false]
+
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
 [log_format: <string> | default = "logfmt"]
@@ -4831,6 +4945,11 @@ grpc_tls_config:
 # Optionally log the source IPs.
 # CLI flag: -server.log-source-ips-enabled
 [log_source_ips_enabled: <boolean> | default = false]
+
+# Log all source IPs instead of only the originating one. Only used if
+# server.log-source-ips-enabled is true
+# CLI flag: -server.log-source-ips-full
+[log_source_ips_full: <boolean> | default = false]
 
 # Header field storing the source IPs. Only used if
 # server.log-source-ips-enabled is true. If not set the default Forwarded,

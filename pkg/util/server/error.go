@@ -27,6 +27,15 @@ const (
 	ErrDeadlineExceeded = "Request timed out, decrease the duration of the request or add more label matchers (prefer exact match over regex match) to reduce the amount of data processed."
 )
 
+func ClientGrpcStatusAndError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	status, newErr := ClientHTTPStatusAndError(err)
+	return httpgrpc.Errorf(status, "%s", newErr.Error())
+}
+
 // WriteError write a go error with the correct status code.
 func WriteError(err error, w http.ResponseWriter) {
 	status, cerr := ClientHTTPStatusAndError(err)

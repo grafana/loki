@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/ring"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -49,6 +50,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/deletion"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	mathutil "github.com/grafana/loki/v3/pkg/util/math"
+	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -104,7 +106,10 @@ type instance struct {
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
 
-	limiter *Limiter
+	limiter            *Limiter
+	streamCountLimiter *streamCountLimiter
+	ownedStreamsSvc    *ownedStreamService
+
 	configs *runtime.TenantConfigs
 
 	wal WAL
@@ -141,16 +146,18 @@ func newInstance(
 	extractorWrapper log.SampleExtractorWrapper,
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
+	customStreamsTracker push.UsageTracker,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
 		return nil, err
 	}
-
+	streams := newStreamsMap()
+	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter)
 	c := config.SchemaConfig{Configs: periodConfigs}
 	i := &instance{
 		cfg:        cfg,
-		streams:    newStreamsMap(),
+		streams:    streams,
 		buf:        make([]byte, 0, 1024),
 		index:      invertedIndex,
 		instanceID: instanceID,
@@ -158,9 +165,11 @@ func newInstance(
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
 
-		tailers: map[uint32]*tailer{},
-		limiter: limiter,
-		configs: configs,
+		tailers:            map[uint32]*tailer{},
+		limiter:            limiter,
+		streamCountLimiter: newStreamCountLimiter(instanceID, streams.Len, limiter, ownedStreamsSvc),
+		ownedStreamsSvc:    ownedStreamsSvc,
+		configs:            configs,
 
 		wal:                   wal,
 		metrics:               metrics,
@@ -174,8 +183,11 @@ func newInstance(
 
 		writeFailures: writeFailures,
 		schemaconfig:  &c,
+
+		customStreamsTracker: customStreamsTracker,
 	}
 	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
+
 	return i, err
 }
 
@@ -241,7 +253,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream)
+		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream, i.customStreamsTracker)
 		s.chunkMtx.Unlock()
 	}
 
@@ -283,29 +295,11 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	}
 
 	if record != nil {
-		err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, i.streams.Len())
+		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID)
 	}
 
 	if err != nil {
-		if i.configs.LogStreamCreation(i.instanceID) {
-			level.Debug(util_log.Logger).Log(
-				"msg", "failed to create stream, exceeded limit",
-				"org_id", i.instanceID,
-				"err", err,
-				"stream", pushReqStream.Labels,
-			)
-		}
-
-		validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
-		bytes := 0
-		for _, e := range pushReqStream.Entries {
-			bytes += len(e.Line)
-		}
-		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
-		if i.customStreamsTracker != nil {
-			i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))
-		}
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, labels, i.instanceID)
+		return i.onStreamCreationError(ctx, pushReqStream, err, labels)
 	}
 
 	fp := i.getHashForLabels(labels)
@@ -330,21 +324,47 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		i.metrics.recoveredStreamsTotal.Inc()
 	}
 
+	i.onStreamCreated(s)
+
+	return s, nil
+}
+
+func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels) (*stream, error) {
+	if i.configs.LogStreamCreation(i.instanceID) {
+		level.Debug(util_log.Logger).Log(
+			"msg", "failed to create stream, exceeded limit",
+			"org_id", i.instanceID,
+			"err", err,
+			"stream", pushReqStream.Labels,
+		)
+	}
+
+	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
+	bytes := 0
+	for _, e := range pushReqStream.Entries {
+		bytes += len(e.Line)
+	}
+	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
+	if i.customStreamsTracker != nil {
+		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))
+	}
+	return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, labels, i.instanceID)
+}
+
+func (i *instance) onStreamCreated(s *stream) {
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
 	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
-
+	i.ownedStreamsSvc.incOwnedStreamCount()
 	if i.configs.LogStreamCreation(i.instanceID) {
 		level.Debug(util_log.Logger).Log(
 			"msg", "successfully created stream",
 			"org_id", i.instanceID,
-			"stream", pushReqStream.Labels,
+			"stream", s.labels.String(),
 		)
 	}
-
-	return s, nil
 }
 
 func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*stream, error) {
@@ -357,10 +377,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*st
 
 	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
-	i.streamsCreatedTotal.Inc()
-	memoryStreams.WithLabelValues(i.instanceID).Inc()
-	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
-	i.addTailersToNewStream(s)
+	i.onStreamCreated(s)
 
 	return s, nil
 }
@@ -404,6 +421,7 @@ func (i *instance) removeStream(s *stream) {
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
 		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		streamsCountStats.Add(-1)
+		i.ownedStreamsSvc.decOwnedStreamCount()
 	}
 }
 
@@ -423,6 +441,12 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 }
 
 func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	it, err := i.query(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return it, err
+}
+
+func (i *instance) query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -477,6 +501,12 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 }
 
 func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	it, err := i.querySample(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return it, err
+}
+
+func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	expr, err := req.Expr()
 	if err != nil {
 		return nil, err
@@ -538,6 +568,12 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 // If label matchers are given only the matching streams are fetched from the index.
 // The label names or values are then retrieved from those matching streams.
 func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matchers ...*labels.Matcher) (*logproto.LabelResponse, error) {
+	lr, err := i.label(ctx, req, matchers...)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return lr, err
+}
+
+func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matchers ...*labels.Matcher) (*logproto.LabelResponse, error) {
 	if len(matchers) == 0 {
 		var labels []string
 		if req.Values {
@@ -691,6 +727,12 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
+	isr, err := i.getStats(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return isr, err
+}
+
+func (i *instance) getStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
 	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil {
 		return nil, err
@@ -747,6 +789,12 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 }
 
 func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	vr, err := i.getVolume(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return vr, err
+}
+
+func (i *instance) getVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
@@ -1125,4 +1173,24 @@ func minTs(stream *logproto.Stream) model.Time {
 		}
 	}
 	return model.TimeFromUnixNano(streamMinTs)
+}
+
+// For each stream, we check if the stream is owned by the ingester or not and increment/decrement the owned stream count.
+func (i *instance) updateOwnedStreams(ownedTokenRange ring.TokenRanges) error {
+	var err error
+	i.streams.WithLock(func() {
+		i.ownedStreamsSvc.resetStreamCounts()
+		err = i.streams.ForEach(func(s *stream) (bool, error) {
+			if ownedTokenRange.IncludesKey(uint32(s.fp)) {
+				i.ownedStreamsSvc.incOwnedStreamCount()
+			} else {
+				i.ownedStreamsSvc.incNotOwnedStreamCount()
+			}
+			return true, nil
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("error checking streams ownership: %w", err)
+	}
+	return nil
 }

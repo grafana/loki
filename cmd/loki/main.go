@@ -60,6 +60,10 @@ func main() {
 	serverCfg := &config.Server
 	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, false)
 
+	if config.InternalServer.Enable {
+		config.InternalServer.Log = serverCfg.Log
+	}
+
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
 	if err := config.Validate(); err != nil {
@@ -118,6 +122,7 @@ func main() {
 	}
 
 	level.Info(util_log.Logger).Log("msg", "Starting Loki", "version", version.Info())
+	level.Info(util_log.Logger).Log("msg", "Loading configuration file", "filename", config.ConfigFile)
 
 	err = t.Run(loki.RunOpts{StartTime: startTime})
 	util_log.CheckFatal("running loki", err, util_log.Logger)

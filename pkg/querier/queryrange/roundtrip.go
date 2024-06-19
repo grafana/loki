@@ -206,7 +206,7 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
-	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, metrics, indexStatsTripperware, codec, iqo)
+	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, metrics, indexStatsTripperware, codec, iqo, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -274,7 +274,7 @@ func NewMiddleware(
 			seriesRT         = seriesTripperware.Wrap(next)
 			labelsRT         = labelsTripperware.Wrap(next)
 			instantRT        = instantMetricTripperware.Wrap(next)
-			statsRT          = indexStatsTripperware.Wrap(next)
+			statsRT          = base.MergeMiddlewares(StatsCollectorMiddleware(), indexStatsTripperware).Wrap(next)
 			seriesVolumeRT   = seriesVolumeTripperware.Wrap(next)
 			detectedFieldsRT = detectedFieldsTripperware.Wrap(next)
 			detectedLabelsRT = detectedLabelsTripperware.Wrap(next)
@@ -329,7 +329,7 @@ func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebas
 			var result []*logproto.DetectedLabel
 
 			for _, dl := range resp.Response.DetectedLabels {
-				if dl.Cardinality > 2 && dl.Cardinality < 50 {
+				if dl.Cardinality > 1 && dl.Cardinality < 50 {
 					result = append(result, &logproto.DetectedLabel{Label: dl.Label, Cardinality: dl.Cardinality})
 				}
 			}
@@ -613,7 +613,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 }
 
 // NewLimitedTripperware creates a new frontend tripperware responsible for handling log requests which are label matcher only, no filter expression.
-func NewLimitedTripperware(_ Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, metrics *Metrics, indexStatsTripperware base.Middleware, merger base.Merger, iqo util.IngesterQueryOptions) (base.Middleware, error) {
+func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, metrics *Metrics, indexStatsTripperware base.Middleware, merger base.Merger, iqo util.IngesterQueryOptions, metricsNamespace string) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
 
@@ -624,6 +624,12 @@ func NewLimitedTripperware(_ Config, engineOpts logql.EngineOpts, log log.Logger
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, limitedQuerySplits), merger, newDefaultSplitter(limits, iqo), metrics.SplitByMetrics),
 			NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+		}
+		if cfg.MaxRetries > 0 {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
+			)
 		}
 
 		if len(queryRangeMiddleware) > 0 {
@@ -1055,22 +1061,6 @@ func NewVolumeTripperware(cfg Config, log log.Logger, limits Limits, schema conf
 	), nil
 }
 
-func statsTripperware(nextTW base.Middleware) base.Middleware {
-	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
-			cacheMiddlewares := []base.Middleware{
-				StatsCollectorMiddleware(),
-				nextTW,
-			}
-
-			// wrap nextRT with our new middleware
-			return base.MergeMiddlewares(
-				cacheMiddlewares...,
-			).Wrap(next).Do(ctx, r)
-		})
-	})
-}
-
 func volumeRangeTripperware(nextTW base.Middleware) base.Middleware {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
@@ -1141,7 +1131,7 @@ func NewIndexStatsTripperware(cfg Config, log log.Logger, limits Limits, schema 
 		}
 	}
 
-	tw, err := sharedIndexTripperware(
+	return sharedIndexTripperware(
 		cacheMiddleware,
 		cfg,
 		merger,
@@ -1152,11 +1142,6 @@ func NewIndexStatsTripperware(cfg Config, log log.Logger, limits Limits, schema 
 		schema,
 		metricsNamespace,
 	)
-	if err != nil {
-		return nil, err
-	}
-
-	return statsTripperware(tw), nil
 }
 
 func sharedIndexTripperware(

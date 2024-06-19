@@ -10,7 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
-	strings "strings"
+	"strings"
 	"testing"
 	"time"
 
@@ -115,8 +115,8 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 		}, false},
 		{"labels", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
-				fmt.Sprintf(`/label?start=%d&end=%d`, start.UnixNano(), end.UnixNano()), nil)
-		}, NewLabelRequest(start, end, "", "", "/label"),
+				fmt.Sprintf(`/label?start=%d&end=%d&query={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
+		}, NewLabelRequest(start, end, `{foo="bar"}`, "", "/label"),
 			false},
 		{"label_values", func() (*http.Request, error) {
 			req, err := http.NewRequest(http.MethodGet,
@@ -202,6 +202,57 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Step:        30 * 1e3, // step is expected in ms; default is 0 or no step
 			AggregateBy: "series",
 		}, false},
+		{"detected_fields", func() (*http.Request, error) {
+			return DefaultCodec.EncodeRequest(ctx, &DetectedFieldsRequest{
+				logproto.DetectedFieldsRequest{
+					Query:      `{foo="bar"}`,
+					Start:      start,
+					End:        end,
+					Step:       30 * 1e3, // step is expected in ms; default is 0 or no step
+					LineLimit:  100,
+					FieldLimit: 100,
+				},
+				"/loki/api/v1/detected_fields",
+			})
+		}, &DetectedFieldsRequest{
+			logproto.DetectedFieldsRequest{
+				Query:      `{foo="bar"}`,
+				Start:      start,
+				End:        end,
+				Step:       30 * 1e3, // step is expected in ms; default is 0 or no step
+				LineLimit:  100,
+				FieldLimit: 100,
+			},
+			"/loki/api/v1/detected_fields",
+		}, false},
+		{"patterns", func() (*http.Request, error) {
+			return DefaultCodec.EncodeRequest(ctx, &logproto.QueryPatternsRequest{
+				Start: start,
+				End:   end,
+				Step:  30 * 1e3, // step is expected in ms
+			})
+		}, &logproto.QueryPatternsRequest{
+			Start: start,
+			End:   end,
+			Step:  30 * 1e3, // step is expected in ms; default is 0 or no step
+		}, false},
+		{"detected_labels", func() (*http.Request, error) {
+			return DefaultCodec.EncodeRequest(ctx, &DetectedLabelsRequest{
+				"/loki/api/v1/detected_labels",
+				logproto.DetectedLabelsRequest{
+					Query: `{foo="bar"}`,
+					Start: start,
+					End:   end,
+				},
+			})
+		}, &DetectedLabelsRequest{
+			"/loki/api/v1/detected_labels",
+			logproto.DetectedLabelsRequest{
+				Query: `{foo="bar"}`,
+				Start: start,
+				End:   end,
+			},
+		}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -214,6 +265,55 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 				t.Errorf("codec.DecodeRequest() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	tests := []struct {
+		name       string
+		reqBuilder func() (*http.Request, error)
+		want       queryrangebase.Request
+	}{
+		{
+			"query_instant",
+			func() (*http.Request, error) {
+				req, err := http.NewRequest(
+					http.MethodGet,
+					fmt.Sprintf(`/v1/query?time=%d&query={foo="bar"}&limit=200&direction=FORWARD`, start.UnixNano()),
+					nil,
+				)
+				if err == nil {
+					req.Header.Set(cacheControlHeader, noCacheVal)
+				}
+				return req, err
+			},
+			&LokiInstantRequest{
+				Query:     `{foo="bar"}`,
+				Limit:     200,
+				Direction: logproto.FORWARD,
+				Path:      "/v1/query",
+				TimeTs:    start,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"}`),
+				},
+				CachingOptions: queryrangebase.CachingOptions{
+					Disabled: true,
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := tt.reqBuilder()
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := DefaultCodec.DecodeRequest(ctx, req, nil)
+			require.NoError(t, err)
 			require.Equal(t, tt.want, got)
 		})
 	}
@@ -826,22 +926,26 @@ func Test_codec_series_EncodeRequest(t *testing.T) {
 
 func Test_codec_labels_EncodeRequest(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
-	toEncode := NewLabelRequest(start, end, "", "", "/loki/api/v1/labels")
+
+	// Test labels endpoint
+	toEncode := NewLabelRequest(start, end, `{foo="bar"}`, "", "/loki/api/v1/labels")
 	got, err := DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
 	require.Equal(t, "/loki/api/v1/labels", got.URL.Path)
 	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
 	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
+	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("query"))
 
 	// testing a full roundtrip
 	req, err := DefaultCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.Start, req.(*LabelRequest).Start)
 	require.Equal(t, toEncode.End, req.(*LabelRequest).End)
+	require.Equal(t, toEncode.Query, req.(*LabelRequest).Query)
 	require.Equal(t, "/loki/api/v1/labels", req.(*LabelRequest).Path())
 
-	// Test labels values endpoint
+	// Test label values endpoint
 	toEncode = NewLabelRequest(start, end, `{foo="bar"}`, "__name__", "/loki/api/v1/label/__name__/values")
 	got, err = DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
@@ -863,19 +967,41 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 
 func Test_codec_labels_DecodeRequest(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
-	u, err := url.Parse(`/loki/api/v1/label/__name__/values?start=1575285010000000010&end=1575288610000000010&query={foo="bar"}`)
+
+	// Test labels endpoint
+	u, err := url.Parse(`/loki/api/v1/labels?start=1575285010000000010&end=1575288610000000010&query={foo="bar"}`)
 	require.NoError(t, err)
 
 	r := &http.Request{URL: u}
-	r = mux.SetURLVars(r, map[string]string{"name": "__name__"})
 	req, err := DefaultCodec.DecodeRequest(context.TODO(), r, nil)
+	require.NoError(t, err)
+	require.Equal(t, start, *req.(*LabelRequest).Start)
+	require.Equal(t, end, *req.(*LabelRequest).End)
+	require.Equal(t, `{foo="bar"}`, req.(*LabelRequest).Query)
+	require.Equal(t, "/loki/api/v1/labels", req.(*LabelRequest).Path())
+
+	got, err := DefaultCodec.EncodeRequest(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, ctx, got.Context())
+	require.Equal(t, "/loki/api/v1/labels", got.URL.Path)
+	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
+	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
+	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("query"))
+
+	// Test label values endpoint
+	u, err = url.Parse(`/loki/api/v1/label/__name__/values?start=1575285010000000010&end=1575288610000000010&query={foo="bar"}`)
+	require.NoError(t, err)
+
+	r = &http.Request{URL: u}
+	r = mux.SetURLVars(r, map[string]string{"name": "__name__"})
+	req, err = DefaultCodec.DecodeRequest(context.TODO(), r, nil)
 	require.NoError(t, err)
 	require.Equal(t, start, *req.(*LabelRequest).Start)
 	require.Equal(t, end, *req.(*LabelRequest).End)
 	require.Equal(t, `{foo="bar"}`, req.(*LabelRequest).Query)
 	require.Equal(t, "/loki/api/v1/label/__name__/values", req.(*LabelRequest).Path())
 
-	got, err := DefaultCodec.EncodeRequest(ctx, req)
+	got, err = DefaultCodec.EncodeRequest(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
 	require.Equal(t, "/loki/api/v1/label/__name__/values", got.URL.Path)

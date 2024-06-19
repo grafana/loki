@@ -15,7 +15,7 @@ import (
 )
 
 type Schema struct {
-	version                byte
+	version                Version
 	encoding               chunkenc.Encoding
 	nGramLength, nGramSkip uint64
 }
@@ -53,7 +53,7 @@ func (s *Schema) CompressorPool() chunkenc.WriterPool {
 func (s *Schema) Encode(enc *encoding.Encbuf) {
 	enc.Reset()
 	enc.PutBE32(magicNumber)
-	enc.PutByte(s.version)
+	enc.PutByte(byte(s.version))
 	enc.PutByte(byte(s.encoding))
 	enc.PutBE64(s.nGramLength)
 	enc.PutBE64(s.nGramSkip)
@@ -77,8 +77,8 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 	if number != magicNumber {
 		return errors.Errorf("invalid magic number. expected %x, got  %x", magicNumber, number)
 	}
-	s.version = dec.Byte()
-	if s.version != 1 {
+	s.version = Version(dec.Byte())
+	if s.version != 1 && s.version != 2 {
 		return errors.Errorf("invalid version. expected %d, got %d", 1, s.version)
 	}
 
@@ -155,7 +155,7 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 	defer func() {
 		if err != nil {
 			metrics.pagesSkipped.WithLabelValues(pageTypeSeries, skipReasonErr).Inc()
-			metrics.bytesSkipped.WithLabelValues(pageTypeSeries).Add(float64(header.DecompressedLen))
+			metrics.bytesSkipped.WithLabelValues(pageTypeSeries, skipReasonErr).Add(float64(header.DecompressedLen))
 		} else {
 			metrics.pagesRead.WithLabelValues(pageTypeSeries).Inc()
 			metrics.bytesRead.WithLabelValues(pageTypeSeries).Add(float64(header.DecompressedLen))
@@ -166,8 +166,8 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 		return nil, errors.Wrap(err, "seeking to series page")
 	}
 
-	data := BlockPool.Get(header.Len)[:header.Len]
-	defer BlockPool.Put(data)
+	data := SeriesPagePool.Get(header.Len)[:header.Len]
+	defer SeriesPagePool.Put(data)
 	_, err = io.ReadFull(r, data)
 	if err != nil {
 		return nil, errors.Wrap(err, "reading series page")
@@ -190,6 +190,7 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 	}
 
 	res = &SeriesPageDecoder{
+		schema: b.opts.Schema,
 		data:   decompressed,
 		header: header.SeriesHeader,
 	}
@@ -267,13 +268,14 @@ func (h *SeriesHeader) Decode(dec *encoding.Decbuf) error {
 // can decode a series page one item at a time, useful when we don't
 // need to iterate an entire page
 type SeriesPageDecoder struct {
+	schema Schema
 	data   []byte
 	dec    encoding.Decbuf
 	header SeriesHeader
 
 	// state
 	i              int // current index
-	cur            *SeriesWithOffset
+	cur            *SeriesWithOffsets
 	err            error
 	previousFp     model.Fingerprint // previous series' fingerprint for delta-decoding
 	previousOffset BloomOffset       // previous series' bloom offset for delta-decoding
@@ -298,8 +300,8 @@ func (d *SeriesPageDecoder) Next() bool {
 		return false
 	}
 
-	var res SeriesWithOffset
-	d.previousFp, d.previousOffset, d.err = res.Decode(&d.dec, d.previousFp, d.previousOffset)
+	var res SeriesWithOffsets
+	d.previousFp, d.previousOffset, d.err = res.Decode(d.schema.version, &d.dec, d.previousFp, d.previousOffset)
 	if d.err != nil {
 		return false
 	}
@@ -348,7 +350,7 @@ func (d *SeriesPageDecoder) Seek(fp model.Fingerprint) {
 	}
 }
 
-func (d *SeriesPageDecoder) At() (res *SeriesWithOffset) {
+func (d *SeriesPageDecoder) At() (res *SeriesWithOffsets) {
 	return d.cur
 }
 
@@ -364,6 +366,103 @@ type Series struct {
 	Chunks      ChunkRefs
 }
 
+// SeriesWithOffsets is a series with a a variable number
+// of bloom offsets. Used in v2+ to store blooms for larger series
+// in parts
+type SeriesWithOffsets struct {
+	Offsets []BloomOffset
+	Series
+}
+
+func (s *SeriesWithOffsets) Encode(
+	enc *encoding.Encbuf,
+	previousFp model.Fingerprint,
+	previousOffset BloomOffset,
+) BloomOffset {
+	sort.Sort(s.Chunks) // ensure order
+	// delta encode fingerprint
+	enc.PutUvarint64(uint64(s.Fingerprint - previousFp))
+	// encode number of bloom offsets in this series
+	enc.PutUvarint(len(s.Offsets))
+
+	lastOffset := previousOffset
+	for _, offset := range s.Offsets {
+		// delta encode offsets.
+		// Multiple offsets per series is a v2+ feature with different encoding implementation,
+		// so we signal that to the encoder
+		offset.Encode(enc, V2, lastOffset)
+		lastOffset = offset
+	}
+
+	// encode chunks using delta encoded timestamps
+	var lastEnd model.Time
+	enc.PutUvarint(len(s.Chunks))
+	for _, chunk := range s.Chunks {
+		lastEnd = chunk.Encode(enc, lastEnd)
+	}
+
+	return lastOffset
+}
+
+func (s *SeriesWithOffsets) Decode(
+	version Version,
+	dec *encoding.Decbuf,
+	previousFp model.Fingerprint,
+	previousOffset BloomOffset,
+) (model.Fingerprint, BloomOffset, error) {
+	// Since *SeriesWithOffsets is is still representable by the v1 schema as a len=1 offset group,
+	// we can decode it even though multiple offsets were introduced in v2
+	if version == V1 {
+		return s.decodeV1(dec, previousFp, previousOffset)
+	}
+
+	s.Fingerprint = previousFp + model.Fingerprint(dec.Uvarint64())
+	numOffsets := dec.Uvarint()
+
+	s.Offsets = make([]BloomOffset, numOffsets)
+	var (
+		err        error
+		lastEnd    model.Time
+		lastOffset = previousOffset
+	)
+	for i := range s.Offsets {
+		// SeriesWithOffsets is a v2+ feature with multiple bloom offsets per series
+		// so we signal that to the decoder
+		err = s.Offsets[i].Decode(dec, V2, lastOffset)
+		lastOffset = s.Offsets[i]
+		if err != nil {
+			return 0, BloomOffset{}, errors.Wrapf(err, "decoding %dth bloom offset", i)
+		}
+	}
+
+	// TODO(owen-d): use pool
+	s.Chunks = make([]ChunkRef, dec.Uvarint())
+	for i := range s.Chunks {
+		lastEnd, err = s.Chunks[i].Decode(dec, lastEnd)
+		if err != nil {
+			return 0, BloomOffset{}, errors.Wrapf(err, "decoding %dth chunk", i)
+		}
+	}
+	return s.Fingerprint, lastOffset, dec.Err()
+}
+
+// Decodes a v2 compatible series from a v1 encoding
+func (s *SeriesWithOffsets) decodeV1(
+	dec *encoding.Decbuf,
+	previousFp model.Fingerprint,
+	previousOffset BloomOffset,
+) (model.Fingerprint, BloomOffset, error) {
+	var single SeriesWithOffset
+	fp, last, err := single.Decode(dec, previousFp, previousOffset)
+	if err != nil {
+		return 0, BloomOffset{}, errors.Wrap(err, "decoding series with offset")
+	}
+	s.Offsets = []BloomOffset{last}
+	s.Series = single.Series
+	return fp, last, nil
+}
+
+// Used in v1 schema
 type SeriesWithOffset struct {
 	Offset BloomOffset
 	Series
@@ -378,7 +477,9 @@ func (s *SeriesWithOffset) Encode(
 	// delta encode fingerprint
 	enc.PutBE64(uint64(s.Fingerprint - previousFp))
 	// delta encode offsets
-	s.Offset.Encode(enc, previousOffset)
+	// V1 only has 1 offset per series which has a legacy encoding scheme;
+	// we signal that to the encoder
+	s.Offset.Encode(enc, V1, previousOffset)
 
 	// encode chunks using delta encoded timestamps
 	var lastEnd model.Time
@@ -392,7 +493,9 @@ func (s *SeriesWithOffset) Encode(
 
 func (s *SeriesWithOffset) Decode(dec *encoding.Decbuf, previousFp model.Fingerprint, previousOffset BloomOffset) (model.Fingerprint, BloomOffset, error) {
 	s.Fingerprint = previousFp + model.Fingerprint(dec.Be64())
-	if err := s.Offset.Decode(dec, previousOffset); err != nil {
+	// V1 only has 1 offset per series which has a legacy encoding scheme;
+	// we signal that to the decoder
+	if err := s.Offset.Decode(dec, V1, previousOffset); err != nil {
 		return 0, BloomOffset{}, errors.Wrap(err, "decoding bloom offset")
 	}
 
@@ -427,14 +530,14 @@ func (r *ChunkRef) Less(other ChunkRef) bool {
 
 func (r *ChunkRef) Cmp(other ChunkRef) int {
 	if r.From != other.From {
-		return int(other.From) - int(r.From)
+		return int(r.From) - int(other.From)
 	}
 
 	if r.Through != other.Through {
-		return int(other.Through) - int(r.Through)
+		return int(r.Through) - int(other.Through)
 	}
 
-	return int(other.Checksum) - int(r.Checksum)
+	return int(r.Checksum) - int(other.Checksum)
 }
 
 func (r *ChunkRef) Encode(enc *encoding.Encbuf, previousEnd model.Time) model.Time {
@@ -457,14 +560,33 @@ type BloomOffset struct {
 	ByteOffset int // offset to beginning of bloom within page
 }
 
-func (o *BloomOffset) Encode(enc *encoding.Encbuf, previousOffset BloomOffset) {
+func (o *BloomOffset) Encode(enc *encoding.Encbuf, v Version, previousOffset BloomOffset) {
+	// page offsets diffs are always ascending
 	enc.PutUvarint(o.Page - previousOffset.Page)
-	enc.PutUvarint(o.ByteOffset - previousOffset.ByteOffset)
+
+	switch v {
+	case V1:
+		// V1 uses UVarint for bloom offset deltas. This is fine because there is only 1 bloom per series in v1
+		enc.PutUvarint(o.ByteOffset - previousOffset.ByteOffset)
+	default:
+		// V2 encodes multiple bloom offsets per series and successive blooms may belong to
+		// separate bloom pages. Therefore, we use Varint64 for byte offset deltas as
+		// byteOffsets will not be ascending when a new bloom page is written.
+		enc.PutVarint64(int64(o.ByteOffset - previousOffset.ByteOffset))
+	}
 }
 
-func (o *BloomOffset) Decode(dec *encoding.Decbuf, previousOffset BloomOffset) error {
+func (o *BloomOffset) Decode(dec *encoding.Decbuf, v Version, previousOffset BloomOffset) error {
 	o.Page = previousOffset.Page + dec.Uvarint()
-	o.ByteOffset = previousOffset.ByteOffset + dec.Uvarint()
+
+	// Explained by the Encode method
+	switch v {
+	case V1:
+		o.ByteOffset = previousOffset.ByteOffset + dec.Uvarint()
+	default:
+		o.ByteOffset = previousOffset.ByteOffset + int(dec.Varint64())
+	}
+
 	return dec.Err()
 }
 
@@ -521,4 +643,39 @@ func (refs ChunkRefs) Compare(others ChunkRefs, populateInclusive bool) (exclusi
 	}
 
 	return
+}
+
+func (refs ChunkRefs) Intersect(others ChunkRefs) ChunkRefs {
+	_, res := refs.Compare(others, true)
+	return res
+}
+
+func (refs ChunkRefs) Union(others ChunkRefs) ChunkRefs {
+	var res ChunkRefs
+	var i, j int
+	for i < len(refs) && j < len(others) {
+		switch {
+		case refs[i] == others[j]:
+			res = append(res, refs[i])
+			i++
+			j++
+		case refs[i].Less(others[j]):
+			res = append(res, refs[i])
+			i++
+		default:
+			res = append(res, others[j])
+			j++
+		}
+	}
+
+	// append any remaining refs
+	if i < len(refs) {
+		res = append(res, refs[i:]...)
+	}
+
+	if j < len(others) {
+		res = append(res, others[j:]...)
+	}
+
+	return res
 }

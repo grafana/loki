@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -10,14 +11,23 @@ import (
 	"github.com/prometheus/prometheus/util/pool"
 )
 
+type Version byte
+
+func (v Version) String() string {
+	return fmt.Sprintf("v%d", v)
+}
+
 const (
 	magicNumber = uint32(0xCA7CAFE5)
 	// Add new versions below
-	V1 byte = iota
+	V1 Version = iota
+	// V2 supports single series blooms encoded over multiple pages
+	// to accommodate larger single series
+	V2
 )
 
 const (
-	DefaultSchemaVersion = V1
+	DefaultSchemaVersion = V2
 )
 
 var (
@@ -32,10 +42,21 @@ var (
 		},
 	}
 
-	// 4KB -> 128MB
-	BlockPool = BytePool{
+	// buffer pool for series pages
+	// 1KB 2KB 4KB 8KB 16KB 32KB 64KB 128KB
+	SeriesPagePool = BytePool{
 		pool: pool.New(
-			4<<10, 128<<20, 2,
+			1<<10, 128<<10, 2,
+			func(size int) interface{} {
+				return make([]byte, size)
+			}),
+	}
+
+	// buffer pool for bloom pages
+	// 128KB 256KB 512KB 1MB 2MB 4MB 8MB 16MB 32MB 64MB 128MB
+	BloomPagePool = BytePool{
+		pool: pool.New(
+			128<<10, 128<<20, 2,
 			func(size int) interface{} {
 				return make([]byte, size)
 			}),
@@ -75,6 +96,11 @@ type Iterator[T any] interface {
 	Next() bool
 	Err() error
 	At() T
+}
+
+type SizedIterator[T any] interface {
+	Iterator[T]
+	Remaining() int // remaining
 }
 
 type PeekingIterator[T any] interface {
@@ -155,8 +181,8 @@ func NewSliceIter[T any](xs []T) *SliceIter[T] {
 	return &SliceIter[T]{xs: xs, cur: -1}
 }
 
-func (it *SliceIter[T]) Len() int {
-	return len(it.xs) - (max(0, it.cur))
+func (it *SliceIter[T]) Remaining() int {
+	return max(0, len(it.xs)-(it.cur+1))
 }
 
 func (it *SliceIter[T]) Next() bool {
@@ -199,6 +225,14 @@ func (it *EmptyIter[T]) Err() error {
 
 func (it *EmptyIter[T]) At() T {
 	return it.zero
+}
+
+func (it *EmptyIter[T]) Peek() (T, bool) {
+	return it.zero, false
+}
+
+func (it *EmptyIter[T]) Remaining() int {
+	return 0
 }
 
 // noop
