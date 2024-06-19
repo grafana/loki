@@ -316,6 +316,17 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.flush-check-period
   [flush_check_period: <duration> | default = 30s]
 
+  # Configures the metric aggregation and storage behavior of the pattern
+  # ingester.
+  metric_aggregation:
+    # Whether the pattern ingester metric aggregation is enabled.
+    # CLI flag: -pattern-ingester.metric-aggregation.enabled
+    [enabled: <boolean> | default = false]
+
+    # Whether to log push observations.
+    # CLI flag: -pattern-ingester.metric-aggregation.log-push-observations
+    [log_push_observations: <boolean> | default = false]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
