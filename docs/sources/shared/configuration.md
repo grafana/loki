@@ -4233,7 +4233,8 @@ storage:
 # CLI flag: -ruler.alertmanager-refresh-interval
 [alertmanager_refresh_interval: <duration> | default = 1m]
 
-# If enabled requests to Alertmanager will utilize the V2 API.
+# Use Alertmanager APIv2. APIv1 was deprecated in Alertmanager 0.16.0 and is
+# removed as of 0.27.0.
 # CLI flag: -ruler.alertmanager-use-v2
 [enable_alertmanager_v2: <boolean> | default = true]
 
