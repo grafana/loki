@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-//go:embed status.gohtml
+//go:embed ring_status.gohtml
 var defaultPageContent string
 var defaultPageTemplate = template.Must(template.New("webpage").Funcs(template.FuncMap{
 	"mod": func(i, j int) bool { return i%j == 0 },
@@ -134,7 +134,7 @@ func (h *ringPageHandler) handle(w http.ResponseWriter, req *http.Request) {
 
 // RenderHTTPResponse either responds with json or a rendered html page using the passed in template
 // by checking the Accepts header
-func renderHTTPResponse(w http.ResponseWriter, v httpResponse, t *template.Template, r *http.Request) {
+func renderHTTPResponse(w http.ResponseWriter, v any, t *template.Template, r *http.Request) {
 	accept := r.Header.Get("Accept")
 	if strings.Contains(accept, "application/json") {
 		writeJSONResponse(w, v)
@@ -161,7 +161,7 @@ func (h *ringPageHandler) forget(ctx context.Context, id string) error {
 }
 
 // WriteJSONResponse writes some JSON as a HTTP response.
-func writeJSONResponse(w http.ResponseWriter, v httpResponse) {
+func writeJSONResponse(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if err := json.NewEncoder(w).Encode(v); err != nil {

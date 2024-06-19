@@ -906,6 +906,13 @@ release-workflows:
 
 .PHONY: release-workflows-check
 release-workflows-check:
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(SUDO) docker run  $(RM) $(TTY) -i \
+		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
 	@$(MAKE) release-workflows
 	@echo "Checking diff"
 	@git diff --exit-code -- ".github/workflows/*release*" || (echo "Please build release workflows by running 'make release-workflows'" && false)
+endif

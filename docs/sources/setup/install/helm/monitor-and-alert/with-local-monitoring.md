@@ -1,7 +1,7 @@
 ---
-title: Configure monitoring and alerting
-menuTitle: Configure monitoring and alerting
-description: Configuring monitoring and alerts using the Helm chart.
+title: Monitor Loki using a local LGTM (Loki, Grafana, Tempo and Mimir) stack
+menuTitle: Monitor Loki using a local LGTM stack
+description: Monitor Loki using a local LGTM (Loki, Grafana, Tempo and Mimir) stack
 aliases:
   - ../../../../installation/helm/monitor-and-alert/with-local-monitoring/
 weight: 100
@@ -11,203 +11,162 @@ keywords:
   - alerting
 ---
 
-# Configure monitoring and alerting
+# Monitor Loki using a local LGTM (Loki, Grafana, Tempo and Mimir) stack
 
-By default this Helm Chart configures meta-monitoring of metrics (service monitoring) and logs (self monitoring). This topic will walk you through configuring monitoring using a monitoring solution local to the same cluster where Loki is installed.
+This topic will walk you through using the meta-monitoring Helm chart to deploy a local stack to monitor your production Loki installation. This approach leverages many of the chart's _self monitoring_ features, but instead of sending logs back to Loki itself, it sends them to a small Loki, Grafana, Tempo, Mimir (LGTM) stack running within the `meta` namespace. 
 
-The `ServiceMonitor` resource works with either the Prometheus Operator or the Grafana Agent Operator, and defines how Loki's metrics should be scraped. Scraping this Loki cluster using the scrape config defined in the `SerivceMonitor` resource is required for the included dashboards to work. A `MetricsInstance` can be configured to write the metrics to a remote Prometheus instance such as Grafana Cloud Metrics.
 
-_Self monitoring_ is enabled by default. This will deploy a `GrafanaAgent`, `LogsInstance`, and `PodLogs` resource which will instruct the Grafana Agent Operator (installed separately) on how to scrape this Loki cluster's logs and send them back to itself. Scraping this Loki cluster using the scrape config defined in the `PodLogs` resource is required for the included dashboards to work.
-
-Rules and alerts are automatically deployed.
-
-**Before you begin:**
+## Before you begin
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
 - A running Kubernetes cluster with a running Loki deployment.
-- A running Grafana instance.
-- A running Prometheus Operator installed using the `kube-prometheus-stack` Helm chart.
 
-**Prometheus Operator Prequisites**
+## Configure the meta namespace
 
-The dashboards require certain metric labels to display Kubernetes metrics. The best way to accomplish this is to install the `kube-prometheus-stack` Helm chart with the following values file, replacing `CLUSTER_NAME` with the name of your cluster. The cluster name is what you specify during the helm installation, so a cluster installed with the command `helm install loki-cluster grafana/loki` would be called `loki-cluster`.
+The meta-monitoring stack will be installed in a separate namespace called `meta`. To create this namespace, run the following command:
+
+  ```bash
+    kubectl create namespace meta
+  ```
+
+
+## Configuration and Installation
+
+The meta-monitoring stack is installed using the `meta-monitoring` Helm chart. The local mode deploys a small LGTM stack that includes Alloy, Grafana, Mimir, Loki, and Tempo. To configure the meta-monitoring stack, create a `values.yaml` file with the following content:
 
 ```yaml
-kubelet:
-  serviceMonitor:
-    cAdvisorRelabelings:
-      - action: replace
-        replacement: <CLUSTER_NAME>
-        targetLabel: cluster
-      - targetLabel: metrics_path
-        sourceLabels:
-          - "__metrics_path__"
-      - targetLabel: "instance"
-        sourceLabels:
-          - "node"
+namespacesToMonitor:
+- default
 
-defaultRules:
-  additionalRuleLabels:
-    cluster: <CLUSTER_NAME>
+cloud:
+  logs:
+    enabled: false
+  metrics:
+    enabled: false
+  traces:
+    enabled: false
 
-"kube-state-metrics":
-  prometheus:
-    monitor:
-      relabelings:
-        - action: replace
-          replacement: <CLUSTER_NAME>
-          targetLabel: cluster
-        - targetLabel: "instance"
-          sourceLabels:
-            - "__meta_kubernetes_pod_node_name"
-
-"prometheus-node-exporter":
-  prometheus:
-    monitor:
-      relabelings:
-        - action: replace
-          replacement: <CLUSTER_NAME>
-          targetLabel: cluster
-        - targetLabel: "instance"
-          sourceLabels:
-            - "__meta_kubernetes_pod_node_name"
-
-prometheus:
-  monitor:
-    relabelings:
-      - action: replace
-        replacement: <CLUSTER_NAME>
-        targetLabel: cluster
+local:
+  grafana:
+    enabled: true
+  logs:
+    enabled: true
+  metrics:
+    enabled: true
+  traces:
+    enabled: true
+  minio:
+    enabled: true
 ```
 
-The `kube-prometheus-stack` installs `ServiceMonitor` and `PrometheusRule` resources for monitoring Kubernetes, and it depends on the `kube-state-metrics` and `prometheus-node-exporter` helm charts which also install `ServiceMonitor` resources for collecting `kubelet` and `node-exporter` metrics. The above values file adds the necessary additional labels required for these metrics to work with the included dashboards.
+For further configuration options, refer to the [sample values.yaml file](https://github.com/grafana/meta-monitoring-chart/blob/main/charts/meta-monitoring/values.yaml).
 
-If you are using this helm chart in an environment which does not allow for the installation of `kube-prometheus-stack` or custom CRDs, you should run `helm template` on the `kube-prometheus-stack` helm chart with the above values file, and review all generated `ServiceMonitor` and `PrometheusRule` resources. These resources may have to be modified with the correct ports and selectors to find the various services such as `kubelet` and `node-exporter` in your environment.
+Local mode by default will also enable Minio, which will act as the object storage for the LGTM stack. To provide access to Minio, you need to create a generic secret. To create the generic secret, run the following command:
 
-**To install the dashboards:**
+```bash
+kubectl create secret generic minio -n meta \
+ --from-literal=<INSERT USERNAME OF CHOICE> \
+ --from-literal=<INSERT PASSWORD OF CHOICE>
+```
+{{< admonition type="note" >}}
+Username and password must have a minimum of 8 characters.
+{{< /admonition >}}
 
-1. Dashboards are enabled by default. Set `monitoring.dashboards.namespace` to the namespace of the Grafana instance if it is in a different namespace than this Loki cluster.
-1. Dashbards must be mounted to your Grafana container. The dashboards are in `ConfigMap`s named `loki-dashboards-1` and `loki-dashboards-2` for Loki, and `enterprise-logs-dashboards-1` and `enterprise-logs-dashboards-2` for GEL. Mount them to `/var/lib/grafana/dashboards/loki-1` and `/var/lib/grafana/dashboards/loki-2` in your Grafana container.
-1. Create a dashboard provisioning file called `dashboards.yaml` in `/etc/grafana/provisioning/dashboards` of your Grafana container with the following contents (_note_: you may need to edit the `orgId`):
+To install the meta-monitoring stack, run the following commands:
 
-   ```yaml
-   ---
-   apiVersion: 1
-   providers:
-     - disableDeletion: true
-       editable: false
-       folder: Loki
-       name: loki-1
-       options:
-         path: /var/lib/grafana/dashboards/loki-1
-       orgId: 1
-       type: file
-     - disableDeletion: true
-       editable: false
-       folder: Loki
-       name: loki-2
-       options:
-         path: /var/lib/grafana/dashboards/loki-2
-       orgId: 1
-       type: file
-   ```
+```bash
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+helm install meta-monitoring grafana/meta-monitoring -n meta -f values.yaml
+```
 
-**To add add additional Prometheus rules:**
+or when upgrading the configuration:
+```bash
+helm upgrade meta-monitoring grafana/meta-monitoring -n meta -f values.yaml 
+```
 
-1. Modify the configuration file `values.yaml`:
+To verify the installation, run the following command:
 
-   ```yaml
-   monitoring:
-     rules:
-       additionalGroups:
-         - name: loki-rules
-           rules:
-             - record: job:loki_request_duration_seconds_bucket:sum_rate
-               expr: sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job)
-             - record: job_route:loki_request_duration_seconds_bucket:sum_rate
-               expr: sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job, route)
-             - record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate
-               expr: sum(rate(container_cpu_usage_seconds_total[1m])) by (node, namespace, pod, container)
-   ```
+```bash
+kubectl get pods -n meta
+```
+It should return the following pods:
+```bash
+grafana-59d664f55f-dtfqr                           1/1     Running   2 (2m7s ago)   137m
+loki-backend-0                                     2/2     Running   2 (2m7s ago)   137m
+loki-backend-1                                     2/2     Running   4 (2m7s ago)   137m
+loki-backend-2                                     2/2     Running   3 (2m7s ago)   137m
+loki-read-6f775d8c5-6t749                          1/1     Running   1 (2m7s ago)   137m
+loki-read-6f775d8c5-kdd8m                          1/1     Running   1 (2m7s ago)   137m
+loki-read-6f775d8c5-tsw2r                          1/1     Running   1 (2m7s ago)   137m
+loki-write-0                                       1/1     Running   1 (2m7s ago)   137m
+loki-write-1                                       1/1     Running   1 (2m7s ago)   137m
+loki-write-2                                       1/1     Running   1 (2m7s ago)   137m
+meta-alloy-0                                       2/2     Running   2 (2m7s ago)   137m
+meta-alloy-1                                       2/2     Running   2 (2m7s ago)   137m
+...
+```
+## Enable Loki Tracing
 
-**To disable monitoring:**
+By default, Loki does not have tracing enabled. To enable tracing, modify the Loki configuration by editing the `values.yaml` file and adding the following configuration:
 
-1. Modify the configuration file `values.yaml`:
+Set the `tracing.enabled` configuration to `true`:
+```yaml
+loki:
+  tracing:
+    enabled: true
+```
 
-   ```yaml
-   selfMonitoring:
-     enabled: false
+Next, instrument each of the Loki components to send traces to the meta-monitoring stack. Add the `extraEnv` configuration to each of the Loki components:
 
-   serviceMonitor:
-     enabled: false
-   ```
+```yaml
+ingester:
+  replicas: 3
+  extraEnv:
+    - name: JAEGER_ENDPOINT
+      value: "http://mmc-alloy-external.default.svc.cluster.local:14268/api/traces"
+      # This sets the Jaeger endpoint where traces will be sent.
+      # The endpoint points to the mmc-alloy service in the default namespace at port 14268.
+      
+    - name: JAEGER_AGENT_TAGS
+      value: 'cluster="prod",namespace="default"'
+      # This specifies additional tags to attach to each span.
+      # Here, the cluster is labeled as "prod" and the namespace as "default".
+      
+    - name: JAEGER_SAMPLER_TYPE
+      value: "ratelimiting"
+      # This sets the sampling strategy for traces.
+      # "ratelimiting" means that traces will be sampled at a fixed rate.
+      
+    - name: JAEGER_SAMPLER_PARAM
+      value: "1.0"
+      # This sets the parameter for the sampler.
+      # For ratelimiting, "1.0" typically means one trace per second.
+```
 
-**To use a remote Prometheus and Loki instance such as Grafana Cloud**
+## Install kube-state-metrics
 
-1. Create a `secrets.yaml` file with credentials to access the Grafana Cloud services:
+Metrics about Kubernetes objects are scraped from [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics). This needs to be installed in the cluster. The `kubeStateMetrics.endpoint` entry in the meta-monitoring `values.yaml` should be set to its address (without the `/metrics` part in the URL):
 
-   ```yaml
-   ---
-   apiVersion: v1
-   kind: Secret
-   metadata:
-     name: primary-credentials-metrics
-     namespace: default
-   stringData:
-     username: "<instance ID>"
-     password: "<API key>"
-   ---
-   apiVersion: v1
-   kind: Secret
-   metadata:
-     name: primary-credentials-logs
-     namespace: default
-   stringData:
-     username: "<instance ID>"
-     password: "<API key>"
-   ```
+```yaml
+kubeStateMetrics:
+  # Scrape https://github.com/kubernetes/kube-state-metrics by default
+  enabled: true
+  # This endpoint is created when the helm chart from
+  # https://artifacthub.io/packages/helm/prometheus-community/kube-state-metrics/
+  # is used. Change this if kube-state-metrics is installed somewhere else.
+  endpoint: kube-state-metrics.kube-state-metrics.svc.cluster.local:8080
+```
 
-2. Add the secret to Kubernetes with `kubectl create -f secret.yaml`.
+## Accessing the meta-monitoring stack
 
-3. Add a `remoteWrite` section to `serviceMonitor` in `values.yaml`:
+To access the meta-monitoring stack, you can use port-forwarding to access the Grafana dashboard. To do this, run the following command:
 
-   ```yaml
-   monitoring:
-   ...
-     serviceMonitor:
-       enabled: true
-       ...
-       metricsInstance:
-         remoteWrite:
-         - url: <metrics remote write endpoint>
-           basicAuth:
-             username:
-               name: primary-credentials-metrics
-               key: username
-             password:
-               name: primary-credentials-metrics
-               key: password
-   ```
+```bash
+kubectl port-forward -n meta svc/grafana 3000:3000
+```
 
-4. Add a client to `monitoring.selfMonitoring.logsInstance.clients`:
+## Dashboards and Rules
 
-   ```yaml
-   monitoring:
-   ---
-   selfMonitoring:
-     enabled: true
-     logsInstance:
-       clients:
-         - url: <logs remote write endpoint>
-           basicAuth:
-             username:
-               name: primary-credentials-logs
-               key: username
-             password:
-               name: primary-credentials-logs
-               key: password
-   lokiCanary:
-     enabled: false
-   ```
-
-5. Install the `Loki meta-motoring` connection on Grafana Cloud.
+The local meta-monitoring stack comes with a set of pre-configured dashboards and alerting rules. These can be accessed via
+[http://localhost:3000](http://localhost:3000) using the default credentials `admin` and `admin`.

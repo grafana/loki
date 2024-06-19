@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"fmt"
+	math "math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -16,8 +17,10 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -58,7 +61,9 @@ func TestPrepareShutdownMarkerPathNotSet(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
+	mockRing := mockReadRingWithOneActiveIngester()
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, mockRing)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -81,7 +86,9 @@ func TestPrepareShutdown(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -142,7 +149,9 @@ func TestIngester_GetStreamRates_Correctness(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -173,8 +182,9 @@ func BenchmarkGetStreamRatesAllocs(b *testing.B) {
 	store := &mockStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
+	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
 	require.NoError(b, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -198,7 +208,9 @@ func TestIngester(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -383,7 +395,9 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -803,7 +817,9 @@ func Test_InMemoryLabels(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -856,8 +872,9 @@ func TestIngester_GetDetectedLabels(t *testing.T) {
 	store := &mockStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
+	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -919,8 +936,9 @@ func TestIngester_GetDetectedLabelsWithQuery(t *testing.T) {
 	store := &mockStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
+	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -1286,8 +1304,9 @@ func TestStats(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
+	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
 	require.NoError(t, err)
 
 	i.instances["test"] = defaultInstance(t)
@@ -1313,8 +1332,9 @@ func TestVolume(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
+	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
 	require.NoError(t, err)
 
 	i.instances["test"] = defaultInstance(t)
@@ -1392,8 +1412,9 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 	t.Helper()
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
+	readRingMock := mockReadRingWithOneActiveIngester()
 
-	ing, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil)
+	ing, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
 	require.NoError(t, err)
 
 	listener := bufconn.Listen(1024 * 1024)
@@ -1471,4 +1492,151 @@ func jsonLine(ts int64, i int) string {
 		return fmt.Sprintf(`{"a":"b", "c":"d", "e":"f", "g":"h", "ts":"%d"}`, ts)
 	}
 	return fmt.Sprintf(`{"e":"f", "h":"i", "j":"k", "g":"h", "ts":"%d"}`, ts)
+}
+
+type readRingMock struct {
+	replicationSet          ring.ReplicationSet
+	getAllHealthyCallsCount int
+	tokenRangesByIngester   map[string]ring.TokenRanges
+}
+
+func (r *readRingMock) HealthyInstancesCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+func newReadRingMock(ingesters []ring.InstanceDesc, maxErrors int) *readRingMock {
+	return &readRingMock{
+		replicationSet: ring.ReplicationSet{
+			Instances: ingesters,
+			MaxErrors: maxErrors,
+		},
+	}
+}
+
+func (r *readRingMock) Describe(_ chan<- *prometheus.Desc) {
+}
+
+func (r *readRingMock) Collect(_ chan<- prometheus.Metric) {
+}
+
+func (r *readRingMock) Get(_ uint32, _ ring.Operation, _ []ring.InstanceDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
+func (r *readRingMock) ShuffleShard(_ string, size int) ring.ReadRing {
+	// pass by value to copy
+	return func(r readRingMock) *readRingMock {
+		r.replicationSet.Instances = r.replicationSet.Instances[:size]
+		return &r
+	}(*r)
+}
+
+func (r *readRingMock) BatchGet(_ []uint32, _ ring.Operation) ([]ring.ReplicationSet, error) {
+	return []ring.ReplicationSet{r.replicationSet}, nil
+}
+
+func (r *readRingMock) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, error) {
+	r.getAllHealthyCallsCount++
+	return r.replicationSet, nil
+}
+
+func (r *readRingMock) GetReplicationSetForOperation(_ ring.Operation) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
+func (r *readRingMock) ReplicationFactor() int {
+	return 1
+}
+
+func (r *readRingMock) InstancesCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) InstancesInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) InstancesWithTokensCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) InstancesWithTokensInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) ZonesCount() int {
+	return 1
+}
+
+func (r *readRingMock) Subring(_ uint32, _ int) ring.ReadRing {
+	return r
+}
+
+func (r *readRingMock) HasInstance(instanceID string) bool {
+	for _, ing := range r.replicationSet.Instances {
+		if ing.Addr != instanceID {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *readRingMock) ShuffleShardWithLookback(_ string, _ int, _ time.Duration, _ time.Time) ring.ReadRing {
+	return r
+}
+
+func (r *readRingMock) CleanupShuffleShardCache(_ string) {}
+
+func (r *readRingMock) GetInstanceState(_ string) (ring.InstanceState, error) {
+	return 0, nil
+}
+
+func (r *readRingMock) GetTokenRangesForInstance(instance string) (ring.TokenRanges, error) {
+	if r.tokenRangesByIngester != nil {
+		ranges, exists := r.tokenRangesByIngester[instance]
+		if !exists {
+			return nil, ring.ErrInstanceNotFound
+		}
+		return ranges, nil
+	}
+	tr := ring.TokenRanges{0, math.MaxUint32}
+	return tr, nil
+}
+
+func mockReadRingWithOneActiveIngester() *readRingMock {
+	return newReadRingMock([]ring.InstanceDesc{
+		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
+	}, 0)
+}
+
+func TestUpdateOwnedStreams(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	require.NoError(t, err)
+
+	i.instances["test"] = defaultInstance(t)
+
+	tt := time.Now().Add(-5 * time.Minute)
+	err = i.instances["test"].Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
+		// both label sets have FastFingerprint=e002a3a451262627
+		{Labels: "{app=\"l\",uniq0=\"0\",uniq1=\"1\"}", Entries: entries(5, tt.Add(time.Minute))},
+		{Labels: "{uniq0=\"1\",app=\"m\",uniq1=\"1\"}", Entries: entries(5, tt)},
+
+		// e002a3a451262247
+		{Labels: "{app=\"l\",uniq0=\"1\",uniq1=\"0\"}", Entries: entries(5, tt.Add(time.Minute))},
+		{Labels: "{uniq1=\"0\",app=\"m\",uniq0=\"0\"}", Entries: entries(5, tt)},
+
+		// e002a2a4512624f4
+		{Labels: "{app=\"l\",uniq0=\"0\",uniq1=\"0\"}", Entries: entries(5, tt.Add(time.Minute))},
+		{Labels: "{uniq0=\"1\",uniq1=\"0\",app=\"m\"}", Entries: entries(5, tt)},
+	}})
+	require.NoError(t, err)
+
+	// streams are pushed, let's check owned stream counts
+	ownedStreams := i.instances["test"].ownedStreamsSvc.getOwnedStreamCount()
+	require.Equal(t, 8, ownedStreams)
 }
