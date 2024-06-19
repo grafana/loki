@@ -35,7 +35,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/bloomcompactor"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -80,7 +79,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/limiter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/mempool"
 	"github.com/grafana/loki/v3/pkg/util/querylimits"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -523,6 +521,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		router.Path("/loki/api/v1/index/volume").Methods("GET", "POST").Handler(volumeHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/volume_range").Methods("GET", "POST").Handler(volumeRangeHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/patterns").Methods("GET", "POST").Handler(httpHandler)
+		router.Path("/loki/api/v1/explore/query_range").Methods("GET", "POST").Handler(httpHandler)
 
 		router.Path("/api/prom/query").Methods("GET", "POST").Handler(
 			middleware.Merge(
@@ -589,7 +588,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
 	}
 
-	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker)
+	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker, t.ring)
 	if err != nil {
 		return
 	}
@@ -731,19 +730,6 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 
 	reg := prometheus.DefaultRegisterer
 	bsCfg := t.Cfg.StorageConfig.BloomShipperConfig
-
-	// Set global BloomPageAllocator variable
-	switch bsCfg.MemoryManagement.BloomPageAllocationType {
-	case "simple":
-		bloomshipper.BloomPageAllocator = &v1.SimpleHeapAllocator{}
-	case "dynamic":
-		bloomshipper.BloomPageAllocator = v1.BloomPagePool
-	case "fixed":
-		bloomshipper.BloomPageAllocator = mempool.New("bloom-page-pool", bsCfg.MemoryManagement.BloomPageMemPoolBuckets, reg)
-	default:
-		// do nothing
-		bloomshipper.BloomPageAllocator = nil
-	}
 
 	var metasCache cache.Cache
 	if t.Cfg.isTarget(IndexGateway) && cache.IsCacheConfigured(bsCfg.MetasCache) {
@@ -1120,6 +1106,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/loki/api/v1/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/patterns").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/explore/query_range").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/detected_labels").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/detected_fields").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(frontendHandler)

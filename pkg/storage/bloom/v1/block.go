@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 )
 
 type BlockMetadata struct {
@@ -104,12 +103,10 @@ func (b *Block) Schema() (Schema, error) {
 }
 
 type BlockQuerier struct {
-	series *LazySeriesIter
+	*LazySeriesIter
 	blooms *LazyBloomIter
 
 	block *Block // ref to underlying block
-
-	cur *SeriesWithBloom
 }
 
 // NewBlockQuerier returns a new BlockQuerier for the given block.
@@ -117,11 +114,13 @@ type BlockQuerier struct {
 // will be returned to the pool for efficiency. This can only safely be used
 // when the underlying bloom bytes don't escape the decoder, i.e.
 // when loading blooms for querying (bloom-gw) but not for writing (bloom-compactor).
-func NewBlockQuerier(b *Block, alloc Allocator, maxPageSize int) *BlockQuerier {
+// When usePool is true, the bloom MUST NOT be captured by the caller. Rather,
+// it should be discarded before another call to Next().
+func NewBlockQuerier(b *Block, usePool bool, maxPageSize int) *BlockQuerier {
 	return &BlockQuerier{
-		block:  b,
-		series: NewLazySeriesIter(b),
-		blooms: NewLazyBloomIter(b, alloc, maxPageSize),
+		block:          b,
+		LazySeriesIter: NewLazySeriesIter(b),
+		blooms:         NewLazyBloomIter(b, usePool, maxPageSize),
 	}
 }
 
@@ -134,46 +133,77 @@ func (bq *BlockQuerier) Schema() (Schema, error) {
 }
 
 func (bq *BlockQuerier) Reset() error {
-	return bq.series.Seek(0)
-}
-
-func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {
-	return bq.series.Seek(fp)
-}
-
-func (bq *BlockQuerier) Next() bool {
-	for bq.series.Next() {
-		series := bq.series.At()
-		if skip := bq.blooms.LoadOffset(series.Offset); skip {
-			// can't seek to the desired bloom, likely because the page was too large to load
-			// so we skip this series and move on to the next
-			continue
-		}
-		if !bq.blooms.Next() {
-			return false
-		}
-		bloom := bq.blooms.At()
-		bq.cur = &SeriesWithBloom{
-			Series: &series.Series,
-			Bloom:  bloom,
-		}
-		return true
-	}
-	return false
-}
-
-func (bq *BlockQuerier) At() *SeriesWithBloom {
-	return bq.cur
+	return bq.LazySeriesIter.Seek(0)
 }
 
 func (bq *BlockQuerier) Err() error {
-	if err := bq.series.Err(); err != nil {
+	if err := bq.LazySeriesIter.Err(); err != nil {
 		return err
 	}
 
 	return bq.blooms.Err()
 }
 
-func (bq *BlockQuerier) Close() {
-	bq.blooms.Close()
+type BlockQuerierIter struct {
+	*BlockQuerier
+}
+
+// Iter returns a new BlockQuerierIter, which changes the iteration type to SeriesWithBlooms,
+// automatically loading the blooms for each series rather than requiring the caller to
+// turn the offset to a `Bloom` via `LoadOffset`
+func (bq *BlockQuerier) Iter() *BlockQuerierIter {
+	return &BlockQuerierIter{BlockQuerier: bq}
+}
+
+func (b *BlockQuerierIter) Next() bool {
+	return b.LazySeriesIter.Next()
+}
+
+func (b *BlockQuerierIter) At() *SeriesWithBlooms {
+	s := b.LazySeriesIter.At()
+	res := &SeriesWithBlooms{
+		Series: &s.Series,
+		Blooms: newOffsetsIter(b.blooms, s.Offsets),
+	}
+	return res
+}
+
+type offsetsIter struct {
+	blooms  *LazyBloomIter
+	offsets []BloomOffset
+	cur     int
+}
+
+func newOffsetsIter(blooms *LazyBloomIter, offsets []BloomOffset) *offsetsIter {
+	return &offsetsIter{
+		blooms:  blooms,
+		offsets: offsets,
+	}
+}
+
+func (it *offsetsIter) Next() bool {
+	for it.cur < len(it.offsets) {
+
+		if skip := it.blooms.LoadOffset(it.offsets[it.cur]); skip {
+			it.cur++
+			continue
+		}
+
+		it.cur++
+		return it.blooms.Next()
+
+	}
+	return false
+}
+
+func (it *offsetsIter) At() *Bloom {
+	return it.blooms.At()
+}
+
+func (it *offsetsIter) Err() error {
+	return it.blooms.Err()
+}
+
+func (it *offsetsIter) Remaining() int {
+	return len(it.offsets) - it.cur
 }

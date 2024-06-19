@@ -15,8 +15,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-var BloomPageAllocator v1.Allocator
-
 type CloseableBlockQuerier struct {
 	BlockRef
 	*v1.BlockQuerier
@@ -24,18 +22,17 @@ type CloseableBlockQuerier struct {
 }
 
 func (c *CloseableBlockQuerier) Close() error {
-	c.BlockQuerier.Close()
 	if c.close != nil {
 		return c.close()
 	}
 	return nil
 }
 
-func (c *CloseableBlockQuerier) SeriesIter() (v1.PeekingIterator[*v1.SeriesWithBloom], error) {
+func (c *CloseableBlockQuerier) SeriesIter() (v1.PeekingIterator[*v1.SeriesWithBlooms], error) {
 	if err := c.Reset(); err != nil {
 		return nil, err
 	}
-	return v1.NewPeekingIter[*v1.SeriesWithBloom](c.BlockQuerier), nil
+	return v1.NewPeekingIter[*v1.SeriesWithBlooms](c.BlockQuerier.Iter()), nil
 }
 
 func LoadBlocksDirIntoCache(paths []string, c Cache, logger log.Logger) error {
@@ -160,24 +157,15 @@ func (b *BlockDirectory) resolveSize() error {
 
 // BlockQuerier returns a new block querier from the directory.
 // The passed function `close` is called when the the returned querier is closed.
+
 func (b BlockDirectory) BlockQuerier(
 	usePool bool,
 	close func() error,
 	maxPageSize int,
 	metrics *v1.Metrics,
 ) *CloseableBlockQuerier {
-
-	var alloc v1.Allocator
-	if usePool && BloomPageAllocator != nil {
-		alloc = BloomPageAllocator
-	} else {
-		alloc = &v1.SimpleHeapAllocator{}
-	}
-
-	bq := v1.NewBlockQuerier(b.Block(metrics), alloc, maxPageSize)
-
 	return &CloseableBlockQuerier{
-		BlockQuerier: bq,
+		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), usePool, maxPageSize),
 		BlockRef:     b.BlockRef,
 		close:        close,
 	}

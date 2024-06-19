@@ -366,14 +366,6 @@ func newLineFilterExpr(ty log.LineMatchType, op, match string) *LineFilterExpr {
 func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 	right.Ty = left.Ty
 
-	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp || left.Ty == log.LineMatchPattern {
-		left.Or = right
-		right.IsOrChild = true
-		return left
-	}
-
-	// !(left or right) == (!left and !right).
-
 	// NOTE: Consider, we have chain of "or", != "foo" or "bar" or "baz"
 	// we parse from right to left, so first time left="bar", right="baz", and we don't know the actual `Ty` (equal: |=, notequal: !=, regex: |~, etc). So
 	// it will have default (0, LineMatchEqual).
@@ -385,6 +377,13 @@ func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 		tmp = tmp.Or
 	}
 
+	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp || left.Ty == log.LineMatchPattern {
+		left.Or = right
+		right.IsOrChild = true
+		return left
+	}
+
+	// !(left or right) == (!left and !right).
 	return newNestedLineFilterExpr(left, right)
 }
 

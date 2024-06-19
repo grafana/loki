@@ -7,10 +7,10 @@ type BloomQuerier interface {
 }
 
 type LazyBloomIter struct {
+	usePool bool
+
 	b *Block
 	m int // max page size in bytes
-
-	alloc Allocator
 
 	// state
 	initialized  bool
@@ -24,11 +24,11 @@ type LazyBloomIter struct {
 // will be returned to the pool for efficiency.
 // This can only safely be used when the underlying bloom
 // bytes don't escape the decoder.
-func NewLazyBloomIter(b *Block, alloc Allocator, maxSize int) *LazyBloomIter {
+func NewLazyBloomIter(b *Block, pool bool, maxSize int) *LazyBloomIter {
 	return &LazyBloomIter{
-		b:     b,
-		m:     maxSize,
-		alloc: alloc,
+		usePool: pool,
+		b:       b,
+		m:       maxSize,
 	}
 }
 
@@ -53,14 +53,16 @@ func (it *LazyBloomIter) LoadOffset(offset BloomOffset) (skip bool) {
 
 		// drop the current page if it exists and
 		// we're using the pool
-		it.curPage.Relinquish(it.alloc)
+		if it.curPage != nil && it.usePool {
+			it.curPage.Relinquish()
+		}
 
 		r, err := it.b.reader.Blooms()
 		if err != nil {
 			it.err = errors.Wrap(err, "getting blooms reader")
 			return false
 		}
-		decoder, skip, err := it.b.blooms.BloomPageDecoder(r, it.alloc, offset.Page, it.m, it.b.metrics)
+		decoder, skip, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.m, it.b.metrics)
 		if err != nil {
 			it.err = errors.Wrap(err, "loading bloom page")
 			return false
@@ -104,7 +106,6 @@ func (it *LazyBloomIter) next() bool {
 			var skip bool
 			it.curPage, skip, err = it.b.blooms.BloomPageDecoder(
 				r,
-				it.alloc,
 				it.curPageIndex,
 				it.m,
 				it.b.metrics,
@@ -129,8 +130,11 @@ func (it *LazyBloomIter) next() bool {
 
 			// we've exhausted the current page, progress to next
 			it.curPageIndex++
-			// drop the current page if it exists
-			it.curPage.Relinquish(it.alloc)
+			// drop the current page if it exists and
+			// we're using the pool
+			if it.usePool {
+				it.curPage.Relinquish()
+			}
 			it.curPage = nil
 			continue
 		}
@@ -156,8 +160,4 @@ func (it *LazyBloomIter) Err() error {
 		}
 		return nil
 	}
-}
-
-func (it *LazyBloomIter) Close() {
-	it.curPage.Relinquish(it.alloc)
 }

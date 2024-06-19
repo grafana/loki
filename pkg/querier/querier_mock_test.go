@@ -451,6 +451,22 @@ func (r *readRingMock) InstancesCount() int {
 	return len(r.replicationSet.Instances)
 }
 
+func (r *readRingMock) InstancesInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) InstancesWithTokensCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) InstancesWithTokensInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) ZonesCount() int {
+	return 1
+}
+
 func (r *readRingMock) Subring(_ uint32, _ int) ring.ReadRing {
 	return r
 }
@@ -624,6 +640,21 @@ func (q *querierMock) DetectedLabels(ctx context.Context, req *logproto.Detected
 	}
 
 	return resp.(*logproto.DetectedLabelsResponse), err
+}
+
+func (q *querierMock) SelectMetricSamples(
+	ctx context.Context,
+	req *logproto.QuerySamplesRequest,
+) (*logproto.QuerySamplesResponse, error) {
+	args := q.MethodCalled("SelectMetricSamples", ctx, req)
+
+	resp := args.Get(0)
+	err := args.Error(1)
+	if resp == nil {
+		return nil, err
+	}
+
+	return resp.(*logproto.QuerySamplesResponse), err
 }
 
 type engineMock struct {
