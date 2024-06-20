@@ -39,8 +39,8 @@ func (m *Manager) Log(tenantID string, err error) {
 		return
 	}
 
-	if !m.tenantCfgs.LimitedLogPushErrors(tenantID) &&
-		!m.tenantCfgs.LogDuplicateStreamInfo(tenantID) {
+	if !(m.tenantCfgs.LimitedLogPushErrors(tenantID) ||
+		m.tenantCfgs.LogDuplicateStreamInfo(tenantID)) {
 		return
 	}
 
