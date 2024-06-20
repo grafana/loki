@@ -56,9 +56,13 @@ type streamSegment struct {
 	maxt     int64
 }
 
+func (s *streamSegment) Reset() {
+	s.entries = s.entries[:0]
+}
+
 // NewWalSegmentWriter creates a new WalSegmentWriter.
 func NewWalSegmentWriter() (*SegmentWriter, error) {
-	idxWriter, err := index.NewWriter(context.TODO())
+	idxWriter, err := index.NewWriter()
 	if err != nil {
 		return nil, err
 	}
@@ -84,9 +88,9 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 			lbls = labels.NewBuilder(lbls).Set(tsdb.TenantLabel, tenantID).Labels()
 		}
 		s = streamSegmentPool.Get().(*streamSegment)
+		s.Reset()
 		s.lbls = lbls
 		s.tenantID = tenantID
-		s.entries = s.entries[:0]
 		s.maxt = entries[len(entries)-1].Timestamp.UnixNano()
 		s.entries = append(s.entries, entries...)
 		b.streams[id] = s

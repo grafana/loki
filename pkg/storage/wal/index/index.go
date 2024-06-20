@@ -118,8 +118,6 @@ type PostingsEncoder func(*encoding.Encbuf, []uint32) error
 // Writer implements the IndexWriter interface for the standard
 // serialization format.
 type Writer struct {
-	ctx context.Context
-
 	// For the main index file.
 	f *BufferWriter
 
@@ -197,9 +195,8 @@ func NewTOCFromByteSlice(bs ByteSlice) (*TOC, error) {
 
 // NewWriter returns a new Writer to the given filename. It serializes data in format version 2.
 // It uses the given encoder to encode each postings list.
-func NewWriterWithEncoder(ctx context.Context, encoder PostingsEncoder) (*Writer, error) {
+func NewWriterWithEncoder(encoder PostingsEncoder) (*Writer, error) {
 	iw := &Writer{
-		ctx:   ctx,
 		f:     NewBufferWriter(),
 		fP:    NewBufferWriter(),
 		fPO:   NewBufferWriter(),
@@ -222,8 +219,8 @@ func NewWriterWithEncoder(ctx context.Context, encoder PostingsEncoder) (*Writer
 
 // NewWriter creates a new index writer using the default encoder. See
 // NewWriterWithEncoder.
-func NewWriter(ctx context.Context) (*Writer, error) {
-	return NewWriterWithEncoder(ctx, EncodePostingsRaw)
+func NewWriter() (*Writer, error) {
+	return NewWriterWithEncoder(EncodePostingsRaw)
 }
 
 func (w *Writer) write(bufs ...[]byte) error {
@@ -272,12 +269,6 @@ func (w *Writer) Reset() error {
 // ensureStage handles transitions between write stages and ensures that IndexWriter
 // methods are called in an order valid for the implementation.
 func (w *Writer) ensureStage(s indexWriterStage) error {
-	select {
-	case <-w.ctx.Done():
-		return w.ctx.Err()
-	default:
-	}
-
 	if w.stage == s {
 		return nil
 	}
@@ -880,11 +871,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 				}
 			}
 		}
-		select {
-		case <-w.ctx.Done():
-			return w.ctx.Err()
-		default:
-		}
+
 	}
 	return nil
 }
