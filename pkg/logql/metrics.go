@@ -249,9 +249,9 @@ func RecordLabelQueryMetrics(
 	stats logql_stats.Result,
 ) {
 	var (
+		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeLabels
-		logger      = fixLogger(ctx, log)
 	)
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -303,9 +303,9 @@ func PrintMatches(matches []string) string {
 
 func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, match []string, status string, shards []string, stats logql_stats.Result) {
 	var (
+		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeSeries
-		logger      = fixLogger(ctx, log)
 	)
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -352,9 +352,9 @@ func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 
 func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, status string, stats logql_stats.Result) {
 	var (
+		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeStats
-		logger      = fixLogger(ctx, log)
 	)
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -394,9 +394,9 @@ func RecordShardsQueryMetrics(
 	stats logql_stats.Result,
 ) {
 	var (
+		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeShards
-		logger      = fixLogger(ctx, log)
 	)
 
 	// Tag throughput metric by latency type based on a threshold.
