@@ -1,11 +1,8 @@
 package chunks
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -13,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/wal/testdata"
 )
 
 func TestChunkReaderWriter(t *testing.T) {
@@ -121,11 +119,11 @@ func TestChunkReaderWriter(t *testing.T) {
 }
 
 func TestChunkReaderWriterWithLogGenerator(t *testing.T) {
-	filenames := testDataFile()
+	filenames := testdata.Files()
 
 	for _, filename := range filenames {
 		t.Run(filename, func(t *testing.T) {
-			gen := newLogGenerator(t, filename)
+			gen := testdata.NewLogGenerator(t, filename)
 			defer gen.Close()
 
 			var entries []*logproto.Entry
@@ -196,10 +194,10 @@ var (
 
 // Benchmark reads with log generator
 func BenchmarkReadChunkWithLogGenerator(b *testing.B) {
-	filenames := testDataFile()
+	filenames := testdata.Files()
 	for _, filename := range filenames {
 		b.Run(filename, func(b *testing.B) {
-			gen := newLogGenerator(b, filename)
+			gen := testdata.NewLogGenerator(b, filename)
 			defer gen.Close()
 
 			var entries []*logproto.Entry
@@ -239,12 +237,12 @@ func BenchmarkReadChunkWithLogGenerator(b *testing.B) {
 
 // Benchmark with log generator
 func BenchmarkWriteChunkWithLogGenerator(b *testing.B) {
-	filenames := testDataFile()
+	filenames := testdata.Files()
 
 	for _, filename := range filenames {
 		for _, count := range []int{1000, 10000, 100000} {
 			b.Run(fmt.Sprintf("%s-%d", filename, count), func(b *testing.B) {
-				gen := newLogGenerator(b, filename)
+				gen := testdata.NewLogGenerator(b, filename)
 				defer gen.Close()
 
 				var entries []*logproto.Entry
@@ -278,24 +276,6 @@ func BenchmarkWriteChunkWithLogGenerator(b *testing.B) {
 	}
 }
 
-func testDataFile() []string {
-	testdataDir := "../testdata"
-	files, err := os.ReadDir(testdataDir)
-	if err != nil {
-		panic(err)
-	}
-
-	var fileNames []string
-	for _, file := range files {
-		if !file.IsDir() {
-			filePath := filepath.Join(testdataDir, file.Name())
-			fileNames = append(fileNames, filePath)
-		}
-	}
-
-	return fileNames
-}
-
 // generateLogEntries generates a slice of logproto.Entry with the given count.
 func generateLogEntries(count int) []*logproto.Entry {
 	entries := make([]*logproto.Entry, count)
@@ -306,40 +286,4 @@ func generateLogEntries(count int) []*logproto.Entry {
 		}
 	}
 	return entries
-}
-
-type logGenerator struct {
-	f *os.File
-	s *bufio.Scanner
-}
-
-func (g *logGenerator) Next() (bool, []byte) {
-	if g.s.Scan() {
-		return true, g.s.Bytes()
-	}
-	g.reset()
-	return g.s.Scan(), g.s.Bytes()
-}
-
-func (g *logGenerator) Close() {
-	if g.f != nil {
-		g.f.Close()
-	}
-	g.f = nil
-}
-
-func (g *logGenerator) reset() {
-	_, _ = g.f.Seek(0, 0)
-	g.s = bufio.NewScanner(g.f)
-}
-
-func newLogGenerator(t testing.TB, filename string) *logGenerator {
-	t.Helper()
-	file, err := os.Open(filename)
-	require.NoError(t, err)
-
-	return &logGenerator{
-		f: file,
-		s: bufio.NewScanner(file),
-	}
 }
