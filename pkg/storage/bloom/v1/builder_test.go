@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
@@ -101,9 +102,9 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 				builder, err := NewBlockBuilder(blockOpts, tc.writer)
 
 				require.Nil(t, err)
-				itr := NewPeekingIter[SeriesWithBlooms](
-					NewMapIter(
-						NewSliceIter[SeriesWithLiteralBlooms](data),
+				itr := iter.NewPeekingIter[SeriesWithBlooms](
+					iter.NewMapIter(
+						iter.NewSliceIter[SeriesWithLiteralBlooms](data),
 						func(x SeriesWithLiteralBlooms) SeriesWithBlooms { return x.SeriesWithBlooms() },
 					),
 				)
@@ -132,7 +133,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 				for i := 0; i < len(processedData); i++ {
 					require.Equal(t, true, querier.Next(), "on iteration %d with error %v", i, querier.Err())
 					got := querier.At()
-					blooms, err := Collect(got.Blooms)
+					blooms, err := iter.Collect(got.Blooms)
 					require.Nil(t, err)
 					require.Equal(t, processedData[i].Series, got.Series)
 					for _, key := range keys[i] {
@@ -159,7 +160,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 					for j := 0; j < len(halfData); j++ {
 						require.Equal(t, true, querier.Next(), "on iteration %d", j)
 						got := querier.At()
-						blooms, err := Collect(got.Blooms)
+						blooms, err := iter.Collect(got.Blooms)
 						require.Nil(t, err)
 						require.Equal(t, halfData[j].Series, got.Series)
 						for _, key := range halfKeys[j] {
@@ -183,20 +184,20 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 	}
 }
 
-func dedupedBlocks(blocks []PeekingIterator[*SeriesWithBlooms]) Iterator[*SeriesWithBlooms] {
+func dedupedBlocks(blocks []iter.PeekingIterator[*SeriesWithBlooms]) iter.Iterator[*SeriesWithBlooms] {
 	orderedBlocks := NewHeapIterForSeriesWithBloom(blocks...)
-	return NewDedupingIter[*SeriesWithBlooms](
+	return iter.NewDedupingIter[*SeriesWithBlooms](
 		func(a *SeriesWithBlooms, b *SeriesWithBlooms) bool {
 			return a.Series.Fingerprint == b.Series.Fingerprint
 		},
-		Identity[*SeriesWithBlooms],
+		iter.Identity[*SeriesWithBlooms],
 		func(a *SeriesWithBlooms, b *SeriesWithBlooms) *SeriesWithBlooms {
 			if len(a.Series.Chunks) > len(b.Series.Chunks) {
 				return a
 			}
 			return b
 		},
-		NewPeekingIter[*SeriesWithBlooms](orderedBlocks),
+		iter.NewPeekingIter[*SeriesWithBlooms](orderedBlocks),
 	)
 }
 
@@ -205,7 +206,7 @@ func TestMergeBuilder(t *testing.T) {
 
 	nBlocks := 10
 	numSeries := 100
-	blocks := make([]PeekingIterator[*SeriesWithBlooms], 0, nBlocks)
+	blocks := make([]iter.PeekingIterator[*SeriesWithBlooms], 0, nBlocks)
 	data, _ := MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 	blockOpts := BlockOptions{
 		Schema: Schema{
@@ -237,14 +238,14 @@ func TestMergeBuilder(t *testing.T) {
 		)
 
 		require.Nil(t, err)
-		itr := NewSliceIter[SeriesWithBlooms](data[min:max])
+		itr := iter.NewSliceIter[SeriesWithBlooms](data[min:max])
 		_, err = builder.BuildFrom(itr)
 		require.Nil(t, err)
-		blocks = append(blocks, NewPeekingIter[*SeriesWithBlooms](NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()))
+		blocks = append(blocks, iter.NewPeekingIter[*SeriesWithBlooms](NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()))
 	}
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation) {
+	pop := func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation) {
 		for srcBlooms.Next() {
 			bloom := srcBlooms.At()
 			ch <- &BloomCreation{
@@ -257,8 +258,8 @@ func TestMergeBuilder(t *testing.T) {
 
 	// storage should contain references to all the series we ingested,
 	// regardless of block allocation/overlap.
-	storeItr := NewMapIter[SeriesWithBlooms, *Series](
-		NewSliceIter[SeriesWithBlooms](data),
+	storeItr := iter.NewMapIter[SeriesWithBlooms, *Series](
+		iter.NewSliceIter[SeriesWithBlooms](data),
 		func(swb SeriesWithBlooms) *Series {
 			return swb.Series
 		},
@@ -288,7 +289,7 @@ func TestMergeBuilder(t *testing.T) {
 		func(a, b *SeriesWithBlooms) {
 			require.Equal(t, a.Series, b.Series, "expected %+v, got %+v", a, b)
 		},
-		NewSliceIter[*SeriesWithBlooms](PointerSlice(data)),
+		iter.NewSliceIter[*SeriesWithBlooms](PointerSlice(data)),
 		querier.Iter(),
 	)
 }
@@ -352,7 +353,7 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 	}
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation) {
+	pop := func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation) {
 		ch <- &BloomCreation{
 			Bloom: &Bloom{
 				ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
@@ -363,8 +364,8 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 
 	require.Nil(t, err)
 	mergeBuilder := NewMergeBuilder(
-		NewEmptyIter[*SeriesWithBlooms](),
-		NewSliceIter(data),
+		iter.NewEmptyIter[*SeriesWithBlooms](),
+		iter.NewSliceIter(data),
 		pop,
 		NewMetrics(nil),
 	)
@@ -414,7 +415,7 @@ func TestBlockReset(t *testing.T) {
 	)
 
 	require.Nil(t, err)
-	itr := NewSliceIter[SeriesWithBlooms](data)
+	itr := iter.NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 	block := NewBlock(reader, NewMetrics(nil))
@@ -479,7 +480,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 			require.Nil(t, err)
 			// each set of copies gets a different slice of the data
 			minIdx, maxIdx := i*len(xs)/len(sets), (i+1)*len(xs)/len(sets)
-			itr := NewSliceIter[SeriesWithBlooms](xs[minIdx:maxIdx])
+			itr := iter.NewSliceIter[SeriesWithBlooms](xs[minIdx:maxIdx])
 			_, err = builder.BuildFrom(itr)
 			require.Nil(t, err)
 			block := NewBlock(reader, NewMetrics(nil))
@@ -497,16 +498,16 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 	// we keep 2 copies of the data as iterators. One for the blocks, and one for the "store"
 	// which will force it to reference the same series
-	var blocks []PeekingIterator[*SeriesWithBlooms]
-	var store []PeekingIterator[*SeriesWithBlooms]
+	var blocks []iter.PeekingIterator[*SeriesWithBlooms]
+	var store []iter.PeekingIterator[*SeriesWithBlooms]
 
 	for _, x := range data {
-		blocks = append(blocks, NewPeekingIter[*SeriesWithBlooms](NewSliceIter[*SeriesWithBlooms](x)))
-		store = append(store, NewPeekingIter[*SeriesWithBlooms](NewSliceIter[*SeriesWithBlooms](x)))
+		blocks = append(blocks, iter.NewPeekingIter[*SeriesWithBlooms](iter.NewSliceIter[*SeriesWithBlooms](x)))
+		store = append(store, iter.NewPeekingIter[*SeriesWithBlooms](iter.NewSliceIter[*SeriesWithBlooms](x)))
 	}
 
 	orderedStore := NewHeapIterForSeriesWithBloom(store...)
-	dedupedStore := NewDedupingIter[*SeriesWithBlooms, *Series](
+	dedupedStore := iter.NewDedupingIter[*SeriesWithBlooms, *Series](
 		func(a *SeriesWithBlooms, b *Series) bool {
 			return a.Series.Fingerprint == b.Fingerprint
 		},
@@ -519,11 +520,11 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 			}
 			return b
 		},
-		NewPeekingIter[*SeriesWithBlooms](orderedStore),
+		iter.NewPeekingIter[*SeriesWithBlooms](orderedStore),
 	)
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation) {
+	pop := func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation) {
 		for srcBlooms.Next() {
 			bloom := srcBlooms.At()
 			ch <- &BloomCreation{
@@ -554,7 +555,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	// ensure the new block contains one copy of all the data
 	// by comparing it against an iterator over the source data
 	mergedBlockQuerier := NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize)
-	sourceItr := NewSliceIter[*SeriesWithBlooms](PointerSlice[SeriesWithBlooms](xs))
+	sourceItr := iter.NewSliceIter[*SeriesWithBlooms](PointerSlice[SeriesWithBlooms](xs))
 
 	EqualIterators[*SeriesWithBlooms](
 		t,

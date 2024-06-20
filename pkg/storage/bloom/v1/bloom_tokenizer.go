@@ -273,11 +273,11 @@ type entryIterAdapter struct {
 }
 
 func (a entryIterAdapter) At() logproto.Entry {
-	return a.EntryIterator.Entry()
+	return a.EntryIterator.At()
 }
 
 func (a entryIterAdapter) Err() error {
-	return a.EntryIterator.Error()
+	return a.EntryIterator.Err()
 }
 
 func newPeekingEntryIterAdapter(itr iter.EntryIterator) *v2iter.PeekIter[logproto.Entry] {

@@ -126,7 +126,7 @@ func Benchmark_store_SelectSample(b *testing.B) {
 				}
 
 				for iter.Next() {
-					_ = iter.Sample()
+					_ = iter.At()
 					sampleCount++
 				}
 				iter.Close()
@@ -168,7 +168,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 		for iter.Next() {
 			j++
 			printHeap(b, false)
-			res = append(res, iter.Entry())
+			res = append(res, iter.At())
 			// limit result like the querier would do.
 			if j == query.Limit {
 				break
@@ -928,7 +928,7 @@ func Test_PipelineWrapper(t *testing.T) {
 	}
 	defer logit.Close()
 	for logit.Next() {
-		require.NoError(t, logit.Error()) // consume the iterator
+		require.NoError(t, logit.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "test-user", wrapper.tenant)
@@ -959,7 +959,7 @@ func Test_PipelineWrapper_disabled(t *testing.T) {
 	}
 	defer logit.Close()
 	for logit.Next() {
-		require.NoError(t, logit.Error()) // consume the iterator
+		require.NoError(t, logit.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "", wrapper.tenant)
@@ -1044,7 +1044,7 @@ func Test_SampleWrapper(t *testing.T) {
 	}
 	defer it.Close()
 	for it.Next() {
-		require.NoError(t, it.Error()) // consume the iterator
+		require.NoError(t, it.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "test-user", wrapper.tenant)
@@ -1074,7 +1074,7 @@ func Test_SampleWrapper_disabled(t *testing.T) {
 	}
 	defer it.Close()
 	for it.Next() {
-		require.NoError(t, it.Error()) // consume the iterator
+		require.NoError(t, it.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "", wrapper.tenant)
@@ -1656,13 +1656,13 @@ func Test_OverlappingChunks(t *testing.T) {
 	}
 	defer it.Close()
 	require.True(t, it.Next())
-	require.Equal(t, "4", it.Entry().Line)
+	require.Equal(t, "4", it.At().Line)
 	require.True(t, it.Next())
-	require.Equal(t, "3", it.Entry().Line)
+	require.Equal(t, "3", it.At().Line)
 	require.True(t, it.Next())
-	require.Equal(t, "2", it.Entry().Line)
+	require.Equal(t, "2", it.At().Line)
 	require.True(t, it.Next())
-	require.Equal(t, "1", it.Entry().Line)
+	require.Equal(t, "1", it.At().Line)
 	require.False(t, it.Next())
 }
 
@@ -2094,7 +2094,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 					},
 				}
 			}
-			require.Equal(t, expectedEntry, it.Entry())
+			require.Equal(t, expectedEntry, it.At())
 		}
 
 		require.False(t, it.Next())

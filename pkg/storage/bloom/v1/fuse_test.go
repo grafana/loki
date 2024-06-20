@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
@@ -31,8 +32,8 @@ type fakeNgramBuilder struct{}
 func (f fakeNgramBuilder) N() int          { return 4 }
 func (f fakeNgramBuilder) SkipFactor() int { return 0 }
 
-func (f fakeNgramBuilder) Tokens(line string) Iterator[[]byte] {
-	return NewSliceIter[[]byte]([][]byte{[]byte(line)})
+func (f fakeNgramBuilder) Tokens(line string) v2.Iterator[[]byte] {
+	return v2.NewSliceIter[[]byte]([][]byte{[]byte(line)})
 }
 
 func keysToBloomTest(keys [][]byte) BloomTest {
@@ -66,7 +67,7 @@ func TestFusedQuerier(t *testing.T) {
 		writer,
 	)
 	require.Nil(t, err)
-	itr := NewSliceIter[SeriesWithBlooms](data)
+	itr := v2.NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.NoError(t, err)
 	require.False(t, itr.Next())
@@ -95,9 +96,9 @@ func TestFusedQuerier(t *testing.T) {
 		resChans = append(resChans, ch)
 	}
 
-	var itrs []PeekingIterator[Request]
+	var itrs []v2.PeekingIterator[Request]
 	for _, reqs := range inputs {
-		itrs = append(itrs, NewPeekingIter[Request](NewSliceIter[Request](reqs)))
+		itrs = append(itrs, v2.NewPeekingIter[Request](v2.NewSliceIter[Request](reqs)))
 	}
 
 	resps := make([][]Output, nReqs)
@@ -189,10 +190,10 @@ func TestFuseMultiPage(t *testing.T) {
 	b2.Add(key2)
 	b2.Add(append(buf[:prefixLn], key2...))
 
-	_, err = builder.BuildFrom(NewSliceIter([]SeriesWithBlooms{
+	_, err = builder.BuildFrom(v2.NewSliceIter([]SeriesWithBlooms{
 		{
 			series,
-			NewSliceIter([]*Bloom{
+			v2.NewSliceIter([]*Bloom{
 				b1, b2,
 			}),
 		},
@@ -231,8 +232,8 @@ func TestFuseMultiPage(t *testing.T) {
 	}
 
 	fused := querier.Fuse(
-		[]PeekingIterator[Request]{
-			NewPeekingIter(NewSliceIter(reqs)),
+		[]v2.PeekingIterator[Request]{
+			v2.NewPeekingIter(v2.NewSliceIter(reqs)),
 		},
 		log.NewNopLogger(),
 	)
@@ -300,7 +301,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 
 		data = append(data, SeriesWithBlooms{
 			Series: &series,
-			Blooms: NewSliceIter([]*Bloom{&bloom}),
+			Blooms: v2.NewSliceIter([]*Bloom{&bloom}),
 		})
 	}
 
@@ -316,7 +317,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 		writer,
 	)
 	require.Nil(t, err)
-	itr := NewSliceIter[SeriesWithBlooms](data)
+	itr := v2.NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.NoError(t, err)
 	require.False(t, itr.Next())
@@ -375,7 +376,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 		writer,
 	)
 	require.Nil(b, err)
-	itr := NewSliceIter[SeriesWithBlooms](data)
+	itr := v2.NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(b, err)
 	block := NewBlock(reader, NewMetrics(nil))
@@ -432,12 +433,12 @@ func BenchmarkBlockQuerying(b *testing.B) {
 			))
 		}()
 
-		var itrs []PeekingIterator[Request]
+		var itrs []v2.PeekingIterator[Request]
 
 		for i := 0; i < b.N; i++ {
 			itrs = itrs[:0]
 			for _, reqs := range requestChains {
-				itrs = append(itrs, NewPeekingIter[Request](NewSliceIter[Request](reqs)))
+				itrs = append(itrs, v2.NewPeekingIter[Request](v2.NewSliceIter[Request](reqs)))
 			}
 			fused := querier.Fuse(itrs, log.NewNopLogger())
 			_ = fused.Run()

@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -103,9 +104,9 @@ func TestTask_RequestIterator(t *testing.T) {
 
 		tasks := createTasksForRequests(t, tenant, r1, r2, r3)
 
-		iters := make([]v1.PeekingIterator[v1.Request], 0, len(tasks))
+		iters := make([]v2.PeekingIterator[v1.Request], 0, len(tasks))
 		for _, task := range tasks {
-			iters = append(iters, v1.NewPeekingIter(task.RequestIter(tokenizer)))
+			iters = append(iters, v2.NewPeekingIter(task.RequestIter(tokenizer)))
 		}
 
 		// merge the request iterators using the heap sort iterator
