@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -63,20 +65,20 @@ func newMockBloomStoreWithWorkDir(t *testing.T, workDir, storeDir string) (*Bloo
 			DownloadParallelism: 1,
 			BlocksCache: config.BlocksCacheConfig{
 				SoftLimit:     1 << 20,
-				HardLimit:     2 << 20,
+				HardLimit:     5 << 20,
 				TTL:           time.Hour,
 				PurgeInterval: time.Hour,
 			},
 		},
 	}
 
+	logger := log.NewNopLogger()
 	reg := prometheus.NewPedanticRegistry()
 	metrics := storage.NewClientMetrics()
 	t.Cleanup(metrics.Unregister)
-	logger := log.NewLogfmtLogger(os.Stderr)
 
 	metasCache := cache.NewMockCache()
-	blocksCache := NewFsBlocksCache(storageConfig.BloomShipperConfig.BlocksCache, prometheus.NewPedanticRegistry(), logger)
+	blocksCache := NewFsBlocksCache(storageConfig.BloomShipperConfig.BlocksCache, reg, logger)
 	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, reg, logger)
 	if err == nil {
 		t.Cleanup(store.Stop)
@@ -113,6 +115,9 @@ func createBlockInStorage(t *testing.T, store *BloomStore, tenant string, start 
 	blockWriter := v1.NewDirectoryBlockWriter(tmpDir)
 	err := blockWriter.Init()
 	require.NoError(t, err)
+	w, err := blockWriter.Blooms()
+	require.NoError(t, err)
+	_, _ = w.Write(make([]byte, 1<<18)) // write 256KiB
 
 	err = v1.TarGz(fp, v1.NewDirectoryBlockReader(tmpDir))
 	require.NoError(t, err)
@@ -500,5 +505,51 @@ func TestBloomStore_SortBlocks(t *testing.T) {
 		} else {
 			require.Nil(t, nil, bqs[i])
 		}
+	}
+}
+
+func TestBloomStore_CacheSoftLimit(t *testing.T) {
+	for _, async := range []bool{true, false} {
+		t.Run(fmt.Sprintf("async=%v", async), func(t *testing.T) {
+			// store has a soft limit of 5MB
+			store, _, err := newMockBloomStore(t)
+			require.NoError(t, err)
+
+			n, m := 16, 0x1000
+			blocks := make([]BlockRef, 0, n)
+			for i := 0; i < n; i++ {
+				block, _ := createBlockInStorage(t, store, "tenant", model.Now(), model.Fingerprint(i*m), model.Fingerprint((i+1)*m-1))
+				blocks = append(blocks, block.BlockRef)
+			}
+
+			var wg sync.WaitGroup
+			for i := 0; i < 100; i++ {
+				wg.Add(1)
+
+				// make copy of original slice so we can shuffle it
+				dst := make([]BlockRef, len(blocks))
+				_ = copy(dst, blocks)
+				rand.Shuffle(len(dst), func(i, j int) {
+					dst[i], dst[j] = dst[j], dst[i]
+				})
+
+				go func(refs []BlockRef) {
+					defer wg.Done()
+
+					results, err := store.FetchBlocks(context.Background(), refs, WithFetchAsync(async))
+					require.NoError(t, err)
+					for _, res := range results {
+						if res == nil {
+							continue
+						}
+						time.Sleep(5 * time.Millisecond)
+						res.Close()
+					}
+
+				}(dst)
+			}
+
+			wg.Wait()
+		})
 	}
 }
