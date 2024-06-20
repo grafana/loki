@@ -13,6 +13,7 @@ import (
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 type CloseableBlockQuerier struct {
@@ -22,6 +23,7 @@ type CloseableBlockQuerier struct {
 }
 
 func (c *CloseableBlockQuerier) Close() error {
+	c.BlockQuerier.Close()
 	if c.close != nil {
 		return c.close()
 	}
@@ -157,15 +159,14 @@ func (b *BlockDirectory) resolveSize() error {
 
 // BlockQuerier returns a new block querier from the directory.
 // The passed function `close` is called when the the returned querier is closed.
-
 func (b BlockDirectory) BlockQuerier(
-	usePool bool,
+	alloc mempool.Allocator,
 	close func() error,
 	maxPageSize int,
 	metrics *v1.Metrics,
 ) *CloseableBlockQuerier {
 	return &CloseableBlockQuerier{
-		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), usePool, maxPageSize),
+		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), alloc, maxPageSize),
 		BlockRef:     b.BlockRef,
 		close:        close,
 	}

@@ -33,11 +33,12 @@ const (
 	nameLabel = "__name__"
 	logsValue = "logs"
 
-	flushReasonIdle   = "idle"
-	flushReasonMaxAge = "max_age"
-	flushReasonForced = "forced"
-	flushReasonFull   = "full"
-	flushReasonSynced = "synced"
+	flushReasonIdle     = "idle"
+	flushReasonMaxAge   = "max_age"
+	flushReasonForced   = "forced"
+	flushReasonNotOwned = "not_owned"
+	flushReasonFull     = "full"
+	flushReasonSynced   = "synced"
 )
 
 // Note: this is called both during the WAL replay (zero or more times)
@@ -124,7 +125,7 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 
 	lastChunk := stream.chunks[len(stream.chunks)-1]
 	shouldFlush, _ := i.shouldFlushChunk(&lastChunk)
-	if len(stream.chunks) == 1 && !immediate && !shouldFlush {
+	if len(stream.chunks) == 1 && !immediate && !shouldFlush && !instance.ownedStreamsSvc.isStreamNotOwned(stream.fp) {
 		return
 	}
 
@@ -217,10 +218,14 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 
 	stream.chunkMtx.Lock()
 	defer stream.chunkMtx.Unlock()
+	notOwnedStream := instance.ownedStreamsSvc.isStreamNotOwned(fp)
 
 	var result []*chunkDesc
 	for j := range stream.chunks {
 		shouldFlush, reason := i.shouldFlushChunk(&stream.chunks[j])
+		if !shouldFlush && notOwnedStream {
+			shouldFlush, reason = true, flushReasonNotOwned
+		}
 		if immediate || shouldFlush {
 			// Ensure no more writes happen to this chunk.
 			if !stream.chunks[j].closed {

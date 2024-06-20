@@ -316,6 +316,17 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.flush-check-period
   [flush_check_period: <duration> | default = 30s]
 
+  # Configures the metric aggregation and storage behavior of the pattern
+  # ingester.
+  metric_aggregation:
+    # Whether the pattern ingester metric aggregation is enabled.
+    # CLI flag: -pattern-ingester.metric-aggregation.enabled
+    [enabled: <boolean> | default = false]
+
+    # Whether to log push observations.
+    # CLI flag: -pattern-ingester.metric-aggregation.log-push-observations
+    [log_push_observations: <boolean> | default = false]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -4241,9 +4252,10 @@ storage:
 # CLI flag: -ruler.alertmanager-refresh-interval
 [alertmanager_refresh_interval: <duration> | default = 1m]
 
-# If enabled requests to Alertmanager will utilize the V2 API.
+# Use Alertmanager APIv2. APIv1 was deprecated in Alertmanager 0.16.0 and is
+# removed as of 0.27.0.
 # CLI flag: -ruler.alertmanager-use-v2
-[enable_alertmanager_v2: <boolean> | default = false]
+[enable_alertmanager_v2: <boolean> | default = true]
 
 # List of alert relabel configs.
 [alert_relabel_configs: <relabel_config...>]

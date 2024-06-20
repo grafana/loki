@@ -357,7 +357,8 @@ func (i *instance) onStreamCreated(s *stream) {
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
-	i.ownedStreamsSvc.incOwnedStreamCount()
+	// we count newly created stream as owned
+	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true)
 	if i.configs.LogStreamCreation(i.instanceID) {
 		level.Debug(util_log.Logger).Log(
 			"msg", "successfully created stream",
@@ -421,7 +422,7 @@ func (i *instance) removeStream(s *stream) {
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
 		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		streamsCountStats.Add(-1)
-		i.ownedStreamsSvc.decOwnedStreamCount()
+		i.ownedStreamsSvc.trackRemovedStream(s.fp)
 	}
 }
 
@@ -1181,11 +1182,7 @@ func (i *instance) updateOwnedStreams(ownedTokenRange ring.TokenRanges) error {
 	i.streams.WithLock(func() {
 		i.ownedStreamsSvc.resetStreamCounts()
 		err = i.streams.ForEach(func(s *stream) (bool, error) {
-			if ownedTokenRange.IncludesKey(uint32(s.fp)) {
-				i.ownedStreamsSvc.incOwnedStreamCount()
-			} else {
-				i.ownedStreamsSvc.incNotOwnedStreamCount()
-			}
+			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedTokenRange.IncludesKey(uint32(s.fp)))
 			return true, nil
 		})
 	})
