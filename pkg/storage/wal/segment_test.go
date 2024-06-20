@@ -273,7 +273,7 @@ func TestReset(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, n > 0)
 
-	copy := bytes.NewBuffer(nil)
+	copyBuffer := bytes.NewBuffer(nil)
 
 	w.Reset()
 	w.Append("tenant", "foo", labels.FromStrings("container", "foo", "namespace", "dev"), []*push.Entry{
@@ -282,11 +282,11 @@ func TestReset(t *testing.T) {
 		{Timestamp: time.Unix(2, 0), Line: "Entry 3"},
 	})
 
-	n, err = w.WriteTo(copy)
+	n, err = w.WriteTo(copyBuffer)
 	require.NoError(t, err)
 	require.True(t, n > 0)
 
-	require.Equal(t, dst.Bytes(), copy.Bytes())
+	require.Equal(t, dst.Bytes(), copyBuffer.Bytes())
 }
 
 func BenchmarkWrites(b *testing.B) {
