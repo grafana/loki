@@ -4,6 +4,10 @@ menuTitle: Loki quickstart
 weight: 200
 description: How to create and use a local Loki cluster for testing and evaluation purposes.
 killercoda:
+  preprocessing:
+    substitutions:
+      - regexp: evaluate-loki-([^-]+)-
+        replacement: evaluate-loki_${1}_
   title: Loki Quickstart Demo
   description: This sandbox provides an online enviroment for testing the Loki quickstart demo.
   details:
