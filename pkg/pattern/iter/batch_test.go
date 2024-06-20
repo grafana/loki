@@ -1,6 +1,7 @@
 package iter
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -211,6 +212,12 @@ func TestReadMetricsBatch(t *testing.T) {
 			it := NewSumMergeSampleIterator(tt.seriesIter)
 			got, err := ReadMetricsBatch(it, tt.batchSize, log.NewNopLogger())
 			require.NoError(t, err)
+			sort.Slice(tt.expected.Series, func(i, j int) bool {
+				return tt.expected.Series[i].Labels < tt.expected.Series[j].Labels
+			})
+			sort.Slice(got.Series, func(i, j int) bool {
+				return got.Series[i].Labels < got.Series[j].Labels
+			})
 			require.Equal(t, tt.expected.Series, got.Series)
 		})
 	}
