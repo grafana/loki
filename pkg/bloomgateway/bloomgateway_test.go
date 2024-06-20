@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -92,7 +93,7 @@ func setupBloomStore(t *testing.T) *bloomshipper.BloomStore {
 
 	reg := prometheus.NewRegistry()
 	blocksCache := bloomshipper.NewFsBlocksCache(storageCfg.BloomShipperConfig.BlocksCache, nil, logger)
-	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, nil, blocksCache, reg, logger)
+	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, nil, blocksCache, &mempool.SimpleHeapAllocator{}, reg, logger)
 	require.NoError(t, err)
 	t.Cleanup(store.Stop)
 

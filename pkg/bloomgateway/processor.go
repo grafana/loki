@@ -88,7 +88,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		// after iteration for performance (alloc reduction).
 		// This is safe to do here because we do not capture
 		// the underlying bloom []byte outside of iteration
-		bloomshipper.WithPool(true),
+		bloomshipper.WithPool(p.store.Allocator()),
 	)
 	duration = time.Since(startBlocks)
 	level.Debug(p.logger).Log("msg", "fetched blocks", "count", len(refs), "duration", duration, "err", err)

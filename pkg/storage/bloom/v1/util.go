@@ -8,7 +8,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/prometheus/prometheus/util/pool"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 type Version byte
@@ -44,35 +44,8 @@ var (
 
 	// buffer pool for series pages
 	// 1KB 2KB 4KB 8KB 16KB 32KB 64KB 128KB
-	SeriesPagePool = BytePool{
-		pool: pool.New(
-			1<<10, 128<<10, 2,
-			func(size int) interface{} {
-				return make([]byte, size)
-			}),
-	}
-
-	// buffer pool for bloom pages
-	// 128KB 256KB 512KB 1MB 2MB 4MB 8MB 16MB 32MB 64MB 128MB
-	BloomPagePool = BytePool{
-		pool: pool.New(
-			128<<10, 128<<20, 2,
-			func(size int) interface{} {
-				return make([]byte, size)
-			}),
-	}
+	SeriesPagePool = mempool.NewBytePoolAllocator(1<<10, 128<<10, 2)
 )
-
-type BytePool struct {
-	pool *pool.Pool
-}
-
-func (p *BytePool) Get(size int) []byte {
-	return p.pool.Get(size).([]byte)[:0]
-}
-func (p *BytePool) Put(b []byte) {
-	p.pool.Put(b)
-}
 
 func newCRC32() hash.Hash32 {
 	return crc32.New(castagnoliTable)
