@@ -231,7 +231,7 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			Buckets: prometheus.ExponentialBuckets(0.01, 4, 6),
 		}),
 		chunksFlushFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
+			Namespace: "loki",
 			Name:      "ingester_chunks_flush_failures_total",
 			Help:      "Total number of flush failures.",
 		}),
