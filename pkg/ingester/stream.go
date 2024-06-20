@@ -351,16 +351,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 			continue
 		}
 		if dup {
-			if s.configs != nil {
-				if s.configs.LogDuplicateMetrics(s.tenant) {
-					s.metrics.duplicateLogBytesTotal.WithLabelValues(s.tenant).Add(float64(len(entries[i].Line)))
-				}
-				if s.configs.LogDuplicateStreamInfo(s.tenant) {
-					errMsg := fmt.Sprintf("duplicate log entry at timestamp %s for stream %s", entries[i].Timestamp.Format(time.RFC3339), s.labelsString)
-					dupErr := errors.New(errMsg)
-					s.writeFailures.Log(s.tenant, dupErr)
-				}
-			}
+			s.handleLoggingOfDuplicateEntry(entries[i])
 		}
 
 		s.entryCt++
@@ -375,6 +366,19 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 	}
 	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, 0, 0, usageTracker)
 	return bytesAdded, storedEntries, invalid
+}
+
+func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
+	if s.configs != nil {
+		if s.configs.LogDuplicateMetrics(s.tenant) {
+			s.metrics.duplicateLogBytesTotal.WithLabelValues(s.tenant).Add(float64(len(entry.Line)))
+		}
+		if s.configs.LogDuplicateStreamInfo(s.tenant) {
+			errMsg := fmt.Sprintf("duplicate log entry at timestamp %s for stream %s", entry.Timestamp.Format(time.RFC3339), s.labelsString)
+			dupErr := errors.New(errMsg)
+			s.writeFailures.Log(s.tenant, dupErr)
+		}
+	}
 }
 
 func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker) ([]logproto.Entry, []entryWithError) {
