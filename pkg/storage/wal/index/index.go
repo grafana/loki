@@ -242,6 +242,33 @@ func (w *Writer) Buffer() ([]byte, io.Closer, error) {
 	return w.f.Buffer()
 }
 
+func (w *Writer) Reset() error {
+	w.f.Reset()
+	w.fP.Reset()
+	w.fPO.Reset()
+	w.buf1.Reset()
+	w.buf2.Reset()
+	w.stage = idxStageNone
+	w.toc = TOC{}
+	w.postingsStart = 0
+	w.numSymbols = 0
+	w.symbols = nil
+	w.symbolFile = nil
+	w.lastSymbol = ""
+	w.symbolCache = make(map[string]symbolCacheEntry, 1<<8)
+	w.labelIndexes = w.labelIndexes[:0]
+	w.labelNames = make(map[string]uint64, 1<<8)
+	w.lastSeries = nil
+	w.lastSeriesRef = 0
+	w.lastChunkRef = 0
+	w.cntPO = 0
+	w.crc32.Reset()
+	if err := w.writeMeta(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // ensureStage handles transitions between write stages and ensures that IndexWriter
 // methods are called in an order valid for the implementation.
 func (w *Writer) ensureStage(s indexWriterStage) error {
@@ -691,7 +718,6 @@ func (w *Writer) writePostingsOffsetTable() error {
 	if err := w.fPO.Remove(); err != nil {
 		return err
 	}
-	w.fPO = nil
 
 	err = w.writeLengthAndHash(startPos)
 	if err != nil {
@@ -936,7 +962,6 @@ func (w *Writer) writePostings() error {
 	if err := w.fP.Remove(); err != nil {
 		return err
 	}
-	w.fP = nil
 	return nil
 }
 
