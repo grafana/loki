@@ -122,7 +122,7 @@ This quickstart assumes you are running Linux.
 
    <!-- Killercoda ignore START -->
 
-   ```bash
+   ```console
    ✔ Network evaluate-loki_loki          Created      0.1s
    ✔ Container evaluate-loki-minio-1     Started      0.6s
    ✔ Container evaluate-loki-flog-1      Started      0.6s
@@ -137,6 +137,7 @@ This quickstart assumes you are running Linux.
    <!-- Killercoda ignore END -->
 
    <!-- Killercoda include START -->
+   <!-- ```console -->
    <!-- Creating evaluate-loki_flog_1  ... done -->
    <!-- Creating evaluate-loki_minio_1 ... done -->
    <!-- Creating evaluate-loki_read_1  ... done -->
@@ -145,6 +146,7 @@ This quickstart assumes you are running Linux.
    <!-- Creating evaluate-loki_alloy_1   ... done -->
    <!-- Creating evaluate-loki_grafana_1 ... done -->
    <!-- Creating evaluate-loki_backend_1 ... done -->
+   <!-- ``` -->
    <!-- Killercoda include END -->
 
 1. (Optional) Verify that the Loki cluster is up and running.
