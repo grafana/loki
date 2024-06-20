@@ -376,7 +376,7 @@ func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
 		s.metrics.duplicateLogBytesTotal.WithLabelValues(s.tenant).Add(float64(len(entry.Line)))
 	}
 	if s.configs.LogDuplicateStreamInfo(s.tenant) {
-		errMsg := fmt.Sprintf("duplicate log entry at timestamp %s for stream %s", entry.Timestamp.Format(time.RFC3339), s.labelsString)
+		errMsg := fmt.Sprintf("duplicate log entry with size=%d at timestamp %s for stream %s", len(entry.Line), entry.Timestamp.Format(time.RFC3339), s.labelsString)
 		dupErr := errors.New(errMsg)
 		s.writeFailures.Log(s.tenant, dupErr)
 	}
