@@ -35,7 +35,7 @@ type Metrics struct {
 	blocksDeleted prometheus.Counter
 	metasDeleted  prometheus.Counter
 
-	tenantsDiscovered prometheus.Counter
+	tenantsDiscovered    prometheus.Counter
 	tenantTasksPlanned   *prometheus.GaugeVec
 	tenantTasksCompleted *prometheus.GaugeVec
 }
