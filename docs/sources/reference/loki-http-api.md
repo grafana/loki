@@ -267,9 +267,15 @@ curl -H "Content-Type: application/json" \
 POST /otlp/v1/logs
 ```
 
-`/otlp/v1/logs` lets the OpenTelemetry Collector send logs to Loki using `otlphttp` procotol.
+`/otlp/v1/logs` lets the OpenTelemetry Collector send logs to Loki using `otlphttp` protocol.
 
 For information on how to configure Loki, refer to the [OTel Collector topic](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/).
+
+<!-- vale Google.Will = NO -->
+{{< admonition type="note" >}}
+When configuring the OpenTelemetry Collector, you must use `endpoint: http://<loki-addr>:3100/otlp`, as the collector automatically completes the endpoint.  Entering the full endpoint will generate an error.
+{{< /admonition >}}
+<!-- vale Google.Will = YES -->
 
 ## Query logs at a single point in time
 
@@ -627,6 +633,7 @@ It accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now. Any value specified for `start` supersedes this parameter.
+- `query`: Log stream selector that selects the streams to match and return label names. Example: `{app="myapp", environment="dev"}`
 
 In microservices mode, `/loki/api/v1/labels` is exposed by the querier.
 
@@ -676,7 +683,7 @@ It accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now. Any value specified for `start` supersedes this parameter.
-- `query`: A set of log stream selector that selects the streams to match and return label values for `<name>`. Example: `{"app": "myapp", "environment": "dev"}`
+- `query`: Log stream selector that selects the streams to match and return label values for `<name>`. Example: `{app="myapp", environment="dev"}`
 
 In microservices mode, `/loki/api/v1/label/<name>/values` is exposed by the querier.
 
@@ -797,7 +804,7 @@ gave this response:
 ## Query log statistics
 
 ```bash
-GET `/loki/api/v1/index/stats`
+GET /loki/api/v1/index/stats
 ```
 
 The `/loki/api/v1/index/stats` endpoint can be used to query the index for the number of `streams`, `chunks`, `entries`, and `bytes` that a query resolves to.

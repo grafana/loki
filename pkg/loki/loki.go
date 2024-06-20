@@ -331,7 +331,7 @@ type Loki struct {
 	distributor               *distributor.Distributor
 	Ingester                  ingester.Interface
 	PatternIngester           *pattern.Ingester
-	PatternRingClient         *pattern.RingClient
+	PatternRingClient         pattern.RingClient
 	Querier                   querier.Querier
 	cacheGenerationLoader     queryrangebase.CacheGenNumberLoader
 	querierAPI                *querier.QuerierAPI

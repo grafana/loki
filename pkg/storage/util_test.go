@@ -220,7 +220,7 @@ func (m *mockChunkStore) LabelValuesForMetricName(_ context.Context, _ string, _
 	return nil, nil
 }
 
-func (m *mockChunkStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string) ([]string, error) {
+func (m *mockChunkStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 

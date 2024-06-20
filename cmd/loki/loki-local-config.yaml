@@ -3,6 +3,7 @@ auth_enabled: false
 server:
   http_listen_port: 3100
   grpc_listen_port: 9096
+  log_level: debug
 
 common:
   instance_addr: 127.0.0.1
@@ -32,6 +33,12 @@ schema_config:
       index:
         prefix: index_
         period: 24h
+
+pattern_ingester:
+  enabled: true
+  metric_aggregation:
+    enabled: true
+    log_push_observations: true
 
 ruler:
   alertmanager_url: http://localhost:9093

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -78,6 +79,7 @@ func (s *symbolizer) add(lbl string) uint32 {
 
 	idx, ok = s.symbolsMap[lbl]
 	if !ok {
+		lbl = strings.Clone(lbl)
 		idx = uint32(len(s.labels))
 		s.symbolsMap[lbl] = idx
 		s.labels = append(s.labels, lbl)
