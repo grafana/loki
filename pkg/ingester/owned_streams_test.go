@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"github.com/go-kit/log"
 	"sync"
 	"testing"
 
@@ -19,7 +20,7 @@ func Test_OwnedStreamService(t *testing.T) {
 	ring := &ringCountMock{count: 30}
 	limiter := NewLimiter(limits, NilMetrics, ring, 3)
 
-	service := newOwnedStreamService("test", limiter)
+	service := newOwnedStreamService("test", limiter, log.NewNopLogger())
 	require.Equal(t, 0, service.getOwnedStreamCount())
 	require.Equal(t, 10, service.getFixedLimit(), "fixed limit must be initialised during the instantiation")
 

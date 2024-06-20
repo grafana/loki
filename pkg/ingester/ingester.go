@@ -914,7 +914,23 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.pipelineWrapper, i.extractorWrapper, i.streamRateCalculator, i.writeLogManager, i.customStreamsTracker)
+		inst, err = newInstanceWithLogger(
+			&i.cfg,
+			i.periodicConfigs,
+			instanceID,
+			i.limiter,
+			i.tenantConfigs,
+			i.wal,
+			i.metrics,
+			i.flushOnShutdownSwitch,
+			i.chunkFilter,
+			i.pipelineWrapper,
+			i.extractorWrapper,
+			i.streamRateCalculator,
+			i.writeLogManager,
+			i.customStreamsTracker,
+			i.logger,
+		)
 		if err != nil {
 			return nil, err
 		}

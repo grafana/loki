@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
+	logg "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
@@ -132,7 +133,7 @@ type instance struct {
 	customStreamsTracker push.UsageTracker
 }
 
-func newInstance(
+func newInstanceWithLogger(
 	cfg *Config,
 	periodConfigs []config.PeriodConfig,
 	instanceID string,
@@ -147,13 +148,14 @@ func newInstance(
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
 	customStreamsTracker push.UsageTracker,
+	logger logg.Logger,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
 		return nil, err
 	}
 	streams := newStreamsMap()
-	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter)
+	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter, logger)
 	c := config.SchemaConfig{Configs: periodConfigs}
 	i := &instance{
 		cfg:        cfg,
@@ -189,6 +191,25 @@ func newInstance(
 	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
 
 	return i, err
+}
+
+func newInstance(
+	cfg *Config,
+	periodConfigs []config.PeriodConfig,
+	instanceID string,
+	limiter *Limiter,
+	configs *runtime.TenantConfigs,
+	wal WAL,
+	metrics *ingesterMetrics,
+	flushOnShutdownSwitch *OnceSwitch,
+	chunkFilter chunk.RequestChunkFilterer,
+	pipelineWrapper log.PipelineWrapper,
+	extractorWrapper log.SampleExtractorWrapper,
+	streamRateCalculator *StreamRateCalculator,
+	writeFailures *writefailures.Manager,
+	customStreamsTracker push.UsageTracker,
+) (*instance, error) {
+	return newInstanceWithLogger(cfg, periodConfigs, instanceID, limiter, configs, wal, metrics, flushOnShutdownSwitch, chunkFilter, pipelineWrapper, extractorWrapper, streamRateCalculator, writeFailures, customStreamsTracker, util_log.Logger)
 }
 
 // consumeChunk manually adds a chunk that was received during ingester chunk
@@ -1177,17 +1198,12 @@ func minTs(stream *logproto.Stream) model.Time {
 }
 
 // For each stream, we check if the stream is owned by the ingester or not and increment/decrement the owned stream count.
-func (i *instance) updateOwnedStreams(ownedTokenRange ring.TokenRanges) error {
-	var err error
+func (i *instance) updateOwnedStreams(ownedTokenRange ring.TokenRanges) {
 	i.streams.WithLock(func() {
 		i.ownedStreamsSvc.resetStreamCounts()
-		err = i.streams.ForEach(func(s *stream) (bool, error) {
+		_ = i.streams.ForEach(func(s *stream) (bool, error) {
 			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedTokenRange.IncludesKey(uint32(s.fp)))
 			return true, nil
 		})
 	})
-	if err != nil {
-		return fmt.Errorf("error checking streams ownership: %w", err)
-	}
-	return nil
 }

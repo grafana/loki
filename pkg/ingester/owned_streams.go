@@ -3,6 +3,8 @@ package ingester
 import (
 	"sync"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -24,14 +26,16 @@ type ownedStreamService struct {
 	ownedStreamCount int
 	lock             sync.RWMutex
 	notOwnedStreams  map[model.Fingerprint]any
+	logger           log.Logger
 }
 
-func newOwnedStreamService(tenantID string, limiter *Limiter) *ownedStreamService {
+func newOwnedStreamService(tenantID string, limiter *Limiter, logger log.Logger) *ownedStreamService {
 	svc := &ownedStreamService{
 		tenantID:        tenantID,
 		limiter:         limiter,
 		fixedLimit:      atomic.NewInt32(0),
 		notOwnedStreams: make(map[model.Fingerprint]any),
+		logger:          logger,
 	}
 
 	svc.updateFixedLimit()
@@ -45,6 +49,7 @@ func (s *ownedStreamService) getOwnedStreamCount() int {
 }
 
 func (s *ownedStreamService) updateFixedLimit() {
+	level.Debug(s.logger).Log("msg", "updating fixed limit", "tenant", s.tenantID)
 	limit, _, _, _ := s.limiter.GetStreamCountLimit(s.tenantID)
 	s.fixedLimit.Store(int32(limit))
 }
@@ -60,6 +65,7 @@ func (s *ownedStreamService) trackStreamOwnership(fp model.Fingerprint, owned bo
 		s.ownedStreamCount++
 		return
 	}
+	level.Debug(s.logger).Log("msg", "stream is marked as not owned", "fingerprint", fp)
 	notOwnedStreamsMetric.WithLabelValues(s.tenantID).Inc()
 	s.notOwnedStreams[fp] = nil
 }
@@ -69,16 +75,20 @@ func (s *ownedStreamService) trackRemovedStream(fp model.Fingerprint) {
 	defer s.lock.Unlock()
 
 	if _, notOwned := s.notOwnedStreams[fp]; notOwned {
+		level.Debug(s.logger).Log("msg", "removing not owned stream", "fingerprint", fp)
 		notOwnedStreamsMetric.WithLabelValues(s.tenantID).Dec()
 		delete(s.notOwnedStreams, fp)
 		return
 	}
+	level.Debug(s.logger).Log("msg", "removing owned stream", "fingerprint", fp)
 	s.ownedStreamCount--
 }
 
 func (s *ownedStreamService) resetStreamCounts() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	//todo remove or pass a logger from the ingester
+	level.Debug(s.logger).Log("msg", "resetting stream counts")
 	s.ownedStreamCount = 0
 	notOwnedStreamsMetric.WithLabelValues(s.tenantID).Set(0)
 	s.notOwnedStreams = make(map[model.Fingerprint]any)
@@ -89,5 +99,7 @@ func (s *ownedStreamService) isStreamNotOwned(fp model.Fingerprint) bool {
 	defer s.lock.RUnlock()
 
 	_, notOwned := s.notOwnedStreams[fp]
+	// todo remove
+	level.Debug(s.logger).Log("msg", "checking stream ownership", "fingerprint", fp, "notOwned", notOwned)
 	return notOwned
 }

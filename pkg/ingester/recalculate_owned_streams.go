@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
@@ -10,8 +11,6 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 )
-
-var ownedStreamRingOp = ring.NewOp([]ring.InstanceState{ring.PENDING, ring.JOINING, ring.ACTIVE, ring.LEAVING}, nil)
 
 type recalculateOwnedStreams struct {
 	services.Service
@@ -42,17 +41,25 @@ func (s *recalculateOwnedStreams) iteration(_ context.Context) error {
 }
 
 func (s *recalculateOwnedStreams) recalculate() {
+	level.Info(s.logger).Log("msg", "starting recalculate owned streams job")
+	defer func() {
+		s.updateFixedLimitForAll()
+		level.Info(s.logger).Log("msg", "completed recalculate owned streams job")
+	}()
 	ringChanged, err := s.checkRingForChanges()
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to check ring for changes", "err", err)
 		return
 	}
 	if !ringChanged {
+		level.Debug(s.logger).Log("msg", "ring is not changed, skipping the job")
 		return
 	}
+	level.Info(s.logger).Log("msg", "detected ring changes, re-evaluating streams ownership")
 	ownedTokenRange, err := s.getTokenRangesForIngester()
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to get token ranges for ingester", "err", err)
+		s.resetRingState()
 		return
 	}
 
@@ -60,20 +67,30 @@ func (s *recalculateOwnedStreams) recalculate() {
 		if !instance.limiter.limits.UseOwnedStreamCount(instance.instanceID) {
 			continue
 		}
-		err = instance.updateOwnedStreams(ownedTokenRange)
-		if err != nil {
-			level.Error(s.logger).Log("msg", "failed to update owned streams", "err", err)
-		}
+
+		instance.updateOwnedStreams(ownedTokenRange)
+	}
+}
+
+func (s *recalculateOwnedStreams) updateFixedLimitForAll() {
+	for _, instance := range s.instancesSupplier() {
 		instance.ownedStreamsSvc.updateFixedLimit()
 	}
 }
 
+func (s *recalculateOwnedStreams) resetRingState() {
+	s.previousRing = ring.ReplicationSet{}
+}
+
 func (s *recalculateOwnedStreams) checkRingForChanges() (bool, error) {
-	rs, err := s.ingestersRing.GetAllHealthy(ownedStreamRingOp)
+	rs, err := s.ingestersRing.GetAllHealthy(ring.WriteNoExtend)
 	if err != nil {
 		return false, err
 	}
 
+	//todo remove
+	level.Debug(s.logger).Log("previous ring", fmt.Sprintf("%+v", s.previousRing))
+	level.Debug(s.logger).Log("new ring", fmt.Sprintf("%+v", rs))
 	ringChanged := ring.HasReplicationSetChangedWithoutStateOrAddr(s.previousRing, rs)
 	s.previousRing = rs
 	return ringChanged, nil
@@ -83,6 +100,7 @@ func (s *recalculateOwnedStreams) getTokenRangesForIngester() (ring.TokenRanges,
 	ranges, err := s.ingestersRing.GetTokenRangesForInstance(s.ingesterID)
 	if err != nil {
 		if errors.Is(err, ring.ErrInstanceNotFound) {
+			level.Debug(s.logger).Log("msg", "failed to get token ranges for ingester", "ingesterID", s.ingesterID, "err", err)
 			return nil, nil
 		}
 		return nil, err
