@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -77,7 +78,7 @@ type dynamicShardResolver struct {
 // getStatsForMatchers returns the index stats for all the groups in matcherGroups.
 func getStatsForMatchers(
 	ctx context.Context,
-	sp opentracing.Span,
+	logger log.Logger,
 	statsHandler queryrangebase.Handler,
 	start, end model.Time,
 	matcherGroups []syntax.MatcherRange,
@@ -117,7 +118,7 @@ func getStatsForMatchers(
 
 		results[i] = casted.Response
 
-		sp.LogKV(
+		level.Debug(logger).Log(
 			append(
 				casted.Response.LoggingKeyValues(),
 				"msg", "queried index",
@@ -157,14 +158,15 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 		grps = append(grps, syntax.MatcherRange{})
 	}
 
-	results, err := getStatsForMatchers(ctx, sp, r.statsHandler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
+	log := util_log.WithContext(ctx, util_log.Logger)
+	results, err := getStatsForMatchers(ctx, log, r.statsHandler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
 	if err != nil {
 		return stats.Stats{}, err
 	}
 
 	combined := stats.MergeStats(results...)
 
-	sp.LogKV(
+	level.Debug(log).Log(
 		append(
 			combined.LoggingKeyValues(),
 			"msg", "queried index",

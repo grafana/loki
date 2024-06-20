@@ -291,14 +291,14 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	// TODO: Set concurrency dynamically as in shardResolverForConf?
 	start := time.Now()
 	const maxConcurrentIndexReq = 10
-	matcherStats, err := getStatsForMatchers(ctx, sp, q.statsHandler, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()), matcherGroups, maxConcurrentIndexReq, q.maxLookBackPeriod)
+	matcherStats, err := getStatsForMatchers(ctx, q.logger, q.statsHandler, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()), matcherGroups, maxConcurrentIndexReq, q.maxLookBackPeriod)
 	if err != nil {
 		return 0, err
 	}
 
 	combinedStats := stats.MergeStats(matcherStats...)
 
-	sp.LogKV(
+	level.Debug(q.logger).Log(
 		append(
 			combinedStats.LoggingKeyValues(),
 			"msg", "queried index",
