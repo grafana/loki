@@ -337,7 +337,7 @@ type Loki struct {
 	querierAPI                *querier.QuerierAPI
 	ingesterQuerier           *querier.IngesterQuerier
 	Store                     storage.Store
-	BloomStore                bloomshipper.StoreWithMetrics
+	BloomStore                bloomshipper.Store
 	tableManager              *index.TableManager
 	frontend                  Frontend
 	ruler                     *base_ruler.Ruler
