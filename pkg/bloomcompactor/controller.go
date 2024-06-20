@@ -288,7 +288,7 @@ func (s *SimpleBloomController) loadWorkForGap(
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
-) (iter.Iterator[*v1.Series], iter.CloseableResettableIterator[*v1.SeriesWithBlooms], error) {
+) (iter.Iterator[*v1.Series], iter.CloseResetIterator[*v1.SeriesWithBlooms], error) {
 	// load a series iterator for the gap
 	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.bounds)
 	if err != nil {
@@ -613,7 +613,7 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan
 				return planGap.blocks[i].Bounds.Less(planGap.blocks[j].Bounds)
 			})
 
-			peekingBlocks := iter.NewPeekingIter[bloomshipper.BlockRef](
+			peekingBlocks := iter.NewPeekIter[bloomshipper.BlockRef](
 				iter.NewSliceIter[bloomshipper.BlockRef](
 					planGap.blocks,
 				),

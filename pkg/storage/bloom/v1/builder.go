@@ -199,7 +199,7 @@ func NewMergeBuilder(
 				Chunks:      s1.Chunks.Union(s2.Chunks),
 			}
 		},
-		iter.NewPeekingIter[*Series](store),
+		iter.NewPeekIter[*Series](store),
 	)
 
 	return &MergeBuilder{

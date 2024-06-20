@@ -6,7 +6,7 @@ type DedupeIter[A, B any] struct {
 	eq    func(A, B) bool // equality check
 	from  func(A) B       // convert A to B, used on first element
 	merge func(A, B) B    // merge A into B
-	itr   PeekingIterator[A]
+	itr   PeekIterator[A]
 
 	tmp B
 }
@@ -18,7 +18,7 @@ func NewDedupingIter[A, B any](
 	eq func(A, B) bool,
 	from func(A) B,
 	merge func(A, B) B,
-	itr PeekingIterator[A],
+	itr PeekIterator[A],
 ) *DedupeIter[A, B] {
 	return &DedupeIter[A, B]{
 		eq:    eq,

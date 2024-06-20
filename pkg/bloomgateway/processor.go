@@ -150,7 +150,7 @@ func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBl
 	}
 
 	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), schema.NGramSkip())
-	iters := make([]iter.PeekingIterator[v1.Request], 0, len(tasks))
+	iters := make([]iter.PeekIterator[v1.Request], 0, len(tasks))
 
 	for _, task := range tasks {
 		// NB(owen-d): can be helpful for debugging, but is noisy
@@ -163,7 +163,7 @@ func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBl
 		// 	sp.LogKV("process block", blockID, "series", len(task.series))
 		// }
 
-		it := iter.NewPeekingIter(task.RequestIter(tokenizer))
+		it := iter.NewPeekIter(task.RequestIter(tokenizer))
 		iters = append(iters, it)
 	}
 

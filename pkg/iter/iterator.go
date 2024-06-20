@@ -12,14 +12,12 @@ type Value interface {
 }
 
 type StreamIterator[T Value] interface {
-	v2.Iterator[T]
+	v2.CloseIterator[T]
 	// Labels returns the labels for the current entry.
 	// The labels can be mutated by the query engine and not reflect the original stream.
 	Labels() string
 	// StreamHash returns the hash of the original stream for the current entry.
 	StreamHash() uint64
-	//
-	Close() error
 }
 
 type EntryIterator StreamIterator[logproto.Entry]

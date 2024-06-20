@@ -14,7 +14,7 @@ type PeekIter[T any] struct {
 	cur, next *T
 }
 
-func NewPeekingIter[T any](itr Iterator[T]) *PeekIter[T] {
+func NewPeekIter[T any](itr Iterator[T]) *PeekIter[T] {
 	return &PeekIter[T]{itr: itr}
 }
 
@@ -220,7 +220,7 @@ func (it *SliceIterWithIndex[T]) Peek() (IndexedValue[T], bool) {
 	return it.cache, true
 }
 
-func NewSliceIterWithIndex[T any](xs []T, idx int) PeekingIterator[IndexedValue[T]] {
+func NewSliceIterWithIndex[T any](xs []T, idx int) PeekIterator[IndexedValue[T]] {
 	return &SliceIterWithIndex[T]{
 		xs:    xs,
 		pos:   -1,
@@ -240,32 +240,17 @@ func (i *CloseIter[T]) Close() error {
 	return i.At().Close()
 }
 
-type PeekingCloseableIterator[T any] interface {
-	PeekingIterator[T]
-	CloseableIterator[T]
-}
-
 type PeekCloseIter[T any] struct {
 	*PeekIter[T]
 	close func() error
 }
 
-func NewPeekCloseIter[T any](itr CloseableIterator[T]) *PeekCloseIter[T] {
-	return &PeekCloseIter[T]{PeekIter: NewPeekingIter[T](itr), close: itr.Close}
+func NewPeekCloseIter[T any](itr CloseIterator[T]) *PeekCloseIter[T] {
+	return &PeekCloseIter[T]{PeekIter: NewPeekIter[T](itr), close: itr.Close}
 }
 
 func (it *PeekCloseIter[T]) Close() error {
 	return it.close()
-}
-
-type ResettableIterator[T any] interface {
-	Reset() error
-	Iterator[T]
-}
-
-type CloseableResettableIterator[T any] interface {
-	CloseableIterator[T]
-	ResettableIterator[T]
 }
 
 type Predicate[T any] func(T) bool

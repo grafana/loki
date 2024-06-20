@@ -187,7 +187,7 @@ func (bt *BloomTokenizer) sendBloom(
 // so we can advance the iterator only after we're sure the bloom has accepted the line.
 // This is because the _line_ is the atom in Loki's data model and a query must either match (or not) an individual line.
 // Therefore, we index entire lines into a bloom to ensure a lookups are accurate.
-func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, ref ChunkRef, entryIter v2iter.PeekingIterator[push.Entry]) (full bool, bytesAdded int) {
+func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, ref ChunkRef, entryIter v2iter.PeekIterator[push.Entry]) (full bool, bytesAdded int) {
 	var (
 		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N(), ref, nil)
 		tokens             int
@@ -281,5 +281,5 @@ func (a entryIterAdapter) Err() error {
 }
 
 func newPeekingEntryIterAdapter(itr iter.EntryIterator) *v2iter.PeekIter[logproto.Entry] {
-	return v2iter.NewPeekingIter[logproto.Entry](entryIterAdapter{itr})
+	return v2iter.NewPeekIter[logproto.Entry](entryIterAdapter{itr})
 }

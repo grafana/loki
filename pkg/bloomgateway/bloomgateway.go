@@ -396,7 +396,7 @@ func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses []v1.Output)
 			res.Removals = chks
 			return res
 		},
-		iter.NewPeekingIter(iter.NewSliceIter(responses)),
+		iter.NewPeekIter(iter.NewSliceIter(responses)),
 	)
 
 	// Iterate through the requested and filtered series/chunks,

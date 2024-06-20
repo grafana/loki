@@ -14,11 +14,11 @@ func TestMergeDedupeIter(t *testing.T) {
 		numSeries = 100
 		data, _   = MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 		dataPtr   = PointerSlice(data)
-		queriers  = make([]iter.PeekingIterator[*SeriesWithBlooms], 4)
+		queriers  = make([]iter.PeekIterator[*SeriesWithBlooms], 4)
 	)
 
 	for i := 0; i < len(queriers); i++ {
-		queriers[i] = iter.NewPeekingIter[*SeriesWithBlooms](iter.NewSliceIter[*SeriesWithBlooms](dataPtr))
+		queriers[i] = iter.NewPeekIter[*SeriesWithBlooms](iter.NewSliceIter[*SeriesWithBlooms](dataPtr))
 	}
 
 	mbq := NewHeapIterForSeriesWithBloom(queriers...)
@@ -32,7 +32,7 @@ func TestMergeDedupeIter(t *testing.T) {
 		eq,
 		iter.Identity[*SeriesWithBlooms],
 		merge,
-		iter.NewPeekingIter[*SeriesWithBlooms](mbq),
+		iter.NewPeekIter[*SeriesWithBlooms](mbq),
 	)
 
 	for i := 0; i < len(data); i++ {

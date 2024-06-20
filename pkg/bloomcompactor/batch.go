@@ -170,8 +170,8 @@ func newBatchedBlockLoader(
 
 // compiler checks
 var _ iter.Iterator[*v1.SeriesWithBlooms] = &blockLoadingIter{}
-var _ iter.CloseableIterator[*v1.SeriesWithBlooms] = &blockLoadingIter{}
-var _ iter.ResettableIterator[*v1.SeriesWithBlooms] = &blockLoadingIter{}
+var _ iter.CloseIterator[*v1.SeriesWithBlooms] = &blockLoadingIter{}
+var _ iter.ResetIterator[*v1.SeriesWithBlooms] = &blockLoadingIter{}
 
 // TODO(chaudum): testware
 func newBlockLoadingIter(ctx context.Context, blocks []bloomshipper.BlockRef, fetcher FetchFunc[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier], batchSize int) *blockLoadingIter {
@@ -250,7 +250,7 @@ func (i *blockLoadingIter) loadNext() bool {
 		loader := newBatchedBlockLoader(i.ctx, i.fetcher, blockRefs, i.batchSize)
 		filtered := iter.NewFilterIter[*bloomshipper.CloseableBlockQuerier](loader, i.filter)
 
-		iters := make([]iter.PeekingIterator[*v1.SeriesWithBlooms], 0, len(blockRefs))
+		iters := make([]iter.PeekIterator[*v1.SeriesWithBlooms], 0, len(blockRefs))
 		for filtered.Next() {
 			bq := filtered.At()
 			i.loaded[bq] = struct{}{}
@@ -290,7 +290,7 @@ func (i *blockLoadingIter) loadNext() bool {
 				}
 				return b
 			},
-			iter.NewPeekingIter(mergedBlocks),
+			iter.NewPeekIter(mergedBlocks),
 		)
 		return i.iter.Next()
 	}
@@ -338,7 +338,7 @@ func (i *blockLoadingIter) Filter(filter func(*bloomshipper.CloseableBlockQuerie
 
 func overlappingBlocksIter(inputs []bloomshipper.BlockRef) iter.Iterator[[]bloomshipper.BlockRef] {
 	// can we assume sorted blocks?
-	peekIter := iter.NewPeekingIter(iter.NewSliceIter(inputs))
+	peekIter := iter.NewPeekIter(iter.NewSliceIter(inputs))
 
 	return iter.NewDedupingIter[bloomshipper.BlockRef, []bloomshipper.BlockRef](
 		func(a bloomshipper.BlockRef, b []bloomshipper.BlockRef) bool {

@@ -102,7 +102,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 				builder, err := NewBlockBuilder(blockOpts, tc.writer)
 
 				require.Nil(t, err)
-				itr := iter.NewPeekingIter[SeriesWithBlooms](
+				itr := iter.NewPeekIter[SeriesWithBlooms](
 					iter.NewMapIter(
 						iter.NewSliceIter[SeriesWithLiteralBlooms](data),
 						func(x SeriesWithLiteralBlooms) SeriesWithBlooms { return x.SeriesWithBlooms() },
@@ -184,7 +184,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 	}
 }
 
-func dedupedBlocks(blocks []iter.PeekingIterator[*SeriesWithBlooms]) iter.Iterator[*SeriesWithBlooms] {
+func dedupedBlocks(blocks []iter.PeekIterator[*SeriesWithBlooms]) iter.Iterator[*SeriesWithBlooms] {
 	orderedBlocks := NewHeapIterForSeriesWithBloom(blocks...)
 	return iter.NewDedupingIter[*SeriesWithBlooms](
 		func(a *SeriesWithBlooms, b *SeriesWithBlooms) bool {
@@ -197,7 +197,7 @@ func dedupedBlocks(blocks []iter.PeekingIterator[*SeriesWithBlooms]) iter.Iterat
 			}
 			return b
 		},
-		iter.NewPeekingIter[*SeriesWithBlooms](orderedBlocks),
+		iter.NewPeekIter[*SeriesWithBlooms](orderedBlocks),
 	)
 }
 
@@ -206,7 +206,7 @@ func TestMergeBuilder(t *testing.T) {
 
 	nBlocks := 10
 	numSeries := 100
-	blocks := make([]iter.PeekingIterator[*SeriesWithBlooms], 0, nBlocks)
+	blocks := make([]iter.PeekIterator[*SeriesWithBlooms], 0, nBlocks)
 	data, _ := MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 	blockOpts := BlockOptions{
 		Schema: Schema{
@@ -241,7 +241,7 @@ func TestMergeBuilder(t *testing.T) {
 		itr := iter.NewSliceIter[SeriesWithBlooms](data[min:max])
 		_, err = builder.BuildFrom(itr)
 		require.Nil(t, err)
-		blocks = append(blocks, iter.NewPeekingIter[*SeriesWithBlooms](NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()))
+		blocks = append(blocks, iter.NewPeekIter[*SeriesWithBlooms](NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()))
 	}
 
 	// We're not testing the ability to extend a bloom in this test
@@ -498,12 +498,12 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 	// we keep 2 copies of the data as iterators. One for the blocks, and one for the "store"
 	// which will force it to reference the same series
-	var blocks []iter.PeekingIterator[*SeriesWithBlooms]
-	var store []iter.PeekingIterator[*SeriesWithBlooms]
+	var blocks []iter.PeekIterator[*SeriesWithBlooms]
+	var store []iter.PeekIterator[*SeriesWithBlooms]
 
 	for _, x := range data {
-		blocks = append(blocks, iter.NewPeekingIter[*SeriesWithBlooms](iter.NewSliceIter[*SeriesWithBlooms](x)))
-		store = append(store, iter.NewPeekingIter[*SeriesWithBlooms](iter.NewSliceIter[*SeriesWithBlooms](x)))
+		blocks = append(blocks, iter.NewPeekIter[*SeriesWithBlooms](iter.NewSliceIter[*SeriesWithBlooms](x)))
+		store = append(store, iter.NewPeekIter[*SeriesWithBlooms](iter.NewSliceIter[*SeriesWithBlooms](x)))
 	}
 
 	orderedStore := NewHeapIterForSeriesWithBloom(store...)
@@ -520,7 +520,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 			}
 			return b
 		},
-		iter.NewPeekingIter[*SeriesWithBlooms](orderedStore),
+		iter.NewPeekIter[*SeriesWithBlooms](orderedStore),
 	)
 
 	// We're not testing the ability to extend a bloom in this test

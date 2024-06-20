@@ -36,21 +36,21 @@ func NewOrderable[T any](val T, cmp func(T, T) Ord) OrderedImpl[T] {
 }
 
 type UnlessIterator[T Orderable[T]] struct {
-	a, b PeekingIterator[T]
+	a, b PeekIterator[T]
 }
 
 // Iterators _must_ be sorted. Defers to underlying `PeekingIterator` implementation
 // for both iterators if they implement it.
 func NewUnlessIterator[T Orderable[T]](a, b Iterator[T]) *UnlessIterator[T] {
-	var peekA, peekB PeekingIterator[T]
+	var peekA, peekB PeekIterator[T]
 	var ok bool
 
-	if peekA, ok = a.(PeekingIterator[T]); !ok {
-		peekA = NewPeekingIter(a)
+	if peekA, ok = a.(PeekIterator[T]); !ok {
+		peekA = NewPeekIter(a)
 	}
 
-	if peekB, ok = b.(PeekingIterator[T]); !ok {
-		peekB = NewPeekingIter(b)
+	if peekB, ok = b.(PeekIterator[T]); !ok {
+		peekB = NewPeekIter(b)
 	}
 
 	return &UnlessIterator[T]{

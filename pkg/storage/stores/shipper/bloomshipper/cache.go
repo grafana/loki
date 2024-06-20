@@ -33,11 +33,11 @@ func (c *CloseableBlockQuerier) Close() error {
 	return err.Err()
 }
 
-func (c *CloseableBlockQuerier) SeriesIter() (iter.PeekingIterator[*v1.SeriesWithBlooms], error) {
+func (c *CloseableBlockQuerier) SeriesIter() (iter.PeekIterator[*v1.SeriesWithBlooms], error) {
 	if err := c.Reset(); err != nil {
 		return nil, err
 	}
-	return iter.NewPeekingIter[*v1.SeriesWithBlooms](c.BlockQuerier.Iter()), nil
+	return iter.NewPeekIter[*v1.SeriesWithBlooms](c.BlockQuerier.Iter()), nil
 }
 
 func LoadBlocksDirIntoCache(paths []string, c Cache, logger log.Logger) error {

@@ -285,10 +285,10 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 	// clear provided buffer
 	buf = buf[:0]
 
-	iters := make([]iter.PeekingIterator[*logproto.GroupedChunkRefs], 0, len(input))
+	iters := make([]iter.PeekIterator[*logproto.GroupedChunkRefs], 0, len(input))
 	for _, inp := range input {
 		sort.Slice(inp, func(i, j int) bool { return inp[i].Fingerprint < inp[j].Fingerprint })
-		iters = append(iters, iter.NewPeekingIter(iter.NewSliceIter(inp)))
+		iters = append(iters, iter.NewPeekIter(iter.NewSliceIter(inp)))
 	}
 
 	heapIter := v1.NewHeapIterator[*logproto.GroupedChunkRefs](
@@ -317,7 +317,7 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 			}
 		},
 		// iterator
-		iter.NewPeekingIter(heapIter),
+		iter.NewPeekIter(heapIter),
 	)
 
 	return iter.CollectInto(dedupeIter, buf)

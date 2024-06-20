@@ -96,9 +96,9 @@ func TestFusedQuerier(t *testing.T) {
 		resChans = append(resChans, ch)
 	}
 
-	var itrs []v2.PeekingIterator[Request]
+	var itrs []v2.PeekIterator[Request]
 	for _, reqs := range inputs {
-		itrs = append(itrs, v2.NewPeekingIter[Request](v2.NewSliceIter[Request](reqs)))
+		itrs = append(itrs, v2.NewPeekIter[Request](v2.NewSliceIter[Request](reqs)))
 	}
 
 	resps := make([][]Output, nReqs)
@@ -232,8 +232,8 @@ func TestFuseMultiPage(t *testing.T) {
 	}
 
 	fused := querier.Fuse(
-		[]v2.PeekingIterator[Request]{
-			v2.NewPeekingIter(v2.NewSliceIter(reqs)),
+		[]v2.PeekIterator[Request]{
+			v2.NewPeekIter(v2.NewSliceIter(reqs)),
 		},
 		log.NewNopLogger(),
 	)
@@ -433,12 +433,12 @@ func BenchmarkBlockQuerying(b *testing.B) {
 			))
 		}()
 
-		var itrs []v2.PeekingIterator[Request]
+		var itrs []v2.PeekIterator[Request]
 
 		for i := 0; i < b.N; i++ {
 			itrs = itrs[:0]
 			for _, reqs := range requestChains {
-				itrs = append(itrs, v2.NewPeekingIter[Request](v2.NewSliceIter[Request](reqs)))
+				itrs = append(itrs, v2.NewPeekIter[Request](v2.NewSliceIter[Request](reqs)))
 			}
 			fused := querier.Fuse(itrs, log.NewNopLogger())
 			_ = fused.Run()

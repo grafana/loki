@@ -13,7 +13,7 @@ func TestMergeBlockQuerier_NonOverlapping(t *testing.T) {
 	var (
 		numSeries   = 100
 		numQueriers = 4
-		queriers    []v2.PeekingIterator[*SeriesWithBlooms]
+		queriers    []v2.PeekIterator[*SeriesWithBlooms]
 		data, _     = MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 	)
 	for i := 0; i < numQueriers; i++ {
@@ -21,7 +21,7 @@ func TestMergeBlockQuerier_NonOverlapping(t *testing.T) {
 		for j := 0; j < numSeries/numQueriers; j++ {
 			ptrs = append(ptrs, &data[i*numSeries/numQueriers+j])
 		}
-		queriers = append(queriers, v2.NewPeekingIter[*SeriesWithBlooms](v2.NewSliceIter[*SeriesWithBlooms](ptrs)))
+		queriers = append(queriers, v2.NewPeekIter[*SeriesWithBlooms](v2.NewSliceIter[*SeriesWithBlooms](ptrs)))
 	}
 
 	mbq := NewHeapIterForSeriesWithBloom(queriers...)
@@ -40,13 +40,13 @@ func TestMergeBlockQuerier_Duplicate(t *testing.T) {
 	var (
 		numSeries   = 100
 		numQueriers = 2
-		queriers    []v2.PeekingIterator[*SeriesWithBlooms]
+		queriers    []v2.PeekIterator[*SeriesWithBlooms]
 		data, _     = MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 	)
 	for i := 0; i < numQueriers; i++ {
 		queriers = append(
 			queriers,
-			v2.NewPeekingIter[*SeriesWithBlooms](
+			v2.NewPeekIter[*SeriesWithBlooms](
 				v2.NewSliceIter[*SeriesWithBlooms](
 					PointerSlice[SeriesWithBlooms](data),
 				),
@@ -71,7 +71,7 @@ func TestMergeBlockQuerier_Overlapping(t *testing.T) {
 	var (
 		numSeries   = 100
 		numQueriers = 4
-		queriers    []v2.PeekingIterator[*SeriesWithBlooms]
+		queriers    []v2.PeekIterator[*SeriesWithBlooms]
 		data, _     = MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 		slices      = make([][]*SeriesWithBlooms, numQueriers)
 	)
@@ -79,7 +79,7 @@ func TestMergeBlockQuerier_Overlapping(t *testing.T) {
 		slices[i%numQueriers] = append(slices[i%numQueriers], &data[i])
 	}
 	for i := 0; i < numQueriers; i++ {
-		queriers = append(queriers, v2.NewPeekingIter[*SeriesWithBlooms](v2.NewSliceIter[*SeriesWithBlooms](slices[i])))
+		queriers = append(queriers, v2.NewPeekIter[*SeriesWithBlooms](v2.NewSliceIter[*SeriesWithBlooms](slices[i])))
 	}
 
 	mbq := NewHeapIterForSeriesWithBloom(queriers...)

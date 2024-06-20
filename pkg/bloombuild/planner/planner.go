@@ -721,7 +721,7 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan
 				return planGap.Blocks[i].Bounds.Less(planGap.Blocks[j].Bounds)
 			})
 
-			peekingBlocks := iter.NewPeekingIter[bloomshipper.BlockRef](
+			peekingBlocks := iter.NewPeekIter[bloomshipper.BlockRef](
 				iter.NewSliceIter[bloomshipper.BlockRef](
 					planGap.Blocks,
 				),

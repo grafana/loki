@@ -9,7 +9,7 @@ import (
 // NB(owen-d): it uses a custom heap implementation because Pop() only returns a single
 // value of the top-most iterator, rather than the iterator itself
 type HeapIterator[T any] struct {
-	itrs []iter.PeekingIterator[T]
+	itrs []iter.PeekIterator[T]
 	less func(T, T) bool
 
 	zero  T // zero value of T
@@ -17,7 +17,7 @@ type HeapIterator[T any] struct {
 	ok    bool
 }
 
-func NewHeapIterForSeriesWithBloom(queriers ...iter.PeekingIterator[*SeriesWithBlooms]) *HeapIterator[*SeriesWithBlooms] {
+func NewHeapIterForSeriesWithBloom(queriers ...iter.PeekIterator[*SeriesWithBlooms]) *HeapIterator[*SeriesWithBlooms] {
 	return NewHeapIterator(
 		func(a, b *SeriesWithBlooms) bool {
 			return a.Series.Fingerprint < b.Series.Fingerprint
@@ -26,7 +26,7 @@ func NewHeapIterForSeriesWithBloom(queriers ...iter.PeekingIterator[*SeriesWithB
 	)
 }
 
-func NewHeapIterator[T any](less func(T, T) bool, itrs ...iter.PeekingIterator[T]) *HeapIterator[T] {
+func NewHeapIterator[T any](less func(T, T) bool, itrs ...iter.PeekIterator[T]) *HeapIterator[T] {
 	res := &HeapIterator[T]{
 		itrs: itrs,
 		less: less,
@@ -69,7 +69,7 @@ func (mbq *HeapIterator[T]) At() T {
 	return mbq.cache
 }
 
-func (mbq *HeapIterator[T]) push(x iter.PeekingIterator[T]) {
+func (mbq *HeapIterator[T]) push(x iter.PeekIterator[T]) {
 	mbq.itrs = append(mbq.itrs, x)
 	mbq.up(mbq.Len() - 1)
 }
