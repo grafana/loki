@@ -351,7 +351,7 @@ type Sizes struct {
 
 func (r *SegmentReader) Sizes() (Sizes, error) {
 	var sizes Sizes
-	sizes.Index = int64(r.idr.Size())
+	sizes.Index = r.idr.Size()
 	it, err := r.Series(context.Background())
 	if err != nil {
 		return sizes, err
