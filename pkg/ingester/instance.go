@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/ring"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -186,6 +187,7 @@ func newInstance(
 		customStreamsTracker: customStreamsTracker,
 	}
 	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
+
 	return i, err
 }
 
@@ -355,7 +357,8 @@ func (i *instance) onStreamCreated(s *stream) {
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
-	i.ownedStreamsSvc.incOwnedStreamCount()
+	// we count newly created stream as owned
+	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true)
 	if i.configs.LogStreamCreation(i.instanceID) {
 		level.Debug(util_log.Logger).Log(
 			"msg", "successfully created stream",
@@ -375,10 +378,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*st
 
 	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
-	i.streamsCreatedTotal.Inc()
-	memoryStreams.WithLabelValues(i.instanceID).Inc()
-	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
-	i.addTailersToNewStream(s)
+	i.onStreamCreated(s)
 
 	return s, nil
 }
@@ -422,7 +422,7 @@ func (i *instance) removeStream(s *stream) {
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
 		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		streamsCountStats.Add(-1)
-		i.ownedStreamsSvc.decOwnedStreamCount()
+		i.ownedStreamsSvc.trackRemovedStream(s.fp)
 	}
 }
 
@@ -1174,4 +1174,20 @@ func minTs(stream *logproto.Stream) model.Time {
 		}
 	}
 	return model.TimeFromUnixNano(streamMinTs)
+}
+
+// For each stream, we check if the stream is owned by the ingester or not and increment/decrement the owned stream count.
+func (i *instance) updateOwnedStreams(ownedTokenRange ring.TokenRanges) error {
+	var err error
+	i.streams.WithLock(func() {
+		i.ownedStreamsSvc.resetStreamCounts()
+		err = i.streams.ForEach(func(s *stream) (bool, error) {
+			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedTokenRange.IncludesKey(uint32(s.fp)))
+			return true, nil
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("error checking streams ownership: %w", err)
+	}
+	return nil
 }

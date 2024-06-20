@@ -294,7 +294,8 @@ func NewDetectedLabelsTripperware(cfg Config, opts logql.EngineOpts, logger log.
 			NewLimitsMiddleware(l),
 			NewQuerySizeLimiterMiddleware(schema.Configs, opts, logger, l, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics)}
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
+		}
 
 		// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
 		// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
@@ -516,10 +517,13 @@ const (
 	DetectedFieldsOp = "detected_fields"
 	PatternsQueryOp  = "patterns"
 	DetectedLabelsOp = "detected_labels"
+	SamplesQueryOp   = "samples"
 )
 
 func getOperation(path string) string {
 	switch {
+	case path == "/loki/api/v1/explore/query_range":
+		return SamplesQueryOp
 	case strings.HasSuffix(path, "/query_range") || strings.HasSuffix(path, "/prom/query"):
 		return QueryRangeOp
 	case strings.HasSuffix(path, "/series"):

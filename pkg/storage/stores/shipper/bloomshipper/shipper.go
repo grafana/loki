@@ -16,10 +16,10 @@ type Interface interface {
 }
 
 type Shipper struct {
-	store Store
+	store StoreBase
 }
 
-func NewShipper(client Store) *Shipper {
+func NewShipper(client StoreBase) *Shipper {
 	return &Shipper{store: client}
 }
 

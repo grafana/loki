@@ -2,14 +2,22 @@ package pattern
 
 import (
 	"bufio"
+	"context"
 	"os"
 	"testing"
+	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
 
+	"github.com/grafana/dskit/ring"
+	ring_client "github.com/grafana/dskit/ring/client"
+	"github.com/grafana/dskit/services"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/pattern/metric"
 )
 
 func Test_prunePatterns(t *testing.T) {
@@ -20,9 +28,7 @@ func Test_prunePatterns(t *testing.T) {
 	resp := new(logproto.QueryPatternsResponse)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		resp.Series = append(resp.Series, &logproto.PatternSeries{
-			Pattern: scanner.Text(),
-		})
+		resp.Series = append(resp.Series, logproto.NewPatternSeries(scanner.Text(), []*logproto.PatternSample{}))
 	}
 	require.NoError(t, scanner.Err())
 
@@ -108,10 +114,213 @@ func Test_prunePatterns(t *testing.T) {
 
 	patterns := make([]string, 0, len(resp.Series))
 	for _, p := range resp.Series {
-		patterns = append(patterns, p.Pattern)
+		patterns = append(patterns, p.GetPattern())
 	}
 	slices.Sort(patterns)
 
 	require.Equal(t, expectedPatterns, patterns)
 	require.Less(t, len(patterns), startingPatterns, "prunePatterns should remove duplicates")
+}
+
+func Test_Samples(t *testing.T) {
+	t.Run("it rejects metric queries with filters", func(t *testing.T) {
+		q := &IngesterQuerier{
+			cfg: Config{
+				MetricAggregation: metric.AggregationConfig{
+					Enabled: true,
+				},
+			},
+			logger:     log.NewNopLogger(),
+			ringClient: &fakeRingClient{},
+			registerer: nil,
+		}
+		for _, query := range []string{
+			`count_over_time({foo="bar"} |= "baz" [5m])`,
+			`count_over_time({foo="bar"} != "baz" [5m])`,
+			`count_over_time({foo="bar"} |~ "baz" [5m])`,
+			`count_over_time({foo="bar"} !~ "baz" [5m])`,
+			`count_over_time({foo="bar"} | logfmt | color="blue" [5m])`,
+			`sum(count_over_time({foo="bar"} |= "baz" [5m]))`,
+			`sum by (label)(count_over_time({foo="bar"} |= "baz" [5m]))`,
+			`bytes_over_time({foo="bar"} |= "baz" [5m])`,
+		} {
+			_, err := q.Samples(
+				context.Background(),
+				&logproto.QuerySamplesRequest{
+					Query: query,
+				},
+			)
+			require.Error(t, err, query)
+			require.ErrorIs(t, err, ErrParseQuery, query)
+		}
+	})
+
+	t.Run("it rejects log selector queries", func(t *testing.T) {
+		q := &IngesterQuerier{
+			cfg: Config{
+				MetricAggregation: metric.AggregationConfig{
+					Enabled: true,
+				},
+			},
+			logger:     log.NewNopLogger(),
+			ringClient: &fakeRingClient{},
+			registerer: nil,
+		}
+		for _, query := range []string{
+			`{foo="bar"}`,
+		} {
+			_, err := q.Samples(
+				context.Background(),
+				&logproto.QuerySamplesRequest{
+					Query: query,
+				},
+			)
+			require.Error(t, err, query)
+			require.Equal(t, "only sample expression supported", err.Error(), query)
+		}
+	})
+
+	t.Run("accepts count and bytes metric queries", func(t *testing.T) {
+		q := &IngesterQuerier{
+			cfg: Config{
+				MetricAggregation: metric.AggregationConfig{
+					Enabled: true,
+				},
+			},
+			logger:     log.NewNopLogger(),
+			ringClient: &fakeRingClient{},
+			registerer: nil,
+		}
+		for _, query := range []string{
+			`count_over_time({foo="bar"}[5m])`,
+			`bytes_over_time({foo="bar"}[5m])`,
+			`sum(count_over_time({foo="bar"}[5m]))`,
+			`sum(bytes_over_time({foo="bar"}[5m]))`,
+			`sum by (level)(count_over_time({foo="bar"}[5m]))`,
+			`sum by (level)(bytes_over_time({foo="bar"}[5m]))`,
+		} {
+			_, err := q.Samples(
+				context.Background(),
+				&logproto.QuerySamplesRequest{
+					Query: query,
+				},
+			)
+			require.NoError(t, err, query)
+		}
+	})
+}
+
+type fakeRingClient struct{}
+
+func (f *fakeRingClient) Pool() *ring_client.Pool {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) StartAsync(_ context.Context) error {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) AwaitRunning(_ context.Context) error {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) StopAsync() {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) AwaitTerminated(_ context.Context) error {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) FailureCase() error {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) State() services.State {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) AddListener(_ services.Listener) {
+	panic("not implemented")
+}
+
+func (f *fakeRingClient) Ring() ring.ReadRing {
+	return &fakeRing{}
+}
+
+type fakeRing struct{}
+
+// InstancesWithTokensCount returns the number of instances in the ring that have tokens.
+func (f *fakeRing) InstancesWithTokensCount() int {
+	panic("not implemented") // TODO: Implement
+}
+
+// InstancesInZoneCount returns the number of instances in the ring that are registered in given zone.
+func (f *fakeRing) InstancesInZoneCount(_ string) int {
+	panic("not implemented") // TODO: Implement
+}
+
+// InstancesWithTokensInZoneCount returns the number of instances in the ring that are registered in given zone and have tokens.
+func (f *fakeRing) InstancesWithTokensInZoneCount(_ string) int {
+	panic("not implemented") // TODO: Implement
+}
+
+// ZonesCount returns the number of zones for which there's at least 1 instance registered in the ring.
+func (f *fakeRing) ZonesCount() int {
+	panic("not implemented") // TODO: Implement
+}
+
+func (f *fakeRing) Get(
+	_ uint32,
+	_ ring.Operation,
+	_ []ring.InstanceDesc,
+	_ []string,
+	_ []string,
+) (ring.ReplicationSet, error) {
+	panic("not implemented")
+}
+
+func (f *fakeRing) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, error) {
+	panic("not implemented")
+}
+
+func (f *fakeRing) GetReplicationSetForOperation(_ ring.Operation) (ring.ReplicationSet, error) {
+	return ring.ReplicationSet{}, nil
+}
+
+func (f *fakeRing) ReplicationFactor() int {
+	panic("not implemented")
+}
+
+func (f *fakeRing) InstancesCount() int {
+	panic("not implemented")
+}
+
+func (f *fakeRing) ShuffleShard(_ string, _ int) ring.ReadRing {
+	panic("not implemented")
+}
+
+func (f *fakeRing) GetInstanceState(_ string) (ring.InstanceState, error) {
+	panic("not implemented")
+}
+
+func (f *fakeRing) ShuffleShardWithLookback(
+	_ string,
+	_ int,
+	_ time.Duration,
+	_ time.Time,
+) ring.ReadRing {
+	panic("not implemented")
+}
+
+func (f *fakeRing) HasInstance(_ string) bool {
+	panic("not implemented")
+}
+
+func (f *fakeRing) CleanupShuffleShardCache(_ string) {
+	panic("not implemented")
+}
+
+func (f *fakeRing) GetTokenRangesForInstance(_ string) (ring.TokenRanges, error) {
+	panic("not implemented")
 }
