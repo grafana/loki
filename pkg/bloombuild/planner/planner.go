@@ -40,7 +40,7 @@ type Planner struct {
 	schemaCfg config.SchemaConfig
 
 	tsdbStore  common.TSDBStore
-	bloomStore bloomshipper.Store
+	bloomStore bloomshipper.StoreBase
 
 	tasksQueue  *queue.RequestQueue
 	activeUsers *util.ActiveUsersCleanupService
@@ -57,7 +57,7 @@ func New(
 	schemaCfg config.SchemaConfig,
 	storeCfg storage.Config,
 	storageMetrics storage.ClientMetrics,
-	bloomStore bloomshipper.Store,
+	bloomStore bloomshipper.StoreBase,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Planner, error) {

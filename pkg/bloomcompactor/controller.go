@@ -22,7 +22,7 @@ import (
 
 type SimpleBloomController struct {
 	tsdbStore   TSDBStore
-	bloomStore  bloomshipper.Store
+	bloomStore  bloomshipper.StoreBase
 	chunkLoader ChunkLoader
 	metrics     *Metrics
 	limits      Limits
@@ -32,7 +32,7 @@ type SimpleBloomController struct {
 
 func NewSimpleBloomController(
 	tsdbStore TSDBStore,
-	blockStore bloomshipper.Store,
+	blockStore bloomshipper.StoreBase,
 	chunkLoader ChunkLoader,
 	limits Limits,
 	metrics *Metrics,

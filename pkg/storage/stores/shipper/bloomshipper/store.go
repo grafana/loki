@@ -29,7 +29,7 @@ var (
 	errNoStore = errors.New("no store found for time")
 )
 
-type Store interface {
+type StoreBase interface {
 	ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error)
 	FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
 	FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error)
@@ -39,13 +39,13 @@ type Store interface {
 	) (map[string][]client.StorageObject, error)
 	Fetcher(ts model.Time) (*Fetcher, error)
 	Client(ts model.Time) (Client, error)
-	Allocator() mempool.Allocator
 	Stop()
 }
 
-type StoreWithMetrics interface {
-	Store
+type Store interface {
+	StoreBase
 	BloomMetrics() *v1.Metrics
+	Allocator() mempool.Allocator
 }
 
 type bloomStoreConfig struct {
@@ -55,7 +55,7 @@ type bloomStoreConfig struct {
 }
 
 // Compiler check to ensure bloomStoreEntry implements the Store interface
-var _ Store = &bloomStoreEntry{}
+var _ StoreBase = &bloomStoreEntry{}
 
 type bloomStoreEntry struct {
 	start              model.Time
@@ -267,13 +267,6 @@ func (b *bloomStoreEntry) Client(_ model.Time) (Client, error) {
 	return b.bloomClient, nil
 }
 
-// Allocator implements Store.
-// While bloomStoreEntry implements the Store interface, this method must never
-// be used directly and therefore can safely return nil.
-func (b *bloomStoreEntry) Allocator() mempool.Allocator {
-	return nil
-}
-
 // Stop implements Store.
 func (b bloomStoreEntry) Stop() {
 	b.bloomClient.Stop()
@@ -281,7 +274,7 @@ func (b bloomStoreEntry) Stop() {
 }
 
 // Compiler check to ensure BloomStore implements the Store interface
-var _ StoreWithMetrics = &BloomStore{}
+var _ Store = &BloomStore{}
 
 type BloomStore struct {
 	stores             []*bloomStoreEntry
@@ -415,7 +408,7 @@ func (b *BloomStore) TenantFilesForInterval(
 ) (map[string][]client.StorageObject, error) {
 	var allTenants map[string][]client.StorageObject
 
-	err := b.forStores(ctx, interval, func(innerCtx context.Context, interval Interval, store Store) error {
+	err := b.forStores(ctx, interval, func(innerCtx context.Context, interval Interval, store StoreBase) error {
 		tenants, err := store.TenantFilesForInterval(innerCtx, interval, filter)
 		if err != nil {
 			return err
@@ -462,7 +455,7 @@ func (b *BloomStore) ResolveMetas(ctx context.Context, params MetaSearchParams) 
 	refs := make([][]MetaRef, 0, len(b.stores))
 	fetchers := make([]*Fetcher, 0, len(b.stores))
 
-	err := b.forStores(ctx, params.Interval, func(innerCtx context.Context, interval Interval, store Store) error {
+	err := b.forStores(ctx, params.Interval, func(innerCtx context.Context, interval Interval, store StoreBase) error {
 		newParams := params
 		newParams.Interval = interval
 		metas, fetcher, err := store.ResolveMetas(innerCtx, newParams)
@@ -596,7 +589,7 @@ func (b *BloomStore) storeDo(ts model.Time, f func(s *bloomStoreEntry) error) er
 	return fmt.Errorf("no store found for timestamp %s", ts.Time())
 }
 
-func (b *BloomStore) forStores(ctx context.Context, interval Interval, f func(innerCtx context.Context, interval Interval, store Store) error) error {
+func (b *BloomStore) forStores(ctx context.Context, interval Interval, f func(innerCtx context.Context, interval Interval, store StoreBase) error) error {
 	if len(b.stores) == 0 {
 		return nil
 	}

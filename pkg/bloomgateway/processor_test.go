@@ -23,7 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
-var _ bloomshipper.Store = &dummyStore{}
+var _ bloomshipper.StoreBase = &dummyStore{}
 
 // refs and blocks must be in 1-1 correspondence.
 func newMockBloomStore(refs []bloomshipper.BlockRef, blocks []*v1.Block, metas []bloomshipper.Meta) *dummyStore {
