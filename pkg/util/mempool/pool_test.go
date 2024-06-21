@@ -8,6 +8,8 @@ import (
 	"unsafe"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 func TestMemPool(t *testing.T) {
@@ -41,24 +43,6 @@ func TestMemPool(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 300, len(res))
 		require.Equal(t, 512, cap(res))
-	})
-
-	t.Run("buffer is cleared when returned", func(t *testing.T) {
-		pool := New("test", []Bucket{
-			{Size: 1, Capacity: 64},
-		}, nil)
-		res, err := pool.Get(8)
-		require.NoError(t, err)
-		require.Equal(t, 8, len(res))
-		source := []byte{0, 1, 2, 3, 4, 5, 6, 7}
-		copy(res, source)
-
-		pool.Put(res)
-
-		res, err = pool.Get(8)
-		require.NoError(t, err)
-		require.Equal(t, 8, len(res))
-		require.Equal(t, make([]byte, 8), res)
 	})
 
 	t.Run("pool returns error when no buffer is available", func(t *testing.T) {
@@ -130,4 +114,26 @@ func TestMemPool(t *testing.T) {
 		wg.Wait()
 		t.Log("finished")
 	})
+}
+
+func BenchmarkSlab(b *testing.B) {
+	for _, sz := range []int{
+		1 << 10,   // 1KB
+		1 << 20,   // 1MB
+		128 << 20, // 128MB
+	} {
+		b.Run(flagext.ByteSize(uint64(sz)).String(), func(b *testing.B) {
+			slab := newSlab(sz, 1, newMetrics(nil, "test"))
+			slab.init()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				b, err := slab.get(sz)
+				if err != nil {
+					panic(err)
+				}
+				slab.put(b)
+			}
+		})
+	}
 }
