@@ -166,10 +166,12 @@ func (d *BloomPageDecoder) Relinquish(alloc mempool.Allocator) {
 
 	data := d.data
 	d.data = nil
+	d.Reset() // Reset for cleaning up residual references to data via `dec`
 
 	if cap(data) > 0 {
 		_ = alloc.Put(data)
 	}
+
 }
 
 func (d *BloomPageDecoder) Reset() {

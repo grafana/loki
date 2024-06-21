@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/multierror"
 
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -113,16 +114,6 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 }
 
 func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.CloseableBlockQuerier, data []blockWithTasks) error {
-
-	defer func() {
-		for i := range bqs {
-			if bqs[i] == nil {
-				continue
-			}
-			bqs[i].Close()
-		}
-	}()
-
 	return concurrency.ForEachJob(ctx, len(bqs), p.concurrency, func(ctx context.Context, i int) error {
 		bq := bqs[i]
 		if bq == nil {
@@ -136,7 +127,7 @@ func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.Close
 			return errors.Errorf("block and querier bounds differ: %s vs %s", block.ref.Bounds, bq.Bounds)
 		}
 
-		err := p.processBlock(ctx, bq.BlockQuerier, block.tasks)
+		err := p.processBlock(ctx, bq, block.tasks)
 		if err != nil {
 			return errors.Wrap(err, "processing block")
 		}
@@ -144,7 +135,15 @@ func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.Close
 	})
 }
 
-func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerier, tasks []Task) error {
+func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBlockQuerier, tasks []Task) (err error) {
+	defer func() {
+		var errs multierror.MultiError
+		errs.Add(err)
+		errs.Add(bq.Close())
+		err = errs.Err()
+	}()
+
+	blockQuerier := bq.BlockQuerier
 	schema, err := blockQuerier.Schema()
 	if err != nil {
 		return err
