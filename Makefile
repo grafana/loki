@@ -38,6 +38,7 @@ BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` and `make release-workflows` after changing this
 BUILD_IMAGE_VERSION ?= 0.33.3
+GO_VERSION := 1.22.4
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -609,9 +610,9 @@ promtail-push: promtail-image-cross
 
 # loki
 loki-image: ## build the loki docker image
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
+	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
 loki-image-cross:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
+	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
 
 loki-debug-image: ## build the debug loki docker image
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
