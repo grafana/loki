@@ -27,7 +27,7 @@ type slab struct {
 
 func newSlab(bufferSize, bufferCount int, m *metrics) *slab {
 	name := humanize.Bytes(uint64(bufferSize))
-	m.availableBuffersPerSlab.WithLabelValues(name).Add(0) // initialize metric with value 0
+	m.availableBuffersPerSlab.WithLabelValues(name).Set(0) // initialize metric with value 0
 
 	return &slab{
 		size:    bufferSize,
@@ -44,10 +44,11 @@ func (s *slab) init() {
 		ptr := unsafe.Pointer(unsafe.SliceData(buf))
 		s.buffer <- ptr
 	}
-	s.metrics.availableBuffersPerSlab.WithLabelValues(s.name).Add(float64(s.count))
+	s.metrics.availableBuffersPerSlab.WithLabelValues(s.name).Set(float64(s.count))
 }
 
 func (s *slab) get(size int) ([]byte, error) {
+	s.metrics.accesses.WithLabelValues(s.name, opTypeGet).Inc()
 	s.mtx.Lock()
 	if s.buffer == nil {
 		s.init()
@@ -77,6 +78,7 @@ func (s *slab) get(size int) ([]byte, error) {
 }
 
 func (s *slab) put(buf []byte) {
+	s.metrics.accesses.WithLabelValues(s.name, opTypePut).Inc()
 	if s.buffer == nil {
 		panic("slab is not initialized")
 	}

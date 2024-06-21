@@ -8,13 +8,19 @@ import (
 )
 
 type metrics struct {
-	availableBuffersPerSlab *prometheus.CounterVec
+	availableBuffersPerSlab *prometheus.GaugeVec
 	errorsCounter           *prometheus.CounterVec
+	accesses                *prometheus.CounterVec
 }
+
+const (
+	opTypeGet = "get"
+	opTypePut = "put"
+)
 
 func newMetrics(r prometheus.Registerer, name string) *metrics {
 	return &metrics{
-		availableBuffersPerSlab: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		availableBuffersPerSlab: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace:   constants.Loki,
 			Subsystem:   "mempool",
 			Name:        "available_buffers_per_slab",
@@ -28,5 +34,12 @@ func newMetrics(r prometheus.Registerer, name string) *metrics {
 			Help:        "The total amount of errors returned from the pool.",
 			ConstLabels: prometheus.Labels{"pool": name},
 		}, []string{"slab", "reason"}),
+		accesses: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace:   constants.Loki,
+			Subsystem:   "mempool",
+			Name:        "accesses_total",
+			Help:        "The total amount of accesses to the pool.",
+			ConstLabels: prometheus.Labels{"pool": name},
+		}, []string{"slab", "op"}),
 	}
 }
