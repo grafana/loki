@@ -95,8 +95,9 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 		ingesterChunks, err = a.ingesterQuerier.GetChunkIDs(ctx, from, through, predicate.Matchers...)
 
 		if err == nil {
-			sp := opentracing.SpanFromContext(ctx)
-			sp.LogKV("ingester-chunks-count", len(ingesterChunks))
+			if sp := opentracing.SpanFromContext(ctx); sp != nil {
+				sp.LogKV("ingester-chunks-count", len(ingesterChunks))
+			}
 			level.Debug(util_log.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
 		}
 		errs <- err
