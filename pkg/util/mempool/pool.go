@@ -117,13 +117,21 @@ func (a *MemPool) Get(size int) []byte {
 // Put satisfies Allocator interface
 // Every buffer allocated with Get(size int) needs to be returned to the pool
 // using Put(buffer []byte) so it can be re-cycled.
+// NB(owen-d): MemPool ensures that buffer capacities are _exactly_ the same
+// as individual slab sizes before returning them to the pool.
 func (a *MemPool) Put(buffer []byte) (returned bool) {
 	size := cap(buffer)
 	for i := 0; i < len(a.slabs); i++ {
-		if a.slabs[i].size < size {
-			continue
+		if a.slabs[i].size == size {
+			return a.slabs[i].put(buffer)
 		}
-		return a.slabs[i].put(buffer)
+
+		// if the current slab is too large, exit early
+		// as slabs are sorted by size and we won't find a smaller slab
+		if a.slabs[i].size > size {
+			break
+		}
 	}
+
 	return false
 }

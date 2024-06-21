@@ -85,6 +85,30 @@ func TestMemPool(t *testing.T) {
 	})
 }
 
+func TestMemPoolPutRequiresCorrectSizing(t *testing.T) {
+	pool := New("test", []Bucket{
+		{Size: 1, Capacity: 10},
+		{Size: 1, Capacity: 20},
+		{Size: 1, Capacity: 30},
+	}, nil)
+
+	// exhaust the slabs so we'll have room to return
+	_ = pool.Get(10)
+	_ = pool.Get(20)
+	_ = pool.Get(30)
+
+	// put a buffer that is too small
+	require.False(t, pool.Put(make([]byte, 9)))
+
+	// put a buffer that is too large
+	require.False(t, pool.Put(make([]byte, 31)))
+
+	// put a buffer that is the correct size for each slab
+	require.True(t, pool.Put(make([]byte, 10)))
+	require.True(t, pool.Put(make([]byte, 20)))
+	require.True(t, pool.Put(make([]byte, 30)))
+}
+
 func BenchmarkSlab(b *testing.B) {
 	for _, sz := range []int{
 		1 << 10,   // 1KB
