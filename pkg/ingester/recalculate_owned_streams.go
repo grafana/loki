@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -56,19 +55,16 @@ func (s *recalculateOwnedStreams) recalculate() {
 		return
 	}
 	level.Info(s.logger).Log("msg", "detected ring changes, re-evaluating streams ownership")
-	ownedTokenRange, err := s.getTokenRangesForIngester()
-	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to get token ranges for ingester", "err", err)
-		s.resetRingState()
-		return
-	}
 
 	for _, instance := range s.instancesSupplier() {
 		if !instance.limiter.limits.UseOwnedStreamCount(instance.instanceID) {
 			continue
 		}
 
-		instance.updateOwnedStreams(ownedTokenRange)
+		err := instance.updateOwnedStreams(s.ingestersRing, s.ingesterID)
+		if err != nil {
+			level.Error(s.logger).Log("msg", "failed to re-evaluate streams ownership", "tenant", instance.instanceID, "err", err)
+		}
 	}
 }
 
@@ -94,17 +90,4 @@ func (s *recalculateOwnedStreams) checkRingForChanges() (bool, error) {
 	ringChanged := ring.HasReplicationSetChangedWithoutStateOrAddr(s.previousRing, rs)
 	s.previousRing = rs
 	return ringChanged, nil
-}
-
-func (s *recalculateOwnedStreams) getTokenRangesForIngester() (ring.TokenRanges, error) {
-	ranges, err := s.ingestersRing.GetTokenRangesForInstance(s.ingesterID)
-	if err != nil {
-		if errors.Is(err, ring.ErrInstanceNotFound) {
-			level.Debug(s.logger).Log("msg", "failed to get token ranges for ingester", "ingesterID", s.ingesterID, "err", err)
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	return ranges, nil
 }

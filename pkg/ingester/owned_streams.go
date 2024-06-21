@@ -49,9 +49,9 @@ func (s *ownedStreamService) getOwnedStreamCount() int {
 }
 
 func (s *ownedStreamService) updateFixedLimit() {
-	level.Debug(s.logger).Log("msg", "updating fixed limit", "tenant", s.tenantID)
-	limit, _, _, _ := s.limiter.GetStreamCountLimit(s.tenantID)
-	s.fixedLimit.Store(int32(limit))
+	newLimit, _, _, _ := s.limiter.GetStreamCountLimit(s.tenantID)
+	oldLimit := s.fixedLimit.Swap(int32(newLimit))
+	level.Debug(s.logger).Log("msg", "updating fixed limit", "tenant", s.tenantID, "old_limit", oldLimit, "new_limit", newLimit)
 }
 
 func (s *ownedStreamService) getFixedLimit() int {

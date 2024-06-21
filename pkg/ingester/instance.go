@@ -10,14 +10,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-
 	logg "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
+	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,8 +24,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"go.uber.org/atomic"
-
-	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
@@ -41,6 +36,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -49,8 +45,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/deletion"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	mathutil "github.com/grafana/loki/v3/pkg/util/math"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -1197,13 +1195,34 @@ func minTs(stream *logproto.Stream) model.Time {
 	return model.TimeFromUnixNano(streamMinTs)
 }
 
+var streamTokenGenerator = lokiring.TokenFor
+
 // For each stream, we check if the stream is owned by the ingester or not and increment/decrement the owned stream count.
-func (i *instance) updateOwnedStreams(ownedTokenRange ring.TokenRanges) {
+func (i *instance) updateOwnedStreams(ingesterRing ring.ReadRing, ingesterID string) error {
+	var descsBuf = make([]ring.InstanceDesc, ingesterRing.ReplicationFactor()+1)
+	var hostsBuf = make([]string, ingesterRing.ReplicationFactor()+1)
+	var zoneBuf = make([]string, ingesterRing.ZonesCount()+1)
+	var err error
 	i.streams.WithLock(func() {
 		i.ownedStreamsSvc.resetStreamCounts()
-		_ = i.streams.ForEach(func(s *stream) (bool, error) {
-			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedTokenRange.IncludesKey(uint32(s.fp)))
+		err = i.streams.ForEach(func(s *stream) (bool, error) {
+			replicationSet, err := ingesterRing.Get(streamTokenGenerator(i.instanceID, s.labelsString), ring.WriteNoExtend, descsBuf, hostsBuf, zoneBuf)
+			if err != nil {
+				return false, fmt.Errorf("error getting replication set for stream %s: %v", s.labelsString, err)
+			}
+			ownedStream := i.isOwnedStream(replicationSet, ingesterID)
+			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedStream)
 			return true, nil
 		})
 	})
+	return err
+}
+
+func (i *instance) isOwnedStream(replicationSet ring.ReplicationSet, ingesterID string) bool {
+	for _, instanceDesc := range replicationSet.Instances {
+		if instanceDesc.Id == ingesterID {
+			return true
+		}
+	}
+	return false
 }
