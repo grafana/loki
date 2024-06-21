@@ -494,15 +494,16 @@ func newCachedListOpObjectClient(oc client.ObjectClient, ttl, interval time.Dura
 
 func (c *cachedListOpObjectClient) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var (
-		sp       = opentracing.SpanFromContext(ctx)
 		start    = time.Now()
 		cacheDur time.Duration
 	)
 	defer func() {
-		sp.LogKV(
-			"cache_duration", cacheDur,
-			"total_duration", time.Since(start),
-		)
+		if sp := opentracing.SpanFromContext(ctx); sp != nil {
+			sp.LogKV(
+				"cache_duration", cacheDur,
+				"total_duration", time.Since(start),
+			)
+		}
 	}()
 
 	if delimiter != "" {
