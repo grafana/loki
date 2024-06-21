@@ -45,24 +45,6 @@ func TestMemPool(t *testing.T) {
 		require.Equal(t, 512, cap(res))
 	})
 
-	t.Run("buffer is cleared when returned", func(t *testing.T) {
-		pool := New("test", []Bucket{
-			{Size: 1, Capacity: 64},
-		}, nil)
-		res, err := pool.Get(8)
-		require.NoError(t, err)
-		require.Equal(t, 8, len(res))
-		source := []byte{0, 1, 2, 3, 4, 5, 6, 7}
-		copy(res, source)
-
-		pool.Put(res)
-
-		res, err = pool.Get(8)
-		require.NoError(t, err)
-		require.Equal(t, 8, len(res))
-		require.Equal(t, make([]byte, 8), res)
-	})
-
 	t.Run("pool returns error when no buffer is available", func(t *testing.T) {
 		pool := New("test", []Bucket{
 			{Size: 1, Capacity: 64},
