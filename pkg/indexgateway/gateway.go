@@ -465,12 +465,15 @@ func (g *Gateway) boundedShards(
 	// 2) filter via blooms if enabled
 	filters := syntax.ExtractLineFilters(p.Plan().AST)
 	if g.bloomQuerier != nil && len(filters) > 0 {
-		filtered, err = g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
+		xs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
 		if err != nil {
-			return err
+			level.Error(logger).Log("msg", "failed to filter chunk refs", "err", err)
+		} else {
+			filtered = xs
 		}
 		sp.LogKV(
 			"stage", "queried bloom gateway",
+			"err", err,
 		)
 	}
 
