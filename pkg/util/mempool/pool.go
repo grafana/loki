@@ -64,15 +64,6 @@ func (s *slab) get(size int) ([]byte, error) {
 		return nil, errSlabExhausted
 	}
 
-	// Taken from https://github.com/ortuman/nuke/blob/main/monotonic_arena.go#L37-L48
-	// This piece of code will be translated into a runtime.memclrNoHeapPointers
-	// invocation by the compiler, which is an assembler optimized implementation.
-	// Architecture specific code can be found at src/runtime/memclr_$GOARCH.s
-	// in Go source (since https://codereview.appspot.com/137880043).
-	for i := range buf {
-		buf[i] = 0
-	}
-
 	return buf[:size], nil
 }
 

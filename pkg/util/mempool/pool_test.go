@@ -7,6 +7,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 	"github.com/stretchr/testify/require"
 )
 
@@ -130,4 +131,26 @@ func TestMemPool(t *testing.T) {
 		wg.Wait()
 		t.Log("finished")
 	})
+}
+
+func BenchmarkSlab(b *testing.B) {
+	for _, sz := range []int{
+		1 << 10,   // 1KB
+		1 << 20,   // 1MB
+		128 << 20, // 128MB
+	} {
+		b.Run(flagext.ByteSize(uint64(sz)).String(), func(b *testing.B) {
+			slab := newSlab(sz, 1, newMetrics(nil, "test"))
+			slab.init()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				b, err := slab.get(sz)
+				if err != nil {
+					panic(err)
+				}
+				slab.put(b)
+			}
+		})
+	}
 }
