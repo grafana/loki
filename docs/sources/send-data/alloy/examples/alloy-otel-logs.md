@@ -187,11 +187,18 @@ This docker-compose file relies on the `loki-fundamentals_loki` docker network. 
 <!-- **Note: This docker-compose file relies on the `loki-fundamentals_loki` docker network. If you have not started the observability stack, you will need to start it first.** -->
 <!-- Killercoda include END -->
 
-<!-- Killercoda exec START -->
+<!-- Killercoda ignore START -->
 ```bash
- docker compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build 
+docker compose -f lloki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build 
 ```
-<!-- Killercoda exec END -->
+<!-- Killercoda ignore END -->
+
+<!-- Killercoda include START -->
+
+<!--  ```bash -->
+<!-- docker-compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build  -->
+<!--  ```{{exec}} -->
+<!-- Killercoda include END -->
 
 This will start the following services:
 ```bash
