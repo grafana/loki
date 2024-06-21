@@ -97,6 +97,10 @@ We will be access two UI interfaces:
 
 To configure Alloy to ingest OpenTelemetry logs, we need to update the Alloy configuration file. To start, we will update the `config.alloy` file to include the OpenTelemetry logs configuration.
 
+<!-- Killercoda include START -->
+<!-- **Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.** -->
+<!-- Killercoda include END -->
+
 ### OpenTelelmetry Logs Receiver
 
 First, we will configure the OpenTelemetry logs receiver. This receiver will accept logs via HTTP and gRPC.
@@ -125,11 +129,11 @@ Next, we will configure the OpenTelemetry logs processor. This processor will ba
 Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
 <!-- Killercoda copy START -->
 ```alloy
-    otelcol.processor.batch "default" {
+otelcol.processor.batch "default" {
     output {
-    logs = [otelcol.exporter.otlphttp.default.input]
+        logs = [otelcol.exporter.otlphttp.default.input]
     }
-      }
+}
 ```
 <!-- Killercoda copy END -->
 
@@ -148,13 +152,16 @@ otelcol.exporter.otlphttp "default" {
 ```
 <!-- Killercoda copy END -->
 
-Once added, save the file. Then run the following command to request Alloy to reload the configuration:
+### Reload the Alloy configuration
 
+Once added, save the file. Then run the following command to request Alloy to reload the configuration:
 <!-- Killercoda exec START -->
 ```bash
 curl -X POST http://localhost:12345/-/reload
 ```
 <!-- Killercoda exec END -->
+
+The new configuration will be loaded this can be verified by checking the Alloy UI: [http://localhost:12345](http://localhost:12345).
 
 ## Stuck? Need help?
 
@@ -163,6 +170,7 @@ If you get stuck or need help creating the configuration, you can copy and repla
 <!-- Killercoda exec START -->
 ```bash
 cp loki-fundamentals/completed/config.alloy loki-fundamentals/config.alloy
+curl -X POST http://localhost:12345/-/reload
 ```
 <!-- Killercoda exec END -->
 
@@ -180,7 +188,7 @@ This docker-compose file relies on the `loki-fundamentals_loki` docker network. 
 <!-- Killercoda ignore END -->
 
 <!-- Killercoda include START -->
-<!-- **Note: This docker-compose file relies on the `loki-fundamentals_loki` docker network. If you have not started the observability stack, you will need to start it first. ** -->
+<!-- **Note: This docker-compose file relies on the `loki-fundamentals_loki` docker network. If you have not started the observability stack, you will need to start it first.** -->
 <!-- Killercoda include END -->
 
 <!-- Killercoda exec START -->
@@ -210,3 +218,4 @@ Once started, you can access the Carnivorous Greenhouse application at [http://l
 Finally to view the logs in Loki, navigate to the Loki Logs Explore view in Grafana at [http://localhost:3000/a/grafana-lokiexplore-app/explore](http://localhost:3000/a/grafana-lokiexplore-app/explore).
 
 
+<!-- Killercoda step3.md END -->
