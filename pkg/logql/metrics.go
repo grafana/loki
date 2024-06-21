@@ -434,8 +434,9 @@ func RecordShardsQueryMetrics(
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
 
-func RecordVolumeQueryMetrics(ctx context.Context, logger log.Logger, start, end time.Time, query string, limit uint32, step time.Duration, status string, stats logql_stats.Result) {
+func RecordVolumeQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, limit uint32, step time.Duration, status string, stats logql_stats.Result) {
 	var (
+		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeVolume
 	)
