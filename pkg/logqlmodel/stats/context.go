@@ -520,18 +520,11 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 	return stats
 }
 
-func (r Result) LogWithSpan(sp opentracing.Span) {
-	sp.LogKV(r.KVList()...)
-
-	r.Caches.LogWithSpan(sp)
-	r.Summary.LogWithSpan(sp)
-}
-
-func (r Result) LogWithLogger(logger log.Logger) {
+func (r Result) Log(logger log.Logger) {
 	logger.Log(r.KVList()...)
 
-	r.Caches.LogWithLogger(logger)
-	r.Summary.LogWithLogger(logger)
+	r.Caches.Log(logger)
+	r.Summary.Log(logger)
 }
 
 func (r Result) KVList() []any {
@@ -567,7 +560,7 @@ func (r Result) KVList() []any {
 	}
 }
 
-func (s Summary) LogWithLogger(logger log.Logger) {
+func (s Summary) Log(logger log.Logger) {
 	logger.Log(s.KVList()...)
 }
 
@@ -587,7 +580,7 @@ func (s Summary) LogWithSpan(sp opentracing.Span) {
 	sp.LogKV(s.KVList()...)
 }
 
-func (c Caches) LogWithLogger(logger log.Logger) {
+func (c Caches) Log(logger log.Logger) {
 	logger.Log(c.KVList()...)
 }
 

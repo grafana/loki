@@ -209,7 +209,7 @@ func (k kvLogger) Log(keyvals ...interface{}) error {
 
 func (r *QueryResultPrinter) PrintStats(stats stats.Result) {
 	writer := tabwriter.NewWriter(os.Stderr, 0, 8, 0, '\t', 0)
-	stats.LogWithLogger(kvLogger{Writer: writer})
+	stats.Log(kvLogger{Writer: writer})
 }
 
 func matchLabels(on bool, l loghttp.LabelSet, names []string) loghttp.LabelSet {

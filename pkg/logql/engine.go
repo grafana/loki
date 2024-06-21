@@ -263,7 +263,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
-	statResult.LogWithSpan(sp)
+	sp.LogKV(statResult.KVList()...)
 
 	status, _ := server.ClientHTTPStatusAndError(err)
 

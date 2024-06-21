@@ -113,7 +113,7 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 	}
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		statResult.LogWithSpan(sp)
+		sp.LogKV(statResult.KVList()...)
 	}
 
 	status := 200
@@ -268,7 +268,7 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		statResult.LogWithSpan(sp)
+		sp.LogKV(statResult.KVList()...)
 	}
 
 	status := 200
@@ -299,7 +299,7 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		statResult.LogWithSpan(sp)
+		sp.LogKV(statResult.KVList()...)
 	}
 
 	status := 200
@@ -331,7 +331,7 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		statResult.LogWithSpan(sp)
+		sp.LogKV(statResult.KVList()...)
 	}
 
 	status := 200
@@ -368,7 +368,7 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		statResult.LogWithSpan(sp)
+		sp.LogKV(statResult.KVList()...)
 	}
 
 	status := 200

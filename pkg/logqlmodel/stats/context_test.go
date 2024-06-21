@@ -32,7 +32,7 @@ func TestResult(t *testing.T) {
 	fakeIngesterQuery(ctx)
 
 	res := stats.Result(2*time.Second, 2*time.Nanosecond, 10)
-	res.LogWithLogger(util_log.Logger)
+	res.Log(util_log.Logger)
 	expected := Result{
 		Ingester: Ingester{
 			TotalChunksMatched: 200,
