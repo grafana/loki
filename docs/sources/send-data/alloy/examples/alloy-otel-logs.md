@@ -27,19 +27,24 @@ Before you begin, ensure you have the following to run the demo:
 - Docker Compose
 
 <!-- Killercoda ignore START -->
-
 {{< admonition type="note" >}}
 Alternatively, you can try out this example in our online sandbox. Which is a fully configured environment with all the dependencies pre-installed. You can access the sandbox [here](https://killercoda.com/grafana-labs/course/loki/alloy-otel-logs).
-
 {{< /admonition >}}
-
 <!-- Killercoda ignore END -->
 
 ## Scenario
 
 In this scenario, we have a microservices application called the Carnivourse Greenhouse. This application consists of the following services:
 
-- foo
+- **User Service:** Mangages user data and authentication for the application. Such as creating users and logging in.
+- **plant Service:** Manges the creation of new plants and updates other services when a new plant is created.
+- **Simulation Service:** Generates sensor data for each plant.
+- **Websocket Service:** Manages the websocket connections for the application.
+- **Bug Service:** A service that when enabled, randomly causes services to fail and generate additional logs.
+- **Main App:** The main application that ties all the services together.
+- **Database:** A database that stores user and plant data.
+
+Each service generates logs using the OpenTelemetry SDK and exports to Alloy in the OpenTelemetry format. Alloy then ingests the logs and sends them to Loki. We will configure Alloy to ingest OpenTelemetry logs, send them to Loki, and view the logs in Grafana.
 
 <!-- Killercoda intro.md END -->
 
@@ -49,7 +54,7 @@ In this scenario, we have a microservices application called the Carnivourse Gre
 
 In this step, we will set up our environment by cloning the repository that contains our demo application and spinning up our observability stack using Docker Compose.
 
-1.  To get started, clone the repository that contains our demo application:
+1. To get started, clone the repository that contains our demo application:
     <!-- Killercoda exec START -->
     ```bash
     git clone -b microservice-otel  https://github.com/grafana/loki-fundamentals.git
@@ -96,52 +101,52 @@ To configure Alloy to ingest OpenTelemetry logs, we need to update the Alloy con
 
 First, we will configure the OpenTelemetry logs receiver. This receiver will accept logs via HTTP and gRPC.
 
-1. Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
-   <!-- Killercoda copy START -->
+Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+<!-- Killercoda copy START -->
 
-   ```alloy
-     otelcol.receiver.otlp "default" {
-       http {}
-       grpc {}
+```alloy
+ otelcol.receiver.otlp "default" {
+   http {}
+   grpc {}
 
-       output {
-         logs    = [otelcol.processor.batch.default.input]
-       }
-     }
-   ```
+   output {
+     logs    = [otelcol.processor.batch.default.input]
+   }
+ }
+```
 
-   <!-- Killercoda copy END -->
+<!-- Killercoda copy END -->
 
 
 ### OpenTelemetry Logs Processor
 
 Next, we will configure the OpenTelemetry logs processor. This processor will batch the logs before sending them to the logs exporter.
 
-1.  Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
-    <!-- Killercoda copy START -->
-    ```alloy
-        otelcol.processor.batch "default" {
-        output {
-        logs = [otelcol.exporter.otlphttp.default.input]
-        }
-          }
-    ```
-    <!-- Killercoda copy END -->
+Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+<!-- Killercoda copy START -->
+```alloy
+    otelcol.processor.batch "default" {
+    output {
+    logs = [otelcol.exporter.otlphttp.default.input]
+    }
+      }
+```
+<!-- Killercoda copy END -->
 
 ### OpenTelemetry Logs Exporter
 
 Lastly, we will configure the OpenTelemetry logs exporter. This exporter will send the logs to Loki.
 
-1.  Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
-    <!-- Killercoda copy START -->
-    ```alloy
-    otelcol.exporter.otlphttp "default" {
-      client {
-        endpoint = "http://loki:3100/otlp"
-      }
-    }
-    ```
-    <!-- Killercoda copy END -->
+Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+<!-- Killercoda copy START -->
+```alloy
+otelcol.exporter.otlphttp "default" {
+  client {
+    endpoint = "http://loki:3100/otlp"
+  }
+}
+```
+<!-- Killercoda copy END -->
 
 Once added, save the file. Then run the following command to request Alloy to reload the configuration:
 
@@ -185,10 +190,23 @@ This docker-compose file relies on the `loki-fundamentals_loki` docker network. 
 <!-- Killercoda exec END -->
 
 This will start the following services:
+```bash
+ ✔ Container greenhouse-db-1                 Started                                                         
+ ✔ Container greenhouse-websocket_service-1  Started 
+ ✔ Container greenhouse-bug_service-1        Started
+ ✔ Container greenhouse-user_service-1       Started
+ ✔ Container greenhouse-plant_service-1      Started
+ ✔ Container greenhouse-simulation_service-1 Started
+ ✔ Container greenhouse-main_app-1           Started
 ```
 
+Once started, you can access the Carnivorous Greenhouse application at [http://localhost:5005](http://localhost:5005). Generate some logs by interacting with the application in the following ways:
 
-```
+- Create a user
+- Log in
+- Create a few plants to monitor
+- Enable bug mode to activate the bug service. This will cause services to fail and generate additional logs.
 
+Finally to view the logs in Loki, navigate to the Loki Logs Explore view in Grafana at [http://localhost:3000/a/grafana-lokiexplore-app/explore](http://localhost:3000/a/grafana-lokiexplore-app/explore).
 
 
