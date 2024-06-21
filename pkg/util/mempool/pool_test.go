@@ -14,65 +14,38 @@ import (
 
 func TestMemPool(t *testing.T) {
 
-	t.Run("empty pool", func(t *testing.T) {
-		pool := New("test", []Bucket{}, nil)
-		_, err := pool.Get(256)
-		require.Error(t, err)
-	})
-
-	t.Run("requested size too big", func(t *testing.T) {
-		pool := New("test", []Bucket{
-			{Size: 1, Capacity: 128},
-		}, nil)
-		_, err := pool.Get(256)
-		require.Error(t, err)
-	})
-
 	t.Run("requested size within bucket", func(t *testing.T) {
 		pool := New("test", []Bucket{
 			{Size: 1, Capacity: 128},
 			{Size: 1, Capacity: 256},
 			{Size: 1, Capacity: 512},
 		}, nil)
-		res, err := pool.Get(200)
-		require.NoError(t, err)
+		res := pool.Get(200)
 		require.Equal(t, 200, len(res))
 		require.Equal(t, 256, cap(res))
 
-		res, err = pool.Get(300)
-		require.NoError(t, err)
+		res = pool.Get(300)
 		require.Equal(t, 300, len(res))
 		require.Equal(t, 512, cap(res))
-	})
-
-	t.Run("pool returns error when no buffer is available", func(t *testing.T) {
-		pool := New("test", []Bucket{
-			{Size: 1, Capacity: 64},
-		}, nil)
-		buf1, _ := pool.Get(32)
-		require.Equal(t, 32, len(buf1))
-
-		_, err := pool.Get(16)
-		require.ErrorContains(t, err, errSlabExhausted.Error())
 	})
 
 	t.Run("test ring buffer returns same backing array", func(t *testing.T) {
 		pool := New("test", []Bucket{
 			{Size: 2, Capacity: 128},
 		}, nil)
-		res1, _ := pool.Get(32)
+		res1 := pool.Get(32)
 		ptr1 := unsafe.Pointer(unsafe.SliceData(res1))
 
-		res2, _ := pool.Get(64)
+		res2 := pool.Get(64)
 		ptr2 := unsafe.Pointer(unsafe.SliceData(res2))
 
 		pool.Put(res2)
 		pool.Put(res1)
 
-		res3, _ := pool.Get(48)
+		res3 := pool.Get(48)
 		ptr3 := unsafe.Pointer(unsafe.SliceData(res3))
 
-		res4, _ := pool.Get(96)
+		res4 := pool.Get(96)
 		ptr4 := unsafe.Pointer(unsafe.SliceData(res4))
 
 		require.Equal(t, ptr1, ptr4)
@@ -98,15 +71,11 @@ func TestMemPool(t *testing.T) {
 				defer wg.Done()
 				for i := 0; i < n; i++ {
 					s := 2 << rand.Intn(5)
-					buf1, err1 := pool.Get(s)
-					buf2, err2 := pool.Get(s)
-					if err2 == nil {
-						pool.Put(buf2)
-					}
+					buf1 := pool.Get(s)
+					buf2 := pool.Get(s)
+					pool.Put(buf2)
 					time.Sleep(time.Millisecond * time.Duration(rand.Intn(10)))
-					if err1 == nil {
-						pool.Put(buf1)
-					}
+					pool.Put(buf1)
 				}
 			}()
 		}
@@ -128,10 +97,7 @@ func BenchmarkSlab(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				b, err := slab.get(sz)
-				if err != nil {
-					panic(err)
-				}
+				b := slab.get(sz)
 				slab.put(b)
 			}
 		})

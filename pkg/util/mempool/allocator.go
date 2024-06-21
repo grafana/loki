@@ -7,15 +7,15 @@ import (
 // Allocator handles byte slices for bloom queriers.
 // It exists to reduce the cost of allocations and allows to re-use already allocated memory.
 type Allocator interface {
-	Get(size int) ([]byte, error)
-	Put([]byte) bool
+	Get(size int) []byte
+	Put([]byte) (returned bool)
 }
 
 // SimpleHeapAllocator allocates a new byte slice every time and does not re-cycle buffers.
 type SimpleHeapAllocator struct{}
 
-func (a *SimpleHeapAllocator) Get(size int) ([]byte, error) {
-	return make([]byte, size), nil
+func (a *SimpleHeapAllocator) Get(size int) []byte {
+	return make([]byte, size)
 }
 
 func (a *SimpleHeapAllocator) Put([]byte) bool {
@@ -38,8 +38,8 @@ func NewBytePoolAllocator(minSize, maxSize int, factor float64) *BytePool {
 }
 
 // Get implements Allocator
-func (p *BytePool) Get(size int) ([]byte, error) {
-	return p.pool.Get(size).([]byte)[:size], nil
+func (p *BytePool) Get(size int) []byte {
+	return p.pool.Get(size).([]byte)[:size]
 }
 
 // Put implements Allocator

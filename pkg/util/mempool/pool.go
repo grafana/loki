@@ -2,7 +2,6 @@ package mempool
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"unsafe"
 
@@ -18,9 +17,9 @@ var (
 )
 
 type slab struct {
+	once        sync.Once
 	buffer      chan unsafe.Pointer
 	size, count int
-	mtx         sync.Mutex
 	metrics     *metrics
 	name        string
 }
@@ -47,13 +46,9 @@ func (s *slab) init() {
 	s.metrics.availableBuffersPerSlab.WithLabelValues(s.name).Set(float64(s.count))
 }
 
-func (s *slab) get(size int) ([]byte, error) {
+func (s *slab) get(size int) []byte {
 	s.metrics.accesses.WithLabelValues(s.name, opTypeGet).Inc()
-	s.mtx.Lock()
-	if s.buffer == nil {
-		s.init()
-	}
-	defer s.mtx.Unlock()
+	s.once.Do(s.init)
 
 	// wait for available buffer on channel
 	var buf []byte
@@ -62,20 +57,27 @@ func (s *slab) get(size int) ([]byte, error) {
 		buf = unsafe.Slice((*byte)(ptr), s.size)
 	default:
 		s.metrics.errorsCounter.WithLabelValues(s.name, reasonSlabExhausted).Inc()
-		return nil, errSlabExhausted
+		buf = make([]byte, s.size)
 	}
 
-	return buf[:size], nil
+	return buf[:size]
 }
 
-func (s *slab) put(buf []byte) {
+func (s *slab) put(buf []byte) (returned bool) {
 	s.metrics.accesses.WithLabelValues(s.name, opTypePut).Inc()
 	if s.buffer == nil {
 		panic("slab is not initialized")
 	}
 
 	ptr := unsafe.Pointer(unsafe.SliceData(buf))
-	s.buffer <- ptr
+
+	// try to put buffer back on channel; if channel is full, discard buffer
+	select {
+	case s.buffer <- ptr:
+		return true
+	default:
+		return false
+	}
 }
 
 // MemPool is an Allocator implementation that uses a fixed size memory pool
@@ -101,7 +103,7 @@ func New(name string, buckets []Bucket, r prometheus.Registerer) *MemPool {
 // Get satisfies Allocator interface
 // Allocating a buffer from an exhausted pool/slab, or allocating a buffer that
 // exceeds the largest slab size will return an error.
-func (a *MemPool) Get(size int) ([]byte, error) {
+func (a *MemPool) Get(size int) []byte {
 	for i := 0; i < len(a.slabs); i++ {
 		if a.slabs[i].size < size {
 			continue
@@ -109,20 +111,19 @@ func (a *MemPool) Get(size int) ([]byte, error) {
 		return a.slabs[i].get(size)
 	}
 	a.metrics.errorsCounter.WithLabelValues("pool", reasonSizeExceeded).Inc()
-	return nil, fmt.Errorf("no slab found for size: %d", size)
+	return make([]byte, size)
 }
 
 // Put satisfies Allocator interface
 // Every buffer allocated with Get(size int) needs to be returned to the pool
 // using Put(buffer []byte) so it can be re-cycled.
-func (a *MemPool) Put(buffer []byte) bool {
+func (a *MemPool) Put(buffer []byte) (returned bool) {
 	size := cap(buffer)
 	for i := 0; i < len(a.slabs); i++ {
 		if a.slabs[i].size < size {
 			continue
 		}
-		a.slabs[i].put(buffer)
-		return true
+		return a.slabs[i].put(buffer)
 	}
 	return false
 }
