@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -167,8 +168,13 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomgateway.FilterChunkRefs")
 	stats, ctx := ContextWithEmptyStats(ctx)
+	logger := spanlogger.FromContextWithFallback(
+		ctx,
+		utillog.WithContext(ctx, g.logger),
+	)
+
 	defer func() {
-		sp.LogKV(stats.KVArgs()...)
+		level.Info(logger).Log(stats.KVArgs()...)
 		sp.Finish()
 	}()
 
