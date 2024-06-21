@@ -7,8 +7,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/grafana/loki/v3/pkg/util/flagext"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 func TestMemPool(t *testing.T) {
