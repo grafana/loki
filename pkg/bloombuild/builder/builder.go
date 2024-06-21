@@ -38,7 +38,7 @@ type Builder struct {
 	logger  log.Logger
 
 	tsdbStore   common.TSDBStore
-	bloomStore  bloomshipper.Store
+	bloomStore  bloomshipper.StoreBase
 	chunkLoader ChunkLoader
 
 	client protos.PlannerForBuilderClient
@@ -51,7 +51,7 @@ func New(
 	storeCfg storage.Config,
 	storageMetrics storage.ClientMetrics,
 	fetcherProvider stores.ChunkFetcherProvider,
-	bloomStore bloomshipper.Store,
+	bloomStore bloomshipper.StoreBase,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Builder, error) {

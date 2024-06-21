@@ -49,7 +49,7 @@ type Gateway struct {
 
 	queue       *queue.RequestQueue
 	activeUsers *util.ActiveUsersCleanupService
-	bloomStore  bloomshipper.StoreWithMetrics
+	bloomStore  bloomshipper.Store
 
 	pendingTasks *atomic.Int64
 
@@ -71,7 +71,7 @@ func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
 }
 
 // New returns a new instance of the Bloom Gateway.
-func New(cfg Config, store bloomshipper.StoreWithMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
+func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
 	utillog.WarnExperimentalUse("Bloom Gateway", logger)
 	g := &Gateway{
 		cfg:     cfg,
