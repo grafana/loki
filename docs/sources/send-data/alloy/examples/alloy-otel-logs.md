@@ -75,8 +75,6 @@ In this step, we will set up our environment by cloning the repository that cont
     <!--  ```{{exec}} -->
     <!-- Killercoda include END -->
 
-
-
     This will spin up the following services:
     ```bash
     ✔ Container loki-fundamentals-grafana-1  Started                                                        
@@ -85,10 +83,8 @@ In this step, we will set up our environment by cloning the repository that cont
     ```
 
 We will be access two UI interfaces:
-
-- Grafana at [http://localhost:3000](http://localhost:3000)
 - Alloy at [http://localhost:12345](http://localhost:12345)
-
+- Grafana at [http://localhost:3000](http://localhost:3000)
 <!-- Killercoda step1.md END -->
 
 <!-- Killercoda step2.md START -->
