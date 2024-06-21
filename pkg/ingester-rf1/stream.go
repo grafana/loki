@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/grafana/loki/v3/pkg/ingester"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/grafana/loki/v3/pkg/ingester"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
@@ -18,7 +19,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
-	"github.com/grafana/loki/v3/pkg/ingester/wal"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -191,14 +191,6 @@ func (s *stream) NewChunk() *chunkenc.MemChunk {
 func (s *stream) Push(
 	ctx context.Context,
 	entries []logproto.Entry,
-	// WAL record to add push contents to.
-	// May be nil to disable this functionality.
-	record *wal.Record,
-	// Counter used in WAL replay to avoid duplicates.
-	// If this is non-zero, the stream will reject entries
-	// with a counter value less than or equal to it's own.
-	// It is set to zero and thus bypassed outside of WAL replays.
-	counter int64,
 	// Lock chunkMtx while pushing.
 	// If this is false, chunkMtx must be held outside Push.
 	lockChunk bool,
@@ -212,19 +204,7 @@ func (s *stream) Push(
 		defer s.chunkMtx.Unlock()
 	}
 
-	isReplay := counter > 0
-	if isReplay && counter <= s.entryCt {
-		var byteCt int
-		for _, e := range entries {
-			byteCt += len(e.Line)
-		}
-
-		s.metrics.walReplaySamplesDropped.WithLabelValues(duplicateReason).Add(float64(len(entries)))
-		s.metrics.walReplayBytesDropped.WithLabelValues(duplicateReason).Add(float64(byteCt))
-		return 0, ErrEntriesExist
-	}
-
-	toStore, invalid := s.validateEntries(ctx, entries, isReplay, rateLimitWholeStream, usageTracker)
+	toStore, invalid := s.validateEntries(ctx, entries, rateLimitWholeStream, usageTracker)
 	if rateLimitWholeStream && hasRateLimitErr(invalid) {
 		return 0, errorForFailedEntries(s, invalid, len(entries))
 	}
@@ -337,7 +317,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 	return bytesAdded, storedEntries, invalid
 }
 
-func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker) ([]logproto.Entry, []entryWithError) {
+func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, rateLimitWholeStream bool, usageTracker push.UsageTracker) ([]logproto.Entry, []entryWithError) {
 
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
@@ -377,7 +357,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
 		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
-		if !isReplay && s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
+		if s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
 			outOfOrderSamples++

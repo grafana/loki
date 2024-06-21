@@ -55,7 +55,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.PoolConfig.RegisterFlagsWithPrefix("ingester-rf1.", f)
 
 	f.DurationVar(&cfg.PoolConfig.RemoteTimeout, "ingester-rf1.client.healthcheck-timeout", 1*time.Second, "How quickly a dead client will be removed after it has been detected to disappear. Set this to a value to allow time for a secondary health check to recover the missing client.")
-	f.DurationVar(&cfg.RemoteTimeout, "ingester-rf1.client.timeout", 5*time.Second, "The remote request timeout on the client side.")
+	f.DurationVar(&cfg.RemoteTimeout, "ingester-rf1.client.timeout", 60*time.Second, "The remote request timeout on the client side.")
 }
 
 // New returns a new ingester client.

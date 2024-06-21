@@ -22,7 +22,7 @@ type PoolConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *PoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(&cfg.ClientCleanupPeriod, prefix+"client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
+	f.DurationVar(&cfg.ClientCleanupPeriod, prefix+"client-cleanup-period", 1*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
 	f.BoolVar(&cfg.HealthCheckIngesters, prefix+"health-check-ingesters", true, "Run a health check on each ingester client during periodic cleanup.")
 	f.DurationVar(&cfg.RemoteTimeout, prefix+"remote-timeout", 1*time.Second, "Timeout for the health check.")
 }

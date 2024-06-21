@@ -193,7 +193,7 @@ func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.
 	}
 
 	lbs := labels.String()
-	level.Info(i.logger).Log("msg", "flushing stream", "user", userID, "fp", fp, "immediate", immediate, "num_chunks", len(chunks), "labels", lbs)
+	//level.Info(i.logger).Log("msg", "flushing stream", "user", userID, "fp", fp, "immediate", immediate, "num_chunks", len(chunks), "labels", lbs)
 
 	ctx = user.InjectOrgID(ctx, userID)
 	ctx, cancelFunc := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
