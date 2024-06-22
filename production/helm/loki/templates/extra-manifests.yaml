@@ -1,8 +1,24 @@
-{{- range .Values.extraObjects }}
+{{- /* Define extraObjects to handle both list and map scenarios */ -}}
+{{- $extraObjects := .Values.extraObjects }}
+
+{{- if not (kindIs "slice" .Values.extraObjects) }}
+  {{- if kindIs "map" .Values.extraObjects }}
+    {{- $extraObjects = list }}
+    {{- range $key, $value := .Values.extraObjects }}
+      {{- $extraObjects = append $extraObjects $value }}
+    {{- end }}
+  {{- else }}
+    {{- fail ".Values.extraObjects must be a list or dictionary object" }}
+  {{- end }}
+{{- end }}
+
+{{- range $extraObjects }}
 ---
 {{- if kindIs "map" . }}
 {{ tpl (toYaml .) $ }}
-{{- else }}
+{{- else if kindIs "string" . }}
 {{ tpl . $ }}
+{{- else }}
+{{- fail "grandchilden of .Values.extraObjects must be a dictionary or string" }}
 {{- end }}
 {{- end }}
