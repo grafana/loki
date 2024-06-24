@@ -615,7 +615,7 @@ loki-image-cross:
 	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
 
 loki-debug-image: ## build the debug loki docker image
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
+	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
 
 loki-push: loki-image-cross
 	$(call push-image,loki)
@@ -632,25 +632,25 @@ loki-canary-push: loki-canary-image-cross
 loki-canary-push-boringcrypto: loki-canary-image-cross-boringcrypto
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG)
 helm-test-image: ## build the helm test image
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
+	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
 helm-test-push: helm-test-image ## push the helm test image
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG)
 
 # loki-querytee
 loki-querytee-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile .
+	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile .
 loki-querytee-image-cross:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile.cross .
+	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile.cross .
 loki-querytee-push: loki-querytee-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
 
 # migrate-image
 migrate-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-migrate:$(IMAGE_TAG) -f cmd/migrate/Dockerfile .
+	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-migrate:$(IMAGE_TAG) -f cmd/migrate/Dockerfile .
 
 # LogQL Analyzer
 logql-analyzer-image: ## build the LogQL Analyzer image
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG) -f cmd/logql-analyzer/Dockerfile .
+	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG) -f cmd/logql-analyzer/Dockerfile .
 logql-analyzer-push: logql-analyzer-image ## push the LogQL Analyzer image
 	$(call push-image,logql-analyzer)
 

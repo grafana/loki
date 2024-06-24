@@ -1,4 +1,5 @@
-FROM golang:1.22.2 as build
+ARG GO_VERSION
+FROM golang:${GO_VERSION} as build
 
 COPY . /src/loki
 WORKDIR /src/loki
