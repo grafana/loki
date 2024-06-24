@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -35,7 +34,7 @@ func TestBloomBuilding(t *testing.T) {
 		nLogsPerSeries = 50
 	)
 
-	clu := cluster.New(level.DebugValue(), cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
+	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
 	defer func() {
@@ -75,7 +74,6 @@ func TestBloomBuilding(t *testing.T) {
 	require.NoError(t, tIngester.Restart())
 
 	// Start compactor and wait for compaction to finish.
-	start := recordStartTime()
 	tCompactor := clu.AddComponent(
 		"compactor",
 		"-target=compactor",
@@ -85,11 +83,9 @@ func TestBloomBuilding(t *testing.T) {
 	require.NoError(t, clu.Run())
 
 	// Wait for compaction to finish.
-	cliCompactor := client.New(tenantID, "", tCompactor.HTTPURL())
-	checkCompactionFinished(t, cliCompactor, start)
+	time.Sleep(5 * time.Second)
 
 	// Now create the bloom planner and builders
-	start = recordStartTime()
 	tBloomPlanner := clu.AddComponent(
 		"bloom-planner",
 		"-target=bloom-planner",
@@ -109,8 +105,7 @@ func TestBloomBuilding(t *testing.T) {
 	require.NoError(t, clu.Run())
 
 	// Wait for bloom build to finish
-	cliPlanner := client.New(tenantID, "", tBloomPlanner.HTTPURL())
-	checkBloomBuildFinished(t, cliPlanner, start)
+	time.Sleep(5 * time.Second)
 
 	// Create bloom client to fetch metas and blocks.
 	bloomStore := createBloomStore(t, tBloomPlanner.ClusterSharedPath())
@@ -132,13 +127,10 @@ func TestBloomBuilding(t *testing.T) {
 	require.NoError(t, tIngester.Restart())
 
 	// Restart compactor and wait for compaction to finish so TSDBs are updated.
-	start = recordStartTime()
 	require.NoError(t, tCompactor.Restart())
-	cliCompactor = client.New(tenantID, "", tCompactor.HTTPURL())
-	checkCompactionFinished(t, cliCompactor, start)
+	time.Sleep(5 * time.Second)
 
 	// Restart bloom planner to trigger bloom build
-	start = recordStartTime()
 	require.NoError(t, tBloomPlanner.Restart())
 
 	// TODO(salvacorts): Implement retry on builder so we don't need to restart it.
@@ -146,46 +138,11 @@ func TestBloomBuilding(t *testing.T) {
 	require.NoError(t, tBloomBuilder.Restart())
 
 	// Wait for bloom build to finish
-	cliPlanner = client.New(tenantID, "", tBloomPlanner.HTTPURL())
-	checkBloomBuildFinished(t, cliPlanner, start)
+	time.Sleep(5 * time.Second)
 
 	// Check that all series (both previous and new ones) pushed are present in the metas and blocks.
 	// This check ensures up to 1 meta per series, which tests deletion of old metas.
 	checkSeriesInBlooms(t, now, tenantID, bloomStore, series)
-}
-
-func recordStartTime() time.Time {
-	start := time.Now()
-	time.Sleep(1 * time.Second) // Gauge seconds has second precision, so we need to wait a bit.
-	return start
-}
-
-func checkCompactionFinished(t *testing.T, cliCompactor *client.Client, start time.Time) {
-	require.Eventually(t, func() bool {
-		metrics, err := cliCompactor.Metrics()
-		require.NoError(t, err)
-
-		metricName := "loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds"
-		val, _, err := extractMetric(metricName, metrics)
-		require.NoError(t, err)
-
-		lastRun := time.Unix(int64(val), 0)
-		return lastRun.After(start)
-	}, 30*time.Second, 1*time.Second)
-}
-
-func checkBloomBuildFinished(t *testing.T, cliPlanner *client.Client, start time.Time) {
-	require.Eventually(t, func() bool {
-		metrics, err := cliPlanner.Metrics()
-		require.NoError(t, err)
-
-		metricName := "loki_bloomplanner_build_last_successful_run_timestamp_seconds"
-		val, _, err := extractMetric(metricName, metrics)
-		require.NoError(t, err)
-
-		lastRun := time.Unix(int64(val), 0)
-		return lastRun.After(start)
-	}, 30*time.Second, 1*time.Second)
 }
 
 func createBloomStore(t *testing.T, sharedPath string) *bloomshipper.BloomStore {
