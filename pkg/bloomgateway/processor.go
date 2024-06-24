@@ -114,6 +114,17 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 }
 
 func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.CloseableBlockQuerier, data []blockWithTasks) error {
+	// We opportunistically close blocks during iteration to allow returning memory to the pool, etc,
+	// as soon as possible, but since we exit early on error, we need to ensure we close all blocks.
+	hasClosed := make([]bool, len(bqs))
+	defer func() {
+		for i, bq := range bqs {
+			if !hasClosed[i] {
+				_ = bq.Close()
+			}
+		}
+	}()
+
 	return concurrency.ForEachJob(ctx, len(bqs), p.concurrency, func(ctx context.Context, i int) error {
 		bq := bqs[i]
 		if bq == nil {
@@ -127,22 +138,20 @@ func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.Close
 			return errors.Errorf("block and querier bounds differ: %s vs %s", block.ref.Bounds, bq.Bounds)
 		}
 
-		err := p.processBlock(ctx, bq, block.tasks)
-		if err != nil {
-			return errors.Wrap(err, "processing block")
-		}
-		return nil
+		var errs multierror.MultiError
+		errs.Add(
+			errors.Wrap(
+				p.processBlock(ctx, bq, block.tasks),
+				"processing block",
+			),
+		)
+		errs.Add(bq.Close())
+		hasClosed[i] = true
+		return errs.Err()
 	})
 }
 
 func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBlockQuerier, tasks []Task) (err error) {
-	defer func() {
-		var errs multierror.MultiError
-		errs.Add(err)
-		errs.Add(bq.Close())
-		err = errs.Err()
-	}()
-
 	blockQuerier := bq.BlockQuerier
 	schema, err := blockQuerier.Schema()
 	if err != nil {
