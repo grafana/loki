@@ -124,7 +124,6 @@ func BenchmarkSlab(b *testing.B) {
 	} {
 		b.Run(flagext.ByteSize(uint64(sz)).String(), func(b *testing.B) {
 			slab := newSlab(sz, 1, newMetrics(nil, "test"))
-			slab.init()
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
