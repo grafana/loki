@@ -31,9 +31,9 @@ The Docker Compose configuration runs the following components, each in its own 
 
 - **Grafana Alloy**: which scrapes the log lines from flog, and pushes them to Loki through the gateway.
 - **Gateway** (nginx) which receives requests and redirects them to the appropriate container based on the request's URL.
-- **Loki read component**: which runs a query-frontend and a querier.
-- **Loki write component**: which runs a distributor and an ingester.
-- **Loki backend component**: which runs an index-gateway, compactor, ruler, bloom-compactor, and bloom-gateway.
+- **Loki read component**: which runs a Query Frontend and a Querier.
+- **Loki write component**: which runs a Distributor and an Ingester.
+- **Loki backend component**: which runs an Index Gateway, Compactor, Ruler, Bloom Compactor (experimental), and Bloom Gateway (experimental).
 - **Minio**: which Loki uses to store its index and chunks.
 - **Grafana**: which provides visualization of the log lines captured within Loki.
 
@@ -43,7 +43,7 @@ The Docker Compose configuration runs the following components, each in its own 
 
 ## Before you begin
 
-Use the [Interactive Learning Environment](#interactive-learning-environment) to skip installing Docker and Docker Compose.
+You can use the [Interactive Learning Environment](#interactive-learning-environment) to skip installing Docker and Docker Compose.
 
 - Install [Docker](https://docs.docker.com/install)
 - Install [Docker Compose](https://docs.docker.com/compose/install)
@@ -232,7 +232,7 @@ You can view your logs using the command line interface, [LogCLI](/docs/loki/<LO
 
       <!-- Killercoda copy END -->
 
-   1. Find all the log lines in the `{container="evaluate-loki-flog-1}` stream that contain the string `status`:
+   1. Find all the log lines in the `{container="evaluate-loki-flog-1"}` stream that contain the string `status`:
 
       <!-- Killercoda copy START -->
 
@@ -242,7 +242,7 @@ You can view your logs using the command line interface, [LogCLI](/docs/loki/<LO
 
       <!-- Killercoda copy END -->
 
-   1. Find all the log lines in the `{container="evaluate-loki-flog-1}` stream where the JSON field `status` has the value `404`:
+   1. Find all the log lines in the `{container="evaluate-loki-flog-1"}` stream where the JSON field `status` has the value `404`:
 
       <!-- Killercoda copy START -->
 
