@@ -421,12 +421,21 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return nil, 0, err
 		}
 
+		// labelSampleExtractor includes the unwrap identifier in without() list if no grouping is specified
+		// similar change is required for the RHS here to ensure the resulting label sets match
+		rhsGrouping := *grouping
+		if rhsGrouping.Without {
+			if expr.Left.Unwrap != nil {
+				rhsGrouping.Groups = append(rhsGrouping.Groups, expr.Left.Unwrap.Identifier)
+			}
+		}
+
 		rhs, rhsBytesPerShard, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
 			Left: &syntax.RangeAggregationExpr{
 				Left:      countOverTimeSelector,
 				Operation: syntax.OpRangeTypeCount,
 			},
-			Grouping:  grouping,
+			Grouping:  &rhsGrouping,
 			Operation: syntax.OpTypeSum,
 		}, r, false)
 		if err != nil {
